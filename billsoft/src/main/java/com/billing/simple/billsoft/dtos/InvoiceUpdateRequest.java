@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.dtos;
 
 import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -9,35 +10,16 @@ import lombok.Setter;
 public class InvoiceUpdateRequest {
 
     private Long customerId;
-    private String invoiceDate;
+    private String invoiceDate; // optional ISO local date-time string (e.g. "2025-11-21T16:30" or "2025-11-21T16:30:00")
     private String notes;
 
-    private List<ItemData> items;
+    /**
+     * Optional invoice-level discount (applied on subtotal after per-item discounts)
+     */
+    private InvoiceRequest.Discount invoiceDiscount;
 
-    @Getter
-    @Setter
-    public static class ItemData {
-
-        private Long itemId;        // null = new item
-        private Boolean remove;     // true = delete
-
-        private Long productId;
-
-        private Integer qty;
-        private String unit;
-
-        private Double pricePerUnit;
-        private Double amountWithoutTax;
-
-        private String discountType;        
-        private Double discountValue;
-        private Double discountPercent;
-
-        private Double taxableAmount;
-
-        private Double gstPercent;
-        private Double gstAmount;
-
-        private Double lineTotal;
-    }
+    /**
+     * NEW LIST replaces previous items
+     */
+    private List<InvoiceRequestItem> items;
 }

@@ -12,16 +12,14 @@ import lombok.*;
 @Builder
 @Entity
 @Table(name = "invoice_items")
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "invoice"})
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class InvoiceItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ------------------------------
     // RELATIONS
-    // ------------------------------
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
     @JsonBackReference
@@ -31,26 +29,24 @@ public class InvoiceItem {
     @JoinColumn(name = "product_id")
     private Product product;
 
-    // ------------------------------
-    // ITEM FIELDS (UI CALCULATED)
-    // ------------------------------
+    // ITEM FIELDS (calculated / stored)
     private Integer qty;                   // Quantity
-    private String unit;                   // Kg / Unit / Box / Piece etc.
+    private String unit;                   // Unit (pcs, kg etc.)
 
-    private Double pricePerUnit;           // Price per single unit
+    private Double pricePerUnit;           // price per unit used for calculations
     private Double amountWithoutTax;       // qty * pricePerUnit
 
     // Discount
     private String discountType;           // "PERCENT" or "VALUE"
-    private Double discountValue;          // Flat ₹ discount
-    private Double discountPercent;        // % discount
+    private Double discountValue;          // flat rupee discount
+    private Double discountPercent;        // percent discount
 
-    private Double taxableAmount;          // After discount, before tax
+    private Double taxableAmount;          // amountWithoutTax - discount
 
     // GST
-    private Double gstPercent;             // GST %
-    private Double gstAmount;              // Calculated GST value
+    private Double gstPercent;
+    private Double gstAmount;
 
     // Final total for this row
-    private Double lineTotal;              // taxableAmount + gstAmount
+    private Double lineTotal;
 }

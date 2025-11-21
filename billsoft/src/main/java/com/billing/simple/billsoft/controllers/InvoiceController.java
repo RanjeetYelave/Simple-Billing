@@ -3,15 +3,7 @@ package com.billing.simple.billsoft.controllers;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
@@ -31,7 +23,8 @@ public class InvoiceController {
 
     @PostMapping
     public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
-        return ResponseEntity.ok(service.createInvoice(request));
+        Invoice created = service.createInvoice(request);
+        return ResponseEntity.ok(created);
     }
 
     @GetMapping
@@ -46,12 +39,6 @@ public class InvoiceController {
         return ResponseEntity.ok(inv);
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        boolean removed = service.delete(id);
-        if (!removed) return ResponseEntity.notFound().build();
-        return ResponseEntity.noContent().build();
-    }
     @PutMapping("/{id}")
     public ResponseEntity<Invoice> updateInvoice(
             @PathVariable("id") Long id,
@@ -62,4 +49,10 @@ public class InvoiceController {
         return ResponseEntity.ok(updated);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        boolean removed = service.delete(id);
+        if (!removed) return ResponseEntity.notFound().build();
+        return ResponseEntity.noContent().build();
+    }
 }

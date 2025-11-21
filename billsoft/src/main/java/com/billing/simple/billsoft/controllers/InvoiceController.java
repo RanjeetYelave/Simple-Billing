@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.service.InvoiceService;
 
@@ -20,39 +21,33 @@ import com.billing.simple.billsoft.service.InvoiceService;
 @CrossOrigin
 public class InvoiceController {
 
-	private final InvoiceService service;
+    private final InvoiceService service;
 
-	public InvoiceController(InvoiceService service) {
-		this.service = service;
-	}
+    public InvoiceController(InvoiceService service) {
+        this.service = service;
+    }
 
-	@PostMapping
-	public ResponseEntity<Invoice> create(@RequestBody Invoice invoice) {
-		// auto-generate invoice number
-		if (invoice.getInvoiceNumber() == null || invoice.getInvoiceNumber().isEmpty()) {
-			invoice.setInvoiceNumber(service.generateInvoiceNumber());
-		}
-		return ResponseEntity.ok(service.create(invoice));
-	}
+    @PostMapping
+    public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
+        return ResponseEntity.ok(service.createInvoice(request));
+    }
 
-	@GetMapping
-	public ResponseEntity<List<Invoice>> getAll() {
-		return ResponseEntity.ok(service.getAll());
-	}
+    @GetMapping
+    public ResponseEntity<List<Invoice>> getAll() {
+        return ResponseEntity.ok(service.getAll());
+    }
 
-	@GetMapping("/{id}")
-	public ResponseEntity<Invoice> getById(@PathVariable Long id) {
-		Invoice inv = service.getById(id);
-		if (inv == null)
-			return ResponseEntity.notFound().build();
-		return ResponseEntity.ok(inv);
-	}
+    @GetMapping("/{id}")
+    public ResponseEntity<Invoice> getById(@PathVariable Long id) {
+        Invoice inv = service.getById(id);
+        if (inv == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(inv);
+    }
 
-	@DeleteMapping("/{id}")
-	public ResponseEntity<Void> delete(@PathVariable Long id) {
-		boolean removed = service.delete(id);
-		if (!removed)
-			return ResponseEntity.notFound().build();
-		return ResponseEntity.noContent().build();
-	}
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        boolean removed = service.delete(id);
+        if (!removed) return ResponseEntity.notFound().build();
+        return ResponseEntity.noContent().build();
+    }
 }

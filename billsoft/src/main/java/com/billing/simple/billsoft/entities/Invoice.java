@@ -1,7 +1,9 @@
 package com.billing.simple.billsoft.entities;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,11 +29,13 @@ public class Invoice {
     private Customer customer;
 
     private Double totalAmount;
+
     private LocalDateTime invoiceDate;
 
     private String notes;
 
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private List<InvoiceItem> items = new ArrayList<>();
 
     @PrePersist

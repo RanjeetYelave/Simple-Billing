@@ -1,5 +1,7 @@
 package com.billing.simple.billsoft.entities;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -10,6 +12,7 @@ import lombok.*;
 @Builder
 @Entity
 @Table(name = "invoice_items")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "invoice"}) // prevent recursion
 public class InvoiceItem {
 
     @Id
@@ -18,6 +21,7 @@ public class InvoiceItem {
 
     @ManyToOne
     @JoinColumn(name = "invoice_id")
+    @JsonBackReference
     private Invoice invoice;
 
     @ManyToOne
@@ -25,7 +29,10 @@ public class InvoiceItem {
     private Product product;
 
     private Integer quantity;
-    private Double price;          // snapshot price
-    private Double gstPercentage;  // snapshot GST
-    private Double lineTotal;      // (price * qty) + GST
+
+    private Double price;
+
+    private Double gstPercentage;
+
+    private Double lineTotal;
 }

@@ -26,3 +26,13 @@ export const createInvoice = (data) => api("/api/invoices", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
 });
 export const getInvoice = (id) => api(`/api/invoices/${id}`);
+
+export async function updateInvoice(id, payload) {
+    const res = await fetch(`${BASE}/invoices/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+    return res.json();
+}
+

@@ -1,32 +1,78 @@
-body{
-  font-family: Inter, sans-serif;
-  background:#f4f7fa;
-  margin:0;
+/* Invoice list row */
+.invoice-list-item {
+  padding:12px;
+  background:#ffffff;
+  border-radius:8px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.08);
+  margin-bottom:12px;
+}
+.invoice-list-item:hover {
+  background:#f0f6ff;
+  cursor:pointer;
+}
+
+/* Full invoice view */
+.invoice-container {
+  background:white;
   padding:20px;
-  display:flex;
-  justify-content:center;
+  border-radius:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
 }
 
-#app{ width:100%; max-width:1100px }
-
-/* Buttons, cards, layout, tables */
-.btn{
-  background:#2563eb;color:#fff;
-  padding:8px 12px;border:0;border-radius:8px;cursor:pointer;
-}
-.btn.ghost{ background:transparent;color:#2563eb;border:1px solid #d0d7e2 }
-
-.card{
-  background:#fff;
-  padding:16px;border-radius:10px;
-  box-shadow:0 6px 18px rgba(2,6,23,0.06);
+.invoice-meta {
   margin-bottom:20px;
+  font-size:14px;
+  color:#444;
 }
 
-input,select,textarea{
-  width:100%;padding:10px;
-  border-radius:8px;border:1px solid #e3eaf4;
-  box-sizing:border-box;margin-top:6px;margin-bottom:12px;
+.invoice-table {
+  width:100%;
+  border-collapse:collapse;
+  margin-top:15px;
 }
-table{ width:100%;border-collapse:collapse;margin-top:10px }
-th,td{ padding:8px;border-bottom:1px solid #eee;text-align:left }
+
+.invoice-table th {
+  background:#2563eb;
+  color:white;
+  padding:10px;
+  text-align:left;
+}
+
+.invoice-table td {
+  border-bottom:1px solid #eee;
+  padding:10px;
+}
+
+.invoice-total-box {
+  margin-top:20px;
+  font-size:20px;
+  font-weight:bold;
+  text-align:right;
+  background:#f9fafb;
+  padding:15px;
+  border-radius:10px;
+}
+
+.total-box {
+  margin:10px 0;
+  font-size:16px;
+  font-weight:bold;
+}
+.btn.primary { background:#2563eb; color:white; }
+.btn.danger { background:#e11d48; color:#fff; }
+.btn.small { padding:4px 8px; font-size:12px; }
+
+.hidden { display: none !important; }
+
+.edit-icon {
+  cursor: pointer;
+  font-size: 18px;
+  margin-left: 6px;
+}
+
+.save-icon {
+  cursor: pointer;
+  font-size: 18px;
+  margin-left: 6px;
+  color: green;
+}

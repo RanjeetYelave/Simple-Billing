@@ -1,5 +1,7 @@
-import { createInvoice, getInvoices, getInvoice } from "./api.js";
-import { $, money } from "./utils.js";
+// js/invoice.js
+
+import { createInvoice, getInvoices, getInvoice, updateInvoice } from "./api.js";
+import { money } from "./utils.js";
 import { productModule } from "./product.js";
 
 export const invoiceModule = {
@@ -15,13 +17,15 @@ export const invoiceModule = {
         return await getInvoices();
     },
 
+    async update(id, payload) {
+        return await updateInvoice(id, payload);
+    },
+
     calculateTotal(items) {
         let total = 0;
         items.forEach(i => {
-            const p = productModule.products.find(x => x.id == i.productId);
-            if (!p) return;
-            const base = p.price * i.qty;
-            const gst = base * (p.gstPercentage / 100);
+            const base = i.price * i.quantity;
+            const gst = base * (i.gstPercentage / 100);
             total += base + gst;
         });
         return total;

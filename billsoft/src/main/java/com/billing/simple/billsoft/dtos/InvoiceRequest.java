@@ -1,13 +1,15 @@
 package com.billing.simple.billsoft.dtos;
 
-
 import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
 
-import lombok.Data;
-
-@Data
+@Getter
+@Setter
 public class InvoiceRequest {
+
     private Long customerId;
-    private List<InvoiceRequestItem> items;
     private String notes;
+
+    private List<InvoiceRequestItem> items;
 }

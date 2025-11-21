@@ -17,11 +17,27 @@ public class InvoiceUpdateRequest {
     @Getter
     @Setter
     public static class ItemData {
-        private Long itemId;        // null for NEW items
-        private Long productId;     // can be changed
-        private Double price;       // editable
-        private Double gstPercentage;
-        private Integer quantity;
-        private Boolean remove;     // optional flag for deletion
+
+        private Long itemId;        // null = new item
+        private Boolean remove;     // true = delete
+
+        private Long productId;
+
+        private Integer qty;
+        private String unit;
+
+        private Double pricePerUnit;
+        private Double amountWithoutTax;
+
+        private String discountType;        
+        private Double discountValue;
+        private Double discountPercent;
+
+        private Double taxableAmount;
+
+        private Double gstPercent;
+        private Double gstAmount;
+
+        private Double lineTotal;
     }
 }

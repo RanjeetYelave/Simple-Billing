@@ -21,165 +21,214 @@ import com.billing.simple.billsoft.repo.ProductRepository;
 @Service
 public class InvoiceService {
 
-    private final InvoiceRepository invoiceRepo;
-    private final CustomerRepository customerRepo;
-    private final ProductRepository productRepo;
+	private final InvoiceRepository invoiceRepo;
+	private final CustomerRepository customerRepo;
+	private final ProductRepository productRepo;
 
-    public InvoiceService(InvoiceRepository invoiceRepo, CustomerRepository customerRepo, ProductRepository productRepo) {
-        this.invoiceRepo = invoiceRepo;
-        this.customerRepo = customerRepo;
-        this.productRepo = productRepo;
-    }
+	public InvoiceService(InvoiceRepository invoiceRepo, CustomerRepository customerRepo,
+			ProductRepository productRepo) {
 
-    public String generateInvoiceNumber() {
-        Invoice last = invoiceRepo.findTopByOrderByIdDesc();
-        long next = (last == null) ? 1 : last.getId() + 1;
-        return String.format("INV-%04d", next);
-    }
+		this.invoiceRepo = invoiceRepo;
+		this.customerRepo = customerRepo;
+		this.productRepo = productRepo;
+	}
 
-    @Transactional
-    public Invoice createInvoice(InvoiceRequest req) {
+	// ---------------------------------------------------------
+	// GENERATE INVOICE NUMBER
+	// ---------------------------------------------------------
+	public String generateInvoiceNumber() {
+		Invoice last = invoiceRepo.findTopByOrderByIdDesc();
+		long next = (last == null) ? 1 : last.getId() + 1;
+		return String.format("INV-%04d", next);
+	}
 
-        Customer customer = customerRepo.findById(req.getCustomerId())
-                .orElseThrow(() -> new RuntimeException("Customer not found"));
+	// ---------------------------------------------------------
+	// CREATE INVOICE (UI CALCULATES EVERYTHING)
+	// ---------------------------------------------------------
+	@Transactional
+	public Invoice createInvoice(InvoiceRequest request) {
 
-        Invoice invoice = new Invoice();
-        invoice.setCustomer(customer);
-        invoice.setInvoiceNumber(generateInvoiceNumber());
-        invoice.setNotes(req.getNotes());
+		Invoice invoice = new Invoice();
 
-        List<InvoiceItem> items = new ArrayList<>();
-        double grandTotal = 0;
+		// CUSTOMER
+		Customer customer = customerRepo.findById(request.getCustomerId())
+				.orElseThrow(() -> new RuntimeException("Customer not found: " + request.getCustomerId()));
 
-        for (InvoiceRequestItem it : req.getItems()) {
+		invoice.setCustomer(customer);
+		invoice.setInvoiceDate(LocalDateTime.now());
+		invoice.setNotes(request.getNotes());
+		invoice.setInvoiceNumber(generateInvoiceNumber());
+		invoice = invoiceRepo.save(invoice);
 
-            Product product = productRepo.findById(it.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found: " + it.getProductId()));
+		// ITEMS
+		List<InvoiceItem> itemEntities = new ArrayList<>();
 
-            double price = product.getPrice();
-            double gst = product.getGstPercentage() == null ? 0 : product.getGstPercentage();
-            double total = (price * it.getQty()) + ((price * it.getQty()) * gst / 100);
+		for (InvoiceRequestItem i : request.getItems()) {
 
-            InvoiceItem item = InvoiceItem.builder()
-                    .invoice(invoice)
-                    .product(product)
-                    .quantity(it.getQty())
-                    .price(price)
-                    .gstPercentage(gst)
-                    .lineTotal(total)
-                    .build();
+			Product product = productRepo.findById(i.getProductId())
+					.orElseThrow(() -> new RuntimeException("Product not found: " + i.getProductId()));
 
-            items.add(item);
-            grandTotal += total;
-        }
+			InvoiceItem item = new InvoiceItem();
+			item.setInvoice(invoice);
+			item.setProduct(product);
 
-        invoice.setItems(items);
-        invoice.setTotalAmount(grandTotal);
+			// ---------- UI-SENT FIELDS ----------
+			item.setQty(i.getQty());
+			item.setUnit(i.getUnit());
 
-        return invoiceRepo.save(invoice);
-    }
+			item.setPricePerUnit(i.getPricePerUnit());
+			item.setAmountWithoutTax(i.getAmountWithoutTax());
 
-    public List<Invoice> getAll() {
-        return invoiceRepo.findAll();
-    }
+			item.setDiscountType(i.getDiscountType());
+			item.setDiscountValue(i.getDiscountValue());
+			item.setDiscountPercent(i.getDiscountPercent());
 
-    public Invoice getById(Long id) {
-        return invoiceRepo.findById(id).orElse(null);
-    }
+			item.setTaxableAmount(i.getTaxableAmount());
 
-    public boolean delete(Long id) {
-        if (!invoiceRepo.existsById(id)) return false;
-        invoiceRepo.deleteById(id);
-        return true;
-    }
+			item.setGstPercent(i.getGstPercent());
+			item.setGstAmount(i.getGstAmount());
 
-    @Transactional
-    public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
+			item.setLineTotal(i.getLineTotal());
 
-        Invoice invoice = invoiceRepo.findById(id).orElse(null);
-        if (invoice == null) return null;
+			itemEntities.add(item);
+		}
 
-        // Update customer
-        if (req.getCustomerId() != null) {
-            Customer c = customerRepo.findById(req.getCustomerId())
-                    .orElse(invoice.getCustomer());
-            invoice.setCustomer(c);
-        }
+		invoice.setItems(itemEntities);
 
-        // Update invoice date
-        if (req.getInvoiceDate() != null) {
-            invoice.setInvoiceDate(LocalDateTime.parse(req.getInvoiceDate()));
-        }
+		// GRAND TOTAL
+		double invoiceTotal = itemEntities.stream().mapToDouble(InvoiceItem::getLineTotal).sum();
 
-        // Update notes
-        if (req.getNotes() != null) {
-            invoice.setNotes(req.getNotes());
-        }
+		invoice.setTotalAmount(invoiceTotal);
 
-        //------------------------------------------
-        // HANDLE LINE ITEMS (add / remove / edit)
-        //------------------------------------------
-        List<InvoiceItem> existing = invoice.getItems();
+		return invoiceRepo.save(invoice);
+	}
 
-        for (InvoiceUpdateRequest.ItemData data : req.getItems()) {
+	// ---------------------------------------------------------
+	// FETCH ALL / FETCH BY ID
+	// ---------------------------------------------------------
+	public List<Invoice> getAll() {
+		return invoiceRepo.findAll();
+	}
 
-            // 1️⃣ REMOVE ITEM
-            if (Boolean.TRUE.equals(data.getRemove())) {
-                existing.removeIf(it -> it.getId().equals(data.getItemId()));
-                continue;
-            }
+	public Invoice getById(Long id) {
+		return invoiceRepo.findById(id).orElse(null);
+	}
 
-            // 2️⃣ UPDATE EXISTING ITEM
-            if (data.getItemId() != null) {
-                existing.forEach(it -> {
-                    if (it.getId().equals(data.getItemId())) {
+	// ---------------------------------------------------------
+	// DELETE INVOICE
+	// ---------------------------------------------------------
+	public boolean delete(Long id) {
+		if (!invoiceRepo.existsById(id))
+			return false;
+		invoiceRepo.deleteById(id);
+		return true;
+	}
 
-                        if (data.getProductId() != null) {
-                            Product p = productRepo.findById(data.getProductId()).orElse(null);
-                            it.setProduct(p);
-                        }
-                        if (data.getPrice() != null) it.setPrice(data.getPrice());
-                        if (data.getGstPercentage() != null) it.setGstPercentage(data.getGstPercentage());
-                        if (data.getQuantity() != null) it.setQuantity(data.getQuantity());
+	// ---------------------------------------------------------
+	// UPDATE FULL INVOICE (UI CALCULATED FIELDS)
+	// ---------------------------------------------------------
+	@Transactional
+	public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
 
-                        // Recalculate line total
-                        double base = it.getPrice() * it.getQuantity();
-                        double gstAmt = base * (it.getGstPercentage() / 100);
-                        it.setLineTotal(base + gstAmt);
-                    }
-                });
-            }
+		Invoice invoice = invoiceRepo.findById(id).orElse(null);
+		if (invoice == null)
+			return null;
 
-            // 3️⃣ ADD NEW ITEM
-            else {
-                Product p = productRepo.findById(data.getProductId()).orElse(null);
-                if (p == null) continue;
+		// UPDATE CUSTOMER
+		if (req.getCustomerId() != null) {
+			Customer c = customerRepo.findById(req.getCustomerId()).orElse(invoice.getCustomer());
+			invoice.setCustomer(c);
+		}
 
-                InvoiceItem newItem = new InvoiceItem();
-                newItem.setInvoice(invoice);
-                newItem.setProduct(p);
-                newItem.setPrice(data.getPrice());
-                newItem.setGstPercentage(data.getGstPercentage());
-                newItem.setQuantity(data.getQuantity());
+		// UPDATE DATE
+		if (req.getInvoiceDate() != null) {
+			invoice.setInvoiceDate(LocalDateTime.parse(req.getInvoiceDate()));
+		}
 
-                double base = data.getPrice() * data.getQuantity();
-                double gstAmt = base * (data.getGstPercentage() / 100);
-                newItem.setLineTotal(base + gstAmt);
+		// UPDATE NOTES
+		if (req.getNotes() != null) {
+			invoice.setNotes(req.getNotes());
+		}
 
-                existing.add(newItem);
-            }
-        }
+		// -----------------------------------------------------------------
+		// UPDATE ITEMS (NO SERVER CALCULATIONS, UI SENDS ALL VALUES)
+		// -----------------------------------------------------------------
+		List<InvoiceItem> existing = invoice.getItems();
 
-        //------------------------------------------
-        // RE-CALCULATE GRAND TOTAL
-        //------------------------------------------
-        double total = existing.stream()
-                .mapToDouble(InvoiceItem::getLineTotal)
-                .sum();
+		for (InvoiceUpdateRequest.ItemData data : req.getItems()) {
 
-        invoice.setTotalAmount(total);
+			// REMOVE ITEM
+			if (Boolean.TRUE.equals(data.getRemove())) {
+				existing.removeIf(it -> it.getId().equals(data.getItemId()));
+				continue;
+			}
 
-        return invoiceRepo.save(invoice);
-    }
+			// UPDATE EXISTING ITEM
+			if (data.getItemId() != null) {
+				for (InvoiceItem it : existing) {
+					if (it.getId().equals(data.getItemId())) {
 
+						if (data.getProductId() != null) {
+							Product p = productRepo.findById(data.getProductId()).orElse(null);
+							it.setProduct(p);
+						}
+
+						it.setQty(data.getQty());
+						it.setUnit(data.getUnit());
+
+						it.setPricePerUnit(data.getPricePerUnit());
+						it.setAmountWithoutTax(data.getAmountWithoutTax());
+
+						it.setDiscountType(data.getDiscountType());
+						it.setDiscountValue(data.getDiscountValue());
+						it.setDiscountPercent(data.getDiscountPercent());
+
+						it.setTaxableAmount(data.getTaxableAmount());
+
+						it.setGstPercent(data.getGstPercent());
+						it.setGstAmount(data.getGstAmount());
+
+						it.setLineTotal(data.getLineTotal());
+					}
+				}
+			}
+
+			// ADD NEW ITEM
+			else {
+				Product p = productRepo.findById(data.getProductId()).orElse(null);
+				if (p == null)
+					continue;
+
+				InvoiceItem newItem = new InvoiceItem();
+				newItem.setInvoice(invoice);
+				newItem.setProduct(p);
+
+				newItem.setQty(data.getQty());
+				newItem.setUnit(data.getUnit());
+
+				newItem.setPricePerUnit(data.getPricePerUnit());
+				newItem.setAmountWithoutTax(data.getAmountWithoutTax());
+
+				newItem.setDiscountType(data.getDiscountType());
+				newItem.setDiscountValue(data.getDiscountValue());
+				newItem.setDiscountPercent(data.getDiscountPercent());
+
+				newItem.setTaxableAmount(data.getTaxableAmount());
+
+				newItem.setGstPercent(data.getGstPercent());
+				newItem.setGstAmount(data.getGstAmount());
+
+				newItem.setLineTotal(data.getLineTotal());
+
+				existing.add(newItem);
+			}
+		}
+
+		// RECALCULATE GRAND TOTAL
+		double total = existing.stream().mapToDouble(InvoiceItem::getLineTotal).sum();
+
+		invoice.setTotalAmount(total);
+
+		return invoiceRepo.save(invoice);
+	}
 }

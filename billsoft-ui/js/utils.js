@@ -22,3 +22,12 @@ export function extractId(text) {
   if (/^\d+$/.test(text.trim())) return Number(text.trim());
   return null;
 }
+
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]); // strip "data:image/..base64,"
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}

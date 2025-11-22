@@ -1,21 +1,17 @@
 package com.billing.simple.billsoft.entities;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 @Entity
 @Getter
 @Setter
+@Table(name = "firm_details")
 public class FirmDetails {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long id = 1L; // no @GeneratedValue
 
     private String firmName;
     private String ownerName;
@@ -28,14 +24,12 @@ public class FirmDetails {
     private String email;
     private String gstin;
 
-    private String bankName;
-    private String bankAccountNo;
-    private String bankIFSC;
-    private String footerNote;
-
-    // Optional logo stored as Base64 string
+    @Lob
     private String logoBase64;
 
-    // Invoice prefix : e.g. "INV-"
-    private String invoicePrefix;
+    private String bankName;
+    private String bankAccount;
+    private String bankIfsc;
+
+    private String footerNote;
 }

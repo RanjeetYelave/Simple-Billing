@@ -1,33 +1,31 @@
 // js/invoice.js
-
-import { createInvoice, getInvoices, getInvoice, updateInvoice } from "./api.js";
-import { money } from "./utils.js";
-import { productModule } from "./product.js";
+import { apiGet, apiPost, apiPut, apiDelete } from "./api.js";
 
 export const invoiceModule = {
-    async save(payload) {
-        return await createInvoice(payload);
-    },
+  
+  // GET all invoices
+  async list() {
+    return await apiGet("/api/invoices");
+  },
 
-    async preview(id) {
-        return await getInvoice(id);
-    },
+  // CREATE invoice  ⭐ REQUIRED BY UI
+  async save(payload) {
+    console.log("📤 Creating invoice:", payload);
+    return await apiPost("/api/invoices", payload);
+  },
 
-    async list() {
-        return await getInvoices();
-    },
+  // PREVIEW / GET BY ID
+  async preview(id) {
+    return await apiGet(`/api/invoices/${id}`);
+  },
 
-    async update(id, payload) {
-        return await updateInvoice(id, payload);
-    },
+  // UPDATE invoice
+  async update(id, payload) {
+    return await apiPut(`/api/invoices/${id}`, payload);
+  },
 
-    calculateTotal(items) {
-        let total = 0;
-        items.forEach(i => {
-            const base = i.price * i.quantity;
-            const gst = base * (i.gstPercentage / 100);
-            total += base + gst;
-        });
-        return total;
-    }
+  // DELETE invoice
+  async delete(id) {
+    return await apiDelete(`/api/invoices/${id}`);
+  }
 };

@@ -1,38 +1,78 @@
-export const BASE = "http://localhost:8080";
+// js/api.js
+// Global API base URL — ALWAYS point to backend, not VS Code Live Server
+export const API_BASE = "http://localhost:8080";
 
-async function api(path, options = {}) {
-    const res = await fetch(BASE + path, options);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-}
-
-// Customers
-export const getCustomers = () => api("/api/customers");
-export const createCustomer = (data) => api("/api/customers", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
-});
-export const getCustomer = (id) => api(`/api/customers/${id}`);
-
-// Products
-export const getProducts = () => api("/api/products");
-export const createProduct = (data) => api("/api/products", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
-});
-export const getProduct = (id) => api(`/api/products/${id}`);
-
-// Invoices
-export const getInvoices = () => api("/api/invoices");
-export const createInvoice = (data) => api("/api/invoices", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
-});
-export const getInvoice = (id) => api(`/api/invoices/${id}`);
-
-export async function updateInvoice(id, payload) {
-    const res = await fetch(`${BASE}/invoices/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+// -----------------------------
+// Generic GET
+// -----------------------------
+export async function apiGet(path) {
+    const res = await fetch(API_BASE + path, {
+        method: "GET",
+        headers: {
+            "Content-Type": "application/json"
+        }
     });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`GET ${path} failed: ${text}`);
+    }
+
     return res.json();
 }
 
+// -----------------------------
+// Generic POST
+// -----------------------------
+export async function apiPost(path, data) {
+    const res = await fetch(API_BASE + path, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`POST ${path} failed: ${text}`);
+    }
+
+    return res.json();
+}
+
+// -----------------------------
+// Generic PUT
+// -----------------------------
+export async function apiPut(path, data) {
+    const res = await fetch(API_BASE + path, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`PUT ${path} failed: ${text}`);
+    }
+
+    return res.json();
+}
+
+// -----------------------------
+// Generic DELETE
+// -----------------------------
+export async function apiDelete(path) {
+    const res = await fetch(API_BASE + path, {
+        method: "DELETE"
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`DELETE ${path} failed: ${text}`);
+    }
+
+    return true;
+}

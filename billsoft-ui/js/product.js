@@ -1,25 +1,37 @@
-import { getProducts, createProduct, getProduct } from "./api.js";
-import { $, extractId } from "./utils.js";
+// js/product.js
+import { apiGet, apiPost } from "./api.js";
 
 export const productModule = {
     products: [],
 
+    // Load all products
     async load() {
-        this.products = await getProducts();
-        return this.products;
+        try {
+            console.log("🔥 Loading products...");
+            this.products = await apiGet("/api/products");
+            console.log("Products loaded:", this.products);
+        } catch (err) {
+            console.error("Failed to load products", err);
+        }
     },
 
-    async save() {
-        const data = {
-            name: $("p_name").value.trim(),
-            price: Number($("p_price").value),
-            unit: $("p_unit").value.trim(),
-            gstPercentage: Number($("p_gst").value),
-        };
-        return await createProduct(data);
+    // Create a product
+    async create(product) {
+        try {
+            console.log("🔥 Creating product:", product);
+            const res = await apiPost("/api/products", product);
+            this.products.push(res);
+            return res;
+        } catch (err) {
+            console.error("Failed to create product", err);
+            alert("Product creation failed: " + err.message);
+        }
     },
 
-    async preview(id) {
-        return await getProduct(id);
+    // ⭐ FIX: Add missing helper method
+    findByName(name) {
+        if (!name) return null;
+        const lower = name.trim().toLowerCase();
+        return this.products.find(p => p.name.toLowerCase() === lower) || null;
     }
 };

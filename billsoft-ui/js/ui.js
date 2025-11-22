@@ -1,6 +1,4 @@
 // js/ui.js
-// Updated Create Invoice UI: full line fields, invoice-level discount, live totals
-
 import { $, money, extractId } from "./utils.js";
 import { productModule } from "./product.js";
 import { customerModule } from "./customer.js";
@@ -8,115 +6,246 @@ import { invoiceModule } from "./invoice.js";
 
 export const ui = {
 
-  // render main layout (unchanged except create-invoice area expanded)
+  /* ------------------------------------------------------------
+     RENDER SHELL (SIDEBAR + VIEWS)
+  ------------------------------------------------------------- */
   render() {
     $("app").innerHTML = `
-      <div class="card">
-        <h2>Create Invoice</h2>
-
-        <div style="display:grid;grid-template-columns:1fr 220px;gap:12px;align-items:end">
-          <div>
-            <label>Customer</label>
-            <input id="custInput" placeholder="Type customer name or id:3" list="custList"/>
-            <datalist id="custList"></datalist>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-badge">B</div>
+            <span>Billsoft</span>
           </div>
 
-          <div>
-            <label>Invoice-level Discount</label>
-            <div style="display:flex;gap:8px">
-              <select id="discountType" style="width:40%">
-                <option value="PERCENT">%</option>
-                <option value="VALUE">₹</option>
-              </select>
-              <input id="discountValue" type="number" placeholder="0" style="width:60%" />
+          <div class="nav-section-title">Navigation</div>
+          <div class="nav-list">
+            <button class="nav-item active" data-view="invoiceCreate">
+              <span class="icon">🧾</span>
+              <span>Create Invoice</span>
+            </button>
+            <button class="nav-item" data-view="invoices">
+              <span class="icon">📚</span>
+              <span>Invoices</span>
+            </button>
+            <button class="nav-item" data-view="customers">
+              <span class="icon">👤</span>
+              <span>Customers</span>
+            </button>
+            <button class="nav-item" data-view="products">
+              <span class="icon">📦</span>
+              <span>Products</span>
+            </button>
+          </div>
+
+          <div class="sidebar-footer">
+            <div>Local Dev • http://localhost:8080</div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="main-header">
+            <div>
+              <h1 id="mainTitle">Create Invoice</h1>
+              <div class="subtitle" id="mainSubtitle">Quickly create and save multi-item invoices.</div>
             </div>
-            <div class="small muted">Choose discount type and amount</div>
           </div>
-        </div>
 
-        <h3 style="margin-top:12px">Items</h3>
+          <!-- CREATE INVOICE VIEW -->
+          <section id="view-invoiceCreate" class="view active">
+            <div class="card">
+              <h2>New Invoice</h2>
 
-        <table class="invoice-table" id="createItemsTable">
-          <thead>
-            <tr>
-              <th style="width:28%">ITEM</th>
-              <th style="width:8%">QTY</th>
-              <th style="width:8%">UNIT</th>
-              <th style="width:12%">PRICE/UNIT</th>
-              <th style="width:12%">AMOUNT (w/o tax)</th>
-              <th style="width:8%">DISCOUNT</th>
-              <th style="width:8%">TAX %</th>
-              <th style="width:10%">TAX AMOUNT</th>
-              <th style="width:10%">LINE TOTAL</th>
-              <th style="width:6%"></th>
-            </tr>
-          </thead>
-          <tbody id="createItemsBody"></tbody>
-        </table>
+              <div style="display:grid;grid-template-columns:1.4fr 0.8fr;gap:12px;align-items:end">
+                <div>
+                  <label>Customer</label>
+                  <input id="custInput" placeholder="Type customer name or id:3" list="custList"/>
+                  <datalist id="custList"></datalist>
+                  <div class="small muted">Example: "Ranjeet (id:1)" or just "1"</div>
+                </div>
 
-        <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
-          <button id="createAddItem" class="btn">+ Add Item</button>
-          <button id="createClear" class="btn ghost">Clear</button>
-        </div>
+                <div>
+                  <label>Invoice-level Discount</label>
+                  <div style="display:flex;gap:8px">
+                    <select id="discountType" style="width:40%">
+                      <option value="PERCENT">%</option>
+                      <option value="VALUE">₹</option>
+                    </select>
+                    <input id="discountValue" type="number" placeholder="0" style="width:60%" />
+                  </div>
+                  <div class="small muted">Applied after per-line discounts.</div>
+                </div>
+              </div>
 
-        <div id="createTotals" style="margin-top:14px;text-align:right">
-          <!-- totals filled by JS -->
-          <div id="subtotalLine" class="small muted"></div>
-          <div id="taxTotalLine" class="small muted"></div>
-          <div id="discountLine" class="small muted"></div>
-          <div id="grandTotalLine" style="font-weight:700;font-size:18px;margin-top:6px"></div>
-        </div>
+              <h3 style="margin-top:12px">Items</h3>
 
-        <div style="margin-top:12px">
-          <label>Notes</label>
-          <textarea id="createNotes"></textarea>
-        </div>
+              <table class="invoice-table" id="createItemsTable">
+                <thead>
+                  <tr>
+                    <th style="width:22%">ITEM</th>
+                    <th style="width:6%">QTY</th>
+                    <th style="width:8%">UNIT</th>
+                    <th style="width:10%">PRICE/UNIT</th>
+                    <th style="width:10%">AMOUNT</th>
+                    <th style="width:8%">DISC</th>
+                    <th style="width:6%">DISC%</th>
+                    <th style="width:8%">TAXABLE</th>
+                    <th style="width:6%">GST%</th>
+                    <th style="width:8%">GST AMT</th>
+                    <th style="width:8%">LINE TOTAL</th>
+                    <th style="width:4%"></th>
+                  </tr>
+                </thead>
+                <tbody id="createItemsBody"></tbody>
+              </table>
 
-        <div style="margin-top:12px" class="actions">
-          <button id="saveInvBtn" class="btn primary">Create Invoice</button>
-        </div>
+              <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+                <button id="createAddItem" class="btn">+ Add Item</button>
+                <button id="createClear" class="btn ghost">Clear</button>
+              </div>
 
-        <div id="createResult" class="small muted" style="margin-top:10px"></div>
-      </div>
+              <div id="createTotals" style="margin-top:14px;text-align:right">
+                <div id="subtotalLine" class="small muted"></div>
+                <div id="taxTotalLine" class="small muted"></div>
+                <div id="discountLine" class="small muted"></div>
+                <div id="grandTotalLine" style="font-weight:700;font-size:18px;margin-top:6px"></div>
+              </div>
 
-      <!-- Keep the rest of the UI (create customer/product, fetch invoices) -->
-      <div class="card">
-        <h2>Create Customer</h2>
-        <input id="c_name" placeholder="Name"/>
-        <input id="c_phone" placeholder="Phone"/>
-        <input id="c_email" placeholder="Email"/>
-        <input id="c_address" placeholder="Address"/>
-        <button class="btn primary" id="saveCustBtn">Save Customer</button>
-      </div>
+              <div style="margin-top:12px">
+                <label>Notes</label>
+                <textarea id="createNotes" placeholder="Optional notes for this invoice..."></textarea>
+              </div>
 
-      <div class="card">
-        <h2>Create Product</h2>
-        <input id="p_name" placeholder="Product Name"/>
-        <input id="p_price" placeholder="Price" type="number"/>
-        <input id="p_unit" placeholder="Unit"/>
-        <input id="p_gst" placeholder="GST (%)" type="number"/>
-        <button class="btn primary" id="saveProdBtn">Save Product</button>
-      </div>
+              <div style="margin-top:12px" class="actions">
+                <button id="saveInvBtn" class="btn primary save-big">💾 Create Invoice</button>
+              </div>
 
-      <div class="card">
-        <h2>Fetch Invoices</h2>
-        <button class="btn primary" id="fetchAllInvBtn">Fetch All Invoices</button>
+              <div id="createResult" class="small muted" style="margin-top:10px"></div>
+            </div>
+          </section>
 
-        <h3>Search</h3>
-        <input id="fetchInvId" placeholder="Invoice ID"/>
-        <button class="btn" id="fetchInvIdBtn">Fetch by ID</button>
+          <!-- INVOICES VIEW -->
+          <section id="view-invoices" class="view">
+            <div class="card">
+              <h2>Invoices</h2>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label>Invoice ID</label>
+                  <input id="fetchInvId" placeholder="e.g. 1" />
+                </div>
+                <button class="btn" id="fetchInvIdBtn">Fetch by ID</button>
 
-        <input id="fetchInvCustomer" placeholder="Customer ID" style="margin-top:10px"/>
-        <button class="btn" id="fetchInvCustomerBtn">Fetch by Customer</button>
+                <div>
+                  <label>Customer ID</label>
+                  <input id="fetchInvCustomer" placeholder="e.g. 1" />
+                </div>
+                <button class="btn" id="fetchInvCustomerBtn">Fetch by Customer</button>
 
-        <div id="invList" style="margin-top:20px"></div>
-        <div id="invDetails" style="margin-top:20px"></div>
+                <button class="btn ghost" id="fetchAllInvBtn">Refresh All</button>
+              </div>
+
+              <div id="invList" style="margin-top:16px"></div>
+              <div id="invDetails" style="margin-top:16px"></div>
+            </div>
+          </section>
+
+          <!-- CUSTOMERS VIEW -->
+          <section id="view-customers" class="view">
+            <div class="card">
+              <h2>Customers</h2>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+                <div>
+                  <h3>Add / Update Customer</h3>
+                  <label>Name</label>
+                  <input id="c_name" placeholder="Full name" />
+                  <label>Phone</label>
+                  <input id="c_phone" placeholder="Phone" />
+                  <label>Email</label>
+                  <input id="c_email" placeholder="Email" />
+                  <label>Address</label>
+                  <input id="c_address" placeholder="Address" />
+                  <button class="btn primary" id="saveCustBtn">Save Customer</button>
+                </div>
+                <div>
+                  <h3>Existing Customers</h3>
+                  <button class="btn ghost" id="loadCustBtn">Reload</button>
+                  <div id="custListBox" style="margin-top:10px"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PRODUCTS VIEW -->
+          <section id="view-products" class="view">
+            <div class="card">
+              <h2>Products</h2>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+                <div>
+                  <h3>Add Product</h3>
+                  <label>Product Name</label>
+                  <input id="p_name" placeholder="Product Name" />
+                  <label>Price</label>
+                  <input id="p_price" placeholder="Price" type="number" />
+                  <label>Unit</label>
+                  <input id="p_unit" placeholder="Unit (pcs, kg, etc.)" />
+                  <label>GST (%)</label>
+                  <input id="p_gst" placeholder="GST (%)" type="number" />
+                  <button class="btn primary" id="saveProdBtn">Save Product</button>
+                </div>
+                <div>
+                  <h3>Existing Products</h3>
+                  <button class="btn ghost" id="loadProdBtn">Reload</button>
+                  <div id="prodListBox" style="margin-top:10px"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </main>
       </div>
     `;
   },
 
+  /* ------------------------------------------------------------
+     VIEW SWITCHING
+  ------------------------------------------------------------- */
+  switchView(viewName) {
+    // sections
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    const active = document.getElementById(`view-${viewName}`);
+    if (active) active.classList.add("active");
+
+    // nav buttons
+    document.querySelectorAll(".nav-item").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.view === viewName);
+    });
+
+    // titles
+    const title = $("mainTitle");
+    const subtitle = $("mainSubtitle");
+    if (!title || !subtitle) return;
+
+    if (viewName === "invoiceCreate") {
+      title.textContent = "Create Invoice";
+      subtitle.textContent = "Quickly create and save multi-item invoices.";
+    } else if (viewName === "invoices") {
+      title.textContent = "Invoices";
+      subtitle.textContent = "Browse, open and edit existing invoices.";
+    } else if (viewName === "customers") {
+      title.textContent = "Customers";
+      subtitle.textContent = "Manage customers used while creating invoices.";
+    } else if (viewName === "products") {
+      title.textContent = "Products";
+      subtitle.textContent = "Manage products with price and GST.";
+    }
+  },
+
+  /* ------------------------------------------------------------
+     CUSTOMER AUTOCOMPLETE
+  ------------------------------------------------------------- */
   populateCustomers() {
     const dl = $("custList");
+    if (!dl) return;
     dl.innerHTML = "";
     customerModule.customers.forEach(c => {
       const opt = document.createElement("option");
@@ -125,157 +254,165 @@ export const ui = {
     });
   },
 
-  // -----------------------
-  // Create invoice helpers
-  // -----------------------
-  addCreateItemRow(item) {
-    // item optional - { productId, quantity, unit, price, gstPercentage, discountPct (per item optional) }
-    const tbody = $("createItemsBody");
-    const tr = document.createElement("tr");
-
-    // Product select
-    const prodSel = document.createElement("select");
-    prodSel.className = "create-prod";
+  /* ------------------------------------------------------------
+     PRODUCT AUTOCOMPLETE (GLOBAL DATALIST)
+  ------------------------------------------------------------- */
+  populateProductsDatalist() {
+    let dl = document.getElementById("productListGlobal");
+    if (!dl) {
+      dl = document.createElement("datalist");
+      dl.id = "productListGlobal";
+      document.body.appendChild(dl);
+    }
+    dl.innerHTML = "";
     productModule.products.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.text = `${p.name}`;
-      prodSel.appendChild(opt);
+      const o = document.createElement("option");
+      o.value = p.name;
+      dl.appendChild(o);
+    });
+  },
+
+  /* ------------------------------------------------------------
+     CREATE INVOICE: ROW MANAGEMENT
+  ------------------------------------------------------------- */
+  addCreateItemRow() {
+    const tbody = document.querySelector("#createItemsBody");
+    if (!tbody) return;
+
+    const row = document.createElement("tr");
+    row.className = "item-row";
+
+    row.innerHTML = `
+      <td>
+        <input list="productListGlobal" class="ci-product-input" placeholder="Type product name" />
+      </td>
+      <td><input type="number" class="ci-qty" value="1" min="0" /></td>
+      <td><input type="text" class="ci-unit" placeholder="Unit" /></td>
+      <td><input type="number" class="ci-price" value="0" min="0" step="0.01" /></td>
+      <td class="ci-amt-no-tax numeric">0</td>
+      <td><input type="number" class="ci-disc-value" value="0" min="0" step="0.01" /></td>
+      <td><input type="number" class="ci-disc-percent" value="0" min="0" max="100" step="0.01" /></td>
+      <td class="ci-taxable numeric">0</td>
+      <td><input type="number" class="ci-gst" value="18" min="0" step="0.01" /></td>
+      <td class="ci-gst-amt numeric">0</td>
+      <td class="ci-line-total numeric">0</td>
+      <td><button class="btn danger small ci-remove">×</button></td>
+    `;
+
+    tbody.appendChild(row);
+
+    const prodInput = row.querySelector(".ci-product-input");
+    const qtyInput = row.querySelector(".ci-qty");
+    const unitInput = row.querySelector(".ci-unit");
+    const priceInput = row.querySelector(".ci-price");
+    const discVal = row.querySelector(".ci-disc-value");
+    const discPct = row.querySelector(".ci-disc-percent");
+    const gstInput = row.querySelector(".ci-gst");
+    const removeBtn = row.querySelector(".ci-remove");
+
+    const tryAutofill = () => {
+      const name = prodInput.value?.trim();
+      if (!name) return;
+      const prod = productModule.findByName(name);
+      if (prod) {
+        unitInput.value = prod.unit || "";
+        priceInput.value = prod.price ?? 0;
+        gstInput.value = prod.gstPercentage ?? 0;
+        this.recalcCreateTotals();
+      }
+    };
+
+    prodInput.addEventListener("change", tryAutofill);
+    prodInput.addEventListener("blur", tryAutofill);
+    prodInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        tryAutofill();
+        e.preventDefault();
+      }
     });
 
-    // Preselect if passed
-    if (item && item.productId) prodSel.value = item.productId;
+    [qtyInput, priceInput, discVal, discPct, gstInput].forEach(el => {
+      el.addEventListener("input", () => this.recalcCreateTotals());
+      el.addEventListener("change", () => this.recalcCreateTotals());
+    });
 
-    // Inputs
-    const qty = document.createElement("input"); qty.type = "number"; qty.className = "create-qty"; qty.value = item && item.quantity ? item.quantity : 1; qty.min = 0;
-    const unit = document.createElement("input"); unit.type = "text"; unit.className = "create-unit"; unit.value = (item && item.unit) ? item.unit : (productModule.products.find(p=>p.id==prodSel.value)?.unit || '');
-    const price = document.createElement("input"); price.type = "number"; price.className = "create-price"; price.step="0.01"; price.value = (item && item.price) ? item.price : (productModule.products.find(p=>p.id==prodSel.value)?.price || 0);
-    const amountNoTax = document.createElement("div"); amountNoTax.className = "create-amount-notax"; amountNoTax.innerText = money( (Number(qty.value) * Number(price.value)) || 0 );
-    // per-item discount (we keep input but invoice-level discount is primary). Default 0%
-    const discountPct = document.createElement("input"); discountPct.type = "number"; discountPct.className = "create-discountPct"; discountPct.step="0.01"; discountPct.value = (item && item.discountPct) ? item.discountPct : 0;
-    const taxPct = document.createElement("input"); taxPct.type = "number"; taxPct.className = "create-taxPct"; taxPct.step="0.01"; taxPct.value = (item && item.gstPercentage) ? item.gstPercentage : (productModule.products.find(p=>p.id==prodSel.value)?.gstPercentage || 0);
-    const taxAmount = document.createElement("div"); taxAmount.className = "create-taxAmount"; taxAmount.innerText = "₹0.00";
-    const lineTotal = document.createElement("div"); lineTotal.className = "create-lineTotal"; lineTotal.innerText = "₹0.00";
-
-    const removeBtn = document.createElement("button"); removeBtn.className = "btn danger small"; removeBtn.innerText = "🗑";
-    removeBtn.onclick = () => { tr.remove(); this.recalcCreateTotals(); };
-
-    // Build cells
-    const td1 = document.createElement("td"); td1.appendChild(prodSel);
-    const td2 = document.createElement("td"); td2.appendChild(qty);
-    const td3 = document.createElement("td"); td3.appendChild(unit);
-    const td4 = document.createElement("td"); td4.appendChild(price);
-    const td5 = document.createElement("td"); td5.appendChild(amountNoTax);
-    const td6 = document.createElement("td"); td6.appendChild(discountPct);
-    const td7 = document.createElement("td"); td7.appendChild(taxPct);
-    const td8 = document.createElement("td"); td8.appendChild(taxAmount);
-    const td9 = document.createElement("td"); td9.appendChild(lineTotal);
-    const td10 = document.createElement("td"); td10.appendChild(removeBtn);
-
-    tr.append(td1,td2,td3,td4,td5,td6,td7,td8,td9,td10);
-    tbody.appendChild(tr);
-
-    // Event handlers
-    const recalcRow = () => {
-      const q = Number(qty.value) || 0;
-      const p = Number(price.value) || 0;
-      const dPct = Number(discountPct.value) || 0;
-      const tPct = Number(taxPct.value) || 0;
-
-      const amountWithoutTax = q * p;
-      const afterDiscount = amountWithoutTax * (1 - (dPct/100));
-      const taxAmt = afterDiscount * (tPct/100);
-      const total = afterDiscount + taxAmt;
-
-      amountNoTax.innerText = money(amountWithoutTax);
-      taxAmount.innerText = money(taxAmt);
-      lineTotal.innerText = money(total);
-
+    removeBtn.onclick = () => {
+      row.remove();
       this.recalcCreateTotals();
     };
 
-    // when product changes, fill unit/price/gst defaults
-    prodSel.onchange = () => {
-      const prod = productModule.products.find(pr => pr.id == prodSel.value);
-      if (prod) {
-        unit.value = prod.unit || "";
-        price.value = prod.price || 0;
-        taxPct.value = prod.gstPercentage || 0;
-      }
-      recalcRow();
-    };
-
-    qty.oninput = recalcRow;
-    price.oninput = recalcRow;
-    discountPct.oninput = recalcRow;
-    taxPct.oninput = recalcRow;
-
-    // initial recalc
-    recalcRow();
-  },
-
-  // clear create items
-  clearCreateItems() {
-    $("createItemsBody").innerHTML = "";
     this.recalcCreateTotals();
   },
 
-  // recalc totals for create invoice page
+  clearCreateItems() {
+    const tbody = document.querySelector("#createItemsBody");
+    if (tbody) tbody.innerHTML = "";
+  },
+
   recalcCreateTotals() {
-    const rows = Array.from(document.querySelectorAll("#createItemsBody tr"));
+    const rows = [...document.querySelectorAll("#createItemsBody tr")];
+
     let subtotalWithoutTax = 0;
     let totalTax = 0;
     let subtotalAfterItemDiscounts = 0;
 
     rows.forEach(row => {
-      const q = Number(row.querySelector(".create-qty").value) || 0;
-      const p = Number(row.querySelector(".create-price").value) || 0;
-      const dPct = Number(row.querySelector(".create-discountPct").value) || 0;
-      const tPct = Number(row.querySelector(".create-taxPct").value) || 0;
+      const qty = Number(row.querySelector(".ci-qty").value) || 0;
+      const price = Number(row.querySelector(".ci-price").value) || 0;
+      const discValue = Number(row.querySelector(".ci-disc-value").value) || 0;
+      const discPct = Number(row.querySelector(".ci-disc-percent").value) || 0;
+      const gstPct = Number(row.querySelector(".ci-gst").value) || 0;
 
-      const amountWithoutTax = q * p;
-      const afterDiscount = amountWithoutTax * (1 - (dPct/100));
-      const taxAmt = afterDiscount * (tPct/100);
-      const lineTotal = afterDiscount + taxAmt;
+      const amtNoTax = qty * price;
+      row.querySelector(".ci-amt-no-tax").innerText = amtNoTax.toFixed(2);
 
-      subtotalWithoutTax += amountWithoutTax;
-      totalTax += taxAmt;
-      subtotalAfterItemDiscounts += afterDiscount;
+      let discount = 0;
+      if (discPct > 0) discount = (amtNoTax * discPct) / 100;
+      else discount = discValue;
+
+      const taxable = Math.max(0, amtNoTax - discount);
+      row.querySelector(".ci-taxable").innerText = taxable.toFixed(2);
+
+      const gstAmt = (taxable * gstPct) / 100;
+      row.querySelector(".ci-gst-amt").innerText = gstAmt.toFixed(2);
+
+      const lineTotal = taxable + gstAmt;
+      row.querySelector(".ci-line-total").innerText = lineTotal.toFixed(2);
+
+      subtotalWithoutTax += amtNoTax;
+      totalTax += gstAmt;
+      subtotalAfterItemDiscounts += taxable;
     });
 
-    // invoice level discount
-    const discType = $("discountType").value;
-    const discVal = Number($("discountValue").value) || 0;
-    let discountAmount = 0;
+    const invDiscType = $("discountType") ? $("discountType").value : "PERCENT";
+    const invDiscVal = $("discountValue") ? (Number($("discountValue").value) || 0) : 0;
+    let invoiceDiscountAmount = 0;
+    if (invDiscType === "PERCENT") invoiceDiscountAmount = subtotalAfterItemDiscounts * (invDiscVal / 100);
+    else invoiceDiscountAmount = invDiscVal;
 
-    // Discount applies on subtotal AFTER per-item discounts (if any)
-    if (discType === "PERCENT") {
-      discountAmount = subtotalAfterItemDiscounts * (discVal/100);
-    } else {
-      discountAmount = discVal;
+    const finalGrand = (subtotalAfterItemDiscounts - invoiceDiscountAmount) + totalTax;
+
+    if ($("subtotalLine")) $("subtotalLine").innerText = `Subtotal (without tax): ${money(subtotalWithoutTax)}`;
+    if ($("taxTotalLine")) $("taxTotalLine").innerText = `Total Tax: ${money(totalTax)}`;
+    if ($("discountLine")) $("discountLine").innerText =
+      `Discount: - ${money(invoiceDiscountAmount)} (${invDiscType === "PERCENT" ? invDiscVal + '%' : '₹' + invDiscVal})`;
+    if ($("grandTotalLine")) $("grandTotalLine").innerText = `Grand Total: ${money(finalGrand)}`;
+
+    if ($("createResult")) {
+      $("createResult").dataset.subtotal = subtotalWithoutTax;
+      $("createResult").dataset.tax = totalTax;
+      $("createResult").dataset.discountAmount = invoiceDiscountAmount;
+      $("createResult").dataset.grandTotal = finalGrand;
     }
-
-    const grandTotal = (subtotalAfterItemDiscounts - discountAmount) + totalTax;
-
-    // update UI
-    $("subtotalLine").innerText = `Subtotal (without tax): ${money(subtotalWithoutTax)}`;
-    $("taxTotalLine").innerText = `Total Tax: ${money(totalTax)}`;
-    $("discountLine").innerText = `Discount: - ${money(discountAmount)} (${discType === "PERCENT" ? discVal + '%' : '₹' + discVal})`;
-    $("grandTotalLine").innerText = `Grand Total: ${money(grandTotal)}`;
-
-    // store computed totals in element dataset (optional)
-    $("createResult").dataset.subtotal = subtotalWithoutTax;
-    $("createResult").dataset.tax = totalTax;
-    $("createResult").dataset.discountAmount = discountAmount;
-    $("createResult").dataset.grandTotal = grandTotal;
   },
 
-  // build payload and submit create-invoice
+  /* ------------------------------------------------------------
+     SUBMIT INVOICE  (keeps existing backend contract)
+  ------------------------------------------------------------- */
   async submitCreateInvoice() {
     try {
       const custText = $("custInput").value.trim();
-      const customerId = extractId(custText) || Number(prompt("Enter Customer ID")); // fallback
-
+      const customerId = extractId(custText) || Number(prompt("Enter Customer ID"));
       if (!customerId) return alert("Provide a valid customer (autocomplete id:NN or enter ID when prompted)");
 
       const notes = $("createNotes").value || "";
@@ -283,74 +420,105 @@ export const ui = {
       const discType = $("discountType").value;
       const discVal = Number($("discountValue").value) || 0;
 
-      const rows = Array.from(document.querySelectorAll("#createItemsBody tr"));
+      const rows = [...document.querySelectorAll("#createItemsBody tr")];
       if (rows.length === 0) return alert("Add at least one item");
 
-      const items = rows.map(row => {
-        const prodId = Number(row.querySelector(".create-prod").value);
-        const qty = Number(row.querySelector(".create-qty").value) || 0;
-        const unit = row.querySelector(".create-unit").value || "";
-        const price = Number(row.querySelector(".create-price").value) || 0;
-        const discountPct = Number(row.querySelector(".create-discountPct").value) || 0;
-        const gstPercentage = Number(row.querySelector(".create-taxPct").value) || 0;
+      this.populateProductsDatalist(); // ensure datalist is current
 
-        const amountWithoutTax = qty * price;
-        const afterDiscount = amountWithoutTax * (1 - (discountPct/100));
-        const taxAmount = afterDiscount * (gstPercentage/100);
-        const lineTotal = afterDiscount + taxAmount;
+      const items = [];
+      for (const row of rows) {
+        let prodName = row.querySelector(".ci-product-input").value?.trim();
+        if (!prodName) return alert("Please enter product name for all rows");
 
-        return {
-          productId: prodId,
-          quantity: qty,
-          unit: unit,
-          price: price,
-          discountPct: discountPct,
-          gstPercentage: gstPercentage,
-          amountWithoutTax: amountWithoutTax,
-          taxAmount: taxAmount,
-          lineTotal: lineTotal
-        };
-      });
+        let prod = productModule.findByName(prodName);
 
-      // totals (re-use computed)
+        if (!prod) {
+          const newProd = {
+            name: prodName,
+            price: Number(row.querySelector(".ci-price").value) || 0,
+            unit: row.querySelector(".ci-unit").value || "",
+            gstPercentage: Number(row.querySelector(".ci-gst").value) || 0
+          };
+          try {
+            const created = await productModule.create(newProd);
+            prod = created;
+          } catch (err) {
+            console.error("Failed to auto-create product", err);
+            return alert("Failed to create product " + prodName);
+          }
+        }
+
+        const qty = Number(row.querySelector(".ci-qty").value) || 0;
+        const unit = row.querySelector(".ci-unit").value || "";
+        const pricePerUnit = Number(row.querySelector(".ci-price").value) || 0;
+        const amountWithoutTax = Number(row.querySelector(".ci-amt-no-tax").innerText) || 0;
+        const discountValue = Number(row.querySelector(".ci-disc-value").value) || 0;
+        const discountPercent = Number(row.querySelector(".ci-disc-percent").value) || 0;
+        const taxableAmount = Number(row.querySelector(".ci-taxable").innerText) || 0;
+        const gstPercent = Number(row.querySelector(".ci-gst").value) || 0;
+        const gstAmount = Number(row.querySelector(".ci-gst-amt").innerText) || 0;
+        const lineTotal = Number(row.querySelector(".ci-line-total").innerText) || 0;
+
+        items.push({
+          productId: prod.id,
+          qty,
+          unit,
+          pricePerUnit,
+          amountWithoutTax,
+          discountType: (discountPercent > 0 ? "PERCENT" : (discountValue > 0 ? "VALUE" : null)),
+          discountValue,
+          discountPercent,
+          taxableAmount,
+          gstPercent,
+          gstAmount,
+          lineTotal
+        });
+      }
+
       const subtotalWithoutTax = Number($("createResult").dataset.subtotal) || 0;
       const totalTax = Number($("createResult").dataset.tax) || 0;
       const discountAmount = Number($("createResult").dataset.discountAmount) || 0;
       const grandTotal = Number($("createResult").dataset.grandTotal) || 0;
 
       const payload = {
-        customerId: customerId,
-        notes: notes,
-        discount: { type: discType, value: discVal },
-        items: items,
+        customerId,
+        notes,
+        discount: { type: discType, value: discVal },  // backend can ignore if not used
+        items,
         totals: {
-          subtotalWithoutTax: subtotalWithoutTax,
-          totalTax: totalTax,
-          discountAmount: discountAmount,
-          grandTotal: grandTotal
+          subtotalWithoutTax,
+          totalTax,
+          discountAmount,
+          grandTotal
         }
       };
 
-      // call backend (invoiceModule.save delegates to api)
-      const res = await invoiceModule.save(payload);
-      $("createResult").innerText = `Invoice created: ${res.invoiceNumber || res.id}`;
-      this.clearCreateItems();
-      this.recalcCreateTotals();
+      const createdInv = await invoiceModule.save(payload);
+      if (createdInv) {
+        $("createResult").innerText = `Invoice created: ${createdInv.invoiceNumber || createdInv.id}`;
+        this.clearCreateItems();
+        this.addCreateItemRow();
+        this.recalcCreateTotals();
+        await productModule.load();
+        await customerModule.load();
+        this.populateProductsDatalist();
+        this.populateCustomers();
+      }
+
     } catch (err) {
-      console.error(err);
+      console.error("submitCreateInvoice error", err);
       alert("Failed to create invoice: " + (err.message || err));
     }
   },
 
-  // -------------------------
-  // Other UI pieces (simpler)
-  // -------------------------
-  // (kept same as before) renderInvoiceList, showInvoiceDetails, etc.
+  /* ------------------------------------------------------------
+     INVOICE LIST + DETAILS
+  ------------------------------------------------------------- */
   renderInvoiceList(invoices) {
     const box = $("invList");
     box.innerHTML = "";
-    if (!invoices.length) {
-      box.innerHTML = "<div>No invoices found.</div>";
+    if (!invoices || !invoices.length) {
+      box.innerHTML = "<div class='small muted'>No invoices found.</div>";
       return;
     }
     let html = "";
@@ -359,8 +527,8 @@ export const ui = {
         <div class="invoice-list-item">
           <a class="inv-link" data-id="${inv.id}">
             <b>${inv.invoiceNumber}</b><br>
-            Customer: ${inv.customer.name}<br>
-            Total: ${money(inv.totalAmount)}
+            <span class="small muted">Customer: ${inv.customer?.name || "-"}</span><br>
+            <span class="small">Total: ${money(inv.totalAmount)}</span>
           </a>
         </div>
       `;
@@ -369,111 +537,106 @@ export const ui = {
     [...box.querySelectorAll(".inv-link")].forEach(link => {
       link.onclick = (e) => {
         const id = e.currentTarget.getAttribute("data-id");
-        ui.showInvoiceDetails(id);
+        this.showInvoiceDetails(id);
       };
     });
   },
 
-  // keep previous full editor for editing existing invoice (unchanged)
   async showInvoiceDetails(id) {
-    const inv = await invoiceModule.preview(id);
+    try {
+      const inv = await invoiceModule.preview(id);
+      if (!inv) return alert("Invoice not found");
 
-    // Build editable rows for existing invoice (reuse previous full editor)
-    let rows = "";
-    inv.items.forEach(i => {
-      rows += this.buildEditableRow(i);
-    });
+      let rows = "";
+      inv.items.forEach(i => {
+        rows += this.buildEditableRow(i);
+      });
 
-    $("invDetails").innerHTML = `
-      <div class="invoice-container">
+      $("invDetails").innerHTML = `
+        <div class="invoice-container">
+          <h2>Invoice Editor — ${inv.invoiceNumber}</h2>
 
-        <h2>Invoice Editor — ${inv.invoiceNumber}</h2>
+          <div class="invoice-meta-edit">
+            <label>Customer</label>
+            <select id="editCustomer">
+              ${customerModule.customers.map(c =>
+                `<option value="${c.id}" ${c.id === inv.customer?.id ? "selected" : ""}>${c.name}</option>`
+              ).join("")}
+            </select>
+            <label>Invoice Date</label>
+            <input id="editDate" type="datetime-local"
+                   value="${inv.invoiceDate?.slice(0,16) || ''}" />
+            <label>Notes</label>
+            <textarea id="editNotes">${inv.notes || ""}</textarea>
+          </div>
 
-        <div class="invoice-meta-edit">
-          <label>Customer</label>
-          <select id="editCustomer">
-            ${customerModule.customers.map(c => `
-              <option value="${c.id}" ${c.id === inv.customer.id ? "selected" : ""}>
-                ${c.name}
-              </option>
-            `).join("")}
-          </select>
-
-          <label>Invoice Date</label>
-          <input id="editDate" type="datetime-local" value="${inv.invoiceDate.slice(0,16)}"/>
-
-          <label>Notes</label>
-          <textarea id="editNotes">${inv.notes || ""}</textarea>
-        </div>
-
-        <table class="invoice-table">
-          <thead>
-            <tr>
+          <table class="invoice-table">
+            <thead><tr>
               <th>Product</th><th>Qty</th><th>Price</th><th>GST</th><th>Total</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="editItemsBody">${rows}</tbody>
-        </table>
+            </tr></thead>
+            <tbody id="editItemsBody">${rows}</tbody>
+          </table>
 
-        <button id="addItemBtnEdit" class="btn">➕ Add Item</button>
+          <button id="addItemBtnEdit" class="btn">➕ Add Item</button>
+          <div id="editGrandTotal" class="invoice-total-box"></div>
+          <button id="saveInvoiceBtn" class="btn primary save-big">💾 Save Invoice</button>
+        </div>
+      `;
 
-        <div id="editGrandTotal" class="invoice-total-box"></div>
+      this.refreshTotals();
+      this.bindEditEvents(inv);
 
-        <button id="saveInvoiceBtn" class="btn primary save-big">💾 Save Invoice</button>
-
-      </div>
-    `;
-
-    this.refreshTotals();
-    this.bindEditEvents(inv);
+    } catch (err) {
+      console.error("showInvoiceDetails", err);
+      alert("Failed to load invoice details");
+    }
   },
 
-  // build rows for full existing editor (same as previous)
   buildEditableRow(item) {
     return `
-      <tr data-item-id="${item.id || ""}">
+      <tr data-item-id="${item.id || ''}">
         <td>
           <select class="prodSelect">
-            ${productModule.products.map(p => `
-              <option value="${p.id}" ${p.id === (item.product?.id || item.productId) ? "selected" : ""}>
-                ${p.name}
-              </option>
-            `).join("")}
+            ${productModule.products.map(p =>
+              `<option value="${p.id}" ${p.id === (item.product?.id || item.productId) ? "selected" : ""}>${p.name}</option>`
+            ).join("")}
           </select>
         </td>
-        <td><input class="qtyInput" type="number" min="1" value="${item.quantity}"></td>
-        <td><input class="priceInput" type="number" value="${item.price ?? item.product?.price ?? 0}"></td>
-        <td><input class="gstInput" type="number" value="${item.gstPercentage ?? item.product?.gstPercentage ?? 0}"></td>
+        <td><input class="qtyInput" type="number" min="1" value="${item.qty ?? item.quantity ?? 1}"></td>
+        <td><input class="priceInput" type="number" value="${item.pricePerUnit ?? item.price ?? item.product?.price ?? 0}"></td>
+        <td><input class="gstInput" type="number" value="${item.gstPercent ?? item.gstPercentage ?? item.product?.gstPercentage ?? 0}"></td>
         <td class="lineTotal">0</td>
-        <td><button class="btn danger deleteItem">🗑</button></td>
+        <td><button class="btn danger small deleteItem">🗑</button></td>
       </tr>
     `;
   },
 
-  // previous edit bindings (unchanged)
   bindEditEvents(inv) {
     const refresh = () => this.refreshTotals();
+
     document.querySelectorAll("#editItemsBody input, #editItemsBody select")
       .forEach(el => el.oninput = refresh);
 
-    $("addItemBtnEdit").onclick = () => {
+    const addBtn = $("addItemBtnEdit");
+    if (addBtn) addBtn.onclick = () => {
+      const p = productModule.products[0] || { price:0, gstPercentage:0 };
       const newItem = {
         id: null,
-        product: productModule.products[0],
-        quantity: 1,
-        price: productModule.products[0].price,
-        gstPercentage: productModule.products[0].gstPercentage
+        product: p,
+        qty: 1,
+        pricePerUnit: p.price,
+        gstPercent: p.gstPercentage
       };
       $("editItemsBody").insertAdjacentHTML("beforeend", this.buildEditableRow(newItem));
       this.bindEditEvents(inv);
       refresh();
     };
 
-    document.querySelectorAll(".deleteItem").forEach(btn => {
-      btn.onclick = () => { btn.closest("tr").remove(); refresh(); };
-    });
+    document.querySelectorAll(".deleteItem").forEach(btn =>
+      btn.onclick = () => { btn.closest("tr").remove(); refresh(); });
 
-    $("saveInvoiceBtn").onclick = async () => {
+    const saveBtn = $("saveInvoiceBtn");
+    if (saveBtn) saveBtn.onclick = async () => {
       const payload = {
         customerId: Number($("editCustomer").value),
         invoiceDate: $("editDate").value,
@@ -482,12 +645,28 @@ export const ui = {
       };
 
       document.querySelectorAll("#editItemsBody tr").forEach(row => {
+        // recompute line-level fields on client
+        const qty = Number(row.querySelector(".qtyInput").value) || 0;
+        const price = Number(row.querySelector(".priceInput").value) || 0;
+        const gst = Number(row.querySelector(".gstInput").value) || 0;
+        const base = qty * price;
+        const gstAmt = base * (gst / 100);
+        const lineTotal = base + gstAmt;
+
         payload.items.push({
           itemId: row.getAttribute("data-item-id") || null,
           productId: Number(row.querySelector(".prodSelect").value),
-          quantity: Number(row.querySelector(".qtyInput").value),
-          price: Number(row.querySelector(".priceInput").value),
-          gstPercentage: Number(row.querySelector(".gstInput").value)
+          qty,
+          unit: null,
+          pricePerUnit: price,
+          amountWithoutTax: base,
+          discountType: null,
+          discountValue: 0,
+          discountPercent: 0,
+          taxableAmount: base,
+          gstPercent: gst,
+          gstAmount: gstAmt,
+          lineTotal: lineTotal
         });
       });
 
@@ -498,12 +677,11 @@ export const ui = {
   },
 
   refreshTotals() {
-    // used by full editor; keep same as before
     let total = 0;
     document.querySelectorAll("#editItemsBody tr").forEach(row => {
-      const qty = Number(row.querySelector(".qtyInput").value);
-      const price = Number(row.querySelector(".priceInput").value);
-      const gst = Number(row.querySelector(".gstInput").value);
+      const qty = Number(row.querySelector(".qtyInput").value) || 0;
+      const price = Number(row.querySelector(".priceInput").value) || 0;
+      const gst = Number(row.querySelector(".gstInput").value) || 0;
       const base = qty * price;
       const gstAmount = base * (gst / 100);
       const lineTotal = base + gstAmount;
@@ -511,5 +689,187 @@ export const ui = {
       total += lineTotal;
     });
     $("editGrandTotal").innerHTML = `GRAND TOTAL: ${money(total)}`;
+  },
+
+  /* ------------------------------------------------------------
+     CUSTOMERS / PRODUCTS LIST RENDERING
+  ------------------------------------------------------------- */
+  renderCustomerList() {
+    const box = $("custListBox");
+    if (!box) return;
+    if (!customerModule.customers.length) {
+      box.innerHTML = `<div class="small muted">No customers yet.</div>`;
+      return;
+    }
+    let html = `<table class="invoice-table"><thead>
+                  <tr><th>ID</th><th>Name</th><th>Phone</th></tr>
+                </thead><tbody>`;
+    customerModule.customers.forEach(c => {
+      html += `<tr><td>${c.id}</td><td>${c.name}</td><td>${c.phone}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    box.innerHTML = html;
+  },
+
+  renderProductList() {
+    const box = $("prodListBox");
+    if (!box) return;
+    if (!productModule.products.length) {
+      box.innerHTML = `<div class="small muted">No products yet.</div>`;
+      return;
+    }
+    let html = `<table class="invoice-table"><thead>
+                  <tr><th>ID</th><th>Name</th><th>Price</th><th>GST%</th></tr>
+                </thead><tbody>`;
+    productModule.products.forEach(p => {
+      html += `<tr><td>${p.id}</td><td>${p.name}</td><td>${money(p.price)}</td><td>${p.gstPercentage ?? 0}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    box.innerHTML = html;
+  },
+
+  /* ------------------------------------------------------------
+     GLOBAL BINDINGS (called from main.js)
+  ------------------------------------------------------------- */
+  bindEvents() {
+    // Sidebar nav
+    document.querySelectorAll(".nav-item").forEach(btn => {
+      btn.onclick = () => {
+        this.switchView(btn.dataset.view);
+      };
+    });
+
+    // Create-invoice item buttons
+    const addBtn = $("createAddItem");
+    if (addBtn) addBtn.onclick = () => this.addCreateItemRow();
+
+    const clearBtn = $("createClear");
+    if (clearBtn) clearBtn.onclick = () => {
+      if (confirm("Clear all items?")) {
+        this.clearCreateItems();
+        this.addCreateItemRow();
+        this.recalcCreateTotals();
+      }
+    };
+
+    const discType = $("discountType");
+    const discVal = $("discountValue");
+    if (discType) discType.onchange = () => this.recalcCreateTotals();
+    if (discVal) discVal.oninput = () => this.recalcCreateTotals();
+
+    // Save invoice
+    const saveBtn = $("saveInvBtn");
+    if (saveBtn) saveBtn.onclick = async () => {
+      saveBtn.disabled = true;
+      saveBtn.innerText = "Saving...";
+      try {
+        await this.submitCreateInvoice();
+      } catch (err) {
+        console.error(err);
+        alert("Create invoice failed");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerText = "Create Invoice";
+      }
+    };
+
+    // Fetch invoices section
+    const fetchAllBtn = $("fetchAllInvBtn");
+    if (fetchAllBtn) fetchAllBtn.onclick = async () => {
+      try {
+        const all = await invoiceModule.list();
+        this.renderInvoiceList(all);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to fetch invoices");
+      }
+    };
+
+    const fetchByIdBtn = $("fetchInvIdBtn");
+    if (fetchByIdBtn) fetchByIdBtn.onclick = async () => {
+      const id = $("fetchInvId").value.trim();
+      if (!id) return alert("Enter invoice ID");
+      try {
+        const inv = await invoiceModule.preview(id);
+        this.renderInvoiceList(inv ? [inv] : []);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to fetch invoice");
+      }
+    };
+
+    const fetchByCustomerBtn = $("fetchInvCustomerBtn");
+    if (fetchByCustomerBtn) fetchByCustomerBtn.onclick = async () => {
+      const cid = $("fetchInvCustomer").value.trim();
+      if (!cid) return alert("Enter customer ID");
+      try {
+        const all = await invoiceModule.list();
+        const filtered = all.filter(inv => inv.customer && String(inv.customer.id) === String(cid));
+        this.renderInvoiceList(filtered);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to fetch invoices");
+      }
+    };
+
+    // Customer view
+    const loadCustBtn = $("loadCustBtn");
+    if (loadCustBtn) loadCustBtn.onclick = async () => {
+      await customerModule.load();
+      this.populateCustomers();
+      this.renderCustomerList();
+    };
+
+    const saveCustBtn = $("saveCustBtn");
+    if (saveCustBtn) saveCustBtn.onclick = async () => {
+      try {
+        const payload = {
+          name: $("c_name").value.trim(),
+          phone: $("c_phone").value.trim(),
+          email: $("c_email").value.trim(),
+          address: $("c_address").value.trim()
+        };
+        if (!payload.name || !payload.phone) {
+          return alert("Name and phone are required");
+        }
+        await customerModule.create(payload);
+        await customerModule.load();
+        this.populateCustomers();
+        this.renderCustomerList();
+        alert("Customer saved.");
+      } catch (err) {
+        console.error("Save customer error:", err);
+        alert("Failed to save customer");
+      }
+    };
+
+    // Product view
+    const loadProdBtn = $("loadProdBtn");
+    if (loadProdBtn) loadProdBtn.onclick = async () => {
+      await productModule.load();
+      this.populateProductsDatalist();
+      this.renderProductList();
+    };
+
+    const saveProdBtn = $("saveProdBtn");
+    if (saveProdBtn) saveProdBtn.onclick = async () => {
+      try {
+        const payload = {
+          name: $("p_name").value.trim(),
+          price: Number($("p_price").value) || 0,
+          unit: $("p_unit").value || "",
+          gstPercentage: Number($("p_gst").value) || 0
+        };
+        if (!payload.name) return alert("Product name is required");
+        await productModule.create(payload);
+        await productModule.load();
+        this.populateProductsDatalist();
+        this.renderProductList();
+        alert("Product saved.");
+      } catch (err) {
+        console.error("Save product error:", err);
+        alert("Failed to save product");
+      }
+    };
   }
 };

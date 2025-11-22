@@ -1,31 +1,27 @@
 // js/ui/ui.js
-import { layout } from "./layout.js";
-import { navigation } from "./navigation.js";
+import { invoiceList } from "./invoice-list.js";
+import { invoiceCreate } from "./invoice-create.js";
+import { invoiceEdit } from "./invoice-edit.js";
+import { customerScreen } from "./customer-screen.js";
+import { productScreen } from "./product-screen.js";
+import { analyticsScreen } from "./analytics-screen.js";
+import { firmAnalyticsScreen } from "./firm-analytics-screen.js";
 
 export const ui = {
 
-  renderShell() {
-    document.getElementById("app").innerHTML = layout.renderShell();
-    navigation.init();
+  screens: {
+    invoices: invoiceList,
+    customers: customerScreen,
+    products: productScreen,
+    analytics: analyticsScreen,
+    firm: firmAnalyticsScreen        // 👈 NEW
   },
 
-  showCreateInvoice() {
-    navigation.loadView("invoiceCreate");
-  },
+  showScreen(id) {
+    const scr = this.screens[id];
+    if (!scr) return;
 
-  showInvoiceList() {
-    navigation.loadView("invoices");
-  },
-
-  showProducts() {
-    navigation.loadView("products");
-  },
-
-  showCustomers() {
-    navigation.loadView("customers");
-  },
-
-  showAnalytics() {
-    navigation.loadView("analytics");
+    document.getElementById("mainContent").innerHTML = scr.render();
+    setTimeout(() => scr.init(), 0);
   }
 };

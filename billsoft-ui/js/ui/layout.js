@@ -1,97 +1,31 @@
 // js/ui/layout.js
-// NOTE: no import of ui here to avoid circular dependency
+import { navigation } from "./navigation.js";
 
 export const layout = {
-  renderShell() {
+  render() {
     return `
       <div class="layout">
-        <aside class="sidebar">
+        <div class="sidebar">
           <div class="brand">
             <div class="brand-badge">B</div>
-            <span>Billsoft</span>
+            <span>BillSoft</span>
           </div>
 
-          <div class="nav-section-title">Navigation</div>
-          <div class="nav-list">
-            <button class="nav-item active" data-view="invoiceCreate">
-              <span class="icon">🧾</span>
-              <span>Create Invoice</span>
-            </button>
-            <button class="nav-item" data-view="invoices">
-              <span class="icon">📚</span>
-              <span>Invoices</span>
-            </button>
-            <button class="nav-item" data-view="customers">
-              <span class="icon">👤</span>
-              <span>Customers</span>
-            </button>
-            <button class="nav-item" data-view="products">
-              <span class="icon">📦</span>
-              <span>Products</span>
-            </button>
-
-            <!-- NEW -->
-            <button class="nav-item" data-view="analytics">
-              <span class="icon">📊</span>
-              <span>Analytics</span>
-            </button>
+          <div class="nav-list" id="sidebarNav">
+            <!-- dynamically injected -->
           </div>
 
-          <div class="sidebar-footer">
-            <div>Local Dev • http://localhost:8080</div>
-          </div>
-        </aside>
+          <div class="sidebar-footer">v1.0</div>
+        </div>
 
-        <main class="main">
-          <div class="main-header">
-            <div>
-              <h1 id="mainTitle">Create Invoice</h1>
-              <div class="subtitle" id="mainSubtitle">
-                Quickly create and save multi-item invoices.
-              </div>
-            </div>
-          </div>
-
-          <section id="view-invoiceCreate" class="view active"></section>
-          <section id="view-invoices" class="view"></section>
-          <section id="view-customers" class="view"></section>
-          <section id="view-products" class="view"></section>
-
-          <!-- NEW -->
-          <section id="view-analytics" class="view"></section>
-        </main>
+        <div class="main">
+          <div id="mainContent"></div>
+        </div>
       </div>
     `;
   },
 
-  switchView(view) {
-    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-    const target = document.getElementById(`view-${view}`);
-    if (target) target.classList.add("active");
-
-    document.querySelectorAll(".nav-item")
-      .forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-
-    const titleMap = {
-      invoiceCreate: "Create Invoice",
-      invoices: "Invoices",
-      customers: "Customers",
-      products: "Products",
-      analytics: "Customer Analytics"
-    };
-
-    const subtitleMap = {
-      invoiceCreate: "Quickly create and save multi-item invoices.",
-      invoices: "Browse, open and edit existing invoices.",
-      customers: "Manage customers used while creating invoices.",
-      products: "Manage products with price and GST.",
-      analytics: "See lifetime business, paid and outstanding amounts."
-    };
-
-    const titleEl = document.getElementById("mainTitle");
-    const subEl = document.getElementById("mainSubtitle");
-
-    if (titleEl) titleEl.textContent = titleMap[view] || "";
-    if (subEl) subEl.textContent = subtitleMap[view] || "";
+  init() {
+    navigation.init();
   }
 };

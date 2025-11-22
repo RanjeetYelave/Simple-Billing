@@ -5,13 +5,11 @@ export const invoiceModule = {
 
   async list() {
     const res = await fetch(API);
-    if (!res.ok) throw new Error("Failed to load invoices");
     return res.json();
   },
 
   async preview(id) {
     const res = await fetch(`${API}/${id}`);
-    if (!res.ok) throw new Error("Failed to load invoice");
     return res.json();
   },
 
@@ -21,7 +19,6 @@ export const invoiceModule = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("Failed to create invoice");
     return res.json();
   },
 
@@ -31,38 +28,25 @@ export const invoiceModule = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("Failed to update invoice");
     return res.json();
   },
 
-  async delete(id) {
-    const res = await fetch(`${API}/${id}`, {
-      method: "DELETE"
-    });
-    if (!res.ok) throw new Error("Failed to delete invoice");
-    return true;
-  },
-
+  /** Mark paid/unpaid — reused across invoice list + analytics */
   async markPaid(id, paid) {
-    const res = await fetch(`${API}/${id}/paid?paid=${paid}`, {
+    const res = await fetch(`${API}/${id}/paid?value=${paid}`, {
       method: "PUT"
     });
-    if (!res.ok) throw new Error("Failed to update paid flag");
     return res.json();
   },
 
-  // ---- ANALYTICS ----
+  // ---- Customer Analytics ----
   async analyticsByCustomer(customerId) {
     const res = await fetch(`${API}/analytics/customer/${customerId}`);
-    if (!res.ok) throw new Error("Failed to load analytics");
     return res.json();
   },
 
   async analyticsByName(name) {
-    const res = await fetch(
-      `${API}/analytics/search?name=${encodeURIComponent(name)}`
-    );
-    if (!res.ok) throw new Error("Failed to load analytics");
+    const res = await fetch(`${API}/analytics/search?name=${encodeURIComponent(name)}`);
     return res.json();
   }
 };

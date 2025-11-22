@@ -1,51 +1,43 @@
 // js/ui/navigation.js
-
-import { layout } from "./layout.js";
-import { invoiceCreate } from "./invoice-create.js";
-import { invoiceList } from "./invoice-list.js";
-import { customerScreen } from "./customer-screen.js";
-import { productScreen } from "./product-screen.js";
-import { analyticsScreen } from "./analytics-screen.js";
+import { ui } from "./ui.js";
 
 export const navigation = {
 
+  items: [
+    { id: "invoices", label: "Invoices", icon: "📄" },
+    { id: "customers", label: "Customers", icon: "👥" },
+    { id: "products", label: "Products", icon: "📦" },
+    { id: "analytics", label: "Customer Analytics", icon: "📊" },
+    { id: "firm", label: "Firm Dashboard", icon: "🏢" }   // 👈 NEW TAB
+  ],
+
   init() {
-    document.querySelectorAll(".nav-item").forEach(btn => {
-      btn.onclick = () => {
-        const view = btn.dataset.view;
-        this.loadView(view);
-        layout.switchView(view);
-      };
+    const navBox = document.getElementById("sidebarNav");
+    navBox.innerHTML = "";
+
+    this.items.forEach(item => {
+      const btn = document.createElement("button");
+      btn.className = "nav-item";
+      btn.dataset.id = item.id;
+
+      btn.innerHTML = `
+        <span class="icon">${item.icon}</span>
+        ${item.label}
+      `;
+
+      btn.onclick = () => this.activate(item.id);
+      navBox.appendChild(btn);
     });
 
-    // default load
-    this.loadView("invoiceCreate");
+    this.activate("invoices");
   },
 
-  loadView(view) {
-    if (view === "invoiceCreate") {
-      document.getElementById("view-invoiceCreate").innerHTML = invoiceCreate.render();
-      invoiceCreate.init();
-    }
+  activate(id) {
+    document.querySelectorAll("#sidebarNav .nav-item")
+      .forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.id === id);
+      });
 
-    if (view === "invoices") {
-      document.getElementById("view-invoices").innerHTML = invoiceList.render();
-      invoiceList.init();
-    }
-
-    if (view === "customers") {
-      document.getElementById("view-customers").innerHTML = customerScreen.render();
-      customerScreen.init();
-    }
-
-    if (view === "products") {
-      document.getElementById("view-products").innerHTML = productScreen.render();
-      productScreen.init();
-    }
-
-    if (view === "analytics") {
-      document.getElementById("view-analytics").innerHTML = analyticsScreen.render();
-      analyticsScreen.init();
-    }
+    ui.showScreen(id);
   }
 };

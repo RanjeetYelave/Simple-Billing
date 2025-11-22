@@ -2,7 +2,6 @@ package com.billing.simple.billsoft.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -11,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.CustomerInvoiceSummary;
+import com.billing.simple.billsoft.dtos.FirmAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
@@ -64,7 +64,6 @@ public class InvoiceService {
             }
         }
     }
-
 
     // ---------------------------------------------------------
     // BUILD ITEM FROM REQUEST
@@ -352,7 +351,139 @@ public class InvoiceService {
     }
 
     // ---------------------------------------------------------
-    // FIRM-WIDE ANALYTICS (NEW)
+    // FIRM-WIDE ANALYTICS (DTO VERSION)
+    // ---------------------------------------------------------
+    @Transactional(readOnly = true)
+    public FirmAnalyticsResponse getFirmAnalytics() {
+        List<Invoice> all = invoiceRepo.findAll();
+        LocalDate today = LocalDate.now();
+
+        double totalBusiness = 0, totalPaid = 0, totalPending = 0;
+        double todayBusiness = 0, weekBusiness = 0, monthBusiness = 0, yearBusiness = 0;
+
+        // For top customers
+        Map<Long, FirmAnalyticsResponse.TopCustomer> customerMap = new HashMap<>();
+
+        // For top products
+        Map<Long, FirmAnalyticsResponse.TopProduct> productMap = new HashMap<>();
+
+        LocalDate weekStart = today.minusDays(6);
+
+        for (Invoice inv : all) {
+            double amt = inv.getTotalAmount() != null ? inv.getTotalAmount() : 0.0;
+            totalBusiness += amt;
+
+            boolean paid = Boolean.TRUE.equals(inv.getPaid());
+            if (paid) totalPaid += amt;
+            else totalPending += amt;
+
+            // Date-based breakdown
+            LocalDate invDate = inv.getInvoiceDate() != null
+                    ? inv.getInvoiceDate().toLocalDate()
+                    : null;
+
+            if (invDate != null) {
+                if (invDate.isEqual(today)) {
+                    todayBusiness += amt;
+                }
+                if (!invDate.isBefore(weekStart)) {
+                    weekBusiness += amt;
+                }
+                if (invDate.getMonth() == today.getMonth()
+                        && invDate.getYear() == today.getYear()) {
+                    monthBusiness += amt;
+                }
+                if (invDate.getYear() == today.getYear()) {
+                    yearBusiness += amt;
+                }
+            }
+
+            // Top customers
+            Customer c = inv.getCustomer();
+            if (c != null) {
+                FirmAnalyticsResponse.TopCustomer agg =
+                        customerMap.computeIfAbsent(c.getId(), id -> {
+                            FirmAnalyticsResponse.TopCustomer t = new FirmAnalyticsResponse.TopCustomer();
+                            t.setCustomerId(c.getId());
+                            t.setCustomerName(c.getName());
+                            t.setTotalAmount(0.0);
+                            t.setPendingAmount(0.0);
+                            t.setInvoiceCount(0L);
+                            return t;
+                        });
+
+                agg.setTotalAmount(agg.getTotalAmount() + amt);
+                if (!paid) {
+                    agg.setPendingAmount(agg.getPendingAmount() + amt);
+                }
+                agg.setInvoiceCount(agg.getInvoiceCount() + 1);
+            }
+
+            // Top products
+            if (inv.getItems() != null) {
+                for (InvoiceItem item : inv.getItems()) {
+                    Product p = item.getProduct();
+                    if (p == null) continue;
+
+                    Long pid = p.getId();
+                    if (pid == null) continue;
+
+                    FirmAnalyticsResponse.TopProduct pAgg =
+                            productMap.computeIfAbsent(pid, id -> {
+                                FirmAnalyticsResponse.TopProduct t = new FirmAnalyticsResponse.TopProduct();
+                                t.setProductId(p.getId());
+                                t.setProductName(p.getName());
+                                t.setTotalQty(0L);
+                                t.setTotalAmount(0.0);
+                                return t;
+                            });
+
+                    long qty = item.getQty() != null ? item.getQty() : 0;
+                    double lineAmt = item.getLineTotal() != null ? item.getLineTotal() : 0.0;
+
+                    pAgg.setTotalQty(pAgg.getTotalQty() + qty);
+                    pAgg.setTotalAmount(pAgg.getTotalAmount() + lineAmt);
+                }
+            }
+        }
+
+        // sort topN
+        List<FirmAnalyticsResponse.TopCustomer> topCustomers = new ArrayList<>(customerMap.values());
+        topCustomers.sort((a, b) -> Double.compare(
+                b.getTotalAmount() != null ? b.getTotalAmount() : 0.0,
+                a.getTotalAmount() != null ? a.getTotalAmount() : 0.0
+        ));
+        if (topCustomers.size() > 5) {
+            topCustomers = topCustomers.subList(0, 5);
+        }
+
+        List<FirmAnalyticsResponse.TopProduct> topProducts = new ArrayList<>(productMap.values());
+        topProducts.sort((a, b) -> Long.compare(
+                b.getTotalQty() != null ? b.getTotalQty() : 0L,
+                a.getTotalQty() != null ? a.getTotalQty() : 0L
+        ));
+        if (topProducts.size() > 5) {
+            topProducts = topProducts.subList(0, 5);
+        }
+
+        FirmAnalyticsResponse resp = new FirmAnalyticsResponse();
+        resp.setTotalBusiness(totalBusiness);
+        resp.setTotalPaid(totalPaid);
+        resp.setTotalPending(totalPending);
+
+        resp.setBusinessToday(todayBusiness);
+        resp.setBusinessThisWeek(weekBusiness);
+        resp.setBusinessThisMonth(monthBusiness);
+        resp.setBusinessThisYear(yearBusiness);
+
+        resp.setTopCustomers(topCustomers);
+        resp.setTopProducts(topProducts);
+
+        return resp;
+    }
+
+    // ---------------------------------------------------------
+    // LEGACY: SIMPLE MAP STATS (kept in case used elsewhere)
     // ---------------------------------------------------------
     public Map<String, Double> getFirmStats() {
 

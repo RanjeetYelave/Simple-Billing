@@ -5,6 +5,7 @@ import { customerModule } from "../customer.js";
 import { invoiceModule } from "../invoice.js";
 import { totals } from "./totals.js";
 import { rowBuilder } from "./row-builder.js";
+import { pdfViewer } from "../pdf-viewer.js";
 
 export const invoiceCreate = {
 
@@ -63,7 +64,11 @@ export const invoiceCreate = {
           Mark as Paid
         </label>
 
-        <button class="btn primary save-big" id="saveInvBtn" style="margin-top:10px;">💾 Create Invoice</button>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn primary save-big" id="saveInvBtn">💾 Save Invoice</button>
+          <button class="btn ghost save-big" id="saveInvPdfBtn">💾 Save &amp; PDF</button>
+        </div>
+
         <div id="createResult" class="small muted" style="margin-top:6px;"></div>
       </div>
     `;
@@ -104,10 +109,11 @@ export const invoiceCreate = {
     $("discountType").onchange = () => totals.recalc();
     $("discountValue").oninput = () => totals.recalc();
 
-    $("saveInvBtn").onclick = () => this.submit();
+    $("saveInvBtn").onclick = () => this.submit(false);
+    $("saveInvPdfBtn").onclick = () => this.submit(true);
   },
 
-  async submit() {
+  async submit(withPdf) {
     const text = $("custInput").value.trim();
     if (!text) {
       alert("Enter customer name");
@@ -116,7 +122,7 @@ export const invoiceCreate = {
 
     let customerId = extractId(text);
 
-    // AUTO-CREATE CUSTOMER IF NOT FOUND (LIKE CUSTOMER SCREEN BEHAVIOUR)
+    // AUTO-CREATE CUSTOMER IF NOT FOUND
     if (!customerId) {
       const existing = customerModule.customers.find(
         c => (c.name || "").toLowerCase() === text.toLowerCase()
@@ -132,9 +138,8 @@ export const invoiceCreate = {
           address: ""
         });
 
-        // Reload cache so other screens stay in sync
         if (typeof customerModule.list === "function") {
-          await customerModule.list();
+          await customerModule.list(); // refresh cache
         }
 
         customerId = created.id;
@@ -166,6 +171,18 @@ export const invoiceCreate = {
     $("createResult").textContent =
       `Invoice created: ${created.invoiceNumber || created.id}`;
 
+    if (withPdf && created && created.id) {
+      try {
+        const blob = await invoiceModule.pdf(created.id);
+        const fname = `invoice-${created.invoiceNumber || created.id}.pdf`;
+        pdfViewer.open(blob, fname, `Invoice ${created.invoiceNumber || created.id}`);
+      } catch (e) {
+        console.error("PDF fetch failed", e);
+        alert("Invoice saved, but PDF could not be loaded.");
+      }
+    }
+
+    // reset form
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();

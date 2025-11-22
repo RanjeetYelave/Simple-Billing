@@ -31,22 +31,36 @@ export const invoiceModule = {
     return res.json();
   },
 
-  /** Mark paid/unpaid — reused across invoice list + analytics */
+  async delete(id) {
+    await fetch(`${API}/${id}`, { method: "DELETE" });
+  },
+
   async markPaid(id, paid) {
-    const res = await fetch(`${API}/${id}/paid?value=${paid}`, {
+    const res = await fetch(`${API}/${id}/paid?paid=${paid}`, {
       method: "PUT"
     });
     return res.json();
   },
 
-  // ---- Customer Analytics ----
+  // ---- ANALYTICS ----
   async analyticsByCustomer(customerId) {
     const res = await fetch(`${API}/analytics/customer/${customerId}`);
     return res.json();
   },
 
   async analyticsByName(name) {
-    const res = await fetch(`${API}/analytics/search?name=${encodeURIComponent(name)}`);
+    const res = await fetch(
+      `${API}/analytics/search?name=${encodeURIComponent(name)}`
+    );
     return res.json();
+  },
+
+  // ---- PDF DOWNLOAD ----
+  async pdf(id) {
+    const res = await fetch(`${API}/${id}/pdf`);
+    if (!res.ok) {
+      throw new Error("Failed to fetch invoice PDF");
+    }
+    return res.blob(); // caller gets Blob
   }
 };

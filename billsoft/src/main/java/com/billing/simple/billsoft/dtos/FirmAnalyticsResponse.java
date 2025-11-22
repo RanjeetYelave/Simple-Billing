@@ -1,19 +1,45 @@
 package com.billing.simple.billsoft.dtos;
 
 import java.util.List;
-import lombok.Data;
 
-@Data
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
 public class FirmAnalyticsResponse {
 
-    private Double totalBusiness;
-    private Double totalPaid;
-    private Double totalPending;
+    // High-level amounts
+    private Double totalBusiness;      // all invoices
+    private Double totalPaid;          // paid invoices
+    private Double totalPending;       // unpaid amount
 
-    private Double todayBusiness;
-    private Double thisWeekBusiness;
-    private Double thisMonthBusiness;
-    private Double thisYearBusiness;
+    // Period stats
+    private Double businessToday;
+    private Double businessThisWeek;
+    private Double businessThisMonth;
+    private Double businessThisYear;
 
-    private List<FirmInvoiceSummary> invoices;
+    // Top entities
+    private List<TopCustomer> topCustomers;
+    private List<TopProduct> topProducts;
+
+    @Getter
+    @Setter
+    public static class TopCustomer {
+        private Long customerId;
+        private String customerName;
+        private Double totalAmount;
+        private Double pendingAmount;
+        private Long invoiceCount;
+    }
+
+    @Getter
+    @Setter
+    public static class TopProduct {
+        private Long productId;
+        private String productName;
+        private Long totalQty;
+        private Double totalAmount;
+    }
 }

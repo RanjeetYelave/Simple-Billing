@@ -2,6 +2,7 @@
 import { invoiceModule } from "../invoice.js";
 import { $, money } from "../utils.js";
 import { invoiceEdit } from "./invoice-edit.js";
+import { pdfViewer } from "../pdf-viewer.js";
 
 export const invoiceList = {
 
@@ -55,7 +56,7 @@ export const invoiceList = {
               <th>Date</th>
               <th>Total</th>
               <th>Status</th>
-              <th style="width:210px;">Actions</th>
+              <th style="width:260px;">Actions</th>
             </tr>
           </thead>
           <tbody id="invTableBody"></tbody>
@@ -219,6 +220,17 @@ export const invoiceList = {
     }
   },
 
+  async openPdf(inv) {
+    try {
+      const blob = await invoiceModule.pdf(inv.id);
+      const fname = `invoice-${inv.invoiceNumber || inv.id}.pdf`;
+      pdfViewer.open(blob, fname, `Invoice ${inv.invoiceNumber || inv.id}`);
+    } catch (e) {
+      console.error("PDF fetch failed", e);
+      alert("Failed to load PDF.");
+    }
+  },
+
   // ---------------- RENDERING ----------------
 
   getTotalPages() {
@@ -247,7 +259,6 @@ export const invoiceList = {
         case "DATE_DESC":
         default:
           if (db !== da) return db - da;
-          // fallback by id
           return (b.id ?? 0) - (a.id ?? 0);
       }
     });
@@ -292,18 +303,18 @@ export const invoiceList = {
         </td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn small" data-view="${inv.id}">View</button>
+            <button class="btn small" data-view="${inv.id}">Edit</button>
             <button class="btn small ghost" data-paid="${inv.id}">
               ${isPaid ? "Mark Unpaid" : "Mark Paid"}
             </button>
             <button class="btn small danger" data-del="${inv.id}">Delete</button>
+            <button class="btn small ghost" data-pdf="${inv.id}">PDF</button>
           </div>
         </td>
       `;
       body.appendChild(tr);
     });
 
-    // pagination info + button states
     if (info) {
       info.textContent =
         `Page ${this.currentPage} of ${totalPages} • ` +
@@ -313,7 +324,6 @@ export const invoiceList = {
     $("invPrevPage").disabled = this.currentPage <= 1;
     $("invNextPage").disabled = this.currentPage >= totalPages;
 
-    // bind action buttons
     body.querySelectorAll("button[data-view]").forEach(btn => {
       btn.onclick = () => {
         const id = Number(btn.dataset.view);
@@ -340,7 +350,15 @@ export const invoiceList = {
       };
     });
 
-    // clear details panel; it will be filled when View is clicked by invoiceEdit
+    body.querySelectorAll("button[data-pdf]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.pdf);
+        const inv = this.allInvoices.find(x => x.id === id);
+        if (!inv) return;
+        this.openPdf(inv);
+      };
+    });
+
     $("invDetails").innerHTML = "";
   }
 };

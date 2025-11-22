@@ -2,6 +2,8 @@ package com.billing.simple.billsoft.controllers;
 
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,6 +11,7 @@ import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.entities.Invoice;
+import com.billing.simple.billsoft.service.InvoicePdfService;
 import com.billing.simple.billsoft.service.InvoiceService;
 
 @RestController
@@ -17,9 +20,11 @@ import com.billing.simple.billsoft.service.InvoiceService;
 public class InvoiceController {
 
     private final InvoiceService service;
+    private final InvoicePdfService pdfService;   // ✅ ADDED
 
-    public InvoiceController(InvoiceService service) {
+    public InvoiceController(InvoiceService service, InvoicePdfService pdfService) {
         this.service = service;
+        this.pdfService = pdfService; // ✅ ADDED
     }
 
     // CREATE
@@ -43,7 +48,7 @@ public class InvoiceController {
         return ResponseEntity.ok(inv);
     }
 
-    // UPDATE FULL (replace items)
+    // UPDATE FULL
     @PutMapping("/{id}")
     public ResponseEntity<Invoice> updateInvoice(
             @PathVariable("id") Long id,
@@ -62,7 +67,7 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
-    // MARK PAID / UNPAID (for analytics + anywhere else)
+    // MARK PAID / UNPAID
     @PutMapping("/{id}/paid")
     public ResponseEntity<Invoice> markPaid(
             @PathVariable("id") Long id,
@@ -73,15 +78,38 @@ public class InvoiceController {
         return ResponseEntity.ok(updated);
     }
 
-    // ANALYTICS: BY CUSTOMER ID
+    // CUSTOMER ANALYTICS
     @GetMapping("/analytics/customer/{customerId}")
-    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(@PathVariable("customerId") Long customerId) {
+    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(@PathVariable Long customerId) {
         return ResponseEntity.ok(service.getCustomerAnalytics(customerId));
     }
 
-    // ANALYTICS: SEARCH BY CUSTOMER NAME
+    // CUSTOMER SEARCH ANALYTICS
     @GetMapping("/analytics/search")
     public ResponseEntity<List<CustomerAnalyticsResponse>> analyticsByName(@RequestParam("name") String name) {
         return ResponseEntity.ok(service.getCustomerAnalyticsByName(name));
+    }
+
+    // -------------------------------------------------------
+    // PDF DOWNLOAD
+    // -------------------------------------------------------
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
+        try {
+            Invoice invoice = service.getById(id);  // ✅ FIXED (use service)
+            if (invoice == null) return ResponseEntity.notFound().build();
+
+            byte[] pdf = pdfService.generatePdf(invoice); // ✅ FIXED
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=invoice-" + invoice.getInvoiceNumber() + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdf);
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

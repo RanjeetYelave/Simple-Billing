@@ -29,5 +29,5 @@ export const invoiceModule = {
       body: JSON.stringify(payload)
     });
     return res.json();
-  },
+  }
 };

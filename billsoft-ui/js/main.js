@@ -1,5 +1,4 @@
 // js/main.js
-
 import { ui } from "./ui/ui.js";
 import { productModule } from "./product.js";
 import { customerModule } from "./customer.js";
@@ -7,16 +6,14 @@ import { customerModule } from "./customer.js";
 async function init() {
   try {
     console.log("🔥 Loading initial data...");
-
-    await Promise.all([
-      productModule.load(),
-      customerModule.load()
-    ]);
+    await Promise.all([productModule.load(), customerModule.load()]);
 
     console.log("🔥 Rendering UI shell...");
-    ui.render();
+    ui.renderShell();       // Only renders layout, does NOT load views yet.
 
-    console.log("UI initialized successfully");
+    console.log("🔥 Initializing first view manually...");
+    ui.showCreateInvoice(); // Loads the Create Invoice screen AFTER data is loaded.
+
   } catch (err) {
     console.error("Init failed", err);
     document.getElementById("app").innerHTML =

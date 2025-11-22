@@ -1,4 +1,5 @@
 // js/ui/layout.js
+// NOTE: no import of ui here to avoid circular dependency
 
 export const layout = {
   renderShell() {
@@ -13,26 +14,37 @@ export const layout = {
           <div class="nav-section-title">Navigation</div>
           <div class="nav-list">
             <button class="nav-item active" data-view="invoiceCreate">
-              🧾 Create Invoice
+              <span class="icon">🧾</span>
+              <span>Create Invoice</span>
             </button>
             <button class="nav-item" data-view="invoices">
-              📚 Invoices
+              <span class="icon">📚</span>
+              <span>Invoices</span>
             </button>
             <button class="nav-item" data-view="customers">
-              👤 Customers
+              <span class="icon">👤</span>
+              <span>Customers</span>
             </button>
             <button class="nav-item" data-view="products">
-              📦 Products
+              <span class="icon">📦</span>
+              <span>Products</span>
             </button>
           </div>
 
           <div class="sidebar-footer">
-            Local Dev • http://localhost:8080
+            <div>Local Dev • http://localhost:8080</div>
           </div>
         </aside>
 
         <main class="main">
-          <h1 id="mainTitle">Create Invoice</h1>
+          <div class="main-header">
+            <div>
+              <h1 id="mainTitle">Create Invoice</h1>
+              <div class="subtitle" id="mainSubtitle">
+                Quickly create and save multi-item invoices.
+              </div>
+            </div>
+          </div>
 
           <section id="view-invoiceCreate" class="view active"></section>
           <section id="view-invoices" class="view"></section>
@@ -44,19 +56,32 @@ export const layout = {
   },
 
   switchView(view) {
+    // toggle sections
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-    document.getElementById(`view-${view}`).classList.add("active");
+    const target = document.getElementById(`view-${view}`);
+    if (target) target.classList.add("active");
 
+    // toggle nav active
     document.querySelectorAll(".nav-item")
       .forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
 
-    const titles = {
+    const titleMap = {
       invoiceCreate: "Create Invoice",
       invoices: "Invoices",
       customers: "Customers",
       products: "Products"
     };
 
-    document.getElementById("mainTitle").textContent = titles[view];
+    const subtitleMap = {
+      invoiceCreate: "Quickly create and save multi-item invoices.",
+      invoices: "Browse, open and edit existing invoices.",
+      customers: "Manage customers used while creating invoices.",
+      products: "Manage products with price and GST."
+    };
+
+    const titleEl = document.getElementById("mainTitle");
+    const subEl = document.getElementById("mainSubtitle");
+    if (titleEl) titleEl.textContent = titleMap[view] || "";
+    if (subEl) subEl.textContent = subtitleMap[view] || "";
   }
 };

@@ -2,12 +2,28 @@
 import { layout } from "./layout.js";
 import { navigation } from "./navigation.js";
 
-export const ui = {
-  render() {
-    // Render sidebar + main layout
-    document.getElementById("app").innerHTML = layout.renderShell();
+import { invoiceCreate } from "./invoice-create.js";
 
-    // Start sidebar navigation
+export const ui = {
+
+  renderShell() {
+    document.getElementById("app").innerHTML = layout.renderShell();
     navigation.init();
+  },
+
+  showCreateInvoice() {
+    navigation.loadView("invoiceCreate");
+  },
+
+  showInvoiceList() {
+    navigation.loadView("invoices");
+  },
+
+  showProducts() {
+    navigation.loadView("products");
+  },
+
+  showCustomers() {
+    navigation.loadView("customers");
   }
 };

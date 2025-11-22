@@ -1,5 +1,5 @@
-// ui/invoice-create.js
-import { $, money, extractId } from "../utils.js";
+// js/ui/invoice-create.js
+import { $, extractId } from "../utils.js";
 import { productModule } from "../product.js";
 import { customerModule } from "../customer.js";
 import { invoiceModule } from "../invoice.js";
@@ -22,7 +22,10 @@ export const invoiceCreate = {
           <div>
             <label>Invoice Discount</label>
             <div style="display:flex;gap:8px">
-              <select id="discountType"><option value="PERCENT">%</option><option value="VALUE">₹</option></select>
+              <select id="discountType">
+                <option value="PERCENT">%</option>
+                <option value="VALUE">₹</option>
+              </select>
               <input id="discountValue" type="number" value="0" />
             </div>
           </div>
@@ -39,6 +42,8 @@ export const invoiceCreate = {
           </thead>
           <tbody id="createItemsBody"></tbody>
         </table>
+
+        <datalist id="productListGlobal"></datalist>
 
         <button class="btn" id="addItemBtn">+ Add Item</button>
 
@@ -58,36 +63,64 @@ export const invoiceCreate = {
   },
 
   init() {
+    // Customer autocomplete
+    const custList = $("custList");
+    custList.innerHTML = "";
+    customerModule.customers.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = `${c.name} (id:${c.id})`;
+      custList.appendChild(opt);
+    });
+
+    // Product autocomplete
+    const prodList = $("productListGlobal");
+    prodList.innerHTML = "";
+    productModule.products.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.name;
+      prodList.appendChild(opt);
+    });
+
+    // Create first row
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
 
-    document.getElementById("addItemBtn").onclick = () => {
+    // Add item button
+    $("addItemBtn").onclick = () => {
       rowBuilder.addRow();
       totals.recalc();
     };
 
-    document.getElementById("discountType").onchange = totals.recalc;
-    document.getElementById("discountValue").oninput = totals.recalc;
+    // Discount handlers
+    $("discountType").onchange = totals.recalc;
+    $("discountValue").oninput = totals.recalc;
 
-    document.getElementById("saveInvBtn").onclick = () => this.submit();
+    // 💥 FIXED submit binding
+    $("saveInvBtn").onclick = () => invoiceCreate.submit();
   },
 
   async submit() {
     const custText = $("custInput").value;
     const customerId = extractId(custText);
-    if (!customerId) return alert("Select valid customer");
+    if (!customerId) return alert("Select a valid customer");
 
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
-    if (!rows.length) return alert("Add at least one item");
+    if (rows.length === 0) return alert("Add at least one item.");
 
     const items = rowBuilder.buildPayloadItems(rows);
 
-    const payload = totals.buildFinalPayload(items, customerId, $("createNotes").value);
+    const payload = totals.buildFinalPayload(
+      items,
+      customerId,
+      $("createNotes").value || ""
+    );
 
     const created = await invoiceModule.save(payload);
 
     $("createResult").textContent = `Invoice created: ${created.invoiceNumber}`;
+
+    // Reset form
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();

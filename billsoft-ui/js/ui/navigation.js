@@ -1,4 +1,5 @@
 // js/ui/navigation.js
+
 import { layout } from "./layout.js";
 import { invoiceCreate } from "./invoice-create.js";
 import { invoiceList } from "./invoice-list.js";
@@ -8,18 +9,13 @@ import { productScreen } from "./product-screen.js";
 export const navigation = {
 
   init() {
-    // Bind sidebar buttons
     document.querySelectorAll(".nav-item").forEach(btn => {
       btn.onclick = () => {
         const view = btn.dataset.view;
-
-        layout.switchView(view);
         this.loadView(view);
+        layout.switchView(view);
       };
     });
-
-    // Load default view
-    this.loadView("invoiceCreate");
   },
 
   loadView(view) {
@@ -27,15 +23,15 @@ export const navigation = {
       document.getElementById("view-invoiceCreate").innerHTML = invoiceCreate.render();
       invoiceCreate.init();
     }
-    else if (view === "invoices") {
+    if (view === "invoices") {
       document.getElementById("view-invoices").innerHTML = invoiceList.render();
       invoiceList.init();
     }
-    else if (view === "customers") {
+    if (view === "customers") {
       document.getElementById("view-customers").innerHTML = customerScreen.render();
       customerScreen.init();
     }
-    else if (view === "products") {
+    if (view === "products") {
       document.getElementById("view-products").innerHTML = productScreen.render();
       productScreen.init();
     }

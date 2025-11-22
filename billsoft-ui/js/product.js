@@ -1,37 +1,18 @@
 // js/product.js
-import { apiGet, apiPost } from "./api.js";
+const API = "http://localhost:8080/api/products";
 
 export const productModule = {
-    products: [],
 
-    // Load all products
-    async load() {
-        try {
-            console.log("🔥 Loading products...");
-            this.products = await apiGet("/api/products");
-            console.log("Products loaded:", this.products);
-        } catch (err) {
-            console.error("Failed to load products", err);
-        }
-    },
+  products: [],
 
-    // Create a product
-    async create(product) {
-        try {
-            console.log("🔥 Creating product:", product);
-            const res = await apiPost("/api/products", product);
-            this.products.push(res);
-            return res;
-        } catch (err) {
-            console.error("Failed to create product", err);
-            alert("Product creation failed: " + err.message);
-        }
-    },
+  async load() {
+    console.log("🔥 Loading products...");
+    const res = await fetch(API);
+    this.products = await res.json();
+    console.log("Products loaded:", this.products);
+  },
 
-    // ⭐ FIX: Add missing helper method
-    findByName(name) {
-        if (!name) return null;
-        const lower = name.trim().toLowerCase();
-        return this.products.find(p => p.name.toLowerCase() === lower) || null;
-    }
+  findByName(name) {
+    return this.products.find(p => p.name.toLowerCase() === name.toLowerCase());
+  }
 };

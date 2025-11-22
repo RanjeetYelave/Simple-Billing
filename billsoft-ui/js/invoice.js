@@ -1,31 +1,33 @@
 // js/invoice.js
-import { apiGet, apiPost, apiPut, apiDelete } from "./api.js";
+const API = "http://localhost:8080/api/invoices";
 
 export const invoiceModule = {
-  
-  // GET all invoices
+
   async list() {
-    return await apiGet("/api/invoices");
+    const res = await fetch(API);
+    return res.json();
   },
 
-  // CREATE invoice  ⭐ REQUIRED BY UI
-  async save(payload) {
-    console.log("📤 Creating invoice:", payload);
-    return await apiPost("/api/invoices", payload);
-  },
-
-  // PREVIEW / GET BY ID
   async preview(id) {
-    return await apiGet(`/api/invoices/${id}`);
+    const res = await fetch(`${API}/${id}`);
+    return res.json();
   },
 
-  // UPDATE invoice
+  async save(payload) {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return res.json();
+  },
+
   async update(id, payload) {
-    return await apiPut(`/api/invoices/${id}`, payload);
+    const res = await fetch(`${API}/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return res.json();
   },
-
-  // DELETE invoice
-  async delete(id) {
-    return await apiDelete(`/api/invoices/${id}`);
-  }
 };

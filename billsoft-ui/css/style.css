@@ -264,7 +264,7 @@ label {
 }
 
 /* ------------------------------------------------------------
-   INVOICE TABLE (CREATE + EDITOR)
+   INVOICE TABLE
 ------------------------------------------------------------- */
 .invoice-table {
   width:100%;
@@ -310,33 +310,29 @@ label {
   text-align:right;
 }
 
-.invoice-table .ci-line-total,
-.invoice-table .ci-amt-no-tax,
-.invoice-table .ci-gst-amt,
-.invoice-table .ci-taxable {
-  font-weight:600;
-  color:#e5e7eb;
-}
-
 /* ------------------------------------------------------------
-   TOTAL BOX
+   TOTAL BOX — FIXED (READABLE)
 ------------------------------------------------------------- */
-.invoice-total-box {
-  margin-top:16px;
-  font-size:18px;
-  font-weight:600;
-  text-align:right;
-  background:radial-gradient(circle at top left, #1e293b, #020617);
-  padding:14px;
-  border-radius:12px;
-  border:1px solid #1f2937;
-  color:#e5e7eb;
+
+#subtotalLine,
+#taxTotalLine,
+#discountLine {
+  color:#dce0e8 !important;
+  font-weight:500;
 }
 
-.total-box {
-  margin:8px 0;
-  font-size:14px;
-  font-weight:bold;
+#grandTotalLine {
+  color:#ffffff !important;
+  font-weight:700;
+  font-size:18px;
+}
+
+#createTotals {
+  background:#1a1f2e;
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid #2a3042;
+  margin-top:12px;
 }
 
 /* ------------------------------------------------------------

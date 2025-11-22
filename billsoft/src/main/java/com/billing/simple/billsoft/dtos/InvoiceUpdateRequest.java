@@ -10,7 +10,13 @@ import lombok.Setter;
 public class InvoiceUpdateRequest {
 
     private Long customerId;
-    private String invoiceDate; // optional ISO local date-time string (e.g. "2025-11-21T16:30" or "2025-11-21T16:30:00")
+
+    /**
+     * Optional ISO local date-time string
+     * e.g. "2025-11-21T16:30" or "2025-11-21T16:30:00"
+     */
+    private String invoiceDate;
+
     private String notes;
 
     /**
@@ -19,7 +25,14 @@ public class InvoiceUpdateRequest {
     private InvoiceRequest.Discount invoiceDiscount;
 
     /**
-     * NEW LIST replaces previous items
+     * Mark invoice as paid / unpaid.
+     * If null, service should keep existing value.
+     */
+    private Boolean paid;
+
+    /**
+     * NEW LIST replaces previous items completely.
+     * UI sends minimal fields, backend will recalc amounts.
      */
     private List<InvoiceRequestItem> items;
 }

@@ -5,6 +5,7 @@ import { invoiceCreate } from "./invoice-create.js";
 import { invoiceList } from "./invoice-list.js";
 import { customerScreen } from "./customer-screen.js";
 import { productScreen } from "./product-screen.js";
+import { analyticsScreen } from "./analytics-screen.js";
 
 export const navigation = {
 
@@ -16,6 +17,9 @@ export const navigation = {
         layout.switchView(view);
       };
     });
+
+    // default load
+    this.loadView("invoiceCreate");
   },
 
   loadView(view) {
@@ -23,17 +27,25 @@ export const navigation = {
       document.getElementById("view-invoiceCreate").innerHTML = invoiceCreate.render();
       invoiceCreate.init();
     }
+
     if (view === "invoices") {
       document.getElementById("view-invoices").innerHTML = invoiceList.render();
       invoiceList.init();
     }
+
     if (view === "customers") {
       document.getElementById("view-customers").innerHTML = customerScreen.render();
       customerScreen.init();
     }
+
     if (view === "products") {
       document.getElementById("view-products").innerHTML = productScreen.render();
       productScreen.init();
+    }
+
+    if (view === "analytics") {
+      document.getElementById("view-analytics").innerHTML = analyticsScreen.render();
+      analyticsScreen.init();
     }
   }
 };

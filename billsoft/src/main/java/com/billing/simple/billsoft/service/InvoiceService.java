@@ -4,7 +4,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +45,6 @@ public class InvoiceService {
         try {
             return LocalDateTime.parse(s);
         } catch (DateTimeParseException ex) {
-            // try adding seconds if missing
             try {
                 return LocalDateTime.parse(s + ":00");
             } catch (Exception e) {
@@ -55,16 +53,11 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Calculate values for a single item based on request and product fallback.
-     * Returns a populated InvoiceItem (not yet persisted).
-     */
     private InvoiceItem buildItemFromRequest(InvoiceRequestItem reqItem) {
-        // Resolve product if present
         Product product = null;
         if (reqItem.getProductId() != null) {
-            Optional<Product> pOpt = productRepo.findById(reqItem.getProductId());
-            if (pOpt.isPresent()) product = pOpt.get();
+            product = productRepo.findById(reqItem.getProductId())
+                    .orElseThrow(() -> new RuntimeException("Product not found: " + reqItem.getProductId()));
         }
 
         InvoiceItem item = new InvoiceItem();
@@ -76,58 +69,47 @@ public class InvoiceService {
 
         String unit = reqItem.getUnit() == null ? (product != null ? product.getUnit() : "") : reqItem.getUnit();
 
-        // amount without tax
         double amountNoTax = qty * price;
 
         // discount
         String dType = reqItem.getDiscountType();
         double dValue = reqItem.getDiscountValue() == null ? 0.0 : reqItem.getDiscountValue();
         double dPercent = reqItem.getDiscountPercent() == null ? 0.0 : reqItem.getDiscountPercent();
-        double discountAmt = 0.0;
-        if (dPercent > 0) discountAmt = (amountNoTax * dPercent) / 100.0;
-        else discountAmt = dValue;
+        double discountAmt = dPercent > 0 ? (amountNoTax * dPercent / 100.0) : dValue;
 
-        // taxable amount
         double taxable = Math.max(0.0, amountNoTax - discountAmt);
 
-        // gst percent
         double gstPct = reqItem.getGstPercent() == null
                 ? (product != null && product.getGstPercentage() != null ? product.getGstPercentage() : 0.0)
                 : reqItem.getGstPercent();
 
         double gstAmt = taxable * (gstPct / 100.0);
-
         double lineTotal = taxable + gstAmt;
 
-        // populate
         item.setProduct(product);
         item.setQty(qty);
         item.setUnit(unit);
-
         item.setPricePerUnit(price);
         item.setAmountWithoutTax(amountNoTax);
-
         item.setDiscountType(dType);
         item.setDiscountValue(dValue);
         item.setDiscountPercent(dPercent);
-
         item.setTaxableAmount(taxable);
-
         item.setGstPercent(gstPct);
         item.setGstAmount(gstAmt);
-
         item.setLineTotal(lineTotal);
 
         return item;
     }
 
     // ---------------------------
-    // CREATE (UI sends minimal fields; server calculates)
+    // CREATE INVOICE
     // ---------------------------
     @Transactional
     public Invoice createInvoice(InvoiceRequest request) {
 
-        if (request == null) throw new IllegalArgumentException("Request cannot be null");
+        if (request == null)
+            throw new IllegalArgumentException("Request cannot be null");
 
         Customer customer = customerRepo.findById(request.getCustomerId())
                 .orElseThrow(() -> new RuntimeException("Customer not found: " + request.getCustomerId()));
@@ -138,7 +120,9 @@ public class InvoiceService {
         invoice.setInvoiceNumber(generateInvoiceNumber());
         invoice.setInvoiceDate(LocalDateTime.now());
 
-        // process items
+        // NEW — handle paid flag
+        invoice.setPaid(request.getPaid() != null ? request.getPaid() : false);
+
         List<InvoiceItem> itemEntities = new ArrayList<>();
         double subtotalWithoutTax = 0.0;
         double totalTax = 0.0;
@@ -146,29 +130,26 @@ public class InvoiceService {
 
         if (request.getItems() != null) {
             for (InvoiceRequestItem ri : request.getItems()) {
-                // Build item (calculations inside)
                 InvoiceItem it = buildItemFromRequest(ri);
-                // ensure invoice link (will set after invoice saved or before saving)
                 it.setInvoice(invoice);
 
-                // accumulate
-                subtotalWithoutTax += (it.getAmountWithoutTax() == null ? 0.0 : it.getAmountWithoutTax());
-                totalTax += (it.getGstAmount() == null ? 0.0 : it.getGstAmount());
+                subtotalWithoutTax += it.getAmountWithoutTax();
+                totalTax += it.getGstAmount();
 
-                double itemDiscount = (it.getDiscountPercent() != null && it.getDiscountPercent() > 0)
+                double itemDiscount = it.getDiscountPercent() > 0
                         ? (it.getAmountWithoutTax() * it.getDiscountPercent() / 100.0)
-                        : (it.getDiscountValue() == null ? 0.0 : it.getDiscountValue());
+                        : it.getDiscountValue();
                 totalItemDiscounts += itemDiscount;
 
                 itemEntities.add(it);
             }
         }
 
-        // invoice-level discount (if any)
         double invoiceDiscountAmount = 0.0;
         if (request.getInvoiceDiscount() != null) {
             String type = request.getInvoiceDiscount().getType();
-            Double value = request.getInvoiceDiscount().getValue() == null ? 0.0 : request.getInvoiceDiscount().getValue();
+            Double value = request.getInvoiceDiscount().getValue() == null ? 0.0
+                    : request.getInvoiceDiscount().getValue();
             if ("PERCENT".equalsIgnoreCase(type)) {
                 invoiceDiscountAmount = (subtotalWithoutTax - totalItemDiscounts) * (value / 100.0);
             } else {
@@ -176,29 +157,22 @@ public class InvoiceService {
             }
             invoice.setInvoiceDiscountType(type);
             invoice.setInvoiceDiscountValue(value);
-        } else {
-            invoice.setInvoiceDiscountType(null);
-            invoice.setInvoiceDiscountValue(null);
         }
 
-        // grand totals
         double totalDiscount = totalItemDiscounts + invoiceDiscountAmount;
-        double grandTotal = (subtotalWithoutTax - totalItemDiscounts - invoiceDiscountAmount) + totalTax;
+        double grandTotal = (subtotalWithoutTax - totalDiscount) + totalTax;
 
-        // attach items to invoice (ensure bidirectional)
         invoice.getItems().clear();
         for (InvoiceItem it : itemEntities) {
             it.setInvoice(invoice);
             invoice.getItems().add(it);
         }
 
-        // set totals
         invoice.setSubtotalWithoutTax(subtotalWithoutTax);
         invoice.setTotalTax(totalTax);
         invoice.setTotalDiscount(totalDiscount);
         invoice.setTotalAmount(grandTotal);
 
-        // save invoice (Cascade.ALL will save items)
         return invoiceRepo.save(invoice);
     }
 
@@ -214,32 +188,42 @@ public class InvoiceService {
     }
 
     public boolean delete(Long id) {
-        if (!invoiceRepo.existsById(id)) return false;
+        if (!invoiceRepo.existsById(id))
+            return false;
         invoiceRepo.deleteById(id);
         return true;
     }
 
     // ---------------------------
-    // UPDATE: Replace entire items list with new list sent by UI
+    // UPDATE FULLY — new items replace old
     // ---------------------------
     @Transactional
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
+
         Invoice invoice = invoiceRepo.findById(id).orElse(null);
-        if (invoice == null) return null;
+        if (invoice == null)
+            return null;
 
         if (req.getCustomerId() != null) {
             Customer c = customerRepo.findById(req.getCustomerId()).orElse(null);
-            if (c != null) invoice.setCustomer(c);
+            if (c != null)
+                invoice.setCustomer(c);
         }
 
         if (req.getInvoiceDate() != null) {
             LocalDateTime dt = parseDateLenient(req.getInvoiceDate());
-            if (dt != null) invoice.setInvoiceDate(dt);
+            if (dt != null)
+                invoice.setInvoiceDate(dt);
         }
 
-        if (req.getNotes() != null) invoice.setNotes(req.getNotes());
+        if (req.getNotes() != null)
+            invoice.setNotes(req.getNotes());
 
-        // Build new items list (server calculates)
+        // NEW — update "paid" flag
+        if (req.getPaid() != null)
+            invoice.setPaid(req.getPaid());
+
+        // Build new items
         List<InvoiceItem> newItems = new ArrayList<>();
         double subtotalWithoutTax = 0.0;
         double totalTax = 0.0;
@@ -247,50 +231,49 @@ public class InvoiceService {
 
         if (req.getItems() != null) {
             for (InvoiceRequestItem ri : req.getItems()) {
-                // if product doesn't exist, skip or throw. We'll throw to surface problem.
+
                 Product prod = null;
                 if (ri.getProductId() != null) {
-                    prod = productRepo.findById(ri.getProductId()).orElseThrow(
-                            () -> new RuntimeException("Product not found: " + ri.getProductId()));
+                    prod = productRepo.findById(ri.getProductId())
+                            .orElseThrow(() -> new RuntimeException("Product not found: " + ri.getProductId()));
                 }
 
                 InvoiceItem it = buildItemFromRequest(ri);
                 it.setInvoice(invoice);
                 it.setProduct(prod);
 
-                subtotalWithoutTax += (it.getAmountWithoutTax() == null ? 0.0 : it.getAmountWithoutTax());
-                totalTax += (it.getGstAmount() == null ? 0.0 : it.getGstAmount());
+                subtotalWithoutTax += it.getAmountWithoutTax();
+                totalTax += it.getGstAmount();
 
-                double itemDiscount = (it.getDiscountPercent() != null && it.getDiscountPercent() > 0)
+                double itemDiscount = it.getDiscountPercent() > 0
                         ? (it.getAmountWithoutTax() * it.getDiscountPercent() / 100.0)
-                        : (it.getDiscountValue() == null ? 0.0 : it.getDiscountValue());
+                        : it.getDiscountValue();
                 totalItemDiscounts += itemDiscount;
 
                 newItems.add(it);
             }
         }
 
-        // invoice-level discount handling
         double invoiceDiscountAmount = 0.0;
         if (req.getInvoiceDiscount() != null) {
             String type = req.getInvoiceDiscount().getType();
-            Double value = req.getInvoiceDiscount().getValue() == null ? 0.0 : req.getInvoiceDiscount().getValue();
+            Double value = req.getInvoiceDiscount().getValue() == null ? 0.0
+                    : req.getInvoiceDiscount().getValue();
             if ("PERCENT".equalsIgnoreCase(type)) {
                 invoiceDiscountAmount = (subtotalWithoutTax - totalItemDiscounts) * (value / 100.0);
             } else {
                 invoiceDiscountAmount = value;
             }
-            invoice.setInvoiceDiscountType(req.getInvoiceDiscount().getType());
-            invoice.setInvoiceDiscountValue(req.getInvoiceDiscount().getValue());
+            invoice.setInvoiceDiscountType(type);
+            invoice.setInvoiceDiscountValue(value);
         } else {
             invoice.setInvoiceDiscountType(null);
             invoice.setInvoiceDiscountValue(null);
         }
 
         double totalDiscount = totalItemDiscounts + invoiceDiscountAmount;
-        double grandTotal = (subtotalWithoutTax - totalItemDiscounts - invoiceDiscountAmount) + totalTax;
+        double grandTotal = (subtotalWithoutTax - totalDiscount) + totalTax;
 
-        // Replace existing items: clear and add new ones (orphanRemoval=true will delete old)
         invoice.getItems().clear();
         for (InvoiceItem it : newItems) {
             it.setInvoice(invoice);
@@ -304,4 +287,55 @@ public class InvoiceService {
 
         return invoiceRepo.save(invoice);
     }
+    
+ // ------------------------------------------------------------
+ // ANALYTICS
+ // ------------------------------------------------------------
+ public Object getCustomerAnalytics(Long customerId) {
+
+     List<Invoice> invoices = invoiceRepo.findAll()
+             .stream()
+             .filter(inv -> inv.getCustomer() != null && inv.getCustomer().getId().equals(customerId))
+             .toList();
+
+     double totalBusiness = invoices.stream()
+             .mapToDouble(inv -> inv.getTotalAmount() == null ? 0 : inv.getTotalAmount())
+             .sum();
+
+     double totalPaid = invoices.stream()
+             .filter(Invoice::getPaid)
+             .mapToDouble(inv -> inv.getTotalAmount() == null ? 0 : inv.getTotalAmount())
+             .sum();
+
+     double totalPending = totalBusiness - totalPaid;
+
+     return new java.util.HashMap<>() {{
+         put("customerId", customerId);
+         put("totalBusiness", totalBusiness);
+         put("totalPaid", totalPaid);
+         put("totalPending", totalPending);
+         put("invoices", invoices);
+     }};
+ }
+
+ public Object getCustomerAnalyticsByName(String name) {
+
+     // find all invoices where customer name partially matches
+     List<Invoice> invoices = invoiceRepo.findAll()
+             .stream()
+             .filter(inv -> inv.getCustomer() != null &&
+                     inv.getCustomer().getName().toLowerCase().contains(name.toLowerCase()))
+             .toList();
+
+     if (invoices.isEmpty()) {
+         return new java.util.HashMap<>() {{
+             put("message", "No customer found with name: " + name);
+         }};
+     }
+
+     Long customerId = invoices.get(0).getCustomer().getId();
+
+     return getCustomerAnalytics(customerId);
+ }
+
 }

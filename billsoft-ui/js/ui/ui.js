@@ -2,8 +2,6 @@
 import { layout } from "./layout.js";
 import { navigation } from "./navigation.js";
 
-import { invoiceCreate } from "./invoice-create.js";
-
 export const ui = {
 
   renderShell() {
@@ -25,5 +23,9 @@ export const ui = {
 
   showCustomers() {
     navigation.loadView("customers");
+  },
+
+  showAnalytics() {
+    navigation.loadView("analytics");
   }
 };

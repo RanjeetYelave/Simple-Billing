@@ -29,5 +29,17 @@ export const invoiceModule = {
       body: JSON.stringify(payload)
     });
     return res.json();
+  },
+
+  // ---- NEW ANALYTICS ----
+
+  async analyticsByCustomer(customerId) {
+    const res = await fetch(`${API}/analytics/customer/${customerId}`);
+    return res.json();
+  },
+
+  async analyticsByName(name) {
+    const res = await fetch(`${API}/analytics/search?name=${encodeURIComponent(name)}`);
+    return res.json();
   }
 };

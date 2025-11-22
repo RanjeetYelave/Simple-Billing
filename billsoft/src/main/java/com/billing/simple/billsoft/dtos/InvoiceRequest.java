@@ -18,6 +18,12 @@ public class InvoiceRequest {
      */
     private Discount invoiceDiscount;
 
+    /**
+     * New invoices will normally start as unpaid.
+     * If null, service should default this to false.
+     */
+    private Boolean paid;
+
     private List<InvoiceRequestItem> items;
 
     @Getter

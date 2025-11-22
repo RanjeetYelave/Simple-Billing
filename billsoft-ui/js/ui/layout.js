@@ -29,6 +29,12 @@ export const layout = {
               <span class="icon">📦</span>
               <span>Products</span>
             </button>
+
+            <!-- NEW -->
+            <button class="nav-item" data-view="analytics">
+              <span class="icon">📊</span>
+              <span>Analytics</span>
+            </button>
           </div>
 
           <div class="sidebar-footer">
@@ -50,18 +56,19 @@ export const layout = {
           <section id="view-invoices" class="view"></section>
           <section id="view-customers" class="view"></section>
           <section id="view-products" class="view"></section>
+
+          <!-- NEW -->
+          <section id="view-analytics" class="view"></section>
         </main>
       </div>
     `;
   },
 
   switchView(view) {
-    // toggle sections
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     const target = document.getElementById(`view-${view}`);
     if (target) target.classList.add("active");
 
-    // toggle nav active
     document.querySelectorAll(".nav-item")
       .forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
 
@@ -69,18 +76,21 @@ export const layout = {
       invoiceCreate: "Create Invoice",
       invoices: "Invoices",
       customers: "Customers",
-      products: "Products"
+      products: "Products",
+      analytics: "Customer Analytics"
     };
 
     const subtitleMap = {
       invoiceCreate: "Quickly create and save multi-item invoices.",
       invoices: "Browse, open and edit existing invoices.",
       customers: "Manage customers used while creating invoices.",
-      products: "Manage products with price and GST."
+      products: "Manage products with price and GST.",
+      analytics: "See lifetime business, paid and outstanding amounts."
     };
 
     const titleEl = document.getElementById("mainTitle");
     const subEl = document.getElementById("mainSubtitle");
+
     if (titleEl) titleEl.textContent = titleMap[view] || "";
     if (subEl) subEl.textContent = subtitleMap[view] || "";
   }

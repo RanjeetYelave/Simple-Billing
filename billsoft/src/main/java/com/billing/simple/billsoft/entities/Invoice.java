@@ -4,8 +4,24 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import jakarta.persistence.*;
-import lombok.*;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @Setter
@@ -27,27 +43,31 @@ public class Invoice {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
-    // GRAND TOTAL (final invoice amount — after discounts & taxes)
-    private Double totalAmount;
+    // === Totals Calculated by Backend ===
+    private Double subtotalWithoutTax;   // NEW
+    private Double totalTax;             // NEW
+    private Double totalDiscount;        // NEW
+    private Double totalAmount;          // already exists but moved into this category
 
-    // additional stored totals for visibility & auditing
-    private Double subtotalWithoutTax; // sum of amountWithoutTax across items
-    private Double totalTax; // sum of GST amounts across items
-    private Double totalDiscount; // sum of item discounts + invoice-level discount (in rupees)
-
-    // invoice level discount info (if applied)
-    private String invoiceDiscountType; // "PERCENT" or "VALUE"
-    private Double invoiceDiscountValue; // value or percent (store raw)
+    // === Invoice-level discount ===
+    private String invoiceDiscountType;  // NEW
+    private Double invoiceDiscountValue; // NEW
 
     private LocalDateTime invoiceDate;
 
     private String notes;
 
+    // === New Paid Flag ===
+    @Builder.Default
+    private Boolean paid = false;
+
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private List<InvoiceItem> items = new ArrayList<>();
 
     @PrePersist
     public void prePersist() {
-        if (this.invoiceDate == null) this.invoiceDate = LocalDateTime.now();
+        this.invoiceDate = LocalDateTime.now();
+        if (paid == null) paid = false;
     }
 }

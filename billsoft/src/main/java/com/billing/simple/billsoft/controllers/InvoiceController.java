@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.entities.Invoice;
@@ -21,25 +22,20 @@ public class InvoiceController {
         this.service = service;
     }
 
-    // ------------------------------------------------------------
     // CREATE
-    // ------------------------------------------------------------
     @PostMapping
     public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
-        return ResponseEntity.ok(service.createInvoice(request));
+        Invoice created = service.createInvoice(request);
+        return ResponseEntity.ok(created);
     }
 
-    // ------------------------------------------------------------
     // LIST ALL
-    // ------------------------------------------------------------
     @GetMapping
     public ResponseEntity<List<Invoice>> getAll() {
         return ResponseEntity.ok(service.getAll());
     }
 
-    // ------------------------------------------------------------
     // GET BY ID
-    // ------------------------------------------------------------
     @GetMapping("/{id}")
     public ResponseEntity<Invoice> getById(@PathVariable("id") Long id) {
         Invoice inv = service.getById(id);
@@ -47,9 +43,7 @@ public class InvoiceController {
         return ResponseEntity.ok(inv);
     }
 
-    // ------------------------------------------------------------
-    // UPDATE FULL INVOICE
-    // ------------------------------------------------------------
+    // UPDATE FULL (replace items)
     @PutMapping("/{id}")
     public ResponseEntity<Invoice> updateInvoice(
             @PathVariable("id") Long id,
@@ -60,31 +54,34 @@ public class InvoiceController {
         return ResponseEntity.ok(updated);
     }
 
-    // ------------------------------------------------------------
     // DELETE
-    // ------------------------------------------------------------
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         boolean removed = service.delete(id);
         if (!removed) return ResponseEntity.notFound().build();
         return ResponseEntity.noContent().build();
     }
 
-    // ------------------------------------------------------------
-    // ANALYTICS BY CUSTOMER ID
-    // ------------------------------------------------------------
+    // MARK PAID / UNPAID (for analytics + anywhere else)
+    @PutMapping("/{id}/paid")
+    public ResponseEntity<Invoice> markPaid(
+            @PathVariable("id") Long id,
+            @RequestParam("paid") boolean paid) {
+
+        Invoice updated = service.updatePaidFlag(id, paid);
+        if (updated == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(updated);
+    }
+
+    // ANALYTICS: BY CUSTOMER ID
     @GetMapping("/analytics/customer/{customerId}")
-    public ResponseEntity<?> analyticsByCustomer(
-            @PathVariable("customerId") Long customerId) {
+    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(@PathVariable("customerId") Long customerId) {
         return ResponseEntity.ok(service.getCustomerAnalytics(customerId));
     }
 
-    // ------------------------------------------------------------
-    // ANALYTICS BY CUSTOMER NAME
-    // ------------------------------------------------------------
+    // ANALYTICS: SEARCH BY CUSTOMER NAME
     @GetMapping("/analytics/search")
-    public ResponseEntity<?> analyticsByName(
-            @RequestParam("name") String name) {
+    public ResponseEntity<List<CustomerAnalyticsResponse>> analyticsByName(@RequestParam("name") String name) {
         return ResponseEntity.ok(service.getCustomerAnalyticsByName(name));
     }
 }

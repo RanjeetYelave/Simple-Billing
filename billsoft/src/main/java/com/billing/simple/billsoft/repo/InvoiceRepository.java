@@ -7,30 +7,14 @@ import org.springframework.stereotype.Repository;
 
 import com.billing.simple.billsoft.entities.Invoice;
 
-
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
-    // Existing
     Invoice findTopByOrderByIdDesc();
 
-    // NEW — For Analytics Screen
+    // for analytics by customer id
+    List<Invoice> findByCustomer_Id(Long customerId);
 
-    /**
-     * Get all invoices for a customer (paid + unpaid)
-     */
-    List<Invoice> findByCustomerIdOrderByInvoiceDateDesc(Long customerId);
-
-    /**
-     * Get all PAID invoices for a customer
-     */
-    List<Invoice> findByCustomerIdAndPaidTrueOrderByInvoiceDateDesc(Long customerId);
-
-    /**
-     * Get all UNPAID invoices for a customer
-     */
-    List<Invoice> findByCustomerIdAndPaidFalseOrderByInvoiceDateDesc(Long customerId);
-    
-    List<Invoice> findByCustomerId(Long customerId);
-
+    // for analytics search by customer name
+    List<Invoice> findByCustomer_NameContainingIgnoreCase(String namePart);
 }

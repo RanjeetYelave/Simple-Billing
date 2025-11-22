@@ -1,31 +1,20 @@
 // js/main.js
-import { ui } from "./ui.js";
+
+import { ui } from "./ui/ui.js";
 import { productModule } from "./product.js";
 import { customerModule } from "./customer.js";
-import { invoiceModule } from "./invoice.js";
 
 async function init() {
   try {
-    // Load initial data (products + customers)
+    console.log("🔥 Loading initial data...");
+
     await Promise.all([
       productModule.load(),
       customerModule.load()
     ]);
 
-    // Render shell
+    console.log("🔥 Rendering UI shell...");
     ui.render();
-
-    // Populate autocomplete
-    ui.populateProductsDatalist();
-    ui.populateCustomers();
-
-    // Prepare invoice form
-    ui.clearCreateItems();
-    ui.addCreateItemRow();
-    ui.recalcCreateTotals();
-
-    // Bind all events
-    ui.bindEvents();
 
     console.log("UI initialized successfully");
   } catch (err) {

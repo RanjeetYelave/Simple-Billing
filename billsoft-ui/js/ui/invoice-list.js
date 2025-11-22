@@ -5,6 +5,11 @@ import { invoiceEdit } from "./invoice-edit.js";
 
 export const invoiceList = {
 
+  allInvoices: [],
+  currentPage: 1,
+  pageSize: 10,
+  currentSort: "DATE_DESC", // DATE_DESC, DATE_ASC, AMOUNT_DESC, AMOUNT_ASC
+
   render() {
     return `
       <div class="card">
@@ -25,32 +30,99 @@ export const invoiceList = {
           </div>
           <button class="btn small" id="invSearchCustomerBtn">Search Customer</button>
 
-          <button class="btn ghost small" id="reloadInvoices" style="margin-left:auto;">
-            Reload All
-          </button>
+          <div style="margin-left:auto;display:flex;gap:10px;align-items:flex-end;">
+            <div>
+              <label class="small muted">Sort</label>
+              <select id="invSortSelect">
+                <option value="DATE_DESC">Latest first</option>
+                <option value="DATE_ASC">Oldest first</option>
+                <option value="AMOUNT_DESC">Amount high → low</option>
+                <option value="AMOUNT_ASC">Amount low → high</option>
+              </select>
+            </div>
+
+            <button class="btn ghost small" id="reloadInvoices">
+              Reload All
+            </button>
+          </div>
         </div>
 
-        <div id="invList"></div>
-        <div id="invDetails"></div>
+        <table class="invoice-table">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>Customer</th>
+              <th>Date</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th style="width:210px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invTableBody"></tbody>
+        </table>
+
+        <div id="invPagination"
+             class="small muted"
+             style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+          <div id="invPaginationInfo"></div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn small ghost" id="invPrevPage">Prev</button>
+            <button class="btn small ghost" id="invNextPage">Next</button>
+          </div>
+        </div>
+
+        <div id="invDetails" style="margin-top:16px;"></div>
       </div>
     `;
   },
 
   init() {
+    this.allInvoices = [];
+    this.currentPage = 1;
+    this.currentSort = "DATE_DESC";
+
     $("reloadInvoices").onclick = () => this.loadAll();
     $("invSearchIdBtn").onclick = () => this.searchById();
     $("invSearchCustomerBtn").onclick = () => this.searchByCustomer();
 
+    const sortSel = $("invSortSelect");
+    if (sortSel) {
+      sortSel.onchange = () => {
+        this.currentSort = sortSel.value || "DATE_DESC";
+        this.currentPage = 1;
+        this.renderTable();
+      };
+    }
+
+    $("invPrevPage").onclick = () => {
+      if (this.currentPage > 1) {
+        this.currentPage--;
+        this.renderTable();
+      }
+    };
+
+    $("invNextPage").onclick = () => {
+      const totalPages = this.getTotalPages();
+      if (this.currentPage < totalPages) {
+        this.currentPage++;
+        this.renderTable();
+      }
+    };
+
     this.loadAll();
   },
+
+  // ---------------- LOAD / SEARCH ----------------
 
   async loadAll() {
     try {
       const list = await invoiceModule.list();
-      this.renderList(list);
+      this.setData(list);
     } catch (err) {
       console.error("Failed to load invoices", err);
-      $("invList").innerHTML = `<div class="small muted">Failed to load invoices.</div>`;
+      $("invTableBody").innerHTML =
+        `<tr><td colspan="6" class="small muted">Failed to load invoices.</td></tr>`;
+      $("invPaginationInfo").textContent = "";
     }
   },
 
@@ -64,15 +136,18 @@ export const invoiceList = {
     try {
       const inv = await invoiceModule.preview(id);
       if (!inv || inv.id == null) {
-        $("invList").innerHTML = `<div class="small muted">Invoice not found.</div>`;
-        $("invDetails").innerHTML = "";
+        this.setData([]);
+        $("invTableBody").innerHTML =
+          `<tr><td colspan="6" class="small muted">Invoice not found.</td></tr>`;
+        $("invPaginationInfo").textContent = "";
         return;
       }
-      this.renderList([inv]);
+      this.setData([inv]);
     } catch (err) {
       console.error("Search by ID failed", err);
-      $("invList").innerHTML = `<div class="small muted">Error fetching invoice.</div>`;
-      $("invDetails").innerHTML = "";
+      $("invTableBody").innerHTML =
+        `<tr><td colspan="6" class="small muted">Error fetching invoice.</td></tr>`;
+      $("invPaginationInfo").textContent = "";
     }
   },
 
@@ -85,91 +160,187 @@ export const invoiceList = {
 
     try {
       const all = await invoiceModule.list();
-      const filtered = all.filter(inv => inv.customer && Number(inv.customer.id) === cid);
-
-      if (!filtered.length) {
-        $("invList").innerHTML = `<div class="small muted">No invoices for this customer.</div>`;
-        $("invDetails").innerHTML = "";
-        return;
-      }
-
-      this.renderList(filtered);
+      const filtered = all.filter(
+        inv => inv.customer && Number(inv.customer.id) === cid
+      );
+      this.setData(filtered);
     } catch (err) {
       console.error("Search by customer failed", err);
-      $("invList").innerHTML = `<div class="small muted">Error fetching invoices.</div>`;
-      $("invDetails").innerHTML = "";
+      $("invTableBody").innerHTML =
+        `<tr><td colspan="6" class="small muted">Error fetching invoices.</td></tr>`;
+      $("invPaginationInfo").textContent = "";
     }
   },
 
-  async markPaid(id) {
-    if (!confirm("Mark this invoice as PAID?")) return;
+  setData(list) {
+    this.allInvoices = Array.isArray(list) ? list : [];
+    this.currentPage = 1;
+    this.renderTable();
+  },
+
+  // ---------------- ACTIONS ----------------
+
+  async togglePaid(inv) {
+    const id = inv.id;
+    const newStatus = !inv.paid;
+    const label = newStatus ? "PAID" : "UNPAID";
+
+    const ok = window.confirm(
+      `Mark invoice ${inv.invoiceNumber} as ${label}?`
+    );
+    if (!ok) return;
 
     try {
-      await invoiceModule.update(id, { paid: true });
-      this.loadAll();
+      await invoiceModule.markPaid(id, newStatus);
+      inv.paid = newStatus;
+      this.renderTable();
     } catch (err) {
-      console.error("Failed to mark invoice paid", err);
-      alert("Failed to mark invoice paid.");
+      console.error("Failed to update paid flag", err);
+      alert("Failed to update paid status.");
     }
   },
 
-  renderList(list) {
-    const box = $("invList");
-    box.innerHTML = "";
+  async deleteInvoice(inv) {
+    const ok = window.confirm(
+      `Delete invoice ${inv.invoiceNumber}? This cannot be undone.`
+    );
+    if (!ok) return;
 
-    if (!list || !list.length) {
-      box.innerHTML = `<div class="small muted">No invoices found.</div>`;
+    try {
+      await invoiceModule.delete(inv.id);
+      this.allInvoices = this.allInvoices.filter(x => x.id !== inv.id);
+      if (this.currentPage > this.getTotalPages()) {
+        this.currentPage = this.getTotalPages();
+      }
+      this.renderTable();
+    } catch (err) {
+      console.error("Failed to delete invoice", err);
+      alert("Failed to delete invoice.");
+    }
+  },
+
+  // ---------------- RENDERING ----------------
+
+  getTotalPages() {
+    if (!this.allInvoices.length) return 1;
+    return Math.ceil(this.allInvoices.length / this.pageSize);
+  },
+
+  getSortedInvoices() {
+    const list = this.allInvoices.slice();
+    const sortKey = this.currentSort;
+
+    return list.sort((a, b) => {
+      const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
+      const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
+
+      const aa = a.totalAmount ?? 0;
+      const ab = b.totalAmount ?? 0;
+
+      switch (sortKey) {
+        case "DATE_ASC":
+          return da - db;
+        case "AMOUNT_DESC":
+          return ab - aa;
+        case "AMOUNT_ASC":
+          return aa - ab;
+        case "DATE_DESC":
+        default:
+          if (db !== da) return db - da;
+          // fallback by id
+          return (b.id ?? 0) - (a.id ?? 0);
+      }
+    });
+  },
+
+  renderTable() {
+    const body = $("invTableBody");
+    const info = $("invPaginationInfo");
+
+    if (!this.allInvoices.length) {
+      body.innerHTML =
+        `<tr><td colspan="6" class="small muted">No invoices found.</td></tr>`;
+      if (info) info.textContent = "0 invoices";
       $("invDetails").innerHTML = "";
       return;
     }
 
-    list.forEach(inv => {
-      const div = document.createElement("div");
-      div.className = "invoice-list-item";
+    const sorted = this.getSortedInvoices();
+    const totalPages = this.getTotalPages();
 
+    if (this.currentPage > totalPages) this.currentPage = totalPages;
+    if (this.currentPage < 1) this.currentPage = 1;
+
+    const start = (this.currentPage - 1) * this.pageSize;
+    const pageItems = sorted.slice(start, start + this.pageSize);
+
+    body.innerHTML = "";
+
+    pageItems.forEach(inv => {
+      const tr = document.createElement("tr");
       const isPaid = inv.paid === true;
 
-      div.innerHTML = `
-        <b>${inv.invoiceNumber}</b>
-        <div class="small muted">${inv.customer?.name || "—"}</div>
-        <div>${money(inv.totalAmount)}</div>
-
-        <!-- Status -->
-        <div class="small" style="margin-top:6px;color:${isPaid ? '#10b981' : '#f87171'};">
-          Status: ${isPaid ? "Paid" : "Unpaid"}
-        </div>
-
-        <!-- Mark Paid row -->
-        <div style="margin-top:8px;">
-          ${
-            isPaid
-              ? `<div class="small" style="color:#10b981;">✓ Already Paid</div>`
-              : `<button class="btn small" style="background:#10b981;border-radius:6px;font-size:11px;" data-pay="${inv.id}">
-                    Mark Paid
-                 </button>`
-          }
-        </div>
+      tr.innerHTML = `
+        <td>${inv.invoiceNumber}</td>
+        <td>${inv.customer?.name || "—"}</td>
+        <td>${inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : "-"}</td>
+        <td class="numeric">${money(inv.totalAmount)}</td>
+        <td>
+          <span class="small" style="color:${isPaid ? "#22c55e" : "#f97373"};">
+            ${isPaid ? "Paid" : "Unpaid"}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn small" data-view="${inv.id}">View</button>
+            <button class="btn small ghost" data-paid="${inv.id}">
+              ${isPaid ? "Mark Unpaid" : "Mark Paid"}
+            </button>
+            <button class="btn small danger" data-del="${inv.id}">Delete</button>
+          </div>
+        </td>
       `;
-
-      // Open invoice on main card click
-      div.onclick = (e) => {
-        if (e.target.dataset.pay) return; // Allow button click without opening
-
-        invoiceEdit.open(inv.id);
-      };
-
-      // Button handler
-      if (!isPaid) {
-        const btn = div.querySelector("button[data-pay]");
-        btn.onclick = (ev) => {
-          ev.stopPropagation(); // prevent opening invoice editor
-          this.markPaid(inv.id);
-        };
-      }
-
-      box.appendChild(div);
+      body.appendChild(tr);
     });
 
+    // pagination info + button states
+    if (info) {
+      info.textContent =
+        `Page ${this.currentPage} of ${totalPages} • ` +
+        `${this.allInvoices.length} invoice${this.allInvoices.length === 1 ? "" : "s"}`;
+    }
+
+    $("invPrevPage").disabled = this.currentPage <= 1;
+    $("invNextPage").disabled = this.currentPage >= totalPages;
+
+    // bind action buttons
+    body.querySelectorAll("button[data-view]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.view);
+        if (!id) return;
+        invoiceEdit.open(id);
+      };
+    });
+
+    body.querySelectorAll("button[data-paid]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.paid);
+        const inv = this.allInvoices.find(x => x.id === id);
+        if (!inv) return;
+        this.togglePaid(inv);
+      };
+    });
+
+    body.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.del);
+        const inv = this.allInvoices.find(x => x.id === id);
+        if (!inv) return;
+        this.deleteInvoice(inv);
+      };
+    });
+
+    // clear details panel; it will be filled when View is clicked by invoiceEdit
     $("invDetails").innerHTML = "";
   }
 };

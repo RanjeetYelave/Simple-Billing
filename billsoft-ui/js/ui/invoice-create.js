@@ -52,24 +52,25 @@ export const invoiceCreate = {
           <div id="subtotalLine"></div>
           <div id="taxTotalLine"></div>
           <div id="discountLine"></div>
-          <div id="grandTotalLine" style="font-size:18px;font-weight:700"></div>
+          <div id="grandTotalLine"></div>
         </div>
 
         <label style="color:white">Notes</label>
         <textarea id="createNotes"></textarea>
 
         <label style="color:white;display:flex;align-items:center;gap:8px;margin-top:10px">
-          <input type="checkbox" id="createMarkPaid" style="width:16px;height:16px" />
+          <input type="checkbox" id="createMarkPaid"/>
           Mark as Paid
         </label>
 
         <button class="btn primary save-big" id="saveInvBtn">💾 Create Invoice</button>
         <div id="createResult" class="small muted"></div>
-      </div>`;
+      </div>
+    `;
   },
 
   init() {
-    // Customers
+    // Fill customer list
     const custList = $("custList");
     custList.innerHTML = "";
     customerModule.customers.forEach(c => {
@@ -78,7 +79,7 @@ export const invoiceCreate = {
       custList.appendChild(opt);
     });
 
-    // Products
+    // Fill products
     const prodList = $("productListGlobal");
     prodList.innerHTML = "";
     productModule.products.forEach(p => {
@@ -87,7 +88,6 @@ export const invoiceCreate = {
       prodList.appendChild(opt);
     });
 
-    // Rows
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
@@ -100,23 +100,42 @@ export const invoiceCreate = {
     $("discountType").onchange = totals.recalc;
     $("discountValue").oninput = totals.recalc;
 
-    $("saveInvBtn").onclick = () => invoiceCreate.submit();
+    $("saveInvBtn").onclick = () => this.submit();
   },
 
   async submit() {
-    const custText = $("custInput").value;
-    const customerId = extractId(custText);
-    if (!customerId) return alert("Select a valid customer");
+    const text = $("custInput").value.trim();
+    let customerId = extractId(text);
+
+    // NEW LOGIC: Create customer if not found
+    if (!customerId) {
+      const existing = customerModule.customers.find(
+        c => c.name.toLowerCase() === text.toLowerCase()
+      );
+
+      if (existing) {
+        customerId = existing.id;
+      } else {
+        // auto-create silently
+        const created = await customerModule.create({
+          name: text,
+          phone: "",
+          email: "",
+          address: ""
+        });
+
+        customerModule.customers.push(created);
+        customerId = created.id;
+      }
+    }
 
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
-    if (!rows.length) return alert("Add at least one item.");
-
-    const items = rowBuilder.buildPayloadItems(rows);
+    const items = await rowBuilder.buildPayloadItems(rows);
 
     const payload = totals.buildFinalPayload(
       items,
       customerId,
-      $("createNotes").value || ""
+      $("createNotes").value
     );
 
     payload.paid = $("createMarkPaid").checked;
@@ -124,9 +143,9 @@ export const invoiceCreate = {
     const created = await invoiceModule.save(payload);
 
     $("createResult").textContent = `Invoice created: ${created.invoiceNumber}`;
+
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
-    $("createMarkPaid").checked = false;
   }
 };

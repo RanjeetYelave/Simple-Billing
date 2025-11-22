@@ -6,10 +6,19 @@ export const customerModule = {
   customers: [],
 
   async load() {
-    console.log("🔥 Loading customers...");
     const res = await fetch(API);
     this.customers = await res.json();
-    console.log("Customers loaded:", this.customers);
+  },
+
+  async create(payload) {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    this.customers.push(data);
+    return data;
   },
 
   findById(id) {

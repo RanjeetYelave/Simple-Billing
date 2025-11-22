@@ -32,7 +32,7 @@ export const invoiceCreate = {
           </div>
         </div>
 
-        <h3 style="color:white">Items</h3>
+        <h3 style="color:white;margin-top:14px;">Items</h3>
         <table class="invoice-table">
           <thead>
             <tr>
@@ -46,7 +46,7 @@ export const invoiceCreate = {
 
         <datalist id="productListGlobal"></datalist>
 
-        <button class="btn" id="addItemBtn">+ Add Item</button>
+        <button class="btn" id="addItemBtn" style="margin-top:10px;">+ Add Item</button>
 
         <div id="createTotals" style="margin-top:14px;text-align:right;">
           <div id="subtotalLine"></div>
@@ -55,7 +55,7 @@ export const invoiceCreate = {
           <div id="grandTotalLine"></div>
         </div>
 
-        <label style="color:white">Notes</label>
+        <label style="color:white;margin-top:10px;">Notes</label>
         <textarea id="createNotes"></textarea>
 
         <label style="color:white;display:flex;align-items:center;gap:8px;margin-top:10px">
@@ -63,8 +63,8 @@ export const invoiceCreate = {
           Mark as Paid
         </label>
 
-        <button class="btn primary save-big" id="saveInvBtn">💾 Create Invoice</button>
-        <div id="createResult" class="small muted"></div>
+        <button class="btn primary save-big" id="saveInvBtn" style="margin-top:10px;">💾 Create Invoice</button>
+        <div id="createResult" class="small muted" style="margin-top:6px;"></div>
       </div>
     `;
   },
@@ -72,21 +72,25 @@ export const invoiceCreate = {
   init() {
     // Fill customer list
     const custList = $("custList");
-    custList.innerHTML = "";
-    customerModule.customers.forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = `${c.name} (id:${c.id})`;
-      custList.appendChild(opt);
-    });
+    if (custList) {
+      custList.innerHTML = "";
+      customerModule.customers.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = `${c.name} (id:${c.id})`;
+        custList.appendChild(opt);
+      });
+    }
 
-    // Fill products
+    // Fill products list
     const prodList = $("productListGlobal");
-    prodList.innerHTML = "";
-    productModule.products.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.name;
-      prodList.appendChild(opt);
-    });
+    if (prodList) {
+      prodList.innerHTML = "";
+      productModule.products.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.name;
+        prodList.appendChild(opt);
+      });
+    }
 
     rowBuilder.clear();
     rowBuilder.addRow();
@@ -97,26 +101,30 @@ export const invoiceCreate = {
       totals.recalc();
     };
 
-    $("discountType").onchange = totals.recalc;
-    $("discountValue").oninput = totals.recalc;
+    $("discountType").onchange = () => totals.recalc();
+    $("discountValue").oninput = () => totals.recalc();
 
     $("saveInvBtn").onclick = () => this.submit();
   },
 
   async submit() {
     const text = $("custInput").value.trim();
+    if (!text) {
+      alert("Enter customer name");
+      return;
+    }
+
     let customerId = extractId(text);
 
-    // NEW LOGIC: Create customer if not found
+    // AUTO-CREATE CUSTOMER IF NOT FOUND (LIKE CUSTOMER SCREEN BEHAVIOUR)
     if (!customerId) {
       const existing = customerModule.customers.find(
-        c => c.name.toLowerCase() === text.toLowerCase()
+        c => (c.name || "").toLowerCase() === text.toLowerCase()
       );
 
       if (existing) {
         customerId = existing.id;
       } else {
-        // auto-create silently
         const created = await customerModule.create({
           name: text,
           phone: "",
@@ -124,28 +132,43 @@ export const invoiceCreate = {
           address: ""
         });
 
-        customerModule.customers.push(created);
+        // Reload cache so other screens stay in sync
+        if (typeof customerModule.list === "function") {
+          await customerModule.list();
+        }
+
         customerId = created.id;
       }
     }
 
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
+    if (!rows.length) {
+      alert("Add at least one item.");
+      return;
+    }
+
     const items = await rowBuilder.buildPayloadItems(rows);
+    if (!items.length) {
+      alert("No valid items to save.");
+      return;
+    }
 
     const payload = totals.buildFinalPayload(
       items,
       customerId,
-      $("createNotes").value
+      $("createNotes").value || ""
     );
 
     payload.paid = $("createMarkPaid").checked;
 
     const created = await invoiceModule.save(payload);
 
-    $("createResult").textContent = `Invoice created: ${created.invoiceNumber}`;
+    $("createResult").textContent =
+      `Invoice created: ${created.invoiceNumber || created.id}`;
 
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
+    $("createMarkPaid").checked = false;
   }
 };

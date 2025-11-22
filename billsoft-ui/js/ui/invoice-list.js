@@ -37,12 +37,10 @@ export const invoiceList = {
   },
 
   init() {
-    // Bind buttons
     $("reloadInvoices").onclick = () => this.loadAll();
     $("invSearchIdBtn").onclick = () => this.searchById();
     $("invSearchCustomerBtn").onclick = () => this.searchByCustomer();
 
-    // Initial load
     this.loadAll();
   },
 
@@ -58,15 +56,10 @@ export const invoiceList = {
 
   async searchById() {
     const idText = $("invSearchId").value.trim();
-    if (!idText) {
-      alert("Enter an Invoice ID");
-      return;
-    }
+    if (!idText) return alert("Enter an Invoice ID");
+
     const id = Number(idText);
-    if (isNaN(id)) {
-      alert("Invoice ID must be a number");
-      return;
-    }
+    if (isNaN(id)) return alert("Invoice ID must be a number");
 
     try {
       const inv = await invoiceModule.preview(id);
@@ -85,15 +78,10 @@ export const invoiceList = {
 
   async searchByCustomer() {
     const cidText = $("invSearchCustomer").value.trim();
-    if (!cidText) {
-      alert("Enter a Customer ID");
-      return;
-    }
+    if (!cidText) return alert("Enter a Customer ID");
+
     const cid = Number(cidText);
-    if (isNaN(cid)) {
-      alert("Customer ID must be a number");
-      return;
-    }
+    if (isNaN(cid)) return alert("Customer ID must be a number");
 
     try {
       const all = await invoiceModule.list();
@@ -113,6 +101,18 @@ export const invoiceList = {
     }
   },
 
+  async markPaid(id) {
+    if (!confirm("Mark this invoice as PAID?")) return;
+
+    try {
+      await invoiceModule.update(id, { paid: true });
+      this.loadAll();
+    } catch (err) {
+      console.error("Failed to mark invoice paid", err);
+      alert("Failed to mark invoice paid.");
+    }
+  },
+
   renderList(list) {
     const box = $("invList");
     box.innerHTML = "";
@@ -126,16 +126,50 @@ export const invoiceList = {
     list.forEach(inv => {
       const div = document.createElement("div");
       div.className = "invoice-list-item";
+
+      const isPaid = inv.paid === true;
+
       div.innerHTML = `
         <b>${inv.invoiceNumber}</b>
         <div class="small muted">${inv.customer?.name || "—"}</div>
         <div>${money(inv.totalAmount)}</div>
+
+        <!-- Status -->
+        <div class="small" style="margin-top:6px;color:${isPaid ? '#10b981' : '#f87171'};">
+          Status: ${isPaid ? "Paid" : "Unpaid"}
+        </div>
+
+        <!-- Mark Paid row -->
+        <div style="margin-top:8px;">
+          ${
+            isPaid
+              ? `<div class="small" style="color:#10b981;">✓ Already Paid</div>`
+              : `<button class="btn small" style="background:#10b981;border-radius:6px;font-size:11px;" data-pay="${inv.id}">
+                    Mark Paid
+                 </button>`
+          }
+        </div>
       `;
-      div.onclick = () => invoiceEdit.open(inv.id);
+
+      // Open invoice on main card click
+      div.onclick = (e) => {
+        if (e.target.dataset.pay) return; // Allow button click without opening
+
+        invoiceEdit.open(inv.id);
+      };
+
+      // Button handler
+      if (!isPaid) {
+        const btn = div.querySelector("button[data-pay]");
+        btn.onclick = (ev) => {
+          ev.stopPropagation(); // prevent opening invoice editor
+          this.markPaid(inv.id);
+        };
+      }
+
       box.appendChild(div);
     });
 
-    // Clear details panel until an invoice is clicked
     $("invDetails").innerHTML = "";
   }
 };

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -291,32 +292,44 @@ public class InvoiceService {
  // ------------------------------------------------------------
  // ANALYTICS
  // ------------------------------------------------------------
- public Object getCustomerAnalytics(Long customerId) {
+    public Map<String, Object> getCustomerAnalytics(Long customerId) {
 
-     List<Invoice> invoices = invoiceRepo.findAll()
-             .stream()
-             .filter(inv -> inv.getCustomer() != null && inv.getCustomer().getId().equals(customerId))
-             .toList();
+        List<Invoice> invoices = invoiceRepo.findByCustomerId(customerId);
 
-     double totalBusiness = invoices.stream()
-             .mapToDouble(inv -> inv.getTotalAmount() == null ? 0 : inv.getTotalAmount())
-             .sum();
+        if (invoices.isEmpty()) {
+            return Map.of(
+                    "customerId", customerId,
+                    "totalInvoices", 0,
+                    "totalBusiness", 0.0,
+                    "totalPaid", 0.0,
+                    "totalUnpaid", 0.0,
+                    "invoices", List.of()
+            );
+        }
 
-     double totalPaid = invoices.stream()
-             .filter(Invoice::getPaid)
-             .mapToDouble(inv -> inv.getTotalAmount() == null ? 0 : inv.getTotalAmount())
-             .sum();
+        double totalBusiness = invoices.stream()
+                .map(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount())
+                .mapToDouble(Double::doubleValue)
+                .sum();
 
-     double totalPending = totalBusiness - totalPaid;
+        double totalPaid = invoices.stream()
+                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
+                .map(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount())
+                .mapToDouble(Double::doubleValue)
+                .sum();
 
-     return new java.util.HashMap<>() {{
-         put("customerId", customerId);
-         put("totalBusiness", totalBusiness);
-         put("totalPaid", totalPaid);
-         put("totalPending", totalPending);
-         put("invoices", invoices);
-     }};
- }
+        double totalUnpaid = totalBusiness - totalPaid;
+
+        return Map.of(
+                "customerId", customerId,
+                "customerName", invoices.get(0).getCustomer().getName(),
+                "totalInvoices", invoices.size(),
+                "totalBusiness", totalBusiness,
+                "totalPaid", totalPaid,
+                "totalUnpaid", totalUnpaid,
+                "invoices", invoices
+        );
+    }
 
  public Object getCustomerAnalyticsByName(String name) {
 

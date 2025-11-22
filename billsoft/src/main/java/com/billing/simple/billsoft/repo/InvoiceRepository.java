@@ -30,4 +30,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
      * Get all UNPAID invoices for a customer
      */
     List<Invoice> findByCustomerIdAndPaidFalseOrderByInvoiceDateDesc(Long customerId);
+    
+    List<Invoice> findByCustomerId(Long customerId);
+
 }

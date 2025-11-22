@@ -3,16 +3,7 @@ package com.billing.simple.billsoft.controllers;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
@@ -35,8 +26,7 @@ public class InvoiceController {
     // ------------------------------------------------------------
     @PostMapping
     public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
-        Invoice created = service.createInvoice(request);
-        return ResponseEntity.ok(created);
+        return ResponseEntity.ok(service.createInvoice(request));
     }
 
     // ------------------------------------------------------------
@@ -58,7 +48,7 @@ public class InvoiceController {
     }
 
     // ------------------------------------------------------------
-    // UPDATE FULL INVOICE (items replaced)
+    // UPDATE FULL INVOICE
     // ------------------------------------------------------------
     @PutMapping("/{id}")
     public ResponseEntity<Invoice> updateInvoice(
@@ -74,25 +64,27 @@ public class InvoiceController {
     // DELETE
     // ------------------------------------------------------------
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         boolean removed = service.delete(id);
         if (!removed) return ResponseEntity.notFound().build();
         return ResponseEntity.noContent().build();
     }
 
     // ------------------------------------------------------------
-    // 🔥 NEW ANALYTICS: BY CUSTOMER ID
+    // ANALYTICS BY CUSTOMER ID
     // ------------------------------------------------------------
     @GetMapping("/analytics/customer/{customerId}")
-    public ResponseEntity<?> analyticsByCustomer(@PathVariable Long customerId) {
+    public ResponseEntity<?> analyticsByCustomer(
+            @PathVariable("customerId") Long customerId) {
         return ResponseEntity.ok(service.getCustomerAnalytics(customerId));
     }
 
     // ------------------------------------------------------------
-    // 🔥 NEW ANALYTICS: SEARCH BY CUSTOMER NAME
+    // ANALYTICS BY CUSTOMER NAME
     // ------------------------------------------------------------
     @GetMapping("/analytics/search")
-    public ResponseEntity<?> analyticsByName(@RequestParam String name) {
+    public ResponseEntity<?> analyticsByName(
+            @RequestParam("name") String name) {
         return ResponseEntity.ok(service.getCustomerAnalyticsByName(name));
     }
 }

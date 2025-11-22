@@ -11,9 +11,7 @@ export const layout = {
             <span>BillSoft</span>
           </div>
 
-          <div class="nav-list" id="sidebarNav">
-            <!-- dynamically injected -->
-          </div>
+          <div class="nav-list" id="sidebarNav"></div>
 
           <div class="sidebar-footer">v1.0</div>
         </div>

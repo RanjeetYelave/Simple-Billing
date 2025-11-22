@@ -1,43 +1,69 @@
 // js/ui/navigation.js
-import { ui } from "./ui.js";
+import { $ } from "../utils.js";
+
+// SCREENS
+import { invoiceList } from "./invoice-list.js";
+import { invoiceCreate } from "./invoice-create.js";
+import { customerScreen } from "./customer-screen.js";
+import { productScreen } from "./product-screen.js";
+import { analyticsScreen } from "./analytics-screen.js";
+import { firmAnalyticsScreen } from "./firm-analytics-screen.js"; // NEW
 
 export const navigation = {
 
-  items: [
-    { id: "invoices", label: "Invoices", icon: "📄" },
-    { id: "customers", label: "Customers", icon: "👥" },
-    { id: "products", label: "Products", icon: "📦" },
-    { id: "analytics", label: "Customer Analytics", icon: "📊" },
-    { id: "firm", label: "Firm Dashboard", icon: "🏢" }   // 👈 NEW TAB
+  screens: {
+    invoices: invoiceList,
+    invoiceCreate: invoiceCreate,
+    customers: customerScreen,
+    products: productScreen,
+    analytics: analyticsScreen,
+    firmAnalytics: firmAnalyticsScreen
+  },
+
+  navItems: [
+    { id: "invoices",       label: "Invoices",        icon: "📄" },
+    { id: "invoiceCreate",  label: "Create Invoice",  icon: "➕" },
+    { id: "customers",      label: "Customers",       icon: "👥" },
+    { id: "products",       label: "Products",        icon: "📦" },
+    { id: "analytics",      label: "Customer Insights", icon: "📊" },
+    { id: "firmAnalytics",  label: "Firm Dashboard",  icon: "🏢" }
   ],
 
   init() {
-    const navBox = document.getElementById("sidebarNav");
-    navBox.innerHTML = "";
+    const sidebar = $("sidebarNav");
+    sidebar.innerHTML = this.navItems
+      .map(
+        item => `
+        <div class="nav-item" data-id="${item.id}">
+            <span class="nav-icon">${item.icon}</span>
+            <span>${item.label}</span>
+        </div>`
+      )
+      .join("");
 
-    this.items.forEach(item => {
-      const btn = document.createElement("button");
-      btn.className = "nav-item";
-      btn.dataset.id = item.id;
-
-      btn.innerHTML = `
-        <span class="icon">${item.icon}</span>
-        ${item.label}
-      `;
-
-      btn.onclick = () => this.activate(item.id);
-      navBox.appendChild(btn);
+    // Bind navigation clicks
+    sidebar.querySelectorAll(".nav-item").forEach(el => {
+      el.onclick = () => {
+        sidebar.querySelectorAll(".nav-item")
+               .forEach(n => n.classList.remove("active"));
+        el.classList.add("active");
+        this.show(el.dataset.id);
+      };
     });
 
-    this.activate("invoices");
+    // Default screen
+    this.show("invoices");
+    sidebar.querySelector(`[data-id="invoices"]`).classList.add("active");
   },
 
-  activate(id) {
-    document.querySelectorAll("#sidebarNav .nav-item")
-      .forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.id === id);
-      });
-
-    ui.showScreen(id);
+  show(screenId) {
+    const screen = this.screens[screenId];
+    if (!screen) {
+      console.error("Invalid screen:", screenId);
+      return;
+    }
+    const main = $("mainContent");
+    main.innerHTML = screen.render();
+    screen.init?.();
   }
 };

@@ -15,12 +15,13 @@ export const invoiceCreate = {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
-            <label>Customer</label>
+            <label style="color:white">Customer</label>
             <input id="custInput" list="custList" placeholder="Type customer..." />
             <datalist id="custList"></datalist>
           </div>
+
           <div>
-            <label>Invoice Discount</label>
+            <label style="color:white">Invoice Discount</label>
             <div style="display:flex;gap:8px">
               <select id="discountType">
                 <option value="PERCENT">%</option>
@@ -31,7 +32,7 @@ export const invoiceCreate = {
           </div>
         </div>
 
-        <h3>Items</h3>
+        <h3 style="color:white">Items</h3>
         <table class="invoice-table">
           <thead>
             <tr>
@@ -54,8 +55,13 @@ export const invoiceCreate = {
           <div id="grandTotalLine" style="font-size:18px;font-weight:700"></div>
         </div>
 
-        <label>Notes</label>
+        <label style="color:white">Notes</label>
         <textarea id="createNotes"></textarea>
+
+        <label style="color:white;display:flex;align-items:center;gap:8px;margin-top:10px">
+          <input type="checkbox" id="createMarkPaid" style="width:16px;height:16px" />
+          Mark as Paid
+        </label>
 
         <button class="btn primary save-big" id="saveInvBtn">💾 Create Invoice</button>
         <div id="createResult" class="small muted"></div>
@@ -63,7 +69,7 @@ export const invoiceCreate = {
   },
 
   init() {
-    // Customer autocomplete
+    // Customers
     const custList = $("custList");
     custList.innerHTML = "";
     customerModule.customers.forEach(c => {
@@ -72,7 +78,7 @@ export const invoiceCreate = {
       custList.appendChild(opt);
     });
 
-    // Product autocomplete
+    // Products
     const prodList = $("productListGlobal");
     prodList.innerHTML = "";
     productModule.products.forEach(p => {
@@ -81,22 +87,19 @@ export const invoiceCreate = {
       prodList.appendChild(opt);
     });
 
-    // Create first row
+    // Rows
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
 
-    // Add item button
     $("addItemBtn").onclick = () => {
       rowBuilder.addRow();
       totals.recalc();
     };
 
-    // Discount handlers
     $("discountType").onchange = totals.recalc;
     $("discountValue").oninput = totals.recalc;
 
-    // 💥 FIXED submit binding
     $("saveInvBtn").onclick = () => invoiceCreate.submit();
   },
 
@@ -106,7 +109,7 @@ export const invoiceCreate = {
     if (!customerId) return alert("Select a valid customer");
 
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
-    if (rows.length === 0) return alert("Add at least one item.");
+    if (!rows.length) return alert("Add at least one item.");
 
     const items = rowBuilder.buildPayloadItems(rows);
 
@@ -116,13 +119,14 @@ export const invoiceCreate = {
       $("createNotes").value || ""
     );
 
+    payload.paid = $("createMarkPaid").checked;
+
     const created = await invoiceModule.save(payload);
 
     $("createResult").textContent = `Invoice created: ${created.invoiceNumber}`;
-
-    // Reset form
     rowBuilder.clear();
     rowBuilder.addRow();
     totals.recalc();
+    $("createMarkPaid").checked = false;
   }
 };

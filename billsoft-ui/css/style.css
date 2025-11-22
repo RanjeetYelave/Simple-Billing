@@ -6,12 +6,14 @@ body {
   background:#0f172a;
   margin:0;
   padding:0;
+  color:#e5e7eb !important; /* Ensure all text defaults to white */
 }
 
 /* Root app container */
 #app {
   width:100%;
   min-height:100vh;
+  color:#e5e7eb !important;
 }
 
 /* ------------------------------------------------------------
@@ -20,13 +22,14 @@ body {
 .layout {
   display:flex;
   min-height:100vh;
+  color:#e5e7eb !important;
 }
 
 /* Sidebar */
 .sidebar {
   width:230px;
   background:linear-gradient(180deg, #0f172a, #020617);
-  color:#e5e7eb;
+  color:#e5e7eb !important;
   padding:18px 16px;
   box-shadow:4px 0 14px rgba(0,0,0,0.45);
   display:flex;
@@ -42,6 +45,7 @@ body {
   align-items:center;
   gap:8px;
   margin-bottom:8px;
+  color:white !important;
 }
 
 .sidebar .brand-badge {
@@ -54,25 +58,19 @@ body {
   justify-content:center;
   font-size:14px;
   font-weight:700;
+  color:white !important;
 }
 
 .sidebar .brand span {
-  color:#e5e7eb;
+  color:#e5e7eb !important;
 }
 
 .sidebar .nav-section-title {
   font-size:11px;
   text-transform:uppercase;
   letter-spacing:0.12em;
-  color:#64748b;
+  color:#9ca3af !important;
   margin:4px 4px 2px;
-}
-
-.nav-list {
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  margin-bottom:16px;
 }
 
 .nav-item {
@@ -82,7 +80,7 @@ body {
   border:0;
   padding:8px 10px;
   background:transparent;
-  color:#cbd5f5;
+  color:#cbd5f5 !important;
   font-size:13px;
   display:flex;
   align-items:center;
@@ -95,27 +93,29 @@ body {
   font-size:16px;
   width:18px;
   text-align:center;
+  color:#cbd5f5 !important;
 }
 
 .nav-item:hover {
   background:rgba(148,163,184,0.12);
   transform:translateX(1px);
+  color:#e5e7eb !important;
 }
 
 .nav-item.active {
   background:linear-gradient(90deg, #2563eb, #1d4ed8);
-  color:#f9fafb;
+  color:#f9fafb !important;
 }
 
 .nav-item.active span.icon {
-  color:#e5e7eb;
+  color:#ffffff !important;
 }
 
 /* Sidebar bottom small status */
 .sidebar-footer {
   margin-top:auto;
   font-size:11px;
-  color:#64748b;
+  color:#94a3b8 !important;
   border-top:1px solid rgba(51,65,85,0.7);
   padding-top:8px;
 }
@@ -129,6 +129,7 @@ body {
   padding:20px 24px;
   box-sizing:border-box;
   overflow:auto;
+  color:#e5e7eb !important;
 }
 
 .main-header {
@@ -136,18 +137,19 @@ body {
   justify-content:space-between;
   align-items:center;
   margin-bottom:16px;
-  color:#e5e7eb;
+  color:#e5e7eb !important;
 }
 
 .main-header h1 {
   margin:0;
   font-size:20px;
   letter-spacing:0.02em;
+  color:#ffffff !important;
 }
 
 .main-header .subtitle {
   font-size:12px;
-  color:#64748b;
+  color:#a1a1aa !important;
 }
 
 /* ------------------------------------------------------------
@@ -160,12 +162,13 @@ body {
   box-shadow:0 12px 30px rgba(15,23,42,0.85);
   margin-bottom:18px;
   border:1px solid #1e293b;
+  color:#e5e7eb !important;
 }
 
 .card h2, .card h3 {
   margin-top:0;
   margin-bottom:8px;
-  color:#e5e7eb;
+  color:#ffffff !important;
 }
 
 .card h3 {
@@ -184,12 +187,12 @@ input, select, textarea {
   border:1px solid #1f2937;
   font-size:13px;
   background:#020617;
-  color:#e5e7eb;
+  color:#ffffff !important;
   box-sizing:border-box;
 }
 
 input::placeholder, textarea::placeholder {
-  color:#6b7280;
+  color:#9ca3af !important;
 }
 
 textarea {
@@ -199,16 +202,17 @@ textarea {
 
 label {
   font-size:12px;
-  color:#9ca3af;
+  color:#ffffff !important;
 }
 
 /* Small helper text */
 .small {
   font-size:11px;
+  color:#cbd5f5 !important;
 }
 
 .muted {
-  color:#6b7280;
+  color:#9ca3af !important;
 }
 
 /* ------------------------------------------------------------
@@ -216,7 +220,7 @@ label {
 ------------------------------------------------------------- */
 .btn {
   background:#2563eb;
-  color:white;
+  color:white !important;
   padding:8px 14px;
   border:0;
   border-radius:999px;
@@ -235,10 +239,12 @@ label {
 
 .btn.primary {
   background:#2563eb;
+  color:white !important;
 }
 
 .btn.danger {
   background:#e11d48;
+  color:white !important;
 }
 
 .btn.small {
@@ -250,17 +256,11 @@ label {
 .btn.ghost {
   background:transparent;
   border:1px solid #334155;
-  color:#e5e7eb;
+  color:#e5e7eb !important;
 }
 
 .btn.ghost:hover {
   background:#020617;
-}
-
-.save-big {
-  padding:10px 18px;
-  font-size:14px;
-  border-radius:999px;
 }
 
 /* ------------------------------------------------------------
@@ -274,14 +274,16 @@ label {
   border-radius:10px;
   overflow:hidden;
   background:#020617;
+  color:white !important;
 }
 
 .invoice-table thead {
   background:#111827;
+  color:white !important;
 }
 
 .invoice-table th {
-  color:#9ca3af;
+  color:#d1d5db !important;
   padding:8px;
   font-size:11px;
   text-align:left;
@@ -294,7 +296,7 @@ label {
   border-bottom:1px solid #111827;
   font-size:12px;
   vertical-align:middle;
-  color:#e5e7eb;
+  color:white !important;
 }
 
 .invoice-table input,
@@ -302,6 +304,7 @@ label {
   padding:5px 7px;
   font-size:12px;
   background:#020617;
+  color:white !important;
   border-radius:7px;
 }
 
@@ -311,14 +314,13 @@ label {
 }
 
 /* ------------------------------------------------------------
-   TOTAL BOX — FIXED (READABLE)
+   TOTAL BOX
 ------------------------------------------------------------- */
 
 #subtotalLine,
 #taxTotalLine,
 #discountLine {
-  color:#dce0e8 !important;
-  font-weight:500;
+  color:#e2e8f0 !important;
 }
 
 #grandTotalLine {
@@ -333,6 +335,7 @@ label {
   border-radius:10px;
   border:1px solid #2a3042;
   margin-top:12px;
+  color:white !important;
 }
 
 /* ------------------------------------------------------------
@@ -347,6 +350,7 @@ label {
   cursor:pointer;
   transition:0.15s ease;
   border:1px solid #1e293b;
+  color:white !important;
 }
 
 .invoice-list-item:hover {
@@ -357,7 +361,7 @@ label {
 
 .invoice-list-item b {
   font-size:14px;
-  color:#e5e7eb;
+  color:#ffffff !important;
 }
 
 /* ------------------------------------------------------------
@@ -365,10 +369,12 @@ label {
 ------------------------------------------------------------- */
 .view {
   display:none;
+  color:white !important;
 }
 
 .view.active {
   display:block;
+  color:white !important;
 }
 
 /* ------------------------------------------------------------
@@ -381,6 +387,7 @@ label {
   box-shadow:0 10px 24px rgba(15,23,42,0.9);
   border:1px solid #1e293b;
   margin-top:6px;
+  color:white !important;
 }
 
 .invoice-meta-edit label {
@@ -388,7 +395,7 @@ label {
   margin-bottom:3px;
   font-size:12px;
   font-weight:500;
-  color:#9ca3af;
+  color:#ffffff !important;
 }
 
 /* ------------------------------------------------------------

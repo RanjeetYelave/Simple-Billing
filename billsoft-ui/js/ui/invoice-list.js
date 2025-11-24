@@ -9,14 +9,13 @@ export const invoiceList = {
   allInvoices: [],
   currentPage: 1,
   pageSize: 10,
-  currentSort: "DATE_DESC", // DATE_DESC, DATE_ASC, AMOUNT_DESC, AMOUNT_ASC
+  currentSort: "DATE_DESC",
 
   render() {
     return `
       <div class="card">
         <h2>Invoices</h2>
 
-        <!-- Search / filter bar -->
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:flex-end">
 
           <div style="max-width:160px;">
@@ -42,9 +41,7 @@ export const invoiceList = {
               </select>
             </div>
 
-            <button class="btn ghost small" id="reloadInvoices">
-              Reload All
-            </button>
+            <button class="btn ghost small" id="reloadInvoices">Reload All</button>
           </div>
         </div>
 
@@ -186,9 +183,7 @@ export const invoiceList = {
     const newStatus = !inv.paid;
     const label = newStatus ? "PAID" : "UNPAID";
 
-    const ok = window.confirm(
-      `Mark invoice ${inv.invoiceNumber} as ${label}?`
-    );
+    const ok = window.confirm(`Mark invoice ${inv.invoiceNumber} as ${label}?`);
     if (!ok) return;
 
     try {
@@ -220,9 +215,9 @@ export const invoiceList = {
     }
   },
 
-  async openPdf(inv) {
+  async openPdf(inv, size = "A4") {
     try {
-      const blob = await invoiceModule.pdf(inv.id);
+      const blob = await invoiceModule.pdf(inv.id, size);
       const fname = `invoice-${inv.invoiceNumber || inv.id}.pdf`;
       pdfViewer.open(blob, fname, `Invoice ${inv.invoiceNumber || inv.id}`);
     } catch (e) {
@@ -231,7 +226,7 @@ export const invoiceList = {
     }
   },
 
-  // ---------------- RENDERING ----------------
+  // ---------------- RENDER TABLE ----------------
 
   getTotalPages() {
     if (!this.allInvoices.length) return 1;
@@ -243,6 +238,7 @@ export const invoiceList = {
     const sortKey = this.currentSort;
 
     return list.sort((a, b) => {
+
       const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
       const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
 
@@ -302,13 +298,44 @@ export const invoiceList = {
           </span>
         </td>
         <td>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+
             <button class="btn small" data-view="${inv.id}">Edit</button>
+
             <button class="btn small ghost" data-paid="${inv.id}">
               ${isPaid ? "Mark Unpaid" : "Mark Paid"}
             </button>
+
             <button class="btn small danger" data-del="${inv.id}">Delete</button>
-            <button class="btn small ghost" data-pdf="${inv.id}">PDF</button>
+
+            <!-- PDF SPLIT BUTTON -->
+            <div style="display:flex;position:relative;">
+              <button class="btn small ghost pdf-main" data-pdf-main="${inv.id}">
+                PDF
+              </button>
+              <button class="btn small ghost pdf-drop" data-pdf-drop="${inv.id}">
+                ▾
+              </button>
+
+              <!-- Dropdown -->
+              <div class="pdf-menu hidden" id="pdfMenu-${inv.id}"
+                style="
+                  position:absolute;
+                  top:28px;
+                  right:0;
+                  background:#0f172a;
+                  border:1px solid #334155;
+                  border-radius:6px;
+                  padding:4px;
+                  z-index:50;
+                ">
+                <div class="pdf-option" data-pdf-size="A4" data-pdf-id="${inv.id}"
+                     style="padding:6px 10px;cursor:pointer;">Open A4</div>
+                <div class="pdf-option" data-pdf-size="A5" data-pdf-id="${inv.id}"
+                     style="padding:6px 10px;cursor:pointer;">Open A5</div>
+              </div>
+            </div>
+
           </div>
         </td>
       `;
@@ -317,48 +344,76 @@ export const invoiceList = {
 
     if (info) {
       info.textContent =
-        `Page ${this.currentPage} of ${totalPages} • ` +
-        `${this.allInvoices.length} invoice${this.allInvoices.length === 1 ? "" : "s"}`;
+        `Page ${this.currentPage} of ${totalPages} • ${this.allInvoices.length} invoice${this.allInvoices.length === 1 ? "" : "s"}`;
     }
 
     $("invPrevPage").disabled = this.currentPage <= 1;
     $("invNextPage").disabled = this.currentPage >= totalPages;
 
+    // Attach handlers
+    this.attachHandlers();
+  },
+
+  attachHandlers() {
+    const body = $("invTableBody");
+
+    // Edit
     body.querySelectorAll("button[data-view]").forEach(btn => {
-      btn.onclick = () => {
-        const id = Number(btn.dataset.view);
-        if (!id) return;
-        invoiceEdit.open(id);
-      };
+      btn.onclick = () => invoiceEdit.open(Number(btn.dataset.view));
     });
 
+    // Paid toggle
     body.querySelectorAll("button[data-paid]").forEach(btn => {
       btn.onclick = () => {
-        const id = Number(btn.dataset.paid);
-        const inv = this.allInvoices.find(x => x.id === id);
-        if (!inv) return;
-        this.togglePaid(inv);
+        const inv = this.allInvoices.find(x => x.id === Number(btn.dataset.paid));
+        if (inv) this.togglePaid(inv);
       };
     });
 
+    // Delete
     body.querySelectorAll("button[data-del]").forEach(btn => {
       btn.onclick = () => {
-        const id = Number(btn.dataset.del);
-        const inv = this.allInvoices.find(x => x.id === id);
-        if (!inv) return;
-        this.deleteInvoice(inv);
+        const inv = this.allInvoices.find(x => x.id === Number(btn.dataset.del));
+        if (inv) this.deleteInvoice(inv);
       };
     });
 
-    body.querySelectorAll("button[data-pdf]").forEach(btn => {
+    // Main PDF button (default A4)
+    body.querySelectorAll("button[data-pdf-main]").forEach(btn => {
       btn.onclick = () => {
-        const id = Number(btn.dataset.pdf);
+        const id = Number(btn.dataset.pdfMain);
         const inv = this.allInvoices.find(x => x.id === id);
-        if (!inv) return;
-        this.openPdf(inv);
+        if (inv) this.openPdf(inv, "A4");
       };
     });
 
-    $("invDetails").innerHTML = "";
+    // ▼ Dropdown toggle
+    body.querySelectorAll("button[data-pdf-drop]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.pdfDrop);
+        const menu = $(`pdfMenu-${id}`);
+        if (menu) menu.classList.toggle("hidden");
+      };
+    });
+
+    // Dropdown options
+    body.querySelectorAll(".pdf-option").forEach(opt => {
+      opt.onclick = () => {
+        const id = Number(opt.dataset.pdfId);
+        const size = opt.dataset.pdfSize;
+        const inv = this.allInvoices.find(x => x.id === id);
+        if (inv) this.openPdf(inv, size);
+
+        const menu = $(`pdfMenu-${id}`);
+        if (menu) menu.classList.add("hidden");
+      };
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
+        document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
+      }
+    });
   }
 };

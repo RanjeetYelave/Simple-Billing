@@ -56,11 +56,9 @@ export const invoiceModule = {
   },
 
   // ---- PDF DOWNLOAD ----
-  async pdf(id) {
-    const res = await fetch(`${API}/${id}/pdf`);
-    if (!res.ok) {
-      throw new Error("Failed to fetch invoice PDF");
-    }
-    return res.blob(); // caller gets Blob
+  async pdf(id, size = "A4") {
+    const res = await fetch(`${API}/${id}/pdf?size=${size}`);
+    if (!res.ok) throw new Error("Failed to fetch invoice PDF");
+    return res.blob();
   }
 };

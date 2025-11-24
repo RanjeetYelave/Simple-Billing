@@ -59,7 +59,7 @@ export const invoiceCreate = {
         <label style="color:white;margin-top:10px;">Notes</label>
         <textarea id="createNotes"></textarea>
 
-        <label style="color:white;display:flex;align-items:center;gap:8px;margin-top:10px">
+        <label style="color:white;display:flex;align-items:left;gap:8px;margin-top:10px">
           <input type="checkbox" id="createMarkPaid"/>
           Mark as Paid
         </label>

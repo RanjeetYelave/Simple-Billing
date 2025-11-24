@@ -8,12 +8,12 @@ export const layout = {
         <div class="sidebar">
           <div class="brand">
             <div class="brand-badge">B</div>
-            <span>BillSoft</span>
+            <span>InvoiceSuite</span>
           </div>
 
           <div class="nav-list" id="sidebarNav"></div>
 
-          <div class="sidebar-footer">v1.0</div>
+          <div class="sidebar-footer">v1.0-DEV-LICENCED-RNJT</div>
         </div>
 
         <div class="main">

@@ -11,7 +11,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ./billsoft   
+        working-directory: ./billsoft
 
     services:
       mysql:
@@ -20,6 +20,7 @@ jobs:
           - 3306:3306
         env:
           MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: root     # 👈 database created in CI
         options: >-
           --health-cmd="mysqladmin ping --silent"
           --health-interval=10s
@@ -48,17 +49,15 @@ jobs:
       - name: Build with Maven
         run: mvn clean verify
         env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/clickonova
-          SPRING_DATASOURCE_USERNAME: admin
+          SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/root    # 👈 DB name = root
+          SPRING_DATASOURCE_USERNAME: root
           SPRING_DATASOURCE_PASSWORD: password
-          SPRING_APP_JWTSECRET: UHVUYKk67t6t8SBF76bf7f0afdFUDHHFVHVHdfsd867868DBFfsdfFVUHBHD
-          SPRING_APP_JWTEXPIRATIONMS: 86400000
 
       - name: Upload WAR as artifact
         uses: actions/upload-artifact@v3
         with:
           name: war-artifact
-          path: billsoft/target/GithubActions-1.1-BETA.war   # 👈 CORRECT WAR PATH
+          path: billsoft/target/*.war     # 👈 auto-detect WAR name
 
   release:
     runs-on: ubuntu-latest
@@ -87,6 +86,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./GithubActions-1.1-BETA.war
-          asset_name: GithubActions-1.1-BETA.war
+          asset_path: ./$(ls | grep .war)     # 👈 auto-select WAR file
+          asset_name: billsoft.war
           asset_content_type: application/java-archive

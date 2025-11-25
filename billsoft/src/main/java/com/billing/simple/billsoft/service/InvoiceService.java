@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -7,6 +8,9 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
+import com.billing.simple.billsoft.dtos.CustomerInvoiceSummary;
+import com.billing.simple.billsoft.dtos.FirmAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
@@ -63,6 +67,7 @@ public class InvoiceService {
 
     // ---------------------------------------------------------
     // BUILD ITEM FROM REQUEST (initial mapping only)
+    // - clamps discount percent to 0..100 to avoid >100 issues
     // ---------------------------------------------------------
     private InvoiceItem buildItemFromRequest(InvoiceRequestItem reqItem) {
         if (reqItem == null) return null;
@@ -93,6 +98,11 @@ public class InvoiceService {
 
         Double dval = reqItem.getDiscountValue();
         Double dpct = reqItem.getDiscountPercent();
+
+        // sanitize percent discount to 0..100
+        if (dpct != null) {
+            dpct = Math.max(0.0, Math.min(100.0, dpct));
+        }
 
         if (dpct != null && dpct > 0) {
             item.setDiscountType("PERCENT");
@@ -214,12 +224,13 @@ public class InvoiceService {
         double taxableSubtotal = rawSubtotal - itemDiscountSum;
         if (taxableSubtotal < 0) taxableSubtotal = 0.0;
 
-        // invoice-level discount
+        // invoice-level discount (clamp percent to 0..100 if percent)
         double invoiceDisc = 0.0;
         Discount invDisc = request.getInvoiceDiscount();
         if (invDisc != null && invDisc.getValue() != null && invDisc.getValue() > 0) {
             if ("PERCENT".equalsIgnoreCase(invDisc.getType())) {
-                invoiceDisc = (taxableSubtotal) * invDisc.getValue() / 100.0;
+                double pct = Math.max(0.0, Math.min(100.0, invDisc.getValue()));
+                invoiceDisc = (taxableSubtotal) * pct / 100.0;
             } else {
                 invoiceDisc = invDisc.getValue();
             }
@@ -239,7 +250,7 @@ public class InvoiceService {
         double totalDiscount = itemDiscountSum + invoiceDisc;
         double grand = finalSubtotal + finalGstTotal;
 
-        // Set invoice-level discount meta for storage
+        // Set invoice-level discount meta for storage (store provided type/value)
         if (invDisc != null) {
             invoice.setInvoiceDiscountType(invDisc.getType());
             invoice.setInvoiceDiscountValue(invDisc.getValue());
@@ -325,9 +336,10 @@ public class InvoiceService {
         double invDiscAmt = 0.0;
         Discount invDisc = req.getInvoiceDiscount();
         if (invDisc != null && invDisc.getValue() != null && invDisc.getValue() > 0) {
-            if ("PERCENT".equalsIgnoreCase(invDisc.getType()))
-                invDiscAmt = taxableSubtotal * invDisc.getValue() / 100.0;
-            else
+            if ("PERCENT".equalsIgnoreCase(invDisc.getType())) {
+                double pct = Math.max(0.0, Math.min(100.0, invDisc.getValue()));
+                invDiscAmt = taxableSubtotal * pct / 100.0;
+            } else
                 invDiscAmt = invDisc.getValue();
         }
 
@@ -344,7 +356,7 @@ public class InvoiceService {
         double totalDiscount = itemDiscountSum + invDiscAmt;
         double grand = finalSubtotal + finalGstTotal;
 
-        // set invoice discount meta
+        // set invoice discount meta (store original type/value)
         if (invDisc != null) {
             invoice.setInvoiceDiscountType(invDisc.getType());
             invoice.setInvoiceDiscountValue(invDisc.getValue());
@@ -376,14 +388,258 @@ public class InvoiceService {
     }
 
     // ---------------------------------------------------------
+    // CUSTOMER-WISE ANALYTICS
+    // ---------------------------------------------------------
+    public CustomerAnalyticsResponse getCustomerAnalytics(Long customerId) {
+
+        List<Invoice> invoices = invoiceRepo.findByCustomer_Id(customerId);
+
+        CustomerAnalyticsResponse resp = new CustomerAnalyticsResponse();
+        resp.setCustomerId(customerId);
+
+        if (invoices == null || invoices.isEmpty()) {
+            resp.setCustomerName(null);
+            resp.setTotalBusiness(0.0);
+            resp.setTotalPaid(0.0);
+            resp.setTotalPending(0.0);
+            resp.setInvoiceCount(0L);
+            resp.setInvoices(Collections.emptyList());
+            return resp;
+        }
+
+        Customer c = invoices.get(0).getCustomer();
+        resp.setCustomerName(c != null ? c.getName() : null);
+
+        double totalBusiness = invoices.stream()
+                .map(Invoice::getTotalAmount)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        double totalPaid = invoices.stream()
+                .filter(x -> Boolean.TRUE.equals(x.getPaid()))
+                .map(Invoice::getTotalAmount)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        List<CustomerInvoiceSummary> list = invoices.stream()
+                .map(inv -> {
+                    CustomerInvoiceSummary s = new CustomerInvoiceSummary();
+                    s.setInvoiceId(inv.getId());
+                    s.setInvoiceNumber(inv.getInvoiceNumber());
+                    s.setInvoiceDate(inv.getInvoiceDate() == null ? null : inv.getInvoiceDate().toString());
+                    s.setTotalAmount(inv.getTotalAmount());
+                    s.setPaid(inv.getPaid());
+                    return s;
+                }).collect(Collectors.toList());
+
+        resp.setTotalBusiness(totalBusiness);
+        resp.setTotalPaid(totalPaid);
+        resp.setTotalPending(totalBusiness - totalPaid);
+        resp.setInvoiceCount((long) invoices.size());
+        resp.setInvoices(list);
+
+        return resp;
+    }
+
+    // ---------------------------------------------------------
+    // SEARCH BY NAME ANALYTICS
+    // ---------------------------------------------------------
+    public List<CustomerAnalyticsResponse> getCustomerAnalyticsByName(String namePart) {
+        if (namePart == null || namePart.trim().isEmpty()) return Collections.emptyList();
+
+        List<Invoice> invoices = invoiceRepo.findByCustomer_NameContainingIgnoreCase(namePart);
+        if (invoices == null || invoices.isEmpty()) return Collections.emptyList();
+
+        Set<Long> ids = invoices.stream()
+                .map(Invoice::getCustomer)
+                .filter(Objects::nonNull)
+                .map(Customer::getId)
+                .collect(Collectors.toSet());
+
+        List<CustomerAnalyticsResponse> list = new ArrayList<>();
+        for (Long id : ids) list.add(getCustomerAnalytics(id));
+
+        return list;
+    }
+
+    // ---------------------------------------------------------
+    // FIRM-WIDE ANALYTICS (DTO VERSION)
+    // ---------------------------------------------------------
+    @Transactional(readOnly = true)
+    public FirmAnalyticsResponse getFirmAnalytics() {
+        List<Invoice> all = invoiceRepo.findAll();
+        LocalDate today = LocalDate.now();
+
+        double totalBusiness = 0, totalPaid = 0, totalPending = 0;
+        double todayBusiness = 0, weekBusiness = 0, monthBusiness = 0, yearBusiness = 0;
+
+        // For top customers
+        Map<Long, FirmAnalyticsResponse.TopCustomer> customerMap = new HashMap<>();
+
+        // For top products
+        Map<Long, FirmAnalyticsResponse.TopProduct> productMap = new HashMap<>();
+
+        LocalDate weekStart = today.minusDays(6);
+
+        for (Invoice inv : all) {
+            double amt = inv.getTotalAmount() != null ? inv.getTotalAmount() : 0.0;
+            totalBusiness += amt;
+
+            boolean paid = Boolean.TRUE.equals(inv.getPaid());
+            if (paid) totalPaid += amt;
+            else totalPending += amt;
+
+            // Date-based breakdown
+            LocalDate invDate = inv.getInvoiceDate() != null
+                    ? inv.getInvoiceDate().toLocalDate()
+                    : null;
+
+            if (invDate != null) {
+                if (invDate.isEqual(today)) {
+                    todayBusiness += amt;
+                }
+                if (!invDate.isBefore(weekStart)) {
+                    weekBusiness += amt;
+                }
+                if (invDate.getMonth() == today.getMonth()
+                        && invDate.getYear() == today.getYear()) {
+                    monthBusiness += amt;
+                }
+                if (invDate.getYear() == today.getYear()) {
+                    yearBusiness += amt;
+                }
+            }
+
+            // Top customers
+            Customer c = inv.getCustomer();
+            if (c != null) {
+                FirmAnalyticsResponse.TopCustomer agg =
+                        customerMap.computeIfAbsent(c.getId(), id -> {
+                            FirmAnalyticsResponse.TopCustomer t = new FirmAnalyticsResponse.TopCustomer();
+                            t.setCustomerId(c.getId());
+                            t.setCustomerName(c.getName());
+                            t.setTotalAmount(0.0);
+                            t.setPendingAmount(0.0);
+                            t.setInvoiceCount(0L);
+                            return t;
+                        });
+
+                agg.setTotalAmount(agg.getTotalAmount() + amt);
+                if (!paid) {
+                    agg.setPendingAmount(agg.getPendingAmount() + amt);
+                }
+                agg.setInvoiceCount(agg.getInvoiceCount() + 1);
+            }
+
+            // Top products
+            if (inv.getItems() != null) {
+                for (InvoiceItem item : inv.getItems()) {
+                    Product p = item.getProduct();
+                    if (p == null) continue;
+
+                    Long pid = p.getId();
+                    if (pid == null) continue;
+
+                    FirmAnalyticsResponse.TopProduct pAgg =
+                            productMap.computeIfAbsent(pid, id -> {
+                                FirmAnalyticsResponse.TopProduct t = new FirmAnalyticsResponse.TopProduct();
+                                t.setProductId(p.getId());
+                                t.setProductName(p.getName());
+                                t.setTotalQty(0L);
+                                t.setTotalAmount(0.0);
+                                return t;
+                            });
+
+                    long qty = item.getQty() != null ? item.getQty() : 0;
+                    double lineAmt = item.getLineTotal() != null ? item.getLineTotal() : 0.0;
+
+                    pAgg.setTotalQty(pAgg.getTotalQty() + qty);
+                    pAgg.setTotalAmount(pAgg.getTotalAmount() + lineAmt);
+                }
+            }
+        }
+
+        // sort topN
+        List<FirmAnalyticsResponse.TopCustomer> topCustomers = new ArrayList<>(customerMap.values());
+        topCustomers.sort((a, b) -> Double.compare(
+                b.getTotalAmount() != null ? b.getTotalAmount() : 0.0,
+                a.getTotalAmount() != null ? a.getTotalAmount() : 0.0
+        ));
+        if (topCustomers.size() > 5) {
+            topCustomers = topCustomers.subList(0, 5);
+        }
+
+        List<FirmAnalyticsResponse.TopProduct> topProducts = new ArrayList<>(productMap.values());
+        topProducts.sort((a, b) -> Long.compare(
+                b.getTotalQty() != null ? b.getTotalQty() : 0L,
+                a.getTotalQty() != null ? a.getTotalQty() : 0L
+        ));
+        if (topProducts.size() > 5) {
+            topProducts = topProducts.subList(0, 5);
+        }
+
+        FirmAnalyticsResponse resp = new FirmAnalyticsResponse();
+        resp.setTotalBusiness(totalBusiness);
+        resp.setTotalPaid(totalPaid);
+        resp.setTotalPending(totalPending);
+
+        resp.setBusinessToday(todayBusiness);
+        resp.setBusinessThisWeek(weekBusiness);
+        resp.setBusinessThisMonth(monthBusiness);
+        resp.setBusinessThisYear(yearBusiness);
+
+        resp.setTopCustomers(topCustomers);
+        resp.setTopProducts(topProducts);
+
+        return resp;
+    }
+
+    // ---------------------------------------------------------
+    // LEGACY: SIMPLE MAP STATS (kept in case used elsewhere)
+    // ---------------------------------------------------------
+    public Map<String, Double> getFirmStats() {
+
+        List<Invoice> all = invoiceRepo.findAll();
+        LocalDate today = LocalDate.now();
+
+        double totalBusiness = 0, totalPaid = 0, totalPending = 0;
+        double todayBusiness = 0, weekBusiness = 0, monthBusiness = 0, yearBusiness = 0;
+
+        for (Invoice i : all) {
+            double amt = i.getTotalAmount() == null ? 0 : i.getTotalAmount();
+            totalBusiness += amt;
+
+            if (Boolean.TRUE.equals(i.getPaid())) totalPaid += amt;
+            else totalPending += amt;
+
+            if (i.getInvoiceDate() != null) {
+                LocalDate d = i.getInvoiceDate().toLocalDate();
+
+                if (d.isEqual(today)) todayBusiness += amt;
+                if (!d.isBefore(today.minusDays(6))) weekBusiness += amt;
+                if (d.getMonth() == today.getMonth() && d.getYear() == today.getYear()) monthBusiness += amt;
+                if (d.getYear() == today.getYear()) yearBusiness += amt;
+            }
+        }
+
+        Map<String, Double> map = new HashMap<>();
+        map.put("totalBusiness", totalBusiness);
+        map.put("totalPaid", totalPaid);
+        map.put("totalPending", totalPending);
+        map.put("businessToday", todayBusiness);
+        map.put("businessThisWeek", weekBusiness);
+        map.put("businessThisMonth", monthBusiness);
+        map.put("businessThisYear", yearBusiness);
+
+        return map;
+    }
+
+    // ---------------------------------------------------------
     // small rounding helper (2 decimals)
     // ---------------------------------------------------------
     private static double round(double v) {
         return Math.round(v * 100.0) / 100.0;
     }
-
-    // -------------------------------
-    // The rest of analytics / firm methods unchanged
-    // (getCustomerAnalytics, getFirmAnalytics, etc.)
-    // -------------------------------
 }

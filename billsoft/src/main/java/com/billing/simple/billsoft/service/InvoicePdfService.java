@@ -190,7 +190,7 @@ public class InvoicePdfService {
         doc.add(new Paragraph("\n"));
 
         // ---------- Items table ----------
-        // Columns: #, Description, HSN/SAC, Qty, Unit, Rate, Amount (taxable before inv disc), GST%, Total
+        // Columns: #, Description, HSN/SAC, Qty, Unit, Rate, Amount (base), GST%, Total
         float[] widths = new float[]{0.6f, 3f, 1f, 0.8f, 0.8f, 1f, 1f, 0.8f, 1f};
         PdfPTable table = new PdfPTable(widths);
         table.setWidthPercentage(100);
@@ -229,12 +229,12 @@ public class InvoicePdfService {
                 table.addCell(new PdfPCell(new Phrase(it.getUnit() == null ? "-" : it.getUnit(), normal)));
                 table.addCell(new PdfPCell(new Phrase(formatAmount(it.getPricePerUnit()), normal)));
 
-                // Amount (taxable amount BEFORE invoice-level discount? -> we'll show taxableAmount + per-item distribution applied)
-                // Show taxable amount currently stored on the item (taxable after per-item and invoice-level distribution)
+                // Amount (base amount = qty * pricePerUnit, stored as amountWithoutTax)
                 table.addCell(new PdfPCell(new Phrase(formatAmount(it.getAmountWithoutTax()), normal)));
 
                 table.addCell(new PdfPCell(new Phrase(formatPercent(it.getGstPercent()), normal)));
 
+                // Line total (taxable after invoice-level distribution + gst)
                 table.addCell(new PdfPCell(new Phrase(formatAmount(it.getLineTotal()), normal)));
             }
         } else {
@@ -246,22 +246,54 @@ public class InvoicePdfService {
 
         doc.add(table);
 
-        // ---------- Totals / Discounts ----------
+        // ---------- Totals / Discounts (Option A format) ----------
         doc.add(new Paragraph("\n"));
 
-        double subtotal = invoice.getSubtotalWithoutTax() != null ? invoice.getSubtotalWithoutTax() : 0.0;
+        // Compute raw subtotal and product (item) discounts from item fields
+        double rawSubtotal = 0.0;
+        double productDiscount = 0.0;
+
+        if (items != null && !items.isEmpty()) {
+            for (InvoiceItem it : items) {
+                double qty = it.getQty() != null ? it.getQty() : 0.0;
+                double rate = it.getPricePerUnit() != null ? it.getPricePerUnit() : 0.0;
+                double base = qty * rate;
+                rawSubtotal += base;
+
+                double idisc = 0.0;
+                if (it.getDiscountPercent() != null) {
+                    idisc = base * (it.getDiscountPercent() / 100.0);
+                } else if (it.getDiscountValue() != null) {
+                    idisc = it.getDiscountValue();
+                }
+                productDiscount += idisc;
+            }
+        }
+
+        // Total tax (already computed & stored by InvoiceService after invoice-level distribution)
         double totalTax = invoice.getTotalTax() != null ? invoice.getTotalTax() : 0.0;
-        double totalDiscount = invoice.getTotalDiscount() != null ? invoice.getTotalDiscount() : 0.0;
-        double grand = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : (subtotal + totalTax);
+
+        // totalDiscount stored on invoice = productDiscount + invoiceLevelDiscount (per InvoiceService)
+        double storedTotalDiscount = invoice.getTotalDiscount() != null ? invoice.getTotalDiscount() : 0.0;
+        double additionalDiscount = storedTotalDiscount - productDiscount;
+        if (additionalDiscount < 0) additionalDiscount = 0.0; // safety clamp
+
+        // Taxable value before invoice-level discount (i.e. after product discounts)
+        double taxableBeforeInvoiceDiscount = rawSubtotal - productDiscount;
+        if (taxableBeforeInvoiceDiscount < 0) taxableBeforeInvoiceDiscount = 0.0;
+
+        double grand = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : (taxableBeforeInvoiceDiscount + totalTax - additionalDiscount);
 
         // Totals table (right-aligned)
         PdfPTable totalsTbl = new PdfPTable(new float[] { 3f, 1f });
         totalsTbl.setWidthPercentage(50);
         totalsTbl.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
-        addTotalsRow(totalsTbl, "Subtotal (Taxable Value)", formatAmount(subtotal), normal, hFont);
+        addTotalsRow(totalsTbl, "Subtotal (Before Discount)", formatAmount(rawSubtotal), normal, hFont);
+        addTotalsRow(totalsTbl, "Product Discount", "- " + formatAmount(productDiscount), normal, hFont);
+        addTotalsRow(totalsTbl, "Taxable Value", formatAmount(taxableBeforeInvoiceDiscount), normal, hFont);
         addTotalsRow(totalsTbl, "Total Tax", formatAmount(totalTax), normal, hFont);
-        addTotalsRow(totalsTbl, "Total Discount", "- " + formatAmount(totalDiscount), normal, hFont);
+        addTotalsRow(totalsTbl, "Additional Discount", "- " + formatAmount(additionalDiscount), normal, hFont);
         addTotalsRow(totalsTbl, "Grand Total", formatAmount(grand), normal, bold);
 
         doc.add(totalsTbl);

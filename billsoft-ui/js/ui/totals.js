@@ -3,12 +3,33 @@ import { $, money } from "../utils.js";
 
 export const totals = {
 
+  /**
+   * Recalculate line totals and invoice totals.
+   *
+   * - Product Discount = total of per-line discounts (value or percent applied per line)
+   * - Additional Discount = invoice-level discount (either percent or value, applied on taxable sum after product discounts)
+   *
+   * The UI shows:
+   *   Subtotal (sum of qty * price)
+   *   Product Discount (sum of per-item discounts)
+   *   Tax Total
+   *   Additional Discount (invoice-level)
+   *   Grand Total
+   *
+   * We keep compatibility with previous dataset keys:
+   * - createResult.dataset.subtotal  => raw subtotal (sum qty*price)
+   * - createResult.dataset.tax       => taxTotal
+   * - createResult.dataset.discountAmount => additionalDiscount (invoice-level)
+   * - createResult.dataset.itemDiscount => productDiscount (new)
+   * - createResult.dataset.grandTotal => grand total
+   */
   recalc() {
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
 
-    let subtotal = 0;
-    let taxTotal = 0;
-    let taxableSum = 0;
+    let subtotal = 0;           // sum of qty * price (raw)
+    let taxTotal = 0;           // sum of GST amounts (based on taxable per-line before invoice-level discount)
+    let taxableSum = 0;         // sum of taxable per-line (after per-line discounts)
+    let productDiscountTotal = 0; // sum of per-line discounts (value)
 
     rows.forEach(r => {
       const qty  = Number(r.querySelector(".qty")?.value)  || 0;
@@ -17,12 +38,14 @@ export const totals = {
       const dpct = Number(r.querySelector(".dpct")?.value) || 0;
       const gst  = Number(r.querySelector(".gst")?.value)  || 0;
 
-      const amt = qty * price;
+      const amt = qty * price; // raw line amount (before any discount)
+      // per-line discount (either percent or absolute)
       const disc = dpct > 0 ? (amt * dpct / 100) : dval;
-      const taxable = amt - disc;
+      const taxable = Math.max(0, amt - disc);
       const gstamt = taxable * gst / 100;
       const total = taxable + gstamt;
 
+      // update row displays (if cells exist)
       const amtCell  = r.querySelector(".amt");
       const taxCell  = r.querySelector(".taxable");
       const gstCell  = r.querySelector(".gstamt");
@@ -36,38 +59,70 @@ export const totals = {
       subtotal    += amt;
       taxTotal    += gstamt;
       taxableSum  += taxable;
+      productDiscountTotal += disc;
     });
 
+    // Invoice-level discount (Additional Discount)
     const type = $("discountType")?.value || "VALUE";
     const val  = Number($("discountValue")?.value) || 0;
-    const discInv = type === "PERCENT" ? taxableSum * val / 100 : val;
+    const additionalDiscount = type === "PERCENT" ? taxableSum * val / 100 : val;
 
-    const grand = taxableSum - discInv + taxTotal;
+    // Grand total = (taxableSum - additionalDiscount) + taxTotal
+    const grand = Math.max(0, taxableSum - additionalDiscount) + taxTotal;
 
-    $("subtotalLine").textContent = "Subtotal: " + money(subtotal);
-    $("taxTotalLine").textContent = "Tax Total: " + money(taxTotal);
-    $("discountLine").textContent = "Discount: " + money(discInv);
-    $("grandTotalLine").textContent = "Grand Total: " + money(grand);
+    // Update UI lines (ensure nodes exist)
+    // Keep old element ids for compatibility; add new productDiscountLine
+    const productLineEl = $("productDiscountLine");
+    const subtotalEl = $("subtotalLine");
+    const taxEl = $("taxTotalLine");
+    const addDiscEl = $("discountLine"); // reused as Additional Discount line
+    const grandEl = $("grandTotalLine");
 
-    // Keep UI dataset for convenience (these are UI-derived preview numbers)
-    $("createResult").dataset.subtotal        = subtotal;
-    $("createResult").dataset.tax             = taxTotal;
-    $("createResult").dataset.discountAmount  = discInv;
-    $("createResult").dataset.grandTotal      = grand;
+    if (subtotalEl) subtotalEl.textContent = "Subtotal: " + money(subtotal);
+    if (productLineEl) productLineEl.textContent = "Product Discount: -" + money(productDiscountTotal);
+    if (taxEl) taxEl.textContent = "Tax Total: " + money(taxTotal);
+    if (addDiscEl) addDiscEl.textContent = "Additional Discount: -" + money(additionalDiscount);
+    if (grandEl) grandEl.textContent = "Grand Total: " + money(grand);
+
+    // Persist values on dataset for buildFinalPayload and other logic
+    const resultEl = $("createResult");
+    if (resultEl) {
+      resultEl.dataset.subtotal = subtotal;
+      resultEl.dataset.tax = taxTotal;
+      resultEl.dataset.discountAmount = additionalDiscount; // legacy key (invoice-level)
+      resultEl.dataset.itemDiscount = productDiscountTotal; // new key (product-level)
+      resultEl.dataset.grandTotal = grand;
+    }
   },
 
-  // Build payload-friendly wrapper (no server-only totals included).
-  // Backend will compute authoritative totals.
+  /**
+   * Build final payload for invoice create API.
+   * We keep previous structure but add explicit item-level discount and additionalDiscount values
+   * for clarity and server-side reconciliation (server remains authoritative).
+   */
   buildFinalPayload(items, customerId, notes) {
-    const discountType = $("discountType")?.value || "VALUE";
-    const discountValue = Number($("discountValue")?.value) || 0;
-    const invoiceDiscount = (discountValue > 0) ? { type: discountType, value: discountValue } : null;
+    const resultEl = $("createResult");
+    const subtotalRaw = Number(resultEl?.dataset.subtotal || 0);
+    const taxTotal = Number(resultEl?.dataset.tax || 0);
+    const additionalDiscount = Number(resultEl?.dataset.discountAmount || 0);
+    const itemDiscount = Number(resultEl?.dataset.itemDiscount || 0);
+    const grandTotal = Number(resultEl?.dataset.grandTotal || 0);
 
     return {
       customerId,
       notes,
       items,
-      invoiceDiscount: invoiceDiscount
+      totals: {
+        // backward-compatible keys
+        subtotalWithoutTax: subtotalRaw,
+        totalTax: taxTotal,
+        discountAmount: additionalDiscount, // invoice-level (legacy)
+        grandTotal: grandTotal,
+
+        // new explicit keys
+        totalItemDiscount: itemDiscount,
+        additionalDiscount: additionalDiscount
+      }
     };
   }
 };

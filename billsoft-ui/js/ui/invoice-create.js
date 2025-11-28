@@ -22,7 +22,8 @@ export const invoiceCreate = {
           </div>
 
           <div>
-            <label style="color:white">Invoice Discount</label>
+            <!-- Renamed to Additional Discount (invoice-level) -->
+            <label style="color:white">Additional Discount</label>
             <div style="display:flex;gap:8px">
               <select id="discountType">
                 <option value="PERCENT">%</option>
@@ -38,7 +39,7 @@ export const invoiceCreate = {
           <thead>
             <tr>
               <th>Product</th><th>Qty</th><th>Unit</th><th>Price</th><th>Amt</th>
-              <th>Disc</th><th>D%</th><th>Taxable</th><th>GST%</th><th>GST Amt</th>
+              <th>Disc</th><th>Taxable</th><th>GST%</th><th>GST Amt</th>
               <th>Total</th><th></th>
             </tr>
           </thead>
@@ -51,8 +52,9 @@ export const invoiceCreate = {
 
         <div id="createTotals" style="margin-top:14px;text-align:right;">
           <div id="subtotalLine"></div>
+          <div id="productDiscountLine"></div> <!-- new: product-level discount total -->
           <div id="taxTotalLine"></div>
-          <div id="discountLine"></div>
+          <div id="discountLine"></div> <!-- reused: Additional Discount (invoice-level) -->
           <div id="grandTotalLine"></div>
         </div>
 
@@ -138,13 +140,8 @@ export const invoiceCreate = {
           address: ""
         });
 
-        // refresh cache properly (load will fetch from backend)
-        if (typeof customerModule.load === "function") {
-          try {
-            await customerModule.load();
-          } catch (e) {
-            // ignore - we already pushed created into local list in create()
-          }
+        if (typeof customerModule.list === "function") {
+          await customerModule.list(); // refresh cache
         }
 
         customerId = created.id;
@@ -163,29 +160,17 @@ export const invoiceCreate = {
       return;
     }
 
-    // Build payload that backend expects.
-    // IMPORTANT: do not send UI-only totals. Backend will compute final totals.
-    const discountType = $("discountType")?.value || "VALUE";
-    const discountValue = Number($("discountValue")?.value) || 0;
-    const invoiceDiscount = (discountValue > 0) ? { type: discountType, value: discountValue } : null;
-
-    const payload = {
-      customerId,
-      notes: $("createNotes").value || "",
+    // buildFinalPayload now includes item-level and additional/invoice discount
+    const payload = totals.buildFinalPayload(
       items,
-      invoiceDiscount: invoiceDiscount,
-      paid: !!$("createMarkPaid").checked
-    };
+      customerId,
+      $("createNotes").value || ""
+    );
 
-    // send to backend
-    let created;
-    try {
-      created = await invoiceModule.save(payload);
-    } catch (e) {
-      console.error("Invoice save failed", e);
-      alert("Failed to save invoice.");
-      return;
-    }
+    // set paid flag
+    payload.paid = $("createMarkPaid").checked;
+
+    const created = await invoiceModule.save(payload);
 
     $("createResult").textContent =
       `Invoice created: ${created.invoiceNumber || created.id}`;
@@ -206,13 +191,5 @@ export const invoiceCreate = {
     rowBuilder.addRow();
     totals.recalc();
     $("createMarkPaid").checked = false;
-
-    // reload customers/products cache UI (optional)
-    try {
-      if (typeof productModule.load === "function") await productModule.load();
-      if (typeof customerModule.load === "function") await customerModule.load();
-    } catch (e) {
-      // ignore
-    }
   }
 };

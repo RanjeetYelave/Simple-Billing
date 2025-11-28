@@ -1,7 +1,4 @@
-// js/row-builder.js
-// Improved row builder: delegation, fewer querySelector calls, safer event wiring.
-// Preserves buildPayloadItems semantics and auto-create behavior.
-
+// js/ui/row-builder.js
 import { productModule } from "../product.js";
 import { totals } from "./totals.js";
 
@@ -15,176 +12,191 @@ export const rowBuilder = {
     this.rowIndex = 0;
   },
 
+  // helper: returns array of unit strings (unique) with "PCS" first
+  getUnitOptions() {
+    const units = new Set();
+    units.add("PCS");
+    (productModule.products || []).forEach(p => {
+      if (p.unit && p.unit.trim()) units.add(p.unit.trim());
+    });
+    return Array.from(units);
+  },
+
+  // create a <select> HTML string for unit options
+  buildUnitSelectHtml(selected = "PCS") {
+    const opts = this.getUnitOptions()
+      .map(u => `<option value="${u}" ${u === selected ? "selected" : ""}>${u}</option>`)
+      .join("");
+    return `<select class="unit">${opts}</select>`;
+  },
+
   addRow() {
     const tbody = document.getElementById("createItemsBody");
     if (!tbody) return;
 
     const rowId = ++this.rowIndex;
 
-    // create elements programmatically (avoids innerHTML thrash)
-    const tr = document.createElement("tr");
-    tr.dataset.row = String(rowId);
+    const row = document.createElement("tr");
+    row.dataset.row = String(rowId);
 
-    tr.innerHTML = `
+    // NOTE: quantity default is BLANK (user must type). Unit is a select defaulting to PCS.
+    row.innerHTML = `
       <td><input list="productListGlobal" class="pname" autocomplete="off" /></td>
-      <td><input type="number" class="qty" value="1" min="0"/></td>
-      <td><input type="text" class="unit"/></td>
-      <td><input type="number" class="price" value="0" min="0" step="0.01"/></td>
-      <td class="amt">0.00</td>
-      <td><input type="number" class="dval" value="0" min="0" step="0.01"/></td>
-      <td><input type="number" class="dpct" value="0" min="0" step="0.01"/></td>
-      <td class="taxable">0.00</td>
-      <td><input type="number" class="gst" value="0" min="0" step="0.01"/></td>
-      <td class="gstamt">0.00</td>
-      <td class="total">0.00</td>
+      <td><input type="number" class="qty" value="" min="0" step="1" /></td>
+      <td>${this.buildUnitSelectHtml("PCS")}</td>
+      <td><input type="number" class="price" value="0" min="0" step="0.01" /></td>
+      <td class="amt">0</td>
+      <td><input type="number" class="dval" value="0" min="0" step="0.01" /></td>
+      <td class="taxable">0</td>
+      <td><input type="number" class="gst" value="0" min="0" step="0.01" /></td>
+      <td class="gstamt">0</td>
+      <td class="total">0</td>
       <td><button class="btn small danger remove">×</button></td>
     `;
 
-    tbody.appendChild(tr);
+    tbody.appendChild(row);
 
-    // Efficient bindings: event delegation handled in initDelegation below.
-    // But we need an onchange autofill on pname that may require immediate fill when selected.
-    const pname = tr.querySelector(".pname");
+    const pname   = row.querySelector(".pname");
+    const qty     = row.querySelector(".qty");
+    const unit    = row.querySelector(".unit");
+    const price   = row.querySelector(".price");
+    const dval    = row.querySelector(".dval");
+    const gst     = row.querySelector(".gst");
+    const remove  = row.querySelector(".remove");
+
+    // AUTO-FILL PRODUCT ON SELECT
     if (pname) {
-      pname.addEventListener("change", () => {
+      pname.onchange = () => {
         const val = pname.value.trim();
         if (!val) {
           totals.recalc();
           return;
         }
+
         const p = productModule.findByName(val);
         if (!p) {
+          // unknown product: leave fields as typed
           totals.recalc();
           return;
         }
 
-        const qtyEl = tr.querySelector(".qty");
-        const unitEl = tr.querySelector(".unit");
-        const priceEl = tr.querySelector(".price");
-        const gstEl = tr.querySelector(".gst");
+        // autofill fields using product
+        if (qty)   qty.value   = qty.value || "1";
+        if (unit)  unit.value  = p.unit || "PCS";
+        if (price) price.value = (p.price != null ? p.price : 0);
+        if (gst)   gst.value   = (p.gstPercentage != null ? p.gstPercentage : 0);
 
-        if (qtyEl) qtyEl.value = qtyEl.value || "1";
-        if (unitEl) unitEl.value = p.unit || "";
-        if (priceEl) priceEl.value = (p.price != null ? p.price : 0);
-        if (gstEl) gstEl.value = (p.gstPercentage != null ? p.gstPercentage : 0);
-
-        // store product meta on row for save optimization
-        tr.dataset.productId = p.id || "";
-        tr.dataset.productName = p.name || "";
+        // store dataset to help edits later (optional)
+        row.dataset.productId = p.id;
+        row.dataset.productName = p.name;
 
         totals.recalc();
-        if (qtyEl) qtyEl.focus();
-      });
+        if (qty) qty.focus();
+      };
+
+      // when typing product name and pressing Enter -> jump to qty (or add row if last)
+      pname.onkeydown = (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        // if there's a product selected auto-fill will happen via onchange, but we move focus
+        const next = qty || row.querySelector(".unit") || row.querySelector(".price");
+        if (next) next.focus();
+        totals.recalc();
+      };
     }
 
-    // Return row element for further manipulation if caller needs it
-    return tr;
-  },
+    // NAVIGATION ORDER (tally-like)
+    const navOrder = [".pname", ".qty", ".unit", ".price", ".dval", ".gst"];
 
-  // Event delegation initialization for rows (call this once on page init)
-  initDelegation() {
-    const tbody = document.getElementById("createItemsBody");
-    if (!tbody) return;
+    navOrder.forEach((selector, idx) => {
+      const field = row.querySelector(selector);
+      if (!field) return;
 
-    // Use a single input listener for recalculation (throttled by totals)
-    tbody.addEventListener("input", (e) => {
-      // Only care about inputs inside rows
-      if (!e.target) return;
-      if (e.target.matches(".qty, .price, .dval, .dpct, .gst, .pname, .unit")) {
-        totals.recalc();
-      }
-    });
+      field.onkeydown = e => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
 
-    // Click handler for remove buttons
-    tbody.addEventListener("click", (e) => {
-      const btn = e.target.closest(".remove");
-      if (btn) {
-        const row = btn.closest("tr");
-        if (row) {
-          row.remove();
+        // Last field in the row -> recalc, add next row and focus next row's pname
+        if (idx === navOrder.length - 1) {
           totals.recalc();
+
+          // Always add next row for fast billing
+          const prevRowIndex = rowBuilder.rowIndex;
+          rowBuilder.addRow();
+
+          // focus next newly created row's pname
+          const nextRowPname = document.querySelector(`#createItemsBody tr[data-row="${prevRowIndex + 1}"] .pname`);
+          if (nextRowPname) nextRowPname.focus();
+          return;
         }
-      }
-    });
 
-    // Keyboard navigation: Enter to move to next field or add row
-    tbody.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      const el = e.target;
-      if (!el) return;
-      e.preventDefault();
-
-      const row = el.closest("tr");
-      if (!row) return;
-      // field order used in create UI
-      const order = [".pname", ".qty", ".unit", ".price", ".dval", ".dpct", ".gst"];
-      const idx = order.findIndex(sel => el.matches(sel));
-      if (idx === -1) return;
-
-      // if last field -> add next row and focus its pname
-      if (idx === order.length - 1) {
+        // Move to next field in same row
+        const nextField = row.querySelector(navOrder[idx + 1]);
+        if (nextField) {
+          nextField.focus();
+        }
         totals.recalc();
-        this.addRow();
-        const nextPname = document.querySelector(`#createItemsBody tr[data-row="${this.rowIndex}"] .pname`);
-        if (nextPname) nextPname.focus();
-        return;
-      }
-
-      // move to next field in same row
-      const next = row.querySelector(order[idx + 1]);
-      if (next) next.focus();
-      totals.recalc();
+      };
     });
+
+    // Recalc on any value change
+    row.querySelectorAll("input, select").forEach(inp => {
+      inp.oninput = () => totals.recalc();
+    });
+
+    // REMOVE ROW
+    if (remove) {
+      remove.onclick = () => {
+        row.remove();
+        totals.recalc();
+      };
+    }
+
+    return row;
   },
 
-  // -----------------------------------
   // BUILD PAYLOAD ITEMS (AUTO-CREATE PRODUCTS)
-  // Kept semantics identical to previous impl but made more defensive.
-  // -----------------------------------
+  // Note: UI no longer uses percentage discounts. We send discountValue (absolute).
   async buildPayloadItems(rows) {
     const items = [];
 
     for (const r of rows) {
-      const getVal = cls => (r.querySelector(cls)?.value || "").trim();
+      const getVal = cls => {
+        const el = r.querySelector(cls);
+        if (!el) return "";
+        // select vs input
+        return (el.value || "").toString().trim();
+      };
 
       const name  = getVal(".pname");
-      const unit  = getVal(".unit");
+      const unit  = getVal(".unit") || "PCS";
       const qty   = Number(getVal(".qty")) || 0;
       const price = Number(getVal(".price")) || 0;
       const dval  = Number(getVal(".dval")) || 0;
-      const dpct  = Number(getVal(".dpct")) || 0;
       const gst   = getVal(".gst") === "" ? null : Number(getVal(".gst"));
 
-      // CASE C: completely empty row -> skip
+      // Skip completely empty row
       const isEmpty =
         !name && !unit &&
         qty === 0 && price === 0 &&
-        dval === 0 && dpct === 0 &&
-        (gst === null || gst === 0);
+        dval === 0 && (gst === null || gst === 0);
 
       if (isEmpty) continue;
 
       // Find or create product
-      let prod = null;
-      const pid = r.dataset.productId ? Number(r.dataset.productId) : null;
-      if (pid) {
-        prod = productModule.products.find(p => p.id === pid) || null;
-      } else if (name) {
-        prod = productModule.findByName(name);
-      }
+      let prod = productModule.findByName(name);
 
       if (!prod) {
-        // CASE B: create silently using TYPED values
+        // create silently using typed values (same behaviour as earlier)
         const payload = {
           name,
           price: price || 0,
-          unit: unit || "Pcs",
+          unit: unit || "PCS",
           gstPercentage: gst == null ? null : gst
         };
 
         try {
           prod = await productModule.create(payload);
-          // ensure UI product list is refreshed by productModule.create
         } catch (e) {
           console.error("Auto-create product failed for:", name, e);
           throw new Error("Failed to auto-create product: " + name);
@@ -194,14 +206,12 @@ export const rowBuilder = {
       items.push({
         productId: prod.id,
         qty,
-        unit: unit || prod.unit || "",
+        unit: unit || prod.unit || "PCS",
         pricePerUnit: price || prod.price || 0,
-        discountType: null,
+        discountType: dval > 0 ? "VALUE" : null,
         discountValue: dval || 0,
-        discountPercent: dpct || 0,
-        gstPercent: gst == null
-          ? (prod.gstPercentage || 0)
-          : gst
+        discountPercent: null, // UI doesn't send percent discounts
+        gstPercent: gst == null ? (prod.gstPercentage || 0) : gst
       });
     }
 

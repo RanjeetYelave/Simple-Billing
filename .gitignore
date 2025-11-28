@@ -1,1 +1,105 @@
-/.metadata/
+###############################################################
+# GLOBAL IGNORE (Java + Spring Boot + Maven)
+###############################################################
+
+# Maven target directory
+target/
+*/target/
+
+# Maven build output
+*.war
+*.jar
+*.ear
+
+# Spring Boot
+.spring-boot-devtools.properties
+
+# Maven Wrapper files
+.mvn/wrapper/maven-wrapper.jar
+
+###############################################################
+# JAVA / IDE
+###############################################################
+
+# IntelliJ IDEA
+*.iml
+.idea/
+out/
+
+# VSCode
+.vscode/
+
+# Eclipse
+.project
+.classpath
+.settings/
+bin/
+
+###############################################################
+# OS FILES
+###############################################################
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+###############################################################
+# LOGS
+###############################################################
+*.log
+*.log.*
+
+###############################################################
+# NODE / UI PROJECT (billsoft-ui)
+###############################################################
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# UI assets uploaded or bundled
+*.tmp
+*.cache
+
+###############################################################
+# GITHUB ACTIONS
+###############################################################
+
+# GitHub workflow temp files
+*.artifact
+*.zip.tmp
+*.war.tmp
+
+###############################################################
+# ENV / SECRETS
+###############################################################
+
+# dotenv environment files
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+
+###############################################################
+# BILLING APP TEMP UPLOADS
+###############################################################
+
+uploads/
+temp/
+.cache/

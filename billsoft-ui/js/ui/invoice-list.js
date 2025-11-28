@@ -83,9 +83,12 @@ export const invoiceList = {
     this.currentPage = 1;
     this.currentSort = "DATE_DESC";
 
-    $("reloadInvoices").onclick = () => this.loadAll();
-    $("invSearchIdBtn").onclick = () => this.searchById();
-    $("invSearchCustomerBtn").onclick = () => this.searchByCustomer();
+    const reloadBtn = $("reloadInvoices");
+    if (reloadBtn) reloadBtn.onclick = () => this.loadAll();
+    const idBtn = $("invSearchIdBtn");
+    if (idBtn) idBtn.onclick = () => this.searchById();
+    const custBtn = $("invSearchCustomerBtn");
+    if (custBtn) custBtn.onclick = () => this.searchByCustomer();
 
     const sortSel = $("invSortSelect");
     if (sortSel) {
@@ -96,14 +99,16 @@ export const invoiceList = {
       };
     }
 
-    $("invPrevPage").onclick = () => {
+    const prev = $("invPrevPage");
+    if (prev) prev.onclick = () => {
       if (this.currentPage > 1) {
         this.currentPage--;
         this.renderTable();
       }
     };
 
-    $("invNextPage").onclick = () => {
+    const next = $("invNextPage");
+    if (next) next.onclick = () => {
       const totalPages = this.getTotalPages();
       if (this.currentPage < totalPages) {
         this.currentPage++;
@@ -114,8 +119,8 @@ export const invoiceList = {
     // Attach a single document click handler (used to close PDF menus)
     if (!this._docClickHandlerAdded) {
       this._docClickHandler = (e) => {
-        // if click outside pdf-drop or pdf-menu, hide all menus
         try {
+          // if click outside pdf-drop or pdf-menu, hide all menus
           if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
             document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
           }
@@ -147,7 +152,8 @@ export const invoiceList = {
   },
 
   async searchById() {
-    const idText = $("invSearchId").value.trim();
+    const idEl = $("invSearchId");
+    const idText = idEl ? idEl.value.trim() : "";
     if (!idText) return alert("Enter an Invoice ID");
 
     const id = Number(idText);
@@ -157,22 +163,27 @@ export const invoiceList = {
       const inv = await invoiceModule.preview(id);
       if (!inv || inv.id == null) {
         this.setData([]);
-        $("invTableBody").innerHTML =
+        const body = $("invTableBody");
+        if (body) body.innerHTML =
           `<tr><td colspan="6" class="small muted">Invoice not found.</td></tr>`;
-        $("invPaginationInfo").textContent = "";
+        const info = $("invPaginationInfo");
+        if (info) info.textContent = "";
         return;
       }
       this.setData([inv]);
     } catch (err) {
       console.error("Search by ID failed", err);
-      $("invTableBody").innerHTML =
+      const body = $("invTableBody");
+      if (body) body.innerHTML =
         `<tr><td colspan="6" class="small muted">Error fetching invoice.</td></tr>`;
-      $("invPaginationInfo").textContent = "";
+      const info = $("invPaginationInfo");
+      if (info) info.textContent = "";
     }
   },
 
   async searchByCustomer() {
-    const cidText = $("invSearchCustomer").value.trim();
+    const cidEl = $("invSearchCustomer");
+    const cidText = cidEl ? cidEl.value.trim() : "";
     if (!cidText) return alert("Enter a Customer ID");
 
     const cid = Number(cidText);
@@ -186,9 +197,11 @@ export const invoiceList = {
       this.setData(filtered);
     } catch (err) {
       console.error("Search by customer failed", err);
-      $("invTableBody").innerHTML =
+      const body = $("invTableBody");
+      if (body) body.innerHTML =
         `<tr><td colspan="6" class="small muted">Error fetching invoices.</td></tr>`;
-      $("invPaginationInfo").textContent = "";
+      const info = $("invPaginationInfo");
+      if (info) info.textContent = "";
     }
   },
 
@@ -290,7 +303,8 @@ export const invoiceList = {
       if (body) body.innerHTML =
         `<tr><td colspan="6" class="small muted">No invoices found.</td></tr>`;
       if (info) info.textContent = "0 invoices";
-      $("invDetails").innerHTML = "";
+      const details = $("invDetails");
+      if (details) details.innerHTML = "";
       return;
     }
 
@@ -309,6 +323,7 @@ export const invoiceList = {
       const tr = document.createElement("tr");
       const isPaid = inv.paid === true;
 
+      // Note: pdf-menu styling is controlled via CSS (theme-aware). Avoid inline background here.
       tr.innerHTML = `
         <td>${inv.invoiceNumber}</td>
         <td>${inv.customer?.name || "—"}</td>
@@ -339,22 +354,10 @@ export const invoiceList = {
                 ▾
               </button>
 
-              <!-- Dropdown -->
-              <div class="pdf-menu hidden" id="pdfMenu-${inv.id}"
-                style="
-                  position:absolute;
-                  top:28px;
-                  right:0;
-                  background:#0f172a;
-                  border:1px solid #334155;
-                  border-radius:6px;
-                  padding:4px;
-                  z-index:50;
-                ">
-                <div class="pdf-option" data-pdf-size="A4" data-pdf-id="${inv.id}"
-                     style="padding:6px 10px;cursor:pointer;">Open A4</div>
-                <div class="pdf-option" data-pdf-size="A5" data-pdf-id="${inv.id}"
-                     style="padding:6px 10px;cursor:pointer;">Open A5</div>
+              <!-- Dropdown (theme controlled via CSS using .pdf-menu) -->
+              <div class="pdf-menu hidden" id="pdfMenu-${inv.id}">
+                <div class="pdf-option" data-pdf-size="A4" data-pdf-id="${inv.id}" style="padding:6px 10px;cursor:pointer;">Open A4</div>
+                <div class="pdf-option" data-pdf-size="A5" data-pdf-id="${inv.id}" style="padding:6px 10px;cursor:pointer;">Open A5</div>
               </div>
             </div>
 
@@ -369,8 +372,10 @@ export const invoiceList = {
         `Page ${this.currentPage} of ${totalPages} • ${this.allInvoices.length} invoice${this.allInvoices.length === 1 ? "" : "s"}`;
     }
 
-    $("invPrevPage").disabled = this.currentPage <= 1;
-    $("invNextPage").disabled = this.currentPage >= totalPages;
+    const prevBtn = $("invPrevPage");
+    if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
+    const nextBtn = $("invNextPage");
+    if (nextBtn) nextBtn.disabled = this.currentPage >= totalPages;
 
     // Attach handlers (event binding to buttons in the current table only)
     this.attachHandlers();
@@ -403,7 +408,8 @@ export const invoiceList = {
 
     // Main PDF button (default A4)
     body.querySelectorAll("button[data-pdf-main]").forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         const id = Number(btn.dataset.pdfMain);
         const inv = this.allInvoices.find(x => x.id === id);
         if (inv) this.openPdf(inv, "A4");
@@ -412,8 +418,14 @@ export const invoiceList = {
 
     // ▼ Dropdown toggle
     body.querySelectorAll("button[data-pdf-drop]").forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        // avoid document click handler closing instantly
+        e.stopPropagation();
         const id = Number(btn.dataset.pdfDrop);
+        // close other menus
+        document.querySelectorAll(".pdf-menu").forEach(m => {
+          if (m.id !== `pdfMenu-${id}`) m.classList.add("hidden");
+        });
         const menu = $(`pdfMenu-${id}`);
         if (menu) menu.classList.toggle("hidden");
       };
@@ -421,7 +433,8 @@ export const invoiceList = {
 
     // Dropdown options
     body.querySelectorAll(".pdf-option").forEach(opt => {
-      opt.onclick = () => {
+      opt.onclick = (e) => {
+        e.stopPropagation();
         const id = Number(opt.dataset.pdfId);
         const size = opt.dataset.pdfSize;
         const inv = this.allInvoices.find(x => x.id === id);

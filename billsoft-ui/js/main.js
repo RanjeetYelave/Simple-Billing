@@ -12,18 +12,18 @@ async function init() {
 
     await productModule.load();
     await customerModule.load();
-    // invoices are fetched screen-wise, no need to load all here
+
+    // Apply theme BEFORE rendering UI
+    applySavedTheme();
 
     console.log("🔥 Rendering UI shell...");
-    document.body.innerHTML = `
-      <div id="themeToggle" class="theme-toggle">
-        <span class="icon">🌙</span>
-      </div>
-    ` + layout.render();
+
+    // Instead of replacing body.innerHTML, place layout INTO #app
+    document.getElementById("app").innerHTML = layout.render();
 
     layout.init();
 
-    initThemeToggle(); // theme toggle initialization
+    setupThemeToggle(); // connect button AFTER rendering
 
   } catch (err) {
     console.error("Init failed", err);
@@ -31,28 +31,38 @@ async function init() {
 }
 
 // ============================
-// THEME CONTROLLER
+// Theme Loader (before render)
 // ============================
-function initThemeToggle() {
-  const root = document.documentElement;
-  const toggleBtn = document.getElementById("themeToggle");
+function applySavedTheme() {
+  const saved = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+}
 
-  if (!toggleBtn) return;
-
-  function setTheme(mode) {
-    root.setAttribute("data-theme", mode);
-    localStorage.setItem("theme", mode);
-    toggleBtn.querySelector(".icon").textContent =
-      mode === "dark" ? "🌞" : "🌙";
+// ============================
+// Theme Toggle
+// ============================
+function setupThemeToggle() {
+  const toggle = document.getElementById("themeToggle");
+  if (!toggle) {
+    console.warn("Theme toggle button missing");
+    return;
   }
 
-  // Load saved theme (default = dark)
-  const saved = localStorage.getItem("theme") || "dark";
-  setTheme(saved);
+  const root = document.documentElement;
 
-  toggleBtn.onclick = () => {
+  const updateIcon = (mode) => {
+    toggle.textContent = mode === "dark" ? "🌞" : "🌙";
+  };
+
+  // Load saved theme
+  const saved = localStorage.getItem("theme") || "dark";
+  updateIcon(saved);
+
+  toggle.onclick = () => {
     const current = root.getAttribute("data-theme");
     const next = current === "dark" ? "light" : "dark";
-    setTheme(next);
+    root.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+    updateIcon(next);
   };
 }

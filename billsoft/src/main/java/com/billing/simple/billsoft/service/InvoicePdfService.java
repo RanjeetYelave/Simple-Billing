@@ -34,13 +34,9 @@ public class InvoicePdfService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    /**
-     * New signature expected by controller:
-     * generatePdf(invoice, size)
-     * size -> "A4" (default) or "A5" (case-insensitive)
-     */
+    @SuppressWarnings("deprecation")
     public byte[] generatePdf(Invoice invoice, String size) throws Exception {
-        // decide page size
+
         Rectangle pageSize = PageSize.A4;
         if (size != null && size.equalsIgnoreCase("A5")) {
             pageSize = PageSize.A5;
@@ -52,14 +48,13 @@ public class InvoicePdfService {
 
         doc.open();
 
-        // Fonts
+        // -------------------- Fonts ----------------------
         Font titleFont = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 16 : 18, Font.BOLD);
         Font hFont = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 10 : 11, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 9 : 10, Font.NORMAL);
         Font small = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 8 : 9, Font.NORMAL);
         Font bold = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 10 : 10, Font.BOLD);
 
-        // Firm info
         FirmDetails firm = null;
         try {
             firm = firmService.get();
@@ -67,35 +62,42 @@ public class InvoicePdfService {
             firm = null;
         }
 
-        // ---------- Header: Left = Firm (logo + details), Right = Invoice meta ----------
-        PdfPTable header = new PdfPTable(new float[] { 2f, 1.5f });
+        // ---------- HEADER ----------
+        PdfPTable header = new PdfPTable(new float[]{2f, 1.5f});
         header.setWidthPercentage(100);
         header.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-        // Left cell: firm name + details + logo
         PdfPCell left = new PdfPCell();
         left.setBorder(Rectangle.NO_BORDER);
 
+        // ---------- LOGO FIX (handles raw base64 or data: URL) ----------
         if (firm != null && firm.getLogoBase64() != null && !firm.getLogoBase64().isBlank()) {
             try {
-                String b64 = firm.getLogoBase64();
-                // strip data: prefix if present
+                String b64 = firm.getLogoBase64().trim();
+
+                // Accept either raw base64 or data URL
                 if (b64.startsWith("data:")) {
                     int idx = b64.indexOf("base64,");
                     if (idx >= 0) b64 = b64.substring(idx + 7);
                 }
-                byte[] imgBytes = Base64.getDecoder().decode(b64);
-                Image logo = Image.getInstance(imgBytes);
+
+                // decode
+                byte[] bytes = Base64.getDecoder().decode(b64);
+                Image logo = Image.getInstance(bytes);
+
+                // scale to reasonable invoice sizes
                 float maxW = pageSize == PageSize.A5 ? 80f : 110f;
                 float maxH = pageSize == PageSize.A5 ? 45f : 60f;
                 logo.scaleToFit(maxW, maxH);
                 logo.setAlignment(Image.LEFT);
                 left.addElement(logo);
             } catch (Exception ex) {
-                // ignore logo decode errors
+                // don't fail PDF generation because of logo errors
+                System.out.println("Logo decode error: " + ex.getMessage());
             }
         }
 
+        // Firm name
         if (firm != null && firm.getFirmName() != null && !firm.getFirmName().isBlank()) {
             Paragraph fn = new Paragraph(firm.getFirmName(), titleFont);
             left.addElement(fn);
@@ -103,28 +105,31 @@ public class InvoicePdfService {
             left.addElement(new Paragraph("Firm Name", titleFont));
         }
 
+        // Firm meta
         if (firm != null) {
-            if (firm.getOwnerName() != null && !firm.getOwnerName().isBlank()) {
+            if (firm.getOwnerName() != null && !firm.getOwnerName().isBlank())
                 left.addElement(new Paragraph("Owner: " + firm.getOwnerName(), normal));
-            }
+
             StringBuilder addr = new StringBuilder();
             if (firm.getAddressLine1() != null) addr.append(firm.getAddressLine1());
             if (firm.getAddressLine2() != null && !firm.getAddressLine2().isBlank()) {
                 if (addr.length() > 0) addr.append(", ");
                 addr.append(firm.getAddressLine2());
             }
-            String cityLine = "";
-            if (firm.getCity() != null) cityLine += firm.getCity();
+            if (addr.length() > 0) left.addElement(new Paragraph(addr.toString(), normal));
+
+            StringBuilder cityLine = new StringBuilder();
+            if (firm.getCity() != null) cityLine.append(firm.getCity());
             if (firm.getState() != null && !firm.getState().isBlank()) {
-                if (!cityLine.isEmpty()) cityLine += " - ";
-                cityLine += firm.getState();
+                if (!cityLine.toString().isEmpty()) cityLine.append(" - ");
+                cityLine.append(firm.getState());
             }
             if (firm.getPincode() != null && !firm.getPincode().isBlank()) {
-                if (!cityLine.isEmpty()) cityLine += " ";
-                cityLine += firm.getPincode();
+                if (!cityLine.toString().isEmpty()) cityLine.append(" ");
+                cityLine.append(firm.getPincode());
             }
-            if (addr.length() > 0) left.addElement(new Paragraph(addr.toString(), normal));
-            if (!cityLine.isBlank()) left.addElement(new Paragraph(cityLine, normal));
+            if (!cityLine.toString().isEmpty()) left.addElement(new Paragraph(cityLine.toString(), normal));
+
             if (firm.getPhone() != null && !firm.getPhone().isBlank())
                 left.addElement(new Paragraph("Phone: " + firm.getPhone(), normal));
             if (firm.getEmail() != null && !firm.getEmail().isBlank())
@@ -135,7 +140,7 @@ public class InvoicePdfService {
 
         header.addCell(left);
 
-        // Right cell: Invoice number, date, id
+        // Right cell: invoice meta
         PdfPCell right = new PdfPCell();
         right.setBorder(Rectangle.NO_BORDER);
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -150,7 +155,6 @@ public class InvoicePdfService {
         } else {
             right.addElement(new Paragraph("Date: -", normal));
         }
-
         if (invoice.getId() != null) right.addElement(new Paragraph("Invoice ID: " + invoice.getId(), small));
 
         header.addCell(right);
@@ -229,7 +233,7 @@ public class InvoicePdfService {
                 table.addCell(new PdfPCell(new Phrase(it.getUnit() == null ? "-" : it.getUnit(), normal)));
                 table.addCell(new PdfPCell(new Phrase(formatAmount(it.getPricePerUnit()), normal)));
 
-                // Amount (base amount = qty * pricePerUnit, stored as amountWithoutTax)
+                // Amount (base amount = qty * pricePerUnit, but we display stored amountWithoutTax)
                 table.addCell(new PdfPCell(new Phrase(formatAmount(it.getAmountWithoutTax()), normal)));
 
                 table.addCell(new PdfPCell(new Phrase(formatPercent(it.getGstPercent()), normal)));
@@ -261,7 +265,7 @@ public class InvoicePdfService {
                 rawSubtotal += base;
 
                 double idisc = 0.0;
-                if (it.getDiscountPercent() != null) {
+                if (it.getDiscountPercent() != null && it.getDiscountPercent() > 0) {
                     idisc = base * (it.getDiscountPercent() / 100.0);
                 } else if (it.getDiscountValue() != null) {
                     idisc = it.getDiscountValue();

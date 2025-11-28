@@ -472,3 +472,40 @@ label {
   color: var(--text-main);
   transition: var(--transition);
 }
+
+/* ==========================================================
+   FIX: PDF SIZE DROPDOWN THEME SUPPORT
+   ========================================================== */
+
+/* Base styling for consistency */
+.pdf-size-select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  transition: background 0.2s ease, color 0.2s ease, border 0.2s ease;
+}
+
+/* DARK THEME */
+.theme-dark .pdf-size-select {
+  background: #020617;
+  color: #e5e7eb;
+  border-color: #1e293b;
+}
+
+.theme-dark .pdf-size-select option {
+  background: #020617;
+  color: #e5e7eb;
+}
+
+/* LIGHT THEME */
+.theme-light .pdf-size-select {
+  background: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+.theme-light .pdf-size-select option {
+  background: #ffffff;
+  color: #111827;
+}

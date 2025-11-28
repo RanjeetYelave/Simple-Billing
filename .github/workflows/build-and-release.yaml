@@ -37,21 +37,17 @@ jobs:
           distribution: "temurin"
           cache: maven
 
-      - name: Wait for MySQL to be ready
+      - name: Wait for MySQL
         run: |
           until mysqladmin ping -h 127.0.0.1 --silent; do
             echo "Waiting for MySQL..."
             sleep 5
           done
 
-      # IMPORTANT FIX ★★★★★
-      # Build the Spring Boot project INSIDE /billsoft
       - name: Build WAR
         run: mvn -f billsoft/pom.xml clean package -DskipTests
 
-      # IMPORTANT FIX ★★★★★
-      # Upload from correct path relative to repo root
-      - name: Upload WAR
+      - name: Upload WAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: war-artifact
@@ -88,6 +84,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./*.war
+          asset_path: war-artifact/*.war   # ← FIXED
           asset_name: billsoft.war
           asset_content_type: application/java-archive

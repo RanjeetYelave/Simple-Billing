@@ -176,18 +176,27 @@ public class InvoiceService {
     }
 
     // ---------------------------------------------------------
-    // CREATE INVOICE
+    // INTERNAL: compute invoice object from request (no persistence)
+    // Returns an Invoice instance with items filled and totals computed
     // ---------------------------------------------------------
-    @Transactional
-    public Invoice createInvoice(InvoiceRequest request) {
-
-        Customer customer = customerRepo.findById(request.getCustomerId())
-                .orElseThrow(() -> new RuntimeException("Customer not found"));
+    private Invoice buildInvoiceFromRequest(InvoiceRequest request, boolean forUpdate, Invoice existingInvoiceIfAny) {
+        // When forUpdate==true, existingInvoiceIfAny may provide existing metadata (not strictly necessary)
+        Customer customer = null;
+        if (request.getCustomerId() != null) {
+            customer = customerRepo.findById(request.getCustomerId())
+                    .orElseThrow(() -> new RuntimeException("Customer not found"));
+        }
 
         Invoice invoice = new Invoice();
+        if (forUpdate && existingInvoiceIfAny != null) {
+            invoice.setId(existingInvoiceIfAny.getId());
+            invoice.setInvoiceNumber(existingInvoiceIfAny.getInvoiceNumber());
+        } else {
+            invoice.setInvoiceNumber(generateInvoiceNumber());
+        }
+
         invoice.setCustomer(customer);
         invoice.setNotes(request.getNotes());
-        invoice.setInvoiceNumber(generateInvoiceNumber());
         invoice.setInvoiceDate(LocalDateTime.now());
         invoice.setPaid(Boolean.TRUE.equals(request.getPaid()));
 
@@ -269,7 +278,28 @@ public class InvoiceService {
         invoice.setTotalDiscount(round(totalDiscount));
         invoice.setTotalAmount(round(grand));
 
+        return invoice;
+    }
+
+    // ---------------------------------------------------------
+    // CREATE INVOICE (persists)
+    // ---------------------------------------------------------
+    @Transactional
+    public Invoice createInvoice(InvoiceRequest request) {
+        Invoice invoice = buildInvoiceFromRequest(request, false, null);
+        // ensure persistence cascade will save items (entity mappings assumed correct)
         return invoiceRepo.save(invoice);
+    }
+
+    // ---------------------------------------------------------
+    // PREVIEW INVOICE (does NOT persist) — NEW
+    // ---------------------------------------------------------
+    public Invoice previewInvoice(InvoiceRequest request) {
+        // Build the invoice object with full calculation, but DO NOT save
+        Invoice invoice = buildInvoiceFromRequest(request, false, null);
+        // Ensure id is null so client knows it is not persisted
+        invoice.setId(null);
+        return invoice;
     }
 
     // ---------------------------------------------------------

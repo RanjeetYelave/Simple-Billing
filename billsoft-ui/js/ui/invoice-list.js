@@ -11,6 +11,10 @@ export const invoiceList = {
   pageSize: 10,
   currentSort: "DATE_DESC",
 
+  // internal flag/handler ref to avoid adding duplicate document listeners
+  _docClickHandler: null,
+  _docClickHandlerAdded: false,
+
   render() {
     return `
       <div class="card">
@@ -107,6 +111,22 @@ export const invoiceList = {
       }
     };
 
+    // Attach a single document click handler (used to close PDF menus)
+    if (!this._docClickHandlerAdded) {
+      this._docClickHandler = (e) => {
+        // if click outside pdf-drop or pdf-menu, hide all menus
+        try {
+          if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
+            document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
+          }
+        } catch (ex) {
+          // defensive: ignore if DOM isn't as expected
+        }
+      };
+      document.addEventListener("click", this._docClickHandler);
+      this._docClickHandlerAdded = true;
+    }
+
     this.loadAll();
   },
 
@@ -118,9 +138,11 @@ export const invoiceList = {
       this.setData(list);
     } catch (err) {
       console.error("Failed to load invoices", err);
-      $("invTableBody").innerHTML =
+      const body = $("invTableBody");
+      if (body) body.innerHTML =
         `<tr><td colspan="6" class="small muted">Failed to load invoices.</td></tr>`;
-      $("invPaginationInfo").textContent = "";
+      const info = $("invPaginationInfo");
+      if (info) info.textContent = "";
     }
   },
 
@@ -265,7 +287,7 @@ export const invoiceList = {
     const info = $("invPaginationInfo");
 
     if (!this.allInvoices.length) {
-      body.innerHTML =
+      if (body) body.innerHTML =
         `<tr><td colspan="6" class="small muted">No invoices found.</td></tr>`;
       if (info) info.textContent = "0 invoices";
       $("invDetails").innerHTML = "";
@@ -281,7 +303,7 @@ export const invoiceList = {
     const start = (this.currentPage - 1) * this.pageSize;
     const pageItems = sorted.slice(start, start + this.pageSize);
 
-    body.innerHTML = "";
+    if (body) body.innerHTML = "";
 
     pageItems.forEach(inv => {
       const tr = document.createElement("tr");
@@ -339,7 +361,7 @@ export const invoiceList = {
           </div>
         </td>
       `;
-      body.appendChild(tr);
+      if (body) body.appendChild(tr);
     });
 
     if (info) {
@@ -350,12 +372,13 @@ export const invoiceList = {
     $("invPrevPage").disabled = this.currentPage <= 1;
     $("invNextPage").disabled = this.currentPage >= totalPages;
 
-    // Attach handlers
+    // Attach handlers (event binding to buttons in the current table only)
     this.attachHandlers();
   },
 
   attachHandlers() {
     const body = $("invTableBody");
+    if (!body) return;
 
     // Edit
     body.querySelectorAll("button[data-view]").forEach(btn => {
@@ -409,11 +432,6 @@ export const invoiceList = {
       };
     });
 
-    // Close dropdown on outside click
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
-        document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
-      }
-    });
+    // NOTE: document click handler moved to init() and added once.
   }
 };

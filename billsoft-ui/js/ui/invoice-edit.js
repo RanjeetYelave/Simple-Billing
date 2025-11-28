@@ -5,6 +5,8 @@ import { $, money } from "../utils.js";
 
 export const invoiceEdit = {
 
+  previewTimer: null,
+
   async open(id) {
     const inv = await invoiceModule.preview(id);
     if (!inv) {
@@ -80,9 +82,10 @@ export const invoiceEdit = {
     }
 
     const tbody = $("editItemsBody");
+    tbody.innerHTML = "";
 
     // existing items
-    inv.items.forEach(i => {
+    (inv.items || []).forEach(i => {
       const row = document.createElement("tr");
       row.dataset.productId = i.product?.id || "";
       row.dataset.productName = i.product?.name || "";
@@ -114,7 +117,7 @@ export const invoiceEdit = {
       tbody.appendChild(row);
     });
 
-    // recalc on change
+    // attach global delegated handlers for inputs and remove buttons
     this.attachRowHandlers();
 
     // add new item row
@@ -137,7 +140,7 @@ export const invoiceEdit = {
       `;
       tbody.appendChild(row);
 
-      // auto-fill on product select
+      // auto-fill on product select (one-time hookup for this row)
       const pname = row.querySelector(".pname");
       if (pname) {
         pname.onchange = () => {
@@ -146,47 +149,120 @@ export const invoiceEdit = {
           const p = productModule.findByName(val);
           if (!p) return;
 
-          const qty   = row.querySelector(".qty");
-          const unit  = row.querySelector(".unit");
-          const price = row.querySelector(".price");
-          const gst   = row.querySelector(".gst");
+          const qtyEl   = row.querySelector(".qty");
+          const unitEl  = row.querySelector(".unit");
+          const priceEl = row.querySelector(".price");
+          const gstEl   = row.querySelector(".gst");
 
-          if (qty)   qty.value   = qty.value || "1";
-          if (unit)  unit.value  = p.unit || "";
-          if (price) price.value = p.price ?? 0;
-          if (gst)   gst.value   = p.gstPercentage ?? 0;
+          if (qtyEl)   qtyEl.value   = qtyEl.value || "1";
+          if (unitEl)  unitEl.value  = p.unit || "";
+          if (priceEl) priceEl.value = p.price ?? 0;
+          if (gstEl)   gstEl.value   = p.gstPercentage ?? 0;
 
           row.dataset.productId = p.id;
           row.dataset.productName = p.name;
-          row.dataset.unit = unit?.value || p.unit || "";
+          row.dataset.unit = unitEl?.value || p.unit || "";
 
           this.recalc();
+          this.schedulePreview();
         };
       }
 
-      this.attachRowHandlers();
       this.recalc();
+      this.schedulePreview();
     };
 
     $("saveInvoiceBtn").onclick = () => this.save(inv.id);
 
+    // initial recalc & preview
     this.recalc();
+    this.schedulePreview();
   },
 
   attachRowHandlers() {
     const tbody = $("editItemsBody");
     if (!tbody) return;
 
-    tbody.querySelectorAll(".qty,.unit,.price,.dval,.dpct,.gst").forEach(inp => {
-      inp.oninput = () => this.recalc();
+    // Delegate input events for recalc + preview scheduling
+    tbody.addEventListener("input", (e) => {
+      const target = e.target;
+      if (target.matches(".qty, .unit, .price, .dval, .dpct, .gst, .pname")) {
+        this.recalc();
+        this.schedulePreview();
+      }
     });
 
-    tbody.querySelectorAll(".removeBtn").forEach(btn => {
-      btn.onclick = () => {
-        btn.closest("tr")?.remove();
+    // Delegate remove button clicks
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest(".removeBtn");
+      if (btn) {
+        const row = btn.closest("tr");
+        if (row) row.remove();
         this.recalc();
-      };
+        this.schedulePreview();
+      }
     });
+  },
+
+  schedulePreview() {
+    clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => this.runPreview(), 300);
+  },
+
+  async runPreview() {
+    try {
+      // Build lightweight items payload from rows to ask backend for authoritative totals
+      const rows = [...document.querySelectorAll("#editItemsBody tr")];
+      const items = rows.map(r => {
+        const pnameInput = r.querySelector(".pname");
+        let productId = r.dataset.productId ? Number(r.dataset.productId) : null;
+        if (!productId && pnameInput && pnameInput.value.trim()) {
+          const p = productModule.findByName(pnameInput.value.trim());
+          if (p) productId = p.id;
+        }
+
+        const qty   = Number(r.querySelector(".qty")?.value)  || 0;
+        const unit  = (r.querySelector(".unit")?.value || "").trim();
+        const price = Number(r.querySelector(".price")?.value)|| 0;
+        const dval  = Number(r.querySelector(".dval")?.value) || 0;
+        const dpct  = Number(r.querySelector(".dpct")?.value) || 0;
+        const gst   = Number(r.querySelector(".gst")?.value)  || 0;
+
+        const isEmpty = !productId && !pnameInput?.value && qty === 0 && price === 0 && dval === 0 && dpct === 0 && gst === 0;
+        if (isEmpty) return null;
+
+        return {
+          productId,
+          qty,
+          unit,
+          pricePerUnit: price,
+          discountType: null,
+          discountValue: dval,
+          discountPercent: dpct,
+          gstPercent: gst
+        };
+      }).filter(Boolean);
+
+      if (!items.length) return;
+
+      const payload = {
+        customerId: null,
+        notes: "",
+        items,
+        invoiceDiscount: null
+      };
+
+      // ask backend for preview calculation (authoritative totals)
+      if (typeof invoiceModule.previewCalc === "function") {
+        const preview = await invoiceModule.previewCalc(payload);
+        if (preview?.totals) {
+          $("editGrandTotal").textContent = "TOTAL: " + money(preview.totals.grandTotal);
+        }
+      }
+    } catch (err) {
+      // don't spam console on small preview failures
+      // console.warn("Preview failed", err);
+    }
   },
 
   recalc() {
@@ -232,7 +308,6 @@ export const invoiceEdit = {
         if (p) productId = p.id;
       }
 
-      // skip totally empty rows
       const isEmpty =
         !productId &&
         !pnameInput?.value &&
@@ -253,14 +328,19 @@ export const invoiceEdit = {
     });
 
     const payload = {
-      customerId: null, // customer NOT changed
+      customerId: null, // customer NOT changed here
       notes: $("editNotes").value || "",
       invoiceDate: $("editDate").value || null,
       invoiceDiscount: null,
       items
     };
 
-    await invoiceModule.update(id, payload);
-    alert("Invoice updated");
+    try {
+      await invoiceModule.update(id, payload);
+      alert("Invoice updated");
+    } catch (err) {
+      console.error("Failed to update invoice", err);
+      alert("Failed to save invoice.");
+    }
   }
 };

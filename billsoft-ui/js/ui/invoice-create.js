@@ -138,8 +138,13 @@ export const invoiceCreate = {
           address: ""
         });
 
-        if (typeof customerModule.list === "function") {
-          await customerModule.list(); // refresh cache
+        // refresh cache properly (load will fetch from backend)
+        if (typeof customerModule.load === "function") {
+          try {
+            await customerModule.load();
+          } catch (e) {
+            // ignore - we already pushed created into local list in create()
+          }
         }
 
         customerId = created.id;
@@ -158,15 +163,29 @@ export const invoiceCreate = {
       return;
     }
 
-    const payload = totals.buildFinalPayload(
-      items,
+    // Build payload that backend expects.
+    // IMPORTANT: do not send UI-only totals. Backend will compute final totals.
+    const discountType = $("discountType")?.value || "VALUE";
+    const discountValue = Number($("discountValue")?.value) || 0;
+    const invoiceDiscount = (discountValue > 0) ? { type: discountType, value: discountValue } : null;
+
+    const payload = {
       customerId,
-      $("createNotes").value || ""
-    );
+      notes: $("createNotes").value || "",
+      items,
+      invoiceDiscount: invoiceDiscount,
+      paid: !!$("createMarkPaid").checked
+    };
 
-    payload.paid = $("createMarkPaid").checked;
-
-    const created = await invoiceModule.save(payload);
+    // send to backend
+    let created;
+    try {
+      created = await invoiceModule.save(payload);
+    } catch (e) {
+      console.error("Invoice save failed", e);
+      alert("Failed to save invoice.");
+      return;
+    }
 
     $("createResult").textContent =
       `Invoice created: ${created.invoiceNumber || created.id}`;
@@ -187,5 +206,13 @@ export const invoiceCreate = {
     rowBuilder.addRow();
     totals.recalc();
     $("createMarkPaid").checked = false;
+
+    // reload customers/products cache UI (optional)
+    try {
+      if (typeof productModule.load === "function") await productModule.load();
+      if (typeof customerModule.load === "function") await customerModule.load();
+    } catch (e) {
+      // ignore
+    }
   }
 };

@@ -1,18 +1,14 @@
 // js/ui/totals.js
 import { $, money } from "../utils.js";
 
-function round2(v) {
-  return Math.round((v || 0) * 100) / 100;
-}
-
 export const totals = {
 
   recalc() {
     const rows = [...document.querySelectorAll("#createItemsBody tr")];
 
-    let rawSubtotal = 0;    // sum of qty * price (before per-item discounts)
+    let subtotal = 0;
     let taxTotal = 0;
-    let taxableSum = 0;     // sum of taxable amounts after per-item discounts
+    let taxableSum = 0;
 
     rows.forEach(r => {
       const qty  = Number(r.querySelector(".qty")?.value)  || 0;
@@ -21,9 +17,9 @@ export const totals = {
       const dpct = Number(r.querySelector(".dpct")?.value) || 0;
       const gst  = Number(r.querySelector(".gst")?.value)  || 0;
 
-      const amt = qty * price;                    // raw amount (before per-item discount)
+      const amt = qty * price;
       const disc = dpct > 0 ? (amt * dpct / 100) : dval;
-      const taxable = Math.max(0, amt - disc);    // taxable after per-item discount
+      const taxable = amt - disc;
       const gstamt = taxable * gst / 100;
       const total = taxable + gstamt;
 
@@ -37,64 +33,41 @@ export const totals = {
       if (gstCell) gstCell.textContent = gstamt.toFixed(2);
       if (totCell) totCell.textContent = total.toFixed(2);
 
-      rawSubtotal += amt;
+      subtotal    += amt;
       taxTotal    += gstamt;
       taxableSum  += taxable;
     });
 
-    // Invoice-level discount inputs
-    const type = ($("discountType")?.value || "VALUE");
+    const type = $("discountType")?.value || "VALUE";
     const val  = Number($("discountValue")?.value) || 0;
-
-    // Discount amount applied at invoice level (calculated on taxableSum)
-    const discInv = type === "PERCENT" ? (taxableSum * val / 100) : val;
+    const discInv = type === "PERCENT" ? taxableSum * val / 100 : val;
 
     const grand = taxableSum - discInv + taxTotal;
 
-    // update lines shown to user
-    $("subtotalLine").textContent = "Subtotal: " + money(round2(taxableSum));
-    $("taxTotalLine").textContent = "Tax Total: " + money(round2(taxTotal));
-    $("discountLine").textContent = "Discount: " + money(round2(discInv));
-    $("grandTotalLine").textContent = "Grand Total: " + money(round2(grand));
+    $("subtotalLine").textContent = "Subtotal: " + money(subtotal);
+    $("taxTotalLine").textContent = "Tax Total: " + money(taxTotal);
+    $("discountLine").textContent = "Discount: " + money(discInv);
+    $("grandTotalLine").textContent = "Grand Total: " + money(grand);
 
-    // store canonical numbers (rounded) for payload builder
-    $("createResult").dataset.subtotal        = round2(taxableSum);
-    $("createResult").dataset.tax             = round2(taxTotal);
-    $("createResult").dataset.discountAmount  = round2(discInv);
-    $("createResult").dataset.grandTotal      = round2(grand);
-
-    // also store invoice discount meta so buildFinalPayload can pick it up (optional)
-    $("createResult").dataset.invoiceDiscountType  = type;
-    $("createResult").dataset.invoiceDiscountValue = Number(val);
+    // Keep UI dataset for convenience (these are UI-derived preview numbers)
+    $("createResult").dataset.subtotal        = subtotal;
+    $("createResult").dataset.tax             = taxTotal;
+    $("createResult").dataset.discountAmount  = discInv;
+    $("createResult").dataset.grandTotal      = grand;
   },
 
+  // Build payload-friendly wrapper (no server-only totals included).
+  // Backend will compute authoritative totals.
   buildFinalPayload(items, customerId, notes) {
-    // Read stored computed values (fall back to zero)
-    const subtotalWithoutTax = Number($("createResult").dataset.subtotal || 0);
-    const totalTax           = Number($("createResult").dataset.tax || 0);
-    const discountAmount     = Number($("createResult").dataset.discountAmount || 0);
-    const grandTotal         = Number($("createResult").dataset.grandTotal || 0);
+    const discountType = $("discountType")?.value || "VALUE";
+    const discountValue = Number($("discountValue")?.value) || 0;
+    const invoiceDiscount = (discountValue > 0) ? { type: discountType, value: discountValue } : null;
 
-    // Invoice-level discount object (match backend DTO shape)
-    const invoiceDiscountType  = $("createResult").dataset.invoiceDiscountType || "VALUE";
-    const invoiceDiscountValue = Number($("createResult").dataset.invoiceDiscountValue || 0);
-
-    const payload = {
+    return {
       customerId,
       notes,
       items,
-      invoiceDiscount: {
-        type: invoiceDiscountType,
-        value: invoiceDiscountValue
-      },
-      totals: {
-        subtotalWithoutTax: subtotalWithoutTax,
-        totalTax:           totalTax,
-        discountAmount:     discountAmount,
-        grandTotal:         grandTotal
-      }
+      invoiceDiscount: invoiceDiscount
     };
-
-    return payload;
   }
 };

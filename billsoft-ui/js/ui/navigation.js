@@ -8,7 +8,10 @@ import { customerScreen } from "./customer-screen.js";
 import { productScreen } from "./product-screen.js";
 import { analyticsScreen } from "./analytics-screen.js";
 import { firmAnalyticsScreen } from "./firm-analytics-screen.js";
-import { firmProfileScreen } from "./firm-profile-screen.js"; // NEW
+import { firmProfileScreen } from "./firm-profile-screen.js";
+
+// NEW — Statements Screen
+import { statementScreen } from "./statement-screen.js";
 
 export const navigation = {
 
@@ -19,24 +22,30 @@ export const navigation = {
     customers: customerScreen,
     products: productScreen,
     analytics: analyticsScreen,
-    firmAnalytics: firmAnalyticsScreen
+    firmAnalytics: firmAnalyticsScreen,
+
+    // NEW
+    statements: statementScreen
   },
 
-  // FINAL NAV ORDER (Firm Profile first)
+  // FINAL SIDEBAR ORDER
   navItems: [
-    { id: "firmProfile",   label: "Firm Profile",     icon: "🏢" },
-    { id: "invoiceCreate", label: "Create Invoice",   icon: "➕" },
-    { id: "invoices",      label: "Invoices",         icon: "📄" },
-    { id: "customers",     label: "Customers",        icon: "👥" },
-    { id: "products",      label: "Products",         icon: "📦" },
+    { id: "firmProfile",   label: "Firm Profile",      icon: "🏢" },
+    { id: "invoiceCreate", label: "Create Invoice",    icon: "➕" },
+    { id: "invoices",      label: "Invoices",          icon: "📄" },
+    { id: "customers",     label: "Customers",         icon: "👥" },
+    { id: "products",      label: "Products",          icon: "📦" },
     { id: "analytics",     label: "Customer Insights", icon: "📊" },
-    { id: "firmAnalytics", label: "Firm Dashboard",   icon: "📈" }
+    { id: "firmAnalytics", label: "Firm Dashboard",    icon: "📈" },
+
+    // NEW
+    { id: "statements",    label: "Statements",        icon: "🧾" }
   ],
 
   init() {
     const sidebar = $("sidebarNav");
 
-    // Render sidebar
+    // Render sidebar items
     sidebar.innerHTML = this.navItems
       .map(
         item => `
@@ -48,7 +57,7 @@ export const navigation = {
       )
       .join("");
 
-    // Bind navigation events
+    // Click handlers
     sidebar.querySelectorAll(".nav-item").forEach(el => {
       el.onclick = () => {
         sidebar.querySelectorAll(".nav-item")
@@ -59,7 +68,7 @@ export const navigation = {
       };
     });
 
-    // Default → Create Invoice
+    // Default screen → Create Invoice
     this.show("invoiceCreate");
     sidebar.querySelector(`[data-id="invoiceCreate"]`).classList.add("active");
   },

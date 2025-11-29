@@ -280,46 +280,91 @@ public class StatementServiceImpl implements StatementService {
     ============================================================ */
     @Override
     public byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception {
+
         FirmStatementResponse data = getFirmStatement(from, to);
         FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
+        Document doc = new Document(PageSize.A4, 36,36,48,48);
         PdfWriter.getInstance(doc, baos);
         doc.open();
 
-        Font title = new Font(Font.HELVETICA, 16, Font.BOLD);
+        Font title = new Font(Font.HELVETICA, 18, Font.BOLD);
+        Font h1 = new Font(Font.HELVETICA, 12, Font.BOLD);
         Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, 10);
 
-        Paragraph head = new Paragraph("Firm Statement", title);
-        head.setAlignment(Element.ALIGN_CENTER);
-        doc.add(head);
+        /* -------------------------------------------
+           HEADER BLOCK WITH FIRM DETAILS
+        ------------------------------------------- */
+        Paragraph top = new Paragraph("FIRM STATEMENT", title);
+        top.setAlignment(Element.ALIGN_CENTER);
+        doc.add(top);
         doc.add(new Paragraph("\n"));
 
         if (firm != null) {
-            doc.add(new Paragraph(firm.getFirmName(), bold));
-            if (firm.getAddressLine1() != null) doc.add(new Paragraph(firm.getAddressLine1(), normal));
-            if (firm.getCity() != null) doc.add(new Paragraph(firm.getCity(), normal));
+            Paragraph fName = new Paragraph(firm.getFirmName(), h1);
+            fName.setAlignment(Element.ALIGN_LEFT);
+            doc.add(fName);
+
+            if (firm.getAddressLine1() != null)
+                doc.add(new Paragraph(firm.getAddressLine1(), normal));
+
+            if (firm.getAddressLine2() != null)
+                doc.add(new Paragraph(firm.getAddressLine2(), normal));
+
+            if (firm.getCity() != null || firm.getPincode() != null)
+                doc.add(new Paragraph(
+                    (firm.getCity() != null ? firm.getCity() : "") + 
+                    (firm.getPincode() != null ? " - " + firm.getPincode() : ""),
+                    normal
+                ));
+
+            if (firm.getPhone() != null)
+                doc.add(new Paragraph("Phone: " + firm.getPhone(), normal));
+
+            if (firm.getEmail() != null)
+                doc.add(new Paragraph("Email: " + firm.getEmail(), normal));
+
+            if (firm.getGstin() != null)
+                doc.add(new Paragraph("GSTIN: " + firm.getGstin(), normal));
+
             doc.add(new Paragraph("\n"));
         }
 
-        doc.add(new Paragraph("Period: " +
-                data.getFrom().format(DATE_FMT) + " to " + data.getTo().format(DATE_FMT), normal));
+        doc.add(new Paragraph(
+            "Period: " + data.getFrom().format(DATE_FMT) + " to " + data.getTo().format(DATE_FMT),
+            bold
+        ));
         doc.add(new Paragraph("\n"));
 
-        doc.add(new Paragraph("Total Business: " + amount(data.getTotalBilled()), bold));
-        doc.add(new Paragraph("Paid Amount: " + amount(data.getTotalPaid()), bold));
-        doc.add(new Paragraph("Outstanding: " + amount(data.getOutstanding()), bold));
-        doc.add(new Paragraph("Total GST: " + amount(data.getTotalTax()), bold));
+        /* -------------------------------------------
+           SUMMARY BLOCK (Card style)
+        ------------------------------------------- */
+        PdfPTable summary = new PdfPTable(new float[] {2f,2f,2f,2f});
+        summary.setWidthPercentage(100);
+
+        summary.addCell(summaryCell("Total Business", amount(data.getTotalBilled())));
+        summary.addCell(summaryCell("Paid Amount", amount(data.getTotalPaid())));
+        summary.addCell(summaryCell("Outstanding", amount(data.getOutstanding())));
+        summary.addCell(summaryCell("Total GST", amount(data.getTotalTax())));
+
+        doc.add(summary);
         doc.add(new Paragraph("\n"));
 
-        doc.add(new Paragraph("GST Summary:", bold));
+        /* -------------------------------------------
+           GST SUMMARY TABLE
+        ------------------------------------------- */
+        Paragraph gstTitle = new Paragraph("GST Summary", h1);
+        gstTitle.setAlignment(Element.ALIGN_LEFT);
+        doc.add(gstTitle);
+        doc.add(new Paragraph("\n"));
 
-        PdfPTable gst = new PdfPTable(new float[]{1f, 2f, 2f});
+        PdfPTable gst = new PdfPTable(new float[]{1f,2f,2f});
         gst.setWidthPercentage(100);
+
         headerCell(gst, "GST %");
-        headerCell(gst, "Taxable");
+        headerCell(gst, "Taxable Value");
         headerCell(gst, "GST Amount");
 
         for (GstSummaryItem g : data.getGstSummary()) {
@@ -329,10 +374,24 @@ public class StatementServiceImpl implements StatementService {
         }
 
         doc.add(gst);
-        doc.close();
+        doc.add(new Paragraph("\n\n"));
 
+        /* -------------------------------------------
+           FOOTER – SIGNATURE
+        ------------------------------------------- */
+        Paragraph sig = new Paragraph(
+            "\n\nAuthorised Signatory\n" + 
+            (firm != null ? firm.getFirmName() : ""),
+            bold
+        );
+        sig.setAlignment(Element.ALIGN_RIGHT);
+
+        doc.add(sig);
+
+        doc.close();
         return baos.toByteArray();
     }
+
 
     /* ============================================================
          HELPERS — FINAL CLEANED VERSION
@@ -369,4 +428,13 @@ public class StatementServiceImpl implements StatementService {
             return LocalDate.of(1970,1,1);
         }
     }
+    private PdfPCell summaryCell(String label, String value) {
+        PdfPCell cell = new PdfPCell();
+        cell.setPadding(10);
+
+        Paragraph t = new Paragraph(label + "\n" + value, new Font(Font.HELVETICA, 10, Font.BOLD));
+        cell.addElement(t);
+        return cell;
+    }
+
 }

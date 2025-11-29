@@ -3,6 +3,7 @@ package com.billing.simple.billsoft.entities;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -13,23 +14,27 @@ import java.time.LocalDateTime;
 @Table(name = "products")
 public class Product {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-	@Column(nullable = false)
-	private String name;
+    @Column(nullable = false)
+    private String name;
 
-	@Column(nullable = false)
-	private Double price;
+    // Price as BigDecimal
+    @Column(precision = 15, scale = 2)
+    private BigDecimal price;
 
-	private String unit; // pcs, kg, litre etc.
-	private Double gstPercentage; // optional
+    private String unit; // pcs, kg, litre etc.
 
-	private LocalDateTime createdAt;
+    // GST percentage as BigDecimal (e.g., 18.00)
+    @Column(precision = 5, scale = 2)
+    private BigDecimal gstPercentage;
 
-	@PrePersist
-	public void prePersist() {
-		this.createdAt = LocalDateTime.now();
-	}
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    public void prePersist() {
+        this.createdAt = LocalDateTime.now();
+    }
 }

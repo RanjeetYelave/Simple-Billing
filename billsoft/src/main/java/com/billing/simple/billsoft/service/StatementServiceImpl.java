@@ -1,16 +1,15 @@
 package com.billing.simple.billsoft.service;
-
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
@@ -22,10 +21,10 @@ import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
+import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
-
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
@@ -55,9 +54,9 @@ public class StatementServiceImpl implements StatementService {
         this.firmRepo = firmRepo;
     }
 
-    /* ============================================================
-         CUSTOMER STATEMENT – JSON
-    ============================================================ */
+    /* ============================================================================
+        CUSTOMER STATEMENT (JSON)
+    ============================================================================ */
     @Override
     public CustomerStatementResponse getCustomerStatement(Long customerId, LocalDate from, LocalDate to) {
         Customer customer = customerRepo.findById(customerId).orElse(null);
@@ -66,56 +65,62 @@ public class StatementServiceImpl implements StatementService {
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        // use repository method that returns invoices for customer (ensure repo has findByCustomer_Id)
         List<Invoice> all = invoiceRepo.findByCustomer_Id(customerId);
 
-        // Opening balance calculation (invoices before fromDate)
-        double billedBefore = all.stream()
-                .filter(i -> i.getInvoiceDate() != null && toLocalDate(i.getInvoiceDate()).isBefore(fromDate))
-                .mapToDouble(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount())
-                .sum();
-
-        double paidBefore = all.stream()
-                .filter(i -> i.getInvoiceDate() != null && toLocalDate(i.getInvoiceDate()).isBefore(fromDate))
-                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
-                .mapToDouble(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount())
-                .sum();
-
-        double openingBalance = billedBefore - paidBefore;
-
-        // All invoices in period
-        List<Invoice> inRange = all.stream()
+        // Only Invoices (skip estimates/drafts)
+        List<Invoice> invoices = all.stream()
                 .filter(i -> i.getInvoiceDate() != null)
+                .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
+                .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
+                .collect(Collectors.toList());
+
+        // Opening balance = Billed - Paid before period
+        BigDecimal billedBefore = invoices.stream()
+                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
+                .map(i -> nz(i.getTotalAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal paidBefore = invoices.stream()
+                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
+                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
+                .map(i -> nz(i.getTotalAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal openingBalance = billedBefore.subtract(paidBefore);
+
+        // Invoices inside range
+        List<Invoice> inRange = invoices.stream()
                 .filter(i -> {
-                    LocalDate d = toLocalDate(i.getInvoiceDate());
-                    return ( !d.isBefore(fromDate) && !d.isAfter(toDate) );
+                    LocalDate d = i.getInvoiceDate().toLocalDate();
+                    return (!d.isBefore(fromDate) && !d.isAfter(toDate));
                 })
-                .sorted(Comparator.comparing(i -> toLocalDate(i.getInvoiceDate())))
-                .toList();
+                .sorted(Comparator.comparing(i -> i.getInvoiceDate().toLocalDate()))
+                .collect(Collectors.toList());
 
         List<StatementEntry> entries = new ArrayList<>();
-        double balance = openingBalance;
-        double totalBilled = 0;
-        double totalPaid = 0;
+        BigDecimal balance = openingBalance;
+        BigDecimal totalBilled = BigDecimal.ZERO;
+        BigDecimal totalPaid = BigDecimal.ZERO;
 
         for (Invoice inv : inRange) {
-            double amt = inv.getTotalAmount() == null ? 0.0 : inv.getTotalAmount();
-            LocalDate invDate = toLocalDate(inv.getInvoiceDate());
+            LocalDate invDate = inv.getInvoiceDate().toLocalDate();
+            BigDecimal amt = nz(inv.getTotalAmount());
 
-            // Invoice entry
+            // Invoice row
             StatementEntry invoiceEntry = new StatementEntry();
             invoiceEntry.setDate(invDate);
             invoiceEntry.setType("INVOICE");
             invoiceEntry.setRef(inv.getInvoiceNumber());
             invoiceEntry.setDescription("Invoice");
-            invoiceEntry.setDebit(amt);
+            invoiceEntry.setDebit(amt.doubleValue());
             invoiceEntry.setCredit(0.0);
-            balance += amt;
-            invoiceEntry.setBalance(balance);
-            entries.add(invoiceEntry);
-            totalBilled += amt;
 
-            // Payment entry (if invoice marked paid)
+            balance = balance.add(amt);
+            invoiceEntry.setBalance(balance.doubleValue());
+            entries.add(invoiceEntry);
+            totalBilled = totalBilled.add(amt);
+
+            // If invoice is paid → add payment row
             if (Boolean.TRUE.equals(inv.getPaid())) {
                 StatementEntry pay = new StatementEntry();
                 pay.setDate(invDate);
@@ -123,11 +128,12 @@ public class StatementServiceImpl implements StatementService {
                 pay.setRef(inv.getInvoiceNumber());
                 pay.setDescription("Invoice Paid");
                 pay.setDebit(0.0);
-                pay.setCredit(amt);
-                balance -= amt;
-                pay.setBalance(balance);
+                pay.setCredit(amt.doubleValue());
+
+                balance = balance.subtract(amt);
+                pay.setBalance(balance.doubleValue());
                 entries.add(pay);
-                totalPaid += amt;
+                totalPaid = totalPaid.add(amt);
             }
         }
 
@@ -136,24 +142,25 @@ public class StatementServiceImpl implements StatementService {
         resp.setCustomerName(customer.getName());
         resp.setFrom(fromDate);
         resp.setTo(toDate);
-        resp.setOpeningBalance(openingBalance);
-        resp.setTotalBilled(totalBilled);
-        resp.setTotalPaid(totalPaid);
-        resp.setClosingBalance(balance);
+        resp.setOpeningBalance(openingBalance.doubleValue());
+        resp.setTotalBilled(totalBilled.doubleValue());
+        resp.setTotalPaid(totalPaid.doubleValue());
+        resp.setClosingBalance(balance.doubleValue());
         resp.setEntries(entries);
+
         return resp;
     }
 
-    /* ============================================================
-         CUSTOMER STATEMENT – PDF
-    ============================================================ */
+    /* ============================================================================
+         CUSTOMER STATEMENT PDF
+    ============================================================================ */
     @Override
     public byte[] generateCustomerStatementPdf(Long customerId, LocalDate from, LocalDate to) throws Exception {
         CustomerStatementResponse data = getCustomerStatement(customerId, from, to);
         FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(doc, baos);
         doc.open();
 
@@ -161,11 +168,13 @@ public class StatementServiceImpl implements StatementService {
         Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, 10);
 
+        // Title
         Paragraph head = new Paragraph("Customer Statement", title);
         head.setAlignment(Element.ALIGN_CENTER);
         doc.add(head);
         doc.add(new Paragraph("\n"));
 
+        // Firm details
         if (firm != null) {
             doc.add(new Paragraph(firm.getFirmName(), bold));
             if (firm.getAddressLine1() != null) doc.add(new Paragraph(firm.getAddressLine1(), normal));
@@ -174,13 +183,14 @@ public class StatementServiceImpl implements StatementService {
         }
 
         doc.add(new Paragraph("Customer: " + data.getCustomerName(), bold));
-        doc.add(new Paragraph("Period: " + data.getFrom().format(DATE_FMT) +
-                " to " + data.getTo().format(DATE_FMT), normal));
+        doc.add(new Paragraph("Period: " + data.getFrom().format(DATE_FMT)
+                + " to " + data.getTo().format(DATE_FMT), normal));
         doc.add(new Paragraph("\n"));
 
-        doc.add(new Paragraph("Opening Balance: " + amount(data.getOpeningBalance()), bold));
+        doc.add(new Paragraph("Opening Balance: " + fmt(data.getOpeningBalance()), bold));
         doc.add(new Paragraph("\n"));
 
+        // Table
         float[] widths = {1.2f, 1.2f, 1.2f, 3f, 1.2f, 1.2f, 1.2f};
         PdfPTable table = new PdfPTable(widths);
         table.setWidthPercentage(100);
@@ -194,99 +204,107 @@ public class StatementServiceImpl implements StatementService {
         headerCell(table, "Balance");
 
         for (StatementEntry e : data.getEntries()) {
-            table.addCell(textCell(e.getDate() == null ? "-" : e.getDate().format(DATE_FMT)));
+            table.addCell(textCell(e.getDate().format(DATE_FMT)));
             table.addCell(textCell(e.getType()));
             table.addCell(textCell(e.getRef()));
             table.addCell(textCell(e.getDescription()));
-            table.addCell(textCell(amount(e.getDebit())));
-            table.addCell(textCell(amount(e.getCredit())));
-            table.addCell(textCell(amount(e.getBalance())));
+            table.addCell(textCell(fmt(e.getDebit())));
+            table.addCell(textCell(fmt(e.getCredit())));
+            table.addCell(textCell(fmt(e.getBalance())));
         }
 
         doc.add(table);
         doc.add(new Paragraph("\n"));
 
-        doc.add(new Paragraph("Total Billed: " + amount(data.getTotalBilled()), bold));
-        doc.add(new Paragraph("Total Paid: " + amount(data.getTotalPaid()), bold));
-        doc.add(new Paragraph("Closing Balance: " + amount(data.getClosingBalance()), bold));
+        // Totals
+        doc.add(new Paragraph("Total Billed: " + fmt(data.getTotalBilled()), bold));
+        doc.add(new Paragraph("Total Paid: " + fmt(data.getTotalPaid()), bold));
+        doc.add(new Paragraph("Closing Balance: " + fmt(data.getClosingBalance()), bold));
 
         doc.close();
         return baos.toByteArray();
     }
 
-    /* ============================================================
-         FIRM STATEMENT JSON
-    ============================================================ */
+    /* ============================================================================
+         FIRM STATEMENT (JSON)
+    ============================================================================ */
     @Override
     public FirmStatementResponse getFirmStatement(LocalDate from, LocalDate to) {
+
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        List<Invoice> all = invoiceRepo.findAll();
-
-        List<Invoice> list = all.stream()
+        List<Invoice> list = invoiceRepo.findAll().stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> {
-                    LocalDate d = toLocalDate(i.getInvoiceDate());
+                    LocalDate d = i.getInvoiceDate().toLocalDate();
                     return (!d.isBefore(fromDate) && !d.isAfter(toDate));
                 })
-                .sorted(Comparator.comparing(i -> toLocalDate(i.getInvoiceDate())))
-                .toList();
+                .collect(Collectors.toList());
 
-        double totalBilled = list.stream().mapToDouble(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount()).sum();
-        double totalPaid = list.stream().filter(i -> Boolean.TRUE.equals(i.getPaid()))
-                .mapToDouble(i -> i.getTotalAmount() == null ? 0.0 : i.getTotalAmount()).sum();
-        double outstanding = totalBilled - totalPaid;
-        double totalTax = list.stream().mapToDouble(i -> i.getTotalTax() == null ? 0.0 : i.getTotalTax()).sum();
+        BigDecimal totalBilled = list.stream()
+                .map(i -> nz(i.getTotalAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Map<Double, GstSummaryItem> gstMap = new LinkedHashMap<>();
+        BigDecimal totalPaid = list.stream()
+                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
+                .map(i -> nz(i.getTotalAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal outstanding = totalBilled.subtract(totalPaid);
+
+        BigDecimal totalTax = list.stream()
+                .map(i -> nz(i.getTotalTax()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // GST summary using stored taxableAmount + gstAmount
+        Map<BigDecimal, GstSummaryItem> gstMap = new LinkedHashMap<>();
 
         for (Invoice inv : list) {
-            List<InvoiceItem> items = inv.getItems() == null ? Collections.emptyList() : inv.getItems();
-            for (InvoiceItem it : items) {
-                double gst = it.getGstPercent() == null ? 0.0 : it.getGstPercent();
-                double taxable = it.getAmountWithoutTax() == null ? 0.0 : it.getAmountWithoutTax();
-                double gstAmt = (it.getLineTotal() == null ? 0.0 : it.getLineTotal()) - taxable;
+            for (InvoiceItem it : inv.getItems()) {
+                BigDecimal gstPct = nz(it.getGstPercent());
+                BigDecimal taxable = nz(it.getTaxableAmount());
+                BigDecimal gstAmt = nz(it.getGstAmount());
 
-                GstSummaryItem gs = gstMap.get(gst);
-                if (gs == null) {
-                    gs = new GstSummaryItem();
-                    gs.setGstPercent(gst);
-                    gs.setTaxableValue(taxable);
-                    gs.setGstAmount(gstAmt);
-                    gstMap.put(gst, gs);
-                } else {
-                    gs.setTaxableValue(gs.getTaxableValue() + taxable);
-                    gs.setGstAmount(gs.getGstAmount() + gstAmt);
-                }
+                GstSummaryItem gs = gstMap.computeIfAbsent(gstPct, k -> {
+                    GstSummaryItem item = new GstSummaryItem();
+                    item.setGstPercent(gstPct.doubleValue());
+                    item.setTaxableValue(0.0);
+                    item.setGstAmount(0.0);
+                    return item;
+                });
+
+                gs.setTaxableValue(gs.getTaxableValue() + taxable.doubleValue());
+                gs.setGstAmount(gs.getGstAmount() + gstAmt.doubleValue());
             }
         }
 
         FirmStatementResponse resp = new FirmStatementResponse();
         resp.setFrom(fromDate);
         resp.setTo(toDate);
-        resp.setTotalBilled(totalBilled);
-        resp.setTotalPaid(totalPaid);
-        resp.setOutstanding(outstanding);
-        resp.setTotalTax(totalTax);
+        resp.setTotalBilled(totalBilled.doubleValue());
+        resp.setTotalPaid(totalPaid.doubleValue());
+        resp.setOutstanding(outstanding.doubleValue());
+        resp.setTotalTax(totalTax.doubleValue());
         resp.setInvoiceCount(list.size());
         resp.setGstSummary(new ArrayList<>(gstMap.values()));
 
         return resp;
     }
 
-    /* ============================================================
+    /* ============================================================================
          FIRM STATEMENT PDF
-    ============================================================ */
+    ============================================================================ */
     @Override
     public byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception {
 
         FirmStatementResponse data = getFirmStatement(from, to);
         FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
 
+        Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4, 36,36,48,48);
         PdfWriter.getInstance(doc, baos);
+
         doc.open();
 
         Font title = new Font(Font.HELVETICA, 18, Font.BOLD);
@@ -294,73 +312,53 @@ public class StatementServiceImpl implements StatementService {
         Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, 10);
 
-        /* -------------------------------------------
-           HEADER BLOCK WITH FIRM DETAILS
-        ------------------------------------------- */
+        // Header
         Paragraph top = new Paragraph("FIRM STATEMENT", title);
         top.setAlignment(Element.ALIGN_CENTER);
         doc.add(top);
         doc.add(new Paragraph("\n"));
 
         if (firm != null) {
-            Paragraph fName = new Paragraph(firm.getFirmName(), h1);
-            fName.setAlignment(Element.ALIGN_LEFT);
-            doc.add(fName);
-
-            if (firm.getAddressLine1() != null)
-                doc.add(new Paragraph(firm.getAddressLine1(), normal));
-
-            if (firm.getAddressLine2() != null)
-                doc.add(new Paragraph(firm.getAddressLine2(), normal));
-
+            doc.add(new Paragraph(firm.getFirmName(), h1));
+            if (firm.getAddressLine1() != null) doc.add(new Paragraph(firm.getAddressLine1(), normal));
+            if (firm.getAddressLine2() != null) doc.add(new Paragraph(firm.getAddressLine2(), normal));
             if (firm.getCity() != null || firm.getPincode() != null)
                 doc.add(new Paragraph(
-                    (firm.getCity() != null ? firm.getCity() : "") + 
-                    (firm.getPincode() != null ? " - " + firm.getPincode() : ""),
-                    normal
+                        (firm.getCity() != null ? firm.getCity() : "") +
+                        (firm.getPincode() != null ? " - " + firm.getPincode() : ""),
+                        normal
                 ));
-
-            if (firm.getPhone() != null)
-                doc.add(new Paragraph("Phone: " + firm.getPhone(), normal));
-
-            if (firm.getEmail() != null)
-                doc.add(new Paragraph("Email: " + firm.getEmail(), normal));
-
-            if (firm.getGstin() != null)
-                doc.add(new Paragraph("GSTIN: " + firm.getGstin(), normal));
-
+            if (firm.getPhone() != null) doc.add(new Paragraph("Phone: " + firm.getPhone(), normal));
+            if (firm.getEmail() != null) doc.add(new Paragraph("Email: " + firm.getEmail(), normal));
+            if (firm.getGstin() != null) doc.add(new Paragraph("GSTIN: " + firm.getGstin(), normal));
             doc.add(new Paragraph("\n"));
         }
 
         doc.add(new Paragraph(
-            "Period: " + data.getFrom().format(DATE_FMT) + " to " + data.getTo().format(DATE_FMT),
-            bold
+                "Period: " + data.getFrom().format(DATE_FMT) + " to " + data.getTo().format(DATE_FMT),
+                bold
         ));
         doc.add(new Paragraph("\n"));
 
-        /* -------------------------------------------
-           SUMMARY BLOCK (Card style)
-        ------------------------------------------- */
-        PdfPTable summary = new PdfPTable(new float[] {2f,2f,2f,2f});
+        // Summary row
+        PdfPTable summary = new PdfPTable(new float[]{2f, 2f, 2f, 2f});
         summary.setWidthPercentage(100);
 
-        summary.addCell(summaryCell("Total Business", amount(data.getTotalBilled())));
-        summary.addCell(summaryCell("Paid Amount", amount(data.getTotalPaid())));
-        summary.addCell(summaryCell("Outstanding", amount(data.getOutstanding())));
-        summary.addCell(summaryCell("Total GST", amount(data.getTotalTax())));
+        summary.addCell(summaryCell("Total Business", fmt(data.getTotalBilled())));
+        summary.addCell(summaryCell("Paid Amount", fmt(data.getTotalPaid())));
+        summary.addCell(summaryCell("Outstanding", fmt(data.getOutstanding())));
+        summary.addCell(summaryCell("Total GST", fmt(data.getTotalTax())));
 
         doc.add(summary);
         doc.add(new Paragraph("\n"));
 
-        /* -------------------------------------------
-           GST SUMMARY TABLE
-        ------------------------------------------- */
+        // GST summary table
         Paragraph gstTitle = new Paragraph("GST Summary", h1);
         gstTitle.setAlignment(Element.ALIGN_LEFT);
         doc.add(gstTitle);
         doc.add(new Paragraph("\n"));
 
-        PdfPTable gst = new PdfPTable(new float[]{1f,2f,2f});
+        PdfPTable gst = new PdfPTable(new float[]{1f, 2f, 2f});
         gst.setWidthPercentage(100);
 
         headerCell(gst, "GST %");
@@ -369,33 +367,34 @@ public class StatementServiceImpl implements StatementService {
 
         for (GstSummaryItem g : data.getGstSummary()) {
             gst.addCell(textCell(g.getGstPercent() + "%"));
-            gst.addCell(textCell(amount(g.getTaxableValue())));
-            gst.addCell(textCell(amount(g.getGstAmount())));
+            gst.addCell(textCell(fmt(g.getTaxableValue())));
+            gst.addCell(textCell(fmt(g.getGstAmount())));
         }
 
         doc.add(gst);
         doc.add(new Paragraph("\n\n"));
 
-        /* -------------------------------------------
-           FOOTER – SIGNATURE
-        ------------------------------------------- */
-        Paragraph sig = new Paragraph(
-            "\n\nAuthorised Signatory\n" + 
-            (firm != null ? firm.getFirmName() : ""),
-            bold
-        );
+        Paragraph sig = new Paragraph("\n\nAuthorised Signatory\n" +
+                (firm != null ? firm.getFirmName() : ""), bold);
         sig.setAlignment(Element.ALIGN_RIGHT);
-
         doc.add(sig);
 
         doc.close();
         return baos.toByteArray();
     }
 
+    /* ============================================================================
+        HELPERS
+    ============================================================================ */
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
 
-    /* ============================================================
-         HELPERS — FINAL CLEANED VERSION
-    ============================================================ */
+    private String fmt(Double v) {
+        if (v == null) return "0.00";
+        return String.format("%.2f", v);
+    }
+
     private void headerCell(PdfPTable t, String label) {
         PdfPCell c = new PdfPCell(new Phrase(label, new Font(Font.HELVETICA, 10, Font.BOLD)));
         c.setBackgroundColor(Color.LIGHT_GRAY);
@@ -403,37 +402,17 @@ public class StatementServiceImpl implements StatementService {
         t.addCell(c);
     }
 
-    private PdfPCell textCell(String t) {
-        PdfPCell c = new PdfPCell(new Phrase(t == null ? "-" : t, new Font(Font.HELVETICA, 9)));
+    private PdfPCell textCell(String v) {
+        PdfPCell c = new PdfPCell(new Phrase(v == null ? "-" : v, new Font(Font.HELVETICA, 9)));
         c.setPadding(6);
         return c;
     }
 
-    private String amount(Double v) {
-        return String.format("%.2f", v == null ? 0.0 : v);
-    }
-
-    /** Utility: convert various invoice date types to LocalDate.
-     *  If invoiceDate is LocalDate, return it; if LocalDateTime, convert.
-     *  If null, return epoch (1970-01-01) — but callers check for null already.
-     */
-    private LocalDate toLocalDate(Object invoiceDate) {
-        if (invoiceDate == null) return LocalDate.of(1970,1,1);
-        if (invoiceDate instanceof LocalDate) return (LocalDate) invoiceDate;
-        if (invoiceDate instanceof LocalDateTime) return ((LocalDateTime) invoiceDate).toLocalDate();
-        // fallback: try toString parse (unlikely)
-        try {
-            return LocalDate.parse(invoiceDate.toString());
-        } catch (Exception ex) {
-            return LocalDate.of(1970,1,1);
-        }
-    }
     private PdfPCell summaryCell(String label, String value) {
         PdfPCell cell = new PdfPCell();
         cell.setPadding(10);
-
-        Paragraph t = new Paragraph(label + "\n" + value, new Font(Font.HELVETICA, 10, Font.BOLD));
-        cell.addElement(t);
+        Paragraph p = new Paragraph(label + "\n" + value, new Font(Font.HELVETICA, 10, Font.BOLD));
+        cell.addElement(p);
         return cell;
     }
 

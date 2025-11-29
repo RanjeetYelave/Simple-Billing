@@ -11,6 +11,7 @@ import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.entities.Invoice;
+import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.service.InvoicePdfService;
 import com.billing.simple.billsoft.service.InvoiceService;
 
@@ -27,95 +28,133 @@ public class InvoiceController {
         this.pdfService = pdfService;
     }
 
-    // CREATE (persist)
+    // ---------------- NUMBER GENERATORS ----------------
+    @GetMapping("/next-invoice-number")
+    public ResponseEntity<String> nextInvoiceNumber() {
+        return ResponseEntity.ok(service.generateInvoiceNumber());
+    }
+
+    @GetMapping("/next-estimate-number")
+    public ResponseEntity<String> nextEstimateNumber() {
+        return ResponseEntity.ok(service.generateEstimateNumber());
+    }
+
+    // ---------------- CREATE ----------------
     @PostMapping
     public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
-        Invoice created = service.createInvoice(request);
-        return ResponseEntity.ok(created);
+        request.setStatus(InvoiceStatus.FINAL);
+        return ResponseEntity.ok(service.createInvoice(request));
     }
 
-    // PREVIEW (no persist) — NEW
+    @PostMapping("/estimate")
+    public ResponseEntity<Invoice> createEstimate(@RequestBody InvoiceRequest request) {
+        request.setStatus(InvoiceStatus.ESTIMATE);
+        return ResponseEntity.ok(service.createEstimate(request));
+    }
+
+    // ---------------- CONVERT ESTIMATE → INVOICE ----------------
+    @PostMapping("/convert/{estimateId}")
+    public ResponseEntity<Invoice> convertEstimate(
+            @PathVariable Long estimateId,
+            @RequestBody(required = false) InvoiceRequest overrideRequest) {
+
+        return ResponseEntity.ok(service.convertEstimateToInvoice(estimateId, overrideRequest));
+    }
+
+    // ---------------- PREVIEW ----------------
     @PostMapping("/preview")
     public ResponseEntity<Invoice> preview(@RequestBody InvoiceRequest request) {
-        // performs full calculation and returns Invoice object but DOES NOT save
-        Invoice computed = service.previewInvoice(request);
-        return ResponseEntity.ok(computed);
+        return ResponseEntity.ok(service.previewInvoice(request));
     }
 
-    // LIST ALL
+    // ---------------- LIST ----------------
     @GetMapping
     public ResponseEntity<List<Invoice>> getAll() {
         return ResponseEntity.ok(service.getAll());
     }
 
-    // GET BY ID
-    @GetMapping("/{id}")
-    public ResponseEntity<Invoice> getById(@PathVariable("id") Long id) {
-        Invoice inv = service.getById(id);
-        if (inv == null)
-            return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(inv);
+    @GetMapping("/estimates")
+    public ResponseEntity<List<Invoice>> getAllEstimates() {
+        return ResponseEntity.ok(service.getAllEstimates());
     }
 
-    // UPDATE FULL
+    @GetMapping("/final")
+    public ResponseEntity<List<Invoice>> getAllFinalInvoices() {
+        return ResponseEntity.ok(service.getAllFinalInvoices());
+    }
+
+    // ---------------- GET BY ID ----------------
+    @GetMapping("/{id}")
+    public ResponseEntity<Invoice> getById(@PathVariable Long id) {
+        Invoice inv = service.getById(id);
+        return inv == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(inv);
+    }
+
+    // ---------------- UPDATE FULL ----------------
     @PutMapping("/{id}")
-    public ResponseEntity<Invoice> updateInvoice(@PathVariable("id") Long id,
+    public ResponseEntity<Invoice> updateInvoice(
+            @PathVariable Long id,
             @RequestBody InvoiceUpdateRequest request) {
 
         Invoice updated = service.updateFullInvoice(id, request);
-        if (updated == null)
-            return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(updated);
+        return updated == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(updated);
     }
 
-    // DELETE
+    // ---------------- DELETE ----------------
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        boolean removed = service.delete(id);
-        if (!removed)
-            return ResponseEntity.notFound().build();
-        return ResponseEntity.noContent().build();
+        return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 
-    // MARK PAID / UNPAID
+    // ---------------- MARK PAID ----------------
     @PutMapping("/{id}/paid")
-    public ResponseEntity<Invoice> markPaid(@PathVariable("id") Long id, @RequestParam("paid") boolean paid) {
-
+    public ResponseEntity<Invoice> markPaid(@PathVariable Long id, @RequestParam boolean paid) {
         Invoice updated = service.updatePaidFlag(id, paid);
-        if (updated == null)
-            return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(updated);
+        return updated == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(updated);
     }
- // CUSTOMER ANALYTICS
-    @GetMapping("/analytics/customer/{customerId}")
-    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(
-            @PathVariable("customerId") Long customerId) {
 
+    // ---------------- UPDATE STATUS (NEW) ----------------
+    @PutMapping("/{id}/status")
+    public ResponseEntity<Invoice> updateStatus(
+            @PathVariable Long id,
+            @RequestParam InvoiceStatus status) {
+
+        Invoice inv = service.getById(id);
+        if (inv == null) return ResponseEntity.notFound().build();
+
+        inv.setStatus(status);
+        return ResponseEntity.ok(service.updateFullInvoice(id, new InvoiceUpdateRequest()));
+    }
+
+    // ---------------- ANALYTICS ----------------
+    @GetMapping("/analytics/customer/{customerId}")
+    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(@PathVariable Long customerId) {
         return ResponseEntity.ok(service.getCustomerAnalytics(customerId));
     }
 
-
-    // CUSTOMER SEARCH ANALYTICS
     @GetMapping("/analytics/search")
-    public ResponseEntity<java.util.List<CustomerAnalyticsResponse>> analyticsByName(@RequestParam("name") String name) {
+    public ResponseEntity<List<CustomerAnalyticsResponse>> analyticsByName(@RequestParam String name) {
         return ResponseEntity.ok(service.getCustomerAnalyticsByName(name));
     }
 
+    // ---------------- PDF DOWNLOAD ----------------
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadPdf(
-            @PathVariable("id") Long id,
-            @RequestParam(name = "size", defaultValue = "A4") String size
-    ) {
-        try {
-            Invoice invoice = service.getById(id);
-            if (invoice == null)
-                return ResponseEntity.notFound().build();
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "A4") String size) {
 
-            byte[] pdf = pdfService.generatePdf(invoice, size);
+        try {
+            Invoice inv = service.getById(id);
+            if (inv == null) return ResponseEntity.notFound().build();
+
+            byte[] pdf = pdfService.generatePdf(inv, size);
+
+            String filename = (inv.getStatus() == InvoiceStatus.ESTIMATE)
+                    ? "estimate-" + inv.getEstimateNumber() + ".pdf"
+                    : "invoice-" + inv.getInvoiceNumber() + ".pdf";
 
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=invoice-" + invoice.getInvoiceNumber() + ".pdf")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdf);
 
@@ -124,6 +163,4 @@ public class InvoiceController {
             return ResponseEntity.internalServerError().build();
         }
     }
-
-
 }

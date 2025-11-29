@@ -1,45 +1,68 @@
 package com.billing.simple.billsoft.repo;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import com.billing.simple.billsoft.entities.Invoice;
+import com.billing.simple.billsoft.entities.InvoiceStatus;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
-    // existing
+    // --------------------------------------------
+    // Basic Lookups
+    // --------------------------------------------
     Invoice findTopByOrderByIdDesc();
 
-    // existing (correct for analytics)
     List<Invoice> findByCustomer_Id(Long customerId);
 
-    // existing (analytics search)
     List<Invoice> findByCustomer_NameContainingIgnoreCase(String namePart);
 
-    /* =====================================================
-       🆕 REQUIRED FOR STATEMENT SERVICE
-       ===================================================== */
-
-    // 1) For "customer statement → all invoices"
+    // --------------------------------------------
+    // Customer Statement Queries
+    // --------------------------------------------
     List<Invoice> findAllByCustomer_IdOrderByInvoiceDateAsc(Long customerId);
 
-    // 2) For "customer statement → invoices BEFORE date" (opening balance)
-    List<Invoice> findAllByCustomer_IdAndInvoiceDateBefore(Long customerId, LocalDate before);
+    List<Invoice> findAllByCustomer_IdAndInvoiceDateBeforeOrderByInvoiceDateAsc(
+            Long customerId,
+            LocalDateTime before
+    );
 
-    // 3) For "customer statement → invoices in date range"
     List<Invoice> findAllByCustomer_IdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
             Long customerId,
-            LocalDate from,
-            LocalDate to
+            LocalDateTime from,
+            LocalDateTime to
     );
 
-    // 4) For "firm statement → invoices in date range"
+    // --------------------------------------------
+    // Firm Statement Queries
+    // --------------------------------------------
     List<Invoice> findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(
-            LocalDate from,
-            LocalDate to
+            LocalDateTime from,
+            LocalDateTime to
     );
+
+    // --------------------------------------------
+    // Status-Based Queries (Invoices vs Estimates)
+    // --------------------------------------------
+    List<Invoice> findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus status);
+
+    List<Invoice> findAllByStatusInOrderByInvoiceDateAsc(List<InvoiceStatus> statuses);
+
+    List<Invoice> findAllByCustomer_IdAndStatusOrderByInvoiceDateAsc(
+            Long customerId,
+            InvoiceStatus status
+    );
+
+    // --------------------------------------------
+    // Estimate → Invoice Conversion
+    // --------------------------------------------
+    List<Invoice> findAllByStatusAndConvertedInvoiceIdIsNullOrderByInvoiceDateAsc(
+            InvoiceStatus status
+    );
+
+    List<Invoice> findAllByConvertedInvoiceId(Long invoiceId);
 }

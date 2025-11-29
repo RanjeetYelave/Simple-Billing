@@ -2,8 +2,12 @@ package com.billing.simple.billsoft.entities;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Getter
 @Setter
@@ -29,24 +33,71 @@ public class InvoiceItem {
     @JoinColumn(name = "product_id")
     private Product product;
 
-    // ITEM FIELDS (calculated / stored)
-    private Integer qty;                   // Quantity
-    private String unit;                   // Unit (pcs, kg etc.)
+    // ITEM BASIC FIELDS
+    private Integer qty;
+    private String unit;
 
-    private Double pricePerUnit;           // price per unit used for calculations
-    private Double amountWithoutTax;       // qty * pricePerUnit
+    // -------------------------------
+    // MONEY FIELDS – BigDecimal
+    // -------------------------------
+    @Column(precision = 15, scale = 2)
+    private BigDecimal pricePerUnit;
 
-    // Discount
-    private String discountType;           // "PERCENT" or "VALUE"
-    private Double discountValue;          // flat rupee discount
-    private Double discountPercent;        // percent discount
+    @Column(precision = 15, scale = 2)
+    private BigDecimal amountWithoutTax;
 
-    private Double taxableAmount;          // amountWithoutTax - discount
+    // DISCOUNT
+    private String discountType;     // "PERCENT" or "VALUE"
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal discountValue;
+
+    @Column(precision = 5, scale = 2)
+    private BigDecimal discountPercent;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal taxableAmount;
 
     // GST
-    private Double gstPercent;
-    private Double gstAmount;
+    @Column(precision = 5, scale = 2)
+    private BigDecimal gstPercent;
 
-    // Final total for this row
-    private Double lineTotal;
+    @Column(precision = 15, scale = 2)
+    private BigDecimal gstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal lineTotal;
+
+
+    // --------------------------------
+    // NORMALIZATION (Always Scale = 2)
+    // --------------------------------
+    @PrePersist
+    @PreUpdate
+    private void normalize() {
+
+        if (pricePerUnit != null)
+            pricePerUnit = pricePerUnit.setScale(2, RoundingMode.HALF_UP);
+
+        if (amountWithoutTax != null)
+            amountWithoutTax = amountWithoutTax.setScale(2, RoundingMode.HALF_UP);
+
+        if (discountValue != null)
+            discountValue = discountValue.setScale(2, RoundingMode.HALF_UP);
+
+        if (discountPercent != null)
+            discountPercent = discountPercent.setScale(2, RoundingMode.HALF_UP);
+
+        if (taxableAmount != null)
+            taxableAmount = taxableAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (gstPercent != null)
+            gstPercent = gstPercent.setScale(2, RoundingMode.HALF_UP);
+
+        if (gstAmount != null)
+            gstAmount = gstAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (lineTotal != null)
+            lineTotal = lineTotal.setScale(2, RoundingMode.HALF_UP);
+    }
 }

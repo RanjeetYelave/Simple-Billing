@@ -2,18 +2,8 @@ package com.billing.simple.billsoft.entities;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Getter
 @Setter
@@ -24,23 +14,28 @@ import lombok.Setter;
 @Table(name = "customers")
 public class Customer {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-	@Column(nullable = false)
-	private String name;
+    @Column(nullable = false)
+    private String name;
 
-	@Column(nullable = false, length = 15)
-	private String phone;
+    @Column(nullable = false, length = 15)
+    private String phone;
 
-	private String email;
-	private String address;
+    private String email;
 
-	private LocalDateTime createdAt;
+    @Column(length = 500)
+    private String address;
 
-	@PrePersist
-	public void prePersist() {
-		this.createdAt = LocalDateTime.now();
-	}
+    // (Optional but recommended for invoice systems)
+    private String gstin;
+
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    public void prePersist() {
+        this.createdAt = LocalDateTime.now();
+    }
 }

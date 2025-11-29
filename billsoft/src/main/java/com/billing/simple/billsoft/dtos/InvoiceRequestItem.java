@@ -3,38 +3,43 @@ package com.billing.simple.billsoft.dtos;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 public class InvoiceRequestItem {
 
     /**
-     * productId must be provided
-     * (or UI can auto-create product before sending and return id)
+     * Must be provided by UI when selecting a product.
+     * For custom/manual items, UI must create a temporary Product first.
      */
     private Long productId;
 
+    /* -------------------------------------------------------------
+       QUANTITY & UNIT
+       ------------------------------------------------------------- */
     private Integer qty;
-    private String unit;
+    private String unit;   // pcs, kg, box, etc.
 
-    /**
-     * Price per unit that UI presents.
-     * Server will use this as base price for calculations,
-     * but you may also choose to fall back to product.price if null.
-     */
-    private Double pricePerUnit;
+    /* -------------------------------------------------------------
+       PRICING (BigDecimal)
+       If null → backend falls back to Product.price
+       ------------------------------------------------------------- */
+    private BigDecimal pricePerUnit;
 
-    /**
-     * Optional per-item discount (if present).
-     * If both discountValue and discountPercent are present,
-     * discountPercent takes precedence if > 0.
-     */
-    private String discountType;   // "PERCENT" or "VALUE" or null
-    private Double discountValue;  // flat amount
-    private Double discountPercent; // percentage
+    /* -------------------------------------------------------------
+       DISCOUNT (BigDecimal)
+       Precedence:
+           discountPercent > discountValue
+       discountType is optional (UI convenience only)
+       ------------------------------------------------------------- */
+    private String discountType;            // "PERCENT" / "VALUE" / null
+    private BigDecimal discountValue;       // flat discount ₹
+    private BigDecimal discountPercent;     // percent 0–100
 
-    /**
-     * Optional GST percentage for the item.
-     * If absent server will fall back to product.gstPercentage.
-     */
-    private Double gstPercent;
+    /* -------------------------------------------------------------
+       GST (BigDecimal)
+       If null → backend uses Product.gstPercentage
+       ------------------------------------------------------------- */
+    private BigDecimal gstPercent;
 }

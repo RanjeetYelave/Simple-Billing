@@ -13,11 +13,14 @@ import { firmProfileScreen } from "./firm-profile-screen.js";
 // NEW — Statements Screen
 import { statementScreen } from "./statement-screen.js";
 
+// NEW — Updates Screen
+import { updatesScreen } from "./updates-screen.js";
+
 export const navigation = {
 
   screens: {
     firmProfile: firmProfileScreen,
-    invoiceCreate: invoiceCreate,
+    invoiceCreate,
     invoices: invoiceList,
     customers: customerScreen,
     products: productScreen,
@@ -25,7 +28,8 @@ export const navigation = {
     firmAnalytics: firmAnalyticsScreen,
 
     // NEW
-    statements: statementScreen
+    statements: statementScreen,
+    updates: updatesScreen
   },
 
   // FINAL SIDEBAR ORDER
@@ -38,8 +42,9 @@ export const navigation = {
     { id: "analytics",     label: "Customer Insights", icon: "📊" },
     { id: "firmAnalytics", label: "Firm Dashboard",    icon: "📈" },
 
-    // NEW
-    { id: "statements",    label: "Statements",        icon: "🧾" }
+    // NEW SECTION
+    { id: "statements",    label: "Statements",        icon: "🧾" },
+    { id: "updates",       label: "Updates",           icon: "🔄" }
   ],
 
   init() {
@@ -68,7 +73,7 @@ export const navigation = {
       };
     });
 
-    // Default screen → Create Invoice
+    // DEFAULT SCREEN → Create Invoice
     this.show("invoiceCreate");
     sidebar.querySelector(`[data-id="invoiceCreate"]`).classList.add("active");
   },

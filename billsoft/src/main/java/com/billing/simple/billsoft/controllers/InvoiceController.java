@@ -100,7 +100,10 @@ public class InvoiceController {
     }
 
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id, @RequestParam(defaultValue = "A4") String size) {
+    public ResponseEntity<byte[]> downloadPdf(
+            @PathVariable("id") Long id,
+            @RequestParam(name = "size", defaultValue = "A4") String size
+    ) {
         try {
             Invoice invoice = service.getById(id);
             if (invoice == null)
@@ -111,12 +114,14 @@ public class InvoiceController {
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=invoice-" + invoice.getInvoiceNumber() + ".pdf")
-                    .contentType(MediaType.APPLICATION_PDF).body(pdf);
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdf);
 
         } catch (Exception ex) {
             ex.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
     }
+
 
 }

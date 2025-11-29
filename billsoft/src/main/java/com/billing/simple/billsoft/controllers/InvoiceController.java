@@ -86,12 +86,14 @@ public class InvoiceController {
             return ResponseEntity.notFound().build();
         return ResponseEntity.ok(updated);
     }
-
-    // CUSTOMER ANALYTICS
+ // CUSTOMER ANALYTICS
     @GetMapping("/analytics/customer/{customerId}")
-    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(@PathVariable Long customerId) {
+    public ResponseEntity<CustomerAnalyticsResponse> analyticsByCustomer(
+            @PathVariable("customerId") Long customerId) {
+
         return ResponseEntity.ok(service.getCustomerAnalytics(customerId));
     }
+
 
     // CUSTOMER SEARCH ANALYTICS
     @GetMapping("/analytics/search")

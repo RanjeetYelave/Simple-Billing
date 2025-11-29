@@ -509,3 +509,144 @@ label {
   background: #ffffff;
   color: #111827;
 }
+
+/* ============================================================
+   FIRM DASHBOARD — ISOLATED INDUSTRIAL UI (APPEND ONLY)
+   - Safe to append at end of style.css
+   - Uses fd-* namespace to avoid collisions
+   - Respects theme tokens and dark mode
+============================================================ */
+
+/* Container and title */
+.firm-dashboard {
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.fd-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: var(--text-main) !important;
+}
+
+/* KPI Grid - isolated */
+.fd-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+  align-items: start;
+}
+
+/* KPI Card - isolated and minimal */
+.fd-kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 6px 18px var(--shadow-medium);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  color: var(--text-main) !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 84px;
+  box-sizing: border-box;
+}
+
+/* Hover lift */
+.fd-kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 26px var(--shadow-strong);
+}
+
+/* KPI small label and value */
+.fd-kpi-title {
+  font-size: 13px;
+  color: var(--text-muted) !important;
+  margin-bottom: 6px;
+}
+
+.fd-kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main) !important;
+  line-height: 1.1;
+}
+
+/* Smaller style for secondary KPIs */
+.fd-kpi-value.small {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Icon */
+.fd-kpi-icon {
+  font-size: 20px;
+  margin-bottom: 6px;
+  opacity: 0.95;
+}
+
+/* Summary box */
+.fd-summary-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 14px 16px;
+  border-radius: 10px;
+  width: 320px;
+  box-shadow: 0 6px 18px var(--shadow-medium);
+  color: var(--text-main) !important;
+  box-sizing: border-box;
+}
+
+.fd-summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--text-main) !important;
+}
+
+/* Section heading inside card */
+.fd-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-main) !important;
+}
+
+/* Accent borders for quick visual cues (no global override) */
+.fd-accent-blue    { border-left: 4px solid #2563eb; }
+.fd-accent-green   { border-left: 4px solid #16a34a; }
+.fd-accent-orange  { border-left: 4px solid #f97316; }
+.fd-accent-cyan    { border-left: 4px solid #0891b2; }
+.fd-accent-purple  { border-left: 4px solid #7c3aed; }
+.fd-accent-pink    { border-left: 4px solid #db2777; }
+
+/* Responsive fallback: ensure summary box flows below grid on small screens */
+@media (max-width: 900px) {
+  .fd-summary-box {
+    width: 100%;
+  }
+}
+
+/* Dark mode adjustments scoped to fd- namespace */
+[data-theme="dark"] .fd-kpi-card {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.55);
+  background: var(--bg-card);
+}
+
+[data-theme="dark"] .fd-summary-box {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+  background: var(--bg-card);
+}
+
+[data-theme="dark"] .fd-kpi-title,
+[data-theme="dark"] .fd-kpi-value,
+[data-theme="dark"] .fd-summary-row {
+  color: var(--text-main) !important;
+}
+
+/* Accessibility: ensure sufficient contrast for values */
+.fd-kpi-value { color: var(--text-main) !important; }

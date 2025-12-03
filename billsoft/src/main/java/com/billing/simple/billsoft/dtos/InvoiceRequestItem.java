@@ -29,17 +29,10 @@ public class InvoiceRequestItem {
     private BigDecimal pricePerUnit;
 
     /* -------------------------------------------------------------
-       DISCOUNT
-       Backend logic:
-           If percent > 0 → percent discount applies
-           Else if discountValue > 0 → value discount applies
+       DISCOUNT (ITEM-LEVEL)
+       VALUE ONLY (₹ discount amount per line)
     ------------------------------------------------------------- */
-    private BigDecimal discountPercent; // % discount
     private BigDecimal discountValue;   // ₹ discount amount
-
-    /* Optional UI helper: "PERCENT" or "VALUE"
-       Backend does not rely on this field in calculations */
-    private String discountType;
 
     /* -------------------------------------------------------------
        GST

@@ -55,99 +55,156 @@ public class InvoiceCalculationEngine {
             invoice.setDueDate(LocalDate.now().plusDays(14));
         }
 
-        invoice.setInvoiceDate(LocalDateTime.now());
+        // If UI sends invoiceDate string we set it in service; here we ensure some value exists
+        if (invoice.getInvoiceDate() == null) {
+            invoice.setInvoiceDate(LocalDateTime.now());
+        }
         invoice.setPaid(Boolean.TRUE.equals(request.getPaid()));
 
         /* ======================================================================
-           ⚠️ IMPORTANT FIX FOR CONVERSION
-           If request.items is empty or null → retain existing DB items
+           ⚠️ CONVERT ESTIMATE CASE
+           If request has no items -> keep existing items & totals
         ====================================================================== */
         if ((request.getItems() == null || request.getItems().isEmpty())
                 && invoice.getItems() != null && !invoice.getItems().isEmpty()) {
-
-            List<InvoiceItem> cloned = new ArrayList<>();
-            for (InvoiceItem old : invoice.getItems()) {
-                InvoiceItem ni = new InvoiceItem();
-                ni.setProduct(old.getProduct());
-                ni.setQty(old.getQty());
-                ni.setUnit(old.getUnit());
-                ni.setPricePerUnit(old.getPricePerUnit());
-                ni.setAmountWithoutTax(old.getAmountWithoutTax());
-                ni.setDiscountType(old.getDiscountType());
-                ni.setDiscountPercent(old.getDiscountPercent());
-                ni.setDiscountValue(old.getDiscountValue());
-                ni.setTaxableAmount(old.getTaxableAmount());
-                ni.setGstPercent(old.getGstPercent());
-                ni.setGstAmount(old.getGstAmount());
-                ni.setLineTotal(old.getLineTotal());
-                ni.setInvoice(invoice);
-                cloned.add(ni);
-            }
-
-            invoice.getItems().clear();
-            invoice.getItems().addAll(cloned);
-            return invoice; // skip recalculating totals
+            return invoice;
         }
 
         /* ---------------------------
-           BUILD ITEMS (normal case)
+           REBUILD ITEMS ALWAYS
         ---------------------------- */
         invoice.getItems().clear();
         List<InvoiceItem> items = new ArrayList<>();
 
-        for (InvoiceRequestItem ri : request.getItems()) {
-            Product product = findProduct(ri.getProductId(), productList);
-            InvoiceItem item = buildItem(ri, product);
-            if (item != null) {
-                item.setInvoice(invoice);
-                items.add(item);
+        if (request.getItems() != null) {
+            for (InvoiceRequestItem ri : request.getItems()) {
+                Product product = findProduct(ri.getProductId(), productList);
+                InvoiceItem item = buildItem(ri, product);
+                if (item != null) {
+                    item.setInvoice(invoice);
+                    items.add(item);
+                }
             }
         }
 
         /* ---------------------------
-           SUBTOTAL & DISCOUNT
+           BASE SUBTOTAL + ITEM DISCOUNT
+           - rawSubtotal = sum of amountWithoutTax (pre-discount)
+           - itemDiscountSum = sum of item-level discountValue
         ---------------------------- */
         BigDecimal rawSubtotal = ZERO;
         BigDecimal itemDiscountSum = ZERO;
 
         for (InvoiceItem it : items) {
-            rawSubtotal = rawSubtotal.add(nz(it.getAmountWithoutTax()));
-            BigDecimal id = discountAmount(it.getAmountWithoutTax(), it.getDiscountPercent(), it.getDiscountValue());
-            itemDiscountSum = itemDiscountSum.add(id);
+            BigDecimal amountWithoutTax = nz(it.getAmountWithoutTax());
+            rawSubtotal = rawSubtotal.add(amountWithoutTax);
+
+            // Amount-only item discount
+            BigDecimal itemDisc = nz(it.getDiscountValue());
+            if (itemDisc.compareTo(amountWithoutTax) > 0) itemDisc = amountWithoutTax;
+            if (itemDisc.compareTo(ZERO) < 0) itemDisc = ZERO;
+
+            itemDiscountSum = itemDiscountSum.add(itemDisc);
+
+            // Taxable AFTER item-level discount
+            BigDecimal taxableAfterItemDisc = amountWithoutTax.subtract(itemDisc);
+            if (taxableAfterItemDisc.compareTo(BigDecimal.ZERO) < 0) {
+                taxableAfterItemDisc = ZERO;
+            }
+            it.setTaxableAmount(taxableAfterItemDisc);
         }
 
-        BigDecimal taxableSubtotal = rawSubtotal.subtract(itemDiscountSum);
-        if (taxableSubtotal.compareTo(BigDecimal.ZERO) < 0) taxableSubtotal = ZERO;
+        /* ---------------------------
+           INVOICE-LEVEL DISCOUNT
+           - compute on sum of taxableAfterItemDisc
+           - distribute proportionally per item
+        ---------------------------- */
+        BigDecimal taxableBeforeInvDisc = ZERO;
+        for (InvoiceItem it : items) {
+            taxableBeforeInvDisc = taxableBeforeInvDisc.add(nz(it.getTaxableAmount()));
+        }
+        if (taxableBeforeInvDisc.compareTo(BigDecimal.ZERO) < 0) {
+            taxableBeforeInvDisc = ZERO;
+        }
 
-        BigDecimal invDiscAmt = calculateInvoiceLevelDiscount(taxableSubtotal, request.getInvoiceDiscount());
-        applyInvoiceLevelDiscount(items, invDiscAmt);
+        BigDecimal invoiceDiscountAmt = calculateInvoiceLevelDiscount(taxableBeforeInvDisc, request.getInvoiceDiscount());
+
+        // Distribute invoice-level discount across items (pro-rata)
+        if (invoiceDiscountAmt.compareTo(ZERO) > 0 && taxableBeforeInvDisc.compareTo(ZERO) > 0) {
+            BigDecimal remaining = invoiceDiscountAmt;
+
+            for (int idx = 0; idx < items.size(); idx++) {
+                InvoiceItem it = items.get(idx);
+                BigDecimal itemTaxable = nz(it.getTaxableAmount());
+
+                if (idx == items.size() - 1) {
+                    // Last item gets whatever discount remains to fix rounding diffs
+                    BigDecimal newTaxable = itemTaxable.subtract(remaining);
+                    if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
+                    it.setTaxableAmount(newTaxable);
+                    remaining = ZERO;
+                } else {
+                    BigDecimal share = itemTaxable
+                            .multiply(invoiceDiscountAmt)
+                            .divide(taxableBeforeInvDisc, SCALE, RoundingMode.HALF_UP);
+                    if (share.compareTo(remaining) > 0) {
+                        share = remaining;
+                    }
+
+                    BigDecimal newTaxable = itemTaxable.subtract(share);
+                    if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
+                    it.setTaxableAmount(newTaxable);
+
+                    remaining = remaining.subtract(share);
+                }
+            }
+        }
 
         /* ---------------------------
            FINAL TOTALS
+           - GST calculated AFTER all discounts
+           - gstPercent falls back to product GST if null
         ---------------------------- */
-        BigDecimal finalSubtotal = ZERO;
+        BigDecimal finalTaxable = ZERO;
         BigDecimal gstTotal = ZERO;
 
         for (InvoiceItem it : items) {
-            finalSubtotal = finalSubtotal.add(nz(it.getTaxableAmount()));
-            gstTotal = gstTotal.add(nz(it.getGstAmount()));
+            BigDecimal taxable = nz(it.getTaxableAmount());
+
+            BigDecimal gstPercent = nz(it.getGstPercent());
+            if (gstPercent.compareTo(ZERO) == 0 && it.getProduct() != null && it.getProduct().getGstPercentage() != null) {
+                gstPercent = nz(it.getProduct().getGstPercentage());
+                it.setGstPercent(gstPercent);
+            }
+
+            BigDecimal gstAmt = pctOf(taxable, gstPercent);
+            it.setGstAmount(gstAmt);
+
+            BigDecimal lineTotal = taxable.add(gstAmt).setScale(SCALE, RoundingMode.HALF_UP);
+            it.setLineTotal(lineTotal);
+
+            finalTaxable = finalTaxable.add(taxable);
+            gstTotal = gstTotal.add(gstAmt);
         }
 
-        BigDecimal grand = finalSubtotal.add(gstTotal);
-        BigDecimal finalDiscount = itemDiscountSum.add(invDiscAmt);
+        BigDecimal grand = finalTaxable.add(gstTotal);
+        BigDecimal totalDiscount = itemDiscountSum.add(invoiceDiscountAmt);
 
         if (request.getRoundOff() != null) {
             BigDecimal rounded = grand.setScale(0, RoundingMode.HALF_UP);
-            BigDecimal ro = rounded.subtract(grand).setScale(SCALE, RoundingMode.HALF_UP);
-            invoice.setRoundOff(ro);
+            invoice.setRoundOff(rounded.subtract(grand).setScale(SCALE, RoundingMode.HALF_UP));
             grand = rounded;
         } else {
             invoice.setRoundOff(ZERO);
         }
 
-        invoice.setSubtotalWithoutTax(finalSubtotal);
+        /* ---------------------------
+           WRITE TOTALS BACK
+           NOTE: subtotalWithoutTax = RAW base total (requested!)
+        ---------------------------- */
+        invoice.setSubtotalWithoutTax(rawSubtotal);       // BEFORE any discounts
+        invoice.setTotalDiscount(totalDiscount);
         invoice.setTotalTax(gstTotal);
-        invoice.setTotalDiscount(finalDiscount);
         invoice.setTotalAmount(grand);
 
         if (request.getInvoiceDiscount() != null) {
@@ -158,8 +215,8 @@ public class InvoiceCalculationEngine {
             invoice.setInvoiceDiscountValue(null);
         }
 
-        items.forEach(i -> i.setInvoice(invoice));
         invoice.getItems().addAll(items);
+        items.forEach(i -> i.setInvoice(invoice));
 
         return invoice;
     }
@@ -184,22 +241,26 @@ public class InvoiceCalculationEngine {
         price = price.setScale(SCALE, RoundingMode.HALF_UP);
         item.setPricePerUnit(price);
 
-        BigDecimal amountNoTax = price.multiply(BigDecimal.valueOf(qty)).setScale(SCALE, RoundingMode.HALF_UP);
+        BigDecimal amountNoTax = price.multiply(BigDecimal.valueOf(qty))
+                .setScale(SCALE, RoundingMode.HALF_UP);
         item.setAmountWithoutTax(amountNoTax);
 
-        BigDecimal dpct = req.getDiscountPercent();
+        // -------------------------
+        // ITEM DISCOUNT — VALUE ONLY
+        // -------------------------
         BigDecimal dval = req.getDiscountValue();
+        BigDecimal discAmt = dval != null ? dval.setScale(SCALE, RoundingMode.HALF_UP) : ZERO;
 
-        if (dpct != null && dpct.compareTo(BigDecimal.ZERO) > 0) {
-            item.setDiscountType("PERCENT");
-            item.setDiscountPercent(dpct);
-        } else if (dval != null && dval.compareTo(BigDecimal.ZERO) > 0) {
-            item.setDiscountType("VALUE");
-            item.setDiscountValue(dval);
-        }
+        if (discAmt.compareTo(amountNoTax) > 0) discAmt = amountNoTax;
+        if (discAmt.compareTo(ZERO) < 0) discAmt = ZERO;
 
-        BigDecimal discAmt = discountAmount(amountNoTax, dpct, dval);
+        item.setDiscountType("VALUE");
+        item.setDiscountPercent(null);
+        item.setDiscountValue(discAmt);
 
+        // -------------------------
+        // TAXABLE AMOUNT & GST
+        // -------------------------
         BigDecimal taxable = amountNoTax.subtract(discAmt);
         if (taxable.compareTo(BigDecimal.ZERO) < 0) taxable = ZERO;
         item.setTaxableAmount(taxable);
@@ -208,12 +269,14 @@ public class InvoiceCalculationEngine {
                 ? req.getGstPercent()
                 : (product != null ? nz(product.getGstPercentage()) : ZERO);
 
-        item.setGstPercent(gstPct.setScale(2, RoundingMode.HALF_UP));
+        gstPct = gstPct.setScale(SCALE, RoundingMode.HALF_UP);
+        item.setGstPercent(gstPct);
 
-        BigDecimal gstAmount = pctOf(taxable, gstPct);
-        item.setGstAmount(gstAmount);
+        BigDecimal gstAmt = pctOf(taxable, gstPct);
+        item.setGstAmount(gstAmt);
 
-        item.setLineTotal(taxable.add(gstAmount).setScale(SCALE, RoundingMode.HALF_UP));
+        item.setLineTotal(taxable.add(gstAmt).setScale(SCALE, RoundingMode.HALF_UP));
+
         return item;
     }
 
@@ -239,14 +302,6 @@ public class InvoiceCalculationEngine {
                 .orElse(null);
     }
 
-    private BigDecimal discountAmount(BigDecimal base, BigDecimal pct, BigDecimal val) {
-        if (pct != null && pct.compareTo(BigDecimal.ZERO) > 0)
-            return pctOf(base, pct);
-        if (val != null)
-            return val.setScale(SCALE, RoundingMode.HALF_UP);
-        return ZERO;
-    }
-
     private BigDecimal calculateInvoiceLevelDiscount(BigDecimal taxable, Discount d) {
         if (d == null || d.getValue() == null) return ZERO;
         if ("PERCENT".equalsIgnoreCase(d.getType())) {
@@ -256,29 +311,52 @@ public class InvoiceCalculationEngine {
         }
     }
 
-    private void applyInvoiceLevelDiscount(List<InvoiceItem> items, BigDecimal invoiceDiscount) {
-        if (invoiceDiscount == null || invoiceDiscount.compareTo(BigDecimal.ZERO) <= 0) return;
+    /**
+     * Old helper – currently unused but kept for reference.
+     * Distribute invoice-level discount proportionally to each invoice item
+     * BEFORE GST — tax must be applied on reduced value.
+     */
+    @SuppressWarnings("unused")
+    private void applyInvoiceLevelDiscount(List<InvoiceItem> items, BigDecimal invoiceDiscountAmt) {
+        if (invoiceDiscountAmt == null || invoiceDiscountAmt.compareTo(ZERO) <= 0) return;
 
-        BigDecimal taxableSum = ZERO;
-        for (InvoiceItem it : items)
-            taxableSum = taxableSum.add(nz(it.getTaxableAmount()));
+        // Total taxable BEFORE invoice discount
+        BigDecimal baseTotal = items.stream()
+                .map(i -> nz(i.getTaxableAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (taxableSum.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (baseTotal.compareTo(ZERO) == 0) return;
 
-        for (InvoiceItem it : items) {
-            BigDecimal taxable = nz(it.getTaxableAmount());
-            BigDecimal share = taxable.divide(taxableSum, CALC_SCALE, RoundingMode.HALF_UP);
-            BigDecimal reduction = invoiceDiscount.multiply(share);
+        // Distribute proportionally
+        for (InvoiceItem item : items) {
+            BigDecimal proportion = nz(item.getTaxableAmount())
+                    .divide(baseTotal, CALC_SCALE, RoundingMode.HALF_UP);
 
-            BigDecimal newTaxable = taxable.subtract(reduction);
-            if (newTaxable.compareTo(BigDecimal.ZERO) < 0) newTaxable = ZERO;
+            BigDecimal itemShare = invoiceDiscountAmt.multiply(proportion)
+                    .setScale(SCALE, RoundingMode.HALF_UP);
 
-            BigDecimal gstPct = nz(it.getGstPercent());
-            BigDecimal newGst = pctOf(newTaxable, gstPct);
+            BigDecimal amountNoTax = nz(item.getAmountWithoutTax());
+            BigDecimal existing = nz(item.getDiscountValue());
+            BigDecimal newTotalDiscount = existing.add(itemShare);
 
-            it.setTaxableAmount(newTaxable);
-            it.setGstAmount(newGst);
-            it.setLineTotal(newTaxable.add(newGst).setScale(SCALE, RoundingMode.HALF_UP));
+            if (newTotalDiscount.compareTo(amountNoTax) > 0)
+                newTotalDiscount = amountNoTax;
+
+            // Persist combined discount as VALUE type
+            item.setDiscountType("VALUE");
+            item.setDiscountPercent(null);
+            item.setDiscountValue(newTotalDiscount);
+
+            // Recalculate taxable + GST + line total
+            BigDecimal taxable = amountNoTax.subtract(newTotalDiscount);
+            if (taxable.compareTo(ZERO) < 0) taxable = ZERO;
+            item.setTaxableAmount(taxable);
+
+            BigDecimal gstPct = nz(item.getGstPercent());
+            BigDecimal gstAmt = pctOf(taxable, gstPct);
+            item.setGstAmount(gstAmt);
+
+            item.setLineTotal(taxable.add(gstAmt).setScale(SCALE, RoundingMode.HALF_UP));
         }
     }
 }

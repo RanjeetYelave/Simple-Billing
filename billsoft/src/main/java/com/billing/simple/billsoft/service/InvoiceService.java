@@ -2,9 +2,16 @@ package com.billing.simple.billsoft.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.time.LocalDate;
-import java.util.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -14,14 +21,15 @@ import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.CustomerInvoiceSummary;
 import com.billing.simple.billsoft.dtos.FirmAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
+import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.engine.InvoiceCalculationEngine;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
-import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
+import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
@@ -120,6 +128,9 @@ public class InvoiceService {
             request.setItems(Collections.emptyList());
         }
 
+        // Basic validation: invoice-level discount
+        validateInvoiceDiscount(request.getInvoiceDiscount());
+
         // Load customer if provided
         Customer customer = null;
         if (request.getCustomerId() != null) {
@@ -188,6 +199,9 @@ public class InvoiceService {
     public Invoice previewInvoice(InvoiceRequest request) {
         if (request.getItems() == null) request.setItems(Collections.emptyList());
 
+        // Validation for invoice-level discount
+        validateInvoiceDiscount(request.getInvoiceDiscount());
+
         Customer customer = null;
         if (request.getCustomerId() != null) {
             customer = customerRepo.findById(request.getCustomerId()).orElse(null);
@@ -255,6 +269,11 @@ public class InvoiceService {
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
         Invoice existing = invoiceRepo.findById(id).orElse(null);
         if (existing == null) return null;
+
+        // Validate invoice-level discount on update request
+        if (req.getInvoiceDiscount() != null) {
+            validateInvoiceDiscount(req.getInvoiceDiscount());
+        }
 
         // If update request omits items -> preserve existing items by creating an InvoiceRequest from existing invoice
         if (req.getItems() == null) {
@@ -327,11 +346,19 @@ public class InvoiceService {
         newReq.setPaid(
                 req.getPaid() != null ? req.getPaid() : existing.getPaid()
         );
-        newReq.setInvoiceDiscount(
-                req.getInvoiceDiscount() != null ? req.getInvoiceDiscount() : null
-        );
+
+        // Preserve existing invoice-level discount if not overridden
+        if (req.getInvoiceDiscount() != null) {
+            newReq.setInvoiceDiscount(req.getInvoiceDiscount());
+        } else if (existing.getInvoiceDiscountType() != null && existing.getInvoiceDiscountValue() != null) {
+            Discount d = new Discount();
+            d.setType(existing.getInvoiceDiscountType());
+            d.setValue(existing.getInvoiceDiscountValue());
+            newReq.setInvoiceDiscount(d);
+        }
+
         newReq.setRoundOff(
-                req.getRoundOff() != null ? req.getRoundOff() : null
+                req.getRoundOff() != null ? req.getRoundOff() : existing.getRoundOff()
         );
         newReq.setItems(req.getItems());
 
@@ -368,6 +395,14 @@ public class InvoiceService {
         r.setPaid(existing.getPaid());
         r.setRoundOff(existing.getRoundOff());
 
+        // Rebuild invoice-level discount from entity fields, if present
+        if (existing.getInvoiceDiscountType() != null && existing.getInvoiceDiscountValue() != null) {
+            Discount d = new Discount();
+            d.setType(existing.getInvoiceDiscountType());
+            d.setValue(existing.getInvoiceDiscountValue());
+            r.setInvoiceDiscount(d);
+        }
+
         if (existing.getItems() != null) {
             List<InvoiceRequestItem> items = existing.getItems().stream().map(it -> {
                 InvoiceRequestItem ri = new InvoiceRequestItem();
@@ -375,7 +410,7 @@ public class InvoiceService {
                 ri.setQty(it.getQty());
                 ri.setUnit(it.getUnit());
                 ri.setPricePerUnit(it.getPricePerUnit());
-                ri.setDiscountPercent(it.getDiscountPercent());
+                // Item-level discount is VALUE only
                 ri.setDiscountValue(it.getDiscountValue());
                 ri.setGstPercent(it.getGstPercent());
                 return ri;
@@ -398,7 +433,7 @@ public class InvoiceService {
         if (paid) i.setStatus(InvoiceStatus.PAID);
         return invoiceRepo.save(i);
     }
-    
+
     @Transactional
     public Invoice convertEstimateToInvoice(Long estimateId, InvoiceRequest overrideRequest) {
         Invoice estimate = invoiceRepo.findById(estimateId).orElse(null);
@@ -408,7 +443,12 @@ public class InvoiceService {
         if (estimate.getStatus() != InvoiceStatus.ESTIMATE && estimate.getStatus() != InvoiceStatus.DRAFT)
             throw new RuntimeException("Only estimates/drafts can be converted");
 
-        // Clone estimate -> new invoice
+        // Validate invoice-level discount on override request (if present)
+        if (overrideRequest != null) {
+            validateInvoiceDiscount(overrideRequest.getInvoiceDiscount());
+        }
+
+        // Base clone of estimate → new invoice
         Invoice newInv = new Invoice();
         newInv.setCustomer(estimate.getCustomer());
         newInv.setCustomerNote(estimate.getCustomerNote());
@@ -422,12 +462,52 @@ public class InvoiceService {
         newInv.setInvoiceDate(LocalDateTime.now());
         newInv.setPaid(false);
 
-        if (estimate.getDueDate() != null)
+        if (estimate.getDueDate() != null) {
             newInv.setDueDate(estimate.getDueDate());
-        else if (estimate.getInvoiceDate() != null)
+        } else if (estimate.getInvoiceDate() != null) {
             newInv.setDueDate(estimate.getInvoiceDate().toLocalDate().plusDays(14));
+        }
 
-        // FIRST populate items immediately into new invoice
+        // Case 1: overrideRequest has items -> use override completely
+        if (overrideRequest != null && overrideRequest.getItems() != null && !overrideRequest.getItems().isEmpty()) {
+            overrideRequest.setStatus(InvoiceStatus.FINAL);
+            overrideRequest.setInvoiceNumber(newInv.getInvoiceNumber());
+            overrideRequest.setEstimateNumber(null);
+
+            List<Product> products = fetchProductsReferencedBy(overrideRequest, null);
+            Invoice calculated = engine.calculate(newInv, newInv.getCustomer(), products, overrideRequest, false);
+
+            Invoice saved = invoiceRepo.save(calculated);
+            estimate.setConvertedInvoiceId(saved.getId());
+            invoiceRepo.save(estimate);
+
+            return saved;
+        }
+
+        // Case 2: NO item override -> keep original items, BUT apply metadata overrides
+        if (overrideRequest != null) {
+            // Only override fields that are explicitly provided
+            if (overrideRequest.getCustomerNote() != null) {
+                newInv.setCustomerNote(overrideRequest.getCustomerNote());
+            }
+            if (overrideRequest.getTermsAndConditions() != null) {
+                newInv.setTermsAndConditions(overrideRequest.getTermsAndConditions());
+            }
+            if (overrideRequest.getPaymentMethod() != null) {
+                newInv.setPaymentMethod(overrideRequest.getPaymentMethod());
+            }
+            if (overrideRequest.getCurrency() != null) {
+                newInv.setCurrency(overrideRequest.getCurrency());
+            }
+            if (overrideRequest.getTags() != null) {
+                newInv.setTags(overrideRequest.getTags());
+            }
+            if (overrideRequest.getDueDate() != null) {
+                newInv.setDueDate(overrideRequest.getDueDate());
+            }
+        }
+
+        // Clone items from estimate as-is
         List<InvoiceItem> cloned = new ArrayList<>();
         if (estimate.getItems() != null) {
             for (InvoiceItem it : estimate.getItems()) {
@@ -450,28 +530,21 @@ public class InvoiceService {
         }
         newInv.getItems().addAll(cloned);
 
-        // Recalculate totals keeping the SAME product data
-        List<Product> products = fetchProductsReferencedBy(
-                buildInvoiceRequestFromExistingInvoice(newInv), null
-        );
+        // Build a request from the (now overridden) newInv
+        InvoiceRequest req = buildInvoiceRequestFromExistingInvoice(newInv);
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setInvoiceNumber(newInv.getInvoiceNumber());
+        req.setEstimateNumber(null);
 
-        Invoice calculated = engine.calculate(
-                newInv,
-                newInv.getCustomer(),
-                products,
-                buildInvoiceRequestFromExistingInvoice(newInv),
-                true // update mode
-        );
+        List<Product> products = fetchProductsReferencedBy(req, null);
+        Invoice calculated = engine.calculate(newInv, newInv.getCustomer(), products, req, true);
 
         Invoice saved = invoiceRepo.save(calculated);
-
-        // Link old estimate → converted invoice
         estimate.setConvertedInvoiceId(saved.getId());
         invoiceRepo.save(estimate);
 
         return saved;
     }
-
 
     // -------------------------
     // Analytics / helpers
@@ -728,5 +801,23 @@ public class InvoiceService {
         List<Invoice> list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.FINAL);
         list.forEach(this::normalizeStatus);
         return list;
+    }
+
+    // -------------------------
+    // Validation helpers
+    // -------------------------
+    private void validateInvoiceDiscount(Discount d) {
+        if (d == null) return;
+        if (d.getType() == null || d.getValue() == null) return;
+
+        String type = d.getType().trim().toUpperCase();
+        if (!"PERCENT".equals(type) && !"VALUE".equals(type)) {
+            throw new IllegalArgumentException("Invalid invoiceDiscount.type: " + d.getType());
+        }
+
+        BigDecimal value = d.getValue();
+        if (value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("invoiceDiscount.value cannot be negative");
+        }
     }
 }

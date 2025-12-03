@@ -84,7 +84,7 @@ public class InvoiceRequest {
     @Getter
     @Setter
     public static class Discount {
-        private String type;      // PERCENT or VALUE
-        private BigDecimal value; // percent or amount
+        private String type;      // "PERCENT" or "VALUE"
+        private BigDecimal value; // percent or amount (as per type)
     }
 }

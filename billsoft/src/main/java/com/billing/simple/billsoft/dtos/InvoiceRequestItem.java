@@ -1,12 +1,13 @@
 package com.billing.simple.billsoft.dtos;
 
-import lombok.Getter;
-import lombok.Setter;
-
+import lombok.Data;
 import java.math.BigDecimal;
 
-@Getter
-@Setter
+/**
+ * Invoice line item request model.
+ * UI must send productId + qty. Other values are optional.
+ */
+@Data
 public class InvoiceRequestItem {
 
     /**
@@ -17,29 +18,32 @@ public class InvoiceRequestItem {
 
     /* -------------------------------------------------------------
        QUANTITY & UNIT
-       ------------------------------------------------------------- */
+    ------------------------------------------------------------- */
     private Integer qty;
-    private String unit;   // pcs, kg, box, etc.
+    private String unit; // pcs, kg, box, etc.
 
     /* -------------------------------------------------------------
-       PRICING (BigDecimal)
+       PRICING
        If null → backend falls back to Product.price
-       ------------------------------------------------------------- */
+    ------------------------------------------------------------- */
     private BigDecimal pricePerUnit;
 
     /* -------------------------------------------------------------
-       DISCOUNT (BigDecimal)
-       Precedence:
-           discountPercent > discountValue
-       discountType is optional (UI convenience only)
-       ------------------------------------------------------------- */
-    private String discountType;            // "PERCENT" / "VALUE" / null
-    private BigDecimal discountValue;       // flat discount ₹
-    private BigDecimal discountPercent;     // percent 0–100
+       DISCOUNT
+       Backend logic:
+           If percent > 0 → percent discount applies
+           Else if discountValue > 0 → value discount applies
+    ------------------------------------------------------------- */
+    private BigDecimal discountPercent; // % discount
+    private BigDecimal discountValue;   // ₹ discount amount
+
+    /* Optional UI helper: "PERCENT" or "VALUE"
+       Backend does not rely on this field in calculations */
+    private String discountType;
 
     /* -------------------------------------------------------------
-       GST (BigDecimal)
+       GST
        If null → backend uses Product.gstPercentage
-       ------------------------------------------------------------- */
+    ------------------------------------------------------------- */
     private BigDecimal gstPercent;
 }

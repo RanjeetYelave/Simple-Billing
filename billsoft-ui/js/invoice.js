@@ -1,17 +1,26 @@
 // js/invoice.js
-// API wrapper for invoices (patched)
-// Preserves all existing functions and adds previewCalc for backend-authoritative calculations.
-// If backend preview endpoint is unavailable, falls back to a local preview computation.
+// Invoice module — unified, backend-first, robust, backward-compatible.
+// Uses exported `api` object from ./api.js when available. Falls back to direct fetch if not.
 
-import { API_BASE } from "./api.js"; // optional, if you keep API_BASE in api.js
-// Note: In your repo API_BASE lives in js/api.js. If not available, fallback to localhost.
-const BASE = (typeof API_BASE !== "undefined") ? API_BASE : "http://localhost:8080";
+import { API_BASE, api as apiHelpers } from "./api.js"; // api.js exports API_BASE and `api` object
+
+const BASE = (typeof API_BASE !== "undefined" && API_BASE) ? API_BASE : "http://localhost:8080";
 const API = BASE + "/api/invoices";
 
-export const invoiceModule = {
+// Helper to detect if apiHelpers exists and function exists
+function hasApi(fnName) {
+  return apiHelpers && typeof apiHelpers[fnName] === "function";
+}
 
-  // Fetch list of invoices
+export const invoiceModule = {
+  // ------------------------------------------
+  // LISTS
+  // ------------------------------------------
+  // Fetch list of invoices (all statuses)
   async list() {
+    if (hasApi("getAllInvoices")) {
+      return apiHelpers.getAllInvoices();
+    }
     const res = await fetch(API);
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
@@ -20,8 +29,37 @@ export const invoiceModule = {
     return res.json();
   },
 
-  // Preview (get full invoice object by id)
+  // Fetch only ESTIMATES
+  async listEstimates() {
+    if (hasApi("getAllEstimates")) {
+      return apiHelpers.getAllEstimates();
+    }
+    const res = await fetch(`${API}/estimates`);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => res.statusText);
+      throw new Error("Failed to list estimates: " + txt);
+    }
+    return res.json();
+  },
+
+  // Fetch only FINAL invoices (helper, not currently used but available)
+  async listFinal() {
+    if (hasApi("getAllFinalInvoices")) {
+      return apiHelpers.getAllFinalInvoices();
+    }
+    const res = await fetch(`${API}/final`);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => res.statusText);
+      throw new Error("Failed to list final invoices: " + txt);
+    }
+    return res.json();
+  },
+
+  // Get invoice/estimate by id
   async preview(id) {
+    if (hasApi("getInvoiceById")) {
+      return apiHelpers.getInvoiceById(id);
+    }
     const res = await fetch(`${API}/${id}`);
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
@@ -30,22 +68,51 @@ export const invoiceModule = {
     return res.json();
   },
 
-  // Save new invoice (server will compute authoritative totals)
+  // ------------------------------------------
+  // CREATE / UPDATE / DELETE
+  // ------------------------------------------
+
+  // Save new invoice/estimate (server will compute authoritative totals)
+  // If payload.status === 'ESTIMATE' will call estimate endpoint when api helper available
   async save(payload) {
-    const res = await fetch(API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => res.statusText);
-      throw new Error("Save invoice failed: " + txt);
+    // prefer api helper createInvoice/createEstimate
+    try {
+      if (payload && payload.status && payload.status.toString().toUpperCase() === "ESTIMATE") {
+        if (hasApi("createEstimate")) return apiHelpers.createEstimate(payload);
+        // fallback to estimate endpoint
+        const res = await fetch(`${API}/estimate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => res.statusText);
+          throw new Error("Create estimate failed: " + txt);
+        }
+        return res.json();
+      } else {
+        if (hasApi("createInvoice")) return apiHelpers.createInvoice(payload);
+        const res = await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => res.statusText);
+          throw new Error("Save invoice failed: " + txt);
+        }
+        return res.json();
+      }
+    } catch (err) {
+      // bubble up with consistent message
+      throw err;
     }
-    return res.json();
   },
 
-  // Update existing invoice
+  // Update existing invoice (full update)
   async update(id, payload) {
+    if (hasApi("updateInvoice")) return apiHelpers.updateInvoice(id, payload);
+
     const res = await fetch(`${API}/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -58,8 +125,10 @@ export const invoiceModule = {
     return res.json();
   },
 
-  // Delete invoice
+  // Delete invoice / estimate
   async delete(id) {
+    if (hasApi("deleteInvoice")) return apiHelpers.deleteInvoice(id);
+
     const res = await fetch(`${API}/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
@@ -70,9 +139,9 @@ export const invoiceModule = {
 
   // Mark paid/unpaid
   async markPaid(id, paid) {
-    const res = await fetch(`${API}/${id}/paid?paid=${paid}`, {
-      method: "PUT"
-    });
+    if (hasApi("markInvoicePaid")) return apiHelpers.markInvoicePaid(id, paid);
+
+    const res = await fetch(`${API}/${id}/paid?paid=${paid}`, { method: "PUT" });
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
       throw new Error(`Mark paid failed: ${txt}`);
@@ -80,8 +149,37 @@ export const invoiceModule = {
     return res.json();
   },
 
-  // ---- ANALYTICS ----
+  // Convert ESTIMATE → FINAL INVOICE
+  async convert(estimateId, overridePayload = {}) {
+    if (!estimateId) throw new Error("estimateId is required");
+
+    // Prefer helper
+    if (hasApi("convertEstimate")) {
+      // api.convertEstimate currently ignores payload, extra arg is harmless
+      return apiHelpers.convertEstimate(estimateId, overridePayload);
+    }
+
+    // Fallback direct call
+    const res = await fetch(`${API}/convert/${estimateId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(overridePayload || {})
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => res.statusText);
+      throw new Error("Convert estimate failed: " + txt);
+    }
+
+    return res.json();
+  },
+
+  // ------------------------------------------
+  // ANALYTICS
+  // ------------------------------------------
   async analyticsByCustomer(customerId) {
+    // note: older code used endpoint /api/invoices/analytics/customer/{id}
+    if (hasApi("analyticsByCustomer")) return apiHelpers.analyticsByCustomer(customerId);
     const res = await fetch(`${API}/analytics/customer/${customerId}`);
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
@@ -91,9 +189,8 @@ export const invoiceModule = {
   },
 
   async analyticsByName(name) {
-    const res = await fetch(
-      `${API}/analytics/search?name=${encodeURIComponent(name)}`
-    );
+    if (hasApi("analyticsByName")) return apiHelpers.analyticsByName(name);
+    const res = await fetch(`${API}/analytics/search?name=${encodeURIComponent(name)}`);
     if (!res.ok) {
       const txt = await res.text().catch(() => res.statusText);
       throw new Error(`Analytics by name failed: ${txt}`);
@@ -101,13 +198,19 @@ export const invoiceModule = {
     return res.json();
   },
 
-  // ---- PDF DOWNLOAD (robust handling) ----
+  // ------------------------------------------
+  // PDF
+  // ------------------------------------------
+  // PDF download (returns Blob)
   async pdf(id, size = "A4") {
+    // prefer helper
+    if (hasApi("downloadInvoicePdf")) {
+      return apiHelpers.downloadInvoicePdf(id, size);
+    }
+
     const url = `${API}/${id}/pdf?size=${encodeURIComponent(size)}`;
     const res = await fetch(url);
-    // If server returned not-ok, try to capture returned error message (text/json)
     if (!res.ok) {
-      // Try json first
       let txt;
       try {
         const j = await res.json();
@@ -117,47 +220,47 @@ export const invoiceModule = {
       }
       throw new Error("Failed to fetch invoice PDF: " + txt);
     }
-
-    // On success return blob (caller expects blob)
-    const blob = await res.blob();
-    return blob;
+    return res.blob();
   },
 
-  // -------------------------------------------------------
-  // NEW: previewCalc(payload)
-  // - Send the invoice payload to backend to receive authoritative totals.
-  // - Backend endpoint expected: POST /api/invoices/preview (not persisted)
-  // - If backend preview endpoint is missing/unavailable, fallback to client-side computePreview.
-  // - Returns an object with structure:
-  //   { subtotalWithoutTax, totalTax, discountAmount, grandTotal, items: [ {taxableAmount, gstAmount, lineTotal, ...} ] }
-  // -------------------------------------------------------
+  // ------------------------------------------
+  // PREVIEW CALC
+  // ------------------------------------------
+  // previewCalc(payload)
+  // - Sends payload to backend preview endpoint to get authoritative calculation (not persisted)
+  // - If backend preview endpoint is missing or fails, falls back to local calculation (_computePreviewLocally)
   async previewCalc(payload) {
-    // Try backend first
-    try {
-      const res = await fetch(`${API}/preview`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        return res.json();
-      } else {
-        // If preview endpoint not implemented (404) or error, try to parse message for debugging then fallback
-        const errText = await res.text().catch(() => res.statusText);
-        console.warn("invoiceModule.previewCalc backend preview failed:", errText);
-        // fallthrough to local calc
+    // Try backend first via api helper
+    if (hasApi("previewInvoice")) {
+      try {
+        return await apiHelpers.previewInvoice(payload);
+      } catch (err) {
+        console.warn("api.previewInvoice failed, falling back to local calc:", err && err.message ? err.message : err);
       }
-    } catch (e) {
-      // networks issues or endpoint not found -> fallback
-      console.warn("invoiceModule.previewCalc backend call failed, falling back to client calc:", e && e.message ? e.message : e);
+    } else {
+      // try direct endpoint
+      try {
+        const res = await fetch(`${API}/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          return res.json();
+        } else {
+          const txt = await res.text().catch(() => res.statusText);
+          console.warn("Backend preview endpoint returned not-ok:", txt);
+        }
+      } catch (e) {
+        console.warn("Backend preview call failed (network), falling back:", e && e.message ? e.message : e);
+      }
     }
 
-    // Fallback client-side calculation (best-effort, matches server logic approx)
+    // fallback: local compute
     return this._computePreviewLocally(payload);
   },
 
-  // Local fallback calculator (keeps parity with backend rounding / logic)
+  // Local fallback calculator (keeps parity with backend as best-effort)
   _computePreviewLocally(payload) {
     // payload: { items: [ { productId, qty, unit, pricePerUnit, discountType, discountValue, discountPercent, gstPercent } ], invoiceDiscount: { type, value } }
     const itemsIn = Array.isArray(payload.items) ? payload.items : [];
@@ -181,10 +284,10 @@ export const invoiceModule = {
       return {
         ...it,
         base,
-        discountAmount: disc,
-        taxableAmount: taxable,
-        gstAmount: gstAmt,
-        lineTotal
+        discountAmount: round2(disc),
+        taxableAmount: round2(taxable),
+        gstAmount: round2(gstAmt),
+        lineTotal: round2(lineTotal)
       };
     });
 
@@ -192,17 +295,18 @@ export const invoiceModule = {
     let taxableSum = items.reduce((s, it) => s + (it.taxableAmount || 0), 0);
     if (taxableSum < 0) taxableSum = 0;
 
-    // invoice-level discount
+    // invoice-level discount amount
     let invoiceDiscAmt = 0;
     const invDisc = payload.invoiceDiscount;
-    if (invDisc && invDisc.value) {
+    if (invDisc && invDisc.value != null) {
       const v = Number(invDisc.value) || 0;
-      if (invDisc.type && invDisc.type.toUpperCase() === "PERCENT") {
+      if (invDisc.type && invDisc.type.toString().toUpperCase() === "PERCENT") {
         const pct = Math.max(0, Math.min(100, v));
         invoiceDiscAmt = taxableSum * pct / 100;
       } else {
         invoiceDiscAmt = v;
       }
+      invoiceDiscAmt = round2(invoiceDiscAmt);
     }
 
     // Distribute invoice-level discount proportionally across taxable items
@@ -213,30 +317,28 @@ export const invoiceModule = {
         const newTaxable = Math.max(0, (it.taxableAmount || 0) - reduction);
         const gstPct = Number(it.gstPercent) || 0;
         const newGst = newTaxable * gstPct / 100;
-        it.taxableAmount = roundTo2(newTaxable);
-        it.gstAmount = roundTo2(newGst);
-        it.lineTotal = roundTo2(newTaxable + newGst);
-      });
-    } else {
-      // round those values
-      items.forEach(it => {
-        it.taxableAmount = roundTo2(it.taxableAmount || 0);
-        it.gstAmount = roundTo2(it.gstAmount || 0);
-        it.lineTotal = roundTo2(it.lineTotal || 0);
+        it.taxableAmount = round2(newTaxable);
+        it.gstAmount = round2(newGst);
+        it.lineTotal = round2(newTaxable + newGst);
       });
     }
 
-    const subtotalWithoutTax = roundTo2(items.reduce((s, it) => s + (it.taxableAmount || 0), 0));
-    const totalTax = roundTo2(items.reduce((s, it) => s + (it.gstAmount || 0), 0));
-    const totalDiscount = roundTo2(itemsIn.reduce((s, it, idx) => {
-      // per-item discount amounts + invoice-level discount total
-      const perItemDisc = (it.discountPercent && it.discountPercent > 0)
-        ? ((it.qty || 0) * (it.pricePerUnit || 0) * (it.discountPercent / 100))
-        : (it.discountValue || 0);
-      return s + perItemDisc;
-    }, 0) + invoiceDiscAmt);
+    const subtotalWithoutTax = round2(items.reduce((s, it) => s + (it.taxableAmount || 0), 0));
+    const totalTax = round2(items.reduce((s, it) => s + (it.gstAmount || 0), 0));
 
-    const grandTotal = roundTo2(subtotalWithoutTax + totalTax);
+    // total discount = per-item discounts + invoice level discount
+    const perItemDiscSum = itemsIn.reduce((s, it) => {
+      const qty = Number(it.qty) || 0;
+      const price = Number(it.pricePerUnit) || 0;
+      const base = qty * price;
+      const dpct = it.discountPercent != null ? Number(it.discountPercent) : 0;
+      const dval = it.discountValue != null ? Number(it.discountValue) : 0;
+      const perItemDisc = dpct > 0 ? (base * dpct / 100) : dval;
+      return s + (perItemDisc || 0);
+    }, 0);
+
+    const totalDiscount = round2(perItemDiscSum + invoiceDiscAmt);
+    const grandTotal = round2(subtotalWithoutTax + totalTax);
 
     return {
       subtotalWithoutTax,
@@ -246,9 +348,9 @@ export const invoiceModule = {
       items
     };
 
-    function roundTo2(v) {
+    function round2(v) {
       return Math.round((v || 0) * 100) / 100;
     }
   }
 
-};
+}; // end invoiceModule

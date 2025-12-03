@@ -30,10 +30,10 @@ public class Invoice {
     // ------------------------
     // INVOICE / ESTIMATE NUMBERS
     // ------------------------
-    @Column(unique = true)
+    @Column(unique = true, nullable = true)
     private String invoiceNumber;
 
-    @Column(unique = true)
+    @Column(unique = true, nullable = true)
     private String estimateNumber;
 
     // ------------------------
@@ -70,7 +70,6 @@ public class Invoice {
     @Column(precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
-    // invoice-level discount type/value
     private String invoiceDiscountType;
 
     @Column(precision = 15, scale = 2)
@@ -122,11 +121,18 @@ public class Invoice {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
 
-        if (invoiceDate == null)
-            invoiceDate = LocalDateTime.now();
-
         if (status == null)
             status = InvoiceStatus.FINAL;
+
+        // Only set invoiceDate for actual invoices
+        if (invoiceDate == null && status != InvoiceStatus.ESTIMATE) {
+            invoiceDate = LocalDateTime.now();
+        }
+
+        // Ensure estimate NEVER uses invoiceNumber
+        if (status == InvoiceStatus.ESTIMATE) {
+            invoiceNumber = null;
+        }
 
         if (paid == null)
             paid = false;

@@ -4,30 +4,22 @@ import { customerModule } from "../customer.js";
 import { invoiceModule } from "../invoice.js";
 
 export const analyticsScreen = {
-
-  // state
   currentAnalytics: null,
   currentInvoices: [],
-
   render() {
     return `
       <div class="card">
         <h2>Customer Analytics</h2>
-
         <div style="display:grid;grid-template-columns:2fr auto;gap:10px;align-items:end">
           <div>
             <label>Customer</label>
-            <input id="analyticsCustInput"
-                   list="analyticsCustList"
-                   placeholder="Type customer name or id:3" />
+            <input id="analyticsCustInput" list="analyticsCustList" placeholder="Type customer name or id:3" />
             <datalist id="analyticsCustList"></datalist>
           </div>
           <button class="btn primary" id="analyticsSearchBtn">🔍 Analyse</button>
         </div>
 
-        <div id="analyticsSummary" class="small muted" style="margin-top:10px;">
-          Enter customer name or id and click Analyse.
-        </div>
+        <div id="analyticsSummary" class="small muted" style="margin-top:10px;">Enter customer name or id and click Analyse.</div>
 
         <div id="analyticsCards" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;"></div>
 
@@ -46,11 +38,7 @@ export const analyticsScreen = {
         <table class="invoice-table" style="margin-top:10px;">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Date</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>Action</th>
+              <th>#</th><th>Date</th><th>Total</th><th>Status</th><th>Action</th>
             </tr>
           </thead>
           <tbody id="analyticsInvoiceBody"></tbody>
@@ -60,41 +48,23 @@ export const analyticsScreen = {
   },
 
   init() {
-    // populate datalist
-    const dl = $("analyticsCustList");
-    dl.innerHTML = "";
-    customerModule.customers.forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = `${c.name} (id:${c.id})`;
-      dl.appendChild(opt);
-    });
-
+    const dl = $("analyticsCustList"); if (dl) { dl.innerHTML = ""; customerModule.customers.forEach(c => { const opt = document.createElement("option"); opt.value = `${c.name} (id:${c.id})`; dl.appendChild(opt); }); }
     $("analyticsSearchBtn").onclick = () => this.search();
-    $("analyticsCustInput").onkeydown = e => {
-      if (e.key === "Enter") this.search();
-    };
-
-    const filterSel = $("analyticsStatusFilter");
-    if (filterSel) {
-      filterSel.onchange = () => this.applyFilter();
-    }
+    $("analyticsCustInput").onkeydown = e => { if (e.key === "Enter") this.search(); };
+    const filterSel = $("analyticsStatusFilter"); if (filterSel) filterSel.onchange = () => this.applyFilter();
   },
 
-  // -----------------------------------------------
-  // SEARCH LOGIC
-  // -----------------------------------------------
   async search() {
-    const text = $("analyticsCustInput").value.trim();
+    const text = ($("analyticsCustInput")?.value || "").trim();
     if (!text) return alert("Enter customer");
-
     let analytics;
     const id = extractId(text);
-
     try {
       if (id) {
-        analytics = await invoiceModule.analyticsByCustomer(id);
+        // backend path returns CustomerAnalyticsResponse
+        analytics = await invoiceModule.analyticsByCustomer ? await invoiceModule.analyticsByCustomer(id) : await (await fetch(`/api/invoices/analytics/customer/${id}`)).json();
       } else {
-        const list = await invoiceModule.analyticsByName(text);
+        const list = await invoiceModule.analyticsByName ? await invoiceModule.analyticsByName(text) : await (await fetch(`/api/invoices/analytics/search?name=${encodeURIComponent(text)}`)).json();
         analytics = (list && list.length) ? list[0] : null;
       }
     } catch (e) {
@@ -114,29 +84,29 @@ export const analyticsScreen = {
       return;
     }
 
+    // Normalise invoices list to UI shape (id, invoiceId)
     this.currentAnalytics = analytics;
-    this.currentInvoices = [...analytics.invoices];
+    this.currentInvoices = (analytics.invoices || []).map(inv => ({
+      id: inv.id ?? inv.invoiceId,
+      invoiceId: inv.id ?? inv.invoiceId,
+      invoiceNumber: inv.invoiceNumber,
+      invoiceDate: inv.invoiceDate,
+      totalAmount: inv.totalAmount ?? inv.totalAmount,
+      paid: inv.paid,
+      status: inv.status
+    }));
 
     this.renderSummary(analytics);
     this.applyFilter();
   },
 
-  // -----------------------------------------------
-  // SUMMARY SECTION
-  // -----------------------------------------------
   renderSummary(a) {
     const name = a.customerName || "(Unknown)";
     const cid = a.customerId ?? "-";
-
-    $("analyticsSummary").innerHTML = `
-      <b>${name}</b> • Customer ID: ${cid}
-      <br>Total invoices: ${a.invoiceCount ?? 0}
-    `;
-
-    const totalBusiness = a.totalBusiness ?? 0;
-    const totalPaid = a.totalPaid ?? 0;
+    $("analyticsSummary").innerHTML = `<b>${name}</b> • Customer ID: ${cid}<br>Total invoices: ${a.invoiceCount ?? 0}`;
+    const totalBusiness = Number(a.totalBusiness || 0);
+    const totalPaid = Number(a.totalPaid || 0);
     const outstanding = totalBusiness - totalPaid;
-
     $("analyticsCards").innerHTML = `
       <div class="invoice-total-box" style="flex:1;min-width:180px;">
         Total Business<br><b>${money(totalBusiness)}</b>
@@ -150,120 +120,62 @@ export const analyticsScreen = {
     `;
   },
 
-  // -----------------------------------------------
-  // FILTER + SORT
-  // -----------------------------------------------
   applyFilter() {
     const filterSel = $("analyticsStatusFilter");
-    if (!this.currentInvoices || !filterSel) {
-      this.renderInvoices([]);
-      return;
-    }
-
+    if (!this.currentInvoices || !filterSel) { this.renderInvoices([]); return; }
     const filter = filterSel.value;
-
-    // SORT newest first
-    const sorted = this.currentInvoices
-      .slice()
-      .sort((a, b) => {
-        const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
-        const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
-        return db - da;
-      });
-
+    const sorted = this.currentInvoices.slice().sort((a,b) => {
+      const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
+      const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
+      return db - da;
+    });
     let final = sorted;
-
-    if (filter === "PAID") {
-      final = sorted.filter(inv => inv.paid);
-    } else if (filter === "UNPAID") {
-      final = sorted.filter(inv => !inv.paid);
-    }
-
+    if (filter === "PAID") final = sorted.filter(inv => inv.paid === true || inv.status === "PAID");
+    else if (filter === "UNPAID") final = sorted.filter(inv => !(inv.paid || inv.status === "PAID"));
     this.renderInvoices(final);
   },
 
-  // -----------------------------------------------
-  // RENDER INVOICE TABLE
-  // -----------------------------------------------
   renderInvoices(list) {
     const body = $("analyticsInvoiceBody");
     body.innerHTML = "";
-
-    if (!list.length) {
-      body.innerHTML = `
-        <tr><td colspan="5" class="small muted">No invoices found.</td></tr>
-      `;
-      return;
-    }
-
+    if (!list.length) { body.innerHTML = `<tr><td colspan="5" class="small muted">No invoices found.</td></tr>`; return; }
     list.forEach(inv => {
       const id = inv.invoiceId ?? inv.id;
       const paid = !!inv.paid;
-
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${inv.invoiceNumber}</td>
-        <td>${inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : "-"}</td>
+        <td>${inv.invoiceDate ? inv.invoiceDate.slice(0,10) : "-"}</td>
         <td>${money(inv.totalAmount)}</td>
-        <td>${paid ? "Paid" : "Unpaid"}</td>
-        <td>
-          <button 
-            class="btn small ghost analytics-toggle-paid"
-            data-id="${id}">
-            ${paid ? "Mark Unpaid" : "Mark Paid"}
-          </button>
-        </td>
+        <td>${paid ? "Paid" : (inv.status || "Unpaid")}</td>
+        <td><button class="btn small ghost analytics-toggle-paid" data-id="${id}">${paid ? "Mark Unpaid" : "Mark Paid"}</button></td>
       `;
-
       body.appendChild(tr);
     });
 
-    // attach handlers
-    body.querySelectorAll(".analytics-toggle-paid").forEach(btn => {
-      btn.onclick = () => this.togglePaid(btn);
-    });
+    body.querySelectorAll(".analytics-toggle-paid").forEach(btn => btn.onclick = () => this.togglePaid(btn));
   },
 
-  // -----------------------------------------------
-  // MARK PAID / UNPAID
-  // -----------------------------------------------
   async togglePaid(btn) {
     const id = Number(btn.dataset.id);
     if (!id) return;
-
     const inv = this.currentInvoices.find(i => (i.invoiceId ?? i.id) === id);
     if (!inv) return;
-
     const newStatus = !inv.paid;
     const label = newStatus ? "PAID" : "UNPAID";
-
-    const ok = confirm(`Mark ${inv.invoiceNumber} as ${label}?`);
-    if (!ok) return;
-
+    if (!confirm(`Mark ${inv.invoiceNumber} as ${label}?`)) return;
     try {
       await invoiceModule.markPaid(id, newStatus);
+      inv.paid = newStatus;
+      const a = this.currentAnalytics;
+      const amount = Number(inv.totalAmount || 0);
+      if (newStatus) { a.totalPaid = (Number(a.totalPaid || 0) + amount); a.totalPending = (Number(a.totalPending || 0) - amount); }
+      else { a.totalPaid = (Number(a.totalPaid || 0) - amount); a.totalPending = (Number(a.totalPending || 0) + amount); }
+      this.renderSummary(a);
+      this.applyFilter();
     } catch (e) {
       console.error("Failed updating paid flag", e);
       alert("Failed to update paid/unpaid.");
-      return;
     }
-
-    // update local
-    inv.paid = newStatus;
-
-    // update summary
-    const a = this.currentAnalytics;
-    const amount = inv.totalAmount || 0;
-
-    if (newStatus) {
-      a.totalPaid += amount;
-      a.totalPending -= amount;
-    } else {
-      a.totalPaid -= amount;
-      a.totalPending += amount;
-    }
-
-    this.renderSummary(a);
-    this.applyFilter();
   }
 };

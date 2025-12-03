@@ -12,6 +12,8 @@ export const invoiceEdit = {
       return;
     }
 
+    this.current = inv;
+
     $("invDetails").innerHTML = this.render(inv);
     this.init(inv);
   },
@@ -21,9 +23,13 @@ export const invoiceEdit = {
       ? `${inv.customer.name} (id:${inv.customer.id})`
       : "Unknown customer";
 
+    const notes = inv.customerNote || inv.notes || "";
+
+    const numLabel = inv.invoiceNumber || inv.estimateNumber || `#${inv.id}`;
+
     return `
       <div class="invoice-container">
-        <h2>Edit ${inv.invoiceNumber}</h2>
+        <h2>Edit ${numLabel}</h2>
 
         <div class="invoice-meta-edit">
           <label>Customer</label>
@@ -34,7 +40,7 @@ export const invoiceEdit = {
                  value="${inv.invoiceDate ? inv.invoiceDate.slice(0,16) : ""}"/>
 
           <label>Notes</label>
-          <textarea id="editNotes">${inv.notes || ""}</textarea>
+          <textarea id="editNotes">${notes}</textarea>
         </div>
 
         <h3 style="margin-top:14px;">Items</h3>
@@ -70,7 +76,7 @@ export const invoiceEdit = {
   },
 
   init(inv) {
-    // fill product datalist
+    // product list
     const dl = $("editProductList");
     if (dl) {
       dl.innerHTML = "";
@@ -83,18 +89,17 @@ export const invoiceEdit = {
 
     const tbody = $("editItemsBody");
 
-    // existing items
     inv.items.forEach(i => {
       const row = document.createElement("tr");
       row.dataset.productId = i.product?.id || "";
       row.dataset.productName = i.product?.name || "";
       row.dataset.unit = i.unit || "";
 
-      const qty   = i.qty ?? 0;
-      const price = i.pricePerUnit ?? 0;
-      const dval  = i.discountValue ?? 0;
-      const dpct  = i.discountPercent ?? 0;
-      const gst   = i.gstPercent ?? 0;
+      const qty   = Number(i.qty ?? 0);
+      const price = Number(i.pricePerUnit ?? 0);
+      const dval  = Number(i.discountValue ?? 0);
+      const dpct  = Number(i.discountPercent ?? 0);
+      const gst   = Number(i.gstPercent ?? 0);
 
       const base = qty * price;
       const disc = dpct > 0 ? (base * dpct / 100) : dval;
@@ -115,61 +120,59 @@ export const invoiceEdit = {
       tbody.appendChild(row);
     });
 
-    // recalc on change
     this.attachRowHandlers();
-
-    // add new item row
-    $("addEditItemBtn").onclick = () => {
-      const row = document.createElement("tr");
-      row.dataset.productId = "";
-      row.dataset.productName = "";
-      row.dataset.unit = "";
-
-      row.innerHTML = `
-        <td><input class="pname" list="editProductList" placeholder="Product"/></td>
-        <td><input class="qty"   type="number" min="0" value="1"/></td>
-        <td><input class="unit"  type="text" value=""/></td>
-        <td><input class="price" type="number" min="0" value="0"/></td>
-        <td><input class="dval"  type="number" min="0" value="0"/></td>
-        <td><input class="gst"   type="number" min="0" value="0"/></td>
-        <td class="total">0.00</td>
-        <td><button class="btn small danger removeBtn">✖</button></td>
-      `;
-      tbody.appendChild(row);
-
-      // auto-fill on product select
-      const pname = row.querySelector(".pname");
-      if (pname) {
-        pname.onchange = () => {
-          const val = pname.value.trim();
-          if (!val) return;
-          const p = productModule.findByName(val);
-          if (!p) return;
-
-          const qty   = row.querySelector(".qty");
-          const unit  = row.querySelector(".unit");
-          const price = row.querySelector(".price");
-          const gst   = row.querySelector(".gst");
-
-          if (qty)   qty.value   = qty.value || "1";
-          if (unit)  unit.value  = p.unit || "";
-          if (price) price.value = p.price ?? 0;
-          if (gst)   gst.value   = p.gstPercentage ?? 0;
-
-          row.dataset.productId = p.id;
-          row.dataset.productName = p.name;
-          row.dataset.unit = unit?.value || p.unit || "";
-
-          this.recalc();
-        };
-      }
-
-      this.attachRowHandlers();
-      this.recalc();
-    };
-
+    $("addEditItemBtn").onclick = () => this.addEmptyRow();
     $("saveInvoiceBtn").onclick = () => this.save(inv.id);
 
+    this.recalc();
+  },
+
+  addEmptyRow() {
+    const tbody = $("editItemsBody");
+    const row = document.createElement("tr");
+    row.dataset.productId = "";
+    row.dataset.productName = "";
+    row.dataset.unit = "";
+
+    row.innerHTML = `
+      <td><input class="pname" list="editProductList" placeholder="Product"/></td>
+      <td><input class="qty"   type="number" min="0" value="1"/></td>
+      <td><input class="unit"  type="text" value=""/></td>
+      <td><input class="price" type="number" min="0" value="0"/></td>
+      <td><input class="dval"  type="number" min="0" value="0"/></td>
+      <td><input class="gst"   type="number" min="0" value="0"/></td>
+      <td class="total">0.00</td>
+      <td><button class="btn small danger removeBtn">✖</button></td>
+    `;
+    tbody.appendChild(row);
+
+    const pname = row.querySelector(".pname");
+    if (pname) {
+      pname.onchange = () => {
+        const val = pname.value.trim();
+        if (!val) return;
+        const p = productModule.findByName(val);
+        if (!p) return;
+
+        const qty   = row.querySelector(".qty");
+        const unit  = row.querySelector(".unit");
+        const price = row.querySelector(".price");
+        const gst   = row.querySelector(".gst");
+
+        if (qty)   qty.value   = qty.value || "1";
+        if (unit)  unit.value  = p.unit || "";
+        if (price) price.value = p.price ?? 0;
+        if (gst)   gst.value   = p.gstPercentage ?? 0;
+
+        row.dataset.productId = p.id;
+        row.dataset.productName = p.name;
+        row.dataset.unit = unit?.value || p.unit || "";
+
+        this.recalc();
+      };
+    }
+
+    this.attachRowHandlers();
     this.recalc();
   },
 
@@ -197,7 +200,7 @@ export const invoiceEdit = {
       const qty   = Number(r.querySelector(".qty")?.value)  || 0;
       const price = Number(r.querySelector(".price")?.value)|| 0;
       const dval  = Number(r.querySelector(".dval")?.value) || 0;
-      const dpct  = Number(r.querySelector(".dpct")?.value) || 0; // note: dpct may not exist in rows, treated as 0
+      const dpct  = Number(r.querySelector(".dpct")?.value) || 0;
       const gst   = Number(r.querySelector(".gst")?.value)  || 0;
 
       const base = qty * price;
@@ -236,7 +239,6 @@ export const invoiceEdit = {
         if (p) productId = p.id;
       }
 
-      // skip totally empty rows
       const isEmpty =
         !productId &&
         !pnameInput?.value &&
@@ -249,16 +251,18 @@ export const invoiceEdit = {
         qty,
         unit,
         pricePerUnit: price,
-        discountType: null,
+        discountType: dval > 0 ? "VALUE" : null,
         discountValue: dval,
-        discountPercent: dpct,
+        discountPercent: dpct || null,
         gstPercent: gst
       });
     });
 
+    const note = $("editNotes").value || "";
     const payload = {
-      customerId: null, // customer NOT changed
-      notes: $("editNotes").value || "",
+      customerId: null,         // unchanged
+      customerNote: note,       // new field
+      notes: note,              // keep for UpdateRequest.notes
       invoiceDate: $("editDate").value || null,
       invoiceDiscount: null,
       items

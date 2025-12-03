@@ -16,18 +16,20 @@ import { statementScreen } from "./statement-screen.js";
 // NEW — Updates Screen
 import { updatesScreen } from "./updates-screen.js";
 
+// NEW — Estimates Screen
+import { estimateList } from "./estimate-list.js";
+
 export const navigation = {
 
   screens: {
     firmProfile: firmProfileScreen,
     invoiceCreate,
     invoices: invoiceList,
+    estimates: estimateList,      // 👈 NEW
     customers: customerScreen,
     products: productScreen,
     analytics: analyticsScreen,
     firmAnalytics: firmAnalyticsScreen,
-
-    // NEW
     statements: statementScreen,
     updates: updatesScreen
   },
@@ -37,12 +39,11 @@ export const navigation = {
     { id: "firmProfile",   label: "Firm Profile",      icon: "🏢" },
     { id: "invoiceCreate", label: "Create Invoice",    icon: "➕" },
     { id: "invoices",      label: "Invoices",          icon: "📄" },
+    { id: "estimates",     label: "Estimates",         icon: "🧾" },  // 👈 NEW
     { id: "customers",     label: "Customers",         icon: "👥" },
     { id: "products",      label: "Products",          icon: "📦" },
     { id: "analytics",     label: "Customer Insights", icon: "📊" },
     { id: "firmAnalytics", label: "Firm Dashboard",    icon: "📈" },
-
-    // NEW SECTION
     { id: "statements",    label: "Statements",        icon: "🧾" },
     { id: "updates",       label: "Updates",           icon: "🔄" }
   ],

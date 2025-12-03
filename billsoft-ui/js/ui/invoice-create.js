@@ -12,18 +12,18 @@ export const invoiceCreate = {
   render() {
     return `
       <div class="card">
-        <h2>New Invoice</h2>
+        <h2>New Invoice / Estimate</h2>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
-            <label style="color:white">Customer</label>
+            <label>Customer</label>
             <input id="custInput" list="custList" placeholder="Type customer..." />
             <datalist id="custList"></datalist>
           </div>
 
           <div>
-            <!-- Renamed to Additional Discount (invoice-level) -->
-            <label style="color:white">Additional Discount</label>
+            <!-- Invoice-level discount -->
+            <label>Additional Discount</label>
             <div style="display:flex;gap:8px">
               <select id="discountType">
                 <option value="PERCENT">%</option>
@@ -34,7 +34,7 @@ export const invoiceCreate = {
           </div>
         </div>
 
-        <h3 style="color:white;margin-top:14px;">Items</h3>
+        <h3 style="margin-top:14px;">Items</h3>
         <table class="invoice-table">
           <thead>
             <tr>
@@ -52,16 +52,16 @@ export const invoiceCreate = {
 
         <div id="createTotals" style="margin-top:14px;text-align:right;">
           <div id="subtotalLine"></div>
-          <div id="productDiscountLine"></div> <!-- new: product-level discount total -->
+          <div id="productDiscountLine"></div>
           <div id="taxTotalLine"></div>
-          <div id="discountLine"></div> <!-- reused: Additional Discount (invoice-level) -->
+          <div id="discountLine"></div>
           <div id="grandTotalLine"></div>
         </div>
 
-        <label style="color:white;margin-top:10px;">Notes</label>
+        <label style="margin-top:10px;">Notes (will appear on invoice)</label>
         <textarea id="createNotes"></textarea>
 
-        <label style="color:white;display:flex;align-items:left;gap:8px;margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
           <input type="checkbox" id="createMarkPaid"/>
           Mark as Paid
         </label>
@@ -69,6 +69,7 @@ export const invoiceCreate = {
         <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn primary save-big" id="saveInvBtn">💾 Save Invoice</button>
           <button class="btn ghost save-big" id="saveInvPdfBtn">💾 Save &amp; PDF</button>
+          <button class="btn ghost save-big" id="saveEstimateBtn">🧾 Save as Estimate</button>
         </div>
 
         <div id="createResult" class="small muted" style="margin-top:6px;"></div>
@@ -77,7 +78,7 @@ export const invoiceCreate = {
   },
 
   init() {
-    // Fill customer list
+    // customers
     const custList = $("custList");
     if (custList) {
       custList.innerHTML = "";
@@ -88,7 +89,7 @@ export const invoiceCreate = {
       });
     }
 
-    // Fill products list
+    // products
     const prodList = $("productListGlobal");
     if (prodList) {
       prodList.innerHTML = "";
@@ -111,11 +112,12 @@ export const invoiceCreate = {
     $("discountType").onchange = () => totals.recalc();
     $("discountValue").oninput = () => totals.recalc();
 
-    $("saveInvBtn").onclick = () => this.submit(false);
-    $("saveInvPdfBtn").onclick = () => this.submit(true);
+    $("saveInvBtn").onclick = () => this.submit(false, false);
+    $("saveInvPdfBtn").onclick = () => this.submit(true, false);
+    $("saveEstimateBtn").onclick = () => this.submit(false, true);
   },
 
-  async submit(withPdf) {
+  async submit(withPdf, asEstimate) {
     const text = $("custInput").value.trim();
     if (!text) {
       alert("Enter customer name");
@@ -124,7 +126,7 @@ export const invoiceCreate = {
 
     let customerId = extractId(text);
 
-    // AUTO-CREATE CUSTOMER IF NOT FOUND
+    // auto-create customer if needed
     if (!customerId) {
       const existing = customerModule.customers.find(
         c => (c.name || "").toLowerCase() === text.toLowerCase()
@@ -139,11 +141,6 @@ export const invoiceCreate = {
           email: "",
           address: ""
         });
-
-        if (typeof customerModule.list === "function") {
-          await customerModule.list(); // refresh cache
-        }
-
         customerId = created.id;
       }
     }
@@ -160,29 +157,40 @@ export const invoiceCreate = {
       return;
     }
 
-    // buildFinalPayload now includes item-level and additional/invoice discount
+    const customerNote = $("createNotes").value || "";
+
+    // build payload with proper customerNote + invoiceDiscount
     const payload = totals.buildFinalPayload(
       items,
       customerId,
-      $("createNotes").value || ""
+      customerNote
     );
 
-    // set paid flag
-    payload.paid = $("createMarkPaid").checked;
+    // paid flag
+    if (asEstimate) {
+      payload.paid = false;
+      payload.status = "ESTIMATE";
+    } else {
+      payload.paid = $("createMarkPaid").checked;
+      // status omitted → backend default FINAL
+    }
 
     const created = await invoiceModule.save(payload);
 
     $("createResult").textContent =
-      `Invoice created: ${created.invoiceNumber || created.id}`;
+      `${asEstimate ? "Estimate" : "Invoice"} created: ${
+        created.invoiceNumber || created.estimateNumber || created.id
+      }`;
 
     if (withPdf && created && created.id) {
       try {
         const blob = await invoiceModule.pdf(created.id);
-        const fname = `invoice-${created.invoiceNumber || created.id}.pdf`;
-        pdfViewer.open(blob, fname, `Invoice ${created.invoiceNumber || created.id}`);
+        const num = created.invoiceNumber || created.estimateNumber || created.id;
+        const fname = `invoice-${num}.pdf`;
+        pdfViewer.open(blob, fname, `Invoice ${num}`);
       } catch (e) {
         console.error("PDF fetch failed", e);
-        alert("Invoice saved, but PDF could not be loaded.");
+        alert("Saved, but PDF could not be loaded.");
       }
     }
 
@@ -191,5 +199,6 @@ export const invoiceCreate = {
     rowBuilder.addRow();
     totals.recalc();
     $("createMarkPaid").checked = false;
+    $("discountValue").value = "0";
   }
 };

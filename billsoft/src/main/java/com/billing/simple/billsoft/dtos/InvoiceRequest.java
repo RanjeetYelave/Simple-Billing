@@ -19,21 +19,36 @@ public class InvoiceRequest {
     private Long customerId;
     private String notes;
 
-    /**
-     * Optional invoice-level discount (PERCENT or VALUE).
-     * Applied after per-item discounts.
-     */
-    private Discount invoiceDiscount;
+    private List<InvoiceRequestItem> items;
 
     /**
      * Paid flag – if null, service defaults to false.
      */
     private Boolean paid;
 
-    private List<InvoiceRequestItem> items;
+    /* ============================
+       DISCOUNT HANDLING
+       ============================ */
+    private Discount invoiceDiscount;
 
     /* ============================
-       NEW FIELDS FOR ESTIMATES
+       INVOICE / ESTIMATE NUMBERS
+       ============================ */
+
+    /**
+     * Only used for FINAL invoices.
+     * UI can send null → backend will auto-generate.
+     */
+    private String invoiceNumber;
+
+    /**
+     * Only used for ESTIMATES.
+     * UI can send null → backend will auto-generate.
+     */
+    private String estimateNumber;
+
+    /* ============================
+       STATUS CONTROL
        ============================ */
 
     /**
@@ -42,40 +57,26 @@ public class InvoiceRequest {
     private InvoiceStatus status;
 
     /**
-     * Used when creating estimates.
-     */
-    private String estimateNumber;
-
-    /**
-     * Only set by system during estimate → invoice conversion.
+     * Used only when estimate converts to invoice.
      */
     private Long convertedInvoiceId;
 
-    /**
-     * Optional due date.
-     */
     private LocalDate dueDate;
 
     /* ============================
        PROFESSIONAL FIELDS
        ============================ */
-
     private String customerNote;
     private String termsAndConditions;
-
     private String paymentMethod;
     private String currency = "INR";
-
-    /**
-     * Optional round-off flag.
-     * If present, InvoiceService applies final rounding.
-     */
     private BigDecimal roundOff;
-
-    /**
-     * Tags (comma separated)
-     */
     private String tags;
+
+    /* ============================
+       DATE — FROM UI (OPTIONAL)
+       ============================ */
+    private String invoiceDate; // format: yyyy-MM-dd or yyyy-MM-ddTHH:mm
 
     /* ============================
        INNER CLASS – Discount
@@ -83,7 +84,7 @@ public class InvoiceRequest {
     @Getter
     @Setter
     public static class Discount {
-        private String type;            // "PERCENT" or "VALUE"
-        private BigDecimal value;       // value or percent (BigDecimal)
+        private String type;      // PERCENT or VALUE
+        private BigDecimal value; // percent or amount
     }
 }

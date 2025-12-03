@@ -1,4 +1,3 @@
-// js/ui/invoice-list.js
 import { invoiceModule } from "../invoice.js";
 import { $, money } from "../utils.js";
 import { invoiceEdit } from "./invoice-edit.js";
@@ -11,7 +10,6 @@ export const invoiceList = {
   pageSize: 10,
   currentSort: "DATE_DESC",
 
-  // internal flag/handler ref to avoid adding duplicate document listeners
   _docClickHandler: null,
   _docClickHandlerAdded: false,
 
@@ -83,49 +81,34 @@ export const invoiceList = {
     this.currentPage = 1;
     this.currentSort = "DATE_DESC";
 
-    const reloadBtn = $("reloadInvoices");
-    if (reloadBtn) reloadBtn.onclick = () => this.loadAll();
-    const idBtn = $("invSearchIdBtn");
-    if (idBtn) idBtn.onclick = () => this.searchById();
-    const custBtn = $("invSearchCustomerBtn");
-    if (custBtn) custBtn.onclick = () => this.searchByCustomer();
+    $("reloadInvoices").onclick = () => this.loadAll();
+    $("invSearchIdBtn").onclick = () => this.searchById();
+    $("invSearchCustomerBtn").onclick = () => this.searchByCustomer();
 
-    const sortSel = $("invSortSelect");
-    if (sortSel) {
-      sortSel.onchange = () => {
-        this.currentSort = sortSel.value || "DATE_DESC";
-        this.currentPage = 1;
-        this.renderTable();
-      };
-    }
+    $("invSortSelect").onchange = () => {
+      this.currentSort = $("invSortSelect").value || "DATE_DESC";
+      this.currentPage = 1;
+      this.renderTable();
+    };
 
-    const prev = $("invPrevPage");
-    if (prev) prev.onclick = () => {
+    $("invPrevPage").onclick = () => {
       if (this.currentPage > 1) {
         this.currentPage--;
         this.renderTable();
       }
     };
 
-    const next = $("invNextPage");
-    if (next) next.onclick = () => {
-      const totalPages = this.getTotalPages();
-      if (this.currentPage < totalPages) {
+    $("invNextPage").onclick = () => {
+      if (this.currentPage < this.getTotalPages()) {
         this.currentPage++;
         this.renderTable();
       }
     };
 
-    // Attach a single document click handler (used to close PDF menus)
     if (!this._docClickHandlerAdded) {
       this._docClickHandler = (e) => {
-        try {
-          // if click outside pdf-drop or pdf-menu, hide all menus
-          if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
-            document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
-          }
-        } catch (ex) {
-          // defensive: ignore if DOM isn't as expected
+        if (!e.target.closest(".pdf-drop") && !e.target.closest(".pdf-menu")) {
+          document.querySelectorAll(".pdf-menu").forEach(m => m.classList.add("hidden"));
         }
       };
       document.addEventListener("click", this._docClickHandler);
@@ -135,74 +118,44 @@ export const invoiceList = {
     this.loadAll();
   },
 
-  // ---------------- LOAD / SEARCH ----------------
-
   async loadAll() {
     try {
       const list = await invoiceModule.list();
       this.setData(list);
     } catch (err) {
       console.error("Failed to load invoices", err);
-      const body = $("invTableBody");
-      if (body) body.innerHTML =
+      $("invTableBody").innerHTML =
         `<tr><td colspan="6" class="small muted">Failed to load invoices.</td></tr>`;
-      const info = $("invPaginationInfo");
-      if (info) info.textContent = "";
+      $("invPaginationInfo").textContent = "";
     }
   },
 
   async searchById() {
-    const idEl = $("invSearchId");
-    const idText = idEl ? idEl.value.trim() : "";
-    if (!idText) return alert("Enter an Invoice ID");
-
-    const id = Number(idText);
-    if (isNaN(id)) return alert("Invoice ID must be a number");
+    const id = Number($("invSearchId").value.trim());
+    if (!id) return alert("Enter an Invoice ID");
 
     try {
       const inv = await invoiceModule.preview(id);
-      if (!inv || inv.id == null) {
+      if (!inv) {
         this.setData([]);
-        const body = $("invTableBody");
-        if (body) body.innerHTML =
+        $("invTableBody").innerHTML =
           `<tr><td colspan="6" class="small muted">Invoice not found.</td></tr>`;
-        const info = $("invPaginationInfo");
-        if (info) info.textContent = "";
         return;
       }
       this.setData([inv]);
     } catch (err) {
       console.error("Search by ID failed", err);
-      const body = $("invTableBody");
-      if (body) body.innerHTML =
-        `<tr><td colspan="6" class="small muted">Error fetching invoice.</td></tr>`;
-      const info = $("invPaginationInfo");
-      if (info) info.textContent = "";
     }
   },
 
   async searchByCustomer() {
-    const cidEl = $("invSearchCustomer");
-    const cidText = cidEl ? cidEl.value.trim() : "";
-    if (!cidText) return alert("Enter a Customer ID");
+    const cid = Number($("invSearchCustomer").value.trim());
+    if (!cid) return alert("Enter a Customer ID");
 
-    const cid = Number(cidText);
-    if (isNaN(cid)) return alert("Customer ID must be a number");
-
-    try {
-      const all = await invoiceModule.list();
-      const filtered = all.filter(
-        inv => inv.customer && Number(inv.customer.id) === cid
-      );
-      this.setData(filtered);
-    } catch (err) {
-      console.error("Search by customer failed", err);
-      const body = $("invTableBody");
-      if (body) body.innerHTML =
-        `<tr><td colspan="6" class="small muted">Error fetching invoices.</td></tr>`;
-      const info = $("invPaginationInfo");
-      if (info) info.textContent = "";
-    }
+    const all = await invoiceModule.list();
+    this.setData(all.filter(i =>
+      i.customer?.id && Number(i.customer.id) === cid
+    ));
   },
 
   setData(list) {
@@ -211,88 +164,74 @@ export const invoiceList = {
     this.renderTable();
   },
 
-  // ---------------- ACTIONS ----------------
-
+  // STATUS LOGIC UPDATED ✔
   async togglePaid(inv) {
-    const id = inv.id;
-    const newStatus = !inv.paid;
-    const label = newStatus ? "PAID" : "UNPAID";
+    const willBePaid = !inv.paid;
+    const newStatus = willBePaid ? "PAID" : "FINAL";
 
-    const ok = window.confirm(`Mark invoice ${inv.invoiceNumber} as ${label}?`);
-    if (!ok) return;
-
-    try {
-      await invoiceModule.markPaid(id, newStatus);
-      inv.paid = newStatus;
-      this.renderTable();
-    } catch (err) {
-      console.error("Failed to update paid flag", err);
-      alert("Failed to update paid status.");
-    }
-  },
-
-  async deleteInvoice(inv) {
-    const ok = window.confirm(
-      `Delete invoice ${inv.invoiceNumber}? This cannot be undone.`
+    const ok = confirm(
+      `Mark invoice ${inv.invoiceNumber || inv.estimateNumber} as ${newStatus}?`
     );
     if (!ok) return;
 
     try {
-      await invoiceModule.delete(inv.id);
-      this.allInvoices = this.allInvoices.filter(x => x.id !== inv.id);
-      if (this.currentPage > this.getTotalPages()) {
-        this.currentPage = this.getTotalPages();
-      }
+      await invoiceModule.update(inv.id, {
+        paid: willBePaid,
+        status: newStatus
+      });
+
+      inv.status = newStatus;
+      inv.paid = willBePaid;
       this.renderTable();
-    } catch (err) {
-      console.error("Failed to delete invoice", err);
-      alert("Failed to delete invoice.");
+    } catch (e) {
+      console.error(e);
+      alert("Status update failed");
     }
+  },
+
+  async deleteInvoice(inv) {
+    if (!confirm(`Delete invoice ${inv.invoiceNumber}?`)) return;
+    await invoiceModule.delete(inv.id);
+    this.allInvoices = this.allInvoices.filter(x => x.id !== inv.id);
+    this.renderTable();
   },
 
   async openPdf(inv, size = "A4") {
     try {
       const blob = await invoiceModule.pdf(inv.id, size);
-      const fname = `invoice-${inv.invoiceNumber || inv.id}.pdf`;
-      pdfViewer.open(blob, fname, `Invoice ${inv.invoiceNumber || inv.id}`);
-    } catch (e) {
-      console.error("PDF fetch failed", e);
-      alert("Failed to load PDF.");
+      pdfViewer.open(blob,
+        `invoice-${inv.invoiceNumber || inv.id}.pdf`,
+        `Invoice ${inv.invoiceNumber || inv.id}`);
+    } catch (err) {
+      console.error("PDF fetch failed", err);
     }
   },
 
-  // ---------------- RENDER TABLE ----------------
-
   getTotalPages() {
-    if (!this.allInvoices.length) return 1;
-    return Math.ceil(this.allInvoices.length / this.pageSize);
+    return Math.max(1, Math.ceil(this.allInvoices.length / this.pageSize));
   },
 
   getSortedInvoices() {
-    const list = this.allInvoices.slice();
-    const sortKey = this.currentSort;
+    const sorted = [...this.allInvoices];
+    const key = this.currentSort;
 
-    return list.sort((a, b) => {
+    sorted.sort((a, b) => {
+      const da = new Date(a.invoiceDate ?? 0).getTime();
+      const db = new Date(b.invoiceDate ?? 0).getTime();
+      const aa = Number(a.totalAmount ?? 0);
+      const ab = Number(b.totalAmount ?? 0);
 
-      const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
-      const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
-
-      const aa = a.totalAmount ?? 0;
-      const ab = b.totalAmount ?? 0;
-
-      switch (sortKey) {
-        case "DATE_ASC":
-          return da - db;
-        case "AMOUNT_DESC":
-          return ab - aa;
-        case "AMOUNT_ASC":
-          return aa - ab;
+      switch (key) {
+        case "DATE_ASC": return da - db;
+        case "AMOUNT_DESC": return ab - aa;
+        case "AMOUNT_ASC": return aa - ab;
         case "DATE_DESC":
         default:
           if (db !== da) return db - da;
           return (b.id ?? 0) - (a.id ?? 0);
       }
     });
+    return sorted;
   },
 
   renderTable() {
@@ -300,43 +239,51 @@ export const invoiceList = {
     const info = $("invPaginationInfo");
 
     if (!this.allInvoices.length) {
-      if (body) body.innerHTML =
-        `<tr><td colspan="6" class="small muted">No invoices found.</td></tr>`;
-      if (info) info.textContent = "0 invoices";
-      const details = $("invDetails");
-      if (details) details.innerHTML = "";
+      body.innerHTML = `<tr><td colspan="6" class="small muted">No invoices found.</td></tr>`;
+      info.textContent = "0 invoices";
+      $("invDetails").innerHTML = "";
       return;
     }
 
     const sorted = this.getSortedInvoices();
     const totalPages = this.getTotalPages();
-
-    if (this.currentPage > totalPages) this.currentPage = totalPages;
-    if (this.currentPage < 1) this.currentPage = 1;
-
     const start = (this.currentPage - 1) * this.pageSize;
     const pageItems = sorted.slice(start, start + this.pageSize);
 
-    if (body) body.innerHTML = "";
+    body.innerHTML = "";
 
     pageItems.forEach(inv => {
-      const tr = document.createElement("tr");
-      const isPaid = inv.paid === true;
+      const isPaid = inv.status === "PAID";
+      const isEstimate = inv.status === "ESTIMATE";
 
-      // Note: pdf-menu styling is controlled via CSS (theme-aware). Avoid inline background here.
+      const statusColor = {
+        PAID: "#22c55e",
+        ESTIMATE: "#38bdf8",
+        DRAFT: "#a78bfa",
+        OVERDUE: "#fb923c",
+        CANCELLED: "#9ca3af",
+        SENT: "#3b82f6",
+        FINAL: "#f97373",
+      }[inv.status] || "#f97373";
+
+      const displayNumber =
+        inv.invoiceNumber ||
+        inv.estimateNumber ||
+        `#${inv.id}`;
+
+      const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${inv.invoiceNumber}</td>
+        <td>${displayNumber}</td>
         <td>${inv.customer?.name || "—"}</td>
         <td>${inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : "-"}</td>
         <td class="numeric">${money(inv.totalAmount)}</td>
         <td>
-          <span class="small" style="color:${isPaid ? "#22c55e" : "#f97373"};">
-            ${isPaid ? "Paid" : "Unpaid"}
+          <span class="small" style="color:${statusColor};">
+            ${inv.status}
           </span>
         </td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-
             <button class="btn small" data-view="${inv.id}">Edit</button>
 
             <button class="btn small ghost" data-paid="${inv.id}">
@@ -345,106 +292,75 @@ export const invoiceList = {
 
             <button class="btn small danger" data-del="${inv.id}">Delete</button>
 
-            <!-- PDF SPLIT BUTTON -->
             <div style="display:flex;position:relative;">
               <button class="btn small ghost pdf-main" data-pdf-main="${inv.id}">
                 PDF
               </button>
-              <button class="btn small ghost pdf-drop" data-pdf-drop="${inv.id}">
-                ▾
-              </button>
-
-              <!-- Dropdown (theme controlled via CSS using .pdf-menu) -->
+              <button class="btn small ghost pdf-drop" data-pdf-drop="${inv.id}">▾</button>
               <div class="pdf-menu hidden" id="pdfMenu-${inv.id}">
-                <div class="pdf-option" data-pdf-size="A4" data-pdf-id="${inv.id}" style="padding:6px 10px;cursor:pointer;">Open A4</div>
-                <div class="pdf-option" data-pdf-size="A5" data-pdf-id="${inv.id}" style="padding:6px 10px;cursor:pointer;">Open A5</div>
+                <div class="pdf-option" data-pdf-size="A4" data-pdf-id="${inv.id}">Open A4</div>
+                <div class="pdf-option" data-pdf-size="A5" data-pdf-id="${inv.id}">Open A5</div>
               </div>
             </div>
-
           </div>
         </td>
       `;
-      if (body) body.appendChild(tr);
+      body.appendChild(tr);
     });
 
-    if (info) {
-      info.textContent =
-        `Page ${this.currentPage} of ${totalPages} • ${this.allInvoices.length} invoice${this.allInvoices.length === 1 ? "" : "s"}`;
-    }
+    info.textContent = `Page ${this.currentPage} of ${totalPages} • ${this.allInvoices.length} invoice(s)`;
+    $("invPrevPage").disabled = this.currentPage <= 1;
+    $("invNextPage").disabled = this.currentPage >= totalPages;
 
-    const prevBtn = $("invPrevPage");
-    if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
-    const nextBtn = $("invNextPage");
-    if (nextBtn) nextBtn.disabled = this.currentPage >= totalPages;
-
-    // Attach handlers (event binding to buttons in the current table only)
     this.attachHandlers();
   },
 
   attachHandlers() {
     const body = $("invTableBody");
-    if (!body) return;
 
-    // Edit
     body.querySelectorAll("button[data-view]").forEach(btn => {
       btn.onclick = () => invoiceEdit.open(Number(btn.dataset.view));
     });
 
-    // Paid toggle
     body.querySelectorAll("button[data-paid]").forEach(btn => {
       btn.onclick = () => {
         const inv = this.allInvoices.find(x => x.id === Number(btn.dataset.paid));
-        if (inv) this.togglePaid(inv);
+        this.togglePaid(inv);
       };
     });
 
-    // Delete
     body.querySelectorAll("button[data-del]").forEach(btn => {
       btn.onclick = () => {
         const inv = this.allInvoices.find(x => x.id === Number(btn.dataset.del));
-        if (inv) this.deleteInvoice(inv);
+        this.deleteInvoice(inv);
       };
     });
 
-    // Main PDF button (default A4)
     body.querySelectorAll("button[data-pdf-main]").forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
-        const id = Number(btn.dataset.pdfMain);
-        const inv = this.allInvoices.find(x => x.id === id);
-        if (inv) this.openPdf(inv, "A4");
+        const inv = this.allInvoices.find(x => x.id === Number(btn.dataset.pdfMain));
+        this.openPdf(inv, "A4");
       };
     });
 
-    // ▼ Dropdown toggle
     body.querySelectorAll("button[data-pdf-drop]").forEach(btn => {
-      btn.onclick = (e) => {
-        // avoid document click handler closing instantly
+      btn.onclick = e => {
         e.stopPropagation();
         const id = Number(btn.dataset.pdfDrop);
-        // close other menus
-        document.querySelectorAll(".pdf-menu").forEach(m => {
-          if (m.id !== `pdfMenu-${id}`) m.classList.add("hidden");
-        });
-        const menu = $(`pdfMenu-${id}`);
-        if (menu) menu.classList.toggle("hidden");
+        document.querySelectorAll(".pdf-menu")
+          .forEach(m => m.id !== `pdfMenu-${id}` && m.classList.add("hidden"));
+        $(`pdfMenu-${id}`).classList.toggle("hidden");
       };
     });
 
-    // Dropdown options
     body.querySelectorAll(".pdf-option").forEach(opt => {
-      opt.onclick = (e) => {
+      opt.onclick = e => {
         e.stopPropagation();
-        const id = Number(opt.dataset.pdfId);
-        const size = opt.dataset.pdfSize;
-        const inv = this.allInvoices.find(x => x.id === id);
-        if (inv) this.openPdf(inv, size);
-
-        const menu = $(`pdfMenu-${id}`);
-        if (menu) menu.classList.add("hidden");
+        const inv = this.allInvoices.find(x => x.id === Number(opt.dataset.pdfId));
+        this.openPdf(inv, opt.dataset.pdfSize);
+        $(`pdfMenu-${opt.dataset.pdfId}`).classList.add("hidden");
       };
     });
-
-    // NOTE: document click handler moved to init() and added once.
   }
 };

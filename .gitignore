@@ -103,3 +103,4 @@ pnpm-debug.log*
 uploads/
 temp/
 .cache/
+/.metadata/

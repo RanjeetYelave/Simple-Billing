@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -15,7 +14,6 @@ import com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.CustomerInvoiceSummary;
 import com.billing.simple.billsoft.dtos.FirmAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
-import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.engine.InvoiceCalculationEngine;
@@ -92,19 +90,19 @@ public class InvoiceService {
         return v == null ? BigDecimal.ZERO.setScale(SCALE) : v.setScale(SCALE, RoundingMode.HALF_UP);
     }
 
-    private static BigDecimal pctOf(BigDecimal base, BigDecimal percent) {
-        if (base == null || percent == null) return BigDecimal.ZERO.setScale(SCALE);
-        return base.multiply(percent).divide(BigDecimal.valueOf(100), CALC_SCALE, RoundingMode.HALF_UP)
-                .setScale(SCALE, RoundingMode.HALF_UP);
-    }
-
     private List<Product> fetchProductsReferencedBy(InvoiceRequest req, InvoiceUpdateRequest uReq) {
         Set<Long> ids = new HashSet<>();
         if (req != null && req.getItems() != null) {
-            req.getItems().stream().map(InvoiceRequestItem::getProductId).filter(Objects::nonNull).forEach(ids::add);
+            req.getItems().stream()
+                    .map(InvoiceRequestItem::getProductId)
+                    .filter(Objects::nonNull)
+                    .forEach(ids::add);
         }
         if (uReq != null && uReq.getItems() != null) {
-            uReq.getItems().stream().map(InvoiceRequestItem::getProductId).filter(Objects::nonNull).forEach(ids::add);
+            uReq.getItems().stream()
+                    .map(InvoiceRequestItem::getProductId)
+                    .filter(Objects::nonNull)
+                    .forEach(ids::add);
         }
         if (ids.isEmpty()) return Collections.emptyList();
         Iterable<Product> found = productRepo.findAllById(ids);
@@ -118,21 +116,49 @@ public class InvoiceService {
     // -------------------------
     @Transactional
     public Invoice createInvoice(InvoiceRequest request) {
-        if (request.getItems() == null) request.setItems(Collections.emptyList());
+        if (request.getItems() == null) {
+            request.setItems(Collections.emptyList());
+        }
 
+        // Load customer if provided
         Customer customer = null;
         if (request.getCustomerId() != null) {
             customer = customerRepo.findById(request.getCustomerId())
                     .orElseThrow(() -> new RuntimeException("Customer not found: " + request.getCustomerId()));
         }
 
+        // Determine effective status
+        InvoiceStatus status = request.getStatus();
+        if (status == null) {
+            status = InvoiceStatus.FINAL;  // default
+            request.setStatus(status);
+        }
+
         Invoice invoice = new Invoice();
 
-        // identifiers
-        if (request.getStatus() != null && request.getStatus() == InvoiceStatus.ESTIMATE) {
-            invoice.setEstimateNumber(request.getEstimateNumber() != null ? request.getEstimateNumber() : generateEstimateNumber());
+        // identifiers (Option B behaviour)
+        if (status == InvoiceStatus.ESTIMATE) {
+            // Estimate: ONLY estimateNumber, NO invoiceNumber
+            if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
+                invoice.setEstimateNumber(request.getEstimateNumber());
+            } else {
+                invoice.setEstimateNumber(generateEstimateNumber());
+                request.setEstimateNumber(invoice.getEstimateNumber()); // keep dto consistent
+            }
+            invoice.setInvoiceNumber(null);
         } else {
-            invoice.setInvoiceNumber(generateInvoiceNumber());
+            // Final/invoice: MUST have invoiceNumber, estimateNumber optional
+            String invNo = request.getInvoiceNumber();
+            if (invNo == null || invNo.isBlank()) {
+                invNo = generateInvoiceNumber();
+                request.setInvoiceNumber(invNo);
+            }
+            invoice.setInvoiceNumber(invNo);
+
+            // if caller accidentally sent estimateNumber also, keep it but it's not required
+            if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
+                invoice.setEstimateNumber(request.getEstimateNumber());
+            }
         }
 
         // fetch product data once
@@ -142,15 +168,17 @@ public class InvoiceService {
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
 
         // persist and return
-        Invoice saved = invoiceRepo.save(calculated);
-        return saved;
+        return invoiceRepo.save(calculated);
     }
 
     // convenience: create estimate
     @Transactional
     public Invoice createEstimate(InvoiceRequest request) {
         request.setStatus(InvoiceStatus.ESTIMATE);
-        if (request.getEstimateNumber() == null) request.setEstimateNumber(generateEstimateNumber());
+        if (request.getEstimateNumber() == null || request.getEstimateNumber().isBlank()) {
+            request.setEstimateNumber(generateEstimateNumber());
+        }
+        // IMPORTANT: do NOT set invoiceNumber here; createInvoice() will treat ESTIMATE correctly
         return createInvoice(request);
     }
 
@@ -165,11 +193,30 @@ public class InvoiceService {
             customer = customerRepo.findById(request.getCustomerId()).orElse(null);
         }
 
+        InvoiceStatus status = request.getStatus();
+        if (status == null) {
+            status = InvoiceStatus.FINAL;
+            request.setStatus(status);
+        }
+
         Invoice invoice = new Invoice();
-        if (request.getStatus() != null && request.getStatus() == InvoiceStatus.ESTIMATE) {
-            invoice.setEstimateNumber(request.getEstimateNumber() != null ? request.getEstimateNumber() : generateEstimateNumber());
+
+        if (status == InvoiceStatus.ESTIMATE) {
+            String estNo = request.getEstimateNumber();
+            if (estNo == null || estNo.isBlank()) {
+                estNo = generateEstimateNumber();
+                request.setEstimateNumber(estNo);
+            }
+            invoice.setEstimateNumber(estNo);
+            invoice.setInvoiceNumber(null);
         } else {
-            invoice.setInvoiceNumber(generateInvoiceNumber());
+            String invNo = request.getInvoiceNumber();
+            if (invNo == null || invNo.isBlank()) {
+                invNo = generateInvoiceNumber();
+                request.setInvoiceNumber(invNo);
+            }
+            invoice.setInvoiceNumber(invNo);
+            invoice.setEstimateNumber(request.getEstimateNumber());
         }
 
         List<Product> products = fetchProductsReferencedBy(request, null);
@@ -246,18 +293,46 @@ public class InvoiceService {
 
         // If req.items present -> overwrite items
         InvoiceRequest newReq = new InvoiceRequest();
-        newReq.setCustomerId(req.getCustomerId() != null ? req.getCustomerId() : (existing.getCustomer() != null ? existing.getCustomer().getId() : null));
-        newReq.setCustomerNote(req.getCustomerNote() != null ? req.getCustomerNote() : (req.getNotes() != null ? req.getNotes() : existing.getCustomerNote()));
-        newReq.setTermsAndConditions(req.getTermsAndConditions() != null ? req.getTermsAndConditions() : existing.getTermsAndConditions());
-        newReq.setPaymentMethod(req.getPaymentMethod() != null ? req.getPaymentMethod() : existing.getPaymentMethod());
-        newReq.setCurrency(req.getCurrency() != null ? req.getCurrency() : existing.getCurrency());
-        newReq.setTags(req.getTags() != null ? req.getTags() : existing.getTags());
-        newReq.setStatus(req.getStatus() != null ? req.getStatus() : existing.getStatus());
-        newReq.setEstimateNumber(req.getEstimateNumber() != null ? req.getEstimateNumber() : existing.getEstimateNumber());
-        newReq.setDueDate(req.getDueDate() != null ? req.getDueDate() : existing.getDueDate());
-        newReq.setPaid(req.getPaid() != null ? req.getPaid() : existing.getPaid());
-        newReq.setInvoiceDiscount(req.getInvoiceDiscount() != null ? req.getInvoiceDiscount() : null);
-        newReq.setRoundOff(req.getRoundOff() != null ? req.getRoundOff() : null);
+        newReq.setCustomerId(
+                req.getCustomerId() != null
+                        ? req.getCustomerId()
+                        : (existing.getCustomer() != null ? existing.getCustomer().getId() : null)
+        );
+        newReq.setCustomerNote(
+                req.getCustomerNote() != null
+                        ? req.getCustomerNote()
+                        : (req.getNotes() != null ? req.getNotes() : existing.getCustomerNote())
+        );
+        newReq.setTermsAndConditions(
+                req.getTermsAndConditions() != null ? req.getTermsAndConditions() : existing.getTermsAndConditions()
+        );
+        newReq.setPaymentMethod(
+                req.getPaymentMethod() != null ? req.getPaymentMethod() : existing.getPaymentMethod()
+        );
+        newReq.setCurrency(
+                req.getCurrency() != null ? req.getCurrency() : existing.getCurrency()
+        );
+        newReq.setTags(
+                req.getTags() != null ? req.getTags() : existing.getTags()
+        );
+        newReq.setStatus(
+                req.getStatus() != null ? req.getStatus() : existing.getStatus()
+        );
+        newReq.setEstimateNumber(
+                req.getEstimateNumber() != null ? req.getEstimateNumber() : existing.getEstimateNumber()
+        );
+        newReq.setDueDate(
+                req.getDueDate() != null ? req.getDueDate() : existing.getDueDate()
+        );
+        newReq.setPaid(
+                req.getPaid() != null ? req.getPaid() : existing.getPaid()
+        );
+        newReq.setInvoiceDiscount(
+                req.getInvoiceDiscount() != null ? req.getInvoiceDiscount() : null
+        );
+        newReq.setRoundOff(
+                req.getRoundOff() != null ? req.getRoundOff() : null
+        );
         newReq.setItems(req.getItems());
 
         // parse invoiceDate if provided
@@ -266,7 +341,7 @@ public class InvoiceService {
             if (dt != null) existing.setInvoiceDate(dt);
         }
 
-        Customer cust = null;
+        Customer cust;
         if (newReq.getCustomerId() != null) {
             cust = customerRepo.findById(newReq.getCustomerId()).orElse(null);
         } else {
@@ -323,83 +398,80 @@ public class InvoiceService {
         if (paid) i.setStatus(InvoiceStatus.PAID);
         return invoiceRepo.save(i);
     }
-
-    // -------------------------
-    // Convert estimate -> invoice
-    // -------------------------
+    
     @Transactional
     public Invoice convertEstimateToInvoice(Long estimateId, InvoiceRequest overrideRequest) {
         Invoice estimate = invoiceRepo.findById(estimateId).orElse(null);
-        if (estimate == null) throw new RuntimeException("Estimate not found: " + estimateId);
+        if (estimate == null)
+            throw new RuntimeException("Estimate not found: " + estimateId);
+
         if (estimate.getStatus() != InvoiceStatus.ESTIMATE && estimate.getStatus() != InvoiceStatus.DRAFT)
             throw new RuntimeException("Only estimates/drafts can be converted");
 
-        Invoice source = estimate;
+        // Clone estimate -> new invoice
         Invoice newInv = new Invoice();
-
-        // copy simple metadata
-        newInv.setCustomer(source.getCustomer());
-        newInv.setCustomerNote(source.getCustomerNote());
-        newInv.setTermsAndConditions(source.getTermsAndConditions());
-        newInv.setPaymentMethod(source.getPaymentMethod());
-        newInv.setCurrency(source.getCurrency());
-        newInv.setTags(source.getTags());
+        newInv.setCustomer(estimate.getCustomer());
+        newInv.setCustomerNote(estimate.getCustomerNote());
+        newInv.setTermsAndConditions(estimate.getTermsAndConditions());
+        newInv.setPaymentMethod(estimate.getPaymentMethod());
+        newInv.setCurrency(estimate.getCurrency());
+        newInv.setTags(estimate.getTags());
 
         newInv.setInvoiceNumber(generateInvoiceNumber());
         newInv.setStatus(InvoiceStatus.FINAL);
         newInv.setInvoiceDate(LocalDateTime.now());
-        newInv.setDueDate(source.getDueDate() != null ? source.getDueDate() : (source.getInvoiceDate() != null ? source.getInvoiceDate().toLocalDate().plusDays(14) : null));
         newInv.setPaid(false);
 
-        if (overrideRequest != null) {
-            if (overrideRequest.getCustomerId() == null && source.getCustomer() != null)
-                overrideRequest.setCustomerId(source.getCustomer().getId());
+        if (estimate.getDueDate() != null)
+            newInv.setDueDate(estimate.getDueDate());
+        else if (estimate.getInvoiceDate() != null)
+            newInv.setDueDate(estimate.getInvoiceDate().toLocalDate().plusDays(14));
 
-            List<Product> products = fetchProductsReferencedBy(overrideRequest, null);
-            Customer cust = overrideRequest.getCustomerId() != null ? customerRepo.findById(overrideRequest.getCustomerId()).orElse(source.getCustomer()) : source.getCustomer();
-            Invoice calculated = engine.calculate(newInv, cust, products, overrideRequest, false);
-            Invoice saved = invoiceRepo.save(calculated);
-            source.setConvertedInvoiceId(saved.getId());
-            invoiceRepo.save(source);
-            return saved;
-        } else {
-            // clone items as-is
-            List<InvoiceItem> cloned = new ArrayList<>();
-            if (source.getItems() != null) {
-                for (InvoiceItem it : source.getItems()) {
-                    InvoiceItem ni = new InvoiceItem();
-                    ni.setProduct(it.getProduct());
-                    ni.setQty(it.getQty());
-                    ni.setUnit(it.getUnit());
-                    ni.setPricePerUnit(it.getPricePerUnit());
-                    ni.setAmountWithoutTax(it.getAmountWithoutTax());
-                    ni.setDiscountType(it.getDiscountType());
-                    ni.setDiscountPercent(it.getDiscountPercent());
-                    ni.setDiscountValue(it.getDiscountValue());
-                    ni.setTaxableAmount(it.getTaxableAmount());
-                    ni.setGstPercent(it.getGstPercent());
-                    ni.setGstAmount(it.getGstAmount());
-                    ni.setLineTotal(it.getLineTotal());
-                    ni.setInvoice(newInv);
-                    cloned.add(ni);
-                }
+        // FIRST populate items immediately into new invoice
+        List<InvoiceItem> cloned = new ArrayList<>();
+        if (estimate.getItems() != null) {
+            for (InvoiceItem it : estimate.getItems()) {
+                InvoiceItem ni = new InvoiceItem();
+                ni.setProduct(it.getProduct());
+                ni.setQty(it.getQty());
+                ni.setUnit(it.getUnit());
+                ni.setPricePerUnit(it.getPricePerUnit());
+                ni.setAmountWithoutTax(it.getAmountWithoutTax());
+                ni.setDiscountType(it.getDiscountType());
+                ni.setDiscountPercent(it.getDiscountPercent());
+                ni.setDiscountValue(it.getDiscountValue());
+                ni.setTaxableAmount(it.getTaxableAmount());
+                ni.setGstPercent(it.getGstPercent());
+                ni.setGstAmount(it.getGstAmount());
+                ni.setLineTotal(it.getLineTotal());
+                ni.setInvoice(newInv);
+                cloned.add(ni);
             }
-            newInv.getItems().addAll(cloned);
-
-            // copy totals
-            newInv.setSubtotalWithoutTax(source.getSubtotalWithoutTax());
-            newInv.setTotalTax(source.getTotalTax());
-            newInv.setTotalDiscount(source.getTotalDiscount());
-            newInv.setRoundOff(source.getRoundOff());
-            newInv.setTotalAmount(source.getTotalAmount() != null ? source.getTotalAmount()
-                    : (source.getSubtotalWithoutTax() != null ? source.getSubtotalWithoutTax().add(source.getTotalTax() == null ? BigDecimal.ZERO : source.getTotalTax()) : null));
-
-            Invoice saved = invoiceRepo.save(newInv);
-            source.setConvertedInvoiceId(saved.getId());
-            invoiceRepo.save(source);
-            return saved;
         }
+        newInv.getItems().addAll(cloned);
+
+        // Recalculate totals keeping the SAME product data
+        List<Product> products = fetchProductsReferencedBy(
+                buildInvoiceRequestFromExistingInvoice(newInv), null
+        );
+
+        Invoice calculated = engine.calculate(
+                newInv,
+                newInv.getCustomer(),
+                products,
+                buildInvoiceRequestFromExistingInvoice(newInv),
+                true // update mode
+        );
+
+        Invoice saved = invoiceRepo.save(calculated);
+
+        // Link old estimate → converted invoice
+        estimate.setConvertedInvoiceId(saved.getId());
+        invoiceRepo.save(estimate);
+
+        return saved;
     }
+
 
     // -------------------------
     // Analytics / helpers
@@ -632,6 +704,9 @@ public class InvoiceService {
 
         if (inv.getDueDate() != null && !Boolean.TRUE.equals(inv.getPaid())) {
             if (inv.getDueDate().isBefore(LocalDate.now())) {
+                // NOTE: this will also mark ESTIMATE as OVERDUE if they have a dueDate in past.
+                // If you want to avoid that, guard here with:
+                // if (inv.getStatus() == InvoiceStatus.FINAL || inv.getStatus() == InvoiceStatus.DRAFT) { ... }
                 inv.setStatus(InvoiceStatus.OVERDUE);
                 return;
             }

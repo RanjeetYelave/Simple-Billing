@@ -140,8 +140,8 @@ public class InvoiceController {
     // ---------------- PDF DOWNLOAD ----------------
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadPdf(
-            @PathVariable Long id,
-            @RequestParam(defaultValue = "A4") String size) {
+            @PathVariable("id") Long id,
+            @RequestParam(name = "size", defaultValue = "A4") String size) {
 
         try {
             Invoice inv = service.getById(id);

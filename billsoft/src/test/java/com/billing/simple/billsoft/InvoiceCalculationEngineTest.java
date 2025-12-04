@@ -67,10 +67,10 @@ class InvoiceCalculationEngineTest {
     }
 
     // --------------------------------------------------------------------
-    // 2. Item-level PERCENT discount + GST
+    // 2. Item-level VALUE discount + GST (no percent at item level anymore)
     // --------------------------------------------------------------------
     @Test
-    void singleItem_percentDiscount_withGst_shouldApplyDiscountThenGst() {
+    void singleItem_itemLevelDiscount_withGst_shouldApplyDiscountThenGst() {
         InvoiceRequest req = new InvoiceRequest();
         req.setStatus(InvoiceStatus.FINAL);
         req.setPaid(false);
@@ -79,7 +79,7 @@ class InvoiceCalculationEngineTest {
         item.setProductId(1L);
         item.setQty(2); // 2 x 100 = 200
         item.setPricePerUnit(new BigDecimal("100.00"));
-        item.setDiscountPercent(new BigDecimal("10")); // 10% of 200 = 20
+        item.setDiscountValue(new BigDecimal("20.00")); // flat 20 discount on line
         item.setGstPercent(new BigDecimal("18"));
         req.setItems(List.of(item));
 
@@ -94,11 +94,13 @@ class InvoiceCalculationEngineTest {
         Invoice result = engine.calculate(invoice, null, List.of(p), req, false);
 
         // amountWithoutTax = 200
-        // item discount = 20
+        // item discount (value) = 20
         // taxable = 180
         // GST 18% of 180 = 32.40
         // total = 212.40
-        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("180.00");
+
+        // subtotalWithoutTax is RAW sum before any discounts
+        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("200.00");
         assertThat(result.getTotalDiscount()).isEqualByComparingTo("20.00");
         assertThat(result.getTotalTax()).isEqualByComparingTo("32.40");
         assertThat(result.getTotalAmount()).isEqualByComparingTo("212.40");
@@ -108,7 +110,7 @@ class InvoiceCalculationEngineTest {
         assertThat(line.getTaxableAmount()).isEqualByComparingTo("180.00");
         assertThat(line.getGstAmount()).isEqualByComparingTo("32.40");
         assertThat(line.getLineTotal()).isEqualByComparingTo("212.40");
-        assertThat(line.getDiscountType()).isEqualTo("PERCENT");
+        assertThat(line.getDiscountValue()).isEqualByComparingTo("20.00");
     }
 
     // --------------------------------------------------------------------
@@ -142,7 +144,9 @@ class InvoiceCalculationEngineTest {
         // discount = 50 => taxable = 250
         // GST 5% of 250 = 12.50
         // total = 262.50
-        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("250.00");
+
+        // subtotalWithoutTax = 300 (raw)
+        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("300.00");
         assertThat(result.getTotalDiscount()).isEqualByComparingTo("50.00");
         assertThat(result.getTotalTax()).isEqualByComparingTo("12.50");
         assertThat(result.getTotalAmount()).isEqualByComparingTo("262.50");
@@ -150,7 +154,7 @@ class InvoiceCalculationEngineTest {
 
         InvoiceItem line = result.getItems().get(0);
         assertThat(line.getUnit()).isEqualTo("kg");
-        assertThat(line.getDiscountType()).isEqualTo("VALUE");
+        assertThat(line.getDiscountValue()).isEqualByComparingTo("50.00");
         assertThat(line.getGstPercent()).isEqualByComparingTo("5.00");
     }
 
@@ -205,7 +209,9 @@ class InvoiceCalculationEngineTest {
         // Taxable after all discounts: 450
         // GST 18% of 450 = 81
         // Total = 531
-        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("450.00");
+
+        // subtotalWithoutTax = 500 (raw, before any discounts)
+        assertThat(result.getSubtotalWithoutTax()).isEqualByComparingTo("500.00");
         assertThat(result.getTotalDiscount()).isEqualByComparingTo("50.00");
         assertThat(result.getTotalTax()).isEqualByComparingTo("81.00");
         assertThat(result.getTotalAmount()).isEqualByComparingTo("531.00");

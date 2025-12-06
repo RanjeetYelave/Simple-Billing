@@ -3,48 +3,80 @@ import { productModule } from "./product.js";
 import { customerModule } from "./customer.js";
 import { invoiceModule } from "./invoice.js";
 import { layout } from "./ui/layout.js";
+import { authScreen } from "./ui/auth-screen.js";
 
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   try {
-    console.log("🔥 Loading initial data...");
-
-    await productModule.load();
-    await customerModule.load();
-
-    // Apply theme BEFORE rendering UI
+    // Apply theme ASAP
     applySavedTheme();
 
-    console.log("🔥 Rendering UI shell...");
-
-    // Instead of replacing body.innerHTML, place layout INTO #app
-    document.getElementById("app").innerHTML = layout.render();
-
-    layout.init();
-
-    setupThemeToggle(); // connect button AFTER rendering
+    // Show auth screen first (hard login gate)
+    renderLoginScreen();
 
   } catch (err) {
     console.error("Init failed", err);
   }
 }
 
-// ============================
-// Theme Loader (before render)
-// ============================
+/* ============================
+   Auth → App bootstrap
+   ============================ */
+
+function renderLoginScreen() {
+  const app = document.getElementById("app");
+  if (!app) {
+    console.error("#app container not found");
+    return;
+  }
+
+  app.innerHTML = authScreen.render();
+  authScreen.init({
+    onLoginSuccess: async () => {
+      // After successful login, boot full app
+      await bootstrapApp();
+    }
+  });
+
+  // Theme toggle exists on login screen too
+  setupThemeToggle();
+}
+
+async function bootstrapApp() {
+  const app = document.getElementById("app");
+  if (!app) return;
+
+  console.log("🔥 Loading initial data...");
+
+  // Load base data AFTER login
+  await productModule.load();
+  await customerModule.load();
+
+  console.log("🔥 Rendering UI shell...");
+
+  app.innerHTML = layout.render();
+  layout.init();
+
+  // Reconnect theme toggle in app layout
+  setupThemeToggle();
+}
+
+/* ============================
+   Theme Loader (before render)
+   ============================ */
 function applySavedTheme() {
   const saved = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
 }
 
-// ============================
-// Theme Toggle
-// ============================
+/* ============================
+   Theme Toggle
+   ============================ */
 function setupThemeToggle() {
   const toggle = document.getElementById("themeToggle");
   if (!toggle) {
-    console.warn("Theme toggle button missing");
+    // On some screens (rare), it may be missing; it's fine.
     return;
   }
 
@@ -54,8 +86,8 @@ function setupThemeToggle() {
     toggle.textContent = mode === "dark" ? "🌞" : "🌙";
   };
 
-  // Load saved theme
   const saved = localStorage.getItem("theme") || "dark";
+  root.setAttribute("data-theme", saved);
   updateIcon(saved);
 
   toggle.onclick = () => {

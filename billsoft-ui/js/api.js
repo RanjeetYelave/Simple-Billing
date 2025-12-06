@@ -7,7 +7,6 @@ export const API_BASE = "http://localhost:8080";
 
 async function handleResp(res, textOnError) {
   if (res.ok) {
-    // try parse json, else text
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) return res.json();
     return res.text();
@@ -52,9 +51,34 @@ export async function apiDelete(path) {
 }
 
 /* ============================================================
+   AUTH ENDPOINTS
+   ============================================================ */
+
+export function authLogin(loginId, password, activationKey = null) {
+  return apiPost("/api/auth/login", {
+    loginId,
+    password,
+    activationKey
+  });
+}
+
+export function authRegister(loginId, password) {
+  return apiPost("/api/auth/register", {
+    loginId,
+    password
+  });
+}
+
+export function authDeveloperReset(firmId, developerKey, newPassword) {
+  return apiPost("/api/auth/forgot-password/developer-reset", {
+    firmId,
+    developerKey,
+    newPassword
+  });
+}
+
+/* ============================================================
    INVOICE & ESTIMATE ENDPOINTS
-   - backend expects invoice payloads using numbers/strings for BigDecimal
-   - preview endpoint returns authoritative calculation (not persisted)
    ============================================================ */
 
 export function createInvoice(data) {
@@ -62,7 +86,6 @@ export function createInvoice(data) {
 }
 
 export function createEstimate(data) {
-  // server has dedicated endpoint
   return apiPost("/api/invoices/estimate", data);
 }
 
@@ -71,7 +94,6 @@ export function previewInvoice(data) {
 }
 
 export function convertEstimate(estimateId, overrideRequest = null) {
-  // server supports optional body override
   return apiPost(`/api/invoices/convert/${estimateId}`, overrideRequest || {});
 }
 
@@ -157,6 +179,7 @@ export function downloadFirmStatementPdf(from, to) {
    ============================================================ */
 export const api = {
   apiGet, apiPost, apiPut, apiDelete,
+  authLogin, authRegister, authDeveloperReset,
   createInvoice, createEstimate, previewInvoice, convertEstimate, updateInvoice, markInvoicePaid, deleteInvoice,
   getAllInvoices, getAllEstimates, getAllFinalInvoices, getInvoiceById, downloadInvoicePdf,
   getCustomerStatement, downloadCustomerStatementPdf, getFirmStatement, downloadFirmStatementPdf

@@ -1,6 +1,5 @@
 package com.billing.simple.billsoft.controllers;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.billing.simple.billsoft.service.AuthService;
@@ -22,53 +21,21 @@ public class AuthController {
         this.auth = auth;
     }
 
-    // ---------------- REGISTER / CREATE ACCOUNT ----------------
-
-    /**
-     * Create or update account for the (single) firm.
-     * Body: { "loginId": "...", "password": "..." }
-     */
+    // -------- REGISTER --------
     @PostMapping("/register")
-    public ResponseEntity<RegisterResult> register(@RequestBody RegisterRequest req) {
-        RegisterResult result = auth.register(req);
-        if (!result.success) {
-            return ResponseEntity.badRequest().body(result);
-        }
-        return ResponseEntity.ok(result);
+    public RegisterResult register(@RequestBody RegisterRequest req) {
+        return auth.register(req);
     }
 
-    // ---------------- LOGIN ----------------
-
-    /**
-     * Login.
-     * Body: { "loginId": "...", "password": "...", "activationKey": "..." (optional) }
-     */
+    // -------- LOGIN --------
     @PostMapping("/login")
-    public ResponseEntity<LoginResult> login(@RequestBody LoginRequest req) {
-        LoginResult result = auth.login(req);
-        if (!result.success) {
-            return ResponseEntity.status(400).body(result);
-        }
-        return ResponseEntity.ok(result);
+    public LoginResult login(@RequestBody LoginRequest req) {
+        return auth.login(req);
     }
 
-    // ---------------- FORGOT PASSWORD / DEVELOPER RESET ----------------
-
-    /**
-     * Reset password with developer key.
-     * Body: { "firmId": 1, "developerKey": "...", "newPassword": "..." }
-     *
-     * Front-end MUST:
-     *  - Ask for firmId
-     *  - Show big red warning: "DO NOT ENTER RANDOM KEYS – YOU MAY LOSE DATA"
-     *  - Mention that this is a paid service and only for support use.
-     */
+    // -------- DEVELOPER RESET (FORGOT PASSWORD) --------
     @PostMapping("/forgot-password/developer-reset")
-    public ResponseEntity<SimpleResult> developerReset(@RequestBody DeveloperResetRequest req) {
-        SimpleResult result = auth.resetPasswordWithDeveloperKey(req);
-        if (!result.success) {
-            return ResponseEntity.badRequest().body(result);
-        }
-        return ResponseEntity.ok(result);
+    public SimpleResult developerReset(@RequestBody DeveloperResetRequest req) {
+        return auth.resetPasswordDev(req);
     }
 }

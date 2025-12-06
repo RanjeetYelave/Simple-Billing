@@ -54,28 +54,26 @@ export async function apiDelete(path) {
    AUTH ENDPOINTS
    ============================================================ */
 
+// ---------- AUTH ----------
 export function authLogin(loginId, password, activationKey = null) {
-  return apiPost("/api/auth/login", {
-    loginId,
-    password,
-    activationKey
-  });
+  return apiPost("/api/auth/login", { loginId, password, activationKey });
 }
 
 export function authRegister(loginId, password) {
-  return apiPost("/api/auth/register", {
-    loginId,
-    password
-  });
+  return apiPost("/api/auth/register", { loginId, password });
 }
 
-export function authDeveloperReset(firmId, developerKey, newPassword) {
+export function authDeveloperReset(loginId, developerKey, newPassword) {
   return apiPost("/api/auth/forgot-password/developer-reset", {
-    firmId,
+    loginId,
     developerKey,
-    newPassword
+    newPassword,
   });
+
+
+
 }
+
 
 /* ============================================================
    INVOICE & ESTIMATE ENDPOINTS

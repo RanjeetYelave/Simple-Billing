@@ -63,12 +63,25 @@ export function authRegister(loginId, password) {
   return apiPost("/api/auth/register", { loginId, password });
 }
 
-export function authDeveloperReset(loginId, developerKey, newPassword) {
-  return apiPost("/api/auth/forgot-password/developer-reset", {
+
+
+// somewhere in js/api.js
+export async function authDeveloperReset(loginId, secureKey, newPassword) {
+  const body = {
     loginId,
-    developerKey,
-    newPassword,
+    developerKey: secureKey,
+    newPassword
+  };
+  const res = await fetch(API_BASE + "/api/auth/forgot-password/developer-reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    throw new Error(txt || "Developer reset failed");
+  }
+  return res.json();
 
 
 

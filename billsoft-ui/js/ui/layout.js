@@ -7,8 +7,8 @@ export const layout = {
       <div class="layout">
         <div class="sidebar">
           <div class="brand">
-            <div class="brand-badge">B</div>
-            <span>InvoiceSuite</span>
+            <div class="brand-badge">afk</div>
+            <span>Saivai365</span>
           </div>
 
           <div class="nav-list" id="sidebarNav"></div>

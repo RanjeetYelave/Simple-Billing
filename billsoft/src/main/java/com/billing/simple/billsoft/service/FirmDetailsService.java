@@ -1,7 +1,6 @@
 package com.billing.simple.billsoft.service;
 
 import org.springframework.stereotype.Service;
-
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 
@@ -14,7 +13,7 @@ public class FirmDetailsService {
         this.repo = repo;
     }
 
-    /** Always return the single stored firm row */
+    /** Always return the single firm row */
     public FirmDetails get() {
         return repo.findById(1L).orElseGet(() -> {
             FirmDetails f = new FirmDetails();
@@ -25,34 +24,28 @@ public class FirmDetailsService {
 
     public FirmDetails update(FirmDetails payload) {
 
-        FirmDetails existing = get(); // load existing
+        FirmDetails existing = get();
         payload.setId(1L);
 
-        // ----------------------------
-        // LOGO HANDLING (FIXED)
-        // ----------------------------
-        if (payload.getLogoBase64() == null) {
-            // explicit removal
+        String incoming = payload.getLogoBase64();
+
+        if (incoming == null || incoming.trim().isEmpty()) {
+            // User intentionally removed or empty sent
             payload.setLogoBase64(null);
 
         } else {
-            String incoming = payload.getLogoBase64().trim();
+            incoming = incoming.trim();
 
-            if (incoming.isBlank()) {
-                payload.setLogoBase64(null);
+            // Normalize — ensure it always remains a data URL
+            if (!incoming.startsWith("data:image")) {
+                incoming = "data:image/jpeg;base64," + incoming;
+            }
+
+            // Reject too large logos (> 1.5MB text size)
+            if (incoming.length() > 2_000_000) {
+                payload.setLogoBase64(existing.getLogoBase64()); // keep old
             } else {
-
-                // MUST ALWAYS KEEP FULL DATA URL
-                boolean isDataUrl = incoming.startsWith("data:image");
-
-                // Reject insanely large logos ( >1.5MB as base64 size)
-                if (incoming.length() > 2_000_000) {
-                    // keep old logo instead
-                    payload.setLogoBase64(existing.getLogoBase64());
-                } else {
-                    // good → save AS-IS
-                    payload.setLogoBase64(incoming);
-                }
+                payload.setLogoBase64(incoming); // save as-is
             }
         }
 

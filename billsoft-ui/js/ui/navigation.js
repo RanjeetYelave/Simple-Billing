@@ -25,7 +25,7 @@ export const navigation = {
     firmProfile: firmProfileScreen,
     invoiceCreate,
     invoices: invoiceList,
-    estimates: estimateList,      // 👈 NEW
+    estimates: estimateList,      
     customers: customerScreen,
     products: productScreen,
     analytics: analyticsScreen,

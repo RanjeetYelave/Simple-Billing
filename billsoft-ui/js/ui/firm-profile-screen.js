@@ -6,12 +6,11 @@ export const firmProfileScreen = {
 
   current: null,
 
-  // Recommended logo limits
   maxWidth: 600,
   maxHeight: 200,
   minWidth: 80,
   minHeight: 30,
-  maxFileSizeBytes: 350 * 1024, // after resize expected small
+  maxFileSizeBytes: 350 * 1024,
 
   render() {
     return `
@@ -22,40 +21,24 @@ export const firmProfileScreen = {
 
         <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start;">
 
-          <!-- FORM -->
           <div>
             <label>Firm Name</label>
             <input id="firmName" />
-
             <label>Owner</label>
             <input id="firmOwner" />
-
             <label>Address Line 1</label>
             <input id="firmAddr1" />
-
             <label>Address Line 2</label>
             <input id="firmAddr2" />
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <label>City</label>
-                <input id="firmCity" />
-              </div>
-              <div>
-                <label>State</label>
-                <input id="firmState" />
-              </div>
+              <div><label>City</label><input id="firmCity" /></div>
+              <div><label>State</label><input id="firmState" /></div>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <label>Pincode</label>
-                <input id="firmPincode" />
-              </div>
-              <div>
-                <label>Phone</label>
-                <input id="firmPhone" />
-              </div>
+              <div><label>Pincode</label><input id="firmPincode" /></div>
+              <div><label>Phone</label><input id="firmPhone" /></div>
             </div>
 
             <label>Email</label>
@@ -65,13 +48,10 @@ export const firmProfileScreen = {
             <input id="firmGstin" />
 
             <h3 style="margin-top:14px;">Bank Details</h3>
-
             <label>Bank Name</label>
             <input id="firmBankName" />
-
             <label>Account</label>
             <input id="firmBankAccount" />
-
             <label>IFSC</label>
             <input id="firmBankIfsc" />
 
@@ -84,10 +64,10 @@ export const firmProfileScreen = {
             </div>
           </div>
 
-          <!-- LOGO SECTION -->
+          <!-- LOGO -->
           <div style="background:var(--card-bg);padding:16px;border-radius:10px;border:1px solid var(--border);">
             <div style="display:flex;justify-content:space-between;">
-              <strong>Logo (optional)</strong>
+              <strong>Logo</strong>
               <span class="small muted">Max ${this.maxWidth}×${this.maxHeight}px</span>
             </div>
 
@@ -114,35 +94,27 @@ export const firmProfileScreen = {
     `;
   },
 
-  // ---------------- INIT ----------------
   init() {
     $("saveFirmBtn").onclick = () => this.save();
     $("resetFirmBtn").onclick = () => this.load();
 
-    $("uploadLogoBtn").onclick = async () => {
-      const f = $("logoFileInput").files?.[0];
-      if (!f) return alert("Select a file first.");
-      await this.handleFile(f);
-    };
+    $("uploadLogoBtn").onclick = () => this.saveLogoOnly();
 
-    $("removeLogoBtn").onclick = () => {
+    $("removeLogoBtn").onclick = async () => {
       if (!confirm("Remove logo?")) return;
       this.current.logoBase64 = null;
-      this.showPreview(null);
-      $("logoInfo").textContent = "Logo removed (save to apply).";
+      await this.saveLogoOnly();
     };
 
     $("logoFileInput").onchange = async (e) => {
       const f = e.target.files?.[0];
       if (!f) return;
-      const d = await this.fileToDataUrl(f);
-      this.showPreview(d);
+      await this.handleFile(f);
     };
 
     this.load();
   },
 
-  // ---------------- LOAD ----------------
   async load() {
     try {
       $("firmMsg").textContent = "Loading...";
@@ -154,8 +126,7 @@ export const firmProfileScreen = {
       this.showPreview(this.buildDataUrl(data?.logoBase64));
 
       $("firmMsg").textContent = "";
-    } catch (err) {
-      console.error(err);
+    } catch {
       $("firmMsg").textContent = "Failed to load";
     }
   },
@@ -175,12 +146,11 @@ export const firmProfileScreen = {
     $("firmBankAccount").value = f?.bankAccount || "";
     $("firmBankIfsc").value = f?.bankIfsc || "";
     $("firmFooter").value = f?.footerNote || "";
-    $("logoInfo").textContent = "";
   },
 
-  // ---------------- PREVIEW ----------------
   buildDataUrl(raw) {
     if (!raw) return null;
+    if (raw.startsWith("data:image")) return raw;
     return `data:image/jpeg;base64,${raw}`;
   },
 
@@ -189,6 +159,7 @@ export const firmProfileScreen = {
     box.innerHTML = "";
 
     if (!dataUrl) {
+      $("logoInfo").textContent = "";
       box.innerHTML = `<span class="small muted">No logo</span>`;
       return;
     }
@@ -199,69 +170,68 @@ export const firmProfileScreen = {
     img.style.maxHeight = "100%";
     img.style.objectFit = "contain";
 
-    img.onload = () => {
-      $("logoInfo").textContent = `Preview ${img.naturalWidth}×${img.naturalHeight}px`;
-    };
+    img.onload = () =>
+      $("logoInfo").textContent = `Size: ${img.naturalWidth}×${img.naturalHeight}px`;
 
     box.appendChild(img);
   },
 
-  // ---------------- FILE PROCESSING ----------------
   async handleFile(file) {
+    if (!file.type.startsWith("image/")) {
+      alert("Only images allowed");
+      return;
+    }
+
+    const dataUrl = await this.fileToDataUrl(file);
+
+    if (file.type === "image/svg+xml") {
+      this.current.logoBase64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, "");
+      this.showPreview(dataUrl);
+      return;
+    }
+
+    const img = await this.loadImage(dataUrl);
+
+    const resized = this.resizeImage(img, this.maxWidth, this.maxHeight);
+    const raw = resized.replace(/^data:image\/jpeg;base64,/, "");
+
+    this.current.logoBase64 = raw;
+    this.showPreview(resized);
+  },
+
+  async saveLogoOnly() {
     try {
-      if (!file.type.startsWith("image/")) {
-        alert("Only images allowed.");
-        return;
-      }
+      $("firmMsg").textContent = "Saving logo...";
 
-      // READ → LOAD → RESIZE
-      const dataUrl = await this.fileToDataUrl(file);
+      const result = await apiPut("/api/firm", {
+        logoBase64: this.current.logoBase64
+      });
 
-      // For SVG: store raw
-      if (file.type === "image/svg+xml") {
-        this.current.logoBase64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, "");
-        this.showPreview(dataUrl);
-        $("logoInfo").textContent = `SVG uploaded (${Math.round(file.size / 1024)} KB)`;
-        return;
-      }
+      this.current.logoBase64 = result.logoBase64;
+      this.showPreview(this.buildDataUrl(result.logoBase64));
 
-      const img = await this.loadImage(dataUrl);
-
-      // Validate minimum size
-      if (img.width < this.minWidth || img.height < this.minHeight) {
-        alert("Image too small. It will look blurry.");
-      }
-
-      const resized = this.resizeImage(img, this.maxWidth, this.maxHeight);
-
-      // store raw base64 only
-      this.current.logoBase64 = resized.replace(/^data:image\/jpeg;base64,/, "");
-
-      this.showPreview(resized);
-
-      $("logoInfo").textContent =
-        `Processed & saved (${Math.round((resized.length * 3) / 4 / 1024)} KB)`;
-
+      $("firmMsg").textContent = "Logo updated";
     } catch (err) {
-      console.error("Logo upload failed", err);
-      alert("Failed to upload logo");
+      console.error(err);
+      alert("Logo update failed");
+      $("firmMsg").textContent = "Save failed";
     }
   },
 
   async fileToDataUrl(file) {
-    return new Promise((res, rej) => {
-      const reader = new FileReader();
-      reader.onload = () => res(reader.result);
-      reader.onerror = rej;
-      reader.readAsDataURL(file);
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
     });
   },
 
   loadImage(src) {
-    return new Promise((res, rej) => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => res(img);
-      img.onerror = rej;
+      img.onload = () => resolve(img);
+      img.onerror = reject;
       img.src = src;
     });
   },
@@ -283,7 +253,6 @@ export const firmProfileScreen = {
     return canvas.toDataURL("image/jpeg", 0.85);
   },
 
-  // ---------------- SAVE ----------------
   async save() {
     try {
       $("firmMsg").textContent = "Saving...";
@@ -307,15 +276,13 @@ export const firmProfileScreen = {
       };
 
       const updated = await apiPut("/api/firm", payload);
-      this.current = updated;
 
+      this.current = updated;
       this.populate(updated);
       this.showPreview(this.buildDataUrl(updated.logoBase64));
 
-      $("firmMsg").textContent = "Saved successfully.";
-
+      $("firmMsg").textContent = "Saved successfully";
     } catch (err) {
-      console.error(err);
       $("firmMsg").textContent = "Save failed";
       alert("Save failed");
     }

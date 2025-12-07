@@ -4,6 +4,8 @@ import org.springframework.web.bind.annotation.*;
 
 import com.billing.simple.billsoft.service.AuthService;
 import com.billing.simple.billsoft.service.AuthService.DeveloperResetRequest;
+import com.billing.simple.billsoft.service.AuthService.DevResetValidationRequest;
+import com.billing.simple.billsoft.service.AuthService.DevResetValidationResult;
 import com.billing.simple.billsoft.service.AuthService.LoginRequest;
 import com.billing.simple.billsoft.service.AuthService.LoginResult;
 import com.billing.simple.billsoft.service.AuthService.RegisterRequest;
@@ -33,7 +35,13 @@ public class AuthController {
         return auth.login(req);
     }
 
-    // -------- DEVELOPER RESET (FORGOT PASSWORD) --------
+    // -------- RESET VALIDATION (Step 1) --------
+    @PostMapping("/forgot-password/validate")
+    public DevResetValidationResult validateReset(@RequestBody DevResetValidationRequest req) {
+        return auth.validateResetDev(req);
+    }
+
+    // -------- DO RESET (Step 2) --------
     @PostMapping("/forgot-password/developer-reset")
     public SimpleResult developerReset(@RequestBody DeveloperResetRequest req) {
         return auth.resetPasswordDev(req);

@@ -3,7 +3,7 @@ export const API_BASE = "http://localhost:8080";
 
 /* ============================================================
    BASE HELPERS
-   ============================================================ */
+============================================================ */
 
 async function handleResp(res, textOnError) {
   if (res.ok) {
@@ -52,7 +52,7 @@ export async function apiDelete(path) {
 
 /* ============================================================
    AUTH ENDPOINTS
-   ============================================================ */
+============================================================ */
 
 // ---------- AUTH ----------
 export function authLogin(loginId, password, activationKey = null) {
@@ -63,9 +63,16 @@ export function authRegister(loginId, password) {
   return apiPost("/api/auth/register", { loginId, password });
 }
 
+// NEW: validate developer reset (Step 1)
+export function authDeveloperValidate(loginId, secureKey) {
+  const body = {
+    loginId,
+    developerKey: secureKey
+  };
+  return apiPost("/api/auth/forgot-password/validate", body);
+}
 
-
-// somewhere in js/api.js
+// Developer reset final submit (Step 2)
 export async function authDeveloperReset(loginId, secureKey, newPassword) {
   const body = {
     loginId,
@@ -82,15 +89,11 @@ export async function authDeveloperReset(loginId, secureKey, newPassword) {
     throw new Error(txt || "Developer reset failed");
   }
   return res.json();
-
-
-
 }
-
 
 /* ============================================================
    INVOICE & ESTIMATE ENDPOINTS
-   ============================================================ */
+============================================================ */
 
 export function createInvoice(data) {
   return apiPost("/api/invoices", data);
@@ -147,7 +150,7 @@ export async function downloadInvoicePdf(id, size = "A4") {
 
 /* ============================================================
    Statements
-   ============================================================ */
+============================================================ */
 
 export function getCustomerStatement(customerId, from, to) {
   const params = new URLSearchParams();
@@ -187,10 +190,10 @@ export function downloadFirmStatementPdf(from, to) {
 
 /* ============================================================
    Export unified api object
-   ============================================================ */
+============================================================ */
 export const api = {
   apiGet, apiPost, apiPut, apiDelete,
-  authLogin, authRegister, authDeveloperReset,
+  authLogin, authRegister, authDeveloperValidate, authDeveloperReset,
   createInvoice, createEstimate, previewInvoice, convertEstimate, updateInvoice, markInvoicePaid, deleteInvoice,
   getAllInvoices, getAllEstimates, getAllFinalInvoices, getInvoiceById, downloadInvoicePdf,
   getCustomerStatement, downloadCustomerStatementPdf, getFirmStatement, downloadFirmStatementPdf

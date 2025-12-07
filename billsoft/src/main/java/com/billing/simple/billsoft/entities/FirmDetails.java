@@ -91,4 +91,17 @@ public class FirmDetails {
      * Not yet updated anywhere except via helper methods; safe to keep null.
      */
     private Long totalUsageSeconds;
+    
+    // ---------------- SUPPORT RESET SECURITY ----------------
+    /**
+     * Failed attempts for developer/support reset key.
+     * Used only for soft lock on reset API.
+     */
+    private Integer resetFailCount;
+
+    /**
+     * If not null and now < resetLockedUntil → reset endpoints are blocked.
+     */
+    private LocalDateTime resetLockedUntil;
+
 }

@@ -5,8 +5,7 @@ import { $ } from "../utils.js";
 export const authScreen = {
 
   onLoginSuccess: null,
-  onShowResetScreen: null,   // <-- assigned from main.js
-
+  onShowResetScreen: null,
   countdownTimer: null,
 
   render() {
@@ -15,69 +14,88 @@ export const authScreen = {
         <div style="width:100%;max-width:420px;padding:22px;">
 
           <!-- BRAND HEADER -->
-          <div style="text-align:center;margin-bottom:14px;">
+          <div style="text-align:center;margin-bottom:18px;">
             <div style="font-size:26px;font-weight:700;letter-spacing:0.06em;">
-              📄 InvoiceSuite
+              📄 <span>InvoiceSuite</span>
             </div>
-            <div class="small muted">Smart Billing. Simple.</div>
+            <div class="small muted">Smart Billing. Offline & Secure.</div>
           </div>
 
           <!-- TAB HEADER -->
-          <div style="display:flex;margin-bottom:12px;">
-            <button id="tabLoginBtn" class="btn primary small" style="flex:1;margin-right:6px;">Login</button>
-            <button id="tabRegisterBtn" class="btn ghost small" style="flex:1;">Create Account</button>
+          <div style="display:flex;margin-bottom:14px;">
+            <button id="tabLoginBtn" class="btn small primary" style="flex:1;margin-right:6px;">Login</button>
+            <button id="tabRegisterBtn" class="btn small ghost" style="flex:1;">Create Account</button>
           </div>
 
           <!-- SECURITY STATUS BAR -->
           <div id="secBar"
-               style="display:none;margin-bottom:10px;padding:6px;border-radius:6px;
-                      font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;">
+               style="display:none;margin-bottom:10px;padding:6px 8px;border-radius:8px;
+                      font-size:12px;font-weight:600;align-items:center;gap:8px;">
             <span id="secIcon">🟢</span>
             <span id="secText"></span>
           </div>
 
           <!-- LOGIN FORM -->
           <div id="loginCard" class="card">
-            <h2 style="margin-top:0;">🔐 Login</h2>
+            <h2 style="margin-top:0;margin-bottom:6px;">🔐 Login</h2>
 
-            <div id="authLoginMsg" class="small muted" style="min-height:18px;"></div>
+            <div id="authLoginMsg" class="small muted" style="min-height:18px;margin-bottom:4px;"></div>
 
             <label>Login ID</label>
-            <input id="authLoginId" autocomplete="username" />
+            <div class="auth-input-group">
+              <span class="icon">📧</span>
+              <input id="authLoginId" autocomplete="username" placeholder="you@example.com" />
+            </div>
 
             <label>Password</label>
-            <input id="authPassword" type="password" autocomplete="current-password" />
+            <div class="auth-input-group">
+              <span class="icon">🔑</span>
+              <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
+            </div>
 
-            <button class="btn primary" id="authLoginBtn" style="width:100%;margin-top:14px;">Login</button>
+            <button class="btn" id="authLoginBtn"
+                    style="width:100%;margin-top:10px;justify-content:center;">
+              Login
+            </button>
 
             <button id="authShowForgotBtn"
-                    class="btn link small"
-                    style="width:100%;margin-top:10px;padding:0;border:none;background:none;">
-              ❓ Forgot password?
+                    class="btn ghost small"
+                    style="width:100%;margin-top:10px;justify-content:center;">
+              ❓ Forgot Password?
             </button>
           </div>
 
           <!-- REGISTER FORM -->
           <div id="registerCard" class="card" style="display:none;">
-            <h2 style="margin-top:0;">✨ Create Account</h2>
+            <h2 style="margin-top:0;margin-bottom:6px;">✨ Create Account</h2>
 
-            <div id="authRegisterMsg" class="small muted"></div>
+            <div id="authRegisterMsg" class="small muted" style="min-height:18px;margin-bottom:4px;"></div>
 
-            <label>Login ID</label><input id="authRegLoginId" autocomplete="username" />
+            <label>Login ID</label>
+            <div class="auth-input-group">
+              <span class="icon">📧</span>
+              <input id="authRegLoginId" autocomplete="username" placeholder="you@example.com" />
+            </div>
 
-            <label style="margin-top:8px;">Password</label>
-            <input id="authRegPassword" type="password" autocomplete="new-password" />
+            <label style="margin-top:4px;">Password</label>
+            <div class="auth-input-group">
+              <span class="icon">🔒</span>
+              <input id="authRegPassword" type="password" autocomplete="new-password" placeholder="At least 6 characters" />
+            </div>
 
-            <label style="margin-top:8px;">Confirm Password</label>
-            <input id="authRegPassword2" type="password" />
+            <label style="margin-top:4px;">Confirm Password</label>
+            <div class="auth-input-group">
+              <span class="icon">✅</span>
+              <input id="authRegPassword2" type="password" placeholder="Re-type password" />
+            </div>
 
-            <p class="small muted" style="margin:8px 0;">
-               Firm details can be added later in <strong>Firm Profile</strong>
+            <p class="small muted" style="margin:6px 0 10px;">
+               Firm details can be added later in <strong>Firm Profile</strong>.
             </p>
 
-            <button class="btn primary"
+            <button class="btn"
                     id="authRegisterBtn"
-                    style="width:100%;margin-top:12px;">
+                    style="width:100%;margin-top:4px;justify-content:center;">
               Create Account
             </button>
           </div>
@@ -87,7 +105,7 @@ export const authScreen = {
     `;
   },
 
-  init(opts={}) {
+  init(opts = {}) {
     this.onLoginSuccess = opts.onLoginSuccess || null;
     this.onShowResetScreen = opts.onShowResetScreen || null;
 
@@ -106,17 +124,18 @@ export const authScreen = {
   },
 
   switchTab(mode) {
-    $("loginCard").style.display = mode==="login" ? "block" : "none";
-    $("registerCard").style.display = mode==="register" ? "block" : "none";
+    $("loginCard").style.display = mode === "login" ? "block" : "none";
+    $("registerCard").style.display = mode === "register" ? "block" : "none";
 
-    $("tabLoginBtn").classList.toggle("primary", mode==="login");
-    $("tabLoginBtn").classList.toggle("ghost", mode!=="login");
+    $("tabLoginBtn").classList.toggle("primary", mode === "login");
+    $("tabLoginBtn").classList.toggle("ghost", mode !== "login");
 
-    $("tabRegisterBtn").classList.toggle("primary", mode==="register");
-    $("tabRegisterBtn").classList.toggle("ghost", mode!=="register");
+    $("tabRegisterBtn").classList.toggle("primary", mode === "register");
+    $("tabRegisterBtn").classList.toggle("ghost", mode !== "register");
 
     $("authLoginMsg").textContent = "";
     $("authRegisterMsg").textContent = "";
+    this.setSecurityBar(null); // hide on tab switch
   },
 
   setSecurityBar(res) {
@@ -124,23 +143,54 @@ export const authScreen = {
     const txt = $("secText");
     const icon = $("secIcon");
 
-    if (!res.securityLevel) {
+    if (!res) {
+      bar.style.display = "none";
+      return;
+    }
+
+    const max = res.maxAttempts ?? 7;
+    const remaining = res.remainingAttempts ?? max;
+    const used = Math.max(0, max - remaining);
+
+    // If nothing used and no lock → hide (removes that weird green dot)
+    if (!res.locked && used === 0) {
       bar.style.display = "none";
       return;
     }
 
     bar.style.display = "flex";
 
-    txt.textContent = `${res.message} (${res.remainingAttempts ?? "∞"} attempts left)`;
+    // Base text
+    let msg = res.message || "";
+    if (res.locked && res.unlockAt) {
+      msg += " ";
+      msg += "(Locked temporarily)";
+    } else if (used > 0) {
+      msg += ` (${remaining} attempts left)`;
+    }
+    txt.textContent = msg;
 
-    let bg = "#1b5e2033", ic = "🟢"; // safe default
-    if (res.securityLevel === "MODERATE") { bg="#ffa50233"; ic="🟠"; }
-    if (res.securityLevel === "DANGER")   { bg="#ff6b8133"; ic="🔴"; }
-    if (res.securityLevel === "TEMP_LOCK"){ bg="#ff473a44"; ic="⏳"; }
-    if (res.securityLevel === "FROZEN")   { bg="#7f1d1d"; ic="☠"; }
+    // Visual levels
+    let bg = "#1b5e2033";
+    let ic = "🟢";
 
-    icon.textContent = ic;
+    if (res.locked && res.securityLevel === "TEMP_LOCK") {
+      bg = "#ff473a44";
+      ic = "⏳";
+    } else if (res.securityLevel === "FROZEN") {
+      bg = "#7f1d1d";
+      ic = "☠";
+    } else if (used >= 3 && used < max) {
+      // user has started burning attempts → warning
+      bg = "#ffa50233";
+      ic = "🟠";
+    } else if (used > 0) {
+      bg = "#eab30833";
+      ic = "⚠️";
+    }
+
     bar.style.background = bg;
+    icon.textContent = ic;
   },
 
   async handleLogin() {
@@ -149,7 +199,7 @@ export const authScreen = {
     const msg = $("authLoginMsg");
 
     if (!loginId || !password) {
-      msg.textContent = "Please fill both fields";
+      msg.textContent = "Please fill both fields.";
       return;
     }
 
@@ -161,7 +211,7 @@ export const authScreen = {
       this.setSecurityBar(res);
 
       if (!res.success) {
-        msg.textContent = res.message || "Login failed";
+        msg.textContent = res.message || "Login failed.";
         if (res.locked && res.unlockAt) {
           this.startCountdown(res.unlockAt);
         }
@@ -170,11 +220,12 @@ export const authScreen = {
 
       // success
       localStorage.setItem("firmId", res.firmId?.toString() || "");
+      msg.textContent = "Login successful. Loading...";
       this.onLoginSuccess && this.onLoginSuccess(res);
 
     } catch (e) {
       console.error(e);
-      msg.textContent = "Network/Server error";
+      msg.textContent = "Network/Server error.";
     }
   },
 
@@ -184,31 +235,49 @@ export const authScreen = {
     const p2 = $("authRegPassword2").value;
     const msg = $("authRegisterMsg");
 
-    if (!loginId || !p1 || !p2) return msg.textContent = "All fields required";
-    if (p1 !== p2) return msg.textContent = "Passwords do not match";
-    if (p1.length < 6) return msg.textContent = "Password too short";
+    if (!loginId || !p1 || !p2) {
+      msg.textContent = "All fields are required.";
+      return;
+    }
+    if (p1 !== p2) {
+      msg.textContent = "Passwords do not match.";
+      return;
+    }
+    if (p1.length < 6) {
+      msg.textContent = "Password too short (min 6 characters).";
+      return;
+    }
 
     msg.textContent = "Creating…";
 
     try {
       const res = await authRegister(loginId, p1);
-      msg.textContent = res.message;
+      msg.textContent = res.message || "Done.";
       if (res.success) {
         this.switchTab("login");
         $("authLoginId").value = loginId;
       }
-    } catch {
-      msg.textContent = "Server error";
+    } catch (e) {
+      console.error(e);
+      msg.textContent = "Server error.";
     }
   },
 
   startCountdown(until) {
     clearInterval(this.countdownTimer);
 
+    const target = new Date(until);
     this.countdownTimer = setInterval(() => {
-      const diffSec = Math.max(0, Math.floor((new Date(until) - Date.now()) / 1000));
-      $("secText").textContent = `Locked — retry in ${diffSec}s`;
-      if (diffSec <= 0) clearInterval(this.countdownTimer);
+      const diffSec = Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000));
+      const barText = diffSec > 0
+        ? `Locked — retry in ${diffSec}s`
+        : "You can try logging in again now.";
+
+      const secText = $("secText");
+      if (secText) secText.textContent = barText;
+      if (diffSec <= 0) {
+        clearInterval(this.countdownTimer);
+      }
     }, 1000);
   },
 

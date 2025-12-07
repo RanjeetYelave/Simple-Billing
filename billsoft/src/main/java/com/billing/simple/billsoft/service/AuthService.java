@@ -33,7 +33,8 @@ public class AuthService {
 
     // AES key + IV (16 bytes each)
     private static final String AES_KEY = "BSOFT-LIC-2025!!";  // 16 bytes
-    private static final String AES_IV  = "LIC-INIT-2025!!";  // 16 bytes
+    private static final String AES_IV = "LIC-INIT-2025!!!"; // now 16 bytes
+
 
     // developer reset soft lock (support-only)
     private static final int RESET_MAX_FAIL = 10;
@@ -58,15 +59,18 @@ public class AuthService {
     private static final String DEV_RESET_KEY_HASH =
             "0CDB3704A8993071B98A9F4803DED2B39C54BE9DD0C688380896FB338AE1FACB";
 
-    // Activation key hashes
     private static final String KEY_1Y_HASH =
-            "9444E6D43B94AD97F7AFDC7D9EEC0FEE2D3B570D5505265D0058E52BE6C29795";
+            "7E390D6EE7D060AE156AF0F5F7B1F89BBBEB38B38DF7DE63005AE52B983545E0";
+
     private static final String KEY_3Y_HASH =
-            "FD45AF8044174C891A2D776FD236D0B3ED402FFB5597CDF92875161B47677019";
+            "9036B6FB08A25C0F6BE45CD7711B11ABFDFB21B68754C4B3096C72CAAE789B98";
+
     private static final String KEY_LIFE_HASH =
-            "46C980C96774C909C3DCCD9647FCE69845BD5B1D8655C2F89FC785B1A34777C3";
+            "3241473D9AF76BDC3215C2A1515816B3FBFFA5AB331B516BDFBE58F7546A7E66";
+
     private static final String KEY_TEST_HASH =
-            "6F1FAB01A6195F6B553B3CA078F0F171B96568CF3160B60EA28EBFCBECF535FE";
+            "5633A68823F023E473258637FBF5C475B0707E6A57C66CE0678246CE2A12E7D6";
+
 
     // ---------------- DTOs ----------------
 
@@ -536,28 +540,49 @@ public class AuthService {
     // -------------------------------------------------------------------------
 
     private void applyActivation(FirmDetails f, String key) {
-        String h = sha256(key);
+
+        // 🔍 DEBUG LOGS — shows exactly what backend receives & computes
+        String trimmedKey = key == null ? "" : key.trim();
+        String h = sha256(trimmedKey);
+
+        log.warn("🔑 Activation attempt:");
+        log.warn("RAW KEY         = [{}]", key);
+        log.warn("TRIMMED KEY     = [{}]", trimmedKey);
+        log.warn("INCOMING HASH   = [{}]", h);
+        log.warn("KEY_1Y_HASH     = [{}]", KEY_1Y_HASH);
+        log.warn("KEY_3Y_HASH     = [{}]", KEY_3Y_HASH);
+        log.warn("KEY_LIFE_HASH   = [{}]", KEY_LIFE_HASH);
+        log.warn("KEY_TEST_HASH   = [{}]", KEY_TEST_HASH);
+
         Instant now = Instant.now();
         Instant currentExp = dec(f.getLicenseExpiryEncrypted());
         Instant base = (currentExp != null && currentExp.isAfter(now)) ? currentExp : now;
 
         if (h.equalsIgnoreCase(KEY_1Y_HASH)) {
+            log.warn("🎯 Match: 1 YEAR PREMIUM");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365))));
 
         } else if (h.equalsIgnoreCase(KEY_3Y_HASH)) {
+            log.warn("🎯 Match: 3 YEAR PREMIUM");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 3L))));
 
         } else if (h.equalsIgnoreCase(KEY_LIFE_HASH)) {
+            log.warn("🎯 Match: LIFETIME PREMIUM");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 50L))));
 
         } else if (h.equalsIgnoreCase(KEY_TEST_HASH)) {
+            log.warn("🎯 Match: TEST KEY → PREMIUM_TEST (2 min)");
             f.setLicenseLevel(LICENSE_PREMIUM_TEST);
             f.setLicenseExpiryEncrypted(enc(now.plus(Duration.ofMinutes(2))));
+
+        } else {
+            log.warn("❌ NO MATCH FOUND — Activation key ignored");
         }
     }
+
 
     // -------------------------------------------------------------------------
     // HASH + CRYPTO HELPERS

@@ -541,47 +541,49 @@ public class AuthService {
 
     private void applyActivation(FirmDetails f, String key) {
 
-        // 🔍 DEBUG LOGS — shows exactly what backend receives & computes
         String trimmedKey = key == null ? "" : key.trim();
         String h = sha256(trimmedKey);
 
         log.warn("🔑 Activation attempt:");
-        log.warn("RAW KEY         = [{}]", key);
-        log.warn("TRIMMED KEY     = [{}]", trimmedKey);
-        log.warn("INCOMING HASH   = [{}]", h);
-        log.warn("KEY_1Y_HASH     = [{}]", KEY_1Y_HASH);
-        log.warn("KEY_3Y_HASH     = [{}]", KEY_3Y_HASH);
-        log.warn("KEY_LIFE_HASH   = [{}]", KEY_LIFE_HASH);
-        log.warn("KEY_TEST_HASH   = [{}]", KEY_TEST_HASH);
+        log.warn("KEY        = [{}]", trimmedKey);
+        log.warn("HASH       = [{}]", h);
 
         Instant now = Instant.now();
         Instant currentExp = dec(f.getLicenseExpiryEncrypted());
         Instant base = (currentExp != null && currentExp.isAfter(now)) ? currentExp : now;
 
+        boolean upgraded = false;
+
         if (h.equalsIgnoreCase(KEY_1Y_HASH)) {
-            log.warn("🎯 Match: 1 YEAR PREMIUM");
+            log.warn("🎯 1-YEAR PREMIUM ACTIVATION");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365))));
+            upgraded = true;
 
         } else if (h.equalsIgnoreCase(KEY_3Y_HASH)) {
-            log.warn("🎯 Match: 3 YEAR PREMIUM");
+            log.warn("🎯 3-YEAR PREMIUM ACTIVATION");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 3L))));
+            upgraded = true;
 
         } else if (h.equalsIgnoreCase(KEY_LIFE_HASH)) {
-            log.warn("🎯 Match: LIFETIME PREMIUM");
+            log.warn("🎯 LIFETIME PREMIUM ACTIVATION");
             f.setLicenseLevel(LICENSE_PREMIUM);
             f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 50L))));
+            upgraded = true;
 
         } else if (h.equalsIgnoreCase(KEY_TEST_HASH)) {
-            log.warn("🎯 Match: TEST KEY → PREMIUM_TEST (2 min)");
+            log.warn("🎯 PREMIUM TEST ACTIVATION (2 min)");
             f.setLicenseLevel(LICENSE_PREMIUM_TEST);
             f.setLicenseExpiryEncrypted(enc(now.plus(Duration.ofMinutes(2))));
+            upgraded = true;
+        }
 
-        } else {
-            log.warn("❌ NO MATCH FOUND — Activation key ignored");
+        if (!upgraded) {
+            log.warn("❌ No key match → ignoring");
         }
     }
+
 
 
     // -------------------------------------------------------------------------

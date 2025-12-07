@@ -40,7 +40,7 @@ export const authResetScreen = {
           <div class="xp-body">
 
             <!-- SECURITY STATUS BAR (only when needed) -->
-            <div id="resetSecurityBar">
+            <div id="resetSecurityBar" style="display:none;">
               <span id="resetSecurityIcon">⚠</span>
               <span id="resetSecurityText"></span>
             </div>
@@ -48,10 +48,10 @@ export const authResetScreen = {
             <!-- INFO PANEL -->
             <div class="xp-panel">
               <div class="xp-panel-header">
-               PASSWORD RESET (ONLY CUSTOMER SUPPORT CAN RESET)
+               PASSWORD RESET (SUPPORT-ONLY)
               </div>
               <div class="xp-panel-text">
-               PLEASE CONTACT SUPPORT NUMBER/EMAIL BELOW TO RESET PASSWORD WITHOUT LOOSING DATA
+               PLEASE CONTACT SUPPORT NUMBER/EMAIL BELOW TO RESET PASSWORD WITHOUT LOSING DATA
               </div>
             </div>
 
@@ -62,7 +62,6 @@ export const authResetScreen = {
                 <div class="xp-step-count">1 / 3</div>
               </div>
 
-              <!-- Support contact info inside step 1 (B2) -->
               <div class="xp-panel-text" style="margin-bottom:6px;">
                 Contact InvoiceSuite Support to reset your password:<br>
                 📞 +91 8830546789<br>
@@ -139,7 +138,7 @@ export const authResetScreen = {
                 ✅ Password updated successfully.
               </div>
               <div class="xp-done-text-sub">
-                Please remember this new password. It is the only way to access your billing data.
+                Please remember this new password to access your billing data.
               </div>
 
               <div class="xp-btn-row">
@@ -163,7 +162,6 @@ export const authResetScreen = {
     this.attempts = 0;
     this.lockUntil = null;
 
-    // wire buttons
     $("resetVerifyBtn").onclick      = () => this.handleVerify();
     $("resetBackToLoginBtn").onclick = () => this.backToLogin();
 
@@ -171,7 +169,6 @@ export const authResetScreen = {
     $("resetBackToStep1Btn").onclick = () => this.goToStep(1);
     $("resetGoLoginBtn").onclick     = () => this.backToLogin();
 
-    // enter key handlers
     $("resetSecureKey").addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.handleVerify();
     });
@@ -184,7 +181,6 @@ export const authResetScreen = {
     this.hideStatus();
   },
 
-  // ---- Step switching ----
   goToStep(step) {
     this.step = step;
     this.renderStepState();
@@ -204,37 +200,33 @@ export const authResetScreen = {
     }
   },
 
-  // ---- Status bar ----
   showStatus(message) {
     const bar = $("resetSecurityBar");
-    const icon = $("resetSecurityIcon");
     const txt = $("resetSecurityText");
+    const icon = $("resetSecurityIcon");
 
     bar.style.display = "block";
     icon.textContent = "⚠";
-    txt.textContent = message || "Password can be only reseted by customer support, contact them to avoid data loss";
+    txt.textContent = message || "Password can be reset only by customer support.";
   },
 
   hideStatus() {
-    const bar = $("resetSecurityBar");
-    bar.style.display = "none";
+    $("resetSecurityBar").style.display = "none";
   },
 
-  // ---- Attempts / lock ----
   isLocked() {
-    if (!this.lockUntil) return false;
-    return Date.now() < this.lockUntil;
+    return this.lockUntil && Date.now() < this.lockUntil;
   },
 
   startLock() {
-    // 3 hours lock
     const threeHours = 3 * 60 * 60 * 1000;
     this.lockUntil = Date.now() + threeHours;
 
-    this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
-    $("resetStep1Msg").textContent = "Too many incorrect attempts. Locked for 3 hours. Contact support.";
     $("resetVerifyBtn").disabled = true;
-    this.updateAttemptsUI();
+    $("resetSecureKey").disabled = true;
+
+    this.showStatus("Too many incorrect attempts. Locked for 3 hours.");
+    $("resetStep1Msg").textContent = "Locked due to security. Contact support.";
   },
 
   updateAttemptsUI() {
@@ -242,22 +234,20 @@ export const authResetScreen = {
     $("resetAttempts").textContent = `Attempts remaining: ${remaining}`;
   },
 
-  // ---- STEP 1: Verify ----
   async handleVerify() {
     const loginId = $("resetLoginId").value.trim();
-    const key     = $("resetSecureKey").value.trim();
-    const msg     = $("resetStep1Msg");
+    const key = $("resetSecureKey").value.trim();
+    const msg = $("resetStep1Msg");
 
     if (this.isLocked()) {
-      msg.textContent = "Locked for 3 hours. Please contact support.";
-      this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
-      $("resetVerifyBtn").disabled = true;
+      msg.textContent = "Locked for 3 hours. Contact support.";
+      this.showStatus();
       return;
     }
 
     if (!loginId || !key) {
-      msg.textContent = "Please enter both Login ID and Secure Reset Key.";
-      this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
+      msg.textContent = "Login ID & Secure Reset Key required.";
+      this.showStatus();
       return;
     }
 
@@ -267,47 +257,46 @@ export const authResetScreen = {
     try {
       const res = await authDeveloperValidate(loginId, key);
 
-      if (!res || !res.success) {
-        this.attempts += 1;
+      if (!res?.success) {
+        this.attempts++;
         this.updateAttemptsUI();
 
-        msg.textContent = (res && res.message) || "Invalid Login ID or Secure Reset Key.";
-        this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
+        msg.textContent = res?.message || "Invalid login ID or key.";
+        this.showStatus();
 
-        if (this.attempts >= this.maxAttempts) {
-          this.startLock();
-        }
+        if (this.attempts >= this.maxAttempts) this.startLock();
         return;
       }
 
-      // success
-      this.loginId   = loginId;
+      this.loginId = loginId;
       this.secureKey = key;
-      this.attempts  = 0;
+      this.attempts = 0;
       this.lockUntil = null;
+
+      $("resetVerifyBtn").disabled = false;
+      $("resetSecureKey").disabled = false;
+
       this.hideStatus();
       this.updateAttemptsUI();
       this.goToStep(2);
 
     } catch (e) {
-      console.error("Reset verify error", e);
-      msg.textContent = "Network/server error during verification.";
-      this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
+      msg.textContent = "Network/server error.";
+      this.showStatus();
     }
   },
 
-  // ---- STEP 2: Do reset ----
   async handleDoReset() {
-    const p1  = $("resetNewPassword").value;
-    const p2  = $("resetNewPassword2").value;
+    const p1 = $("resetNewPassword").value;
+    const p2 = $("resetNewPassword2").value;
     const msg = $("resetStep2Msg");
 
     if (!p1 || !p2) {
-      msg.textContent = "Please enter and confirm the new password.";
+      msg.textContent = "Please enter and confirm.";
       return;
     }
     if (p1.length < 6) {
-      msg.textContent = "New password must be at least 6 characters.";
+      msg.textContent = "Min. 6 characters required.";
       return;
     }
     if (p1 !== p2) {
@@ -321,28 +310,21 @@ export const authResetScreen = {
     try {
       const res = await authDeveloperReset(this.loginId, this.secureKey, p1);
 
-      if (!res || !res.success) {
-        msg.textContent = (res && res.message) || "Reset failed. Contact support.";
-        this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
+      if (!res?.success) {
+        msg.textContent = res?.message || "Reset failed.";
+        this.showStatus();
         return;
       }
 
-      // success
       this.goToStep(3);
 
     } catch (e) {
-      console.error("Reset error", e);
-      msg.textContent = "Network/server error during reset.";
-      this.showStatus("Password can be only reseted by customer support, contact them to avoid data loss");
+      msg.textContent = "Network/server error.";
+      this.showStatus();
     }
   },
 
-  // ---- Back to login ----
   backToLogin() {
-    if (typeof this.onBackToLogin === "function") {
-      this.onBackToLogin();
-    } else {
-      window.location.reload();
-    }
+    this.onBackToLogin?.() || window.location.reload();
   }
 };

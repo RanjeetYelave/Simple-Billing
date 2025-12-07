@@ -84,7 +84,7 @@ export const authScreen = {
               </button>
             </div>
 
-            <!-- Stored license badge (premium info) -->
+            <!-- Stored license badge (trial / premium info) -->
             <div id="authLicenseBadge"
                  class="small muted auth-license-badge"
                  style="display:none;">
@@ -190,7 +190,7 @@ export const authScreen = {
     });
 
     this.switchTab("login");
-    this.applyStoredLicenseBadge();
+    this.applyStoredLicenseBadge();   // <- show trial/premium info on first load
   },
 
   switchTab(mode) {
@@ -328,7 +328,8 @@ export const authScreen = {
     clearInterval(this.countdownTimer);
 
     this.countdownTimer = setInterval(() => {
-      const diffSec = Math.max(0, Math.floor((new Date(until) - Date.now()) / 1000));
+      const diffSec = Math.max(0,
+        Math.floor((new Date(until) - Date.now()) / 1000));
       $("secText").textContent = `Locked — retry in ${diffSec}s`;
       if (diffSec <= 0) clearInterval(this.countdownTimer);
     }, 1000);
@@ -400,7 +401,7 @@ export const authScreen = {
 
     const badge = $("authLicenseBadge");
     const exp = res.licenseExpiryAt ? new Date(res.licenseExpiryAt) : null;
-    if (exp) {
+    if (exp && !isNaN(exp.getTime())) {
       badge.style.display = "block";
       badge.textContent = `❌ License expired on ${exp.toLocaleDateString()}.`;
     } else {
@@ -437,11 +438,21 @@ export const authScreen = {
     try {
       const res = await authLogin(loginId, password, key);
 
+      // expired + wrong key → licenseOk=false / success=false
       if (!res.success || !res.licenseOk) {
         msg.textContent = res.message || "Activation failed. Please check your key.";
         return;
       }
 
+      // IMPORTANT: Manual (optional) activation must NOT treat random keys as valid
+      // If still on TRIAL after call, key was ignored by backend.
+      if (!this.activationMandatory && (res.licenseLevel === "TRIAL" || res.trial)) {
+        msg.textContent =
+          "Invalid activation key. Your trial is still active — login without entering a key.";
+        return; // don't login on bogus key
+      }
+
+      // success + real license updated → store & enter app
       this.storeLicenseInfo(res);
 
       localStorage.setItem("firmId", res.firmId?.toString() || "");
@@ -477,20 +488,42 @@ export const authScreen = {
     } catch (_) {}
 
     const badge = $("authLicenseBadge");
-    if (!level || level === "TRIAL") {
+
+    if (!level || !expiry) {
       badge.style.display = "none";
       return;
     }
 
-    let msg = "⭐ Premium license active";
-    if (expiry) {
-      try {
-        const d = new Date(expiry);
-        msg += ` • valid till ${d.toLocaleDateString()}`;
-      } catch (_) {}
+    const d = new Date(expiry);
+    if (isNaN(d.getTime())) {
+      badge.style.display = "none";
+      return;
     }
 
-    badge.textContent = msg;
+    // normalize to whole days
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffMs = expDay.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    let text;
+
+    if (level === "TRIAL") {
+      if (diffDays > 0) {
+        text = `🎁 Trial active — ${diffDays} day${diffDays !== 1 ? "s" : ""} left (till ${d.toLocaleDateString()})`;
+      } else {
+        text = `❌ Trial expired on ${d.toLocaleDateString()}.`;
+      }
+    } else {
+      if (diffDays > 0) {
+        text = `⭐ Premium license active • valid till ${d.toLocaleDateString()}`;
+      } else {
+        text = `⭐ Premium license — renewal recommended (expired on ${d.toLocaleDateString()})`;
+      }
+    }
+
+    badge.textContent = text;
     badge.style.display = "block";
   }
 };

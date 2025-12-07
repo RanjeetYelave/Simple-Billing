@@ -200,3 +200,39 @@
   font-size: 12px;
   padding: 0;
 }
+/* ======================================================
+   AUTH — FIX VISIBILITY FOR LINKS ROW
+====================================================== */
+.auth-links-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  margin-top: 6px;
+}
+
+.auth-links-row .btn.link {
+  color: var(--btn-primary-bg) !important;
+  font-size: 13px !important;
+  opacity: 0.95;
+  padding: 4px 6px !important;
+}
+
+.auth-links-row .btn.link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* icon adjustment */
+.auth-links-row .btn.link::before {
+  margin-right: 4px;
+}
+
+/* MOBILE STACK */
+@media (max-width: 480px) {
+  .auth-links-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+}

@@ -1,0 +1,202 @@
+/* ============================================================================
+   AUTH SCREEN LAYOUT (Login + Register + Activation)
+   Uses global theme tokens: --bg-body, --bg-main, --bg-card, --btn-primary-bg…
+============================================================================ */
+
+.auth-root {
+  min-height: 100vh;
+  background: var(--bg-body);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 460px;
+}
+
+/* BRAND HEADER ------------------------------------------------------------- */
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.auth-brand-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  background: var(--btn-primary-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 8px 16px var(--shadow-medium);
+}
+
+.auth-brand-icon span {
+  color: #ffffff;
+}
+
+.auth-brand-text {
+  text-align: left;
+}
+
+.auth-brand-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+}
+
+.auth-brand-subtitle {
+  margin-top: 2px;
+}
+
+/* TABS --------------------------------------------------------------------- */
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.auth-tab {
+  flex: 1;
+  justify-content: center;
+}
+
+/* CARD --------------------------------------------------------------------- */
+
+.auth-card {
+  margin-top: 0;
+}
+
+.auth-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.auth-card-emoji {
+  font-size: 20px;
+}
+
+/* MAIN LOGIN BUTTON -------------------------------------------------------- */
+
+.auth-main-btn {
+  width: 100%;
+  margin-top: 16px;
+}
+
+/* LINKS ROW (Forgot + Activation) ----------------------------------------- */
+
+.auth-links-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* SECURITY BAR ------------------------------------------------------------- */
+
+.auth-secbar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.auth-secbar-safe {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.auth-secbar-warn {
+  border-color: rgba(245, 158, 11, 0.7);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.auth-secbar-danger {
+  border-color: rgba(239, 68, 68, 0.8);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.auth-secbar-lock {
+  border-color: rgba(251, 146, 60, 0.9);
+  background: rgba(251, 146, 60, 0.08);
+}
+
+.auth-secbar-frozen {
+  border-color: rgba(127, 29, 29, 0.9);
+  background: rgba(127, 29, 29, 0.15);
+}
+
+/* LICENSE BADGE ------------------------------------------------------------ */
+
+.auth-license-badge {
+  margin-top: 6px;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* ACTIVATION BOX ----------------------------------------------------------- */
+
+.auth-activation-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.auth-activation-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-main);
+}
+
+.auth-activation-info {
+  margin-bottom: 6px;
+}
+
+.auth-activation-msg {
+  min-height: 18px;
+  margin-top: 4px;
+}
+
+.auth-activation-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.auth-activation-buttons .btn {
+  flex: 1;
+}
+
+/* Dark mode tweaks for activation panel */
+[data-theme="dark"] .auth-activation-box {
+  background: rgba(15, 23, 42, 0.75);
+}
+
+/* Make link-style buttons slightly smaller inside auth */
+.auth-links-row .btn.link {
+  font-size: 12px;
+  padding: 0;
+}

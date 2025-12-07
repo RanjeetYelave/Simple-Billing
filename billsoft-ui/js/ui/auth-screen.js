@@ -6,96 +6,147 @@ export const authScreen = {
 
   onLoginSuccess: null,
   onShowResetScreen: null,
+
   countdownTimer: null,
+
+  // licensing state
+  activationMode: false,        // is activation box visible?
+  activationMandatory: false,   // true when license expired
+  pendingLoginId: null,
+  pendingPassword: null,
 
   render() {
     return `
-      <div class="auth-root" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
-        <div style="width:100%;max-width:420px;padding:22px;">
+      <div class="auth-root">
+        <div class="auth-shell">
 
           <!-- BRAND HEADER -->
-          <div style="text-align:center;margin-bottom:18px;">
-            <div style="font-size:26px;font-weight:700;letter-spacing:0.06em;">
-              📄 <span>InvoiceSuite</span>
+          <div class="auth-brand">
+            <div class="auth-brand-icon">📄</div>
+            <div class="auth-brand-text">
+              <div class="auth-brand-title">InvoiceSuite</div>
+              <div class="auth-brand-subtitle small muted">Smart Billing. Simple.</div>
             </div>
-            <div class="small muted">Smart Billing. Offline & Secure.</div>
           </div>
 
           <!-- TAB HEADER -->
-          <div style="display:flex;margin-bottom:14px;">
-            <button id="tabLoginBtn" class="btn small primary" style="flex:1;margin-right:6px;">Login</button>
-            <button id="tabRegisterBtn" class="btn small ghost" style="flex:1;">Create Account</button>
+          <div class="auth-tabs">
+            <button id="tabLoginBtn"
+                    class="btn small primary auth-tab">
+              Login
+            </button>
+            <button id="tabRegisterBtn"
+                    class="btn small ghost auth-tab">
+              Create Account
+            </button>
           </div>
 
-          <!-- SECURITY STATUS BAR -->
-          <div id="secBar"
-               style="display:none;margin-bottom:10px;padding:6px 8px;border-radius:8px;
-                      font-size:12px;font-weight:600;align-items:center;gap:8px;">
+          <!-- SECURITY STATUS BAR (login lock) -->
+          <div id="secBar" class="auth-secbar">
             <span id="secIcon">🟢</span>
             <span id="secText"></span>
           </div>
 
           <!-- LOGIN FORM -->
-          <div id="loginCard" class="card">
-            <h2 style="margin-top:0;margin-bottom:6px;">🔐 Login</h2>
+          <div id="loginCard" class="card auth-card">
+            <h2 class="auth-card-title">
+              <span class="auth-card-emoji">🔐</span>
+              <span>Login</span>
+            </h2>
 
-            <div id="authLoginMsg" class="small muted" style="min-height:18px;margin-bottom:4px;"></div>
+            <div id="authLoginMsg"
+                 class="small muted"
+                 style="min-height:18px;"></div>
 
-            <label>Login ID</label>
-            <div class="auth-input-group">
-              <span class="icon">📧</span>
-              <input id="authLoginId" autocomplete="username" placeholder="you@example.com" />
-            </div>
+            <label for="authLoginId">Login ID</label>
+            <input id="authLoginId" autocomplete="username" />
 
-            <label>Password</label>
-            <div class="auth-input-group">
-              <span class="icon">🔑</span>
-              <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
-            </div>
+            <label for="authPassword">Password</label>
+            <input id="authPassword"
+                   type="password"
+                   autocomplete="current-password" />
 
-            <button class="btn" id="authLoginBtn"
-                    style="width:100%;margin-top:10px;justify-content:center;">
+            <button class="btn primary auth-main-btn"
+                    id="authLoginBtn">
               Login
             </button>
 
-            <button id="authShowForgotBtn"
-                    class="btn ghost small"
-                    style="width:100%;margin-top:10px;justify-content:center;">
-              ❓ Forgot Password?
-            </button>
+            <!-- Links row -->
+            <div class="auth-links-row">
+              <button id="authShowForgotBtn"
+                      class="btn link small">
+                ❓ Forgot password? (support only)
+              </button>
+
+              <button id="authToggleActivationBtn"
+                      class="btn link small">
+                🔑 Have an activation key?
+              </button>
+            </div>
+
+            <!-- Stored license badge (premium info) -->
+            <div id="authLicenseBadge"
+                 class="small muted auth-license-badge"
+                 style="display:none;">
+            </div>
+
+            <!-- Inline activation box (collapsed by default) -->
+            <div id="authActivationBox" class="auth-activation-box" style="display:none;">
+              <div id="authActivationTitle"
+                   class="auth-activation-title small">
+                Enter activation key
+              </div>
+
+              <div id="authActivationInfo"
+                   class="small muted auth-activation-info">
+              </div>
+
+              <label class="small" for="authActivationKey">Activation Key</label>
+              <input id="authActivationKey" autocomplete="off" />
+
+              <div id="authActivationMsg"
+                   class="small muted auth-activation-msg"></div>
+
+              <div class="auth-activation-buttons">
+                <button id="authActivationBtn"
+                        class="btn small primary">
+                  ✅ Activate &amp; Login
+                </button>
+                <button id="authActivationCancelBtn"
+                        class="btn small ghost">
+                  ✖ Cancel
+                </button>
+              </div>
+            </div>
+
           </div>
 
           <!-- REGISTER FORM -->
-          <div id="registerCard" class="card" style="display:none;">
-            <h2 style="margin-top:0;margin-bottom:6px;">✨ Create Account</h2>
+          <div id="registerCard" class="card auth-card" style="display:none;">
+            <h2 class="auth-card-title">
+              <span class="auth-card-emoji">✨</span>
+              <span>Create Account</span>
+            </h2>
 
-            <div id="authRegisterMsg" class="small muted" style="min-height:18px;margin-bottom:4px;"></div>
+            <div id="authRegisterMsg" class="small muted"></div>
 
-            <label>Login ID</label>
-            <div class="auth-input-group">
-              <span class="icon">📧</span>
-              <input id="authRegLoginId" autocomplete="username" placeholder="you@example.com" />
-            </div>
+            <label for="authRegLoginId">Login ID</label>
+            <input id="authRegLoginId" autocomplete="username" />
 
-            <label style="margin-top:4px;">Password</label>
-            <div class="auth-input-group">
-              <span class="icon">🔒</span>
-              <input id="authRegPassword" type="password" autocomplete="new-password" placeholder="At least 6 characters" />
-            </div>
+            <label for="authRegPassword" style="margin-top:8px;">Password</label>
+            <input id="authRegPassword"
+                   type="password"
+                   autocomplete="new-password" />
 
-            <label style="margin-top:4px;">Confirm Password</label>
-            <div class="auth-input-group">
-              <span class="icon">✅</span>
-              <input id="authRegPassword2" type="password" placeholder="Re-type password" />
-            </div>
+            <label for="authRegPassword2" style="margin-top:8px;">Confirm Password</label>
+            <input id="authRegPassword2" type="password" />
 
-            <p class="small muted" style="margin:6px 0 10px;">
+            <p class="small muted" style="margin:8px 0;">
                Firm details can be added later in <strong>Firm Profile</strong>.
             </p>
 
-            <button class="btn"
-                    id="authRegisterBtn"
-                    style="width:100%;margin-top:4px;justify-content:center;">
+            <button class="btn primary auth-main-btn"
+                    id="authRegisterBtn">
               Create Account
             </button>
           </div>
@@ -109,33 +160,55 @@ export const authScreen = {
     this.onLoginSuccess = opts.onLoginSuccess || null;
     this.onShowResetScreen = opts.onShowResetScreen || null;
 
-    $("authLoginBtn").onclick = () => this.handleLogin();
-    $("authRegisterBtn").onclick = () => this.handleRegister();
-    $("authShowForgotBtn").onclick = () => this.goToResetScreen();
+    this.activationMode = false;
+    this.activationMandatory = false;
+    this.pendingLoginId = null;
+    this.pendingPassword = null;
 
+    // Login
+    $("authLoginBtn").onclick = () => this.handleLogin();
     $("authPassword").addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.handleLogin();
     });
 
+    // Register
+    $("authRegisterBtn").onclick = () => this.handleRegister();
+
+    // Forgot password
+    $("authShowForgotBtn").onclick = () => this.goToResetScreen();
+
+    // Tabs
     $("tabLoginBtn").onclick = () => this.switchTab("login");
     $("tabRegisterBtn").onclick = () => this.switchTab("register");
 
+    // Activation UI
+    $("authToggleActivationBtn").onclick = () => this.toggleActivationManual();
+    $("authActivationBtn").onclick = () => this.handleActivation();
+    $("authActivationCancelBtn").onclick = () => this.closeActivationManual();
+    $("authActivationKey").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.handleActivation();
+    });
+
     this.switchTab("login");
+    this.applyStoredLicenseBadge();
   },
 
   switchTab(mode) {
-    $("loginCard").style.display = mode === "login" ? "block" : "none";
-    $("registerCard").style.display = mode === "register" ? "block" : "none";
+    if (mode === "login") {
+      $("loginCard").style.display = "block";
+      $("registerCard").style.display = "none";
+    } else {
+      $("loginCard").style.display = "none";
+      $("registerCard").style.display = "block";
+    }
 
     $("tabLoginBtn").classList.toggle("primary", mode === "login");
     $("tabLoginBtn").classList.toggle("ghost", mode !== "login");
-
     $("tabRegisterBtn").classList.toggle("primary", mode === "register");
     $("tabRegisterBtn").classList.toggle("ghost", mode !== "register");
 
     $("authLoginMsg").textContent = "";
     $("authRegisterMsg").textContent = "";
-    this.setSecurityBar(null); // hide on tab switch
   },
 
   setSecurityBar(res) {
@@ -143,53 +216,36 @@ export const authScreen = {
     const txt = $("secText");
     const icon = $("secIcon");
 
-    if (!res) {
-      bar.style.display = "none";
-      return;
-    }
-
-    const max = res.maxAttempts ?? 7;
-    const remaining = res.remainingAttempts ?? max;
-    const used = Math.max(0, max - remaining);
-
-    // If nothing used and no lock → hide (removes that weird green dot)
-    if (!res.locked && used === 0) {
+    if (!res || !res.securityLevel) {
       bar.style.display = "none";
       return;
     }
 
     bar.style.display = "flex";
+    const remaining = res.remainingAttempts ?? "∞";
+    txt.textContent = `${res.message || ""} (${remaining} attempts left)`;
 
-    // Base text
-    let msg = res.message || "";
-    if (res.locked && res.unlockAt) {
-      msg += " ";
-      msg += "(Locked temporarily)";
-    } else if (used > 0) {
-      msg += ` (${remaining} attempts left)`;
-    }
-    txt.textContent = msg;
-
-    // Visual levels
-    let bg = "#1b5e2033";
+    let cls = "auth-secbar-safe";
     let ic = "🟢";
 
-    if (res.locked && res.securityLevel === "TEMP_LOCK") {
-      bg = "#ff473a44";
-      ic = "⏳";
-    } else if (res.securityLevel === "FROZEN") {
-      bg = "#7f1d1d";
-      ic = "☠";
-    } else if (used >= 3 && used < max) {
-      // user has started burning attempts → warning
-      bg = "#ffa50233";
+    if (res.securityLevel === "MODERATE" || res.securityLevel === "LOCK_5") {
+      cls = "auth-secbar-warn";
       ic = "🟠";
-    } else if (used > 0) {
-      bg = "#eab30833";
-      ic = "⚠️";
+    }
+    if (res.securityLevel === "DANGER" || res.securityLevel === "LOCK_30") {
+      cls = "auth-secbar-danger";
+      ic = "🔴";
+    }
+    if (res.securityLevel === "TEMP_LOCK") {
+      cls = "auth-secbar-lock";
+      ic = "⏳";
+    }
+    if (res.securityLevel === "FROZEN") {
+      cls = "auth-secbar-frozen";
+      ic = "☠";
     }
 
-    bar.style.background = bg;
+    bar.className = `auth-secbar ${cls}`;
     icon.textContent = ic;
   },
 
@@ -210,17 +266,23 @@ export const authScreen = {
 
       this.setSecurityBar(res);
 
-      if (!res.success) {
-        msg.textContent = res.message || "Login failed.";
-        if (res.locked && res.unlockAt) {
-          this.startCountdown(res.unlockAt);
-        }
+      // License expired → force activation
+      if (!res.licenseOk && (res.message || "").toLowerCase().includes("license expired")) {
+        msg.textContent = res.message || "License expired.";
+        this.enterActivationMandatory(res, loginId, password);
         return;
       }
 
-      // success
+      if (!res.success) {
+        msg.textContent = res.message || "Login failed.";
+        if (res.locked && res.unlockAt) this.startCountdown(res.unlockAt);
+        return;
+      }
+
+      // success + license OK → store license info
+      this.storeLicenseInfo(res);
+
       localStorage.setItem("firmId", res.firmId?.toString() || "");
-      msg.textContent = "Login successful. Loading...";
       this.onLoginSuccess && this.onLoginSuccess(res);
 
     } catch (e) {
@@ -236,7 +298,7 @@ export const authScreen = {
     const msg = $("authRegisterMsg");
 
     if (!loginId || !p1 || !p2) {
-      msg.textContent = "All fields are required.";
+      msg.textContent = "All fields required.";
       return;
     }
     if (p1 !== p2) {
@@ -244,7 +306,7 @@ export const authScreen = {
       return;
     }
     if (p1.length < 6) {
-      msg.textContent = "Password too short (min 6 characters).";
+      msg.textContent = "Password too short.";
       return;
     }
 
@@ -252,13 +314,12 @@ export const authScreen = {
 
     try {
       const res = await authRegister(loginId, p1);
-      msg.textContent = res.message || "Done.";
+      msg.textContent = res.message;
       if (res.success) {
         this.switchTab("login");
         $("authLoginId").value = loginId;
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       msg.textContent = "Server error.";
     }
   },
@@ -266,24 +327,170 @@ export const authScreen = {
   startCountdown(until) {
     clearInterval(this.countdownTimer);
 
-    const target = new Date(until);
     this.countdownTimer = setInterval(() => {
-      const diffSec = Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000));
-      const barText = diffSec > 0
-        ? `Locked — retry in ${diffSec}s`
-        : "You can try logging in again now.";
-
-      const secText = $("secText");
-      if (secText) secText.textContent = barText;
-      if (diffSec <= 0) {
-        clearInterval(this.countdownTimer);
-      }
+      const diffSec = Math.max(0, Math.floor((new Date(until) - Date.now()) / 1000));
+      $("secText").textContent = `Locked — retry in ${diffSec}s`;
+      if (diffSec <= 0) clearInterval(this.countdownTimer);
     }, 1000);
   },
 
   goToResetScreen() {
     if (typeof this.onShowResetScreen === "function") {
       this.onShowResetScreen();
+    } else {
+      window.location.reload();
     }
+  },
+
+  // --------------- ACTIVATION UI HELPERS ---------------
+
+  updateActivationUI() {
+    const box = $("authActivationBox");
+    const toggle = $("authToggleActivationBtn");
+    const loginBtn = $("authLoginBtn");
+    const idInput = $("authLoginId");
+    const pwInput = $("authPassword");
+    const title = $("authActivationTitle");
+    const info = $("authActivationInfo");
+
+    box.style.display = this.activationMode ? "block" : "none";
+    toggle.style.display = this.activationMandatory ? "none" : "inline-flex";
+
+    const frozen = this.activationMandatory;
+    loginBtn.disabled = frozen;
+    idInput.disabled = frozen;
+    pwInput.disabled = frozen;
+
+    if (!this.activationMode) {
+      $("authActivationMsg").textContent = "";
+      $("authActivationKey").value = "";
+      return;
+    }
+
+    if (this.activationMandatory) {
+      title.textContent = "License expired — activation required";
+      info.textContent =
+        "Your trial or license for this device has ended. Enter a valid activation key to continue using InvoiceSuite.";
+    } else {
+      title.textContent = "Enter activation key (optional)";
+      info.textContent =
+        "Apply a new license or upgrade to premium. Existing data remains safe.";
+    }
+  },
+
+  toggleActivationManual() {
+    // manual open/close (not expired)
+    this.activationMode = !this.activationMode;
+    this.activationMandatory = false;
+    this.updateActivationUI();
+    if (this.activationMode) $("authActivationKey").focus();
+  },
+
+  closeActivationManual() {
+    if (this.activationMandatory) return; // cannot close when expired
+    this.activationMode = false;
+    this.updateActivationUI();
+  },
+
+  enterActivationMandatory(res, loginId, password) {
+    this.activationMode = true;
+    this.activationMandatory = true;
+    this.pendingLoginId = loginId;
+    this.pendingPassword = password;
+
+    const badge = $("authLicenseBadge");
+    const exp = res.licenseExpiryAt ? new Date(res.licenseExpiryAt) : null;
+    if (exp) {
+      badge.style.display = "block";
+      badge.textContent = `❌ License expired on ${exp.toLocaleDateString()}.`;
+    } else {
+      badge.style.display = "block";
+      badge.textContent = "❌ License expired.";
+    }
+
+    this.updateActivationUI();
+    $("authActivationMsg").textContent = "";
+    $("authActivationKey").value = "";
+    $("authActivationKey").focus();
+  },
+
+  // --------------- ACTIVATION CALL ---------------
+
+  async handleActivation() {
+    const key = $("authActivationKey").value.trim();
+    const msg = $("authActivationMsg");
+
+    if (!key) {
+      msg.textContent = "Activation key is required.";
+      return;
+    }
+
+    const loginId = this.pendingLoginId || $("authLoginId").value.trim();
+    const password = this.pendingPassword || $("authPassword").value;
+    if (!loginId || !password) {
+      msg.textContent = "Please enter Login ID and Password first.";
+      return;
+    }
+
+    msg.textContent = "Validating key…";
+
+    try {
+      const res = await authLogin(loginId, password, key);
+
+      if (!res.success || !res.licenseOk) {
+        msg.textContent = res.message || "Activation failed. Please check your key.";
+        return;
+      }
+
+      this.storeLicenseInfo(res);
+
+      localStorage.setItem("firmId", res.firmId?.toString() || "");
+      this.onLoginSuccess && this.onLoginSuccess(res);
+
+    } catch (e) {
+      console.error(e);
+      msg.textContent = "Network/Server error while activating.";
+    }
+  },
+
+  // --------------- LICENSE BADGE STORAGE ---------------
+
+  storeLicenseInfo(res) {
+    try {
+      if (res.licenseLevel) {
+        localStorage.setItem("licenseLevel", res.licenseLevel);
+      }
+      if (res.licenseExpiryAt) {
+        localStorage.setItem("licenseExpiryAt", res.licenseExpiryAt);
+      }
+    } catch (_) {
+      // ignore storage errors
+    }
+  },
+
+  applyStoredLicenseBadge() {
+    let level = null;
+    let expiry = null;
+    try {
+      level = localStorage.getItem("licenseLevel");
+      expiry = localStorage.getItem("licenseExpiryAt");
+    } catch (_) {}
+
+    const badge = $("authLicenseBadge");
+    if (!level || level === "TRIAL") {
+      badge.style.display = "none";
+      return;
+    }
+
+    let msg = "⭐ Premium license active";
+    if (expiry) {
+      try {
+        const d = new Date(expiry);
+        msg += ` • valid till ${d.toLocaleDateString()}`;
+      } catch (_) {}
+    }
+
+    badge.textContent = msg;
+    badge.style.display = "block";
   }
 };

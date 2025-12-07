@@ -947,3 +947,184 @@ label {
   color: #6b7280;
   margin-top: 6px;
 }
+
+/* Link-style buttons (Forgot password, activation link) */
+.btn.link {
+  background: transparent;
+  border: none;
+  color: var(--btn-primary-bg);
+  justify-content: center;
+  padding: 0;
+  border-radius: 0;
+}
+
+.btn.link:hover {
+  background: transparent;
+  text-decoration: underline;
+  transform: none;
+}
+
+/* ============================================================================
+   GLOBAL VARIABLES
+============================================================================ */
+:root {
+  --bg-page: #f5f7fc;
+  --bg-card: #ffffff;
+  --bg-input: #eef1fb;
+  --border-color: #ccd2e3;
+  --text-dark: #111827;
+  --text-muted: #6b7280;
+  --btn-primary-bg: #1a56db;
+  --btn-primary-hover: #174cbf;
+}
+
+/* ============================================================================
+   AUTH ROOT (page container)
+============================================================================ */
+.auth-root {
+  min-height: 100vh;
+  background: var(--bg-page);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: var(--text-dark);
+}
+
+/* ============================================================================
+   CARD
+============================================================================ */
+.card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: 0 7px 28px rgba(0,0,0,0.06);
+  padding: 20px 24px;
+  border: 1px solid #e5e8f3;
+}
+
+.card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* ============================================================================
+   INPUTS
+============================================================================ */
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  font-size: 14px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #1a56db;
+  box-shadow: 0 0 0 2px rgba(26,86,219,0.2);
+}
+
+/* ============================================================================
+   BUTTONS
+============================================================================ */
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+.btn.small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn.primary {
+  background: var(--btn-primary-bg);
+  color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--btn-primary-hover);
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-dark);
+}
+
+.btn.ghost:hover {
+  background: #eef1fb;
+}
+
+.btn.link {
+  background: transparent;
+  color: var(--btn-primary-bg);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.btn.link:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+   TEXT + LABELS
+============================================================================ */
+.small {
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+  display: block;
+}
+
+/* ============================================================================
+   TABS
+============================================================================ */
+#tabLoginBtn,
+#tabRegisterBtn {
+  border-radius: 8px;
+}
+
+/* ============================================================================
+   SECURITY BAR
+============================================================================ */
+#secBar {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+/* ============================================================================
+   ACTIVATION BOX
+============================================================================ */
+#authActivationBox input {
+  border-radius: 8px;
+}
+
+#authActivationMsg {
+  font-size: 12px !important;
+  min-height: 18px;
+}
+
+/* ============================================================================
+   LICENSE BADGE
+============================================================================ */
+#authLicenseBadge {
+  font-size: 12px;
+  text-align: center;
+}

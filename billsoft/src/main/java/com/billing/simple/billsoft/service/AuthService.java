@@ -3,20 +3,20 @@ package com.billing.simple.billsoft.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
-import java.util.Base64;
+import java.util.Base64; // (can be removed if not used anywhere else)
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.billing.simple.billsoft.constants.LicensingConstants;
+import com.billing.simple.billsoft.entities.AppLicense;
 import com.billing.simple.billsoft.entities.FirmDetails;
+import com.billing.simple.billsoft.repo.AppLicenseRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 
 import jakarta.transaction.Transactional;
-import javax.crypto.Cipher;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 
 @Service
 public class AuthService {
@@ -24,66 +24,62 @@ public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final FirmDetailsRepository firmRepo;
+    private final AppLicenseRepository licenseRepo;
 
-    public AuthService(FirmDetailsRepository firmRepo) {
+    public AuthService(FirmDetailsRepository firmRepo,
+                       AppLicenseRepository licenseRepo) {
         this.firmRepo = firmRepo;
+        this.licenseRepo = licenseRepo;
     }
 
-    // ---------------- CONSTANTS ----------------
+    /* ================================================================================== */
+    /* LICENSE KEYS (LITERAL, NO ENCRYPTION)                                              */
+    /* ================================================================================== */
 
-    // AES key + IV (16 bytes each)
-    private static final String AES_KEY = "BSOFT-LIC-2025!!";  // 16 bytes
-    private static final String AES_IV  = "LIC-INIT-2025!!";  // 16 bytes
+    private static final String KEY_1Y_PREMIUM   = "INV-1Y-PREMIUM-2025-RY";
+    private static final String KEY_3Y_PREMIUM   = "INV-3Y-PREMIUM-2025-RY";
+    private static final String KEY_LIFE_PREMIUM = "INV-LIFE-PREMIUM-2025-RY";
+    private static final String KEY_TEST_2MIN    = "INV-TEST-2MIN-2025-RY";
 
-    // developer reset soft lock (support-only)
-    private static final int RESET_MAX_FAIL = 10;
-    private static final Duration RESET_LOCK_DURATION = Duration.ofHours(3);
+    // We will **store expiry as plain text** in AppLicense. No AES now.
+    // Column name is still license_expiry_encrypted for schema compatibility,
+    // but content will be ISO-8601 Instant string, e.g. "2026-01-06T12:27:37.663118700Z"
 
-    private static final long TRIAL_DAYS = 30L;
 
-    // login lock / attempts
-    private static final int MAX_FAIL      = 7;   // after this → permanent lock
-    private static final int WARN_FAIL_1   = 3;   // 3rd wrong → 5 min lock
-    private static final int WARN_FAIL_2   = 5;   // 5th wrong → 30 min lock
+    /* ================================================================================== */
+    /* LOGIN LOCKOUT CONFIG                                                               */
+    /* ================================================================================== */
 
-    private static final Duration LOCK_1 = Duration.ofMinutes(5);
-    private static final Duration LOCK_2 = Duration.ofMinutes(30);
+    private static final int MAX_FAIL     = 7;
+    private static final int WARN_FAIL_1  = 3;
+    private static final int WARN_FAIL_2  = 5;
+    private static final Duration LOCK_1  = Duration.ofMinutes(5);
+    private static final Duration LOCK_2  = Duration.ofMinutes(30);
 
-    // license levels
-    private static final String LICENSE_TRIAL        = "TRIAL";
-    private static final String LICENSE_PREMIUM      = "PREMIUM";
-    private static final String LICENSE_PREMIUM_TEST = "PREMIUM_TEST";
+    // Developer reset lockout config
+    private static final int      RESET_MAX_FAIL       = 10;
+    private static final Duration RESET_LOCK_DURATION  = Duration.ofHours(3);
 
-    // developer master key (SHA-256 of "RANJEET-ADMIN-RESET-2025")
+    // Developer master key hash (for support reset)
     private static final String DEV_RESET_KEY_HASH =
             "0CDB3704A8993071B98A9F4803DED2B39C54BE9DD0C688380896FB338AE1FACB";
 
-    // Activation key hashes
-    private static final String KEY_1Y_HASH =
-            "9444E6D43B94AD97F7AFDC7D9EEC0FEE2D3B570D5505265D0058E52BE6C29795";
-    private static final String KEY_3Y_HASH =
-            "FD45AF8044174C891A2D776FD236D0B3ED402FFB5597CDF92875161B47677019";
-    private static final String KEY_LIFE_HASH =
-            "46C980C96774C909C3DCCD9647FCE69845BD5B1D8655C2F89FC785B1A34777C3";
-    private static final String KEY_TEST_HASH =
-            "6F1FAB01A6195F6B553B3CA078F0F171B96568CF3160B60EA28EBFCBECF535FE";
-
-    // ---------------- DTOs ----------------
+    /* ================================================================================== */
+    /* DTOs                                                                               */
+    /* ================================================================================== */
 
     public static class LoginRequest {
         public String loginId;
         public String password;
-        public String activationKey; // optional
+        public String activationKey;
     }
 
     public static class LoginResult {
         public boolean success;
         public String message;
-
         public Long firmId;
         public String firmName;
 
-        // security / lockout
         public boolean locked;
         public String lockReason;
         public Instant unlockAt;
@@ -92,7 +88,6 @@ public class AuthService {
         public String securityLevel;
         public boolean showForgotPassword = true;
 
-        // license
         public boolean trial;
         public boolean licenseOk;
         public String licenseLevel;
@@ -122,7 +117,6 @@ public class AuthService {
         public String message;
     }
 
-    // 🔹 New — validate Step-1 request
     public static class DevResetValidationRequest {
         public String loginId;
         public String developerKey;
@@ -136,66 +130,30 @@ public class AuthService {
         public int attemptsLeft;
         public int maxAttempts;
     }
-    @Transactional
-    public SimpleResult validateResetAccess(DeveloperResetRequest req) {
-        SimpleResult out = new SimpleResult();
-        out.success = false;
 
-        if (!StringUtils.hasText(req.loginId)) {
-            out.message = "Login ID is required.";
-            return out;
-        }
-        if (!StringUtils.hasText(req.developerKey)) {
-            out.message = "Secure reset key is required.";
-            return out;
-        }
+    /* ================================================================================== */
+    /* LICENSE ROW HELPER (GLOBAL LICENSE ROW id=1)                                       */
+    /* ================================================================================== */
 
-        FirmDetails f = firmRepo.findByLoginIdIgnoreCase(req.loginId.trim()).orElse(null);
-        if (f == null) {
-            out.message = "Invalid Login ID.";
-            return out;
-        }
+    private AppLicense ensureLicense() {
+        return licenseRepo.findById(1L).orElseGet(() -> {
+            AppLicense lic = new AppLicense();
+            lic.setId(1L);
+            lic.setLicenseLevel(LicensingConstants.LICENSE_TRIAL);
 
-        // Soft lock check
-        if (safeAttempts(f) >= RESET_MAX_FAIL) {
-            if (f.getLockoutUntil() != null &&
-                    LocalDateTime.now().isBefore(f.getLockoutUntil())) {
-                out.message = "Too many incorrect attempts. Locked temporarily.";
-                return out;
-            }
-        }
+            Instant exp = Instant.now()
+                    .plus(Duration.ofDays(LicensingConstants.TRIAL_DAYS));
 
-        // Validate developer key hash
-        if (!sha256(req.developerKey.trim()).equalsIgnoreCase(DEV_RESET_KEY_HASH)) {
-
-            int newFail = safeAttempts(f) + 1;
-            f.setFailedLoginAttempts(newFail);
-
-            if (newFail >= RESET_MAX_FAIL) {
-                f.setLockoutUntil(LocalDateTime.now().plus(RESET_LOCK_DURATION));
-                out.message = "Too many incorrect attempts. Locked for 3 hours.";
-            } else {
-                out.message = "Invalid secure reset key.";
-            }
-
-            firmRepo.save(f);
-            return out;
-        }
-
-        // SUCCESS — clear fails
-        f.setFailedLoginAttempts(0);
-        f.setLockoutUntil(null);
-        firmRepo.save(f);
-
-        out.success = true;
-        out.message = "Verified.";
-        return out;
+            // store expiry as plain ISO string instead of encrypted value
+            lic.setLicenseExpiryEncrypted(instantToLiteral(exp));
+            lic.setTrialStartDate(LocalDate.now());
+            return licenseRepo.save(lic);
+        });
     }
 
-
-    // -------------------------------------------------------------------------
-    // REGISTER
-    // -------------------------------------------------------------------------
+    /* ================================================================================== */
+    /* REGISTRATION – SINGLE FIRM FOR NOW                                                 */
+    /* ================================================================================== */
 
     @Transactional
     public RegisterResult register(RegisterRequest req) {
@@ -211,35 +169,29 @@ public class AuthService {
             return out;
         }
 
-        // Single-firm for now → id = 1
-        FirmDetails f = firmRepo.findById(1L).orElse(new FirmDetails());
-        f.setId(1L);
+        String loginId = req.loginId.trim();
 
-        if (StringUtils.hasText(f.getLoginId())
-                && f.getLoginId().equalsIgnoreCase(req.loginId.trim())) {
-            out.success = true;
-            out.message = "Account already exists. Please login.";
-            out.firmId = f.getId();
+        // unique loginId
+        FirmDetails existing = firmRepo.findByLoginIdIgnoreCase(loginId).orElse(null);
+        if (existing != null) {
+            out.success = false;
+            out.message = "This Login ID is already in use. Please choose a different one.";
+            out.firmId = existing.getId();
             return out;
         }
 
-        f.setLoginId(req.loginId.trim());
-        f.setPasswordHash(hashPassword(req.password, req.loginId));
-
-        // initialize trial license
-        Instant expiry = Instant.now().plus(Duration.ofDays(TRIAL_DAYS));
-        f.setLicenseLevel(LICENSE_TRIAL);
-        f.setLicenseExpiryEncrypted(enc(expiry));
-        f.setTrialStartDate(LocalDate.now());
-
-        // reset login security fields
+        FirmDetails f = new FirmDetails();
+        f.setLoginId(loginId);
+        f.setPasswordHash(hashPassword(req.password, loginId));
         f.setFailedLoginAttempts(0);
         f.setLockoutUntil(null);
-
-        // reset developer reset security
-        clearResetSecurity(f);
+        f.setResetFailCount(0);
+        f.setResetLockedUntil(null);
 
         firmRepo.save(f);
+
+        // ensure global license (trial) exists
+        ensureLicense();
 
         out.success = true;
         out.message = "Account created.";
@@ -247,19 +199,21 @@ public class AuthService {
         return out;
     }
 
-    // -------------------------------------------------------------------------
-    // LOGIN
-    // -------------------------------------------------------------------------
+    /* ================================================================================== */
+    /* LOGIN & ACTIVATION                                                                 */
+    /* ================================================================================== */
 
     @Transactional
     public LoginResult login(LoginRequest req) {
         LoginResult out = new LoginResult();
         out.maxAttempts = MAX_FAIL;
 
-        FirmDetails f = firmRepo.findById(1L).orElse(null);
+        String loginId = nullSafe(req.loginId).trim();
+        FirmDetails f = firmRepo.findByLoginIdIgnoreCase(loginId).orElse(null);
+
         if (f == null || !StringUtils.hasText(f.getLoginId())) {
             out.success = false;
-            out.message = "No account found. Please create an account.";
+            out.message = "No account found for given Login ID.";
             out.remainingAttempts = MAX_FAIL;
             return out;
         }
@@ -268,63 +222,60 @@ public class AuthService {
         out.firmName = f.getFirmName();
         out.remainingAttempts = MAX_FAIL - safeAttempts(f);
 
-        // Permanent lock
+        // permanent lock
         if (safeAttempts(f) >= MAX_FAIL) {
             out.locked = true;
-            out.securityLevel = "FROZEN";
-            out.lockReason = "Account permanently locked. Please contact support.";
-            out.remainingAttempts = 0;
             out.success = false;
+            out.securityLevel = "FROZEN";
+            out.lockReason = "Account permanently locked. Contact support.";
+            out.remainingAttempts = 0;
             return out;
         }
 
-        // Temp lock
+        // temporary lock
         if (f.getLockoutUntil() != null &&
                 LocalDateTime.now().isBefore(f.getLockoutUntil())) {
 
             out.locked = true;
             out.securityLevel = "TEMP_LOCK";
             out.lockReason = "Account temporarily locked.";
-            out.unlockAt = f.getLockoutUntil().atZone(ZoneId.systemDefault()).toInstant();
-            out.remainingAttempts = MAX_FAIL - safeAttempts(f);
+            out.unlockAt = f.getLockoutUntil()
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant();
             out.success = false;
             return out;
         }
 
-        // Wrong credentials
-        if (!f.getLoginId().equalsIgnoreCase(nullSafe(req.loginId)) ||
-                !f.getPasswordHash().equals(hashPassword(nullSafe(req.password), req.loginId))) {
+        // wrong credentials
+        if (!f.getLoginId().equalsIgnoreCase(loginId)
+                || !f.getPasswordHash().equals(
+                hashPassword(nullSafe(req.password), loginId))) {
 
             handleWrongPassword(out, f);
             firmRepo.save(f);
             return out;
         }
 
-        // Success → clear login lockouts
+        // successful login → reset security
         f.setFailedLoginAttempts(0);
         f.setLockoutUntil(null);
 
-        // Activation key (if provided)
+        // apply activation key (if any)
         if (StringUtils.hasText(req.activationKey)) {
-            applyActivation(f, req.activationKey.trim());
+            applyActivation(req.activationKey.trim());
         }
 
-        // License evaluation
-        evaluateLicense(out, f);
+        // check license
+        evaluateLicense(out);
 
         firmRepo.save(f);
         return out;
-    }
-
-    private int safeAttempts(FirmDetails f) {
-        return f.getFailedLoginAttempts() == null ? 0 : f.getFailedLoginAttempts();
     }
 
     private void handleWrongPassword(LoginResult out, FirmDetails f) {
         int fail = safeAttempts(f) + 1;
         f.setFailedLoginAttempts(fail);
 
-        out.maxAttempts = MAX_FAIL;
         out.remainingAttempts = Math.max(0, MAX_FAIL - fail);
         out.success = false;
         out.showForgotPassword = true;
@@ -332,7 +283,7 @@ public class AuthService {
         if (fail >= MAX_FAIL) {
             out.locked = true;
             out.securityLevel = "FROZEN";
-            out.lockReason = "Account permanently locked. Please contact support.";
+            out.lockReason = "Account permanently locked. Contact support.";
             out.message = out.lockReason;
             f.setLockoutUntil(LocalDateTime.now().plusYears(100));
 
@@ -358,22 +309,29 @@ public class AuthService {
         }
     }
 
-    private void evaluateLicense(LoginResult out, FirmDetails f) {
-        Instant now = Instant.now();
-        Instant expiry = dec(f.getLicenseExpiryEncrypted());
+    /* ================================================================================== */
+    /* LICENSE EVALUATION (NO ENCRYPTION, LITERAL EXPIRY)                                 */
+    /* ================================================================================== */
 
-        if (expiry == null || !StringUtils.hasText(f.getLicenseLevel())) {
-            expiry = now.plus(Duration.ofDays(TRIAL_DAYS));
-            f.setLicenseLevel(LICENSE_TRIAL);
-            f.setLicenseExpiryEncrypted(enc(expiry));
-            if (f.getTrialStartDate() == null) {
-                f.setTrialStartDate(LocalDate.now());
+    private void evaluateLicense(LoginResult out) {
+        AppLicense lic = ensureLicense();
+        Instant now = Instant.now();
+        Instant expiry = literalToInstant(lic.getLicenseExpiryEncrypted());
+
+        // self-heal if somehow null or level missing
+        if (expiry == null || !StringUtils.hasText(lic.getLicenseLevel())) {
+            expiry = now.plus(Duration.ofDays(LicensingConstants.TRIAL_DAYS));
+            lic.setLicenseLevel(LicensingConstants.LICENSE_TRIAL);
+            lic.setLicenseExpiryEncrypted(instantToLiteral(expiry));
+            if (lic.getTrialStartDate() == null) {
+                lic.setTrialStartDate(LocalDate.now());
             }
+            licenseRepo.save(lic);
         }
 
         out.licenseExpiryAt = expiry;
-        out.licenseLevel = f.getLicenseLevel();
-        out.trial = LICENSE_TRIAL.equals(f.getLicenseLevel());
+        out.licenseLevel = lic.getLicenseLevel();
+        out.trial = LicensingConstants.LICENSE_TRIAL.equals(lic.getLicenseLevel());
 
         if (expiry == null || now.isAfter(expiry)) {
             out.licenseOk = false;
@@ -388,17 +346,60 @@ public class AuthService {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // DEVELOPER RESET VALIDATION (Step 1)
-    // -------------------------------------------------------------------------
+    /* ================================================================================== */
+    /* ACTIVATION LOGIC – LITERAL KEYS                                                    */
+    /* ================================================================================== */
+
+    private void applyActivation(String key) {
+        String k = nullSafe(key).trim();
+
+        if (!StringUtils.hasText(k)) return;
+
+        AppLicense lic = ensureLicense();
+
+        Instant now = Instant.now();
+        Instant currentExp = literalToInstant(lic.getLicenseExpiryEncrypted());
+        Instant base = (currentExp != null && currentExp.isAfter(now))
+                ? currentExp
+                : now;
+
+        Instant newExpiry = null;
+        String newLevel = lic.getLicenseLevel();
+
+        if (k.equalsIgnoreCase(KEY_1Y_PREMIUM)) {
+            newLevel = LicensingConstants.LICENSE_PREMIUM;
+            newExpiry = base.plus(Duration.ofDays(365));
+
+        } else if (k.equalsIgnoreCase(KEY_3Y_PREMIUM)) {
+            newLevel = LicensingConstants.LICENSE_PREMIUM;
+            newExpiry = base.plus(Duration.ofDays(365 * 3L));
+
+        } else if (k.equalsIgnoreCase(KEY_LIFE_PREMIUM)) {
+            newLevel = LicensingConstants.LICENSE_PREMIUM;
+            newExpiry = base.plus(Duration.ofDays(365 * 50L));
+
+        } else if (k.equalsIgnoreCase(KEY_TEST_2MIN)) {
+            newLevel = LicensingConstants.LICENSE_TEST;
+            newExpiry = now.plus(Duration.ofMinutes(2));
+        } else {
+            // invalid key → do nothing; caller will show error via message logic in controller/DTO
+            return;
+        }
+
+        lic.setLicenseLevel(newLevel);
+        lic.setLicenseExpiryEncrypted(instantToLiteral(newExpiry));
+        licenseRepo.save(lic);
+    }
+
+    /* ================================================================================== */
+    /* SUPPORT RESET (unchanged, still using DEV_RESET_KEY_HASH)                          */
+    /* ================================================================================== */
 
     @Transactional
     public DevResetValidationResult validateResetDev(DevResetValidationRequest req) {
         DevResetValidationResult out = new DevResetValidationResult();
         out.valid = false;
-        out.locked = false;
         out.maxAttempts = RESET_MAX_FAIL;
-        out.attemptsLeft = RESET_MAX_FAIL;
 
         if (!StringUtils.hasText(req.loginId) || !StringUtils.hasText(req.developerKey)) {
             out.message = "Login ID and Secure Reset Key are required.";
@@ -414,13 +415,13 @@ public class AuthService {
         int used = safeResetAttempts(f);
         out.attemptsLeft = Math.max(0, RESET_MAX_FAIL - used);
 
-        // soft lock check
         if (f.getResetLockedUntil() != null &&
                 LocalDateTime.now().isBefore(f.getResetLockedUntil())) {
-
             out.locked = true;
-            out.message = "Support reset is temporarily locked due to repeated incorrect attempts.";
-            out.unlockAt = f.getResetLockedUntil().atZone(ZoneId.systemDefault()).toInstant();
+            out.message = "Support reset temporarily locked.";
+            out.unlockAt = f.getResetLockedUntil()
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant();
             out.attemptsLeft = 0;
             return out;
         }
@@ -435,84 +436,51 @@ public class AuthService {
 
             if (f.getResetLockedUntil() != null &&
                     LocalDateTime.now().isBefore(f.getResetLockedUntil())) {
-
                 out.locked = true;
-                out.message = "Too many incorrect attempts. Support reset is locked for a few hours.";
-                out.unlockAt = f.getResetLockedUntil().atZone(ZoneId.systemDefault()).toInstant();
+                out.message = "Too many attempts — try again later.";
+                out.unlockAt = f.getResetLockedUntil()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant();
                 out.attemptsLeft = 0;
-            } else if (used >= 7) {
-                out.message = "Multiple incorrect attempts. Please stop guessing.";
             } else {
-                out.message = "Incorrect Secure Reset Key. Please confirm with support.";
+                out.message = "Incorrect Secure Reset Key.";
             }
-
             return out;
         }
 
-        // success -> clear reset security
         clearResetSecurity(f);
         firmRepo.save(f);
 
         out.valid = true;
-        out.message = "Details verified. You can proceed.";
+        out.message = "Verified. You can proceed.";
         out.attemptsLeft = RESET_MAX_FAIL;
         return out;
     }
-
-    private int safeResetAttempts(FirmDetails f) {
-        return (f.getResetFailCount() == null) ? 0 : f.getResetFailCount();
-    }
-
-    private void recordResetFail(FirmDetails f) {
-        int fail = safeResetAttempts(f) + 1;
-        f.setResetFailCount(fail);
-
-        if (fail >= RESET_MAX_FAIL) {
-            f.setResetLockedUntil(LocalDateTime.now().plus(RESET_LOCK_DURATION));
-        }
-    }
-
-    private void clearResetSecurity(FirmDetails f) {
-        f.setResetFailCount(0);
-        f.setResetLockedUntil(null);
-    }
-
-    // -------------------------------------------------------------------------
-    // DEVELOPER RESET EXECUTION (Step 2)
-    // -------------------------------------------------------------------------
 
     @Transactional
     public SimpleResult resetPasswordDev(DeveloperResetRequest req) {
         SimpleResult out = new SimpleResult();
         out.success = false;
 
-        if (!StringUtils.hasText(req.loginId)) return fail(out,"Login ID is required.");
-        if (!StringUtils.hasText(req.developerKey)) return fail(out,"Internal reset key is required.");
+        if (!StringUtils.hasText(req.loginId)) return fail(out, "Login ID is required.");
+        if (!StringUtils.hasText(req.developerKey)) return fail(out, "Secure reset key required.");
         if (!StringUtils.hasText(req.newPassword) || req.newPassword.length() < 6)
-            return fail(out,"New password must be at least 6 characters.");
+            return fail(out, "New password must be at least 6 characters.");
 
         FirmDetails f = firmRepo.findByLoginIdIgnoreCase(req.loginId.trim()).orElse(null);
-        if (f == null) return fail(out,"Account not found for given Login ID.");
+        if (f == null) return fail(out, "Account not found.");
 
-        // soft lock check
         if (f.getResetLockedUntil() != null &&
                 LocalDateTime.now().isBefore(f.getResetLockedUntil())) {
-            return fail(out,"Support reset locked temporarily. Try later.");
+            return fail(out, "Support reset locked temporarily. Try later.");
         }
 
-        // validate master key
         if (!sha256(req.developerKey.trim()).equalsIgnoreCase(DEV_RESET_KEY_HASH)) {
             recordResetFail(f);
             firmRepo.save(f);
-
-            if (f.getResetLockedUntil() != null &&
-                    LocalDateTime.now().isBefore(f.getResetLockedUntil())) {
-                return fail(out,"Too many incorrect reset attempts. Reset locked temporarily.");
-            }
-            return fail(out,"Invalid internal reset key.");
+            return fail(out, "Invalid Secure Reset Key.");
         }
 
-        // success → reset everything
         f.setPasswordHash(hashPassword(req.newPassword, f.getLoginId()));
         f.setFailedLoginAttempts(0);
         f.setLockoutUntil(null);
@@ -525,46 +493,41 @@ public class AuthService {
         return out;
     }
 
+    /* ================================================================================== */
+    /* HELPER UTILITIES                                                                   */
+    /* ================================================================================== */
+
     private SimpleResult fail(SimpleResult out, String msg) {
         out.success = false;
         out.message = msg;
         return out;
     }
 
-    // -------------------------------------------------------------------------
-    // LICENSE ACTIVATION
-    // -------------------------------------------------------------------------
+    private int safeAttempts(FirmDetails f) {
+        return f.getFailedLoginAttempts() == null ? 0 : f.getFailedLoginAttempts();
+    }
 
-    private void applyActivation(FirmDetails f, String key) {
-        String h = sha256(key);
-        Instant now = Instant.now();
-        Instant currentExp = dec(f.getLicenseExpiryEncrypted());
-        Instant base = (currentExp != null && currentExp.isAfter(now)) ? currentExp : now;
+    private int safeResetAttempts(FirmDetails f) {
+        return f.getResetFailCount() == null ? 0 : f.getResetFailCount();
+    }
 
-        if (h.equalsIgnoreCase(KEY_1Y_HASH)) {
-            f.setLicenseLevel(LICENSE_PREMIUM);
-            f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365))));
-
-        } else if (h.equalsIgnoreCase(KEY_3Y_HASH)) {
-            f.setLicenseLevel(LICENSE_PREMIUM);
-            f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 3L))));
-
-        } else if (h.equalsIgnoreCase(KEY_LIFE_HASH)) {
-            f.setLicenseLevel(LICENSE_PREMIUM);
-            f.setLicenseExpiryEncrypted(enc(base.plus(Duration.ofDays(365 * 50L))));
-
-        } else if (h.equalsIgnoreCase(KEY_TEST_HASH)) {
-            f.setLicenseLevel(LICENSE_PREMIUM_TEST);
-            f.setLicenseExpiryEncrypted(enc(now.plus(Duration.ofMinutes(2))));
+    private void recordResetFail(FirmDetails f) {
+        int fail = safeResetAttempts(f) + 1;
+        f.setResetFailCount(fail);
+        if (fail >= RESET_MAX_FAIL) {
+            f.setResetLockedUntil(LocalDateTime.now().plus(RESET_LOCK_DURATION));
         }
     }
 
-    // -------------------------------------------------------------------------
-    // HASH + CRYPTO HELPERS
-    // -------------------------------------------------------------------------
+    private void clearResetSecurity(FirmDetails f) {
+        f.setResetFailCount(0);
+        f.setResetLockedUntil(null);
+    }
 
     private String hashPassword(String pwd, String loginId) {
-        String base = "BSOFT|" + nullSafe(loginId).toLowerCase() + "|" + nullSafe(pwd);
+        String base = "BSOFT|" +
+                nullSafe(loginId).toLowerCase() +
+                "|" + nullSafe(pwd);
         return sha256(base);
     }
 
@@ -581,34 +544,28 @@ public class AuthService {
         }
     }
 
-    private String enc(Instant exp) {
-        try {
-            Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            c.init(Cipher.ENCRYPT_MODE,
-                    new SecretKeySpec(AES_KEY.getBytes(StandardCharsets.UTF_8), "AES"),
-                    new IvParameterSpec(AES_IV.getBytes(StandardCharsets.UTF_8)));
-            String payload = String.valueOf(exp.toEpochMilli());
-            return Base64.getEncoder()
-                    .encodeToString(c.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            log.error("Encrypt failed", e);
-            return null;
-        }
+    /* ---------- LITERAL EXPIRY HELPERS (NO AES) ---------- */
+
+    private String instantToLiteral(Instant exp) {
+        if (exp == null) return null;
+        // ISO string is human readable and easy to debug
+        return exp.toString();
     }
 
-    private Instant dec(String s) {
-        if (!StringUtils.hasText(s)) return null;
+    private Instant literalToInstant(String value) {
+        if (!StringUtils.hasText(value)) return null;
         try {
-            Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            c.init(Cipher.DECRYPT_MODE,
-                    new SecretKeySpec(AES_KEY.getBytes(StandardCharsets.UTF_8), "AES"),
-                    new IvParameterSpec(AES_IV.getBytes(StandardCharsets.UTF_8)));
-            byte[] plain = c.doFinal(Base64.getDecoder().decode(s));
-            long epoch = Long.parseLong(new String(plain, StandardCharsets.UTF_8).trim());
-            return Instant.ofEpochMilli(epoch);
+            // try ISO-8601 first
+            return Instant.parse(value.trim());
         } catch (Exception e) {
-            log.warn("Decrypt failed – treating as expired");
-            return null;
+            try {
+                // fallback: maybe it is stored as epoch millis string
+                long epoch = Long.parseLong(value.trim());
+                return Instant.ofEpochMilli(epoch);
+            } catch (Exception e2) {
+                log.warn("Failed to parse license expiry literal: {}", value);
+                return null;
+            }
         }
     }
 

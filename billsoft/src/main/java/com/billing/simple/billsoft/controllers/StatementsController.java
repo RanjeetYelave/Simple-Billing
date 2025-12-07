@@ -52,23 +52,25 @@ public class StatementsController {
 
     @GetMapping("/firm")
     public ResponseEntity<FirmStatementResponse> firmStatement(
+            @RequestParam("firmId") Long firmId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(statementService.getFirmStatement(from, to));
+        return ResponseEntity.ok(statementService.getFirmStatement(firmId, from, to));
     }
 
     @GetMapping("/firm/pdf")
     public ResponseEntity<byte[]> firmStatementPdf(
+            @RequestParam("firmId") Long firmId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        byte[] pdf = statementService.generateFirmStatementPdf(from, to);
-        String filename = "statement-firm.pdf";
+        byte[] pdf = statementService.generateFirmStatementPdf(firmId, from, to);
+        String filename = "statement-firm-" + firmId + ".pdf";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                 .contentType(MediaType.APPLICATION_PDF)

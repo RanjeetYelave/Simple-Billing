@@ -21,6 +21,12 @@ import lombok.*;
 public class Invoice {
 
     // ------------------------
+    // MULTI-FIRM OWNER
+    // ------------------------
+    @Column(nullable = false)
+    private Long firmId;
+
+    // ------------------------
     // PRIMARY KEY
     // ------------------------
     @Id

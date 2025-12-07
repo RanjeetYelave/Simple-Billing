@@ -23,24 +23,23 @@ public class AuthController {
         this.auth = auth;
     }
 
-    // -------- REGISTER --------
     @PostMapping("/register")
     public RegisterResult register(@RequestBody RegisterRequest req) {
         return auth.register(req);
     }
 
-    // -------- LOGIN --------
     @PostMapping("/login")
     public LoginResult login(@RequestBody LoginRequest req) {
         return auth.login(req);
     }
 
+    // Step-1: Validate Secure Reset Access
     @PostMapping("/forgot-password/validate")
-    public SimpleResult validateReset(@RequestBody DeveloperResetRequest req) {
-        return auth.validateResetAccess(req);
+    public DevResetValidationResult validateReset(@RequestBody DevResetValidationRequest req) {
+        return auth.validateResetDev(req);
     }
 
-    // -------- DO RESET (Step 2) --------
+    // Step-2: Apply New Password
     @PostMapping("/forgot-password/developer-reset")
     public SimpleResult developerReset(@RequestBody DeveloperResetRequest req) {
         return auth.resetPasswordDev(req);

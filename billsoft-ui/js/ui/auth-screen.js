@@ -190,7 +190,7 @@ export const authScreen = {
     });
 
     this.switchTab("login");
-    this.applyStoredLicenseBadge();   // <- show trial/premium info on first load
+    this.applyStoredLicenseBadge();   // show trial/premium info
   },
 
   switchTab(mode) {
@@ -444,12 +444,11 @@ export const authScreen = {
         return;
       }
 
-      // IMPORTANT: Manual (optional) activation must NOT treat random keys as valid
-      // If still on TRIAL after call, key was ignored by backend.
+      // If manual activation and still TRIAL, key was ignored
       if (!this.activationMandatory && (res.licenseLevel === "TRIAL" || res.trial)) {
         msg.textContent =
           "Invalid activation key. Your trial is still active — login without entering a key.";
-        return; // don't login on bogus key
+        return;
       }
 
       // success + real license updated → store & enter app

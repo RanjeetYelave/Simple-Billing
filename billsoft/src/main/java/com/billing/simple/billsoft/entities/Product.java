@@ -18,6 +18,11 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Owning firm ID (multi-firm)
+     */
+    private Long firmId;
+
     @Column(nullable = false)
     private String name;
 

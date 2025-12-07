@@ -11,7 +11,7 @@ public interface StatementService {
 
     byte[] generateCustomerStatementPdf(Long customerId, LocalDate from, LocalDate to) throws Exception;
 
-    FirmStatementResponse getFirmStatement(LocalDate from, LocalDate to);
+    FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to);
 
-    byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception;
+    byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception;
 }

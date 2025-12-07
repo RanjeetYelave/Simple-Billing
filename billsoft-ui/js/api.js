@@ -1,4 +1,3 @@
-// js/api.js
 export const API_BASE = "http://localhost:8080";
 
 /* ============================================================
@@ -54,7 +53,6 @@ export async function apiDelete(path) {
    AUTH ENDPOINTS
 ============================================================ */
 
-// ---------- AUTH ----------
 export function authLogin(loginId, password, activationKey = null) {
   return apiPost("/api/auth/login", { loginId, password, activationKey });
 }
@@ -62,8 +60,6 @@ export function authLogin(loginId, password, activationKey = null) {
 export function authRegister(loginId, password) {
   return apiPost("/api/auth/register", { loginId, password });
 }
-
-
 
 export function authDeveloperValidate(loginId, secureKey) {
   return apiPost("/api/auth/forgot-password/validate", {
@@ -80,57 +76,65 @@ export function authDeveloperReset(loginId, secureKey, newPassword) {
   });
 }
 
-
 /* ============================================================
-   INVOICE & ESTIMATE ENDPOINTS
+   INVOICE & ESTIMATE ENDPOINTS (firm-aware)
 ============================================================ */
 
+function firmQuery() {
+  const firmId = localStorage.getItem("firmId");
+  return `firmId=${encodeURIComponent(firmId || "")}`;
+}
+
 export function createInvoice(data) {
-  return apiPost("/api/invoices", data);
+  return apiPost(`/api/invoices?${firmQuery()}`, data);
 }
 
 export function createEstimate(data) {
-  return apiPost("/api/invoices/estimate", data);
+  return apiPost(`/api/invoices/estimate?${firmQuery()}`, data);
 }
 
 export function previewInvoice(data) {
-  return apiPost("/api/invoices/preview", data);
+  return apiPost(`/api/invoices/preview?${firmQuery()}`, data);
 }
 
 export function convertEstimate(estimateId, overrideRequest = null) {
-  return apiPost(`/api/invoices/convert/${estimateId}`, overrideRequest || {});
+  return apiPost(`/api/invoices/convert/${estimateId}?${firmQuery()}`, overrideRequest || {});
 }
 
 export function updateInvoice(id, data) {
-  return apiPut(`/api/invoices/${id}`, data);
+  return apiPut(`/api/invoices/${id}?${firmQuery()}`, data);
 }
 
 export function markInvoicePaid(id, paid) {
-  return apiPut(`/api/invoices/${id}/paid?paid=${paid}`);
+  return apiPut(`/api/invoices/${id}/paid?paid=${paid}&${firmQuery()}`);
 }
 
 export function deleteInvoice(id) {
-  return apiDelete(`/api/invoices/${id}`);
+  return apiDelete(`/api/invoices/${id}?${firmQuery()}`);
 }
 
 export function getAllInvoices() {
-  return apiGet("/api/invoices");
+  return apiGet(`/api/invoices?${firmQuery()}`);
 }
 
 export function getAllEstimates() {
-  return apiGet("/api/invoices/estimates");
+  return apiGet(`/api/invoices/estimates?${firmQuery()}`);
 }
 
 export function getAllFinalInvoices() {
-  return apiGet("/api/invoices/final");
+  return apiGet(`/api/invoices/final?${firmQuery()}`);
 }
 
 export function getInvoiceById(id) {
+  // firmId not strictly needed for single invoice fetch
   return apiGet(`/api/invoices/${id}`);
 }
 
 export async function downloadInvoicePdf(id, size = "A4") {
-  const res = await fetch(`${API_BASE}/api/invoices/${id}/pdf?size=${encodeURIComponent(size)}`, { method: "GET" });
+  const res = await fetch(
+    `${API_BASE}/api/invoices/${id}/pdf?size=${encodeURIComponent(size)}`,
+    { method: "GET" }
+  );
   if (!res.ok) {
     const txt = await res.text().catch(() => res.statusText);
     throw new Error(`Invoice PDF failed: ${txt}`);
@@ -153,15 +157,19 @@ export function downloadCustomerStatementPdf(customerId, from, to) {
   const params = new URLSearchParams();
   if (from) params.append("from", from);
   if (to) params.append("to", to);
-  return fetch(`${API_BASE}/api/statements/customer/${customerId}/pdf?${params.toString()}`, { method: "GET" })
-    .then(res => {
-      if (!res.ok) return res.text().then(t => { throw new Error(t); });
-      return res.blob();
-    });
+  return fetch(
+    `${API_BASE}/api/statements/customer/${customerId}/pdf?${params.toString()}`,
+    { method: "GET" }
+  ).then(res => {
+    if (!res.ok) return res.text().then(t => { throw new Error(t); });
+    return res.blob();
+  });
 }
 
 export function getFirmStatement(from, to) {
   const params = new URLSearchParams();
+  const firmId = localStorage.getItem("firmId");
+  params.append("firmId", firmId || "");
   if (from) params.append("from", from);
   if (to) params.append("to", to);
   return apiGet(`/api/statements/firm?${params.toString()}`);
@@ -169,13 +177,30 @@ export function getFirmStatement(from, to) {
 
 export function downloadFirmStatementPdf(from, to) {
   const params = new URLSearchParams();
+  const firmId = localStorage.getItem("firmId");
+  params.append("firmId", firmId || "");
   if (from) params.append("from", from);
   if (to) params.append("to", to);
-  return fetch(`${API_BASE}/api/statements/firm/pdf?${params.toString()}`, { method: "GET" })
-    .then(res => {
-      if (!res.ok) return res.text().then(t => { throw new Error(t); });
-      return res.blob();
-    });
+  return fetch(
+    `${API_BASE}/api/statements/firm/pdf?${params.toString()}`,
+    { method: "GET" }
+  ).then(res => {
+    if (!res.ok) return res.text().then(t => { throw new Error(t); });
+    return res.blob();
+  });
+}
+
+export function getAuthState() {
+  try {
+    return JSON.parse(localStorage.getItem("bsoft.auth") || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function getCurrentFirmId() {
+  const auth = getAuthState();
+  return auth?.firmId ?? null;
 }
 
 /* ============================================================

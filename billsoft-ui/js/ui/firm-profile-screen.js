@@ -1,5 +1,5 @@
 // js/ui/firm-profile-screen.js
-import { apiGet, apiPut } from "../api.js";
+import { apiGet, apiPut, getCurrentFirmId } from "../api.js";
 import { $ } from "../utils.js";
 
 export const firmProfileScreen = {
@@ -117,8 +117,14 @@ export const firmProfileScreen = {
 
   async load() {
     try {
+      const firmId = getCurrentFirmId();
+      if (!firmId) {
+        $("firmMsg").textContent = "No firm selected. Please login again.";
+        return;
+      }
+
       $("firmMsg").textContent = "Loading...";
-      const data = await apiGet("/api/firm");
+      const data = await apiGet(`/api/firm?firmId=${encodeURIComponent(firmId)}`);
 
       this.current = data || {};
 
@@ -201,9 +207,15 @@ export const firmProfileScreen = {
 
   async saveLogoOnly() {
     try {
+      const firmId = getCurrentFirmId();
+      if (!firmId) {
+        $("firmMsg").textContent = "No firm selected. Please login again.";
+        return;
+      }
+
       $("firmMsg").textContent = "Saving logo...";
 
-      const result = await apiPut("/api/firm", {
+      const result = await apiPut(`/api/firm?firmId=${encodeURIComponent(firmId)}`, {
         logoBase64: this.current.logoBase64
       });
 
@@ -255,6 +267,12 @@ export const firmProfileScreen = {
 
   async save() {
     try {
+      const firmId = getCurrentFirmId();
+      if (!firmId) {
+        $("firmMsg").textContent = "No firm selected. Please login again.";
+        return;
+      }
+
       $("firmMsg").textContent = "Saving...";
 
       const payload = {
@@ -275,7 +293,7 @@ export const firmProfileScreen = {
         logoBase64: this.current.logoBase64 ?? null
       };
 
-      const updated = await apiPut("/api/firm", payload);
+      const updated = await apiPut(`/api/firm?firmId=${encodeURIComponent(firmId)}`, payload);
 
       this.current = updated;
       this.populate(updated);

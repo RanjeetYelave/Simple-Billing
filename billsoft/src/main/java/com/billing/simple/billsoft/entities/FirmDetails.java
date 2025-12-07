@@ -1,9 +1,10 @@
 package com.billing.simple.billsoft.entities;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
@@ -16,13 +17,9 @@ import lombok.Setter;
 @Table(name = "firm_details")
 public class FirmDetails {
 
-    /**
-     * For now we still assume a single row (id=1) in the DB.
-     * Multi-firm support can later move this to @GeneratedValue and
-     * adjust other services accordingly.
-     */
     @Id
-    private Long id = 1L;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;   // <-- auto-generated, each firm gets its own ID
 
     // ---------------- BASIC PROFILE ----------------
     private String firmName;
@@ -47,19 +44,18 @@ public class FirmDetails {
 
     // ---------------- AUTH / LOGIN ----------------
     /**
-     * Chosen by user – used to log in.
-     * No strict format: min length & uniqueness handled in AuthService.
+     * Login ID chosen by user.
+     * Must be unique (enforced in AuthService).
      */
     private String loginId;
 
     /**
      * SHA-256 hash of password with internal salt.
-     * Never store raw passwords.
      */
     private String passwordHash;
 
     /**
-     * Counter for failed login attempts for lockout logic.
+     * Failed login attempts for this firm login.
      */
     private Integer failedLoginAttempts;
 
@@ -68,40 +64,13 @@ public class FirmDetails {
      */
     private LocalDateTime lockoutUntil;
 
-    // ---------------- LICENSING ----------------
+    // ---------------- USAGE / FUTURE ----------------
     /**
-     * "TRIAL", "PREMIUM", "PREMIUM_TEST" etc.
-     */
-    private String licenseLevel;
-
-    /**
-     * Encrypted expiry instant (epoch millis) for trial / premium.
-     * AES-encrypted Base64 – so user cannot easily tamper just by editing DB.
-     * If null and licenseLevel is null → no license / no trial.
-     */
-    private String licenseExpiryEncrypted;
-
-    /**
-     * When trial started (for info / analytics).
-     */
-    private LocalDate trialStartDate;
-
-    /**
-     * Total usage seconds (for future “loyalty discount” logic).
-     * Not yet updated anywhere except via helper methods; safe to keep null.
+     * For future reporting if you want per-firm usage tracking.
      */
     private Long totalUsageSeconds;
-    
+
     // ---------------- SUPPORT RESET SECURITY ----------------
-    /**
-     * Failed attempts for developer/support reset key.
-     * Used only for soft lock on reset API.
-     */
     private Integer resetFailCount;
-
-    /**
-     * If not null and now < resetLockedUntil → reset endpoints are blocked.
-     */
     private LocalDateTime resetLockedUntil;
-
 }

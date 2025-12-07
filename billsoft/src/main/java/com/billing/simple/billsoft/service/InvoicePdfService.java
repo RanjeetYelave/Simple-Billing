@@ -54,7 +54,7 @@ public class InvoicePdfService {
         Font small = new Font(Font.HELVETICA, base - 1, Font.NORMAL);
         Font bold = new Font(Font.HELVETICA, base, Font.BOLD);
 
-        FirmDetails firm = safeFirm();
+        FirmDetails firm = safeFirm(invoice);
 
         // ---------------- HEADER ----------------
         PdfPTable header = new PdfPTable(new float[]{3f, 2f});
@@ -115,8 +115,9 @@ public class InvoicePdfService {
         PdfPTable sig = new PdfPTable(new float[]{1f, 1f});
         sig.setWidthPercentage(100);
 
-        sig.addCell(noBorderCell("\n\n\nFor " +
-                (firm != null && firm.getFirmName() != null ? firm.getFirmName() : "________________"), normal));
+        String firmName = (firm != null && firm.getFirmName() != null) ? firm.getFirmName() : "________________";
+
+        sig.addCell(noBorderCell("\n\n\nFor " + firmName, normal));
 
         PdfPCell sign = noBorderCell("\n\n\nAuthorised Signatory", normal);
         sign.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -130,8 +131,15 @@ public class InvoicePdfService {
 
     // ---------- Helper methods ----------
 
-    private FirmDetails safeFirm() {
-        try { return firmService.get(); } catch (Exception ex) { return null; }
+    private FirmDetails safeFirm(Invoice invoice) {
+        try {
+            if (invoice == null || invoice.getFirmId() == null) {
+                return null; // no firmId attached → fall back to generic header
+            }
+            return firmService.get(invoice.getFirmId());
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private static PdfPCell noBorder() {

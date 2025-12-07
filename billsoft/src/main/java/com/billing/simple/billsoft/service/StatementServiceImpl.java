@@ -1,4 +1,5 @@
 package com.billing.simple.billsoft.service;
+
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -54,27 +55,28 @@ public class StatementServiceImpl implements StatementService {
         this.firmRepo = firmRepo;
     }
 
-    /* ============================================================================
-        CUSTOMER STATEMENT (JSON)
-    ============================================================================ */
+    /* CUSTOMER STATEMENT (JSON) */
     @Override
     public CustomerStatementResponse getCustomerStatement(Long customerId, LocalDate from, LocalDate to) {
         Customer customer = customerRepo.findById(customerId).orElse(null);
         if (customer == null) throw new RuntimeException("Customer not found: " + customerId);
 
+        Long firmId = customer.getFirmId();
+
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        List<Invoice> all = invoiceRepo.findByCustomer_Id(customerId);
+        List<Invoice> all = invoiceRepo.findByCustomer_Id(customerId)
+                .stream()
+                .filter(i -> i.getFirmId() != null && i.getFirmId().equals(firmId))
+                .collect(Collectors.toList());
 
-        // Only Invoices (skip estimates/drafts)
         List<Invoice> invoices = all.stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
                 .collect(Collectors.toList());
 
-        // Opening balance = Billed - Paid before period
         BigDecimal billedBefore = invoices.stream()
                 .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
                 .map(i -> nz(i.getTotalAmount()))
@@ -88,7 +90,6 @@ public class StatementServiceImpl implements StatementService {
 
         BigDecimal openingBalance = billedBefore.subtract(paidBefore);
 
-        // Invoices inside range
         List<Invoice> inRange = invoices.stream()
                 .filter(i -> {
                     LocalDate d = i.getInvoiceDate().toLocalDate();
@@ -106,7 +107,6 @@ public class StatementServiceImpl implements StatementService {
             LocalDate invDate = inv.getInvoiceDate().toLocalDate();
             BigDecimal amt = nz(inv.getTotalAmount());
 
-            // Invoice row
             StatementEntry invoiceEntry = new StatementEntry();
             invoiceEntry.setDate(invDate);
             invoiceEntry.setType("INVOICE");
@@ -120,7 +120,6 @@ public class StatementServiceImpl implements StatementService {
             entries.add(invoiceEntry);
             totalBilled = totalBilled.add(amt);
 
-            // If invoice is paid → add payment row
             if (Boolean.TRUE.equals(inv.getPaid())) {
                 StatementEntry pay = new StatementEntry();
                 pay.setDate(invDate);
@@ -151,13 +150,16 @@ public class StatementServiceImpl implements StatementService {
         return resp;
     }
 
-    /* ============================================================================
-         CUSTOMER STATEMENT PDF
-    ============================================================================ */
+    /* CUSTOMER STATEMENT PDF */
     @Override
     public byte[] generateCustomerStatementPdf(Long customerId, LocalDate from, LocalDate to) throws Exception {
+        Customer customer = customerRepo.findById(customerId).orElse(null);
+        if (customer == null) throw new RuntimeException("Customer not found: " + customerId);
+
         CustomerStatementResponse data = getCustomerStatement(customerId, from, to);
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
+        FirmDetails firm = customer.getFirmId() != null
+                ? firmRepo.findById(customer.getFirmId()).orElse(null)
+                : firmRepo.findAll().stream().findFirst().orElse(null);
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -168,13 +170,11 @@ public class StatementServiceImpl implements StatementService {
         Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, 10);
 
-        // Title
         Paragraph head = new Paragraph("Customer Statement", title);
         head.setAlignment(Element.ALIGN_CENTER);
         doc.add(head);
         doc.add(new Paragraph("\n"));
 
-        // Firm details
         if (firm != null) {
             doc.add(new Paragraph(firm.getFirmName(), bold));
             if (firm.getAddressLine1() != null) doc.add(new Paragraph(firm.getAddressLine1(), normal));
@@ -190,7 +190,6 @@ public class StatementServiceImpl implements StatementService {
         doc.add(new Paragraph("Opening Balance: " + fmt(data.getOpeningBalance()), bold));
         doc.add(new Paragraph("\n"));
 
-        // Table
         float[] widths = {1.2f, 1.2f, 1.2f, 3f, 1.2f, 1.2f, 1.2f};
         PdfPTable table = new PdfPTable(widths);
         table.setWidthPercentage(100);
@@ -216,7 +215,6 @@ public class StatementServiceImpl implements StatementService {
         doc.add(table);
         doc.add(new Paragraph("\n"));
 
-        // Totals
         doc.add(new Paragraph("Total Billed: " + fmt(data.getTotalBilled()), bold));
         doc.add(new Paragraph("Total Paid: " + fmt(data.getTotalPaid()), bold));
         doc.add(new Paragraph("Closing Balance: " + fmt(data.getClosingBalance()), bold));
@@ -225,16 +223,15 @@ public class StatementServiceImpl implements StatementService {
         return baos.toByteArray();
     }
 
-    /* ============================================================================
-         FIRM STATEMENT (JSON)
-    ============================================================================ */
+    /* FIRM STATEMENT (JSON) */
     @Override
-    public FirmStatementResponse getFirmStatement(LocalDate from, LocalDate to) {
+    public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
         List<Invoice> list = invoiceRepo.findAll().stream()
+                .filter(i -> i.getFirmId() != null && i.getFirmId().equals(firmId))
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> {
                     LocalDate d = i.getInvoiceDate().toLocalDate();
@@ -257,7 +254,6 @@ public class StatementServiceImpl implements StatementService {
                 .map(i -> nz(i.getTotalTax()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // GST summary using stored taxableAmount + gstAmount
         Map<BigDecimal, GstSummaryItem> gstMap = new LinkedHashMap<>();
 
         for (Invoice inv : list) {
@@ -292,14 +288,14 @@ public class StatementServiceImpl implements StatementService {
         return resp;
     }
 
-    /* ============================================================================
-         FIRM STATEMENT PDF
-    ============================================================================ */
+    /* FIRM STATEMENT PDF */
     @Override
-    public byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception {
+    public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
 
-        FirmStatementResponse data = getFirmStatement(from, to);
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
+        FirmStatementResponse data = getFirmStatement(firmId, from, to);
+        FirmDetails firm = firmRepo.findById(firmId).orElse(
+                firmRepo.findAll().stream().findFirst().orElse(null)
+        );
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -312,7 +308,6 @@ public class StatementServiceImpl implements StatementService {
         Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
         Font normal = new Font(Font.HELVETICA, 10);
 
-        // Header
         Paragraph top = new Paragraph("FIRM STATEMENT", title);
         top.setAlignment(Element.ALIGN_CENTER);
         doc.add(top);
@@ -325,7 +320,7 @@ public class StatementServiceImpl implements StatementService {
             if (firm.getCity() != null || firm.getPincode() != null)
                 doc.add(new Paragraph(
                         (firm.getCity() != null ? firm.getCity() : "") +
-                        (firm.getPincode() != null ? " - " + firm.getPincode() : ""),
+                                (firm.getPincode() != null ? " - " + firm.getPincode() : ""),
                         normal
                 ));
             if (firm.getPhone() != null) doc.add(new Paragraph("Phone: " + firm.getPhone(), normal));
@@ -340,7 +335,6 @@ public class StatementServiceImpl implements StatementService {
         ));
         doc.add(new Paragraph("\n"));
 
-        // Summary row
         PdfPTable summary = new PdfPTable(new float[]{2f, 2f, 2f, 2f});
         summary.setWidthPercentage(100);
 
@@ -352,7 +346,6 @@ public class StatementServiceImpl implements StatementService {
         doc.add(summary);
         doc.add(new Paragraph("\n"));
 
-        // GST summary table
         Paragraph gstTitle = new Paragraph("GST Summary", h1);
         gstTitle.setAlignment(Element.ALIGN_LEFT);
         doc.add(gstTitle);
@@ -383,9 +376,7 @@ public class StatementServiceImpl implements StatementService {
         return baos.toByteArray();
     }
 
-    /* ============================================================================
-        HELPERS
-    ============================================================================ */
+    // HELPERS
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -415,5 +406,4 @@ public class StatementServiceImpl implements StatementService {
         cell.addElement(p);
         return cell;
     }
-
 }

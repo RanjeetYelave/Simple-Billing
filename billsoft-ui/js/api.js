@@ -63,33 +63,23 @@ export function authRegister(loginId, password) {
   return apiPost("/api/auth/register", { loginId, password });
 }
 
-// NEW: validate developer reset (Step 1)
+
+
 export function authDeveloperValidate(loginId, secureKey) {
-  const body = {
+  return apiPost("/api/auth/forgot-password/validate", {
     loginId,
     developerKey: secureKey
-  };
-  return apiPost("/api/auth/forgot-password/validate", body);
+  });
 }
 
-// Developer reset final submit (Step 2)
-export async function authDeveloperReset(loginId, secureKey, newPassword) {
-  const body = {
+export function authDeveloperReset(loginId, secureKey, newPassword) {
+  return apiPost("/api/auth/forgot-password/developer-reset", {
     loginId,
     developerKey: secureKey,
     newPassword
-  };
-  const res = await fetch(API_BASE + "/api/auth/forgot-password/developer-reset", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => res.statusText);
-    throw new Error(txt || "Developer reset failed");
-  }
-  return res.json();
 }
+
 
 /* ============================================================
    INVOICE & ESTIMATE ENDPOINTS

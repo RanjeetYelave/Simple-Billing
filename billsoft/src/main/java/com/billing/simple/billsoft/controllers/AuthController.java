@@ -35,10 +35,9 @@ public class AuthController {
         return auth.login(req);
     }
 
-    // -------- RESET VALIDATION (Step 1) --------
     @PostMapping("/forgot-password/validate")
-    public DevResetValidationResult validateReset(@RequestBody DevResetValidationRequest req) {
-        return auth.validateResetDev(req);
+    public SimpleResult validateReset(@RequestBody DeveloperResetRequest req) {
+        return auth.validateResetAccess(req);
     }
 
     // -------- DO RESET (Step 2) --------

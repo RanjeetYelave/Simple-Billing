@@ -136,6 +136,62 @@ public class AuthService {
         public int attemptsLeft;
         public int maxAttempts;
     }
+    @Transactional
+    public SimpleResult validateResetAccess(DeveloperResetRequest req) {
+        SimpleResult out = new SimpleResult();
+        out.success = false;
+
+        if (!StringUtils.hasText(req.loginId)) {
+            out.message = "Login ID is required.";
+            return out;
+        }
+        if (!StringUtils.hasText(req.developerKey)) {
+            out.message = "Secure reset key is required.";
+            return out;
+        }
+
+        FirmDetails f = firmRepo.findByLoginIdIgnoreCase(req.loginId.trim()).orElse(null);
+        if (f == null) {
+            out.message = "Invalid Login ID.";
+            return out;
+        }
+
+        // Soft lock check
+        if (safeAttempts(f) >= RESET_MAX_FAIL) {
+            if (f.getLockoutUntil() != null &&
+                    LocalDateTime.now().isBefore(f.getLockoutUntil())) {
+                out.message = "Too many incorrect attempts. Locked temporarily.";
+                return out;
+            }
+        }
+
+        // Validate developer key hash
+        if (!sha256(req.developerKey.trim()).equalsIgnoreCase(DEV_RESET_KEY_HASH)) {
+
+            int newFail = safeAttempts(f) + 1;
+            f.setFailedLoginAttempts(newFail);
+
+            if (newFail >= RESET_MAX_FAIL) {
+                f.setLockoutUntil(LocalDateTime.now().plus(RESET_LOCK_DURATION));
+                out.message = "Too many incorrect attempts. Locked for 3 hours.";
+            } else {
+                out.message = "Invalid secure reset key.";
+            }
+
+            firmRepo.save(f);
+            return out;
+        }
+
+        // SUCCESS — clear fails
+        f.setFailedLoginAttempts(0);
+        f.setLockoutUntil(null);
+        firmRepo.save(f);
+
+        out.success = true;
+        out.message = "Verified.";
+        return out;
+    }
+
 
     // -------------------------------------------------------------------------
     // REGISTER

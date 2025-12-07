@@ -705,6 +705,32 @@ label {
 .auth-input-group input:focus {
   outline: none;
 }
+/* ---------------- AUTH INPUT WITH ICON ---------------- */
+.auth-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.auth-input-group span.icon {
+  font-size: 15px;
+  opacity: 0.9;
+}
+.auth-input-group input {
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  margin: 0;
+  box-shadow: none;
+}
+.auth-input-group input:focus {
+  outline: none;
+}
 
 /* ============================================================
    XP SILVER – SUPPORT RESET CONSOLE (ISOLATED)
@@ -909,6 +935,7 @@ label {
   margin-bottom: 6px;
   color: #111827;
 }
+
 .xp-done-text-sub {
   font-size: 11px;
   color: #4b5563;

@@ -2,6 +2,9 @@ package com.billing.simple.billsoft.dtos;
 
 import lombok.Data;
 
+/**
+ * Per-invoice summary used inside customer analytics.
+ */
 @Data
 public class CustomerInvoiceSummary {
 

@@ -14,7 +14,10 @@ public class FirmDetailsService {
         this.repo = repo;
     }
 
-    /** Always return the single stored firm row */
+    /**
+     * Always return the single firm row (id = 1).
+     * If not present, create an empty one.
+     */
     public FirmDetails get() {
         return repo.findById(1L).orElseGet(() -> {
             FirmDetails f = new FirmDetails();
@@ -23,36 +26,41 @@ public class FirmDetailsService {
         });
     }
 
+    /**
+     * Update firm profile fields + logo, while preserving
+     * auth & license fields (loginId, passwordHash, lockout, license, usage).
+     */
     public FirmDetails update(FirmDetails payload) {
 
-        FirmDetails existing = get(); // load existing
+        FirmDetails existing = get(); // load existing main row
+
+        // Always keep the canonical ID = 1
         payload.setId(1L);
 
         // ----------------------------
-        // LOGO HANDLING (FIXED)
+        // LOGO HANDLING
         // ----------------------------
-        if (payload.getLogoBase64() == null) {
-            // explicit removal
+        String incoming = payload.getLogoBase64();
+
+        if (incoming == null || incoming.trim().isEmpty()) {
+            // explicit removal or empty -> wipe logo
             payload.setLogoBase64(null);
 
         } else {
-            String incoming = payload.getLogoBase64().trim();
+            incoming = incoming.trim();
 
-            if (incoming.isBlank()) {
-                payload.setLogoBase64(null);
+            // Normalize – ensure it always remains a data URL
+            if (!incoming.startsWith("data:image")) {
+                incoming = "data:image/jpeg;base64," + incoming;
+            }
+
+            // Reject too large logos (> 1.5MB text size)
+            if (incoming.length() > 2_000_000) {
+                // keep OLD logo instead of breaking existing one
+                payload.setLogoBase64(existing.getLogoBase64());
             } else {
-
-                // MUST ALWAYS KEEP FULL DATA URL
-                boolean isDataUrl = incoming.startsWith("data:image");
-
-                // Reject insanely large logos ( >1.5MB as base64 size)
-                if (incoming.length() > 2_000_000) {
-                    // keep old logo instead
-                    payload.setLogoBase64(existing.getLogoBase64());
-                } else {
-                    // good → save AS-IS
-                    payload.setLogoBase64(incoming);
-                }
+                // safe size -> store as-is
+                payload.setLogoBase64(incoming);
             }
         }
 
@@ -73,6 +81,19 @@ public class FirmDetailsService {
         payload.setBankAccount(nullIfBlank(payload.getBankAccount()));
         payload.setBankIfsc(nullIfBlank(payload.getBankIfsc()));
         payload.setFooterNote(nullIfBlank(payload.getFooterNote()));
+
+        // ----------------------------
+        // PRESERVE AUTH & LICENSE FIELDS
+        // ----------------------------
+        payload.setLoginId(existing.getLoginId());
+        payload.setPasswordHash(existing.getPasswordHash());
+        payload.setFailedLoginAttempts(existing.getFailedLoginAttempts());
+        payload.setLockoutUntil(existing.getLockoutUntil());
+
+        payload.setLicenseLevel(existing.getLicenseLevel());
+        payload.setLicenseExpiryEncrypted(existing.getLicenseExpiryEncrypted());
+        payload.setTrialStartDate(existing.getTrialStartDate());
+        payload.setTotalUsageSeconds(existing.getTotalUsageSeconds());
 
         return repo.save(payload);
     }

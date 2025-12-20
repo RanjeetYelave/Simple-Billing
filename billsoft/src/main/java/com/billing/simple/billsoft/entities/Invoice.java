@@ -1,27 +1,15 @@
 package com.billing.simple.billsoft.entities;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
-
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Getter
 @Setter
@@ -32,42 +20,145 @@ import lombok.Setter;
 @Table(name = "invoices")
 public class Invoice {
 
+    // ------------------------
+    // PRIMARY KEY
+    // ------------------------
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    // ------------------------
+    // INVOICE / ESTIMATE NUMBERS
+    // ------------------------
+    @Column(unique = true, nullable = true)
     private String invoiceNumber;
 
+    @Column(unique = true, nullable = true)
+    private String estimateNumber;
+
+    // ------------------------
+    // STATUS
+    // ------------------------
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private InvoiceStatus status = InvoiceStatus.FINAL;
+
+    // ------------------------
+    // RELATIONS
+    // ------------------------
     @ManyToOne
     @JoinColumn(name = "customer_id")
     private Customer customer;
-
-    // === Totals Calculated by Backend ===
-    private Double subtotalWithoutTax;   // NEW
-    private Double totalTax;             // NEW
-    private Double totalDiscount;        // NEW
-    private Double totalAmount;          // already exists but moved into this category
-
-    // === Invoice-level discount ===
-    private String invoiceDiscountType;  // NEW
-    private Double invoiceDiscountValue; // NEW
-
-    private LocalDateTime invoiceDate;
-
-    private String notes;
-
-    // === New Paid Flag ===
-    @Builder.Default
-    private Boolean paid = false;
 
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     private List<InvoiceItem> items = new ArrayList<>();
 
+    // ------------------------
+    // AMOUNTS (BigDecimal)
+    // ------------------------
+    @Column(precision = 15, scale = 2)
+    private BigDecimal subtotalWithoutTax;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal totalTax;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal totalDiscount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal totalAmount;
+
+    private String invoiceDiscountType;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal invoiceDiscountValue;
+
+    // ------------------------
+    // DATES
+    // ------------------------
+    private LocalDateTime invoiceDate;
+    private LocalDate dueDate;
+
+    // For ESTIMATE → INVOICE mapping
+    private Long convertedInvoiceId;
+
+    // ------------------------
+    // FLAGS
+    // ------------------------
+    @Builder.Default
+    private Boolean paid = false;
+
+    // ------------------------
+    // EXTRA FIELDS
+    // ------------------------
+    @Column(length = 2000)
+    private String customerNote;
+
+    @Column(length = 2000)
+    private String termsAndConditions;
+
+    private String paymentMethod;
+    private String currency = "INR";
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal roundOff;
+
+    private String tags;
+
+    // ------------------------
+    // AUDIT FIELDS
+    // ------------------------
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    // ------------------------
+    // LIFECYCLE HOOKS
+    // ------------------------
     @PrePersist
     public void prePersist() {
-        this.invoiceDate = LocalDateTime.now();
-        if (paid == null) paid = false;
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+
+        if (status == null)
+            status = InvoiceStatus.FINAL;
+
+        // Only set invoiceDate for actual invoices
+        if (invoiceDate == null && status != InvoiceStatus.ESTIMATE) {
+            invoiceDate = LocalDateTime.now();
+        }
+
+        // Ensure estimate NEVER uses invoiceNumber
+        if (status == InvoiceStatus.ESTIMATE) {
+            invoiceNumber = null;
+        }
+
+        if (paid == null)
+            paid = false;
+
+        normalizeDecimals();
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = LocalDateTime.now();
+        normalizeDecimals();
+    }
+
+    // ------------------------
+    // NORMALIZER FOR MONEY FIELDS
+    // ------------------------
+    private void normalizeDecimals() {
+        subtotalWithoutTax = safe(subtotalWithoutTax);
+        totalTax = safe(totalTax);
+        totalDiscount = safe(totalDiscount);
+        totalAmount = safe(totalAmount);
+        invoiceDiscountValue = safe(invoiceDiscountValue);
+        roundOff = safe(roundOff);
+    }
+
+    private BigDecimal safe(BigDecimal val) {
+        return val == null ? null : val.setScale(2, RoundingMode.HALF_UP);
     }
 }

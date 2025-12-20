@@ -14,7 +14,7 @@ export const ui = {
     customers: customerScreen,
     products: productScreen,
     analytics: analyticsScreen,
-    firm: firmAnalyticsScreen        // 👈 NEW
+    firm: firmAnalyticsScreen        
   },
 
   showScreen(id) {

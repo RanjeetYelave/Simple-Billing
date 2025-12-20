@@ -4,65 +4,88 @@ import { customerModule } from "./customer.js";
 import { invoiceModule } from "./invoice.js";
 import { layout } from "./ui/layout.js";
 
+import { authScreen } from "./ui/auth-screen.js";
+import { authResetScreen } from "./ui/auth-reset-screen.js"; // NEW
+
 document.addEventListener("DOMContentLoaded", init);
 
+/* ============================
+   INIT
+   ============================ */
 async function init() {
-  try {
-    console.log("🔥 Loading initial data...");
-
-    await productModule.load();
-    await customerModule.load();
-
-    // Apply theme BEFORE rendering UI
-    applySavedTheme();
-
-    console.log("🔥 Rendering UI shell...");
-
-    // Instead of replacing body.innerHTML, place layout INTO #app
-    document.getElementById("app").innerHTML = layout.render();
-
-    layout.init();
-
-    setupThemeToggle(); // connect button AFTER rendering
-
-  } catch (err) {
-    console.error("Init failed", err);
-  }
+  applySavedTheme();
+  showLogin();
 }
 
-// ============================
-// Theme Loader (before render)
-// ============================
+/* ============================
+   SCREEN ROUTING
+   ============================ */
+function showLogin() {
+  const app = document.getElementById("app");
+  app.innerHTML = authScreen.render();
+
+  authScreen.init({
+    onLoginSuccess: bootstrapApp,
+    onShowResetScreen: showResetPassword // NEW CALLBACK
+  });
+
+  setupThemeToggle();
+}
+
+function showResetPassword() {
+  const app = document.getElementById("app");
+  app.innerHTML = authResetScreen.render();
+
+  authResetScreen.init({
+    onBackToLogin: showLogin
+  });
+
+  setupThemeToggle();
+}
+
+/* ============================
+   LOAD APP — AFTER LOGIN
+   ============================ */
+async function bootstrapApp() {
+  const app = document.getElementById("app");
+  if (!app) return;
+
+  console.log("🔥 Bootstrapping InvoiceSuite…");
+
+  await productModule.load();
+  await customerModule.load();
+
+  app.innerHTML = layout.render();
+  layout.init();
+
+  setupThemeToggle();
+}
+
+/* ============================
+   THEME
+   ============================ */
 function applySavedTheme() {
-  const saved = localStorage.getItem("theme") || "dark";
-  document.documentElement.setAttribute("data-theme", saved);
+  const theme = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
-// ============================
-// Theme Toggle
-// ============================
 function setupThemeToggle() {
   const toggle = document.getElementById("themeToggle");
-  if (!toggle) {
-    console.warn("Theme toggle button missing");
-    return;
-  }
+  if (!toggle) return;
 
   const root = document.documentElement;
 
-  const updateIcon = (mode) => {
+  function setIcon(mode) {
     toggle.textContent = mode === "dark" ? "🌞" : "🌙";
-  };
+  }
 
-  // Load saved theme
-  const saved = localStorage.getItem("theme") || "dark";
-  updateIcon(saved);
+  setIcon(localStorage.getItem("theme") || "dark");
 
   toggle.onclick = () => {
     const current = root.getAttribute("data-theme");
     const next = current === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
     localStorage.setItem("theme", next);
-    updateIcon(next);
+    setIcon(next);
   };
 }

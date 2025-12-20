@@ -4,28 +4,31 @@ import java.util.List;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.NoArgsConstructor;
 
+/**
+ * Analytics for the entire firm (dashboard).
+ */
 @Getter
 @Setter
 public class FirmAnalyticsResponse {
 
-    // High-level amounts
-    private Double totalBusiness;      // all invoices
-    private Double totalPaid;          // paid invoices
-    private Double totalPending;       // unpaid amount
+    // High-level totals
+    private Double totalBusiness;
+    private Double totalPaid;
+    private Double totalPending;
 
-    // Period stats
+    // Period data
     private Double businessToday;
     private Double businessThisWeek;
     private Double businessThisMonth;
     private Double businessThisYear;
 
-    // Top entities
+    // Rankings
     private List<TopCustomer> topCustomers;
     private List<TopProduct> topProducts;
 
-    @Getter
-    @Setter
+    @Getter @Setter @NoArgsConstructor
     public static class TopCustomer {
         private Long customerId;
         private String customerName;
@@ -34,8 +37,7 @@ public class FirmAnalyticsResponse {
         private Long invoiceCount;
     }
 
-    @Getter
-    @Setter
+    @Getter @Setter @NoArgsConstructor
     public static class TopProduct {
         private Long productId;
         private String productName;

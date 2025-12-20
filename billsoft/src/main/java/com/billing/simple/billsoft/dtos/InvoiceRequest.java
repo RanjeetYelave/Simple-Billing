@@ -1,6 +1,10 @@
 package com.billing.simple.billsoft.dtos;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+
+import com.billing.simple.billsoft.entities.InvoiceStatus;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -9,27 +13,78 @@ import lombok.Setter;
 @Setter
 public class InvoiceRequest {
 
+    /* ============================
+       BASIC FIELDS
+       ============================ */
     private Long customerId;
     private String notes;
 
-    /**
-     * Optional invoice-level discount (applied on subtotal after per-item discounts)
-     * type: "PERCENT" or "VALUE"
-     */
-    private Discount invoiceDiscount;
+    private List<InvoiceRequestItem> items;
 
     /**
-     * New invoices will normally start as unpaid.
-     * If null, service should default this to false.
+     * Paid flag – if null, service defaults to false.
      */
     private Boolean paid;
 
-    private List<InvoiceRequestItem> items;
+    /* ============================
+       DISCOUNT HANDLING
+       ============================ */
+    private Discount invoiceDiscount;
 
+    /* ============================
+       INVOICE / ESTIMATE NUMBERS
+       ============================ */
+
+    /**
+     * Only used for FINAL invoices.
+     * UI can send null → backend will auto-generate.
+     */
+    private String invoiceNumber;
+
+    /**
+     * Only used for ESTIMATES.
+     * UI can send null → backend will auto-generate.
+     */
+    private String estimateNumber;
+
+    /* ============================
+       STATUS CONTROL
+       ============================ */
+
+    /**
+     * DRAFT, ESTIMATE, FINAL, SENT, PAID, OVERDUE, CANCELLED
+     */
+    private InvoiceStatus status;
+
+    /**
+     * Used only when estimate converts to invoice.
+     */
+    private Long convertedInvoiceId;
+
+    private LocalDate dueDate;
+
+    /* ============================
+       PROFESSIONAL FIELDS
+       ============================ */
+    private String customerNote;
+    private String termsAndConditions;
+    private String paymentMethod;
+    private String currency = "INR";
+    private BigDecimal roundOff;
+    private String tags;
+
+    /* ============================
+       DATE — FROM UI (OPTIONAL)
+       ============================ */
+    private String invoiceDate; // format: yyyy-MM-dd or yyyy-MM-ddTHH:mm
+
+    /* ============================
+       INNER CLASS – Discount
+       ============================ */
     @Getter
     @Setter
     public static class Discount {
-        private String type; // "PERCENT" or "VALUE"
-        private Double value; // value or percent
+        private String type;      // "PERCENT" or "VALUE"
+        private BigDecimal value; // percent or amount (as per type)
     }
 }

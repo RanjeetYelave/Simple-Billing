@@ -676,3 +676,442 @@ label {
   font-size: 14px;
 }
 
+/* ---------------- AUTH INPUT WITH ICON ---------------- */
+.auth-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+.auth-input-group span.icon {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+.auth-input-group input {
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  margin: 0;
+  box-shadow: none;
+}
+
+.auth-input-group input:focus {
+  outline: none;
+}
+/* ---------------- AUTH INPUT WITH ICON ---------------- */
+.auth-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.auth-input-group span.icon {
+  font-size: 15px;
+  opacity: 0.9;
+}
+.auth-input-group input {
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  margin: 0;
+  box-shadow: none;
+}
+.auth-input-group input:focus {
+  outline: none;
+}
+
+/* ============================================================
+   XP SILVER – SUPPORT RESET CONSOLE (ISOLATED)
+   ============================================================ */
+
+.xp-reset-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(#cdd3df, #e4e8f0);
+  font-family: "Segoe UI", Tahoma, system-ui, sans-serif;
+}
+
+.xp-window {
+  width: 560px;
+  max-width: 100%;
+  border: 1px solid #9da3b4;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+  background: #d4d7e3;
+}
+
+/* Title bar */
+.xp-title-bar {
+  background: linear-gradient(to right, #d8dce6, #f3f4f8);
+  border-bottom: 1px solid #9da3b4;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.xp-title-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.xp-title-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: #4b6ea8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: white;
+}
+
+.xp-title-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2933;
+}
+
+.xp-title-meta {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* Menu / breadcrumb bar */
+.xp-menu-bar {
+  background: #c5cad8;
+  border-bottom: 1px solid #9da3b4;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #374151;
+}
+
+/* Body */
+.xp-body {
+  padding: 12px 14px 14px;
+  background: #e1e4f0;
+}
+
+/* Panels */
+.xp-panel {
+  background: #f3f4fa;
+  border: 1px solid #aeb4c8;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.xp-panel-header {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #111827;
+}
+
+.xp-panel-text {
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+/* Step cards */
+.xp-step-card {
+  background: #f8f9ff;
+  border: 1px solid #aeb4c8;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.xp-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.xp-step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.xp-step-count {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.xp-label {
+  font-size: 11px;
+  color: #111827;
+}
+
+/* Override for inputs in XP console */
+.xp-step-card .auth-input-group {
+  margin-bottom: 8px;
+  background: #ffffff;
+  border-color: #9da3b4;
+}
+
+.xp-step-card input {
+  font-size: 12px;
+}
+
+/* Buttons – XP-ish */
+.xp-btn-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.xp-btn {
+  min-width: 120px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 3px;
+  border: 1px solid #6b7280;
+  background: linear-gradient(#ffffff, #dde3f2);
+  color: #111827;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.xp-btn.primary {
+  border-color: #375ba8;
+  background: linear-gradient(#ffffff, #d3ddf9);
+}
+
+.xp-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.xp-btn:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7);
+}
+
+/* Security bar */
+#resetSecurityBar {
+  margin-bottom: 8px;
+  padding: 4px 6px;
+  border-radius: 0;
+  border: 1px solid #9da3b4;
+  background: #dde5e7;
+  display: none;
+  font-size: 11px;
+}
+
+#resetSecurityIcon {
+  margin-right: 4px;
+}
+
+/* Messages */
+#resetStep1Msg,
+#resetStep2Msg {
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+/* Done message */
+.xp-done-text-main {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.xp-done-text-sub {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* Small info text at bottom */
+.xp-footer-note {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 6px;
+}
+
+/* Link-style buttons (Forgot password, activation link) */
+.btn.link {
+  background: transparent;
+  border: none;
+  color: var(--btn-primary-bg);
+  justify-content: center;
+  padding: 0;
+  border-radius: 0;
+}
+
+.btn.link:hover {
+  background: transparent;
+  text-decoration: underline;
+  transform: none;
+}
+
+
+/* ============================================================================
+   AUTH ROOT (page container)
+============================================================================ */
+.auth-root {
+  min-height: 100vh;
+  background: var(--bg-page);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: var(--text-dark);
+}
+
+/* ============================================================================
+   CARD
+============================================================================ */
+.card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: 0 7px 28px rgba(0,0,0,0.06);
+  padding: 20px 24px;
+  border: 1px solid #e5e8f3;
+}
+
+.card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* ============================================================================
+   INPUTS
+============================================================================ */
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  font-size: 14px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #1a56db;
+  box-shadow: 0 0 0 2px rgba(26,86,219,0.2);
+}
+
+/* ============================================================================
+   BUTTONS
+============================================================================ */
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+.btn.small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn.primary {
+  background: var(--btn-primary-bg);
+  color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--btn-primary-hover);
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-dark);
+}
+
+.btn.ghost:hover {
+  background: #eef1fb;
+}
+
+.btn.link {
+  background: transparent;
+  color: var(--btn-primary-bg);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.btn.link:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+   TEXT + LABELS
+============================================================================ */
+.small {
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+  display: block;
+}
+
+/* ============================================================================
+   TABS
+============================================================================ */
+#tabLoginBtn,
+#tabRegisterBtn {
+  border-radius: 8px;
+}
+
+/* ============================================================================
+   SECURITY BAR
+============================================================================ */
+#secBar {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+/* ============================================================================
+   ACTIVATION BOX
+============================================================================ */
+#authActivationBox input {
+  border-radius: 8px;
+}
+
+#authActivationMsg {
+  font-size: 12px !important;
+  min-height: 18px;
+}
+
+/* ============================================================================
+   LICENSE BADGE
+============================================================================ */
+#authLicenseBadge {
+  font-size: 12px;
+  text-align: center;
+}

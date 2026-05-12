@@ -1,0 +1,37 @@
+name: Build and Release WAR
+
+on:
+  push:
+    branches:
+      - Release-branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        working-directory: ./billsoft
+        run: ./mvnw clean package -DskipTests
+
+      - name: Rename WAR file
+        working-directory: ./billsoft
+        run: mv target/billsoft-0.0.1-SNAPSHOT.war target/billsoft-Release-${{ github.run_number }}.war
+
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: Release-${{ github.run_number }}
+          name: Auto Release ${{ github.run_number }}
+          files: billsoft/target/billsoft-Release-${{ github.run_number }}.war
+          generate_release_notes: true

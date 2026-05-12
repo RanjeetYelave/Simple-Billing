@@ -199,11 +199,16 @@
       const [loading, setLoading] = useState(true);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
+      const [updateInfo, setUpdateInfo] = useState(null);
 
       useEffect(() => {
         API.analytics.firm()
           .then(d => { setData(d); setLoading(false); })
           .catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
+          
+        API.system.updateStatus().then(res => {
+          if (res && res.updateAvailable) setUpdateInfo(res);
+        }).catch(() => {});
       }, []);
 
       const handleSearch = useCallback(BillsoftUtils.debounce((name) => {
@@ -231,6 +236,16 @@
       ];
 
       return React.createElement('div', null,
+        updateInfo && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          React.createElement('div', null,
+            React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, '🚀 Update Available!'),
+            React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `A new version (${updateInfo.latestVersion}) is available. You are currently on ${updateInfo.currentVersion}.`)
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: '12px' } },
+            React.createElement('a', { className: 'btn btn-outline', href: updateInfo.htmlUrl, target: '_blank' }, 'View Details'),
+            updateInfo.downloadUrl && React.createElement('a', { className: 'btn btn-primary', href: updateInfo.downloadUrl }, 'Download Update')
+          )
+        ),
         React.createElement('div', { className: 'kpi-grid' },
           kpis.map((k, i) =>
             React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },

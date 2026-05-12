@@ -171,5 +171,10 @@ const API = {
       formData.append('mode', mode || 'merge');
       return API._json('/api/backup/import', { method: 'POST', body: formData });
     }
+  },
+
+  // ─── System & Updates ───
+  system: {
+    updateStatus: () => API._json('/api/system/update-status')
   }
 };

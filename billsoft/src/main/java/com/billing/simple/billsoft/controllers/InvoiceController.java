@@ -30,13 +30,13 @@ public class InvoiceController {
 
     // ---------------- NUMBER GENERATORS ----------------
     @GetMapping("/next-invoice-number")
-    public ResponseEntity<String> nextInvoiceNumber() {
-        return ResponseEntity.ok(service.generateInvoiceNumber());
+    public ResponseEntity<String> nextInvoiceNumber(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(service.generateInvoiceNumber(firmId));
     }
 
     @GetMapping("/next-estimate-number")
-    public ResponseEntity<String> nextEstimateNumber() {
-        return ResponseEntity.ok(service.generateEstimateNumber());
+    public ResponseEntity<String> nextEstimateNumber(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(service.generateEstimateNumber(firmId));
     }
 
     // ---------------- CREATE ----------------
@@ -69,18 +69,18 @@ public class InvoiceController {
 
     // ---------------- LIST ----------------
     @GetMapping
-    public ResponseEntity<List<Invoice>> getAll() {
-        return ResponseEntity.ok(service.getAll());
+    public ResponseEntity<List<Invoice>> getAll(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(service.getAll(firmId));
     }
 
     @GetMapping("/estimates")
-    public ResponseEntity<List<Invoice>> getAllEstimates() {
-        return ResponseEntity.ok(service.getAllEstimates());
+    public ResponseEntity<List<Invoice>> getAllEstimates(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(service.getAllEstimates(firmId));
     }
 
     @GetMapping("/final")
-    public ResponseEntity<List<Invoice>> getAllFinalInvoices() {
-        return ResponseEntity.ok(service.getAllFinalInvoices());
+    public ResponseEntity<List<Invoice>> getAllFinalInvoices(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(service.getAllFinalInvoices(firmId));
     }
 
     // ---------------- GET BY ID ----------------

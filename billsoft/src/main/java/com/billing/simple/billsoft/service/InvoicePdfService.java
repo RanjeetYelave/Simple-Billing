@@ -61,7 +61,10 @@ public class InvoicePdfService {
         Font bold = new Font(Font.HELVETICA, pageSize == PageSize.A5 ? 10 : 10, Font.BOLD);
 
         FirmDetails firm = null;
-        try { firm = firmService.get(); } catch (Exception e) { firm = null; }
+        try {
+            Long firmId = invoice != null ? invoice.getFirmId() : null;
+            firm = firmId != null ? firmService.get(firmId) : firmService.getFirst();
+        } catch (Exception e) { firm = null; }
 
         // ---------------- HEADER ----------------
         PdfPTable header = new PdfPTable(new float[]{2f, 1.6f});

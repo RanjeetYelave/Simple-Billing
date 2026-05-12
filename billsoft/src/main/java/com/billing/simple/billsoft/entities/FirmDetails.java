@@ -11,7 +11,9 @@ import lombok.Setter;
 public class FirmDetails {
 
     @Id
-    private Long id = 1L; // no @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
 
     private String firmName;
     private String ownerName;

@@ -16,6 +16,7 @@ public class InvoiceRequest {
     /* ============================
        BASIC FIELDS
        ============================ */
+    private Long firmId;
     private Long customerId;
     private String notes;
 

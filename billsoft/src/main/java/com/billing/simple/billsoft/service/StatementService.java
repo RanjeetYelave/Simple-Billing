@@ -7,11 +7,11 @@ import com.billing.simple.billsoft.dtos.FirmStatementResponse;
 
 public interface StatementService {
 
-    CustomerStatementResponse getCustomerStatement(Long customerId, LocalDate from, LocalDate to);
+    CustomerStatementResponse getCustomerStatement(Long firmId, Long customerId, LocalDate from, LocalDate to);
 
-    byte[] generateCustomerStatementPdf(Long customerId, LocalDate from, LocalDate to) throws Exception;
+    byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception;
 
-    FirmStatementResponse getFirmStatement(LocalDate from, LocalDate to);
+    FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to);
 
-    byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception;
+    byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception;
 }

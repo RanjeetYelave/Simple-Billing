@@ -31,6 +31,9 @@ public class Product {
     @Column(precision = 5, scale = 2)
     private BigDecimal gstPercentage;
 
+    @Column(nullable = false)
+    private Long firmId;
+
     private LocalDateTime createdAt;
 
     @PrePersist

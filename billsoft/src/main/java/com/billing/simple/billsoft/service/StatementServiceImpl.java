@@ -58,14 +58,19 @@ public class StatementServiceImpl implements StatementService {
         CUSTOMER STATEMENT (JSON)
     ============================================================================ */
     @Override
-    public CustomerStatementResponse getCustomerStatement(Long customerId, LocalDate from, LocalDate to) {
+    public CustomerStatementResponse getCustomerStatement(Long firmId, Long customerId, LocalDate from, LocalDate to) {
         Customer customer = customerRepo.findById(customerId).orElse(null);
         if (customer == null) throw new RuntimeException("Customer not found: " + customerId);
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        List<Invoice> all = invoiceRepo.findByCustomer_Id(customerId);
+        List<Invoice> all;
+        if (firmId != null) {
+            all = invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customerId);
+        } else {
+            all = invoiceRepo.findByCustomer_Id(customerId);
+        }
 
         // Only Invoices (skip estimates/drafts)
         List<Invoice> invoices = all.stream()
@@ -155,9 +160,9 @@ public class StatementServiceImpl implements StatementService {
          CUSTOMER STATEMENT PDF
     ============================================================================ */
     @Override
-    public byte[] generateCustomerStatementPdf(Long customerId, LocalDate from, LocalDate to) throws Exception {
-        CustomerStatementResponse data = getCustomerStatement(customerId, from, to);
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
+    public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception {
+        CustomerStatementResponse data = getCustomerStatement(firmId, customerId, from, to);
+        FirmDetails firm = firmRepo.findById(firmId).orElse(null);
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -229,17 +234,28 @@ public class StatementServiceImpl implements StatementService {
          FIRM STATEMENT (JSON)
     ============================================================================ */
     @Override
-    public FirmStatementResponse getFirmStatement(LocalDate from, LocalDate to) {
+    public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        List<Invoice> list = invoiceRepo.findAll().stream()
+        List<Invoice> list;
+        if (firmId != null) {
+            list = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
+                    firmId,
+                    fromDate.atStartOfDay(),
+                    toDate.plusDays(1).atStartOfDay()
+            );
+        } else {
+            list = invoiceRepo.findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(
+                    fromDate.atStartOfDay(),
+                    toDate.plusDays(1).atStartOfDay()
+            );
+        }
+        list = list.stream()
                 .filter(i -> i.getInvoiceDate() != null)
-                .filter(i -> {
-                    LocalDate d = i.getInvoiceDate().toLocalDate();
-                    return (!d.isBefore(fromDate) && !d.isAfter(toDate));
-                })
+                .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
+                .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
                 .collect(Collectors.toList());
 
         BigDecimal totalBilled = list.stream()
@@ -296,10 +312,10 @@ public class StatementServiceImpl implements StatementService {
          FIRM STATEMENT PDF
     ============================================================================ */
     @Override
-    public byte[] generateFirmStatementPdf(LocalDate from, LocalDate to) throws Exception {
+    public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
 
-        FirmStatementResponse data = getFirmStatement(from, to);
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElse(null);
+        FirmStatementResponse data = getFirmStatement(firmId, from, to);
+        FirmDetails firm = firmRepo.findById(firmId).orElse(null);
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

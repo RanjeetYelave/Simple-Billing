@@ -21,7 +21,7 @@ public class Customer {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false, length = 15)
+    @Column(length = 15)
     private String phone;
 
     private String email;
@@ -31,6 +31,9 @@ public class Customer {
 
     // (Optional but recommended for invoice systems)
     private String gstin;
+
+    @Column(nullable = false)
+    private Long firmId;
 
     private LocalDateTime createdAt;
 

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.billing.simple.billsoft.entities.Customer;
@@ -33,8 +34,8 @@ public class CustomerController {
 	}
 
 	@GetMapping
-	public ResponseEntity<List<Customer>> getAll() {
-		return ResponseEntity.ok(service.getAll());
+	public ResponseEntity<List<Customer>> getAll(@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.getAll(firmId));
 	}
 
 	@GetMapping("/{id}")

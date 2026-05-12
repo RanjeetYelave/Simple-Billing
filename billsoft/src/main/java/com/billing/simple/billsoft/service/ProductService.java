@@ -23,8 +23,8 @@ public class ProductService {
 		return repo.save(product);
 	}
 
-	public List<Product> getAll() {
-		return repo.findAll();
+	public List<Product> getAll(Long firmId) {
+		return repo.findByFirmId(firmId);
 	}
 
 	public Product getById(Long id) {

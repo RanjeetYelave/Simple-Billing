@@ -18,7 +18,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/firm")
-    public ResponseEntity<FirmAnalyticsResponse> getFirmAnalytics() {
-        return ResponseEntity.ok(invoiceService.getFirmAnalytics());
+    public ResponseEntity<FirmAnalyticsResponse> getFirmAnalytics(@RequestParam(required = false) Long firmId) {
+        return ResponseEntity.ok(invoiceService.getFirmAnalytics(firmId));
     }
 }

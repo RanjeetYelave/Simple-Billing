@@ -63,16 +63,14 @@ public class InvoiceService {
     // -------------------------
     // Number generators
     // -------------------------
-    public String generateInvoiceNumber() {
-        Invoice last = invoiceRepo.findTopByOrderByIdDesc();
-        long next = (last == null) ? 1 : last.getId() + 1;
-        return String.format("INV-%04d", next);
+    public String generateInvoiceNumber(Long firmId) {
+        long count = invoiceRepo.countByFirmId(firmId);
+        return String.format("INV-%04d", count + 1);
     }
 
-    public String generateEstimateNumber() {
-        List<Invoice> estimates = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.ESTIMATE);
-        int next = (estimates == null) ? 1 : estimates.size() + 1;
-        return String.format("EST-%04d", next);
+    public String generateEstimateNumber(Long firmId) {
+        long count = invoiceRepo.countByFirmIdAndStatus(firmId, InvoiceStatus.ESTIMATE);
+        return String.format("EST-%04d", count + 1);
     }
 
     // -------------------------
@@ -146,6 +144,7 @@ public class InvoiceService {
         }
 
         Invoice invoice = new Invoice();
+        invoice.setFirmId(request.getFirmId());
 
         // identifiers (Option B behaviour)
         if (status == InvoiceStatus.ESTIMATE) {
@@ -153,7 +152,7 @@ public class InvoiceService {
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 invoice.setEstimateNumber(request.getEstimateNumber());
             } else {
-                invoice.setEstimateNumber(generateEstimateNumber());
+                invoice.setEstimateNumber(generateEstimateNumber(request.getFirmId()));
                 request.setEstimateNumber(invoice.getEstimateNumber()); // keep dto consistent
             }
             invoice.setInvoiceNumber(null);
@@ -161,7 +160,7 @@ public class InvoiceService {
             // Final/invoice: MUST have invoiceNumber, estimateNumber optional
             String invNo = request.getInvoiceNumber();
             if (invNo == null || invNo.isBlank()) {
-                invNo = generateInvoiceNumber();
+                invNo = generateInvoiceNumber(request.getFirmId());
                 request.setInvoiceNumber(invNo);
             }
             invoice.setInvoiceNumber(invNo);
@@ -187,7 +186,7 @@ public class InvoiceService {
     public Invoice createEstimate(InvoiceRequest request) {
         request.setStatus(InvoiceStatus.ESTIMATE);
         if (request.getEstimateNumber() == null || request.getEstimateNumber().isBlank()) {
-            request.setEstimateNumber(generateEstimateNumber());
+            request.setEstimateNumber(generateEstimateNumber(request.getFirmId()));
         }
         // IMPORTANT: do NOT set invoiceNumber here; createInvoice() will treat ESTIMATE correctly
         return createInvoice(request);
@@ -214,11 +213,12 @@ public class InvoiceService {
         }
 
         Invoice invoice = new Invoice();
+        Long firmId = request.getFirmId();
 
         if (status == InvoiceStatus.ESTIMATE) {
             String estNo = request.getEstimateNumber();
             if (estNo == null || estNo.isBlank()) {
-                estNo = generateEstimateNumber();
+                estNo = generateEstimateNumber(firmId);
                 request.setEstimateNumber(estNo);
             }
             invoice.setEstimateNumber(estNo);
@@ -226,7 +226,7 @@ public class InvoiceService {
         } else {
             String invNo = request.getInvoiceNumber();
             if (invNo == null || invNo.isBlank()) {
-                invNo = generateInvoiceNumber();
+                invNo = generateInvoiceNumber(firmId);
                 request.setInvoiceNumber(invNo);
             }
             invoice.setInvoiceNumber(invNo);
@@ -242,6 +242,17 @@ public class InvoiceService {
     // -------------------------
     // GET / LIST / DELETE
     // -------------------------
+    public List<Invoice> getAll(Long firmId) {
+        List<Invoice> all;
+        if (firmId != null) {
+            all = invoiceRepo.findByFirmIdAndCustomerNameContainingIgnoreCase(firmId, "");
+        } else {
+            all = invoiceRepo.findAll();
+        }
+        all.forEach(this::normalizeStatus);
+        return all;
+    }
+
     public List<Invoice> getAll() {
         List<Invoice> all = invoiceRepo.findAll();
         all.forEach(this::normalizeStatus);
@@ -457,7 +468,8 @@ public class InvoiceService {
         newInv.setCurrency(estimate.getCurrency());
         newInv.setTags(estimate.getTags());
 
-        newInv.setInvoiceNumber(generateInvoiceNumber());
+        newInv.setFirmId(estimate.getFirmId());
+        newInv.setInvoiceNumber(generateInvoiceNumber(estimate.getFirmId()));
         newInv.setStatus(InvoiceStatus.FINAL);
         newInv.setInvoiceDate(LocalDateTime.now());
         newInv.setPaid(false);
@@ -616,7 +628,20 @@ public class InvoiceService {
 
     @Transactional(readOnly = true)
     public FirmAnalyticsResponse getFirmAnalytics() {
-        List<Invoice> all = invoiceRepo.findAll();
+        return getFirmAnalytics(null);
+    }
+
+    @Transactional(readOnly = true)
+    public FirmAnalyticsResponse getFirmAnalytics(Long firmId) {
+        List<Invoice> all;
+        if (firmId != null) {
+            all = invoiceRepo.findAllByFirmIdAndStatusIn(firmId, List.of(InvoiceStatus.FINAL, InvoiceStatus.PAID, InvoiceStatus.OVERDUE, InvoiceStatus.SENT));
+            // Also include estimates that may have become invoices
+            List<Invoice> estimates = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId, InvoiceStatus.ESTIMATE);
+            if (estimates != null) all.addAll(estimates);
+        } else {
+            all = invoiceRepo.findAll();
+        }
         LocalDate today = LocalDate.now();
 
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
@@ -791,14 +816,24 @@ public class InvoiceService {
     // -------------------------
     // Convenience lists
     // -------------------------
-    public List<Invoice> getAllEstimates() {
-        List<Invoice> list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.ESTIMATE);
+    public List<Invoice> getAllEstimates(Long firmId) {
+        List<Invoice> list;
+        if (firmId != null) {
+            list = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId, InvoiceStatus.ESTIMATE);
+        } else {
+            list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.ESTIMATE);
+        }
         list.forEach(this::normalizeStatus);
         return list;
     }
 
-    public List<Invoice> getAllFinalInvoices() {
-        List<Invoice> list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.FINAL);
+    public List<Invoice> getAllFinalInvoices(Long firmId) {
+        List<Invoice> list;
+        if (firmId != null) {
+            list = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId, InvoiceStatus.FINAL);
+        } else {
+            list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.FINAL);
+        }
         list.forEach(this::normalizeStatus);
         return list;
     }

@@ -30,10 +30,10 @@ public class Invoice {
     // ------------------------
     // INVOICE / ESTIMATE NUMBERS
     // ------------------------
-    @Column(unique = true, nullable = true)
+    @Column(nullable = true)
     private String invoiceNumber;
 
-    @Column(unique = true, nullable = true)
+    @Column(nullable = true)
     private String estimateNumber;
 
     // ------------------------
@@ -89,6 +89,12 @@ public class Invoice {
     // ------------------------
     @Builder.Default
     private Boolean paid = false;
+
+    // ------------------------
+    // FIRM ISOLATION
+    // ------------------------
+    @Column(nullable = false)
+    private Long firmId;
 
     // ------------------------
     // EXTRA FIELDS

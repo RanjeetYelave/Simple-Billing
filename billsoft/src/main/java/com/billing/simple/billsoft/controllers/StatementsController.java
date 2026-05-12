@@ -25,24 +25,26 @@ public class StatementsController {
 
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<CustomerStatementResponse> customerStatement(
+            @RequestParam(name = "firmId", required = false) Long firmId,
             @PathVariable("customerId") Long customerId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(statementService.getCustomerStatement(customerId, from, to));
+        return ResponseEntity.ok(statementService.getCustomerStatement(firmId, customerId, from, to));
     }
 
     @GetMapping("/customer/{customerId}/pdf")
     public ResponseEntity<byte[]> customerStatementPdf(
+            @RequestParam(name = "firmId", required = false) Long firmId,
             @PathVariable("customerId") Long customerId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        byte[] pdf = statementService.generateCustomerStatementPdf(customerId, from, to);
+        byte[] pdf = statementService.generateCustomerStatementPdf(firmId, customerId, from, to);
         String filename = "statement-customer-" + customerId + ".pdf";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
@@ -52,22 +54,24 @@ public class StatementsController {
 
     @GetMapping("/firm")
     public ResponseEntity<FirmStatementResponse> firmStatement(
+            @RequestParam(name = "firmId", required = false) Long firmId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(statementService.getFirmStatement(from, to));
+        return ResponseEntity.ok(statementService.getFirmStatement(firmId, from, to));
     }
 
     @GetMapping("/firm/pdf")
     public ResponseEntity<byte[]> firmStatementPdf(
+            @RequestParam(name = "firmId", required = false) Long firmId,
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        byte[] pdf = statementService.generateFirmStatementPdf(from, to);
+        byte[] pdf = statementService.generateFirmStatementPdf(firmId, from, to);
         String filename = "statement-firm.pdf";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)

@@ -32,6 +32,7 @@ public class UpdateService {
                 boolean updateAvailable = !currentVersion.equals(latestVersion);
                 response.put("updateAvailable", updateAvailable);
                 response.put("htmlUrl", githubRelease.get("html_url"));
+                response.put("releaseNotes", githubRelease.get("body"));
                 
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> assets = (List<Map<String, Object>>) githubRelease.get("assets");

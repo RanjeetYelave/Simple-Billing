@@ -247,7 +247,6 @@
             React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `A new version (${updateInfo.latestVersion}) is available. You are currently on ${updateInfo.currentVersion}.`)
           ),
           React.createElement('div', { style: { display: 'flex', gap: '12px' } },
-            React.createElement('a', { className: 'btn btn-outline', href: updateInfo.htmlUrl, target: '_blank' }, 'View Details'),
             updateInfo.downloadUrl && React.createElement('a', { className: 'btn btn-primary', href: updateInfo.downloadUrl }, 'Download Update')
           )
         ),
@@ -2540,32 +2539,61 @@
     function SoftwareUpdate() {
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [isOnline, setIsOnline] = useState(navigator.onLine);
 
       useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
+      }, []);
+
+      useEffect(() => {
+        if (!isOnline) {
+          setLoading(false);
+          return;
+        }
+        setLoading(true);
         API.system.updateStatus()
           .then(res => { setInfo(res); setLoading(false); })
           .catch(() => { showToast('Failed to check for updates', 'error'); setLoading(false); });
-      }, []);
+      }, [isOnline]);
 
-      if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
-
-      return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', textAlign: 'center', padding: '40px 20px' } },
-        React.createElement('div', { style: { marginBottom: 24, color: 'var(--primary)' } }, Icons.update),
-        React.createElement('h2', { style: { marginBottom: 8 } }, 'Software Update'),
-        info ? React.createElement(Fragment, null,
-          React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24 } }, `Current Version: ${info.currentVersion}`),
+      return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', padding: '40px 20px', position: 'relative' } },
+        React.createElement('div', { style: { position: 'absolute', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: 6 } },
+          React.createElement('div', { style: { width: 10, height: 10, borderRadius: '50%', backgroundColor: isOnline ? '#22c55e' : '#ef4444' } }),
+          React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, isOnline ? 'Online' : 'Offline')
+        ),
+        React.createElement('div', { style: { textAlign: 'center' } },
+          React.createElement('div', { style: { marginBottom: 24, color: 'var(--primary)' } }, Icons.update),
+          React.createElement('h2', { style: { marginBottom: 8 } }, 'Software Update')
+        ),
+        
+        !isOnline ? React.createElement('div', { style: { textAlign: 'center', marginTop: 30, color: 'var(--danger)' } },
+          'You are offline. Please connect to the internet to check for software updates.'
+        ) : loading ? React.createElement('div', { style: { textAlign: 'center', margin: '40px 0' } }, 
+          React.createElement('div', { className: 'spinner', style: { margin: '0 auto' } })
+        ) : info ? React.createElement(Fragment, null,
+          React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24, textAlign: 'center' } }, `Current Version: ${info.currentVersion}`),
           info.updateAvailable ? React.createElement('div', { style: { backgroundColor: '#eef2ff', padding: 20, borderRadius: 8, border: '1px solid #c7d2fe' } },
-            React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0 } }, '🎉 New Update Available!'),
-            React.createElement('p', null, `Version ${info.latestVersion} is ready to download.`),
+            React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, '🎉 New Update Available!'),
+            React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready to download.`),
+            info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } },
+              React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'),
+              info.releaseNotes
+            ),
             React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
-              React.createElement('a', { className: 'btn btn-outline', href: info.htmlUrl, target: '_blank' }, 'Release Notes'),
               info.downloadUrl && React.createElement('a', { className: 'btn btn-primary', href: info.downloadUrl }, 'Download Update')
             )
-          ) : React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0' } },
+          ) : React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } },
             React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'),
             React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.')
           )
-        ) : React.createElement('p', { style: { color: 'var(--danger)' } }, 'Could not fetch update information.')
+        ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information.')
       );
     }
 

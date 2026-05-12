@@ -31,10 +31,14 @@ jobs:
         working-directory: ./billsoft
         run: mv target/billsoft-0.0.1-SNAPSHOT.war target/billsoft-Release-${{ github.run_number }}.war
 
+      - name: Ensure release notes exist
+        run: touch release-notes.txt
+
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: Release-${{ github.run_number }}
           name: Auto Release ${{ github.run_number }}
+          body_path: release-notes.txt
           files: billsoft/target/billsoft-Release-${{ github.run_number }}.war
           generate_release_notes: true

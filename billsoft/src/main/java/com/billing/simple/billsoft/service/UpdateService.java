@@ -247,7 +247,7 @@ public class UpdateService {
 
             setProgress("installing", 95, "Finalizing installation...", latestVersion);
             // Notify SSE client about installation stage
-+            sendProgressEvent();
+            sendProgressEvent();
 
             // Persist the new version BEFORE writing the marker file.
             // This version file lives outside the WAR and survives replacement.
@@ -264,7 +264,7 @@ public class UpdateService {
 
             // Shutdown phase
             setProgress("restarting", 100, "Restarting application...", latestVersion);
-+            // Notify SSE client that we are about to restart
+            // Notify SSE client that we are about to restart
 +            sendProgressEvent();
 
             // Spin up a separate thread to shutdown the application after a brief delay

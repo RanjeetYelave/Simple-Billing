@@ -170,7 +170,7 @@ class InvoiceCalculationEngineTest {
         disc.setValue(new BigDecimal("10.45"));
         req.setInvoiceDiscount(disc);
 
-        req.setRoundOff(BigDecimal.ONE); // enable rounding
+        req.setRoundOff(true); // enable rounding
 
         Product p = new Product();
         p.setId(5L);

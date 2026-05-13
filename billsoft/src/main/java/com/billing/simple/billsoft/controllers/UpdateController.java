@@ -3,6 +3,7 @@ package com.billing.simple.billsoft.controllers;
 import com.billing.simple.billsoft.service.UpdateService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 
@@ -22,9 +23,12 @@ public class UpdateController {
         return ResponseEntity.ok(updateService.checkUpdate());
     }
 
-    @GetMapping("/update-progress")
-    public ResponseEntity<Map<String, Object>> getUpdateProgress() {
-        return ResponseEntity.ok(updateService.getProgress());
+    @GetMapping(value = "/update-progress", produces = "text/event-stream")
+    public SseEmitter updateProgress() {
+        // Create a long‑lived emitter and give it to the service.
+        SseEmitter emitter = new SseEmitter(0L);
+        updateService.setProgressEmitter(emitter);
+        return emitter;
     }
 
     @GetMapping("/check-update-complete")
@@ -38,7 +42,6 @@ public class UpdateController {
         if (url == null || url.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "downloadUrl is required"));
         }
-        
         boolean success = updateService.applyUpdate(url);
         if (success) {
             return ResponseEntity.ok(Map.of("message", "Update downloaded successfully. Restarting..."));

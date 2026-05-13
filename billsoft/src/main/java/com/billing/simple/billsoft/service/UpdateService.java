@@ -1,8 +1,10 @@
 package com.billing.simple.billsoft.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +30,8 @@ public class UpdateService {
     private final AtomicInteger progressPercent = new AtomicInteger(0);
     private final AtomicReference<String> progressMessage = new AtomicReference<>("");
     private final AtomicReference<String> progressLatestVersion = new AtomicReference<>("");
+    // Emitter used for Server‑Sent Events
+    private SseEmitter progressEmitter;
 
     /**
      * Get the current version from the persisted version file, falling back to the
@@ -55,6 +59,21 @@ public class UpdateService {
         } catch (Exception ignored) {}
     }
 
+    public SseEmitter getProgressEmitter() {
+        progressEmitter = new SseEmitter(Long.MAX_VALUE);
+        return progressEmitter;
+    }
+
+    private void sendProgressEvent() {
+        if (progressEmitter != null) {
+            try {
+                progressEmitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
+            } catch (Exception e) {
+                progressEmitter = null;
+            }
+        }
+    }
+
     public Map<String, Object> getProgress() {
         Map<String, Object> p = new HashMap<>();
         p.put("status", progressStatus.get());
@@ -68,6 +87,8 @@ public class UpdateService {
         progressStatus.set(status);
         progressPercent.set(percent);
         progressMessage.set(message);
+        // Push update to any listening SSE client
+        sendProgressEvent();
     }
 
     private void setProgress(String status, int percent, String message, String latestVersion) {
@@ -75,6 +96,8 @@ public class UpdateService {
         progressPercent.set(percent);
         progressMessage.set(message);
         progressLatestVersion.set(latestVersion);
+        // Push update to any listening SSE client
+        sendProgressEvent();
     }
 
     /**
@@ -163,6 +186,8 @@ public class UpdateService {
             } catch (Exception ignored) {}
 
             setProgress("downloading", 0, "Starting download...", latestVersion);
+            // Ensure SSE client receives the initial state
+            sendProgressEvent();
             java.net.URL url = new java.net.URI(downloadUrl).toURL();
             Path targetPath = Paths.get("billsoft-update.war");
 
@@ -213,7 +238,9 @@ public class UpdateService {
             setProgress("installing", 90, "Installing update...", latestVersion);
             Thread.sleep(500);
 
-            setProgress("installing", 95, "Finalizing installation...");
+            setProgress("installing", 95, "Finalizing installation...", latestVersion);
+            // Notify SSE client about installation stage
++            sendProgressEvent();
 
             // Persist the new version BEFORE writing the marker file.
             // This version file lives outside the WAR and survives replacement.
@@ -229,7 +256,9 @@ public class UpdateService {
             Thread.sleep(500);
 
             // Shutdown phase
-            setProgress("restarting", 100, "Restarting application...");
+            setProgress("restarting", 100, "Restarting application...", latestVersion);
++            // Notify SSE client that we are about to restart
++            sendProgressEvent();
 
             // Spin up a separate thread to shutdown the application after a brief delay
             // This gives the HTTP response time to reach the client

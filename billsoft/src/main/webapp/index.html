@@ -247,7 +247,15 @@
             React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `A new version (${updateInfo.latestVersion}) is available. You are currently on ${updateInfo.currentVersion}.`)
           ),
           React.createElement('div', { style: { display: 'flex', gap: '12px' } },
-            updateInfo.downloadUrl && React.createElement('a', { className: 'btn btn-primary', href: updateInfo.downloadUrl }, 'Download Update')
+            updateInfo.downloadUrl && React.createElement('button', { 
+              className: 'btn btn-primary',
+              onClick: () => {
+                showToast('Downloading and installing update...', 'info');
+                API.system.applyUpdate(updateInfo.downloadUrl)
+                  .then(r => showToast(r.message || 'Restarting...', 'success'))
+                  .catch(e => showToast(e.message || 'Update failed', 'error'));
+              }
+            }, 'Install Update')
           )
         ),
         React.createElement('div', { className: 'kpi-grid' },
@@ -2563,6 +2571,14 @@
           .catch(() => { showToast('Failed to check for updates', 'error'); setLoading(false); });
       }, [isOnline]);
 
+      const handleInstall = () => {
+        showToast('Downloading and installing update. This may take a minute...', 'info');
+        setLoading(true);
+        API.system.applyUpdate(info.downloadUrl)
+          .then(r => showToast(r.message || 'Restarting...', 'success'))
+          .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
+      };
+
       return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', padding: '40px 20px', position: 'relative' } },
         React.createElement('div', { style: { position: 'absolute', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: 6 } },
           React.createElement('div', { style: { width: 10, height: 10, borderRadius: '50%', backgroundColor: isOnline ? '#22c55e' : '#ef4444' } }),
@@ -2587,7 +2603,7 @@
               info.releaseNotes
             ),
             React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
-              info.downloadUrl && React.createElement('a', { className: 'btn btn-primary', href: info.downloadUrl }, 'Download Update')
+              info.downloadUrl && React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, 'Install Update')
             )
           ) : React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } },
             React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'),

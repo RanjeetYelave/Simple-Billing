@@ -24,4 +24,19 @@ public class UpdateController {
     public ResponseEntity<Map<String, Object>> checkUpdate() {
         return ResponseEntity.ok(updateService.checkUpdate());
     }
+
+    @org.springframework.web.bind.annotation.PostMapping("/apply-update")
+    public ResponseEntity<Map<String, String>> applyUpdate(@org.springframework.web.bind.annotation.RequestBody Map<String, String> payload) {
+        String url = payload.get("downloadUrl");
+        if (url == null || url.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "downloadUrl is required"));
+        }
+        
+        boolean success = updateService.applyUpdate(url);
+        if (success) {
+            return ResponseEntity.ok(Map.of("message", "Update downloaded successfully. Restarting..."));
+        } else {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to download update"));
+        }
+    }
 }

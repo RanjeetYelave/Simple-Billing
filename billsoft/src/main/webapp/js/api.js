@@ -175,6 +175,10 @@ const API = {
 
   // ─── System & Updates ───
   system: {
-    updateStatus: () => API._json('/api/system/update-status')
+    updateStatus: () => API._json('/api/system/update-status'),
+    applyUpdate: (downloadUrl) => API._json('/api/system/apply-update', {
+      method: 'POST',
+      body: JSON.stringify({ downloadUrl })
+    })
   }
 };

@@ -1,0 +1,34 @@
+{
+  "name": "billsoft",
+  "version": "1.0.0",
+  "description": "Billsoft Desktop Application",
+  "author": "Ranjeet Yelave",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.billing.simple.billsoft",
+    "productName": "Billsoft",
+    "mac": {
+      "identity": null
+    },
+    "extraResources": [
+      {
+        "from": "../target/billsoft-0.0.1-SNAPSHOT.war",
+        "to": "backend/billsoft.war"
+      },
+      {
+        "from": "jre",
+        "to": "jre"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
+    "wait-on": "^8.0.5"
+  }
+}

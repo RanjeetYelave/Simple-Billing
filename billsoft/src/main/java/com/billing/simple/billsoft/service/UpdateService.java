@@ -50,4 +50,32 @@ public class UpdateService {
         
         return response;
     }
+
+    public boolean applyUpdate(String downloadUrl) {
+        try {
+            java.net.URL url = new java.net.URI(downloadUrl).toURL();
+            java.nio.file.Path targetPath = java.nio.file.Paths.get("billsoft-update.war");
+            
+            // Download the file
+            try (java.io.InputStream in = url.openStream()) {
+                java.nio.file.Files.copy(in, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            
+            // Spin up a separate thread to shutdown the application after a brief delay
+            // This gives the HTTP response time to reach the client
+            new Thread(() -> {
+                try {
+                    Thread.sleep(2000);
+                    System.exit(0);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }).start();
+            
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

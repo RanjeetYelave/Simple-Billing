@@ -199,7 +199,7 @@
     }
 
     // ─── DASHBOARD ───
-    function Dashboard() {
+    function Dashboard({ onStartUpdate }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [searchName, setSearchName] = useState('');
@@ -250,10 +250,14 @@
             updateInfo.downloadUrl && React.createElement('button', { 
               className: 'btn btn-primary',
               onClick: () => {
-                showToast('Downloading and installing update...', 'info');
-                API.system.applyUpdate(updateInfo.downloadUrl)
-                  .then(r => showToast(r.message || 'Restarting...', 'success'))
-                  .catch(e => showToast(e.message || 'Update failed', 'error'));
+                if (onStartUpdate) {
+                  onStartUpdate(updateInfo.downloadUrl, updateInfo.latestVersion);
+                } else {
+                  showToast('Downloading and installing update...', 'info');
+                  API.system.applyUpdate(updateInfo.downloadUrl)
+                    .then(r => showToast(r.message || 'Restarting...', 'success'))
+                    .catch(e => showToast(e.message || 'Update failed', 'error'));
+                }
               }
             }, 'Install Update')
           )
@@ -2887,7 +2891,7 @@
       };
 
       const pageComponents = {
-        dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId }) },
+        dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
         invoices: { title: 'Invoices', comp: React.createElement(InvoiceList, { key: API.firmId, onEditInvoice: handleEditInvoice }) },
         'new-invoice': {
           title: editInvoiceId ? 'Edit Invoice' : 'New Invoice',

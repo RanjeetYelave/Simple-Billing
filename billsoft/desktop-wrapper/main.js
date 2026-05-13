@@ -283,7 +283,17 @@ app.whenReady().then(() => {
     console.log(`[Browser Console]: ${message}`);
   });
 
-  const loadingHtml = '<h2 style="font-family:sans-serif;padding:20px;text-align:center;margin-top:40px;">Starting Billsoft Engine...<br/><span style="font-size:0.85rem;color:#666;">Please wait a moment</span></h2>';
+  const loadingHtml = `<!DOCTYPE html>
+<html><body style="margin:0;height:100vh;background:linear-gradient(135deg,#1e293b,#334155);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,system-ui,sans-serif;color:#fff;">
+  <div style="font-size:48px;font-weight:800;color:#3b82f6;margin-bottom:8px;">B</div>
+  <h1 style="margin:0 0 4px;font-weight:600;font-size:1.5rem;">Billsoft</h1>
+  <p style="margin:0 0 24px;color:#94a3b8;font-size:0.9rem;">Simple Billing & Invoicing</p>
+  <div style="width:200px;height:4px;background:#475569;border-radius:2px;overflow:hidden;">
+    <div style="width:30%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:2px;animation:load 2s ease-in-out infinite;"></div>
+  </div>
+  <p style="margin-top:16px;color:#94a3b8;font-size:0.8rem;">Loading...</p>
+  <style>@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}</style>
+</body></html>`;
   mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(loadingHtml));
 
   // Open DevTools in development only

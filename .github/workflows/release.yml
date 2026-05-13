@@ -25,6 +25,10 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Make Maven wrapper executable
+        working-directory: ./billsoft
+        run: chmod +x ./mvnw
+
       - name: Build with Maven
         working-directory: ./billsoft
         run: ./mvnw clean package -DskipTests

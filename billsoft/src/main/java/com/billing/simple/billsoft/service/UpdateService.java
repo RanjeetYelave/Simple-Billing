@@ -265,7 +265,7 @@ public class UpdateService {
             // Shutdown phase
             setProgress("restarting", 100, "Restarting application...", latestVersion);
             // Notify SSE client that we are about to restart
-+            sendProgressEvent();
+            sendProgressEvent();
 
             // Spin up a separate thread to shutdown the application after a brief delay
             // This gives the HTTP response time to reach the client

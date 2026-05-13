@@ -6,6 +6,10 @@ const http = require('http');
 
 let mainWindow;
 let javaProcess;
+let updateProgressWindow;
+let restartAttempts = 0;
+const MAX_RESTART_ATTEMPTS = 5;
+const RESTART_DELAY_MS = 2000;
 
 const isPackaged = app.isPackaged;
 const baseDir = isPackaged ? process.resourcesPath : __dirname;
@@ -23,7 +27,13 @@ const javaExecutable = isPackaged
 function startJavaBackend() {
   console.log("Starting Spring Boot...");
 
-  javaProcess = spawn(javaExecutable, ['-jar', warPath], { cwd: backendDir });
+  // Check if WAR exists
+  if (!fs.existsSync(warPath)) {
+    console.error(`WAR not found at ${warPath}`);
+    return;
+  }
+
+  javaProcess = spawn(javaExecutable, ['-jar', warPath], { cwd: backendDir, stdio: ['ignore', 'pipe', 'pipe'] });
 
   javaProcess.stdout.on('data', (data) => {
     console.log(data.toString());
@@ -36,39 +46,214 @@ function startJavaBackend() {
   javaProcess.on('exit', (code) => {
     console.log(`Java process exited with code ${code}`);
 
-    if (code === 0) {
-      if (fs.existsSync(updateWarPath)) {
-        console.log("Update detected! Waiting for file locks to release...");
+    // Check if there's an update waiting
+    if (fs.existsSync(updateWarPath)) {
+      console.log("Update detected! Swapping WAR files...");
+      handleUpdateSwap();
+      return; // don't fall through to error handling
+    }
 
+    // If Java died with non-zero code (crash or error), restart
+    if (code !== 0 && code !== null) {
+      restartAttempts++;
+      console.log(`Java exited with code ${code}. Restart attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`);
+      
+      if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+        const delay = RESTART_DELAY_MS * Math.min(restartAttempts, 5); // exponential backoff cap
         setTimeout(() => {
-          try {
-            if (fs.existsSync(warPath)) {
-              fs.unlinkSync(warPath);
-            }
-            fs.renameSync(updateWarPath, warPath);
-            console.log("Swap complete! Restarting backend...");
-          } catch (err) {
-            console.error("Failed to swap update files:", err);
-          }
-
           startJavaBackend();
-
-          if (mainWindow) {
+          // Reload main window if it's already loaded
+          if (mainWindow && !mainWindow.isDestroyed()) {
             setTimeout(() => {
               mainWindow.reload();
-            }, 5000);
+            }, delay + 5000);
           }
-        }, 2000);
+        }, delay);
+      } else {
+        console.error("Max restart attempts reached. Java will not be restarted.");
+        // Show error in window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+            '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Application Error: Backend failed to start. Please reinstall the application.</h2>'
+          ));
+        }
       }
     }
+    // code 0 with no update = clean exit (shouldn't happen normally)
   });
+
+  javaProcess.on('error', (err) => {
+    console.error("Failed to spawn Java process:", err);
+  });
+}
+
+function handleUpdateSwap() {
+  showUpdateProgressWindow();
+  updateProgressWindow.webContents.executeJavaScript(
+    `document.getElementById('status').textContent = 'Installing update...';` +
+    `document.getElementById('phase-text').textContent = 'Step 2 of 3: Installing';` +
+    `document.getElementById('progress-bar').style.width = '60%';`
+  );
+
+  console.log("Update detected! Waiting for file locks to release...");
+
+  setTimeout(() => {
+    try {
+      // Verify update file exists before swapping
+      if (!fs.existsSync(updateWarPath)) {
+        console.error("Update WAR not found at swap time!");
+        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+          updateProgressWindow.webContents.executeJavaScript(
+            `document.getElementById('status').textContent = 'Error: Update file missing';` +
+            `document.getElementById('progress-bar').style.width = '0%';`
+          );
+        }
+        // Try to restart with the original war anyway
+        startJavaBackend();
+        return;
+      }
+
+      if (fs.existsSync(warPath)) {
+        fs.unlinkSync(warPath);
+      }
+      fs.renameSync(updateWarPath, warPath);
+      console.log("Swap complete! Restarting backend...");
+      
+      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+        updateProgressWindow.webContents.executeJavaScript(
+          `document.getElementById('status').textContent = 'Restarting application...';` +
+          `document.getElementById('phase-text').textContent = 'Step 3 of 3: Restarting';` +
+          `document.getElementById('progress-bar').style.width = '90%';`
+        );
+      }
+    } catch (err) {
+      console.error("Failed to swap update files:", err);
+      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+        updateProgressWindow.webContents.executeJavaScript(
+          `document.getElementById('status').textContent = 'Error: ' + ${JSON.stringify(err.message)};` +
+          `document.getElementById('progress-bar').style.width = '0%';`
+        );
+      }
+    }
+
+    // Reset restart counter since this is a planned restart
+    restartAttempts = 0;
+    startJavaBackend();
+
+    // Poll for backend to be ready, then reload main window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      pollServerAfterUpdate(mainWindow);
+    }
+  }, 2000);
+}
+
+function pollServerAfterUpdate(win) {
+  let pollCount = 0;
+  const maxPolls = 60; // 60 seconds max wait
+
+  const checkServer = () => {
+    pollCount++;
+    http.get('http://127.0.0.1:8080', (res) => {
+      if (res.statusCode < 500) {
+        console.log("Backend is back up after update!");
+        
+        // Show complete in native window
+        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+          showUpdateCompleteWindow();
+        }
+        
+        // Reload main window to the app
+        win.loadURL('http://127.0.0.1:8080');
+      } else {
+        if (pollCount < maxPolls) {
+          setTimeout(checkServer, 1000);
+        } else {
+          console.error("Backend did not come back after update.");
+          win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+            '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Update Error: Backend failed to restart. Please relaunch the application.</h2>'
+          ));
+        }
+      }
+    }).on('error', () => {
+      // Server not ready yet - keep polling
+      if (pollCount < maxPolls) {
+        setTimeout(checkServer, 1000);
+      } else {
+        console.error("Backend did not come back after update (timeout).");
+        win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+          '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Update Error: Backend failed to restart. Please relaunch the application.</h2>'
+        ));
+      }
+    });
+  };
+
+  checkServer();
+}
+
+function showUpdateProgressWindow() {
+  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+    updateProgressWindow.show();
+    updateProgressWindow.focus();
+    return;
+  }
+
+  updateProgressWindow = new BrowserWindow({
+    width: 480,
+    height: 260,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:30px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;">
+  <h2 style="margin:0 0 8px;font-weight:600;font-size:1.3rem;">🔄 Updating Billsoft</h2>
+  <p id="phase-text" style="margin:0 0 16px;color:#60a5fa;font-size:0.85rem;">Step 1 of 3: Downloading</p>
+  <p id="status" style="margin:0 0 16px;color:#94a3b8;font-size:0.9rem;">Downloading update...</p>
+  <div style="width:100%;height:8px;background:#334155;border-radius:4px;overflow:hidden;">
+    <div id="progress-bar" style="width:2%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:4px;transition:width 0.3s ease;"></div>
+  </div>
+  <p style="margin-top:20px;font-size:0.75rem;color:#f87171;">⚠ Do not close the application</p>
+</body></html>`;
+
+  updateProgressWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  updateProgressWindow.center();
+  
+  updateProgressWindow.on('closed', () => {
+    updateProgressWindow = null;
+  });
+}
+
+function showUpdateCompleteWindow() {
+  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+    updateProgressWindow.webContents.executeJavaScript(
+      `document.body.innerHTML = \`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px;background:#1e293b;color:#fff;">
+        <div style="font-size:64px;margin-bottom:12px;">✅</div>
+        <h2 style="margin:0 0 8px;font-weight:600;">Update Complete!</h2>
+        <p style="color:#94a3b8;font-size:0.95rem;margin:0;">Your app has been updated successfully.</p>
+      </div>\`;`
+    );
+    setTimeout(() => {
+      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+        updateProgressWindow.close();
+      }
+    }, 3000);
+  }
 }
 
 function pollServerAndLoad(win) {
   const checkServer = () => {
     http.get('http://127.0.0.1:8080', (res) => {
-      // Accept 200 OK or 302 Redirect (often happens if Spring Security is active)
+      // Accept 2xx or 3xx (redirects from Spring Security)
       if (res.statusCode < 400) {
+        // If there was an update progress window, show complete
+        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+          showUpdateCompleteWindow();
+        }
         win.loadURL('http://127.0.0.1:8080');
       } else {
         setTimeout(checkServer, 1000);
@@ -98,16 +283,28 @@ app.whenReady().then(() => {
     console.log(`[Browser Console]: ${message}`);
   });
 
-  const loadingHtml = '<h2 style="font-family:sans-serif;padding:20px;">Starting Billsoft Engine... Please wait.</h2>';
+  const loadingHtml = '<h2 style="font-family:sans-serif;padding:20px;text-align:center;margin-top:40px;">Starting Billsoft Engine...<br/><span style="font-size:0.85rem;color:#666;">Please wait a moment</span></h2>';
   mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(loadingHtml));
 
-  mainWindow.webContents.openDevTools();
+  // Open DevTools in development only
+  if (!isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   pollServerAndLoad(mainWindow);
 });
 
 app.on('will-quit', () => {
   if (javaProcess) {
-    javaProcess.kill();
+    javaProcess.kill('SIGTERM');
+    // Give Java a moment to shut down cleanly
+    setTimeout(() => {
+      if (javaProcess && !javaProcess.killed) {
+        javaProcess.kill('SIGKILL');
+      }
+    }, 5000);
+  }
+  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+    updateProgressWindow.close();
   }
 });

@@ -2543,8 +2543,67 @@
       );
     }
 
+    // ─── UPDATE PROGRESS OVERLAY ───
+    function UpdateProgressOverlay({ progress, onComplete, isUpdating }) {
+      const status = progress && progress.status ? progress.status : 'idle';
+      const percent = progress ? progress.percent : 0;
+      const message = progress ? progress.message : '';
+      const latestVersion = progress ? progress.latestVersion : '';
+
+      // Show a loading bar while downloading
+      const showBar = status === 'downloading' || status === 'installing';
+      const showSpinner = status === 'restarting' || (status === 'downloading' && percent === 0);
+      const showComplete = status === 'complete';
+      const isError = status === 'error';
+
+      if (!isUpdating) return null;
+
+      return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center' } },
+          // Icon
+          React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } },
+            showSpinner ? '⏳' : showComplete ? '✅' : isError ? '❌' : '🔄'
+          ),
+          React.createElement('h3', { style: { marginBottom: 8, color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)' } },
+            isError ? 'Update Failed' : showComplete ? 'Update Complete!' : 'Updating Billsoft'
+          ),
+          latestVersion ? React.createElement('p', { style: { margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '0.9rem' } },
+            `Installing version ${latestVersion}`
+          ) : null,
+          // Progress bar
+          showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 12 } },
+            React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.3s ease-in-out' } })
+          ) : null,
+          // Percentage text
+          showBar ? React.createElement('p', { style: { fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)', margin: '0 0 8px 0' } },
+            percent + '%'
+          ) : null,
+          // Status message
+          React.createElement('p', { style: { color: isError ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.9rem', margin: '8px 0 0 0' } },
+            message || (isError ? 'Something went wrong. Please try again.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')
+          ),
+          // "Do not close" warning
+          !showComplete && !isError ? React.createElement('p', { style: { marginTop: 20, fontSize: '0.8rem', color: '#ef4444', fontWeight: 500 } },
+            '⚠️ Do not close the application during the update'
+          ) : null,
+          // Complete button
+          showComplete ? React.createElement('button', {
+            className: 'btn btn-primary',
+            style: { marginTop: 20 },
+            onClick: () => { window.location.reload(); }
+          }, 'Reload App') : null,
+          // Error retry
+          isError ? React.createElement('button', {
+            className: 'btn btn-outline',
+            style: { marginTop: 20 },
+            onClick: onComplete
+          }, 'Close') : null
+        )
+      );
+    }
+
     // ─── SOFTWARE UPDATE ───
-    function SoftwareUpdate() {
+    function SoftwareUpdate({ onStartUpdate }) {
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
       const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -2572,11 +2631,16 @@
       }, [isOnline]);
 
       const handleInstall = () => {
-        showToast('Downloading and installing update. This may take a minute...', 'info');
-        setLoading(true);
-        API.system.applyUpdate(info.downloadUrl)
-          .then(r => showToast(r.message || 'Restarting...', 'success'))
-          .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
+        if (onStartUpdate) {
+          onStartUpdate(info.downloadUrl, info.latestVersion);
+        } else {
+          // Fallback: direct call (shouldn't happen)
+          showToast('Downloading and installing update...', 'info');
+          setLoading(true);
+          API.system.applyUpdate(info.downloadUrl)
+            .then(r => showToast(r.message || 'Restarting...', 'success'))
+            .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
+        }
       };
 
       return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', padding: '40px 20px', position: 'relative' } },
@@ -2739,12 +2803,95 @@
         setFirmLoadKey(k => k + 1);
       };
 
+      // ─── Update Progress State ───
+      const [isUpdating, setIsUpdating] = useState(false);
+      const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
+
+      // Check for update completion marker on page load
+      useEffect(() => {
+        API._json('/api/system/check-update-complete')
+          .then(res => {
+            if (res && res.justUpdated) {
+              setUpdateCompleteBanner(res.updatedVersion || true);
+            }
+          })
+          .catch(() => {});
+      }, []);
+      const [updateProgress, setUpdateProgress] = useState(null);
+      const updatePollRef = useRef(null);
+
+      const startUpdatePolling = () => {
+        // Poll the progress endpoint every 1 second
+        const poll = () => {
+          API._json('/api/system/update-progress')
+            .then(data => {
+              setUpdateProgress(data);
+              if (data.status === 'restarting' || data.status === 'complete') {
+                // Backend is about to restart or already restarting
+                // Wait for connection to fail, then poll again for server to come back
+                if (data.status === 'restarting') {
+                  // Keep polling - when server goes down, the fetch will fail
+                }
+                if (data.status === 'complete') {
+                  clearInterval(updatePollRef.current);
+                }
+              }
+              if (data.status === 'error') {
+                clearInterval(updatePollRef.current);
+              }
+            })
+            .catch(() => {
+              // Server is down (restarting) - keep polling until it comes back
+              setUpdateProgress(prev => ({
+                ...prev,
+                status: 'restarting',
+                percent: 100,
+                message: 'Restarting application...'
+              }));
+            });
+        };
+        updatePollRef.current = setInterval(poll, 1000);
+      };
+
+      const handleStartUpdate = (downloadUrl, latestVersion) => {
+        setIsUpdating(true);
+        setUpdateProgress({
+          status: 'downloading',
+          percent: 0,
+          message: 'Starting download...',
+          latestVersion: latestVersion || ''
+        });
+
+        // Start the actual update
+        API.system.applyUpdate(downloadUrl)
+          .then(() => {
+            // Start polling progress
+            startUpdatePolling();
+          })
+          .catch(e => {
+            setUpdateProgress({
+              status: 'error',
+              percent: 0,
+              message: 'Update failed: ' + (e.message || 'Unknown error'),
+              latestVersion: latestVersion || ''
+            });
+          });
+      };
+
+      const handleUpdateComplete = () => {
+        setIsUpdating(false);
+        setUpdateProgress(null);
+        if (updatePollRef.current) {
+          clearInterval(updatePollRef.current);
+        }
+      };
+
       const pageComponents = {
         dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId }) },
         invoices: { title: 'Invoices', comp: React.createElement(InvoiceList, { key: API.firmId, onEditInvoice: handleEditInvoice }) },
         'new-invoice': {
           title: editInvoiceId ? 'Edit Invoice' : 'New Invoice',
-          comp: React.createElement(InvoiceForm, { editId: editInvoiceId, onSaved: handleSaved }) // No firm key here to preserve mid-invoice typed data
+          comp: React.createElement(InvoiceForm, { editId: editInvoiceId, onSaved: handleSaved })
         },
         products: { title: 'Products', comp: React.createElement(ProductManager, { key: API.firmId }) },
         customers: { title: 'Customers', comp: React.createElement(CustomerManager, { key: API.firmId }) },
@@ -2752,9 +2899,8 @@
         statements: { title: 'Statements', comp: React.createElement(Statements, { key: API.firmId }) },
         backup: { title: 'Backup & Restore', comp: React.createElement(BackupRestore, { key: API.firmId }) },
         settings: { title: 'Settings', comp: React.createElement(Settings, { key: API.firmId }) },
-        updates: { title: 'Software Update', comp: React.createElement(SoftwareUpdate, { key: API.firmId }) },
+        updates: { title: 'Software Update', comp: React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
       };
-
       const current = pageComponents[page] || pageComponents.dashboard;
 
       if (!appLoaded) {
@@ -2796,7 +2942,29 @@
           ),
           React.createElement('div', { className: 'page-content' }, current.comp)
         ),
-        React.createElement(Toast, { toasts, removeToast })
+        React.createElement(Toast, { toasts, removeToast }),
+        React.createElement(UpdateProgressOverlay, {
+          progress: updateProgress,
+          isUpdating: isUpdating,
+          onComplete: handleUpdateComplete
+        }),
+        // Update complete banner (shows after restart when marker file was found)
+        updateCompleteBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+          React.createElement('div', { className: 'card', style: { maxWidth: 420, width: '90%', padding: '40px 30px', textAlign: 'center' } },
+            React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } }, '✅'),
+            React.createElement('h3', { style: { marginBottom: 8, color: '#16a34a' } }, 'Update Complete!'),
+            React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } },
+              updateCompleteBanner === true
+                ? 'Your app has been updated successfully.'
+                : `Updated to version ${updateCompleteBanner}`
+            ),
+            React.createElement('button', {
+              className: 'btn btn-primary',
+              style: { marginTop: 20 },
+              onClick: () => setUpdateCompleteBanner(null)
+            }, 'Continue')
+          )
+        )
       );
     }
 

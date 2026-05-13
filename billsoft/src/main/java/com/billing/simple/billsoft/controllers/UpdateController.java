@@ -2,10 +2,7 @@ package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.service.UpdateService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
@@ -25,8 +22,18 @@ public class UpdateController {
         return ResponseEntity.ok(updateService.checkUpdate());
     }
 
-    @org.springframework.web.bind.annotation.PostMapping("/apply-update")
-    public ResponseEntity<Map<String, String>> applyUpdate(@org.springframework.web.bind.annotation.RequestBody Map<String, String> payload) {
+    @GetMapping("/update-progress")
+    public ResponseEntity<Map<String, Object>> getUpdateProgress() {
+        return ResponseEntity.ok(updateService.getProgress());
+    }
+
+    @GetMapping("/check-update-complete")
+    public ResponseEntity<Map<String, Object>> checkUpdateComplete() {
+        return ResponseEntity.ok(updateService.checkForUpdateComplete());
+    }
+
+    @PostMapping("/apply-update")
+    public ResponseEntity<Map<String, String>> applyUpdate(@RequestBody Map<String, String> payload) {
         String url = payload.get("downloadUrl");
         if (url == null || url.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "downloadUrl is required"));

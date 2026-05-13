@@ -29,16 +29,25 @@ jobs:
 
       - name: Rename WAR file
         working-directory: ./billsoft
-        run: mv target/billsoft-0.0.1-SNAPSHOT.war target/billsoft-Release-${{ github.run_number }}.war
+        run: cp target/billsoft-0.0.1-SNAPSHOT.war target/billsoft.war
 
-      - name: Ensure release notes exist
-        run: touch release-notes.txt
+      - name: Generate Release Notes
+        run: |
+          echo "## Billsoft Auto Release" > release-notes.txt
+          echo "" >> release-notes.txt
+          echo "Commit: ${{ github.sha }}" >> release-notes.txt
+          echo "Build: ${{ github.run_number }}" >> release-notes.txt
+          echo "" >> release-notes.txt
+          echo "### Changes in this release:" >> release-notes.txt
+          echo "- Auto-generated from commit ${{ github.sha }}" >> release-notes.txt
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Release-${{ github.run_number }}
-          name: Auto Release ${{ github.run_number }}
+          tag_name: v1.0.${{ github.run_number }}
+          name: Release v1.0.${{ github.run_number }}
           body_path: release-notes.txt
-          files: billsoft/target/billsoft-Release-${{ github.run_number }}.war
+          files: |
+            billsoft/target/billsoft.war
           generate_release_notes: true
+          fail_on_unmatched_files: true

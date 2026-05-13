@@ -64,6 +64,13 @@ public class UpdateService {
         return progressEmitter;
     }
 
+    /**
+     * Setter for SSE emitter used to push progress updates.
+     */
+    public void setProgressEmitter(SseEmitter emitter) {
+        this.progressEmitter = emitter;
+    }
+
     private void sendProgressEvent() {
         if (progressEmitter != null) {
             try {

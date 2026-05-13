@@ -86,7 +86,7 @@ public class InvoiceUpdateRequest {
      * Optional round-off request.
      * If present → backend applies final rounding.
      */
-    private BigDecimal roundOff;
+    private Boolean roundOff;
 
     /**
      * Optional comma-separated tags

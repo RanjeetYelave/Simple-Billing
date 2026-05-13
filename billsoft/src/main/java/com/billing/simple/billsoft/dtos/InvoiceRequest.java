@@ -71,7 +71,7 @@ public class InvoiceRequest {
     private String termsAndConditions;
     private String paymentMethod;
     private String currency = "INR";
-    private BigDecimal roundOff;
+    private Boolean roundOff;
     private String tags;
 
     /* ============================

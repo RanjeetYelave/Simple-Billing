@@ -190,7 +190,7 @@ public class InvoiceCalculationEngine {
         BigDecimal grand = finalTaxable.add(gstTotal);
         BigDecimal totalDiscount = itemDiscountSum.add(invoiceDiscountAmt);
 
-        if (request.getRoundOff() != null) {
+        if (Boolean.TRUE.equals(request.getRoundOff())) {
             BigDecimal rounded = grand.setScale(0, RoundingMode.HALF_UP);
             invoice.setRoundOff(rounded.subtract(grand).setScale(SCALE, RoundingMode.HALF_UP));
             grand = rounded;

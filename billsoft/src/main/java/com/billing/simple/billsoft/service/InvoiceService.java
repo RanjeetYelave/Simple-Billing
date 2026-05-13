@@ -369,7 +369,7 @@ public class InvoiceService {
         }
 
         newReq.setRoundOff(
-                req.getRoundOff() != null ? req.getRoundOff() : existing.getRoundOff()
+                req.getRoundOff() != null ? req.getRoundOff() : (existing.getRoundOff() != null && existing.getRoundOff().compareTo(BigDecimal.ZERO) != 0)
         );
         newReq.setItems(req.getItems());
 
@@ -404,7 +404,7 @@ public class InvoiceService {
         r.setEstimateNumber(existing.getEstimateNumber());
         r.setDueDate(existing.getDueDate());
         r.setPaid(existing.getPaid());
-        r.setRoundOff(existing.getRoundOff());
+        r.setRoundOff(existing.getRoundOff() != null && existing.getRoundOff().compareTo(BigDecimal.ZERO) != 0);
 
         // Rebuild invoice-level discount from entity fields, if present
         if (existing.getInvoiceDiscountType() != null && existing.getInvoiceDiscountValue() != null) {

@@ -17,16 +17,43 @@ import java.util.concurrent.atomic.AtomicReference;
 public class UpdateService {
 
     @Value("${app.version:v1.0.0}")
-    private String currentVersion;
+    private String defaultVersion;
 
     private static final String GITHUB_API_URL = "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases/latest";
     private static final String UPDATE_MARKER_FILE = ".billsoft-updated";
+    private static final String VERSION_FILE = ".billsoft-version";
 
     // --- Progress tracking ---
     private final AtomicReference<String> progressStatus = new AtomicReference<>("idle");
     private final AtomicInteger progressPercent = new AtomicInteger(0);
     private final AtomicReference<String> progressMessage = new AtomicReference<>("");
     private final AtomicReference<String> progressLatestVersion = new AtomicReference<>("");
+
+    /**
+     * Get the current version from the persisted version file, falling back to the
+     * default version baked into application.properties.
+     */
+    private String getCurrentVersion() {
+        try {
+            Path versionFile = Paths.get(VERSION_FILE);
+            if (Files.exists(versionFile)) {
+                String version = new String(Files.readAllBytes(versionFile)).trim();
+                if (!version.isEmpty()) {
+                    return version;
+                }
+            }
+        } catch (Exception ignored) {}
+        return defaultVersion;
+    }
+
+    /**
+     * Persist the new version to the version file so it survives WAR replacement.
+     */
+    private void saveCurrentVersion(String version) {
+        try {
+            Files.write(Paths.get(VERSION_FILE), version.getBytes());
+        } catch (Exception ignored) {}
+    }
 
     public Map<String, Object> getProgress() {
         Map<String, Object> p = new HashMap<>();
@@ -79,6 +106,7 @@ public class UpdateService {
 
     public Map<String, Object> checkUpdate() {
         Map<String, Object> response = new HashMap<>();
+        String currentVersion = getCurrentVersion();
         response.put("currentVersion", currentVersion);
 
         try {
@@ -182,11 +210,17 @@ public class UpdateService {
             }
 
             // Installation phase
-            setProgress("installing", 90, "Installing update...");
+            setProgress("installing", 90, "Installing update...", latestVersion);
             Thread.sleep(500);
 
             setProgress("installing", 95, "Finalizing installation...");
-            
+
+            // Persist the new version BEFORE writing the marker file.
+            // This version file lives outside the WAR and survives replacement.
+            if (latestVersion != null && !latestVersion.isEmpty()) {
+                saveCurrentVersion(latestVersion);
+            }
+
             // Write a marker file so after restart the UI can show "Update Complete!"
             try {
                 Files.write(getMarkerPath(), latestVersion.getBytes());

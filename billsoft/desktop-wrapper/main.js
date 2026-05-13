@@ -210,15 +210,36 @@ function showUpdateProgressWindow() {
   });
 
   const html = `<!DOCTYPE html>
-<html><body style="margin:0;padding:30px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;">
+<html>
+<body style="margin:0;padding:30px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;">
   <h2 style="margin:0 0 8px;font-weight:600;font-size:1.3rem;">🔄 Updating Billsoft</h2>
   <p id="phase-text" style="margin:0 0 16px;color:#60a5fa;font-size:0.85rem;">Step 1 of 3: Downloading</p>
   <p id="status" style="margin:0 0 16px;color:#94a3b8;font-size:0.9rem;">Downloading update...</p>
   <div style="width:100%;height:8px;background:#334155;border-radius:4px;overflow:hidden;">
-    <div id="progress-bar" style="width:2%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:4px;transition:width 0.3s ease;"></div>
+    <div id="progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:4px;transition:width 0.3s ease;">&nbsp;</div>
   </div>
   <p style="margin-top:20px;font-size:0.75rem;color:#f87171;">⚠ Do not close the application</p>
-</body></html>`;
+  <script>
+    const source = new EventSource('http://127.0.0.1:8080/api/system/update-progress');
+    source.addEventListener('progress', e => {
+      try {
+        const data = JSON.parse(e.data);
+        const percent = data.percent || 0;
+        document.getElementById('progress-bar').style.width = percent + '%';
+        document.getElementById('status').textContent = data.message || '';
+        if (data.status) {
+          document.getElementById('phase-text').textContent = data.status;
+        }
+      } catch (err) {
+        console.error('Progress parse error', err);
+      }
+    });
+    source.onerror = () => {
+      source.close();
+    };
+  </script>
+</body>
+</html>`;
 
   updateProgressWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   updateProgressWindow.center();

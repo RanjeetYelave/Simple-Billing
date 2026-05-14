@@ -29,6 +29,11 @@ jobs:
         working-directory: ./billsoft
         run: chmod +x ./mvnw
 
+      - name: Update version in application.properties
+        working-directory: ./billsoft
+        run: |
+          sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
+
       - name: Build with Maven
         working-directory: ./billsoft
         run: ./mvnw clean package -DskipTests

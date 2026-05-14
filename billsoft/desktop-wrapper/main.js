@@ -49,6 +49,10 @@ function startJavaBackend() {
     // Check if there's an update waiting
     if (fs.existsSync(updateWarPath)) {
       console.log("Update detected! Swapping WAR files...");
+      // Clear cache to ensure new UI files are loaded
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.session.clearCache();
+      }
       handleUpdateSwap();
       return; // don't fall through to error handling
     }

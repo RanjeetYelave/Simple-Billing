@@ -135,14 +135,13 @@ public class UpdateService {
         setProgress(status, percent, message, latestVersion, "", "");
     }
 
-    private void setProgress(String status, int percent, String message, String latestVersion, String speed,
-            String size) {
-        progressStatus.set(status);
+    private void setProgress(String status, int percent, String message, String latestVersion, String speed, String size) {
+        if (status != null) progressStatus.set(status);
         progressPercent.set(percent);
-        progressMessage.set(message);
-        progressLatestVersion.set(latestVersion);
-        progressSpeed.set(speed);
-        progressSize.set(size);
+        if (message != null) progressMessage.set(message);
+        if (latestVersion != null) progressLatestVersion.set(latestVersion);
+        if (speed != null && !speed.isEmpty()) progressSpeed.set(speed);
+        if (size != null && !size.isEmpty()) progressSize.set(size);
         sendProgressEvent();
     }
 
@@ -330,17 +329,16 @@ public class UpdateService {
 
                     long elapsed = (now - startTime) / 1000;
                     double downloadMb = totalBytesRead / (1024.0 * 1024.0);
-                    double totalMb = fileSize / (1024.0 * 1024.0);
-                    double speedMbps = elapsed > 0 ? (totalBytesRead / (1024.0 * 1024.0)) / elapsed : 0;
+                    double speedMbps = elapsed > 0 ? downloadMb / elapsed : 0;
 
                     String speedStr = String.format("%.2f MB/s", speedMbps);
                     String sizeStr = (fileSize > 0)
-                            ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
-                            : String.format("%.1f MB", downloadMb);
+                            ? String.format("%.1f MB / %.1f MB", downloadMb, fileSize / (1024.0 * 1024.0))
+                            : String.format("%.1f MB downloaded", downloadMb);
 
                     String eta = "";
                     if (fileSize > 0 && speedMbps > 0) {
-                        int remainingSec = (int) ((totalMb - downloadMb) / speedMbps);
+                        int remainingSec = (int) (((fileSize / (1024.0 * 1024.0)) - downloadMb) / speedMbps);
                         if (remainingSec > 0)
                             eta = " | ~" + remainingSec + "s remaining";
                     }

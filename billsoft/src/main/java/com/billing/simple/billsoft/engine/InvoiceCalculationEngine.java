@@ -139,9 +139,11 @@ public class InvoiceCalculationEngine {
 
                 if (idx == items.size() - 1) {
                     // Last item gets whatever discount remains to fix rounding diffs
-                    BigDecimal newTaxable = itemTaxable.subtract(remaining);
+                    BigDecimal share = remaining;
+                    BigDecimal newTaxable = itemTaxable.subtract(share);
                     if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
                     it.setTaxableAmount(newTaxable);
+                    it.setDiscountValue(nz(it.getDiscountValue()).add(share));
                     remaining = ZERO;
                 } else {
                     BigDecimal share = itemTaxable
@@ -154,6 +156,7 @@ public class InvoiceCalculationEngine {
                     BigDecimal newTaxable = itemTaxable.subtract(share);
                     if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
                     it.setTaxableAmount(newTaxable);
+                    it.setDiscountValue(nz(it.getDiscountValue()).add(share));
 
                     remaining = remaining.subtract(share);
                 }

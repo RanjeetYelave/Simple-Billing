@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,7 +41,8 @@ public class InvoicePdfServiceTest {
         firm.setState("State");
         firm.setPincode("123456");
 
-        when(firmService.get(null)).thenReturn(firm);
+        when(firmService.get(any())).thenReturn(firm);
+        when(firmService.getFirst()).thenReturn(firm);
 
         pdfService = new InvoicePdfService(firmService);
     }

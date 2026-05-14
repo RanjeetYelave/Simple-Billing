@@ -84,6 +84,7 @@ class InvoiceServiceTest {
     private Customer createCustomer(String name) {
         Customer c = Customer.builder()
                 .name(name)
+                .firmId(1L)
                 .phone("9999999999")
                 .email(name.toLowerCase() + "@example.com")
                 .address("Test Address")
@@ -95,6 +96,7 @@ class InvoiceServiceTest {
     private Product createProduct(String name, String price, String gstPercent) {
         Product p = Product.builder()
                 .name(name)
+                .firmId(1L)
                 .price(bd(price))
                 .gstPercentage(gstPercent == null ? null : bd(gstPercent))
                 .unit("pcs")
@@ -121,6 +123,7 @@ class InvoiceServiceTest {
         Product p = createProduct("Widget", "100.00", "18.00");
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(Collections.singletonList(buildItem(p, 1)));
@@ -144,6 +147,7 @@ class InvoiceServiceTest {
         Product p = createProduct("Gadget", "200.00", "18.00");
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.ESTIMATE);
         req.setItems(Collections.singletonList(buildItem(p, 1)));
@@ -172,6 +176,7 @@ class InvoiceServiceTest {
         Product p = createProduct("PreviewItem", "100.00", "18.00");
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(Collections.singletonList(buildItem(p, 1)));
@@ -198,6 +203,7 @@ class InvoiceServiceTest {
 
         // create base invoice with 1 line of p1
         InvoiceRequest createReq = new InvoiceRequest();
+        createReq.setFirmId(1L);
         createReq.setCustomerId(c.getId());
         createReq.setStatus(InvoiceStatus.FINAL);
         createReq.setItems(Collections.singletonList(buildItem(p1, 2))); // 2 * 50 = 100 + 18% = 118
@@ -240,6 +246,7 @@ class InvoiceServiceTest {
         Product p = createProduct("PT", "100.00", "18.00");
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(Collections.singletonList(buildItem(p, 1)));
@@ -264,6 +271,7 @@ class InvoiceServiceTest {
         Product p = createProduct("ConvProd", "100.00", "18.00");
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.ESTIMATE);
         req.setItems(Collections.singletonList(buildItem(p, 1)));
@@ -294,6 +302,7 @@ class InvoiceServiceTest {
 
         // base estimate
         InvoiceRequest createReq = new InvoiceRequest();
+        createReq.setFirmId(1L);
         createReq.setCustomerId(c.getId());
         createReq.setStatus(InvoiceStatus.ESTIMATE);
         createReq.setCustomerNote("original-note");
@@ -303,6 +312,7 @@ class InvoiceServiceTest {
 
         // override only metadata (no items override)
         InvoiceRequest overrideReq = new InvoiceRequest();
+        overrideReq.setFirmId(1L);
         overrideReq.setCustomerId(c.getId());
         overrideReq.setStatus(InvoiceStatus.FINAL);
         overrideReq.setCustomerNote("override-note");
@@ -341,6 +351,7 @@ class InvoiceServiceTest {
         items.add(buildItem(p18, 1));
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(items);
@@ -385,6 +396,7 @@ class InvoiceServiceTest {
         List<InvoiceRequestItem> items = List.of(it1, it2);
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(items);
@@ -451,6 +463,7 @@ class InvoiceServiceTest {
         it.setDiscountValue(bd("150.00"));
 
         InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
         req.setCustomerId(c.getId());
         req.setStatus(InvoiceStatus.FINAL);
         req.setItems(Collections.singletonList(it));

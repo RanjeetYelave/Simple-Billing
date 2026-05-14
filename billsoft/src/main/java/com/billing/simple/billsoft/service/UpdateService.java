@@ -25,6 +25,16 @@ public class UpdateService {
     @Value("${app.version:v1.0.0}")
     private String defaultVersion;
 
+    private final RestTemplate restTemplate;
+
+    public UpdateService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    public UpdateService() {
+        this.restTemplate = new RestTemplate();
+    }
+
     private static final String GITHUB_API_URL = "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases/latest";
     private static final String UPDATE_MARKER_FILE = ".billsoft-updated";
     private static final String VERSION_FILE = ".billsoft-version";
@@ -162,7 +172,6 @@ public class UpdateService {
         response.put("currentVersion", currentVersion);
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.set("User-Agent", "Billsoft-App");
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -216,7 +225,6 @@ public class UpdateService {
             String latestVersion = "";
             // Try to get the latest version from the release for display purposes
             try {
-                RestTemplate restTemplate = new RestTemplate();
                 HttpHeaders headers = new HttpHeaders();
                 headers.set("User-Agent", "Billsoft-App");
                 HttpEntity<String> entity = new HttpEntity<>(headers);

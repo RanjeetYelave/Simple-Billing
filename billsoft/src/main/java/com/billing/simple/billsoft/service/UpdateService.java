@@ -48,7 +48,7 @@ public class UpdateService {
     private final AtomicReference<String> progressSize = new AtomicReference<>("");
     private final AtomicReference<String> cachedDownloadUrl = new AtomicReference<>("");
     // Emitter used for Server‑Sent Events
-    private SseEmitter progressEmitter;
+    private volatile SseEmitter progressEmitter;
 
     /**
      * Get the current version from the persisted version file, falling back to the
@@ -78,25 +78,33 @@ public class UpdateService {
         }
     }
 
-    public SseEmitter getProgressEmitter() {
-        progressEmitter = new SseEmitter(Long.MAX_VALUE);
-        return progressEmitter;
+    /**
+     * Create a fresh SSE emitter and set it. Called when the client connects to the SSE endpoint.
+     */
+    public SseEmitter createProgressEmitter() {
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        this.progressEmitter = emitter;
+        // When the emitter completes or errors, clear our reference
+        emitter.onCompletion(() -> {
+            this.progressEmitter = null;
+        });
+        emitter.onError(e -> {
+            this.progressEmitter = null;
+        });
+        return emitter;
     }
 
-    /**
-     * Setter for SSE emitter used to push progress updates.
-     */
     public void setProgressEmitter(SseEmitter emitter) {
         this.progressEmitter = emitter;
     }
 
     private void sendProgressEvent() {
-        if (progressEmitter != null) {
+        SseEmitter emitter = this.progressEmitter;
+        if (emitter != null) {
             try {
-                progressEmitter
-                        .send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
+                emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
             } catch (Exception e) {
-                progressEmitter = null;
+                this.progressEmitter = null;
             }
         }
     }
@@ -222,154 +230,177 @@ public class UpdateService {
         return version.replaceAll("^[vV]", "").trim();
     }
 
-    public boolean applyUpdate() {
+    /**
+     * Start the update download asynchronously and return immediately.
+     * The actual download + restart runs on a background thread.
+     * Progress is sent via the SSE emitter (client must connect to SSE first).
+     */
+    public boolean startUpdateAsync() {
         String downloadUrl = cachedDownloadUrl.get();
         if (downloadUrl == null || downloadUrl.isEmpty()) {
             setProgress("error", 0, "Update failed: No download URL found. Please check for updates again.");
             return false;
         }
-        try {
-            String latestVersion = "";
-            // Try to get the latest version from the release for display purposes
-            try {
-                HttpHeaders headers = new HttpHeaders();
-                headers.set("User-Agent", "Billsoft-App");
-                HttpEntity<String> entity = new HttpEntity<>(headers);
-                
-                ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
-                Map<String, Object> githubRelease = githubResponse.getBody();
-                
-                if (githubRelease != null && githubRelease.containsKey("tag_name")) {
-                    latestVersion = (String) githubRelease.get("tag_name");
-                }
-            } catch (Exception ignored) {
-            }
 
-            setProgress("downloading", 0, "Starting download...", latestVersion);
-            // Ensure SSE client receives the initial state
-            sendProgressEvent();
-            java.net.URL url = new java.net.URI(downloadUrl).toURL();
-            String basePath;
+        // Run the download on a separate thread so the HTTP response returns immediately
+        new Thread(() -> {
             try {
-                basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
+                performDownload(downloadUrl);
             } catch (Exception e) {
-                basePath = System.getProperty("user.dir");
+                e.printStackTrace();
+                setProgress("error", 0, "Update failed: " + e.getMessage());
             }
-            Path targetPath = Paths.get(basePath, "billsoft-update.war");
+        }, "update-download-thread").start();
 
-            // Cleanup: Delete any old or partial update file before starting a new download
-            java.io.File oldUpdate = targetPath.toFile();
-            if (oldUpdate.exists()) {
-                oldUpdate.delete();
+        return true;
+    }
+
+    /**
+     * The actual download logic, extracted to run on a background thread.
+     */
+    private void performDownload(String downloadUrl) throws Exception {
+        String latestVersion = "";
+        // Try to get the latest version from the release for display purposes
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("User-Agent", "Billsoft-App");
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
+            Map<String, Object> githubRelease = githubResponse.getBody();
+            
+            if (githubRelease != null && githubRelease.containsKey("tag_name")) {
+                latestVersion = (String) githubRelease.get("tag_name");
             }
-
-            // Download the file with progress tracking
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(30000);
-            conn.connect();
-
-            int fileSize = conn.getContentLength();
-            long totalBytesRead = 0;
-            int lastPercent = 0;
-            long startTime = System.currentTimeMillis();
-
-            try (java.io.InputStream in = conn.getInputStream();
-                    java.io.FileOutputStream out = new java.io.FileOutputStream(targetPath.toFile())) {
-
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                long lastUpdateTime = System.currentTimeMillis();
-
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                    totalBytesRead += bytesRead;
-
-                    long now = System.currentTimeMillis();
-                    // Update progress every 200ms for smoothness
-                    if (now - lastUpdateTime > 200) {
-                        lastUpdateTime = now;
-                        int percent = (fileSize > 0) ? (int) (totalBytesRead * 100 / fileSize) : 0;
-
-                        long elapsed = (now - startTime) / 1000;
-                        double downloadMb = totalBytesRead / (1024.0 * 1024.0);
-                        double totalMb = fileSize / (1024.0 * 1024.0);
-                        double speedMbps = elapsed > 0 ? (totalBytesRead / (1024.0 * 1024.0)) / elapsed : 0;
-
-                        String speedStr = String.format("%.2f MB/s", speedMbps);
-                        String sizeStr = (fileSize > 0)
-                                ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
-                                : String.format("%.1f MB", downloadMb);
-
-                        String eta = "";
-                        if (fileSize > 0 && speedMbps > 0) {
-                            int remainingSec = (int) ((totalMb - downloadMb) / speedMbps);
-                            if (remainingSec > 0)
-                                eta = " | ~" + remainingSec + "s remaining";
-                        }
-
-                        setProgress("downloading", percent,
-                                "Downloading update..." + eta,
-                                latestVersion, speedStr, sizeStr);
-                    }
-                }
-                // Final 100% progress for download
-                String finalSizeStr = (fileSize > 0)
-                        ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0),
-                                fileSize / (1024.0 * 1024.0))
-                        : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
-                setProgress("downloading", 100, "Download complete", latestVersion, "", finalSizeStr);
-            }
-
-            // Verify the downloaded file exists and has content
-            if (!Files.exists(targetPath) || Files.size(targetPath) == 0) {
-                setProgress("error", 0, "Update failed: Downloaded file is empty");
-                return false;
-            }
-
-            // Installation phase
-            setProgress("installing", 90, "Installing update...", latestVersion);
-            Thread.sleep(100);
-
-            setProgress("installing", 95, "Finalizing installation...", latestVersion);
-            // Notify SSE client about installation stage
-            sendProgressEvent();
-
-            // Persist the new version BEFORE writing the marker file.
-            // This version file lives outside the WAR and survives replacement.
-            if (latestVersion != null && !latestVersion.isEmpty()) {
-                saveCurrentVersion(latestVersion);
-            }
-
-            // Write a marker file so after restart the UI can show "Update Complete!"
-            try {
-                Files.write(getMarkerPath(), latestVersion.getBytes());
-            } catch (Exception ignored) {
-            }
-
-            Thread.sleep(100);
-
-            // Shutdown phase
-            setProgress("restarting", 100, "Restarting application...", latestVersion);
-            // Notify SSE client that we are about to restart
-            sendProgressEvent();
-
-            // Spin up a separate thread to shutdown the application after a brief delay
-            // This gives the HTTP response time to reach the client
-            new Thread(() -> {
-                try {
-                    Thread.sleep(1000);
-                    System.exit(0);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }).start();
-
-            return true;
-        } catch (Exception e) {
-            e.printStackTrace();
-            setProgress("error", 0, "Update failed: " + e.getMessage());
-            return false;
+        } catch (Exception ignored) {
         }
+
+        setProgress("downloading", 0, "Starting download...", latestVersion);
+        // Ensure SSE client receives the initial state
+        sendProgressEvent();
+
+        java.net.URL url = new java.net.URI(downloadUrl).toURL();
+        String basePath;
+        try {
+            basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
+        } catch (Exception e) {
+            basePath = System.getProperty("user.dir");
+        }
+        Path targetPath = Paths.get(basePath, "billsoft-update.war");
+
+        // Cleanup: Delete any old or partial update file before starting a new download
+        java.io.File oldUpdate = targetPath.toFile();
+        if (oldUpdate.exists()) {
+            oldUpdate.delete();
+        }
+
+        // Download the file with progress tracking
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(30000);
+        conn.connect();
+
+        int fileSize = conn.getContentLength();
+        long totalBytesRead = 0;
+        int lastPercent = 0;
+        long startTime = System.currentTimeMillis();
+
+        try (java.io.InputStream in = conn.getInputStream();
+                java.io.FileOutputStream out = new java.io.FileOutputStream(targetPath.toFile())) {
+
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            long lastUpdateTime = System.currentTimeMillis();
+
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+
+                long now = System.currentTimeMillis();
+                // Update progress every 200ms for smoothness
+                if (now - lastUpdateTime > 200) {
+                    lastUpdateTime = now;
+                    int percent = (fileSize > 0) ? (int) (totalBytesRead * 100 / fileSize) : 0;
+
+                    long elapsed = (now - startTime) / 1000;
+                    double downloadMb = totalBytesRead / (1024.0 * 1024.0);
+                    double totalMb = fileSize / (1024.0 * 1024.0);
+                    double speedMbps = elapsed > 0 ? (totalBytesRead / (1024.0 * 1024.0)) / elapsed : 0;
+
+                    String speedStr = String.format("%.2f MB/s", speedMbps);
+                    String sizeStr = (fileSize > 0)
+                            ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
+                            : String.format("%.1f MB", downloadMb);
+
+                    String eta = "";
+                    if (fileSize > 0 && speedMbps > 0) {
+                        int remainingSec = (int) ((totalMb - downloadMb) / speedMbps);
+                        if (remainingSec > 0)
+                            eta = " | ~" + remainingSec + "s remaining";
+                    }
+
+                    setProgress("downloading", percent,
+                            "Downloading update..." + eta,
+                            latestVersion, speedStr, sizeStr);
+                }
+            }
+            // Final 100% progress for download
+            String finalSizeStr = (fileSize > 0)
+                    ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0),
+                            fileSize / (1024.0 * 1024.0))
+                    : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
+            setProgress("downloading", 100, "Download complete", latestVersion, "", finalSizeStr);
+        }
+
+        // Verify the downloaded file exists and has content
+        if (!Files.exists(targetPath) || Files.size(targetPath) == 0) {
+            setProgress("error", 0, "Update failed: Downloaded file is empty");
+            return;
+        }
+
+        // Installation phase
+        setProgress("installing", 90, "Installing update...", latestVersion);
+        Thread.sleep(100);
+
+        setProgress("installing", 95, "Finalizing installation...", latestVersion);
+        // Notify SSE client about installation stage
+        sendProgressEvent();
+
+        // Persist the new version BEFORE writing the marker file.
+        // This version file lives outside the WAR and survives replacement.
+        if (latestVersion != null && !latestVersion.isEmpty()) {
+            saveCurrentVersion(latestVersion);
+        }
+
+        // Write a marker file so after restart the UI can show "Update Complete!"
+        try {
+            Files.write(getMarkerPath(), latestVersion.getBytes());
+        } catch (Exception ignored) {
+        }
+
+        Thread.sleep(100);
+
+        // Shutdown phase
+        setProgress("restarting", 100, "Restarting application...", latestVersion);
+        // Notify SSE client that we are about to restart
+        sendProgressEvent();
+
+        // Spin up a separate thread to shutdown the application after a brief delay
+        // This gives the SSE event time to reach the client
+        new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+                System.exit(0);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }).start();
+    }
+
+    /**
+     * Old synchronous applyUpdate - kept for backward compatibility but now starts async.
+     */
+    public boolean applyUpdate() {
+        return startUpdateAsync();
     }
 }

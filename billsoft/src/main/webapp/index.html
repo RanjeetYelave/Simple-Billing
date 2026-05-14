@@ -2848,8 +2848,17 @@
       const [updateProgress, setUpdateProgress] = useState(null);
       const updatePollRef = useRef(null);
 
-      const startUpdatePolling = () => {
-        if (updatePollRef.current) return;
+      /**
+       * Connect to the SSE progress endpoint.
+       * This should be called BEFORE starting the update so no events are missed.
+       * Returns the EventSource instance.
+       */
+      const connectUpdateProgressSSE = () => {
+        // Close any existing connection first
+        if (updatePollRef.current) {
+          updatePollRef.current.close();
+          updatePollRef.current = null;
+        }
 
         const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
         updatePollRef.current = source;
@@ -2868,6 +2877,8 @@
         });
 
         source.onerror = () => {
+          // When the server shuts down during restart, EventSource will get an error.
+          // Transition to "restarting" state so the user sees a meaningful message.
           setUpdateProgress(prev => {
             if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
               return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
@@ -2875,6 +2886,8 @@
             return prev;
           });
         };
+
+        return source;
       };
 
       const isElectron = !!(window.electron);
@@ -2888,11 +2901,15 @@
           latestVersion: latestVersion || ''
         });
 
-        // Start the actual update
+        // IMPORTANT: Connect SSE first BEFORE starting the update.
+        // This ensures the backend has an SSE emitter registered for progress events.
+        // The download runs on a background thread on the server, so the POST returns immediately.
+        connectUpdateProgressSSE();
+
+        // Start the actual update (runs async on backend)
         API.system.applyUpdate()
           .then(() => {
-            // Start polling progress
-            startUpdatePolling();
+            // SSE is already connected and will receive progress events
           })
           .catch(e => {
             setUpdateProgress({
@@ -2907,8 +2924,10 @@
       const handleUpdateComplete = () => {
         setIsUpdating(false);
         setUpdateProgress(null);
+        // Properly close the EventSource connection
         if (updatePollRef.current) {
-          clearInterval(updatePollRef.current);
+          updatePollRef.current.close();
+          updatePollRef.current = null;
         }
       };
 

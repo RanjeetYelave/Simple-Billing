@@ -25,10 +25,8 @@ public class UpdateController {
 
     @GetMapping(value = "/update-progress", produces = "text/event-stream")
     public SseEmitter updateProgress() {
-        // Create a long‑lived emitter and give it to the service.
-        SseEmitter emitter = new SseEmitter(0L);
-        updateService.setProgressEmitter(emitter);
-        return emitter;
+        // Create a fresh SSE emitter with cleanup callbacks
+        return updateService.createProgressEmitter();
     }
 
     @GetMapping("/check-update-complete")

@@ -1,5 +1,1 @@
-## New in this version
-- Performance improvements and bug fixes.
-- Enhanced update progress tracking.
-- Fixed invoice calculation issues.
-TEST
+Update issues Fix

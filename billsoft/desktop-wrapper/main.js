@@ -147,7 +147,7 @@ function handleUpdateSwap() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       pollServerAfterUpdate(mainWindow);
     }
-  }, 2000);
+  }, 500);
 }
 
 function pollServerAfterUpdate(win) {

@@ -155,8 +155,15 @@ public class UpdateService {
     }
 
     private Path getMarkerPath() {
-        return Paths.get(UPDATE_MARKER_FILE);
+        String basePath;
+        try {
+            basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
+        } catch (Exception e) {
+            basePath = System.getProperty("user.dir");
+        }
+        return Paths.get(basePath, ".billsoft-updated");
     }
+
     private long lastCheckTime = 0;
     private Map<String, Object> cachedResponse = null;
     private static final long CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
@@ -242,7 +249,12 @@ public class UpdateService {
             // Ensure SSE client receives the initial state
             sendProgressEvent();
             java.net.URL url = new java.net.URI(downloadUrl).toURL();
-            String basePath = System.getProperty("user.dir");
+            String basePath;
+            try {
+                basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
+            } catch (Exception e) {
+                basePath = System.getProperty("user.dir");
+            }
             Path targetPath = Paths.get(basePath, "billsoft-update.war");
 
             // Cleanup: Delete any old or partial update file before starting a new download
@@ -317,7 +329,7 @@ public class UpdateService {
 
             // Installation phase
             setProgress("installing", 90, "Installing update...", latestVersion);
-            Thread.sleep(500);
+            Thread.sleep(100);
 
             setProgress("installing", 95, "Finalizing installation...", latestVersion);
             // Notify SSE client about installation stage
@@ -335,7 +347,7 @@ public class UpdateService {
             } catch (Exception ignored) {
             }
 
-            Thread.sleep(500);
+            Thread.sleep(100);
 
             // Shutdown phase
             setProgress("restarting", 100, "Restarting application...", latestVersion);
@@ -346,7 +358,7 @@ public class UpdateService {
             // This gives the HTTP response time to reach the client
             new Thread(() -> {
                 try {
-                    Thread.sleep(3000);
+                    Thread.sleep(1000);
                     System.exit(0);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

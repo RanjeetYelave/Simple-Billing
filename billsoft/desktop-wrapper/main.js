@@ -57,16 +57,15 @@ function startJavaBackend() {
       return; // don't fall through to error handling
     }
 
-    // If Java died with non-zero code (crash or error), restart
-    if (code !== 0 && code !== null) {
+    // If Java died with non-zero code (crash or error), or if it died with code 0 but no update was found (unexpected shutdown)
+    if (code !== null) {
       restartAttempts++;
       console.log(`Java exited with code ${code}. Restart attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`);
       
       if (restartAttempts < MAX_RESTART_ATTEMPTS) {
-        const delay = RESTART_DELAY_MS * Math.min(restartAttempts, 5); // exponential backoff cap
+        const delay = RESTART_DELAY_MS * Math.min(restartAttempts, 5);
         setTimeout(() => {
           startJavaBackend();
-          // Reload main window if it's already loaded
           if (mainWindow && !mainWindow.isDestroyed()) {
             setTimeout(() => {
               mainWindow.reload();
@@ -74,16 +73,16 @@ function startJavaBackend() {
           }
         }, delay);
       } else {
-        console.error("Max restart attempts reached. Java will not be restarted.");
-        // Show error in window
+        console.error("Max restart attempts reached.");
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
-            '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Application Error: Backend failed to start. Please reinstall the application.</h2>'
+            '<div style="background:#1e293b;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">' +
+            '<div><h2 style="color:#ef4444;">Backend Connection Lost</h2><p>The application backend stopped unexpectedly and could not be restarted.</p>' +
+            '<button onclick="window.location.reload()" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:5px;cursor:pointer;">Try Again</button></div></div>'
           ));
         }
       }
     }
-    // code 0 with no update = clean exit (shouldn't happen normally)
   });
 
   javaProcess.on('error', (err) => {

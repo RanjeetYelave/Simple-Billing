@@ -243,7 +243,7 @@ public class UpdateService {
             sendProgressEvent();
             java.net.URL url = new java.net.URI(downloadUrl).toURL();
             String basePath = System.getProperty("user.dir");
-            Path targetPath = Paths.get(basePath, "billsoft.war.update");
+            Path targetPath = Paths.get(basePath, "billsoft-update.war");
 
             // Cleanup: Delete any old or partial update file before starting a new download
             java.io.File oldUpdate = targetPath.toFile();

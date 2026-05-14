@@ -98,56 +98,56 @@ function handleUpdateSwap() {
     `document.getElementById('progress-bar').style.width = '60%';`
   );
 
-  console.log("Update detected! Waiting for file locks to release...");
+  console.log(`Update swap started. Source: ${updateWarPath}, Target: ${warPath}`);
 
-  setTimeout(() => {
+  let retryCount = 0;
+  const maxRetries = 10;
+  const retryInterval = 500;
+
+  const performSwap = () => {
     try {
-      // Verify update file exists before swapping
       if (!fs.existsSync(updateWarPath)) {
-        console.error("Update WAR not found at swap time!");
-        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-          updateProgressWindow.webContents.executeJavaScript(
-            `document.getElementById('status').textContent = 'Error: Update file missing';` +
-            `document.getElementById('progress-bar').style.width = '0%';`
-          );
-        }
-        // Try to restart with the original war anyway
-        startJavaBackend();
-        return;
+        throw new Error("Update file missing");
       }
 
       if (fs.existsSync(warPath)) {
         fs.unlinkSync(warPath);
       }
       fs.renameSync(updateWarPath, warPath);
-      console.log("Swap complete! Restarting backend...");
       
-      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-        updateProgressWindow.webContents.executeJavaScript(
-          `document.getElementById('status').textContent = 'Restarting application...';` +
-          `document.getElementById('phase-text').textContent = 'Step 3 of 3: Restarting';` +
-          `document.getElementById('progress-bar').style.width = '90%';`
-        );
-      }
+      console.log("Swap successful!");
+      finalizeRestart();
     } catch (err) {
-      console.error("Failed to swap update files:", err);
-      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-        updateProgressWindow.webContents.executeJavaScript(
-          `document.getElementById('status').textContent = 'Error: ' + ${JSON.stringify(err.message)};` +
-          `document.getElementById('progress-bar').style.width = '0%';`
-        );
+      console.error(`Swap attempt ${retryCount + 1} failed: ${err.message}`);
+      if (retryCount < maxRetries) {
+        retryCount++;
+        setTimeout(performSwap, retryInterval);
+      } else {
+        console.error("Max swap retries reached. Attempting emergency restart of old version.");
+        finalizeRestart(); // restart whatever is there
       }
     }
+  };
 
-    // Reset restart counter since this is a planned restart
+  const finalizeRestart = () => {
+    if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+      updateProgressWindow.webContents.executeJavaScript(
+        `document.getElementById('status').textContent = 'Restarting application...';` +
+        `document.getElementById('phase-text').textContent = 'Step 3 of 3: Restarting';` +
+        `document.getElementById('progress-bar').style.width = '90%';`
+      );
+    }
+    
     restartAttempts = 0;
     startJavaBackend();
 
-    // Poll for backend to be ready, then reload main window
     if (mainWindow && !mainWindow.isDestroyed()) {
       pollServerAfterUpdate(mainWindow);
     }
-  }, 500);
+  };
+
+  // Wait 2 seconds before first attempt to ensure file locks are released
+  setTimeout(performSwap, 2000);
 }
 
 function pollServerAfterUpdate(win) {

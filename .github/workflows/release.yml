@@ -44,13 +44,12 @@ jobs:
 
       - name: Generate Release Notes
         run: |
-          echo "## Billsoft Auto Release" > release-notes.txt
-          echo "" >> release-notes.txt
-          echo "Commit: ${{ github.sha }}" >> release-notes.txt
-          echo "Build: ${{ github.run_number }}" >> release-notes.txt
-          echo "" >> release-notes.txt
-          echo "### Changes in this release:" >> release-notes.txt
-          echo "- Auto-generated from commit ${{ github.sha }}" >> release-notes.txt
+          if [ -f billsoft/release-notes.txt ]; then
+            cat billsoft/release-notes.txt > release-notes.txt
+          else
+            echo "## Billsoft Release v1.0.${{ github.run_number }}" > release-notes.txt
+            echo "Standard update and improvements." >> release-notes.txt
+          fi
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2

@@ -32,6 +32,7 @@ public class UpdateService {
     private final AtomicReference<String> progressLatestVersion = new AtomicReference<>("");
     private final AtomicReference<String> progressSpeed = new AtomicReference<>("");
     private final AtomicReference<String> progressSize = new AtomicReference<>("");
+    private final AtomicReference<String> cachedDownloadUrl = new AtomicReference<>("");
     // Emitter used for Server‑Sent Events
     private SseEmitter progressEmitter;
 
@@ -164,7 +165,10 @@ public class UpdateService {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> assets = (List<Map<String, Object>>) githubRelease.get("assets");
                 if (assets != null && !assets.isEmpty()) {
-                    response.put("downloadUrl", assets.get(0).get("browser_download_url"));
+                    String url = (String) assets.get(0).get("browser_download_url");
+                    cachedDownloadUrl.set(url);
+                    // Don't send the URL to the frontend to hide the GitHub source
+                    response.put("downloadUrl", "internal"); 
                 }
             } else {
                 response.put("updateAvailable", false);
@@ -186,7 +190,12 @@ public class UpdateService {
         return version.replaceAll("^[vV]", "").trim();
     }
 
-    public boolean applyUpdate(String downloadUrl) {
+    public boolean applyUpdate() {
+        String downloadUrl = cachedDownloadUrl.get();
+        if (downloadUrl == null || downloadUrl.isEmpty()) {
+            setProgress("error", 0, "Update failed: No download URL found. Please check for updates again.");
+            return false;
+        }
         try {
             String latestVersion = "";
             // Try to get the latest version from the release for display purposes

@@ -251,10 +251,10 @@
               className: 'btn btn-primary',
               onClick: () => {
                 if (onStartUpdate) {
-                  onStartUpdate(updateInfo.downloadUrl, updateInfo.latestVersion);
+                  onStartUpdate(updateInfo.latestVersion);
                 } else {
                   // Fallback for browser-only mode
-                  API.system.applyUpdate(updateInfo.downloadUrl);
+                  API.system.applyUpdate();
                 }
               }
             }, 'Install Update')
@@ -2644,11 +2644,11 @@
 
       const handleInstall = () => {
         if (onStartUpdate) {
-          onStartUpdate(info.downloadUrl, info.latestVersion);
+          onStartUpdate(info.latestVersion);
         } else {
           // Fallback: direct call
           setLoading(true);
-          API.system.applyUpdate(info.downloadUrl)
+          API.system.applyUpdate()
             .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
         }
       };
@@ -2860,7 +2860,7 @@
 
       const isElectron = !!(window.electron);
 
-      const handleStartUpdate = (downloadUrl, latestVersion) => {
+      const handleStartUpdate = (latestVersion) => {
         if (isElectron) {
           window.electron.showUpdateProgress();
         }
@@ -2873,7 +2873,7 @@
         });
 
         // Start the actual update
-        API.system.applyUpdate(downloadUrl)
+        API.system.applyUpdate()
           .then(() => {
             // Start polling progress
             startUpdatePolling();

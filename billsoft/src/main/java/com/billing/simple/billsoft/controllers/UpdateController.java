@@ -37,12 +37,8 @@ public class UpdateController {
     }
 
     @PostMapping("/apply-update")
-    public ResponseEntity<Map<String, String>> applyUpdate(@RequestBody Map<String, String> payload) {
-        String url = payload.get("downloadUrl");
-        if (url == null || url.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "downloadUrl is required"));
-        }
-        boolean success = updateService.applyUpdate(url);
+    public ResponseEntity<Map<String, String>> applyUpdate() {
+        boolean success = updateService.applyUpdate();
         if (success) {
             return ResponseEntity.ok(Map.of("message", "Update downloaded successfully. Restarting..."));
         } else {

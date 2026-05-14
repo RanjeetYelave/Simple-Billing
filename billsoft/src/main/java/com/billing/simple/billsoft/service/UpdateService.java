@@ -199,6 +199,7 @@ public class UpdateService {
                 }
             } catch (Exception ignored) {}
 
+            
             setProgress("downloading", 0, "Starting download...", latestVersion);
             // Ensure SSE client receives the initial state
             sendProgressEvent();

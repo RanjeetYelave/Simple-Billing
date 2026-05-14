@@ -53,6 +53,7 @@ public class Invoice {
 
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
+    @Builder.Default
     private List<InvoiceItem> items = new ArrayList<>();
 
     // ------------------------
@@ -106,6 +107,7 @@ public class Invoice {
     private String termsAndConditions;
 
     private String paymentMethod;
+    @Builder.Default
     private String currency = "INR";
 
     @Column(precision = 15, scale = 2)

@@ -133,14 +133,6 @@ function handleUpdateSwap() {
   };
 
   const finalizeRestart = () => {
-    if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-      updateProgressWindow.webContents.executeJavaScript(
-        `document.getElementById('status').textContent = 'Restarting application...';` +
-        `document.getElementById('phase-text').textContent = 'Step 3 of 3: Restarting';` +
-        `document.getElementById('progress-bar').style.width = '90%';`
-      );
-    }
-    
     restartAttempts = 0;
     startJavaBackend();
 
@@ -165,11 +157,6 @@ function pollServerAfterUpdate(win) {
       if (res.statusCode < 500) {
         console.log("Backend is back up after update!");
         isUpdating = false; // FINISHED
-        
-        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-          showUpdateCompleteWindow();
-        }
-        
         win.loadURL('http://127.0.0.1:8080');
       } else {
         if (pollCount < maxPolls) {
@@ -194,124 +181,6 @@ function pollServerAfterUpdate(win) {
   checkServer();
 }
 
-function showUpdateProgressWindow() {
-  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-    updateProgressWindow.show();
-    updateProgressWindow.focus();
-    return;
-  }
-
-  updateProgressWindow = new BrowserWindow({
-    width: 480,
-    height: 320,
-    frame: false,
-    resizable: false,
-    alwaysOnTop: true,
-    backgroundColor: '#1e293b',
-    parent: mainWindow, // Make it a child of main window
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
-
-  // Blur the main window content
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(`
-      if (!document.getElementById('update-blur-style')) {
-        const s = document.createElement('style');
-        s.id = 'update-blur-style';
-        s.innerHTML = 'body > *:not(.modal-overlay) { filter: blur(8px) brightness(0.6); pointer-events: none; transition: filter 0.5s ease; }';
-        document.head.appendChild(s);
-      }
-    `);
-  }
-
-  const html = `<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:40px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;overflow:hidden;border:1px solid #334155;">
-  <h2 style="margin:0 0 12px;font-weight:600;font-size:1.4rem;">🔄 Updating Billsoft</h2>
-  <p id="phase-text" style="margin:0 0 20px;color:#60a5fa;font-size:0.85rem;text-transform:uppercase;letter-spacing:1.5px;font-weight:500;">Step 1: Downloading</p>
-  
-  <div style="width:100%;background:#334155;border-radius:10px;padding:3px;margin-bottom:12px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);">
-    <div id="progress-bar" style="width:0%;height:12px;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:8px;transition:width 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(59,130,246,0.4);"></div>
-  </div>
-
-  <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:24px;font-size:0.8rem;color:#94a3b8;font-variant-numeric: tabular-nums;">
-    <span id="speed-text" style="visibility:hidden;">0.00 MB/s</span>
-    <span id="size-text" style="visibility:hidden;">0.0 MB / 0.0 MB</span>
-  </div>
-
-  <p id="status" style="margin:0;color:#cbd5e1;font-size:0.95rem;min-height:1.2em;font-weight:400;">Connecting to update server...</p>
-  <p style="margin-top:30px;font-size:0.75rem;color:#f87171;opacity:0.9;font-weight:500;">⚠️ Do not close the app or disconnect internet</p>
-
-  <script>
-    const source = new EventSource('http://127.0.0.1:8080/api/system/update-progress');
-    source.addEventListener('progress', e => {
-      try {
-        const data = JSON.parse(e.data);
-        const percent = data.percent || 0;
-        
-        document.getElementById('progress-bar').style.width = percent + '%';
-        document.getElementById('status').textContent = data.message || '';
-        
-        if (data.status) {
-          let step = '1: Downloading';
-          if (data.status === 'installing') step = '2: Installing';
-          if (data.status === 'restarting') step = '3: Restarting';
-          document.getElementById('phase-text').textContent = 'Step ' + step;
-        }
-        if (data.speed) {
-          document.getElementById('speed-text').textContent = data.speed;
-          document.getElementById('speed-text').style.visibility = 'visible';
-        } else {
-          document.getElementById('speed-text').style.visibility = 'hidden';
-        }
-        if (data.size) {
-          document.getElementById('size-text').textContent = data.size;
-          document.getElementById('size-text').style.visibility = 'visible';
-        } else {
-          document.getElementById('size-text').style.visibility = 'hidden';
-        }
-      } catch (err) {
-        console.error('Progress parse error', err);
-      }
-    });
-    source.onerror = () => {
-      console.log('SSE connection lost/closed');
-    };
-  </script>
-</body>
-</html>`;
-
-  updateProgressWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-  updateProgressWindow.center(); // Center on parent (mainWindow)
-  
-  updateProgressWindow.on('closed', () => {
-    // Remove blur from main window
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.executeJavaScript(`
-        const s = document.getElementById('update-blur-style');
-        if (s) s.remove();
-      `);
-    }
-    updateProgressWindow = null;
-  });
-}
-
-function showUpdateCompleteWindow() {
-  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-    updateProgressWindow.webContents.executeJavaScript(
-      `document.body.innerHTML = \`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px;background:#1e293b;color:#fff;">
-        <div style="font-size:64px;margin-bottom:12px;">✅</div>
-        <h2 style="margin:0 0 8px;font-weight:600;">Update Complete!</h2>
-        <p style="color:#94a3b8;font-size:0.95rem;margin:0;">Your app has been updated successfully.</p>
-      </div>\`;`
-    );
-    setTimeout(() => {
-      if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-        updateProgressWindow.close();
-      }
     }, 3000);
   }
 }

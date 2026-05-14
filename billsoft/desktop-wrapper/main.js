@@ -7,6 +7,7 @@ const http = require('http');
 let mainWindow;
 let javaProcess;
 let updateProgressWindow;
+let isUpdating = false;
 let restartAttempts = 0;
 const MAX_RESTART_ATTEMPTS = 5;
 const RESTART_DELAY_MS = 2000;
@@ -27,7 +28,6 @@ const javaExecutable = isPackaged
 function startJavaBackend() {
   console.log("Starting Spring Boot...");
 
-  // Check if WAR exists
   if (!fs.existsSync(warPath)) {
     console.error(`WAR not found at ${warPath}`);
     return;
@@ -46,21 +46,18 @@ function startJavaBackend() {
   javaProcess.on('exit', (code) => {
     console.log(`Java process exited with code ${code}`);
 
-    // Check if there's an update waiting
-    if (fs.existsSync(updateWarPath)) {
-      console.log("Update detected! Swapping WAR files...");
-      // Clear cache to ensure new UI files are loaded
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.session.clearCache();
-      }
+    // If we are in the middle of an update, the exit is expected.
+    // handleUpdateSwap will take over from here.
+    if (isUpdating && fs.existsSync(updateWarPath)) {
+      console.log("Backend exited for update. Proceeding with swap...");
       handleUpdateSwap();
-      return; // don't fall through to error handling
+      return;
     }
 
-    // If Java died with non-zero code (crash or error), or if it died with code 0 but no update was found (unexpected shutdown)
-    if (code !== null) {
+    // Otherwise, this is an unexpected exit (crash or manual close)
+    if (!isUpdating && code !== null) {
       restartAttempts++;
-      console.log(`Java exited with code ${code}. Restart attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`);
+      console.log(`Java exited unexpectedly. Restart attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`);
       
       if (restartAttempts < MAX_RESTART_ATTEMPTS) {
         const delay = RESTART_DELAY_MS * Math.min(restartAttempts, 5);
@@ -69,28 +66,34 @@ function startJavaBackend() {
           if (mainWindow && !mainWindow.isDestroyed()) {
             setTimeout(() => {
               mainWindow.reload();
-            }, delay + 5000);
+            }, 2000);
           }
         }, delay);
       } else {
-        console.error("Max restart attempts reached.");
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
-            '<div style="background:#1e293b;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">' +
-            '<div><h2 style="color:#ef4444;">Backend Connection Lost</h2><p>The application backend stopped unexpectedly and could not be restarted.</p>' +
-            '<button onclick="window.location.reload()" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:5px;cursor:pointer;">Try Again</button></div></div>'
-          ));
-        }
+        showCrashScreen();
       }
     }
   });
 
   javaProcess.on('error', (err) => {
     console.error("Failed to spawn Java process:", err);
+    if (!isUpdating) showCrashScreen();
   });
 }
 
+function showCrashScreen() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+      '<div style="background:#1e293b;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;border-top:4px solid #ef4444;">' +
+      '<div><h1 style="font-size:3rem;margin:0;">⚠️</h1><h2 style="color:#ef4444;margin-top:0;">Backend Connection Lost</h2>' +
+      '<p style="color:#94a3b8;">The application backend stopped unexpectedly.</p>' +
+      '<button onclick="window.location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">Relaunch Application</button></div></div>'
+    ));
+  }
+}
+
 function handleUpdateSwap() {
+  isUpdating = true;
   showUpdateProgressWindow();
   updateProgressWindow.webContents.executeJavaScript(
     `document.getElementById('status').textContent = 'Installing update...';` +
@@ -144,6 +147,8 @@ function handleUpdateSwap() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       pollServerAfterUpdate(mainWindow);
     }
+    
+    // We keep isUpdating true until pollServerAfterUpdate succeeds or times out
   };
 
   // Wait 2 seconds before first attempt to ensure file locks are released
@@ -159,33 +164,29 @@ function pollServerAfterUpdate(win) {
     http.get('http://127.0.0.1:8080', (res) => {
       if (res.statusCode < 500) {
         console.log("Backend is back up after update!");
+        isUpdating = false; // FINISHED
         
-        // Show complete in native window
         if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
           showUpdateCompleteWindow();
         }
         
-        // Reload main window to the app
         win.loadURL('http://127.0.0.1:8080');
       } else {
         if (pollCount < maxPolls) {
           setTimeout(checkServer, 1000);
         } else {
+          isUpdating = false;
           console.error("Backend did not come back after update.");
-          win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
-            '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Update Error: Backend failed to restart. Please relaunch the application.</h2>'
-          ));
+          showCrashScreen();
         }
       }
     }).on('error', () => {
-      // Server not ready yet - keep polling
       if (pollCount < maxPolls) {
         setTimeout(checkServer, 1000);
       } else {
+        isUpdating = false;
         console.error("Backend did not come back after update (timeout).");
-        win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
-          '<h2 style="font-family:sans-serif;color:#ef4444;padding:40px;">Update Error: Backend failed to restart. Please relaunch the application.</h2>'
-        ));
+        showCrashScreen();
       }
     });
   };

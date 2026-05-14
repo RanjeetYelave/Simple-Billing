@@ -147,8 +147,16 @@ public class UpdateService {
     private Path getMarkerPath() {
         return Paths.get(UPDATE_MARKER_FILE);
     }
+    private long lastCheckTime = 0;
+    private Map<String, Object> cachedResponse = null;
+    private static final long CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
     public Map<String, Object> checkUpdate() {
+        long currentTime = System.currentTimeMillis();
+        if (cachedResponse != null && (currentTime - lastCheckTime) < CACHE_DURATION) {
+            return cachedResponse;
+        }
+
         Map<String, Object> response = new HashMap<>();
         String currentVersion = getCurrentVersion();
         response.put("currentVersion", currentVersion);
@@ -166,29 +174,26 @@ public class UpdateService {
                 String latestVersion = (String) githubRelease.get("tag_name");
                 response.put("latestVersion", latestVersion);
 
-                // Version comparison: strip leading 'v' if present, compare strings
                 boolean updateAvailable = !normalizeVersion(currentVersion).equals(normalizeVersion(latestVersion));
                 response.put("updateAvailable", updateAvailable);
-                response.put("htmlUrl", githubRelease.get("html_url"));
                 response.put("releaseNotes", githubRelease.get("body"));
 
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> assets = (List<Map<String, Object>>) githubRelease.get("assets");
                 if (assets != null && !assets.isEmpty()) {
-                    String url = (String) assets.get(0).get("browser_download_url");
-                    cachedDownloadUrl.set(url);
-                    // Don't send the URL to the frontend to hide the GitHub source
+                    cachedDownloadUrl.set((String) assets.get(0).get("browser_download_url"));
                     response.put("downloadUrl", "internal");
                 }
-            } else {
-                response.put("updateAvailable", false);
-                response.put("error", "No releases found");
+                
+                lastCheckTime = currentTime;
+                cachedResponse = new HashMap<>(response);
             }
         } catch (Exception e) {
             response.put("updateAvailable", false);
-            response.put("error", e.getMessage());
+            response.put("error", "GitHub API Error: " + e.getMessage());
+            System.err.println("Update check failed: " + e.getMessage());
+            return response;
         }
-
         return response;
     }
 

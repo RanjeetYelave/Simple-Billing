@@ -255,7 +255,8 @@ public class UpdateService {
                     }
                 }
                 // Final 100% progress for download
-                setProgress("downloading", 100, "Download complete", latestVersion, "", "");
+                String finalSizeStr = (fileSize > 0) ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0), fileSize / (1024.0 * 1024.0)) : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
+                setProgress("downloading", 100, "Download complete", latestVersion, "", finalSizeStr);
             }
 
             // Verify the downloaded file exists and has content

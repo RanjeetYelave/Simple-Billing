@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -242,9 +242,15 @@ function showUpdateProgressWindow() {
         }
         if (data.speed) {
           document.getElementById('speed-text').textContent = data.speed;
+          document.getElementById('speed-text').style.visibility = 'visible';
+        } else {
+          document.getElementById('speed-text').style.visibility = 'hidden';
         }
         if (data.size) {
           document.getElementById('size-text').textContent = data.size;
+          document.getElementById('size-text').style.visibility = 'visible';
+        } else {
+          document.getElementById('size-text').style.visibility = 'hidden';
         }
       } catch (err) {
         console.error('Progress parse error', err);
@@ -313,7 +319,18 @@ app.whenReady().then(() => {
     title: 'Billsoft',
     autoHideMenuBar: true,
     webPreferences: {
-      webSecurity: false
+      webSecurity: false,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  ipcMain.on('show-update-progress', () => {
+    showUpdateProgressWindow();
+  });
+
+  ipcMain.on('hide-update-progress', () => {
+    if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
+      updateProgressWindow.close();
     }
   });
 

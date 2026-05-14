@@ -253,10 +253,8 @@
                 if (onStartUpdate) {
                   onStartUpdate(updateInfo.downloadUrl, updateInfo.latestVersion);
                 } else {
-                  showToast('Downloading and installing update...', 'info');
-                  API.system.applyUpdate(updateInfo.downloadUrl)
-                    .then(r => showToast(r.message || 'Restarting...', 'success'))
-                    .catch(e => showToast(e.message || 'Update failed', 'error'));
+                  // Fallback for browser-only mode
+                  API.system.applyUpdate(updateInfo.downloadUrl);
                 }
               }
             }, 'Install Update')
@@ -2562,7 +2560,8 @@
       const showComplete = status === 'complete';
       const isError = status === 'error';
 
-      if (!isUpdating) return null;
+      const isElectron = !!(window.electron);
+      if (!isUpdating || (isElectron && status !== 'error' && status !== 'complete')) return null;
 
       return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
         React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center' } },
@@ -2583,8 +2582,8 @@
           
           // Metrics Row (Speed & Size)
           showBar ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '0 4px' } },
-            React.createElement('span', null, speed || '0.00 MB/s'),
-            React.createElement('span', null, size || '0.0 MB / 0.0 MB')
+            React.createElement('span', { style: { visibility: speed ? 'visible' : 'hidden' } }, speed || '0.00 MB/s'),
+            React.createElement('span', { style: { visibility: size ? 'visible' : 'hidden' } }, size || '0.0 MB / 0.0 MB')
           ) : null,
 
           // Percentage text
@@ -2647,11 +2646,9 @@
         if (onStartUpdate) {
           onStartUpdate(info.downloadUrl, info.latestVersion);
         } else {
-          // Fallback: direct call (shouldn't happen)
-          showToast('Downloading and installing update...', 'info');
+          // Fallback: direct call
           setLoading(true);
           API.system.applyUpdate(info.downloadUrl)
-            .then(r => showToast(r.message || 'Restarting...', 'success'))
             .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
         }
       };
@@ -2861,7 +2858,12 @@
         };
       };
 
+      const isElectron = !!(window.electron);
+
       const handleStartUpdate = (downloadUrl, latestVersion) => {
+        if (isElectron) {
+          window.electron.showUpdateProgress();
+        }
         setIsUpdating(true);
         setUpdateProgress({
           status: 'downloading',

@@ -6,7 +6,6 @@ const http = require('http');
 
 let mainWindow;
 let javaProcess;
-let updateProgressWindow;
 let isUpdating = false;
 let restartAttempts = 0;
 const MAX_RESTART_ATTEMPTS = 5;
@@ -24,6 +23,16 @@ const javaExecutable = isPackaged
     ? path.join(baseDir, 'jre', 'bin', 'java.exe')
     : path.join(baseDir, 'jre', 'bin', 'java'))
   : 'java';
+
+/**
+ * Called from the renderer via IPC when the user clicks "Install Update".
+ * This must set isUpdating BEFORE the Java process exits, otherwise
+ * the exit handler won't know to swap the WAR file.
+ */
+ipcMain.on('set-updating', () => {
+  console.log('[Update] Renderer signalled update is starting');
+  isUpdating = true;
+});
 
 function startJavaBackend() {
   console.log("Starting Spring Boot...");
@@ -46,10 +55,20 @@ function startJavaBackend() {
   javaProcess.on('exit', (code) => {
     console.log(`Java process exited with code ${code}`);
 
-    // If we are in the middle of an update, the exit is expected.
-    // handleUpdateSwap will take over from here.
-    if (isUpdating && fs.existsSync(updateWarPath)) {
+    // Check if the update WAR file exists on disk
+    const updateWarExists = fs.existsSync(updateWarPath);
+
+    // If we are in the middle of an update (signalled from renderer), swap the WAR
+    if (isUpdating && updateWarExists) {
       console.log("Backend exited for update. Proceeding with swap...");
+      handleUpdateSwap();
+      return;
+    }
+
+    // Also check just the file existence as a fallback (in case IPC was missed)
+    if (updateWarExists && !isUpdating) {
+      console.log("Update WAR found on disk but isUpdating flag not set. Attempting swap anyway...");
+      isUpdating = true;
       handleUpdateSwap();
       return;
     }
@@ -139,7 +158,7 @@ function handleUpdateSwap() {
 
 function pollServerAfterUpdate(win) {
   let pollCount = 0;
-  const maxPolls = 60;
+  const maxPolls = 90; // 90 seconds max
 
   const checkServer = () => {
     pollCount++;

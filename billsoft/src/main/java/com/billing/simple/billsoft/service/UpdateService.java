@@ -302,7 +302,6 @@ public class UpdateService {
 
         int fileSize = conn.getContentLength();
         long totalBytesRead = 0;
-        int lastPercent = 0;
         long startTime = System.currentTimeMillis();
 
         try (java.io.InputStream in = conn.getInputStream();

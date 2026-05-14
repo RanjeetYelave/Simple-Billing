@@ -2901,6 +2901,13 @@
           latestVersion: latestVersion || ''
         });
 
+        // IMPORTANT (Electron): Signal the main process that an update is starting.
+        // This sets isUpdating=true BEFORE the Java process exits,
+        // so the Electron exit handler knows to swap the WAR file instead of crash-recovering.
+        if (window.electron && window.electron.setUpdating) {
+          window.electron.setUpdating();
+        }
+
         // IMPORTANT: Connect SSE first BEFORE starting the update.
         // This ensures the backend has an SSE emitter registered for progress events.
         // The download runs on a background thread on the server, so the POST returns immediately.

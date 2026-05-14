@@ -94,13 +94,6 @@ function showCrashScreen() {
 
 function handleUpdateSwap() {
   isUpdating = true;
-  showUpdateProgressWindow();
-  updateProgressWindow.webContents.executeJavaScript(
-    `document.getElementById('status').textContent = 'Installing update...';` +
-    `document.getElementById('phase-text').textContent = 'Step 2 of 3: Installing';` +
-    `document.getElementById('progress-bar').style.width = '60%';`
-  );
-
   console.log(`Update swap started. Source: ${updateWarPath}, Target: ${warPath}`);
 
   let retryCount = 0;
@@ -126,8 +119,8 @@ function handleUpdateSwap() {
         retryCount++;
         setTimeout(performSwap, retryInterval);
       } else {
-        console.error("Max swap retries reached. Attempting emergency restart of old version.");
-        finalizeRestart(); // restart whatever is there
+        console.error("Max swap retries reached. Attempting emergency restart.");
+        finalizeRestart();
       }
     }
   };
@@ -139,31 +132,27 @@ function handleUpdateSwap() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       pollServerAfterUpdate(mainWindow);
     }
-    
-    // We keep isUpdating true until pollServerAfterUpdate succeeds or times out
   };
 
-  // Wait 2 seconds before first attempt to ensure file locks are released
   setTimeout(performSwap, 2000);
 }
 
 function pollServerAfterUpdate(win) {
   let pollCount = 0;
-  const maxPolls = 60; // 60 seconds max wait
+  const maxPolls = 60;
 
   const checkServer = () => {
     pollCount++;
     http.get('http://127.0.0.1:8080', (res) => {
       if (res.statusCode < 500) {
         console.log("Backend is back up after update!");
-        isUpdating = false; // FINISHED
+        isUpdating = false;
         win.loadURL('http://127.0.0.1:8080');
       } else {
         if (pollCount < maxPolls) {
           setTimeout(checkServer, 1000);
         } else {
           isUpdating = false;
-          console.error("Backend did not come back after update.");
           showCrashScreen();
         }
       }
@@ -172,7 +161,6 @@ function pollServerAfterUpdate(win) {
         setTimeout(checkServer, 1000);
       } else {
         isUpdating = false;
-        console.error("Backend did not come back after update (timeout).");
         showCrashScreen();
       }
     });
@@ -181,19 +169,10 @@ function pollServerAfterUpdate(win) {
   checkServer();
 }
 
-    }, 3000);
-  }
-}
-
 function pollServerAndLoad(win) {
   const checkServer = () => {
     http.get('http://127.0.0.1:8080', (res) => {
-      // Accept 2xx or 3xx (redirects from Spring Security)
       if (res.statusCode < 400) {
-        // If there was an update progress window, show complete
-        if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-          showUpdateCompleteWindow();
-        }
         win.loadURL('http://127.0.0.1:8080');
       } else {
         setTimeout(checkServer, 1000);
@@ -202,7 +181,6 @@ function pollServerAndLoad(win) {
       setTimeout(checkServer, 1000);
     });
   };
-
   checkServer();
 }
 
@@ -220,20 +198,6 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.on('show-update-progress', () => {
-    showUpdateProgressWindow();
-  });
-
-  ipcMain.on('hide-update-progress', () => {
-    if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-      updateProgressWindow.close();
-    }
-  });
-
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[Browser Console]: ${message}`);
-  });
-
   const loadingHtml = `<!DOCTYPE html>
 <html><body style="margin:0;height:100vh;background:linear-gradient(135deg,#1e293b,#334155);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,system-ui,sans-serif;color:#fff;">
   <div style="font-size:48px;font-weight:800;color:#3b82f6;margin-bottom:8px;">B</div>
@@ -245,9 +209,9 @@ app.whenReady().then(() => {
   <p style="margin-top:16px;color:#94a3b8;font-size:0.8rem;">Loading...</p>
   <style>@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}</style>
 </body></html>`;
+  
   mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(loadingHtml));
 
-  // Open DevTools in development only
   if (!isPackaged) {
     mainWindow.webContents.openDevTools();
   }
@@ -258,14 +222,5 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   if (javaProcess) {
     javaProcess.kill('SIGTERM');
-    // Give Java a moment to shut down cleanly
-    setTimeout(() => {
-      if (javaProcess && !javaProcess.killed) {
-        javaProcess.kill('SIGKILL');
-      }
-    }, 5000);
-  }
-  if (updateProgressWindow && !updateProgressWindow.isDestroyed()) {
-    updateProgressWindow.close();
   }
 });

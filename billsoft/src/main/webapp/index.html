@@ -2849,9 +2849,10 @@
       const updatePollRef = useRef(null);
 
       /**
-       * Connect to the SSE progress endpoint and wait for it to be ready.
-       * Returns a Promise that resolves when the SSE connection is established.
-       * This MUST resolve BEFORE calling applyUpdate so the backend emitter is registered.
+       * Connect to the SSE progress endpoint.
+       * Opens the EventSource and waits a brief time for the HTTP connection to establish.
+       * Returns a Promise that resolves after a short delay, ensuring the backend
+       * has an SSE emitter registered before we call applyUpdate.
        */
       const connectUpdateProgressSSE = () => {
         // Close any existing connection first
@@ -2860,47 +2861,38 @@
           updatePollRef.current = null;
         }
 
-        return new Promise((resolve) => {
-          const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
-          updatePollRef.current = source;
+        const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
+        updatePollRef.current = source;
 
-          // Listen for the initial "connected" event that the backend sends upon SSE creation
-          source.addEventListener('connected', () => {
-            // SSE connection is now live and emitter is registered. Safe to start update.
-            resolve();
-          }, { once: true });
-
-          source.addEventListener('progress', e => {
-            try {
-              const data = JSON.parse(e.data);
-              setUpdateProgress(data);
-              if (data.status === 'complete' || data.status === 'error') {
-                source.close();
-                updatePollRef.current = null;
-              }
-            } catch (err) {
-              console.error('SSE data parse error', err);
+        source.addEventListener('progress', e => {
+          try {
+            const data = JSON.parse(e.data);
+            console.log('SSE progress:', data);
+            setUpdateProgress(data);
+            if (data.status === 'complete' || data.status === 'error') {
+              source.close();
+              updatePollRef.current = null;
             }
-          });
-
-          source.onerror = () => {
-            // If we haven't resolved yet (first error before connected), resolve anyway as fallback
-            // This handles cases where the server does not send "connected" event
-            resolve();
-
-            // When the server shuts down during restart, EventSource will get an error.
-            // Transition to "restarting" state so the user sees a meaningful message.
-            setUpdateProgress(prev => {
-              if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
-                return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
-              }
-              return prev;
-            });
-          };
-
-          // Safety timeout: resolve after 3s even if "connected" event never arrives
-          setTimeout(resolve, 3000);
+          } catch (err) {
+            console.error('SSE data parse error', err);
+          }
         });
+
+        source.onerror = () => {
+          // When the server shuts down during restart, EventSource will get an error.
+          // Transition to "restarting" state so the user sees a meaningful message.
+          setUpdateProgress(prev => {
+            if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
+              return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
+            }
+            return prev;
+          });
+        };
+
+        // Return a promise that resolves after a short delay.
+        // This gives the EventSource time to establish the HTTP connection
+        // and register the SSE emitter on the backend.
+        return new Promise(resolve => setTimeout(resolve, 2000));
       };
 
       const isElectron = !!(window.electron);

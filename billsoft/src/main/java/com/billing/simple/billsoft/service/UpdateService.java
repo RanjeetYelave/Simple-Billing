@@ -80,6 +80,7 @@ public class UpdateService {
 
     /**
      * Create a fresh SSE emitter and set it. Called when the client connects to the SSE endpoint.
+     * Sends an initial "connected" event so the frontend knows the emitter is registered.
      */
     public SseEmitter createProgressEmitter() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
@@ -91,6 +92,12 @@ public class UpdateService {
         emitter.onError(e -> {
             this.progressEmitter = null;
         });
+        // Send a "connected" event immediately so the frontend knows we're ready
+        try {
+            emitter.send(SseEmitter.event().name("connected").data("{}"));
+        } catch (Exception e) {
+            this.progressEmitter = null;
+        }
         return emitter;
     }
 

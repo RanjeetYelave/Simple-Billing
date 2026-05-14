@@ -2849,9 +2849,9 @@
       const updatePollRef = useRef(null);
 
       /**
-       * Connect to the SSE progress endpoint.
-       * This should be called BEFORE starting the update so no events are missed.
-       * Returns the EventSource instance.
+       * Connect to the SSE progress endpoint and wait for it to be ready.
+       * Returns a Promise that resolves when the SSE connection is established.
+       * This MUST resolve BEFORE calling applyUpdate so the backend emitter is registered.
        */
       const connectUpdateProgressSSE = () => {
         // Close any existing connection first
@@ -2860,39 +2860,52 @@
           updatePollRef.current = null;
         }
 
-        const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
-        updatePollRef.current = source;
+        return new Promise((resolve) => {
+          const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
+          updatePollRef.current = source;
 
-        source.addEventListener('progress', e => {
-          try {
-            const data = JSON.parse(e.data);
-            setUpdateProgress(data);
-            if (data.status === 'complete' || data.status === 'error') {
-              source.close();
-              updatePollRef.current = null;
-            }
-          } catch (err) {
-            console.error('SSE data parse error', err);
-          }
-        });
+          // Listen for the initial "connected" event that the backend sends upon SSE creation
+          source.addEventListener('connected', () => {
+            // SSE connection is now live and emitter is registered. Safe to start update.
+            resolve();
+          }, { once: true });
 
-        source.onerror = () => {
-          // When the server shuts down during restart, EventSource will get an error.
-          // Transition to "restarting" state so the user sees a meaningful message.
-          setUpdateProgress(prev => {
-            if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
-              return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
+          source.addEventListener('progress', e => {
+            try {
+              const data = JSON.parse(e.data);
+              setUpdateProgress(data);
+              if (data.status === 'complete' || data.status === 'error') {
+                source.close();
+                updatePollRef.current = null;
+              }
+            } catch (err) {
+              console.error('SSE data parse error', err);
             }
-            return prev;
           });
-        };
 
-        return source;
+          source.onerror = () => {
+            // If we haven't resolved yet (first error before connected), resolve anyway as fallback
+            // This handles cases where the server does not send "connected" event
+            resolve();
+
+            // When the server shuts down during restart, EventSource will get an error.
+            // Transition to "restarting" state so the user sees a meaningful message.
+            setUpdateProgress(prev => {
+              if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
+                return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
+              }
+              return prev;
+            });
+          };
+
+          // Safety timeout: resolve after 3s even if "connected" event never arrives
+          setTimeout(resolve, 3000);
+        });
       };
 
       const isElectron = !!(window.electron);
 
-      const handleStartUpdate = (latestVersion) => {
+      const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
         setUpdateProgress({
           status: 'downloading',
@@ -2908,24 +2921,23 @@
           window.electron.setUpdating();
         }
 
-        // IMPORTANT: Connect SSE first BEFORE starting the update.
-        // This ensures the backend has an SSE emitter registered for progress events.
-        // The download runs on a background thread on the server, so the POST returns immediately.
-        connectUpdateProgressSSE();
+        // IMPORTANT: Connect SSE FIRST and AWAIT the connection handshake.
+        // This ensures the backend has an SSE emitter registered for progress events
+        // BEFORE we start the update. Otherwise all early progress events are dropped.
+        await connectUpdateProgressSSE();
 
-        // Start the actual update (runs async on backend)
-        API.system.applyUpdate()
-          .then(() => {
-            // SSE is already connected and will receive progress events
-          })
-          .catch(e => {
-            setUpdateProgress({
-              status: 'error',
-              percent: 0,
-              message: 'Update failed: ' + (e.message || 'Unknown error'),
-              latestVersion: latestVersion || ''
-            });
+        // Start the actual update (runs async on backend - POST returns immediately)
+        try {
+          await API.system.applyUpdate();
+          // SSE is already connected and will receive all progress events
+        } catch (e) {
+          setUpdateProgress({
+            status: 'error',
+            percent: 0,
+            message: 'Update failed: ' + (e.message || 'Unknown error'),
+            latestVersion: latestVersion || ''
           });
+        }
       };
 
       const handleUpdateComplete = () => {

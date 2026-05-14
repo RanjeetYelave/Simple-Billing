@@ -30,6 +30,8 @@ public class UpdateService {
     private final AtomicInteger progressPercent = new AtomicInteger(0);
     private final AtomicReference<String> progressMessage = new AtomicReference<>("");
     private final AtomicReference<String> progressLatestVersion = new AtomicReference<>("");
+    private final AtomicReference<String> progressSpeed = new AtomicReference<>("");
+    private final AtomicReference<String> progressSize = new AtomicReference<>("");
     // Emitter used for Server‑Sent Events
     private SseEmitter progressEmitter;
 
@@ -87,25 +89,30 @@ public class UpdateService {
         p.put("percent", progressPercent.get());
         p.put("message", progressMessage.get());
         p.put("latestVersion", progressLatestVersion.get());
+        p.put("speed", progressSpeed.get());
+        p.put("size", progressSize.get());
         return p;
     }
 
     private void setProgress(String status, int percent, String message) {
-        progressStatus.set(status);
-        progressPercent.set(percent);
-        progressMessage.set(message);
-        // Push update to any listening SSE client
-        sendProgressEvent();
+        setProgress(status, percent, message, progressLatestVersion.get(), "", "");
     }
 
     private void setProgress(String status, int percent, String message, String latestVersion) {
+        setProgress(status, percent, message, latestVersion, "", "");
+    }
+
+    private void setProgress(String status, int percent, String message, String latestVersion, String speed, String size) {
         progressStatus.set(status);
         progressPercent.set(percent);
         progressMessage.set(message);
         progressLatestVersion.set(latestVersion);
-        // Push update to any listening SSE client
+        progressSpeed.set(speed);
+        progressSize.set(size);
         sendProgressEvent();
     }
+
+
 
     /**
      * Check if an update was just completed (marker file exists).
@@ -214,25 +221,41 @@ public class UpdateService {
 
                 byte[] buffer = new byte[8192];
                 int bytesRead;
+                long lastUpdateTime = System.currentTimeMillis();
+
                 while ((bytesRead = in.read(buffer)) != -1) {
                     out.write(buffer, 0, bytesRead);
                     totalBytesRead += bytesRead;
 
-                    if (fileSize > 0) {
-                        int percent = (int) (totalBytesRead * 100 / fileSize);
-                        if (percent != lastPercent && percent % 5 == 0) {
-                            lastPercent = percent;
-                            long elapsed = (System.currentTimeMillis() - startTime) / 1000;
-                            int downloadKb = (int) (totalBytesRead / 1024);
-                            int totalKb = fileSize / 1024;
-                            int speedKbps = elapsed > 0 ? downloadKb / (int) elapsed : 0;
-                            int remainingSec = speedKbps > 0 ? (totalKb - downloadKb) / speedKbps : 0;
-                            String eta = remainingSec > 0 ? " | ~" + remainingSec + "s remaining" : "";
-                            setProgress("downloading", percent,
-                                    "Downloading... " + percent + "% (" + downloadKb + "KB / " + totalKb + "KB" + eta + ")");
+                    long now = System.currentTimeMillis();
+                    // Update progress every 200ms for smoothness
+                    if (now - lastUpdateTime > 200) {
+                        lastUpdateTime = now;
+                        int percent = (fileSize > 0) ? (int) (totalBytesRead * 100 / fileSize) : 0;
+                        
+                        long elapsed = (now - startTime) / 1000;
+                        double downloadMb = totalBytesRead / (1024.0 * 1024.0);
+                        double totalMb = fileSize / (1024.0 * 1024.0);
+                        double speedMbps = elapsed > 0 ? (totalBytesRead / (1024.0 * 1024.0)) / elapsed : 0;
+                        
+                        String speedStr = String.format("%.2f MB/s", speedMbps);
+                        String sizeStr = (fileSize > 0) 
+                            ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
+                            : String.format("%.1f MB", downloadMb);
+                            
+                        String eta = "";
+                        if (fileSize > 0 && speedMbps > 0) {
+                            int remainingSec = (int) ((totalMb - downloadMb) / speedMbps);
+                            if (remainingSec > 0) eta = " | ~" + remainingSec + "s remaining";
                         }
+
+                        setProgress("downloading", percent, 
+                            "Downloading update..." + eta, 
+                            latestVersion, speedStr, sizeStr);
                     }
                 }
+                // Final 100% progress for download
+                setProgress("downloading", 100, "Download complete", latestVersion, "", "");
             }
 
             // Verify the downloaded file exists and has content

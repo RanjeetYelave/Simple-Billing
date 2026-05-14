@@ -211,31 +211,48 @@ function showUpdateProgressWindow() {
 
   const html = `<!DOCTYPE html>
 <html>
-<body style="margin:0;padding:30px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;">
+<body style="margin:0;padding:30px;font-family:-apple-system,system-ui,sans-serif;background:#1e293b;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;overflow:hidden;">
   <h2 style="margin:0 0 8px;font-weight:600;font-size:1.3rem;">🔄 Updating Billsoft</h2>
-  <p id="phase-text" style="margin:0 0 16px;color:#60a5fa;font-size:0.85rem;">Step 1 of 3: Downloading</p>
-  <p id="status" style="margin:0 0 16px;color:#94a3b8;font-size:0.9rem;">Downloading update...</p>
-  <div style="width:100%;height:8px;background:#334155;border-radius:4px;overflow:hidden;">
-    <div id="progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:4px;transition:width 0.3s ease;">&nbsp;</div>
+  <p id="phase-text" style="margin:0 0 16px;color:#60a5fa;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Checking for updates...</p>
+  
+  <div style="width:100%;background:#334155;border-radius:6px;padding:2px;margin-bottom:12px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);">
+    <div id="progress-bar" style="width:0%;height:10px;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:4px;transition:width 0.4s cubic-bezier(0.4, 0, 0.2, 1); shadow: 0 0 8px rgba(59,130,246,0.5);"></div>
   </div>
-  <p style="margin-top:20px;font-size:0.75rem;color:#f87171;">⚠ Do not close the application</p>
+
+  <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:20px;font-size:0.75rem;color:#94a3b8;">
+    <span id="speed-text">0.00 MB/s</span>
+    <span id="size-text">0.0 MB / 0.0 MB</span>
+  </div>
+
+  <p id="status" style="margin:0;color:#cbd5e1;font-size:0.9rem;min-height:1.2em;">Connecting...</p>
+  <p style="margin-top:24px;font-size:0.7rem;color:#f87171;opacity:0.8;">⚠ Do not close the application or disconnect internet</p>
+
   <script>
     const source = new EventSource('http://127.0.0.1:8080/api/system/update-progress');
     source.addEventListener('progress', e => {
       try {
         const data = JSON.parse(e.data);
         const percent = data.percent || 0;
+        
         document.getElementById('progress-bar').style.width = percent + '%';
         document.getElementById('status').textContent = data.message || '';
+        
         if (data.status) {
-          document.getElementById('phase-text').textContent = data.status;
+          document.getElementById('phase-text').textContent = 'Step: ' + data.status;
+        }
+        if (data.speed) {
+          document.getElementById('speed-text').textContent = data.speed;
+        }
+        if (data.size) {
+          document.getElementById('size-text').textContent = data.size;
         }
       } catch (err) {
         console.error('Progress parse error', err);
       }
     });
     source.onerror = () => {
-      source.close();
+      // Don't close immediately on error to show final message
+      console.log('SSE connection lost/closed');
     };
   </script>
 </body>

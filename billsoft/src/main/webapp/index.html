@@ -2553,6 +2553,8 @@
       const percent = progress ? progress.percent : 0;
       const message = progress ? progress.message : '';
       const latestVersion = progress ? progress.latestVersion : '';
+      const speed = progress ? progress.speed : '';
+      const size = progress ? progress.size : '';
 
       // Show a loading bar while downloading
       const showBar = status === 'downloading' || status === 'installing';
@@ -2575,9 +2577,16 @@
             `Installing version ${latestVersion}`
           ) : null,
           // Progress bar
-          showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 12 } },
-            React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.3s ease-in-out' } })
+          showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 8 } },
+            React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.4s ease-in-out' } })
           ) : null,
+          
+          // Metrics Row (Speed & Size)
+          showBar ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '0 4px' } },
+            React.createElement('span', null, speed || '0.00 MB/s'),
+            React.createElement('span', null, size || '0.0 MB / 0.0 MB')
+          ) : null,
+
           // Percentage text
           showBar ? React.createElement('p', { style: { fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)', margin: '0 0 8px 0' } },
             percent + '%'
@@ -2806,7 +2815,6 @@
         refreshFirm();
         setFirmLoadKey(k => k + 1);
       };
-
       // ─── Update Progress State ───
       const [isUpdating, setIsUpdating] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
@@ -2825,36 +2833,32 @@
       const updatePollRef = useRef(null);
 
       const startUpdatePolling = () => {
-        // Poll the progress endpoint every 1 second
-        const poll = () => {
-          API._json('/api/system/update-progress')
-            .then(data => {
-              setUpdateProgress(data);
-              if (data.status === 'restarting' || data.status === 'complete') {
-                // Backend is about to restart or already restarting
-                // Wait for connection to fail, then poll again for server to come back
-                if (data.status === 'restarting') {
-                  // Keep polling - when server goes down, the fetch will fail
-                }
-                if (data.status === 'complete') {
-                  clearInterval(updatePollRef.current);
-                }
-              }
-              if (data.status === 'error') {
-                clearInterval(updatePollRef.current);
-              }
-            })
-            .catch(() => {
-              // Server is down (restarting) - keep polling until it comes back
-              setUpdateProgress(prev => ({
-                ...prev,
-                status: 'restarting',
-                percent: 100,
-                message: 'Restarting application...'
-              }));
-            });
+        if (updatePollRef.current) return;
+
+        const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
+        updatePollRef.current = source;
+
+        source.addEventListener('progress', e => {
+          try {
+            const data = JSON.parse(e.data);
+            setUpdateProgress(data);
+            if (data.status === 'complete' || data.status === 'error') {
+              source.close();
+              updatePollRef.current = null;
+            }
+          } catch (err) {
+            console.error('SSE data parse error', err);
+          }
+        });
+
+        source.onerror = () => {
+          setUpdateProgress(prev => {
+            if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
+              return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
+            }
+            return prev;
+          });
         };
-        updatePollRef.current = setInterval(poll, 1000);
       };
 
       const handleStartUpdate = (downloadUrl, latestVersion) => {

@@ -49,7 +49,8 @@ public class UpdateService {
                     return version;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         return defaultVersion;
     }
 
@@ -59,7 +60,8 @@ public class UpdateService {
     private void saveCurrentVersion(String version) {
         try {
             Files.write(Paths.get(VERSION_FILE), version.getBytes());
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     public SseEmitter getProgressEmitter() {
@@ -77,7 +79,8 @@ public class UpdateService {
     private void sendProgressEvent() {
         if (progressEmitter != null) {
             try {
-                progressEmitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
+                progressEmitter
+                        .send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
             } catch (Exception e) {
                 progressEmitter = null;
             }
@@ -103,7 +106,8 @@ public class UpdateService {
         setProgress(status, percent, message, latestVersion, "", "");
     }
 
-    private void setProgress(String status, int percent, String message, String latestVersion, String speed, String size) {
+    private void setProgress(String status, int percent, String message, String latestVersion, String speed,
+            String size) {
         progressStatus.set(status);
         progressPercent.set(percent);
         progressMessage.set(message);
@@ -112,8 +116,6 @@ public class UpdateService {
         progressSize.set(size);
         sendProgressEvent();
     }
-
-
 
     /**
      * Check if an update was just completed (marker file exists).
@@ -168,7 +170,7 @@ public class UpdateService {
                     String url = (String) assets.get(0).get("browser_download_url");
                     cachedDownloadUrl.set(url);
                     // Don't send the URL to the frontend to hide the GitHub source
-                    response.put("downloadUrl", "internal"); 
+                    response.put("downloadUrl", "internal");
                 }
             } else {
                 response.put("updateAvailable", false);
@@ -186,7 +188,8 @@ public class UpdateService {
      * Normalize version string by stripping leading 'v' or 'V' for comparison.
      */
     private String normalizeVersion(String version) {
-        if (version == null) return "";
+        if (version == null)
+            return "";
         return version.replaceAll("^[vV]", "").trim();
     }
 
@@ -206,14 +209,21 @@ public class UpdateService {
                 if (githubRelease != null && githubRelease.containsKey("tag_name")) {
                     latestVersion = (String) githubRelease.get("tag_name");
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
-            
             setProgress("downloading", 0, "Starting download...", latestVersion);
             // Ensure SSE client receives the initial state
             sendProgressEvent();
             java.net.URL url = new java.net.URI(downloadUrl).toURL();
-            Path targetPath = Paths.get("billsoft-update.war");
+            String basePath = System.getProperty("user.dir");
+            Path targetPath = Paths.get(basePath, "billsoft.war.update");
+
+            // Cleanup: Delete any old or partial update file before starting a new download
+            java.io.File oldUpdate = targetPath.toFile();
+            if (oldUpdate.exists()) {
+                oldUpdate.delete();
+            }
 
             // Download the file with progress tracking
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
@@ -227,7 +237,7 @@ public class UpdateService {
             long startTime = System.currentTimeMillis();
 
             try (java.io.InputStream in = conn.getInputStream();
-                 java.io.FileOutputStream out = new java.io.FileOutputStream(targetPath.toFile())) {
+                    java.io.FileOutputStream out = new java.io.FileOutputStream(targetPath.toFile())) {
 
                 byte[] buffer = new byte[8192];
                 int bytesRead;
@@ -242,30 +252,34 @@ public class UpdateService {
                     if (now - lastUpdateTime > 200) {
                         lastUpdateTime = now;
                         int percent = (fileSize > 0) ? (int) (totalBytesRead * 100 / fileSize) : 0;
-                        
+
                         long elapsed = (now - startTime) / 1000;
                         double downloadMb = totalBytesRead / (1024.0 * 1024.0);
                         double totalMb = fileSize / (1024.0 * 1024.0);
                         double speedMbps = elapsed > 0 ? (totalBytesRead / (1024.0 * 1024.0)) / elapsed : 0;
-                        
+
                         String speedStr = String.format("%.2f MB/s", speedMbps);
-                        String sizeStr = (fileSize > 0) 
-                            ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
-                            : String.format("%.1f MB", downloadMb);
-                            
+                        String sizeStr = (fileSize > 0)
+                                ? String.format("%.1f MB / %.1f MB", downloadMb, totalMb)
+                                : String.format("%.1f MB", downloadMb);
+
                         String eta = "";
                         if (fileSize > 0 && speedMbps > 0) {
                             int remainingSec = (int) ((totalMb - downloadMb) / speedMbps);
-                            if (remainingSec > 0) eta = " | ~" + remainingSec + "s remaining";
+                            if (remainingSec > 0)
+                                eta = " | ~" + remainingSec + "s remaining";
                         }
 
-                        setProgress("downloading", percent, 
-                            "Downloading update..." + eta, 
-                            latestVersion, speedStr, sizeStr);
+                        setProgress("downloading", percent,
+                                "Downloading update..." + eta,
+                                latestVersion, speedStr, sizeStr);
                     }
                 }
                 // Final 100% progress for download
-                String finalSizeStr = (fileSize > 0) ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0), fileSize / (1024.0 * 1024.0)) : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
+                String finalSizeStr = (fileSize > 0)
+                        ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0),
+                                fileSize / (1024.0 * 1024.0))
+                        : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
                 setProgress("downloading", 100, "Download complete", latestVersion, "", finalSizeStr);
             }
 
@@ -292,7 +306,8 @@ public class UpdateService {
             // Write a marker file so after restart the UI can show "Update Complete!"
             try {
                 Files.write(getMarkerPath(), latestVersion.getBytes());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             Thread.sleep(500);
 

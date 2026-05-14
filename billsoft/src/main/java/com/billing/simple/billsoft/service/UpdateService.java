@@ -1,7 +1,11 @@
 package com.billing.simple.billsoft.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -151,8 +155,12 @@ public class UpdateService {
 
         try {
             RestTemplate restTemplate = new RestTemplate();
-            @SuppressWarnings("unchecked")
-            Map<String, Object> githubRelease = restTemplate.getForObject(GITHUB_API_URL, Map.class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("User-Agent", "Billsoft-App");
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
+            Map<String, Object> githubRelease = githubResponse.getBody();
 
             if (githubRelease != null && githubRelease.containsKey("tag_name")) {
                 String latestVersion = (String) githubRelease.get("tag_name");
@@ -204,8 +212,13 @@ public class UpdateService {
             // Try to get the latest version from the release for display purposes
             try {
                 RestTemplate restTemplate = new RestTemplate();
-                @SuppressWarnings("unchecked")
-                Map<String, Object> githubRelease = restTemplate.getForObject(GITHUB_API_URL, Map.class);
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("User-Agent", "Billsoft-App");
+                HttpEntity<String> entity = new HttpEntity<>(headers);
+                
+                ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
+                Map<String, Object> githubRelease = githubResponse.getBody();
+                
                 if (githubRelease != null && githubRelease.containsKey("tag_name")) {
                     latestVersion = (String) githubRelease.get("tag_name");
                 }

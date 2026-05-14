@@ -61,6 +61,10 @@ public class BackupService {
 
     @Transactional
     public void importData(BackupDTO backup, Long targetFirmId, boolean merge) {
+        if (backup == null || backup.getMetadata() == null) {
+            throw new RuntimeException("Invalid backup file: Missing metadata");
+        }
+        
         if (!merge) {
             // Mode A: Restore as New Firm (Clone)
             FirmDetails newFirm = new FirmDetails();
@@ -104,6 +108,7 @@ public class BackupService {
         }
 
         // Import Products
+        Map<Long, Product> oldToNewProductMap = new HashMap<>();
         if (backup.getProducts() != null) {
             for (Product p : backup.getProducts()) {
                 Product newP = new Product();
@@ -111,7 +116,8 @@ public class BackupService {
                 newP.setName(p.getName());
                 newP.setPrice(p.getPrice());
                 newP.setGstPercentage(p.getGstPercentage());
-                productRepo.save(newP);
+                newP = productRepo.save(newP);
+                oldToNewProductMap.put(p.getId(), newP);
             }
         }
 
@@ -122,9 +128,22 @@ public class BackupService {
                 newInv.setFirmId(targetFirmId);
                 newInv.setInvoiceNumber(inv.getInvoiceNumber());
                 newInv.setInvoiceDate(inv.getInvoiceDate());
+                newInv.setDueDate(inv.getDueDate());
                 newInv.setTotalAmount(inv.getTotalAmount());
+                newInv.setSubtotalWithoutTax(inv.getSubtotalWithoutTax());
+                newInv.setTotalTax(inv.getTotalTax());
+                newInv.setTotalDiscount(inv.getTotalDiscount());
+                newInv.setInvoiceDiscountType(inv.getInvoiceDiscountType());
+                newInv.setInvoiceDiscountValue(inv.getInvoiceDiscountValue());
+                newInv.setRoundOff(inv.getRoundOff());
                 newInv.setStatus(inv.getStatus());
                 newInv.setPaid(inv.getPaid());
+                newInv.setEstimateNumber(inv.getEstimateNumber());
+                newInv.setCustomerNote(inv.getCustomerNote());
+                newInv.setTermsAndConditions(inv.getTermsAndConditions());
+                newInv.setPaymentMethod(inv.getPaymentMethod());
+                newInv.setCurrency(inv.getCurrency() != null ? inv.getCurrency() : "INR");
+                newInv.setTags(inv.getTags());
                 
                 // Map Customer
                 if (inv.getCustomer() != null && oldToNewCustomerMap.containsKey(inv.getCustomer().getId())) {
@@ -147,6 +166,12 @@ public class BackupService {
                         newItem.setGstPercent(item.getGstPercent());
                         newItem.setGstAmount(item.getGstAmount());
                         newItem.setLineTotal(item.getLineTotal());
+                        
+                        // Map Product
+                        if (item.getProduct() != null && oldToNewProductMap.containsKey(item.getProduct().getId())) {
+                            newItem.setProduct(oldToNewProductMap.get(item.getProduct().getId()));
+                        }
+                        
                         newInv.getItems().add(newItem);
                     }
                 }

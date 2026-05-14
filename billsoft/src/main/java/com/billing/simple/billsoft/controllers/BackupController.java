@@ -19,7 +19,9 @@ import java.util.Map;
 public class BackupController {
 
     private final BackupService backupService;
-    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper()
+            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public BackupController(BackupService backupService) {
         this.backupService = backupService;
@@ -56,9 +58,16 @@ public class BackupController {
             response.put("status", "success");
             response.put("message", "Backup restored successfully");
             return ResponseEntity.ok(response);
+        } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
+            e.printStackTrace();
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "The uploaded file is not a valid Billsoft backup or is corrupted.");
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException("Failed to import backup: " + e.getMessage());
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Restore failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
         }
     }
 }

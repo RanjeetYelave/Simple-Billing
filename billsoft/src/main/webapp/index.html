@@ -96,8 +96,11 @@
         React.createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })
       ),
       eye: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-        React.createElement('path', { d: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' }),
         React.createElement('circle', { cx: 12, cy: 12, r: 3 })
+      ),
+      refresh: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '23 4 23 10 17 10' }),
+        React.createElement('path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' })
       ),
       rupee: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
         React.createElement('path', { d: 'M6 3h12M6 8h12M9 3l7 17' })
@@ -2631,15 +2634,19 @@
         };
       }, []);
 
+      const fetchUpdateInfo = () => {
+        setLoading(true);
+        API.system.updateStatus()
+          .then(res => { setInfo(res); setLoading(false); })
+          .catch(() => { showToast('Failed to check for updates', 'error'); setLoading(false); });
+      };
+
       useEffect(() => {
         if (!isOnline) {
           setLoading(false);
           return;
         }
-        setLoading(true);
-        API.system.updateStatus()
-          .then(res => { setInfo(res); setLoading(false); })
-          .catch(() => { showToast('Failed to check for updates', 'error'); setLoading(false); });
+        fetchUpdateInfo();
       }, [isOnline]);
 
       const handleInstall = () => {
@@ -2683,7 +2690,19 @@
             React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'),
             React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.')
           )
-        ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information.')
+        ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information.'),
+
+        React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } },
+          React.createElement('button', {
+            className: 'btn btn-ghost',
+            style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' },
+            disabled: loading || !isOnline,
+            onClick: fetchUpdateInfo
+          }, 
+            React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh),
+            loading ? 'Checking...' : 'Check for Updates'
+          )
+        )
       );
     }
 

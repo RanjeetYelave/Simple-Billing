@@ -844,7 +844,8 @@
       }, [form.items, form.invoiceDiscount, form.roundOff]);
 
       const buildRequest = () => {
-        const items = form.items.filter(it => it.productId).map(it => ({
+        const allRows = form.items;
+        const validItems = allRows.filter(it => it.productId).map(it => ({
           productId: parseInt(it.productId),
           qty: parseInt(it.qty) || 0,
           unit: it.unit || undefined,
@@ -852,9 +853,14 @@
           discountValue: parseFloat(it.discountValue) || undefined,
           gstPercent: parseFloat(it.gstPercent) || undefined,
         }));
+        
+        if (allRows.length > 0 && validItems.length === 0) {
+          console.warn("DEBUG: No valid items found even though rows exist. First row productId:", allRows[0].productId);
+        }
+
         return {
           customerId: form.customerId ? parseInt(form.customerId) : undefined,
-          items: items.length ? items : undefined,
+          items: validItems.length ? validItems : (allRows.length > 0 ? [] : undefined),
           invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
           estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
           status: isEstimate ? 'ESTIMATE' : (form.status || 'FINAL'),
@@ -883,6 +889,7 @@
         setSaving(true);
         try {
           const req = buildRequest();
+          console.log("DEBUG: Saving invoice/estimate. Request:", req);
           if (editId) {
             await API.invoices.update(editId, req);
             showToast('Invoice updated', 'success');

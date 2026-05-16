@@ -173,12 +173,13 @@ public class InvoiceService {
 
         // fetch product data once
         List<Product> products = fetchProductsReferencedBy(request, null);
+        System.out.println("DEBUG: createInvoice - Found products: " + products.size());
 
         // delegate calculations to engine (isUpdateMode=false)
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
 
-        // Ensure items are attached to the invoice before persisting
-        invoice.setItems(calculated.getItems());
+        System.out.println("DEBUG: createInvoice - Final items count: " + (calculated.getItems() != null ? calculated.getItems().size() : 0));
+
         return invoiceRepo.save(calculated);
     }
 
@@ -293,103 +294,48 @@ public class InvoiceService {
 
             // copy overrides from req
             if (req.getCustomerId() != null) preserveReq.setCustomerId(req.getCustomerId());
-            if (req.getNotes() != null) preserveReq.setCustomerNote(req.getNotes());
-            if (req.getInvoiceDiscount() != null) preserveReq.setInvoiceDiscount(req.getInvoiceDiscount());
-            if (req.getPaid() != null) preserveReq.setPaid(req.getPaid());
-            if (req.getStatus() != null) preserveReq.setStatus(req.getStatus());
-            if (req.getEstimateNumber() != null) preserveReq.setEstimateNumber(req.getEstimateNumber());
-            if (req.getDueDate() != null) preserveReq.setDueDate(req.getDueDate());
-            if (req.getCustomerNote() != null) preserveReq.setCustomerNote(req.getCustomerNote());
-            if (req.getTermsAndConditions() != null) preserveReq.setTermsAndConditions(req.getTermsAndConditions());
-            if (req.getPaymentMethod() != null) preserveReq.setPaymentMethod(req.getPaymentMethod());
-            if (req.getCurrency() != null) preserveReq.setCurrency(req.getCurrency());
-            if (req.getTags() != null) preserveReq.setTags(req.getTags());
-            if (req.getRoundOff() != null) preserveReq.setRoundOff(req.getRoundOff());
+        Invoice existing = invoiceRepo.findById(id).orElseThrow(() -> new RuntimeException("Invoice not found"));
+        
+        System.out.println("DEBUG: updateFullInvoice - Received items count: " + (req.getItems() != null ? req.getItems().size() : "null"));
 
-            // parse provided invoiceDate (if any)
-            if (req.getInvoiceDate() != null) {
-                LocalDateTime dt = parseDateLenient(req.getInvoiceDate());
-                if (dt != null) existing.setInvoiceDate(dt);
-            }
+        // If items are null, we do a metadata-only update.
+        // We'll use a temporary InvoiceRequest to leverage the engine.
+        InvoiceRequest engineReq = new InvoiceRequest();
+        
+        // Map req to engineReq (InvoiceUpdateRequest -> InvoiceRequest)
+        engineReq.setCustomerId(req.getCustomerId());
+        engineReq.setInvoiceDate(req.getInvoiceDate());
+        engineReq.setCustomerNote(req.getCustomerNote() != null ? req.getCustomerNote() : req.getNotes());
+        engineReq.setTermsAndConditions(req.getTermsAndConditions());
+        engineReq.setPaymentMethod(req.getPaymentMethod());
+        engineReq.setCurrency(req.getCurrency());
+        engineReq.setTags(req.getTags());
+        engineReq.setStatus(req.getStatus());
+        engineReq.setEstimateNumber(req.getEstimateNumber());
+        engineReq.setDueDate(req.getDueDate());
+        engineReq.setPaid(req.getPaid());
+        engineReq.setRoundOff(req.getRoundOff());
+        engineReq.setInvoiceDiscount(req.getInvoiceDiscount());
+        engineReq.setItems(req.getItems());
 
-            List<Product> products = fetchProductsReferencedBy(preserveReq, null);
+        // Resolve customer
+        Customer cust = (req.getCustomerId() != null) ? customerRepo.findById(req.getCustomerId()).orElse(existing.getCustomer()) : existing.getCustomer();
 
-            // engine runs in update mode and mutates the existing invoice object
-            Customer cust = preserveReq.getCustomerId() == null ? existing.getCustomer()
-                    : customerRepo.findById(preserveReq.getCustomerId()).orElse(existing.getCustomer());
-
-            Invoice calculated = engine.calculate(existing, cust, products, preserveReq, true);
-            return invoiceRepo.save(calculated);
-        }
-
-        // If req.items present -> overwrite items
-        InvoiceRequest newReq = new InvoiceRequest();
-        newReq.setCustomerId(
-                req.getCustomerId() != null
-                        ? req.getCustomerId()
-                        : (existing.getCustomer() != null ? existing.getCustomer().getId() : null)
-        );
-        newReq.setCustomerNote(
-                req.getCustomerNote() != null
-                        ? req.getCustomerNote()
-                        : (req.getNotes() != null ? req.getNotes() : existing.getCustomerNote())
-        );
-        newReq.setTermsAndConditions(
-                req.getTermsAndConditions() != null ? req.getTermsAndConditions() : existing.getTermsAndConditions()
-        );
-        newReq.setPaymentMethod(
-                req.getPaymentMethod() != null ? req.getPaymentMethod() : existing.getPaymentMethod()
-        );
-        newReq.setCurrency(
-                req.getCurrency() != null ? req.getCurrency() : existing.getCurrency()
-        );
-        newReq.setTags(
-                req.getTags() != null ? req.getTags() : existing.getTags()
-        );
-        newReq.setStatus(
-                req.getStatus() != null ? req.getStatus() : existing.getStatus()
-        );
-        newReq.setEstimateNumber(
-                req.getEstimateNumber() != null ? req.getEstimateNumber() : existing.getEstimateNumber()
-        );
-        newReq.setDueDate(
-                req.getDueDate() != null ? req.getDueDate() : existing.getDueDate()
-        );
-        newReq.setPaid(
-                req.getPaid() != null ? req.getPaid() : existing.getPaid()
-        );
-
-        // Preserve existing invoice-level discount if not overridden
-        if (req.getInvoiceDiscount() != null) {
-            newReq.setInvoiceDiscount(req.getInvoiceDiscount());
-        } else if (existing.getInvoiceDiscountType() != null && existing.getInvoiceDiscountValue() != null) {
-            Discount d = new Discount();
-            d.setType(existing.getInvoiceDiscountType());
-            d.setValue(existing.getInvoiceDiscountValue());
-            newReq.setInvoiceDiscount(d);
-        }
-
-        newReq.setRoundOff(
-                req.getRoundOff() != null ? req.getRoundOff() : (existing.getRoundOff() != null && existing.getRoundOff().compareTo(BigDecimal.ZERO) != 0)
-        );
-        newReq.setItems(req.getItems());
-
-        // parse invoiceDate if provided
+        // Parse and set date if provided
         if (req.getInvoiceDate() != null) {
             LocalDateTime dt = parseDateLenient(req.getInvoiceDate());
             if (dt != null) existing.setInvoiceDate(dt);
         }
 
-        Customer cust;
-        if (newReq.getCustomerId() != null) {
-            cust = customerRepo.findById(newReq.getCustomerId()).orElse(null);
-        } else {
-            cust = existing.getCustomer();
-        }
-
+        // Resolve products
         List<Product> products = fetchProductsReferencedBy(null, req);
+        System.out.println("DEBUG: updateFullInvoice - Found products: " + products.size());
 
-        Invoice calculated = engine.calculate(existing, cust, products, newReq, true);
+        // Delegate to engine
+        Invoice calculated = engine.calculate(existing, cust, products, engineReq, true);
+        
+        System.out.println("DEBUG: updateFullInvoice - Final items count: " + (calculated.getItems() != null ? calculated.getItems().size() : 0));
+
         return invoiceRepo.save(calculated);
     }
 

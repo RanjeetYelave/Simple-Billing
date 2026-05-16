@@ -280,20 +280,6 @@ public class InvoiceService {
     // -------------------------
     @Transactional
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
-        Invoice existing = invoiceRepo.findById(id).orElse(null);
-        if (existing == null) return null;
-
-        // Validate invoice-level discount on update request
-        if (req.getInvoiceDiscount() != null) {
-            validateInvoiceDiscount(req.getInvoiceDiscount());
-        }
-
-        // If update request omits items -> preserve existing items by creating an InvoiceRequest from existing invoice
-        if (req.getItems() == null) {
-            InvoiceRequest preserveReq = buildInvoiceRequestFromExistingInvoice(existing);
-
-            // copy overrides from req
-            if (req.getCustomerId() != null) preserveReq.setCustomerId(req.getCustomerId());
         Invoice existing = invoiceRepo.findById(id).orElseThrow(() -> new RuntimeException("Invoice not found"));
         
         System.out.println("DEBUG: updateFullInvoice - Received items count: " + (req.getItems() != null ? req.getItems().size() : "null"));
@@ -355,7 +341,7 @@ public class InvoiceService {
 
         // Rebuild invoice-level discount from entity fields, if present
         if (existing.getInvoiceDiscountType() != null && existing.getInvoiceDiscountValue() != null) {
-            Discount d = new Discount();
+            InvoiceRequest.Discount d = new InvoiceRequest.Discount();
             d.setType(existing.getInvoiceDiscountType());
             d.setValue(existing.getInvoiceDiscountValue());
             r.setInvoiceDiscount(d);

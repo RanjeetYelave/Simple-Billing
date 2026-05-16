@@ -177,7 +177,8 @@ public class InvoiceService {
         // delegate calculations to engine (isUpdateMode=false)
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
 
-        // persist and return
+        // Ensure items are attached to the invoice before persisting
+        invoice.setItems(calculated.getItems());
         return invoiceRepo.save(calculated);
     }
 

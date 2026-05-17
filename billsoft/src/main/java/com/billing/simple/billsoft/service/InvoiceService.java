@@ -122,6 +122,9 @@ public class InvoiceService {
     // -------------------------
     @Transactional
     public Invoice createInvoice(InvoiceRequest request) {
+        if (request.getFirmId() == null) {
+            throw new RuntimeException("firmId is required to create an invoice");
+        }
         if (request.getItems() == null) {
             request.setItems(Collections.emptyList());
         }

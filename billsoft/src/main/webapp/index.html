@@ -860,7 +860,7 @@
 
         return {
           customerId: form.customerId ? parseInt(form.customerId) : undefined,
-          items: validItems.length ? validItems : (allRows.length > 0 ? [] : undefined),
+          items: validItems.length ? validItems : undefined,
           invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
           estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
           status: isEstimate ? 'ESTIMATE' : (form.status || 'FINAL'),

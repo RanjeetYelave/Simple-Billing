@@ -86,10 +86,16 @@ const API = {
     listEstimates: () => API._json(API._qs('/api/invoices/estimates')),
     listFinal: () => API._json(API._qs('/api/invoices/final')),
     get: (id) => API._json(`/api/invoices/${id}`),
-    create: (data) => API._json('/api/invoices', {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    }),
+    create: (data) => {
+      const fid = data.firmId || API.firmId;
+      if (fid == null) {
+        return Promise.reject(new Error('No active firm selected. Please select or create a firm first.'));
+      }
+      return API._json('/api/invoices', {
+        method: 'POST',
+        body: { ...data, firmId: fid }
+      });
+    },
     createEstimate: (data) => API._json('/api/invoices/estimate', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }

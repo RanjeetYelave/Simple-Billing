@@ -56,56 +56,76 @@ const API = {
     return res.json();
   },
 
+  // -- Ensure there is a firm selected before operations that need it
+  _ensureFirmReady() {
+    if (this.firmId) return Promise.resolve(this.firmId);
+    // Try to load firms and pick the first one
+    return this.firm.list().then(firms => {
+      if (firms && firms.length > 0) {
+        this.firmId = firms[0].id;
+        return this.firmId;
+      }
+      // No firms exist - create one
+      return this.firm.create().then(created => {
+        this.firmId = created.id;
+        return this.firmId;
+      });
+    }).catch(e => {
+      console.warn('Failed to ensure firm is ready:', e);
+      return null;
+    });
+  },
+
   // ── Customers ──
   customers: {
-    list: () => API._json(API._qs('/api/customers')),
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/customers'))),
     get: (id) => API._json(`/api/customers/${id}`),
-    create: (data) => API._json('/api/customers', {
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/customers', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
+    })),
     update: (id, data) => API._json(`/api/customers/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/customers/${id}`, { method: 'DELETE' }),
   },
 
   // ── Products ──
   products: {
-    list: () => API._json(API._qs('/api/products')),
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products'))),
     get: (id) => API._json(`/api/products/${id}`),
-    create: (data) => API._json('/api/products', {
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/products', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
+    })),
     update: (id, data) => API._json(`/api/products/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/products/${id}`, { method: 'DELETE' }),
   },
 
   // ── Invoices ──
   invoices: {
-    list: () => API._json(API._qs('/api/invoices')),
-    listEstimates: () => API._json(API._qs('/api/invoices/estimates')),
-    listFinal: () => API._json(API._qs('/api/invoices/final')),
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices'))),
+    listEstimates: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/estimates'))),
+    listFinal: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/final'))),
     get: (id) => API._json(`/api/invoices/${id}`),
-    create: (data) => API._json('/api/invoices', {
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
-    createEstimate: (data) => API._json('/api/invoices/estimate', {
+    })),
+    createEstimate: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices/estimate', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
-    preview: (data) => API._json('/api/invoices/preview', {
+    })),
+    preview: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices/preview', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
+    })),
     update: (id, data) => API._json(`/api/invoices/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/invoices/${id}`, { method: 'DELETE' }),
     markPaid: (id, paid) => API._json(`/api/invoices/${id}/paid?paid=${paid}`, { method: 'PUT' }),
     updateStatus: (id, status) => API._json(`/api/invoices/${id}/status?status=${status}`, { method: 'PUT' }),
-    convertEstimate: (id, data) => API._json(`/api/invoices/convert/${id}`, {
+    convertEstimate: (id, data) => API._ensureFirmReady().then(() => API._json(`/api/invoices/convert/${id}`, {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
-    }),
+    })),
     nextInvoiceNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
     nextEstimateNumber: () => API._json(API._qs('/api/invoices/next-estimate-number')),
     downloadPdf: async (id, size = 'A4') => {
@@ -130,7 +150,7 @@ const API = {
 
   // ── Analytics ──
   analytics: {
-    firm: () => API._json(API._qs('/api/analytics/firm')),
+    firm: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/analytics/firm'))),
   },
 
   // ── Statements ──

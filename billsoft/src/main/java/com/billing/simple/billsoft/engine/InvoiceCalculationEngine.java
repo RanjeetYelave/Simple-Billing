@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +26,12 @@ public class InvoiceCalculationEngine {
     private static final int SCALE = 2;
     private static final int CALC_SCALE = 10;
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(SCALE);
+    private static final DateTimeFormatter[] DATE_PARSERS = {
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+        DateTimeFormatter.ISO_LOCAL_DATE_TIME
+    };
 
     /* ======================================================================
        PUBLIC ENTRY
@@ -55,20 +63,24 @@ public class InvoiceCalculationEngine {
             invoice.setDueDate(LocalDate.now().plusDays(14));
         }
 
-        // If UI sends invoiceDate string we set it here
-        if (request.getInvoiceDate() != null) {
-            try {
-                // Try to use a shared parser or just set it if we had a helper.
-                // For now, let's assume the service handles it or we do it here.
-                // Actually, let's keep it simple and just ensure it's set in the service 
-                // but since I moved logic here, I'll add a simple check.
-            } catch (Exception e) {}
+        // Parse invoice date from request string if provided
+        if (request.getInvoiceDate() != null && !request.getInvoiceDate().isBlank()) {
+            LocalDateTime parsedDate = parseDateString(request.getInvoiceDate());
+            if (parsedDate != null) {
+                invoice.setInvoiceDate(parsedDate);
+            }
         }
 
+        // Fallback: set invoice date to now if still null
         if (invoice.getInvoiceDate() == null) {
             invoice.setInvoiceDate(LocalDateTime.now());
         }
+        
         invoice.setPaid(Boolean.TRUE.equals(request.getPaid()));
+
+        if (request.getFirmId() != null) {
+            invoice.setFirmId(request.getFirmId());
+        }
 
         /* ======================================================================
            ⚠️ METADATA-ONLY UPDATE CASE
@@ -319,6 +331,28 @@ public class InvoiceCalculationEngine {
             return pctOf(taxable, d.getValue());
         } else {
             return d.getValue().setScale(SCALE, RoundingMode.HALF_UP);
+        }
+    }
+
+    /**
+     * Parse a date string in multiple supported formats.
+     */
+    private LocalDateTime parseDateString(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        String trimmed = dateStr.trim();
+        for (DateTimeFormatter fmt : DATE_PARSERS) {
+            try {
+                return LocalDateTime.parse(trimmed, fmt);
+            } catch (DateTimeParseException e) {
+                // Try next format
+            }
+        }
+        // Try parsing as just a date (yyyy-MM-dd) -> start of day
+        try {
+            LocalDate date = LocalDate.parse(trimmed);
+            return date.atStartOfDay();
+        } catch (DateTimeParseException e) {
+            return null;
         }
     }
 

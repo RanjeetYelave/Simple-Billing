@@ -252,7 +252,7 @@ public class InvoiceService {
         if (firmId != null) {
             all = invoiceRepo.findByFirmIdAndCustomerNameContainingIgnoreCase(firmId, "");
         } else {
-            all = invoiceRepo.findAll();
+            all = invoiceRepo.findAllWithItems();
         }
         all.forEach(this::normalizeStatus);
         return all;
@@ -768,7 +768,10 @@ public class InvoiceService {
         if (firmId != null) {
             list = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId, InvoiceStatus.FINAL);
         } else {
-            list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.FINAL);
+            // Fallback: filter from all invoices with items
+            list = invoiceRepo.findAllWithItems().stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.FINAL || i.getStatus() == InvoiceStatus.PAID || i.getStatus() == InvoiceStatus.OVERDUE || i.getStatus() == InvoiceStatus.SENT)
+                .collect(java.util.stream.Collectors.toList());
         }
         list.forEach(this::normalizeStatus);
         return list;

@@ -96,6 +96,7 @@
         React.createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })
       ),
       eye: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' }),
         React.createElement('circle', { cx: 12, cy: 12, r: 3 })
       ),
       refresh: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -139,6 +140,18 @@
         React.createElement('path', { d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' }),
         React.createElement('polyline', { points: '16 17 21 12 16 7' }),
         React.createElement('line', { x1: 21, y1: 12, x2: 9, y2: 12 })
+      ),
+      arrowUp: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
+        React.createElement('polyline', { points: '5 12 12 5 19 12' })
+      ),
+      arrowDown: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+        React.createElement('polyline', { points: '19 12 12 19 5 12' })
+      ),
+      rotateCcw: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '1 4 1 10 7 10' }),
+        React.createElement('path', { d: 'M3.51 15a9 9 0 1 0 2.13-9.36L1 10' })
       ),
     };
 
@@ -246,19 +259,15 @@
       return React.createElement('div', null,
         updateInfo && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
           React.createElement('div', null,
-            React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, '🚀 Update Available!'),
-            React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `A new version (${updateInfo.latestVersion}) is available. You are currently on ${updateInfo.currentVersion}.`)
+            React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, 'Update Available!'),
+            React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
           ),
           React.createElement('div', { style: { display: 'flex', gap: '12px' } },
             updateInfo.downloadUrl && React.createElement('button', { 
               className: 'btn btn-primary',
               onClick: () => {
-                if (onStartUpdate) {
-                  onStartUpdate(updateInfo.latestVersion);
-                } else {
-                  // Fallback for browser-only mode
-                  API.system.applyUpdate();
-                }
+                if (onStartUpdate) onStartUpdate(updateInfo.latestVersion);
+                else API.system.applyUpdate();
               }
             }, 'Install Update')
           )
@@ -319,7 +328,7 @@
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 } },
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-header' },
-              React.createElement('div', { className: 'card-title' }, '💰 Top Customers'),
+              React.createElement('div', { className: 'card-title' }, 'Top Customers'),
               React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Top 5')
             ),
             React.createElement('div', { className: 'table-container' },
@@ -351,7 +360,7 @@
           ),
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-header' },
-              React.createElement('div', { className: 'card-title' }, '🔥 Top Products'),
+              React.createElement('div', { className: 'card-title' }, 'Top Products'),
               React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Top 5')
             ),
             React.createElement('div', { className: 'table-container' },
@@ -399,6 +408,9 @@
       const [loading, setLoading] = useState(true);
       const [tab, setTab] = useState('all');
       const [search, setSearch] = useState('');
+      const [sortField, setSortField] = useState('date');
+      const [sortDir, setSortDir] = useState('desc');
+      const [convertingId, setConvertingId] = useState(null);
 
       const load = (t) => {
         setLoading(true);
@@ -411,14 +423,47 @@
 
       useEffect(() => { load(tab); }, [tab]);
 
+      const toggleSort = (field) => {
+        if (sortField === field) {
+          setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+          setSortField(field);
+          setSortDir('desc');
+        }
+      };
+
       const filtered = useMemo(() => {
-        if (!search.trim()) return invoices;
-        const q = search.toLowerCase();
-        return invoices.filter(i =>
-          (i.invoiceNumber && i.invoiceNumber.toLowerCase().includes(q)) ||
-          (i.customer && i.customer.name && i.customer.name.toLowerCase().includes(q))
-        );
-      }, [invoices, search]);
+        let result = [...invoices];
+        // Filter by search
+        if (search.trim()) {
+          const q = search.toLowerCase();
+          result = result.filter(i =>
+            (i.invoiceNumber && i.invoiceNumber.toLowerCase().includes(q)) ||
+            (i.estimateNumber && i.estimateNumber.toLowerCase().includes(q)) ||
+            (i.customer && i.customer.name && i.customer.name.toLowerCase().includes(q)) ||
+            (i.status && i.status.toLowerCase().includes(q))
+          );
+        }
+        // Sort
+        result.sort((a, b) => {
+          let cmp = 0;
+          if (sortField === 'date') {
+            const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
+            const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
+            cmp = da - db;
+          } else if (sortField === 'amount') {
+            cmp = (a.totalAmount || 0) - (b.totalAmount || 0);
+          } else if (sortField === 'status') {
+            cmp = (a.status || '').localeCompare(b.status || '');
+          } else if (sortField === 'number') {
+            cmp = (a.invoiceNumber || a.estimateNumber || '').localeCompare(b.invoiceNumber || b.estimateNumber || '');
+          } else if (sortField === 'customer') {
+            cmp = ((a.customer && a.customer.name) || '').localeCompare((b.customer && b.customer.name) || '');
+          }
+          return sortDir === 'asc' ? cmp : -cmp;
+        });
+        return result;
+      }, [invoices, search, sortField, sortDir]);
 
       const handleDelete = (id) => {
         if (!confirm('Delete this invoice?')) return;
@@ -442,6 +487,22 @@
         } catch (e) { showToast('PDF download failed', 'error'); }
       };
 
+      const handleConvertToInvoice = async (id) => {
+        if (!confirm('Convert this estimate to a final invoice?')) return;
+        setConvertingId(id);
+        try {
+          await API.invoices.convertEstimate(id, null);
+          showToast('Estimate converted to invoice', 'success');
+          load(tab);
+        } catch (e) { showToast('Conversion failed: ' + (e.message || 'Error'), 'error'); }
+        finally { setConvertingId(null); }
+      };
+
+      const sortIcon = (field) => {
+        if (sortField !== field) return null;
+        return sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown;
+      };
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'tabs' },
           ['all', 'final', 'estimates'].map(t =>
@@ -455,12 +516,19 @@
         React.createElement('div', { className: 'manager-header' },
           React.createElement('div', { className: 'manager-search' },
             React.createElement('input', {
-              className: 'input', placeholder: 'Search by number or customer...',
+              className: 'input', placeholder: 'Search by number, customer, or status...',
               value: search, onChange: e => setSearch(e.target.value)
             })
           ),
-          React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } },
-            `${filtered.length} invoice${filtered.length !== 1 ? 's' : ''}`
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+            React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } },
+              `${filtered.length} of ${invoices.length} invoice${invoices.length !== 1 ? 's' : ''}`
+            ),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-ghost',
+              title: 'Refresh',
+              onClick: () => load(tab)
+            }, Icons.refresh)
           )
         ),
         loading ? React.createElement('div', { className: 'loading-screen' },
@@ -471,22 +539,30 @@
             React.createElement('table', null,
               React.createElement('thead', null,
                 React.createElement('tr', null,
-                  React.createElement('th', null, '#'),
-                  React.createElement('th', null, 'Number'),
-                  React.createElement('th', null, 'Customer'),
-                  React.createElement('th', null, 'Date'),
-                  React.createElement('th', null, 'Amount'),
-                  React.createElement('th', null, 'Status'),
+                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('number') },
+                    'Number', sortIcon('number')
+                  ),
+                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('customer') },
+                    'Customer', sortIcon('customer')
+                  ),
+                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('date') },
+                    'Date', sortIcon('date')
+                  ),
+                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('amount') },
+                    'Amount', sortIcon('amount')
+                  ),
+                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('status') },
+                    'Status', sortIcon('status')
+                  ),
                   React.createElement('th', null, 'Actions')
                 )
               ),
               React.createElement('tbody', null,
                 filtered.length === 0 ? React.createElement('tr', null,
-                  React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No invoices found')
+                  React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No invoices found')
                 ) :
                 filtered.map((inv, i) =>
                   React.createElement('tr', { key: inv.id },
-                    React.createElement('td', { style: { color: 'var(--text-secondary)' } }, i + 1),
                     React.createElement('td', { style: { fontWeight: 500 } },
                       inv.status === 'ESTIMATE' ? (inv.estimateNumber || '—') : (inv.invoiceNumber || '—')
                     ),
@@ -500,7 +576,7 @@
                       )
                     ),
                     React.createElement('td', null,
-                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                      React.createElement('div', { className: 'action-buttons' },
                         React.createElement('button', {
                           className: 'btn btn-sm btn-ghost',
                           title: 'View/Edit',
@@ -511,7 +587,14 @@
                           title: 'Download PDF',
                           onClick: () => handleDownloadPdf(inv.id)
                         }, Icons.download),
-                        inv.status !== 'PAID' && inv.status !== 'CANCELLED' &&
+                        inv.status === 'ESTIMATE' && React.createElement('button', {
+                          className: 'btn btn-sm btn-ghost',
+                          title: 'Convert to Invoice',
+                          style: { color: 'var(--primary)' },
+                          onClick: () => handleConvertToInvoice(inv.id),
+                          disabled: convertingId === inv.id
+                        }, convertingId === inv.id ? '...' : Icons.rotateCcw),
+                        inv.status !== 'PAID' && inv.status !== 'CANCELLED' && inv.status !== 'ESTIMATE' &&
                           React.createElement('button', {
                             className: 'btn btn-sm btn-ghost',
                             title: 'Mark Paid',
@@ -534,7 +617,7 @@
       );
     }
 
-    // ─── PRODUCT SEARCH INPUT (autocomplete + auto-create) ───
+    // ─── PRODUCT SEARCH INPUT ───
     function ProductSearchInput({ products, value, onChange, onProductCreated }) {
       const [text, setText] = useState('');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -543,7 +626,6 @@
       const inputRef = useRef(null);
       const containerRef = useRef(null);
 
-      // Sync text when value (productId) changes externally
       useEffect(() => {
         if (!value) { setText(''); return; }
         const p = products.find(x => String(x.id) === String(value));
@@ -568,42 +650,14 @@
         setHighlightIdx(-1);
       };
 
-      const handleBlur = async () => {
-        // Delay so click on suggestion fires first
-        setTimeout(async () => {
+      const handleBlur = () => {
+        setTimeout(() => {
           setShowSuggestions(false);
           setHighlightIdx(-1);
         }, 200);
       };
 
-      const handleCreateNew = async (name) => {
-        if (!name || value || isExactMatch) return;
-        setCreating(true);
-        try {
-          const body = { name: name.trim(), price: 0, unit: 'pcs', gstPercentage: null };
-          const created = await API.products.create(body);
-          onProductCreated(created);
-          setText(created.name);
-          showToast(`Product "${created.name}" created`, 'success');
-          // Move focus to next field (qty)
-          setTimeout(() => {
-            const inputs = containerRef.current?.closest('tr')?.querySelectorAll('input');
-            if (inputs && inputs.length > 0) inputs[0]?.focus();
-          }, 50);
-        } catch (e) {
-          showToast('Failed to create product', 'error');
-        } finally {
-          setCreating(false);
-        }
-      };
-
-      const moveToNextField = () => {
-        const inputs = containerRef.current?.closest('tr')?.querySelectorAll('input');
-        if (inputs && inputs.length > 0) inputs[0]?.focus();
-      };
-
       const handleKeyDown = (e) => {
-        // Arrow keys for navigating suggestions when shown
         if (showSuggestions && filtered.length > 0) {
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -615,44 +669,51 @@
             return;
           }
         }
-
-        // Escape to close suggestions
         if (e.key === 'Escape') {
           setShowSuggestions(false);
           return;
         }
-
-        // Enter key behavior
         if (e.key === 'Enter') {
           e.preventDefault();
-
-          // If a product is already selected, always move to next field
           if (value) {
-            moveToNextField();
+            // Move to next field
+            const inputs = containerRef.current?.closest('tr')?.querySelectorAll('input');
+            if (inputs && inputs.length > 0) inputs[0]?.focus();
             return;
           }
-
-          // No product selected yet
-          // If a suggestion is highlighted, select it
           if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
             selectProduct(filtered[highlightIdx]);
             return;
           }
-
-          // Try exact match
           if (text.trim()) {
             const match = products.find(p => p.name.toLowerCase() === text.trim().toLowerCase());
-            if (match) {
-              selectProduct(match);
-              return;
-            }
-            // No match found — auto-create new product
+            if (match) { selectProduct(match); return; }
+            // Auto-create
             handleCreateNew(text);
           }
         }
       };
 
-      // Close suggestions on click outside
+      const handleCreateNew = async (name) => {
+        if (!name || value || isExactMatch) return;
+        setCreating(true);
+        try {
+          const body = { name: name.trim(), price: 0, unit: 'pcs', gstPercentage: null };
+          const created = await API.products.create(body);
+          onProductCreated(created);
+          setText(created.name);
+          showToast(`Product "${created.name}" created`, 'success');
+          setTimeout(() => {
+            const inputs = containerRef.current?.closest('tr')?.querySelectorAll('input');
+            if (inputs && inputs.length > 0) inputs[0]?.focus();
+          }, 50);
+        } catch (e) {
+          showToast('Failed to create product', 'error');
+        } finally {
+          setCreating(false);
+        }
+      };
+
       useEffect(() => {
         const handler = (e) => {
           if (containerRef.current && !containerRef.current.contains(e.target)) {
@@ -845,22 +906,27 @@
 
       const buildRequest = () => {
         const allRows = form.items;
-        const validItems = allRows.filter(it => it.productId).map(it => ({
-          productId: parseInt(it.productId),
-          qty: parseInt(it.qty) || 0,
-          unit: it.unit || undefined,
-          pricePerUnit: parseFloat(it.pricePerUnit) || undefined,
-          discountValue: parseFloat(it.discountValue) || undefined,
-          gstPercent: parseFloat(it.gstPercent) || undefined,
-        }));
-        
-        if (allRows.length > 0 && validItems.length === 0) {
-          console.warn("DEBUG: No valid items found even though rows exist. First row productId:", allRows[0].productId);
+        // Only include rows that actually have a product selected
+        const validItems = allRows
+          .filter(it => it.productId && it.productId.toString().trim() !== '')
+          .map(it => ({
+            productId: parseInt(it.productId),
+            qty: parseInt(it.qty) || 1,
+            unit: it.unit || undefined,
+            pricePerUnit: parseFloat(it.pricePerUnit) || 0,
+            discountValue: parseFloat(it.discountValue) || 0,
+            gstPercent: parseFloat(it.gstPercent) || undefined,
+          }));
+
+        // Log to help debug
+        console.log("DEBUG buildRequest: allRows=" + allRows.length + " validItems=" + validItems.length + " customerId=" + form.customerId);
+        if (validItems.length === 0 && allRows.length > 0) {
+          console.warn("DEBUG: No valid items because productId not set. First row productId:", allRows[0].productId, "type:", typeof allRows[0].productId);
         }
 
         return {
           customerId: form.customerId ? parseInt(form.customerId) : undefined,
-          items: validItems.length ? validItems : undefined,
+          items: validItems,
           invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
           estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
           status: isEstimate ? 'ESTIMATE' : (form.status || 'FINAL'),
@@ -881,15 +947,16 @@
         try {
           const result = await API.invoices.preview(buildRequest());
           setPreview(result);
-        } catch (e) { showToast('Preview failed', 'error'); }
+        } catch (e) { showToast(e.message || 'Preview failed', 'error'); }
       };
 
       const handleSave = async () => {
         if (!form.customerId) { showToast('Please select a customer', 'error'); return; }
+        const req = buildRequest();
+        if (req.items.length === 0) { showToast('Please add at least one product item', 'error'); return; }
         setSaving(true);
         try {
-          const req = buildRequest();
-          console.log("DEBUG: Saving invoice/estimate. Request:", req);
+          console.log("DEBUG: Saving invoice/estimate. Request items:", req.items.length);
           if (editId) {
             await API.invoices.update(editId, req);
             showToast('Invoice updated', 'success');
@@ -920,16 +987,16 @@
             React.createElement('button', {
               className: `tab${!isEstimate ? ' active' : ''}`,
               onClick: () => setIsEstimate(false)
-            }, '📄 Invoice'),
+            }, 'Invoice'),
             React.createElement('button', {
               className: `tab${isEstimate ? ' active' : ''}`,
               onClick: () => setIsEstimate(true)
-            }, '📋 Estimate')
+            }, 'Estimate')
           )
         ),
         React.createElement('div', { className: 'invoice-form-header' },
           React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, '👤 Customer'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Customer'),
             React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
               React.createElement('select', {
                 className: 'select', style: { flex: 1 },
@@ -995,7 +1062,7 @@
                       } catch (e) { showToast('Failed to create customer', 'error'); }
                       finally { setSavingInline(false); }
                     }
-                  }, savingInline ? 'Saving...' : '💾 Save')
+                  }, savingInline ? 'Saving...' : 'Save')
                 )
               )
             ),
@@ -1013,7 +1080,7 @@
             )
           ),
           React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, '📅 Details'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Details'),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
@@ -1056,7 +1123,7 @@
         ),
         React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
           React.createElement('div', { className: 'card-header' },
-            React.createElement('div', { className: 'card-title' }, '📦 Line Items'),
+            React.createElement('div', { className: 'card-title' }, 'Line Items'),
             React.createElement('button', { className: 'btn btn-sm btn-primary-outline', onClick: addItem }, '+ Add Row')
           ),
           React.createElement('div', { className: 'table-container' },
@@ -1066,7 +1133,7 @@
                   React.createElement('th', null, 'Product'),
                   React.createElement('th', null, 'Qty'),
                   React.createElement('th', null, 'Price'),
-                  React.createElement('th', null, 'Disc ₹'),
+                  React.createElement('th', null, 'Disc '),
                   React.createElement('th', null, 'GST%'),
                   React.createElement('th', null, 'Total'),
                   React.createElement('th', null)
@@ -1194,13 +1261,13 @@
                   } catch (e) { showToast('Failed to create product', 'error'); }
                   finally { setSavingInline(false); }
                 }
-              }, savingInline ? 'Saving...' : '💾 Save')
+              }, savingInline ? 'Saving...' : 'Save')
             )
           )
         ),
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24, marginBottom: 24 } },
           React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, '📝 Notes & Terms'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Notes & Terms'),
             React.createElement('textarea', {
               className: 'textarea', placeholder: 'Customer Note...',
               value: form.customerNote,
@@ -1214,7 +1281,7 @@
             })
           ),
           React.createElement('div', { className: 'summary-panel' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 12 } }, '🧾 Summary'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 12 } }, 'Summary'),
             createSumRow('Subtotal', calcTotals.subtotal),
             calcTotals.itemDiscount > 0 && createSumRow('Item Discount', -calcTotals.itemDiscount),
             React.createElement('div', { style: { margin: '8px 0' } },
@@ -1256,12 +1323,12 @@
           )
         ),
         React.createElement('div', { className: 'form-actions' },
-          React.createElement('button', { className: 'btn btn-outline', onClick: handlePreview }, '👁️ Preview'),
+          React.createElement('button', { className: 'btn btn-outline', onClick: handlePreview }, 'Preview'),
           React.createElement('button', {
             className: 'btn btn-primary btn-lg',
             onClick: handleSave,
             disabled: saving
-          }, saving ? 'Saving...' : (editId ? '💾 Update Invoice' : (isEstimate ? '📋 Save Estimate' : '📄 Save Invoice')))
+          }, saving ? 'Saving...' : (editId ? 'Update Invoice' : (isEstimate ? 'Save Estimate' : 'Save Invoice')))
         )
       );
     }
@@ -1281,7 +1348,7 @@
     // ─── PREVIEW INVOICE ───
     function PreviewInvoice({ data, onBack, onSave, saving }) {
       const inv = data;
-      const firmName = 'Your Company'; // Would come from API.firm.get()
+      const firmName = 'Your Company';
       return React.createElement('div', { className: 'card', style: { maxWidth: 800, margin: '0 auto' } },
         React.createElement('div', { className: 'preview-header' },
           React.createElement('div', { className: 'preview-company' },
@@ -1359,7 +1426,7 @@
             className: 'btn btn-primary btn-lg',
             onClick: onSave,
             disabled: saving
-          }, saving ? 'Saving...' : '💾 Confirm & Save')
+          }, saving ? 'Saving...' : 'Confirm & Save')
         )
       );
     }
@@ -1406,7 +1473,7 @@
 
       return React.createElement(Fragment, null,
         React.createElement('div', { className: 'manager-header' },
-          React.createElement('div', { className: 'card-title' }, '📦 Products'),
+          React.createElement('div', { className: 'card-title' }, 'Products'),
           React.createElement('button', { className: 'btn btn-primary', onClick: openCreate }, '+ Add Product')
         ),
         loading ? React.createElement('div', { className: 'loading-screen' },
@@ -1478,7 +1545,7 @@
             ),
             React.createElement('div', { className: 'modal-footer' },
               React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowModal(false) }, 'Cancel'),
-              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, '💾 Save')
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, 'Save')
             )
           )
         )
@@ -1533,7 +1600,7 @@
 
       return React.createElement(Fragment, null,
         React.createElement('div', { className: 'manager-header' },
-          React.createElement('div', { className: 'card-title' }, '👥 Customers'),
+          React.createElement('div', { className: 'card-title' }, 'Customers'),
           React.createElement('button', { className: 'btn btn-primary', onClick: openCreate }, '+ Add Customer')
         ),
         loading ? React.createElement('div', { className: 'loading-screen' },
@@ -1575,7 +1642,7 @@
                     analytics && analytics.customerId === c.id && React.createElement('tr', null,
                       React.createElement('td', { colSpan: 5 },
                         React.createElement('div', { className: 'customer-analytics' },
-                          React.createElement('strong', null, `📊 ${c.name} - Analytics`),
+                          React.createElement('strong', null, `${c.name} - Analytics`),
                           React.createElement('div', { className: 'customer-analytics-grid' },
                             React.createElement('div', { className: 'customer-analytics-item' },
                               React.createElement('div', { className: 'label' }, 'Total Business'),
@@ -1637,14 +1704,14 @@
             ),
             React.createElement('div', { className: 'modal-footer' },
               React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowModal(false) }, 'Cancel'),
-              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, '💾 Save')
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, 'Save')
             )
           )
         )
       );
     }
 
-    // ─── FIRM PROFILE (Multi-Firm Manager) ───
+    // ─── FIRM PROFILE ───
     function FirmProfile({ onFirmChanged }) {
       const [firms, setFirms] = useState([]);
       const [currentFirm, setCurrentFirm] = useState(null);
@@ -1655,11 +1722,9 @@
       const [showCreateModal, setShowCreateModal] = useState(false);
       const [newFirmName, setNewFirmName] = useState('');
 
-      // Load firms list
       const loadFirms = () => {
         API.firm.list().then(firms => {
           setFirms(firms);
-          // Determine selected firm
           const savedId = API.firmId;
           const target = savedId ? firms.find(f => f.id === savedId) : firms[0];
           if (target) {
@@ -1667,7 +1732,6 @@
             setCurrentFirm(target);
             setData({ ...target });
           } else {
-            // No firms exist — create one automatically
             API.firm.create().then(f => {
               API.firmId = f.id;
               setFirms([f]);
@@ -1684,7 +1748,6 @@
 
       useEffect(() => { loadFirms(); }, []);
 
-      // Refresh data when selected firm changes
       useEffect(() => {
         if (!selectedFirmId) return;
         API.firm.get(selectedFirmId).then(f => {
@@ -1702,7 +1765,6 @@
           const saved = await API.firm.update(data.id, data);
           setCurrentFirm(saved);
           setData({ ...saved });
-          // Update firms list
           setFirms(prev => prev.map(f => f.id === saved.id ? saved : f));
           showToast('Firm details saved', 'success');
           if (onFirmChanged) onFirmChanged();
@@ -1722,12 +1784,10 @@
         if (!newFirmName.trim()) { showToast('Enter a firm name', 'error'); return; }
         try {
           const created = await API.firm.create();
-          // Update the name from "New Firm" to user's name
           const updated = await API.firm.update(created.id, { ...created, firmName: newFirmName.trim() });
           setFirms(prev => [...prev, updated]);
           setShowCreateModal(false);
           setNewFirmName('');
-          // Switch to newly created firm
           API.firmId = updated.id;
           setSelectedFirmId(updated.id);
           if (onFirmChanged) onFirmChanged();
@@ -1765,10 +1825,9 @@
       );
 
       return React.createElement('div', { style: { maxWidth: 800 } },
-        // Firm Selector & Creation Bar
         React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
           React.createElement('div', { className: 'card-header' },
-            React.createElement('div', { className: 'card-title' }, '🏢 Firms'),
+            React.createElement('div', { className: 'card-title' }, 'Firms'),
             React.createElement('div', { style: { display: 'flex', gap: 8 } },
               React.createElement('button', { className: 'btn btn-primary', onClick: () => setShowCreateModal(true) }, '+ New Firm')
             )
@@ -1823,8 +1882,6 @@
                 )
           )
         ),
-
-        // Create Firm Modal
         showCreateModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCreateModal(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
@@ -1847,12 +1904,10 @@
             )
           )
         ),
-
-        // Current Firm Details Editor (only when a firm is selected)
         data && currentFirm && React.createElement(Fragment, null,
           React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } },
-              `🏪 ${data.firmName || 'Firm'} Details`
+              `${data.firmName || 'Firm'} Details`
             ),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '200px 1fr', gap: 24 } },
               React.createElement('div', null,
@@ -1896,7 +1951,7 @@
             )
           ),
           React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, '🏦 Bank Details'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, 'Bank Details'),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
               ['bankName', 'bankAccount', 'bankIfsc'].map(f =>
                 React.createElement('div', { key: f },
@@ -1907,7 +1962,7 @@
             )
           ),
           React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, '📝 Footer Note'),
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, 'Footer Note'),
             React.createElement('textarea', {
               className: 'textarea',
               value: data ? data.footerNote || '' : '',
@@ -1919,7 +1974,7 @@
             className: 'btn btn-primary btn-lg',
             onClick: handleSave,
             disabled: saving
-          }, saving ? 'Saving...' : '💾 Save Changes')
+          }, saving ? 'Saving...' : 'Save Changes')
         )
       );
     }
@@ -1989,7 +2044,7 @@
             React.createElement('input', { className: 'input', type: 'date', value: to, onChange: e => setTo(e.target.value) })
           ),
           React.createElement('button', { className: 'btn btn-primary', onClick: handleGenerate, disabled: loading },
-            loading ? 'Loading...' : '🔍 Generate'
+            loading ? 'Loading...' : 'Generate'
           )
         ),
         data && React.createElement(Fragment, null,
@@ -2015,7 +2070,7 @@
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'card-header' },
                 React.createElement('div', { className: 'card-title' }, 'Customer Statement Entries'),
-                React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadPdf }, '📄 Download PDF')
+                React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadPdf }, 'Download PDF')
               ),
               React.createElement('div', { className: 'table-container' },
                 React.createElement('table', null,
@@ -2025,9 +2080,9 @@
                       React.createElement('th', null, 'Type'),
                       React.createElement('th', null, 'Ref'),
                       React.createElement('th', null, 'Description'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Debit (₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Credit (₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Balance (₹)')
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'Debit ()'),
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'Credit ()'),
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'Balance ()')
                     )
                   ),
                   React.createElement('tbody', null,
@@ -2073,7 +2128,7 @@
                 React.createElement('div', { className: 'card-title' }, 'GST Summary'),
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
                   React.createElement('span', { className: 'badge badge-final' }, `${data.invoiceCount || 0} Invoices`),
-                  React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadPdf }, '📄 Download PDF')
+                  React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadPdf }, 'Download PDF')
                 )
               ),
               React.createElement('div', { className: 'table-container' },
@@ -2081,8 +2136,8 @@
                   React.createElement('thead', null,
                     React.createElement('tr', null,
                       React.createElement('th', null, 'GST %'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Taxable Value (₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'GST Amount (₹)')
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'Taxable Value ()'),
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'GST Amount ()')
                     )
                   ),
                   React.createElement('tbody', null,
@@ -2124,7 +2179,7 @@
         const file = e.target.files[0];
         if (!file) return;
         setImportFile(file);
-        e.target.value = ''; // reset so they can select the same file again if needed
+        e.target.value = '';
       };
 
       const executeImport = async (mode) => {
@@ -2150,9 +2205,7 @@
           React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 } }, 
             'Securely export your firm data to a portable JSON file, or restore data from an existing backup.'
           ),
-          
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
-            // Export Section
             React.createElement('div', { style: { padding: 20, border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', null,
                 React.createElement('h3', { style: { fontSize: '1.1rem', marginBottom: 4 } }, 'Export Data'),
@@ -2160,8 +2213,6 @@
               ),
               React.createElement('button', { className: 'btn btn-primary', onClick: handleExport }, 'Export JSON')
             ),
-            
-            // Import Section
             React.createElement('div', { style: { padding: 20, border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', null,
                 React.createElement('h3', { style: { fontSize: '1.1rem', marginBottom: 4 } }, 'Restore Data'),
@@ -2182,8 +2233,6 @@
             )
           )
         ),
-        
-        // Import Options Modal
         importFile && !loading && React.createElement('div', { className: 'modal-overlay' },
           React.createElement('div', { className: 'modal', style: { maxWidth: 500 } },
             React.createElement('div', { className: 'modal-header' },
@@ -2197,11 +2246,11 @@
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
                 React.createElement('button', { className: 'btn btn-outline', style: { padding: 16, textAlign: 'left', display: 'flex', flexDirection: 'column', height: 'auto' }, onClick: () => executeImport('new') },
                   React.createElement('span', { style: { fontWeight: 600, fontSize: '1.05rem', color: 'var(--primary)' } }, 'Clone as New Firm'),
-                  React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Creates a brand new firm profile and imports all data there. Safe and keeps current data intact.')
+                  React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Creates a brand new firm profile and imports all data there.')
                 ),
                 React.createElement('button', { className: 'btn btn-outline', style: { padding: 16, textAlign: 'left', display: 'flex', flexDirection: 'column', height: 'auto' }, onClick: () => executeImport('merge') },
                   React.createElement('span', { style: { fontWeight: 600, fontSize: '1.05rem', color: 'var(--danger)' } }, 'Merge into Current Firm'),
-                  React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Imports the customers, products, and invoices into your currently selected firm. May cause duplicates if data overlaps.')
+                  React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Imports into your currently selected firm.')
                 )
               )
             )
@@ -2217,16 +2266,15 @@
       const [lockoutTime, setLockoutTime] = useState(() => parseInt(localStorage.getItem('lockoutTime') || '0', 10));
       const [now, setNow] = useState(Date.now());
       const [logs, setLogs] = useState([]);
-      const [stage, setStage] = useState('login'); // 'login' or 'reset'
+      const [stage, setStage] = useState('login');
       const [newPassword, setNewPassword] = useState('');
-      
       const inputRef = useRef(null);
 
       useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(timer);
       }, []);
-      
+
       useEffect(() => {
         if (inputRef.current) inputRef.current.focus();
       }, [logs, stage]);
@@ -2235,15 +2283,13 @@
       const timeRemaining = Math.max(0, Math.ceil((lockoutTime - now) / 1000));
       const mins = Math.floor(timeRemaining / 60);
       const secs = timeRemaining % 60;
-      
+
       const addLog = (msg, type = 'normal') => setLogs(prev => [...prev, { msg, type }]);
 
       const handleLoginSubmit = async (e) => {
         e.preventDefault();
         if (isLocked) return;
-        
-        addLog(`> ********`);
-        
+        addLog('> ********');
         if (password === "Saidarshan*1") {
           addLog("ACCESS GRANTED.", "success");
           addLog("ENTER NEW GLOBAL PASSWORD:", "normal");
@@ -2256,7 +2302,6 @@
           const newAttempts = attempts + 1;
           setAttempts(newAttempts);
           localStorage.setItem('recoveryAttempts', newAttempts.toString());
-          
           if (newAttempts >= 3) {
             const lockTime = Date.now() + 30 * 60 * 1000;
             setLockoutTime(lockTime);
@@ -2269,14 +2314,12 @@
 
       const handleResetSubmit = async (e) => {
         e.preventDefault();
-        addLog(`> ********`);
+        addLog('> ********');
         try {
           const res = await API.auth.resetPasswordMaster("Saidarshan*1", newPassword);
           if (res.success) {
             addLog("PASSWORD UPDATED.", "success");
-            
-            // Dummy script animation
-            setStage('animating'); // Hide the input
+            setStage('animating');
             const scripts = [
               "Bypassing security protocols...",
               "Flushing DNS caches...",
@@ -2285,15 +2328,11 @@
               "Recompiling kernel modules...",
               "SYSTEM UNLOCKED. REBOOTING..."
             ];
-            
             for (let i = 0; i < scripts.length; i++) {
               await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 800));
               addLog(scripts[i], i === scripts.length - 1 ? "success" : "normal");
             }
-            
-            setTimeout(() => {
-              onRecovered();
-            }, 1000);
+            setTimeout(() => onRecovered(), 1000);
           } else {
             addLog("ERROR: " + res.message, "error");
             setNewPassword('');
@@ -2306,12 +2345,11 @@
 
       return React.createElement('div', { className: 'terminal-mode', onClick: () => inputRef.current && inputRef.current.focus() },
         React.createElement('div', { className: 'terminal-warning' },
-          "CRITICAL SYSTEM WARNING: Unauthorized access is strictly prohibited. Modifying system parameters may result in permanent data loss. Please contact your developer to recover the account safely."
+          "CRITICAL SYSTEM WARNING: Unauthorized access is strictly prohibited."
         ),
         logs.map((l, i) => React.createElement('div', { key: i, className: `terminal-line terminal-${l.type}` }, l.msg)),
-        
         isLocked ? React.createElement('div', { className: 'terminal-line terminal-error' },
-          `ACCESS DENIED. SECURITY PROTOCOL INITIATED. TRY AGAIN IN ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+          `ACCESS DENIED. TRY AGAIN IN ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
         ) : 
         stage === 'login' ? React.createElement('form', { onSubmit: handleLoginSubmit, className: 'terminal-line' },
           React.createElement('span', { className: 'terminal-prompt' }, "billsoft_recovery_tool> ENTER MASTER OVERRIDE KEY:"),
@@ -2329,7 +2367,6 @@
           }),
           React.createElement('span', { className: 'terminal-cursor' })
         ),
-        
         React.createElement('div', { style: { marginTop: 'auto', paddingTop: 20 } },
           React.createElement('button', { onClick: onCancel, style: { background: 'transparent', border: '1px solid #0f0', color: '#0f0', padding: '4px 12px', cursor: 'pointer', fontFamily: 'inherit' } }, "EXIT RECOVERY TOOL")
         )
@@ -2346,7 +2383,7 @@
         return React.createElement(RecoveryTool, {
           onRecovered: () => {
             setShowRecovery(false);
-            onLogin(null); // Automatically unlock the app
+            onLogin(null);
           },
           onCancel: () => setShowRecovery(false)
         });
@@ -2357,9 +2394,9 @@
         setLoading(true);
         setError('');
         try {
-          const res = await API.auth.login(null, password); // Firm name not needed for global unlock
+          const res = await API.auth.login(null, password);
           if (res.success) {
-            onLogin(null); // App will load default firm automatically
+            onLogin(null);
           } else {
             setError(res.message || 'Login failed');
           }
@@ -2375,11 +2412,9 @@
           React.createElement('div', { className: 'login-logo' }, 'B'),
           React.createElement('h2', { className: 'login-title' }, 'Welcome back'),
           React.createElement('p', { className: 'login-subtitle' }, 'Please enter your PIN to continue'),
-          
           error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' } },
             Icons.alert, React.createElement('span', null, error)
           ),
-          
           React.createElement('form', { onSubmit: handleSubmit, style: { textAlign: 'left' } },
             React.createElement('div', { style: { marginBottom: 24 } },
               React.createElement('label', { style: { display: 'block', marginBottom: 8, fontWeight: 600, color: 'var(--text)' } }, 'Password / PIN'),
@@ -2387,7 +2422,6 @@
             ),
             React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, borderRadius: '8px' } }, loading ? 'Authenticating...' : 'Unlock Software')
           ),
-          
           React.createElement('button', { className: 'login-footer-link', onClick: () => setShowRecovery(true) }, 'Forgot Password? / Troubleshoot')
         )
       );
@@ -2396,7 +2430,7 @@
     function Settings() {
       const [authEnabled, setAuthEnabled] = useState(false);
       const [statusLoaded, setStatusLoaded] = useState(false);
-      const [modalState, setModalState] = useState(null); // 'enable', 'disable', 'change', null
+      const [modalState, setModalState] = useState(null);
       const [oldPassword, setOldPassword] = useState('');
       const [newPassword, setNewPassword] = useState('');
       const [loading, setLoading] = useState(false);
@@ -2471,7 +2505,7 @@
           React.createElement('div', { className: 'settings-item' },
             React.createElement('div', { className: 'settings-item-info' },
               React.createElement('div', { className: 'settings-item-title' }, 'Login Authentication'),
-              React.createElement('div', { className: 'settings-item-desc' }, 'Require a Firm Name and Password/PIN when opening the application. If disabled, anyone can access your firm data.')
+              React.createElement('div', { className: 'settings-item-desc' }, 'Require a password/PIN to open the application.')
             ),
             React.createElement('div', { className: 'settings-item-action' },
               authEnabled && React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => setModalState('change') }, Icons.edit, ' Change PIN'),
@@ -2482,8 +2516,6 @@
             )
           )
         ),
-
-        // Enable Auth Modal
         modalState === 'enable' && React.createElement('div', { className: 'modal-overlay' },
           React.createElement('div', { className: 'modal' },
             React.createElement('div', { className: 'modal-header' },
@@ -2504,8 +2536,6 @@
             )
           )
         ),
-
-        // Disable Auth Modal
         modalState === 'disable' && React.createElement('div', { className: 'modal-overlay' },
           React.createElement('div', { className: 'modal' },
             React.createElement('div', { className: 'modal-header' },
@@ -2526,8 +2556,6 @@
             )
           )
         ),
-
-        // Change Password Modal
         modalState === 'change' && React.createElement('div', { className: 'modal-overlay' },
           React.createElement('div', { className: 'modal' },
             React.createElement('div', { className: 'modal-header' },
@@ -2564,62 +2592,38 @@
       const speed = progress ? progress.speed : '';
       const size = progress ? progress.size : '';
 
-      // Show a loading bar while downloading
       const showBar = status === 'downloading' || status === 'installing';
       const showSpinner = status === 'restarting' || (status === 'downloading' && percent === 0);
       const showComplete = status === 'complete';
       const isError = status === 'error';
 
-      const isElectron = !!(window.electron);
       if (!isUpdating) return null;
 
       return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
         React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center' } },
-          // Icon
           React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } },
             showSpinner ? '⏳' : showComplete ? '✅' : isError ? '❌' : '🔄'
           ),
           React.createElement('h3', { style: { marginBottom: 8, color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)' } },
             isError ? 'Update Failed' : showComplete ? 'Update Complete!' : 'Updating Billsoft'
           ),
-          latestVersion ? React.createElement('p', { style: { margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '0.9rem' } },
-            `Installing version ${latestVersion}`
-          ) : null,
-          // Progress bar
+          latestVersion ? React.createElement('p', { style: { margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '0.9rem' } }, `Installing version ${latestVersion}`) : null,
           showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 8 } },
             React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.4s ease-in-out' } })
           ) : null,
-          
-          // Metrics Row (Speed & Size)
           showBar ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '0 4px' } },
             React.createElement('span', { style: { visibility: speed ? 'visible' : 'hidden' } }, speed || '0.00 MB/s'),
             React.createElement('span', { style: { visibility: size ? 'visible' : 'hidden' } }, size || '0.0 MB / 0.0 MB')
           ) : null,
-
-          // Percentage text
-          showBar ? React.createElement('p', { style: { fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)', margin: '0 0 8px 0' } },
-            percent + '%'
-          ) : null,
-          // Status message
+          showBar ? React.createElement('p', { style: { fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)', margin: '0 0 8px 0' } }, percent + '%') : null,
           React.createElement('p', { style: { color: isError ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.9rem', margin: '8px 0 0 0' } },
-            message || (isError ? 'Something went wrong. Please try again.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')
+            message || (isError ? 'Something went wrong.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')
           ),
-          // "Do not close" warning
           !showComplete && !isError ? React.createElement('p', { style: { marginTop: 20, fontSize: '0.8rem', color: '#ef4444', fontWeight: 500 } },
-            '⚠️ Do not close the application during the update'
+            'Do not close the application during the update'
           ) : null,
-          // Complete button
-          showComplete ? React.createElement('button', {
-            className: 'btn btn-primary',
-            style: { marginTop: 20 },
-            onClick: () => { window.location.reload(); }
-          }, 'Reload App') : null,
-          // Error retry
-          isError ? React.createElement('button', {
-            className: 'btn btn-outline',
-            style: { marginTop: 20 },
-            onClick: onComplete
-          }, 'Close') : null
+          showComplete ? React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { window.location.reload(); } }, 'Reload App') : null,
+          isError ? React.createElement('button', { className: 'btn btn-outline', style: { marginTop: 20 }, onClick: onComplete }, 'Close') : null
         )
       );
     }
@@ -2649,22 +2653,13 @@
       };
 
       useEffect(() => {
-        if (!isOnline) {
-          setLoading(false);
-          return;
-        }
+        if (!isOnline) { setLoading(false); return; }
         fetchUpdateInfo();
       }, [isOnline]);
 
       const handleInstall = () => {
-        if (onStartUpdate) {
-          onStartUpdate(info.latestVersion);
-        } else {
-          // Fallback: direct call
-          setLoading(true);
-          API.system.applyUpdate()
-            .catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); });
-        }
+        if (onStartUpdate) onStartUpdate(info.latestVersion);
+        else { setLoading(true); API.system.applyUpdate().catch(e => { showToast(e.message || 'Update failed', 'error'); setLoading(false); }); }
       };
 
       return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', padding: '40px 20px', position: 'relative' } },
@@ -2676,16 +2671,13 @@
           React.createElement('div', { style: { marginBottom: 24, color: 'var(--primary)' } }, Icons.update),
           React.createElement('h2', { style: { marginBottom: 8 } }, 'Software Update')
         ),
-        
-        !isOnline ? React.createElement('div', { style: { textAlign: 'center', marginTop: 30, color: 'var(--danger)' } },
-          'You are offline. Please connect to the internet to check for software updates.'
-        ) : loading ? React.createElement('div', { style: { textAlign: 'center', margin: '40px 0' } }, 
-          React.createElement('div', { className: 'spinner', style: { margin: '0 auto' } })
-        ) : info ? React.createElement(Fragment, null,
+        !isOnline ? React.createElement('div', { style: { textAlign: 'center', marginTop: 30, color: 'var(--danger)' } }, 'You are offline. Please connect to the internet to check for updates.') :
+        loading ? React.createElement('div', { style: { textAlign: 'center', margin: '40px 0' } }, React.createElement('div', { className: 'spinner', style: { margin: '0 auto' } })) :
+        info ? React.createElement(Fragment, null,
           React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24, textAlign: 'center' } }, `Current Version: ${info.currentVersion}`),
           info.updateAvailable ? React.createElement('div', { style: { backgroundColor: '#eef2ff', padding: 20, borderRadius: 8, border: '1px solid #c7d2fe' } },
-            React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, '🎉 New Update Available!'),
-            React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready to download.`),
+            React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, 'New Update Available!'),
+            React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready.`),
             info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } },
               React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'),
               info.releaseNotes
@@ -2698,14 +2690,8 @@
             React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.')
           )
         ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information.'),
-
         React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } },
-          React.createElement('button', {
-            className: 'btn btn-ghost',
-            style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' },
-            disabled: loading || !isOnline,
-            onClick: fetchUpdateInfo
-          }, 
+          React.createElement('button', { className: 'btn btn-ghost', style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }, disabled: loading || !isOnline, onClick: fetchUpdateInfo }, 
             React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh),
             loading ? 'Checking...' : 'Check for Updates'
           )
@@ -2718,20 +2704,17 @@
       const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
-
       const [page, setPage] = useState('dashboard');
       const [editInvoiceId, setEditInvoiceId] = useState(null);
       const [firmName, setFirmName] = useState('');
       const [firms, setFirms] = useState([]);
       const [toasts, setToasts] = useState([]);
-      const [firmLoadKey, setFirmLoadKey] = useState(0); // counter to force reload
+      const [firmLoadKey, setFirmLoadKey] = useState(0);
 
       useEffect(() => {
         API.auth.status().then(res => {
           setAuthEnabled(res.authEnabled);
-          if (!res.authEnabled) {
-            setIsAuthenticated(true);
-          }
+          if (!res.authEnabled) setIsAuthenticated(true);
           setAppLoaded(true);
         }).catch(() => setAppLoaded(true));
       }, []);
@@ -2739,10 +2722,8 @@
       const handleLogin = (firmId) => {
         setIsAuthenticated(true);
         localStorage.setItem('isAuthenticated', 'true');
-        if (firmId) {
-          API.firmId = firmId;
-        }
-        setFirmLoadKey(k => k + 1); // trigger reload
+        if (firmId) API.firmId = firmId;
+        setFirmLoadKey(k => k + 1);
       };
 
       const handleLogout = () => {
@@ -2754,7 +2735,6 @@
         window.showToast('Logged out successfully', 'success');
       };
 
-      // Expose toast globally
       window.showToast = (message, type = 'info') => {
         const id = BillsoftUtils.generateId();
         setToasts(t => [...t, { id, message, type }]);
@@ -2763,13 +2743,11 @@
 
       const removeToast = (id) => setToasts(t => t.filter(x => x.id !== id));
 
-      // Load firms list and current firm identity
       const loadFirms = () => {
         API.firm.list().then(list => {
           setFirms(list);
           const savedId = API.firmId;
           if (list.length === 0) {
-            // No firms exist — create one automatically
             return API.firm.create().then(f => {
               API.firmId = f.id;
               setFirms([f]);
@@ -2777,11 +2755,7 @@
               showToast('Default firm created', 'info');
             });
           }
-          // If no firmId saved, pick the first firm
-          if (!savedId) {
-            API.firmId = list[0].id;
-          }
-          // Load current firm details
+          if (!savedId) API.firmId = list[0].id;
           const currentId = API.firmId;
           if (currentId) {
             const firm = list.find(f => f.id === currentId);
@@ -2792,13 +2766,11 @@
 
       useEffect(() => { loadFirms(); }, [firmLoadKey]);
 
-      // Re-load current firm name when firms change
       const refreshFirm = () => {
         const currentId = API.firmId;
         if (currentId) {
           API.firm.get(currentId).then(f => {
             if (f && f.firmName) setFirmName(f.firmName);
-            // Also refresh firm list
             API.firm.list().then(list => setFirms(list)).catch(() => {});
           }).catch(() => {});
         }
@@ -2808,15 +2780,11 @@
         const prevId = API.firmId;
         if (firmId === prevId) return;
         API.firmId = firmId;
-        
-        // Reload firm name
         API.firm.get(firmId).then(f => {
           if (f && f.firmName) setFirmName(f.firmName);
         }).catch(() => {});
-        // Reload firms list
         API.firm.list().then(list => setFirms(list)).catch(() => {});
         showToast('Switched firm', 'success');
-        // Do not force navigation to dashboard. Stay on the current page.
       };
 
       const navigate = (p) => {
@@ -2838,56 +2806,36 @@
         refreshFirm();
         setFirmLoadKey(k => k + 1);
       };
-      // ─── Update Progress State ───
+
       const [isUpdating, setIsUpdating] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
 
-      // Check for update completion marker on page load
       useEffect(() => {
         API._json('/api/system/check-update-complete')
           .then(res => {
-            if (res && res.justUpdated) {
-              setUpdateCompleteBanner(res.updatedVersion || true);
-            }
+            if (res && res.justUpdated) setUpdateCompleteBanner(res.updatedVersion || true);
           })
           .catch(() => {});
       }, []);
+
       const [updateProgress, setUpdateProgress] = useState(null);
       const updatePollRef = useRef(null);
 
-      /**
-       * Connect to the SSE progress endpoint.
-       * Opens the EventSource and waits a brief time for the HTTP connection to establish.
-       * Returns a Promise that resolves after a short delay, ensuring the backend
-       * has an SSE emitter registered before we call applyUpdate.
-       */
       const connectUpdateProgressSSE = () => {
-        // Close any existing connection first
         if (updatePollRef.current) {
           updatePollRef.current.close();
           updatePollRef.current = null;
         }
-
         const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
         updatePollRef.current = source;
-
         source.addEventListener('progress', e => {
           try {
             const data = JSON.parse(e.data);
-            console.log('SSE progress:', data);
             setUpdateProgress(data);
-            if (data.status === 'complete' || data.status === 'error') {
-              source.close();
-              updatePollRef.current = null;
-            }
-          } catch (err) {
-            console.error('SSE data parse error', err);
-          }
+            if (data.status === 'complete' || data.status === 'error') { source.close(); updatePollRef.current = null; }
+          } catch (err) {}
         });
-
         source.onerror = () => {
-          // When the server shuts down during restart, EventSource will get an error.
-          // Transition to "restarting" state so the user sees a meaningful message.
           setUpdateProgress(prev => {
             if (prev && (prev.status === 'downloading' || prev.status === 'installing')) {
               return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 };
@@ -2895,10 +2843,6 @@
             return prev;
           });
         };
-
-        // Return a promise that resolves after a short delay.
-        // This gives the EventSource time to establish the HTTP connection
-        // and register the SSE emitter on the backend.
         return new Promise(resolve => setTimeout(resolve, 2000));
       };
 
@@ -2906,56 +2850,26 @@
 
       const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
-        setUpdateProgress({
-          status: 'downloading',
-          percent: 0,
-          message: 'Starting download...',
-          latestVersion: latestVersion || ''
-        });
-
-        // IMPORTANT (Electron): Signal the main process that an update is starting.
-        // This sets isUpdating=true BEFORE the Java process exits,
-        // so the Electron exit handler knows to swap the WAR file instead of crash-recovering.
-        if (window.electron && window.electron.setUpdating) {
-          window.electron.setUpdating();
-        }
-
-        // IMPORTANT: Connect SSE FIRST and AWAIT the connection handshake.
-        // This ensures the backend has an SSE emitter registered for progress events
-        // BEFORE we start the update. Otherwise all early progress events are dropped.
+        setUpdateProgress({ status: 'downloading', percent: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
+        if (window.electron && window.electron.setUpdating) window.electron.setUpdating();
         await connectUpdateProgressSSE();
-
-        // Start the actual update (runs async on backend - POST returns immediately)
         try {
           await API.system.applyUpdate();
-          // SSE is already connected and will receive all progress events
         } catch (e) {
-          setUpdateProgress({
-            status: 'error',
-            percent: 0,
-            message: 'Update failed: ' + (e.message || 'Unknown error'),
-            latestVersion: latestVersion || ''
-          });
+          setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' });
         }
       };
 
       const handleUpdateComplete = () => {
         setIsUpdating(false);
         setUpdateProgress(null);
-        // Properly close the EventSource connection
-        if (updatePollRef.current) {
-          updatePollRef.current.close();
-          updatePollRef.current = null;
-        }
+        if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; }
       };
 
       const pageComponents = {
         dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
         invoices: { title: 'Invoices', comp: React.createElement(InvoiceList, { key: API.firmId, onEditInvoice: handleEditInvoice }) },
-        'new-invoice': {
-          title: editInvoiceId ? 'Edit Invoice' : 'New Invoice',
-          comp: React.createElement(InvoiceForm, { editId: editInvoiceId, onSaved: handleSaved })
-        },
+        'new-invoice': { title: editInvoiceId ? 'Edit Invoice' : 'New Invoice', comp: React.createElement(InvoiceForm, { editId: editInvoiceId, onSaved: handleSaved }) },
         products: { title: 'Products', comp: React.createElement(ProductManager, { key: API.firmId }) },
         customers: { title: 'Customers', comp: React.createElement(CustomerManager, { key: API.firmId }) },
         firm: { title: 'Firm Profile', comp: React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: handleFirmChanged }) },
@@ -2966,16 +2880,11 @@
       };
       const current = pageComponents[page] || pageComponents.dashboard;
 
-      if (!appLoaded) {
-        return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
-      }
-
-      if (!isAuthenticated) {
-        return React.createElement(Fragment, null,
-          React.createElement(Login, { onLogin: handleLogin }),
-          React.createElement(Toast, { toasts, removeToast })
-        );
-      }
+      if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
+      if (!isAuthenticated) return React.createElement(Fragment, null,
+        React.createElement(Login, { onLogin: handleLogin }),
+        React.createElement(Toast, { toasts, removeToast })
+      );
 
       return React.createElement('div', { className: 'app-layout' },
         React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null }),
@@ -2985,18 +2894,13 @@
               React.createElement('h1', { className: 'topbar-title' }, current.title)
             ),
             React.createElement('div', { className: 'topbar-right' },
-              // Firm Quick Switch Dropdown
               React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', {
                   className: 'firm-switch-select',
                   value: API.firmId || '',
                   onChange: e => handleFirmSwitch(parseInt(e.target.value, 10))
                 },
-                  firms.map(f =>
-                    React.createElement('option', { key: f.id, value: f.id },
-                      f.firmName || 'Unnamed Firm'
-                    )
-                  )
+                  firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))
                 )
               ),
               firmName && React.createElement('span', { className: 'topbar-firm' }, firmName),
@@ -3006,26 +2910,15 @@
           React.createElement('div', { className: 'page-content' }, current.comp)
         ),
         React.createElement(Toast, { toasts, removeToast }),
-        React.createElement(UpdateProgressOverlay, {
-          progress: updateProgress,
-          isUpdating: isUpdating,
-          onComplete: handleUpdateComplete
-        }),
-        // Update complete banner (shows after restart when marker file was found)
+        React.createElement(UpdateProgressOverlay, { progress: updateProgress, isUpdating, onComplete: handleUpdateComplete }),
         updateCompleteBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
           React.createElement('div', { className: 'card', style: { maxWidth: 420, width: '90%', padding: '40px 30px', textAlign: 'center' } },
             React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } }, '✅'),
             React.createElement('h3', { style: { marginBottom: 8, color: '#16a34a' } }, 'Update Complete!'),
             React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } },
-              updateCompleteBanner === true
-                ? 'Your app has been updated successfully.'
-                : `Updated to version ${updateCompleteBanner}`
+              updateCompleteBanner === true ? 'Your app has been updated successfully.' : `Updated to version ${updateCompleteBanner}`
             ),
-            React.createElement('button', {
-              className: 'btn btn-primary',
-              style: { marginTop: 20 },
-              onClick: () => setUpdateCompleteBanner(null)
-            }, 'Continue')
+            React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => setUpdateCompleteBanner(null) }, 'Continue')
           )
         )
       );

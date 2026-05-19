@@ -126,6 +126,7 @@ const API = {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
     })),
+    getLinkedInvoice: (id) => API._json(`/api/invoices/${id}/linked-invoice`),
     nextInvoiceNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
     nextEstimateNumber: () => API._json(API._qs('/api/invoices/next-estimate-number')),
     downloadPdf: async (id, size = 'A4') => {

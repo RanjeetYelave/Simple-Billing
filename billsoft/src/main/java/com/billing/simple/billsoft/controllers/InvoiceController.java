@@ -61,6 +61,16 @@ public class InvoiceController {
         return ResponseEntity.ok(service.convertEstimateToInvoice(estimateId, overrideRequest));
     }
 
+    // ---------------- GET LINKED INVOICE FOR ESTIMATE ----------------
+    @GetMapping("/{id}/linked-invoice")
+    public ResponseEntity<Invoice> getLinkedInvoice(@PathVariable Long id) {
+        Invoice inv = service.getById(id);
+        if (inv == null) return ResponseEntity.notFound().build();
+        if (inv.getConvertedInvoiceId() == null) return ResponseEntity.notFound().build();
+        Invoice linked = service.getById(inv.getConvertedInvoiceId());
+        return linked == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(linked);
+    }
+
     // ---------------- PREVIEW ----------------
     @PostMapping("/preview")
     public ResponseEntity<Invoice> preview(@RequestBody InvoiceRequest request) {

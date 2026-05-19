@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.repo;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,11 +16,23 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     List<Invoice> findByFirmId(Long firmId);
     
+    // Used by BackupService
+    List<Invoice> findAllByFirmId(Long firmId);
+    
     long countByFirmId(Long firmId);
     
     long countByFirmIdAndStatus(Long firmId, InvoiceStatus status);
     
     List<Invoice> findByCustomer_Id(Long customerId);
+    
+    // Used by StatementServiceImpl
+    List<Invoice> findByFirmIdAndCustomer_Id(Long firmId, Long customerId);
+    
+    // Used by StatementServiceImpl
+    List<Invoice> findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(Long firmId, LocalDateTime from, LocalDateTime to);
+    
+    // Used by StatementServiceImpl
+    List<Invoice> findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(LocalDateTime from, LocalDateTime to);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items WHERE i.firmId = :firmId AND LOWER(i.customer.name) LIKE LOWER(CONCAT('%',:name,'%'))")
     List<Invoice> findByFirmIdAndCustomerNameContainingIgnoreCase(@Param("firmId") Long firmId, @Param("name") String name);

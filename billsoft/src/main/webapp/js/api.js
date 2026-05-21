@@ -195,6 +195,19 @@ const API = {
     factoryReset: () => API._json('/api/backup/factory-reset', { method: 'POST' })
   },
 
+  // ─── Employees ───
+  employees: {
+    verifyPin: (pin) => API._json('/api/employees/verify-pin', { method: 'POST', body: { pin } }),
+    changePin: (oldPin, newPin) => API._json('/api/employees/change-pin', { method: 'POST', body: { oldPin, newPin } }),
+    getAll: () => API._json(API._qs('/api/employees')),
+    create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
+    update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),
+    getAdvances: (id) => API._json(`/api/employees/${id}/advances`),
+    addAdvance: (id, data) => API._json(`/api/employees/${id}/advances`, { method: 'POST', body: data }),
+    getSalaries: (id) => API._json(`/api/employees/${id}/salaries`),
+    processSalary: (id, data) => API._json(`/api/employees/${id}/salaries`, { method: 'POST', body: data })
+  },
+
   // ─── System & Updates ───
   system: {
     updateStatus: () => API._json('/api/system/update-status'),

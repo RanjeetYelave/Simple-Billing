@@ -10,6 +10,9 @@ import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
+import com.billing.simple.billsoft.repo.EmployeeRepository;
+import com.billing.simple.billsoft.repo.EmployeeAdvanceRepository;
+import com.billing.simple.billsoft.repo.SalaryRecordRepository;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,17 +31,26 @@ public class BackupService {
     private final ProductRepository productRepo;
     private final InvoiceRepository invoiceRepo;
     private final AppConfigRepository appConfigRepo;
+    private final EmployeeRepository employeeRepo;
+    private final EmployeeAdvanceRepository advanceRepo;
+    private final SalaryRecordRepository salaryRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
                          ProductRepository productRepo,
                          InvoiceRepository invoiceRepo,
-                         AppConfigRepository appConfigRepo) {
+                         AppConfigRepository appConfigRepo,
+                         EmployeeRepository employeeRepo,
+                         EmployeeAdvanceRepository advanceRepo,
+                         SalaryRecordRepository salaryRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.invoiceRepo = invoiceRepo;
         this.appConfigRepo = appConfigRepo;
+        this.employeeRepo = employeeRepo;
+        this.advanceRepo = advanceRepo;
+        this.salaryRepo = salaryRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -193,5 +205,8 @@ public class BackupService {
         customerRepo.deleteAll();
         firmDetailsRepo.deleteAll();
         appConfigRepo.deleteAll();
+        salaryRepo.deleteAll();
+        advanceRepo.deleteAll();
+        employeeRepo.deleteAll();
     }
 }

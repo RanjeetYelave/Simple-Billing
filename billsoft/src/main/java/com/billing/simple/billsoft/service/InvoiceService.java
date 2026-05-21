@@ -377,7 +377,27 @@ public class InvoiceService {
         Invoice i = invoiceRepo.findById(id).orElse(null);
         if (i == null) return null;
         i.setPaid(paid);
-        if (paid) i.setStatus(InvoiceStatus.PAID);
+        if (paid) {
+            i.setStatus(InvoiceStatus.PAID);
+        } else {
+            // Revert status to FINAL if it was PAID
+            if (i.getStatus() == InvoiceStatus.PAID) {
+                i.setStatus(InvoiceStatus.FINAL);
+            }
+        }
+        return invoiceRepo.save(i);
+    }
+
+    @Transactional
+    public Invoice updateStatus(Long id, InvoiceStatus status) {
+        Invoice i = invoiceRepo.findById(id).orElse(null);
+        if (i == null) return null;
+        i.setStatus(status);
+        if (status == InvoiceStatus.PAID) {
+            i.setPaid(true);
+        } else if (status != InvoiceStatus.PAID && Boolean.TRUE.equals(i.getPaid())) {
+            i.setPaid(false);
+        }
         return invoiceRepo.save(i);
     }
 

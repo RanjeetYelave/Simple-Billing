@@ -129,11 +129,8 @@ public class InvoiceController {
             @PathVariable Long id,
             @RequestParam InvoiceStatus status) {
 
-        Invoice inv = service.getById(id);
-        if (inv == null) return ResponseEntity.notFound().build();
-
-        inv.setStatus(status);
-        return ResponseEntity.ok(service.updateFullInvoice(id, new InvoiceUpdateRequest()));
+        Invoice updated = service.updateStatus(id, status);
+        return updated == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(updated);
     }
 
     // ---------------- ANALYTICS ----------------

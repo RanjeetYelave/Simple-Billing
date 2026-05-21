@@ -73,6 +73,12 @@ function startJavaBackend() {
       return;
     }
 
+    // If it's updating but updateWar does NOT exist, that means we already swapped,
+    // and this is a crash of the NEW version! So we should handle it as a crash.
+    if (isUpdating && !updateWarExists) {
+      isUpdating = false;
+    }
+
     // Otherwise, this is an unexpected exit (crash or manual close)
     if (!isUpdating && code !== null) {
       restartAttempts++;
@@ -163,7 +169,7 @@ function pollServerAfterUpdate(win) {
   const checkServer = () => {
     pollCount++;
     http.get('http://127.0.0.1:8080', (res) => {
-      if (res.statusCode < 500) {
+      if (res.statusCode < 400) {
         console.log("Backend is back up after update!");
         isUpdating = false;
         win.loadURL('http://127.0.0.1:8080');

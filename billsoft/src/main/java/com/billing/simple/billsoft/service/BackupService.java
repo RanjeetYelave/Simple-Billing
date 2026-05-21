@@ -13,6 +13,7 @@ import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.EmployeeRepository;
 import com.billing.simple.billsoft.repo.EmployeeAdvanceRepository;
 import com.billing.simple.billsoft.repo.SalaryRecordRepository;
+import com.billing.simple.billsoft.repo.PromotionRecordRepository;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ public class BackupService {
     private final EmployeeRepository employeeRepo;
     private final EmployeeAdvanceRepository advanceRepo;
     private final SalaryRecordRepository salaryRepo;
+    private final PromotionRecordRepository promotionRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -42,7 +44,8 @@ public class BackupService {
                          AppConfigRepository appConfigRepo,
                          EmployeeRepository employeeRepo,
                          EmployeeAdvanceRepository advanceRepo,
-                         SalaryRecordRepository salaryRepo) {
+                         SalaryRecordRepository salaryRepo,
+                         PromotionRecordRepository promotionRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -51,6 +54,7 @@ public class BackupService {
         this.employeeRepo = employeeRepo;
         this.advanceRepo = advanceRepo;
         this.salaryRepo = salaryRepo;
+        this.promotionRepo = promotionRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -206,6 +210,7 @@ public class BackupService {
         firmDetailsRepo.deleteAll();
         appConfigRepo.deleteAll();
         salaryRepo.deleteAll();
+        promotionRepo.deleteAll();
         advanceRepo.deleteAll();
         employeeRepo.deleteAll();
     }

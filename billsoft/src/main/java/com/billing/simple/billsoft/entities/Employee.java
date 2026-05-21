@@ -18,6 +18,9 @@ public class Employee {
 
     private String phone;
     private String role;
+    
+    @Column(nullable = false)
+    private java.time.LocalDate dateOfJoining;
     private String idProofNumber;
 
     @Column(nullable = false)
@@ -44,6 +47,8 @@ public class Employee {
     public void setName(String name) { this.name = name; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public java.time.LocalDate getDateOfJoining() { return dateOfJoining; }
+    public void setDateOfJoining(java.time.LocalDate dateOfJoining) { this.dateOfJoining = dateOfJoining; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     public String getIdProofNumber() { return idProofNumber; }

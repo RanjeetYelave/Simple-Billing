@@ -205,7 +205,9 @@ const API = {
     getAdvances: (id) => API._json(`/api/employees/${id}/advances`),
     addAdvance: (id, data) => API._json(`/api/employees/${id}/advances`, { method: 'POST', body: data }),
     getSalaries: (id) => API._json(`/api/employees/${id}/salaries`),
-    processSalary: (id, data) => API._json(`/api/employees/${id}/salaries`, { method: 'POST', body: data })
+    processSalary: (id, data) => API._json(`/api/employees/${id}/salaries`, { method: 'POST', body: data }),
+    getPromotions: (id) => API._json(`/api/employees/${id}/promotions`),
+    addPromotion: (id, data) => API._json(`/api/employees/${id}/promotions`, { method: 'POST', body: data })
   },
 
   // ─── System & Updates ───

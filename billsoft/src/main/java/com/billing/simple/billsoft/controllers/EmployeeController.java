@@ -4,6 +4,8 @@ import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.entities.Employee;
 import com.billing.simple.billsoft.entities.EmployeeAdvance;
 import com.billing.simple.billsoft.entities.SalaryRecord;
+import com.billing.simple.billsoft.entities.PromotionRecord;
+import com.billing.simple.billsoft.repo.PromotionRecordRepository;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.EmployeeAdvanceRepository;
 import com.billing.simple.billsoft.repo.EmployeeRepository;
@@ -27,15 +29,18 @@ public class EmployeeController {
     private final EmployeeAdvanceRepository advanceRepo;
     private final SalaryRecordRepository salaryRepo;
     private final AppConfigRepository appConfigRepo;
+    private final PromotionRecordRepository promotionRepo;
 
     public EmployeeController(EmployeeRepository employeeRepo,
                               EmployeeAdvanceRepository advanceRepo,
                               SalaryRecordRepository salaryRepo,
-                              AppConfigRepository appConfigRepo) {
+                              AppConfigRepository appConfigRepo,
+                              PromotionRecordRepository promotionRepo) {
         this.employeeRepo = employeeRepo;
         this.advanceRepo = advanceRepo;
         this.salaryRepo = salaryRepo;
         this.appConfigRepo = appConfigRepo;
+        this.promotionRepo = promotionRepo;
     }
 
     private String getPin() {
@@ -71,7 +76,20 @@ public class EmployeeController {
     }
 
     @GetMapping
+    @Transactional
     public List<Employee> getEmployees(@RequestParam("firmId") Long firmId) {
+        List<PromotionRecord> unapplied = promotionRepo.findByIsAppliedFalse();
+        LocalDate today = LocalDate.now();
+        for (PromotionRecord p : unapplied) {
+            if (!p.getEffectiveDate().isAfter(today)) {
+                Employee emp = p.getEmployee();
+                if (p.getNewRole() != null && !p.getNewRole().isEmpty()) emp.setRole(p.getNewRole());
+                if (p.getNewSalary() != null) emp.setMonthlyBaseSalary(p.getNewSalary());
+                employeeRepo.save(emp);
+                p.setIsApplied(true);
+                promotionRepo.save(p);
+            }
+        }
         return employeeRepo.findByFirmId(firmId);
     }
 
@@ -91,6 +109,7 @@ public class EmployeeController {
             emp.setIsActive(updated.getIsActive());
             emp.setMonthlyBaseSalary(updated.getMonthlyBaseSalary());
             emp.setAllowedPaidLeavesPerMonth(updated.getAllowedPaidLeavesPerMonth());
+            emp.setDateOfJoining(updated.getDateOfJoining());
             return ResponseEntity.ok(employeeRepo.save(emp));
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -146,5 +165,32 @@ public class EmployeeController {
         }
 
         return ResponseEntity.ok(salaryRepo.save(record));
+    }
+
+    @GetMapping("/{id}/promotions")
+    public List<PromotionRecord> getPromotions(@PathVariable Long id) {
+        return promotionRepo.findByEmployeeIdOrderByEffectiveDateDesc(id);
+    }
+
+    @PostMapping("/{id}/promotions")
+    @Transactional
+    public ResponseEntity<PromotionRecord> addPromotion(@PathVariable Long id, @RequestBody PromotionRecord record) {
+        Optional<Employee> empOpt = employeeRepo.findById(id);
+        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
+        Employee emp = empOpt.get();
+
+        record.setEmployee(emp);
+        if (record.getEffectiveDate() == null) record.setEffectiveDate(LocalDate.now());
+        
+        if (!record.getEffectiveDate().isAfter(LocalDate.now())) {
+            if (record.getNewRole() != null && !record.getNewRole().isEmpty()) emp.setRole(record.getNewRole());
+            if (record.getNewSalary() != null) emp.setMonthlyBaseSalary(record.getNewSalary());
+            employeeRepo.save(emp);
+            record.setIsApplied(true);
+        } else {
+            record.setIsApplied(false);
+        }
+
+        return ResponseEntity.ok(promotionRepo.save(record));
     }
 }

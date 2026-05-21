@@ -172,7 +172,7 @@
         { id: 'new-quotation', label: 'New Quotation', icon: Icons.plus },
         { id: 'products', label: 'Products', icon: Icons.package },
         { id: 'customers', label: 'Customers', icon: Icons.users },
-        { id: 'employees', label: 'Employees', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' },
+        { id: 'employees', label: 'Employees', icon: Icons.users },
         { id: 'firm', label: 'Firm Profile', icon: Icons.building },
         { id: 'statements', label: 'Statements', icon: Icons.barChart },
         { id: 'backup', label: 'Backup & Restore', icon: Icons.database },
@@ -880,7 +880,7 @@
         setSortField(field);
         setSortDir(dir);
       };
-      return React.createElement('div', null,
+      return React.createElement(Fragment, null,
         React.createElement('div', { className: 'manager-header' },
           React.createElement('div', { className: 'manager-search' },
             React.createElement('input', { className: 'input', placeholder: 'Search by number or customer...', value: search, onChange: e => setSearch(e.target.value) })
@@ -1831,8 +1831,8 @@
       }
 
       return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 } },
-          React.createElement('h2', { style: { fontSize: '1.5rem', fontWeight: 600 } }, 'Employee Management'),
+        React.createElement('div', { className: 'manager-header' },
+          React.createElement('div', { className: 'card-title' }, 'Employees'),
           React.createElement('div', { style: { display: 'flex', gap: 10 } },
             React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowPinChange(true) }, 'Change PIN'),
             !selectedEmployee && !showForm && React.createElement('button', { className: 'btn btn-primary', onClick: () => { setSelectedEmployee(null); setFormData({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true }); setShowForm(true); } }, '+ New Employee'),

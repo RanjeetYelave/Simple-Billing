@@ -1396,7 +1396,12 @@
     function BackupRestore() {
       const [loading, setLoading] = useState(false);
       const [importFile, setImportFile] = useState(null);
+      const [showResetModal, setShowResetModal] = useState(false);
+      const [resetStep, setResetStep] = useState(0); // 0: initial confirm, 1: countdown, 2: type confirm
+      const [countdown, setCountdown] = useState(10);
+      const [resetConfirmText, setResetConfirmText] = useState('');
       const fileInputRef = useRef(null);
+      
       const handleExport = () => { window.location.href = API.backup.exportUrl(); showToast('Exporting backup...', 'info'); };
       const handleImportClick = () => { fileInputRef.current.click(); };
       const handleFileChange = (e) => { const file = e.target.files[0]; if (!file) return; setImportFile(file); e.target.value = ''; };
@@ -1406,6 +1411,36 @@
         catch (error) { showToast('Failed to restore backup.', 'error'); setImportFile(null); }
         finally { setLoading(false); }
       };
+
+      const startFactoryReset = () => {
+        setResetStep(1);
+        setCountdown(10);
+        const timer = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              setResetStep(2);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      };
+
+      const executeFactoryReset = async () => {
+        if (resetConfirmText.toLowerCase() !== 'reset software') return;
+        setLoading(true);
+        try {
+          await API.backup.factoryReset();
+          showToast('Factory reset complete. All data deleted.', 'success');
+          setTimeout(() => window.location.href = '/', 1500);
+        } catch (error) {
+          showToast('Failed to factory reset.', 'error');
+          setLoading(false);
+          setShowResetModal(false);
+        }
+      };
+
       return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', marginTop: 40 } },
         React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Backup & Restore Data')),
         React.createElement('div', { className: 'card-body' },
@@ -1420,6 +1455,10 @@
                 React.createElement('input', { type: 'file', ref: fileInputRef, style: { display: 'none' }, accept: '.json', onChange: handleFileChange }),
                 React.createElement('button', { className: 'btn btn-outline', onClick: handleImportClick, disabled: loading }, loading ? 'Restoring...' : 'Import JSON')
               )
+            ),
+            React.createElement('div', { style: { padding: 20, border: '1px solid var(--danger)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239, 68, 68, 0.05)' } },
+              React.createElement('div', null, React.createElement('h3', { style: { fontSize: '1.1rem', marginBottom: 4, color: 'var(--danger)' } }, 'Factory Reset'), React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } }, 'Delete all firms and all data permanently. Cannot be undone.')),
+              React.createElement('button', { className: 'btn btn-danger', style: { backgroundColor: 'var(--danger)', color: 'white' }, onClick: () => { setShowResetModal(true); setResetStep(0); setResetConfirmText(''); } }, 'Factory Reset')
             )
           )
         ),
@@ -1438,11 +1477,39 @@
               )
             )
           )
+        ),
+        showResetModal && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999 } },
+          React.createElement('div', { className: 'modal', style: { maxWidth: 500 } },
+            React.createElement('div', { className: 'modal-header' }, React.createElement('div', { className: 'modal-title', style: { color: 'var(--danger)' } }, '🚨 Factory Reset Warning'), React.createElement('button', { className: 'modal-close', onClick: () => !loading && resetStep !== 1 && setShowResetModal(false) }, '✕')),
+            React.createElement('div', { className: 'modal-body' },
+              resetStep === 0 && React.createElement(Fragment, null,
+                React.createElement('p', { style: { marginBottom: 20, color: 'var(--text-secondary)', fontSize: '1.05rem' } }, 'Are you absolutely sure? This will delete ALL firms, invoices, products, and customers from the database.'),
+                React.createElement('p', { style: { marginBottom: 20, color: 'var(--danger)', fontWeight: 'bold' } }, 'THIS ACTION CANNOT BE UNDONE!'),
+                React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'flex-end' } },
+                  React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowResetModal(false) }, 'Cancel'),
+                  React.createElement('button', { className: 'btn btn-danger', style: { backgroundColor: 'var(--danger)', color: 'white' }, onClick: startFactoryReset }, 'Yes, Delete Everything')
+                )
+              ),
+              resetStep === 1 && React.createElement(Fragment, null,
+                React.createElement('p', { style: { marginBottom: 20, fontSize: '1.1rem', textAlign: 'center' } }, 'Please wait...'),
+                React.createElement('div', { style: { fontSize: '3rem', fontWeight: 'bold', textAlign: 'center', color: 'var(--danger)', marginBottom: 20 } }, countdown),
+                React.createElement('p', { style: { color: 'var(--text-secondary)', textAlign: 'center' } }, 'Take a moment to reconsider. You are about to lose all data.')
+              ),
+              resetStep === 2 && React.createElement(Fragment, null,
+                React.createElement('p', { style: { marginBottom: 16 } }, 'If you are absolutely certain, please type ', React.createElement('b', null, 'reset software'), ' below to confirm.'),
+                React.createElement('input', { className: 'input', placeholder: 'Type "reset software"', value: resetConfirmText, onChange: e => setResetConfirmText(e.target.value), style: { width: '100%', marginBottom: 20 } }),
+                React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'flex-end' } },
+                  React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowResetModal(false), disabled: loading }, 'Cancel'),
+                  React.createElement('button', { className: 'btn btn-danger', style: { backgroundColor: 'var(--danger)', color: 'white' }, onClick: executeFactoryReset, disabled: loading || resetConfirmText.toLowerCase() !== 'reset software' }, loading ? 'Resetting...' : 'Confirm Reset')
+                )
+              )
+            )
+          )
         )
       );
     }
 
-    // ─── LOGIN & SETTINGS ───
+    // ─── LOGIN & SETTINGS ─────
     function RecoveryTool({ onRecovered, onCancel }) {
       const [password, setPassword] = useState('');
       const [attempts, setAttempts] = useState(() => parseInt(localStorage.getItem('recoveryAttempts') || '0', 10));

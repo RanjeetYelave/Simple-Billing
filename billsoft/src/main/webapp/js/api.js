@@ -191,7 +191,8 @@ const API = {
       if (API.firmId) formData.append('firmId', API.firmId);
       formData.append('mode', mode || 'merge');
       return API._json('/api/backup/import', { method: 'POST', body: formData });
-    }
+    },
+    factoryReset: () => API._json('/api/backup/factory-reset', { method: 'POST' })
   },
 
   // ─── System & Updates ───

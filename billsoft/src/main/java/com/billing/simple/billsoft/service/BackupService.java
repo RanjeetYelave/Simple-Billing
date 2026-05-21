@@ -10,6 +10,7 @@ import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
+import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +27,18 @@ public class BackupService {
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
     private final InvoiceRepository invoiceRepo;
+    private final AppConfigRepository appConfigRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
                          ProductRepository productRepo,
-                         InvoiceRepository invoiceRepo) {
+                         InvoiceRepository invoiceRepo,
+                         AppConfigRepository appConfigRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.invoiceRepo = invoiceRepo;
+        this.appConfigRepo = appConfigRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -180,5 +184,14 @@ public class BackupService {
                 //dummy
             }
         }
+    }
+
+    @Transactional
+    public void factoryReset() {
+        invoiceRepo.deleteAll();
+        productRepo.deleteAll();
+        customerRepo.deleteAll();
+        firmDetailsRepo.deleteAll();
+        appConfigRepo.deleteAll();
     }
 }

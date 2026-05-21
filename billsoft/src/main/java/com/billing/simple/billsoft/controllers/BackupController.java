@@ -70,4 +70,20 @@ public class BackupController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+
+    @PostMapping("/factory-reset")
+    public ResponseEntity<Map<String, String>> factoryReset() {
+        try {
+            backupService.factoryReset();
+            Map<String, String> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "Factory reset completed successfully");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Factory reset failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
 }

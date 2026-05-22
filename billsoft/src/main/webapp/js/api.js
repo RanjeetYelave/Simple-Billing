@@ -203,6 +203,7 @@ const API = {
     create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/employees/${id}`, { method: 'DELETE' }),
+    changeStatus: (id, isActive, reason) => API._json(`/api/employees/${id}/status`, { method: 'PUT', body: { isActive, reason } }),
     getAdvances: (id) => API._json(`/api/employees/${id}/advances`),
     addAdvance: (id, data) => API._json(`/api/employees/${id}/advances`, { method: 'POST', body: data }),
     getSalaries: (id) => API._json(`/api/employees/${id}/salaries`),

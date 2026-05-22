@@ -165,6 +165,38 @@ public class EmployeeController {
     }
 
     /**
+     * Change employee status (retire/rejoin) with timeline entry.
+     */
+    @PutMapping("/{id}/status")
+    @Transactional
+    public ResponseEntity<EmployeeDTO> changeEmployeeStatus(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return employeeRepo.findById(id).map(emp -> {
+            Boolean isActive = body.get("isActive") instanceof Boolean ? (Boolean) body.get("isActive") : null;
+            String reason = body.get("reason") instanceof String ? (String) body.get("reason") : "";
+
+            if (isActive != null) {
+                emp.setIsActive(isActive);
+                employeeRepo.save(emp);
+
+                // Create a promotion record for the timeline
+                PromotionRecord timelineEntry = new PromotionRecord();
+                timelineEntry.setEmployee(emp);
+                timelineEntry.setEffectiveDate(LocalDate.now());
+                timelineEntry.setType(isActive ? "REJOIN" : "RETIREMENT");
+                timelineEntry.setPreviousRole(emp.getRole());
+                timelineEntry.setNewRole(emp.getRole());
+                timelineEntry.setPreviousSalary(emp.getMonthlyBaseSalary());
+                timelineEntry.setNewSalary(emp.getMonthlyBaseSalary());
+                timelineEntry.setReason(reason != null && !reason.isBlank() ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
+                timelineEntry.setIsApplied(true);
+                promotionRepo.save(timelineEntry);
+            }
+
+            return ResponseEntity.ok(toDTO(emp));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * Delete employee with cascade cleanup of all related records.
      */
     @DeleteMapping("/{id}")

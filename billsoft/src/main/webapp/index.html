@@ -325,7 +325,7 @@
       const isNeg = value < 0;
       return React.createElement('div', { key: label, className: 'summary-row', style: isNeg ? { color: 'var(--danger)' } : {} },
         React.createElement('span', { className: 'summary-label' }, label),
-        React.createElement('span', { className: 'summary-value' }, BillsoftUtils.BillsoftUtils.formatCurrency(value))
+        React.createElement('span', { className: 'summary-value' }, BillsoftUtils.formatCurrency(value))
       );
     }
 
@@ -400,7 +400,7 @@
         showSuggestions && filtered.length > 0 && React.createElement('div', { className: 'autocomplete-dropdown', style: { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' } },
           filtered.map((p, i) => React.createElement('div', { key: p.id, className: 'autocomplete-item', style: { padding: '6px 10px', cursor: 'pointer', fontSize: '0.85rem', background: i === highlightIdx ? 'var(--bg-hover)' : 'transparent', borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light)' : undefined }, onMouseDown: () => selectProduct(p) },
             React.createElement('div', { style: { fontWeight: 500 } }, p.name),
-            React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, `${BillsoftUtils.BillsoftUtils.formatCurrency(p.price)}${p.gstPercentage ? ` | ${p.gstPercentage}% GST` : ''}`)
+            React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, `${BillsoftUtils.formatCurrency(p.price)}${p.gstPercentage ? ` | ${p.gstPercentage}% GST` : ''}`)
           )),
           !isExactMatch && text.trim() && React.createElement('div', { style: { padding: '6px 10px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' } }, 'Press Enter to create new product')
         )
@@ -723,7 +723,7 @@
                     React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 100 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value) })),
                     React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 80 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value) })),
                     React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value) })),
-                    React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.BillsoftUtils.formatCurrency(lineTotal)),
+                    React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕'))
                   );
                 })
@@ -763,7 +763,7 @@
             ),
             React.createElement('div', { className: 'summary-row total' },
               React.createElement('span', { className: 'summary-label' }, 'Grand Total'),
-              React.createElement('span', { className: 'summary-value' }, BillsoftUtils.BillsoftUtils.formatCurrency(calcTotals.totalAmount))
+              React.createElement('span', { className: 'summary-value' }, BillsoftUtils.formatCurrency(calcTotals.totalAmount))
             )
           )
         ),
@@ -808,18 +808,18 @@
               React.createElement('td', null, i + 1),
               React.createElement('td', null, item.product ? item.product.name : '—'),
               React.createElement('td', null, item.qty),
-              React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(item.pricePerUnit)),
-              React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(item.discountValue)),
+              React.createElement('td', null, BillsoftUtils.formatCurrency(item.pricePerUnit)),
+              React.createElement('td', null, BillsoftUtils.formatCurrency(item.discountValue)),
               React.createElement('td', null, `${item.gstPercent || 0}%`),
-              React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(item.lineTotal))
+              React.createElement('td', null, BillsoftUtils.formatCurrency(item.lineTotal))
             ))
           )
         ),
         React.createElement('div', { className: 'preview-totals' },
-          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Subtotal'), React.createElement('span', null, BillsoftUtils.BillsoftUtils.formatCurrency(inv.subtotalWithoutTax))),
-          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Discount'), React.createElement('span', null, BillsoftUtils.BillsoftUtils.formatCurrency(inv.totalDiscount))),
-          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Tax (GST)'), React.createElement('span', null, BillsoftUtils.BillsoftUtils.formatCurrency(inv.totalTax))),
-          React.createElement('div', { className: 'row total' }, React.createElement('span', null, 'Total'), React.createElement('span', null, BillsoftUtils.BillsoftUtils.formatCurrency(inv.totalAmount)))
+          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Subtotal'), React.createElement('span', null, BillsoftUtils.formatCurrency(inv.subtotalWithoutTax))),
+          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Discount'), React.createElement('span', null, BillsoftUtils.formatCurrency(inv.totalDiscount))),
+          React.createElement('div', { className: 'row' }, React.createElement('span', null, 'Tax (GST)'), React.createElement('span', null, BillsoftUtils.formatCurrency(inv.totalTax))),
+          React.createElement('div', { className: 'row total' }, React.createElement('span', null, 'Total'), React.createElement('span', null, BillsoftUtils.formatCurrency(inv.totalAmount)))
         ),
         inv.customerNote && React.createElement('div', { className: 'preview-footer' }, React.createElement('strong', null, 'Notes:'), React.createElement('p', null, inv.customerNote)),
         React.createElement('div', { className: 'form-actions', style: { justifyContent: 'center' } },
@@ -916,7 +916,7 @@
                   React.createElement('td', { style: { fontWeight: 500 } }, inv.invoiceNumber || '—'),
                   React.createElement('td', null, inv.customer ? inv.customer.name : '—'),
                   React.createElement('td', null, BillsoftUtils.formatDate(inv.invoiceDate)),
-                  React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.BillsoftUtils.formatCurrency(inv.totalAmount)),
+                  React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
                   React.createElement('td', null, React.createElement('span', { className: `badge ${BillsoftUtils.getStatusClass(inv.status)}` }, React.createElement('span', { className: 'badge-dot' }), BillsoftUtils.getStatusLabel(inv.status))),
                   React.createElement('td', null,
                     React.createElement('div', { className: 'action-buttons' },
@@ -1031,7 +1031,7 @@
                     React.createElement('td', { style: { fontWeight: 500 } }, q.estimateNumber || '—'),
                     React.createElement('td', null, q.customer ? q.customer.name : '—'),
                     React.createElement('td', null, BillsoftUtils.formatDate(q.invoiceDate)),
-                    React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.BillsoftUtils.formatCurrency(q.totalAmount)),
+                    React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(q.totalAmount)),
                     React.createElement('td', null, isConverted
                       ? React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af' } }, 'Converted')
                       : React.createElement('span', { className: `badge ${BillsoftUtils.getStatusClass(q.status)}` }, React.createElement('span', { className: 'badge-dot' }), BillsoftUtils.getStatusLabel(q.status))
@@ -1091,7 +1091,7 @@
                 products.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 40 } }, 'No products yet')) :
                 products.map(p => React.createElement('tr', { key: p.id },
                   React.createElement('td', { style: { fontWeight: 500 } }, p.name),
-                  React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(p.price)),
+                  React.createElement('td', null, BillsoftUtils.formatCurrency(p.price)),
                   React.createElement('td', null, p.unit || '—'),
                   React.createElement('td', null, p.gstPercentage ? `${p.gstPercentage}%` : '—'),
                   React.createElement('td', null, React.createElement('div', { style: { display: 'flex', gap: 4 } },
@@ -1178,9 +1178,9 @@
                       React.createElement('div', { className: 'customer-analytics' },
                         React.createElement('strong', null, `${c.name} - Analytics`),
                         React.createElement('div', { className: 'customer-analytics-grid' },
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(analytics.totalBusiness))),
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(analytics.totalPaid))),
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Pending'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(analytics.totalPending))),
+                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalBusiness))),
+                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPaid))),
+                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Pending'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPending))),
                           React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Invoices'), React.createElement('div', { className: 'value' }, analytics.invoiceCount))
                         )
                       )
@@ -1350,10 +1350,10 @@
         data && React.createElement(Fragment, null,
           mode === 'customer' ? React.createElement(Fragment, null,
             React.createElement('div', { className: 'statement-summary' },
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Opening Balance'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(data.openingBalance || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(data.totalBilled || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(data.totalPaid || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Closing Balance'), React.createElement('div', { className: 'value', style: { color: 'var(--primary)' } }, BillsoftUtils.BillsoftUtils.formatCurrency(data.closingBalance || 0)))
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Opening Balance'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(data.openingBalance || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(data.totalBilled || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(data.totalPaid || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Closing Balance'), React.createElement('div', { className: 'value', style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.closingBalance || 0)))
             ),
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Customer Statement Entries'), React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadPdf }, 'Download PDF')),
@@ -1362,19 +1362,19 @@
                   React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', null, 'Date'), React.createElement('th', null, 'Type'), React.createElement('th', null, 'Ref'), React.createElement('th', null, 'Description'), React.createElement('th', { style: { textAlign: 'right' } }, 'Debit (₹)'), React.createElement('th', { style: { textAlign: 'right' } }, 'Credit (₹)'), React.createElement('th', { style: { textAlign: 'right' } }, 'Balance (₹)'))),
                   React.createElement('tbody', null, entries.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 40 } }, 'No entries found')) : entries.map((e, i) => React.createElement('tr', { key: i },
                     React.createElement('td', null, BillsoftUtils.formatDate(e.date)), React.createElement('td', null, e.type), React.createElement('td', null, e.ref || '—'),
-                    React.createElement('td', null, e.description || '—'), React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--text)' } }, e.debit > 0 ? BillsoftUtils.BillsoftUtils.formatCurrency(e.debit) : '-'),
-                    React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--success)' } }, e.credit > 0 ? BillsoftUtils.BillsoftUtils.formatCurrency(e.credit) : '-'),
-                    React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.BillsoftUtils.formatCurrency(e.balance || 0))
+                    React.createElement('td', null, e.description || '—'), React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--text)' } }, e.debit > 0 ? BillsoftUtils.formatCurrency(e.debit) : '-'),
+                    React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--success)' } }, e.credit > 0 ? BillsoftUtils.formatCurrency(e.credit) : '-'),
+                    React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(e.balance || 0))
                   )))
                 )
               )
             )
           ) : React.createElement(Fragment, null,
             React.createElement('div', { className: 'statement-summary' },
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.BillsoftUtils.formatCurrency(data.totalBilled || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value', style: { color: 'var(--success)' } }, BillsoftUtils.BillsoftUtils.formatCurrency(data.totalPaid || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Outstanding'), React.createElement('div', { className: 'value', style: { color: 'var(--danger)' } }, BillsoftUtils.BillsoftUtils.formatCurrency(data.outstanding || 0))),
-              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total GST'), React.createElement('div', { className: 'value', style: { color: 'var(--info)' } }, BillsoftUtils.BillsoftUtils.formatCurrency(data.totalTax || 0)))
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(data.totalBilled || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value', style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(data.totalPaid || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Outstanding'), React.createElement('div', { className: 'value', style: { color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(data.outstanding || 0))),
+              React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total GST'), React.createElement('div', { className: 'value', style: { color: 'var(--info)' } }, BillsoftUtils.formatCurrency(data.totalTax || 0)))
             ),
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'GST Summary'), React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
@@ -1383,7 +1383,7 @@
                 React.createElement('table', null,
                   React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', null, 'GST %'), React.createElement('th', { style: { textAlign: 'right' } }, 'Taxable Value (₹)'), React.createElement('th', { style: { textAlign: 'right' } }, 'GST Amount (₹)'))),
                   React.createElement('tbody', null, (!data.gstSummary || data.gstSummary.length === 0) ? React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', padding: 40 } }, 'No GST data found')) : data.gstSummary.map((g, i) => React.createElement('tr', { key: i },
-                    React.createElement('td', { style: { fontWeight: 500 } }, `${g.gstPercent}%`), React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.BillsoftUtils.formatCurrency(g.taxableValue || 0)), React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.BillsoftUtils.formatCurrency(g.gstAmount || 0))
+                    React.createElement('td', { style: { fontWeight: 500 } }, `${g.gstPercent}%`), React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(g.taxableValue || 0)), React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(g.gstAmount || 0))
                   )))
                 )
               )
@@ -1822,6 +1822,26 @@
         } catch(e) { showToast('Error recording advance', 'error'); }
       };
 
+      const handleRetire = async (emp) => {
+        if (!confirm(`Retire employee "${emp.name}"? They will be marked as inactive.`)) return;
+        try {
+          await API.employees.changeStatus(emp.id, false, 'Employee retired');
+          showToast('Employee retired', 'success');
+          openEmployee(emp);
+          fetchEmployees();
+        } catch(e) { showToast('Error retiring employee', 'error'); }
+      };
+
+      const handleRejoin = async (emp) => {
+        if (!confirm(`Rejoin employee "${emp.name}"? They will be marked as active again.`)) return;
+        try {
+          await API.employees.changeStatus(emp.id, true, 'Employee rejoined');
+          showToast('Employee rejoined', 'success');
+          openEmployee(emp);
+          fetchEmployees();
+        } catch(e) { showToast('Error rejoining employee', 'error'); }
+      };
+
       // Calculate salary preview (shown before submission)
       const calcSalaryPreview = useCallback(() => {
         if (!selectedEmployee || !salaryMonth) return null;
@@ -1994,6 +2014,9 @@
                 React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' } },
                   React.createElement('button', { className: 'btn btn-outline', style: { flex: 1, minWidth: 80 }, onClick: () => { setFormData({...selectedEmployee}); setShowForm(true); } }, 'Edit'),
                   React.createElement('button', { className: 'btn btn-primary', style: { flex: 1, minWidth: 80 }, onClick: () => { setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: selectedEmployee.role || '', newSalary: selectedEmployee.monthlyBaseSalary || '', reason: '' }); setShowPromote(true); } }, 'Promote'),
+                  selectedEmployee.isActive ? 
+                    React.createElement('button', { className: 'btn btn-sm btn-warning', style: { width: '100%', marginTop: 4 }, onClick: () => handleRetire(selectedEmployee) }, '🔴 Retire') :
+                    React.createElement('button', { className: 'btn btn-sm btn-success', style: { width: '100%', marginTop: 4 }, onClick: () => handleRejoin(selectedEmployee) }, '🟢 Rejoin'),
                   React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)', width: '100%', marginTop: 4 }, onClick: () => handleDeleteEmployee(selectedEmployee) }, '🗑 Delete')
                 )
               )

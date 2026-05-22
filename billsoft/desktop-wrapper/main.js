@@ -168,7 +168,7 @@ function pollServerAfterUpdate(win) {
 
   const checkServer = () => {
     pollCount++;
-    http.get('http://127.0.0.1:8080', (res) => {
+    http.get('http://127.0.0.1:8081', (res) => {
       if (res.statusCode < 400) {
         console.log("Backend is back up after update!");
         isUpdating = false;
@@ -196,7 +196,7 @@ function pollServerAfterUpdate(win) {
 
 function pollServerAndLoad(win) {
   const checkServer = () => {
-    http.get('http://127.0.0.1:8080', (res) => {
+    http.get('http://127.0.0.1:8081', (res) => {
       if (res.statusCode < 400) {
         win.loadURL('http://127.0.0.1:8080');
       } else {

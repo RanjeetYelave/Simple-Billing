@@ -235,12 +235,33 @@ public class EmployeePdfService {
 
         // YTD Summary
         doc.add(new Paragraph("YTD (Year-to-Date) Summary", hFont));
-        double ytdBase = salaries.stream().mapToDouble(s -> s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0).sum();
-        double ytdBonus = salaries.stream().mapToDouble(s -> s.getBonusAmount() != null ? s.getBonusAmount() : 0).sum();
-        double ytdDeductions = salaries.stream().mapToDouble(s ->
-                (s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0) +
-                (s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0)).sum();
-        double ytdNet = salaries.stream().mapToDouble(s -> s.getNetPaid() != null ? s.getNetPaid() : 0).sum();
+        int currentYear = LocalDate.now().getYear();
+        double ytdBase = 0;
+        double ytdBonus = 0;
+        double ytdDeductions = 0;
+        double ytdNet = 0;
+        int salaryCount = 0;
+        for (SalaryRecord s : salaries) {
+            String monthYear = s.getMonthYear();
+            if (monthYear != null && monthYear.contains("-")) {
+                try {
+                    String[] parts = monthYear.split("-");
+                    if (parts.length != 2) continue;
+                    int yearPart = Integer.parseInt(parts[1].trim());
+                    if (yearPart == currentYear) {
+                        ytdBase += (s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0);
+                        ytdBonus += (s.getBonusAmount() != null ? s.getBonusAmount() : 0);
+                        ytdDeductions += (s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0)
+                                + (s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0);
+                        ytdNet += (s.getNetPaid() != null ? s.getNetPaid() : 0);
+                        salaryCount++;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // skip malformed monthYear
+                }
+            }
+        }
+        double ytdGross = ytdBase + ytdBonus;
 
         PdfPTable ytdTable = new PdfPTable(new float[]{2f, 1f});
         ytdTable.setWidthPercentage(60);

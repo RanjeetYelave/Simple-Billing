@@ -173,21 +173,34 @@ public class EmployeeController {
         return employeeRepo.findById(id).map(emp -> {
             Boolean isActive = body.get("isActive") instanceof Boolean ? (Boolean) body.get("isActive") : null;
             String reason = body.get("reason") instanceof String ? (String) body.get("reason") : "";
+            // Optional new salary/role for rejoining
+            Double newSalary = body.get("newSalary") instanceof Number ? ((Number) body.get("newSalary")).doubleValue() : null;
+            String newRole = body.get("newRole") instanceof String ? (String) body.get("newRole") : null;
 
             if (isActive != null) {
+                // Capture previous values before any change
+                Double previousSalary = emp.getMonthlyBaseSalary();
+                String previousRole = emp.getRole();
+
+                // Update active flag
                 emp.setIsActive(isActive);
+                // Apply optional updates only on re‑join
+                if (isActive) {
+                    if (newSalary != null) emp.setMonthlyBaseSalary(newSalary);
+                    if (newRole != null && !newRole.isBlank()) emp.setRole(newRole);
+                }
                 employeeRepo.save(emp);
 
-                // Create a promotion record for the timeline
+                // Create timeline entry
                 PromotionRecord timelineEntry = new PromotionRecord();
                 timelineEntry.setEmployee(emp);
                 timelineEntry.setEffectiveDate(LocalDate.now());
                 timelineEntry.setType(isActive ? "REJOIN" : "RETIREMENT");
-                timelineEntry.setPreviousRole(emp.getRole());
+                timelineEntry.setPreviousRole(previousRole);
                 timelineEntry.setNewRole(emp.getRole());
-                timelineEntry.setPreviousSalary(emp.getMonthlyBaseSalary());
+                timelineEntry.setPreviousSalary(previousSalary);
                 timelineEntry.setNewSalary(emp.getMonthlyBaseSalary());
-                timelineEntry.setReason(reason != null && !reason.isBlank() ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
+                timelineEntry.setReason((reason != null && !reason.isBlank()) ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
                 timelineEntry.setIsApplied(true);
                 promotionRepo.save(timelineEntry);
             }
@@ -260,25 +273,31 @@ public class EmployeeController {
         if (record.getPaymentDate() == null) record.setPaymentDate(LocalDate.now());
 
         // --- BACKEND VALIDATION ---
-        // Validate advance deduction does not exceed current balance
-        if (record.getAdvanceDeducted() != null && record.getAdvanceDeducted() > 0) {
-            if (record.getAdvanceDeducted() > emp.getCurrentAdvanceBalance()) {
+        // Validate advance deduction is non-negative and does not exceed current balance
+        if (record.getAdvanceDeducted() != null) {
+            if (record.getAdvanceDeducted() < 0) {
                 return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Advance deduction amount (" + record.getAdvanceDeducted() +
-                    ") exceeds current advance balance (" + emp.getCurrentAdvanceBalance() + ")"
+                        "error", "Advance deduction cannot be negative"
                 ));
             }
+            if (record.getAdvanceDeducted() > emp.getCurrentAdvanceBalance()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Advance deduction amount (" + record.getAdvanceDeducted() +
+                                ") exceeds current advance balance (" + emp.getCurrentAdvanceBalance() + ")"
+                ));
+            }
+            if (record.getAdvanceDeducted() > 0) {
+                // Process advance deduction
+                EmployeeAdvance deduction = new EmployeeAdvance();
+                deduction.setEmployee(emp);
+                deduction.setDate(record.getPaymentDate());
+                deduction.setAmount(-record.getAdvanceDeducted());
+                deduction.setDescription("Salary Deduction for " + record.getMonthYear());
+                advanceRepo.save(deduction);
 
-            // Process advance deduction
-            EmployeeAdvance deduction = new EmployeeAdvance();
-            deduction.setEmployee(emp);
-            deduction.setDate(record.getPaymentDate());
-            deduction.setAmount(-record.getAdvanceDeducted());
-            deduction.setDescription("Salary Deduction for " + record.getMonthYear());
-            advanceRepo.save(deduction);
-
-            emp.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance() - record.getAdvanceDeducted());
-            employeeRepo.save(emp);
+                emp.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance() - record.getAdvanceDeducted());
+                employeeRepo.save(emp);
+            }
         }
 
         return ResponseEntity.ok(salaryRepo.save(record));
@@ -334,8 +353,11 @@ public class EmployeeController {
             String monthYear = s.getMonthYear();
             if (monthYear != null && monthYear.contains("-")) {
                 try {
-                    int year = Integer.parseInt(monthYear.split("-")[1]);
-                    if (year == currentYear % 100 || year == currentYear) {
+                    // Expected format "MM-YYYY" (e.g., "03-2024")
+                    String[] parts = monthYear.split("-");
+                    if (parts.length != 2) continue;
+                    int yearPart = Integer.parseInt(parts[1].trim());
+                    if (yearPart == currentYear) {
                         ytdGross += (s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0)
                                   + (s.getBonusAmount() != null ? s.getBonusAmount() : 0);
                         ytdBonus += s.getBonusAmount() != null ? s.getBonusAmount() : 0;
@@ -344,7 +366,9 @@ public class EmployeeController {
                         ytdNet += s.getNetPaid() != null ? s.getNetPaid() : 0;
                         salaryCount++;
                     }
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                    // If parsing fails, skip this record.
+                }
             }
         }
 

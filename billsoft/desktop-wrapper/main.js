@@ -5,6 +5,7 @@ const fs = require('fs');
 const http = require('http');
 
 let mainWindow;
+let splashWindow; // splash screen during backend startup / OTA updates
 let javaProcess;
 let isUpdating = false;
 let restartAttempts = 0;

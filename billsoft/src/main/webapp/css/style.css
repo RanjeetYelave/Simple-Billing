@@ -122,6 +122,8 @@ tbody tr:hover { background: #F8FAFC; }
 .badge-paid { background: var(--success-light); color: #065F46; } .badge-paid .badge-dot { background: var(--success); }
 .badge-overdue { background: var(--danger-light); color: #991B1B; } .badge-overdue .badge-dot { background: var(--danger); }
 .badge-cancelled { background: #F1F5F9; color: #475569; } .badge-cancelled .badge-dot { background: #64748B; }
+.badge-success { background: var(--success-light); color: #065F46; } .badge-success .badge-dot { background: var(--success); }
+.badge-inactive { background: #F1F5F9; color: #64748B; } .badge-inactive .badge-dot { background: #94A3B8; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }

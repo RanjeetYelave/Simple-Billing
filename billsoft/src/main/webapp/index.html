@@ -225,10 +225,10 @@
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading dashboard...'));
       if (!data) return React.createElement('div', { className: 'empty-state' }, React.createElement('h3', null, 'No data available'));
       const kpis = [
-        { label: 'Total Business', value: BillsoftUtils.BillsoftUtils.formatCurrency(data.totalBusiness), sub: 'All time', cls: 'kpi-blue', icon: Icons.rupee },
-        { label: 'Total Paid', value: BillsoftUtils.BillsoftUtils.formatCurrency(data.totalPaid), sub: 'Received amount', cls: 'kpi-green', icon: Icons.check },
-        { label: 'Total Pending', value: BillsoftUtils.BillsoftUtils.formatCurrency(data.totalPending), sub: 'Awaiting payment', cls: 'kpi-amber', icon: Icons.clock },
-        { label: 'Today', value: BillsoftUtils.BillsoftUtils.formatCurrency(data.businessToday), sub: 'Current day', cls: 'kpi-red', icon: Icons.alert },
+        { label: 'Total Business', value: BillsoftUtils.formatCurrency(data.totalBusiness), sub: 'All time', cls: 'kpi-blue', icon: Icons.rupee },
+        { label: 'Total Paid', value: BillsoftUtils.formatCurrency(data.totalPaid), sub: 'Received amount', cls: 'kpi-green', icon: Icons.check },
+        { label: 'Total Pending', value: BillsoftUtils.formatCurrency(data.totalPending), sub: 'Awaiting payment', cls: 'kpi-amber', icon: Icons.clock },
+        { label: 'Today', value: BillsoftUtils.formatCurrency(data.businessToday), sub: 'Current day', cls: 'kpi-red', icon: Icons.alert },
       ];
       return React.createElement('div', null,
         updateInfo && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
@@ -266,7 +266,7 @@
               React.createElement('input', { className: 'input', placeholder: 'Type customer name...', value: searchName, onChange: e => setSearchName(e.target.value) }),
               searchResults && searchResults.length > 0 && React.createElement('div', { style: { marginTop: 12 } }, searchResults.slice(0, 3).map((r, i) => React.createElement('div', { key: i, style: { padding: '8px 0', borderBottom: '1px solid var(--border)' } },
                 React.createElement('strong', null, r.customerName || 'Unknown'),
-                React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } }, `Business: ${BillsoftUtils.BillsoftUtils.formatCurrency(r.totalBusiness)} | Paid: ${BillsoftUtils.BillsoftUtils.formatCurrency(r.totalPaid)}`)
+                React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } }, `Business: ${BillsoftUtils.formatCurrency(r.totalBusiness)} | Paid: ${BillsoftUtils.formatCurrency(r.totalPaid)}`)
               ))),
               searchResults && searchResults.length === 0 && React.createElement('p', { style: { marginTop: 12, color: 'var(--text-secondary)' } }, 'No customers found')
             )
@@ -284,8 +284,8 @@
                   (data.topCustomers || []).map((c, i) => React.createElement('tr', { key: i },
                     React.createElement('td', { style: { fontWeight: 500 } }, c.customerName),
                     React.createElement('td', null, c.invoiceCount),
-                    React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(c.totalAmount)),
-                    React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(c.pendingAmount))
+                    React.createElement('td', null, BillsoftUtils.formatCurrency(c.totalAmount)),
+                    React.createElement('td', null, BillsoftUtils.formatCurrency(c.pendingAmount))
                   )),
                   (!data.topCustomers || data.topCustomers.length === 0) && React.createElement('tr', null, React.createElement('td', { colSpan: 4, style: { textAlign: 'center', color: 'var(--text-secondary)' } }, 'No data'))
                 )
@@ -303,7 +303,7 @@
                   (data.topProducts || []).map((p, i) => React.createElement('tr', { key: i },
                     React.createElement('td', { style: { fontWeight: 500 } }, p.productName),
                     React.createElement('td', null, p.totalQty),
-                    React.createElement('td', null, BillsoftUtils.BillsoftUtils.formatCurrency(p.totalAmount))
+                    React.createElement('td', null, BillsoftUtils.formatCurrency(p.totalAmount))
                   )),
                   (!data.topProducts || data.topProducts.length === 0) && React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', color: 'var(--text-secondary)' } }, 'No data'))
                 )
@@ -317,7 +317,7 @@
     function createStatRow(label, value) {
       return React.createElement('div', { key: label, style: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light)', fontSize: '0.95rem' } },
         React.createElement('span', { style: { color: 'var(--text-secondary)' } }, label),
-        React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.BillsoftUtils.formatCurrency(value))
+        React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(value))
       );
     }
 
@@ -1686,7 +1686,7 @@
       );
     }
 
-    // ─── EMPLOYEE MANAGEMENT ───
+    // ─── EMPLOYEE MANAGEMENT (FIXED & ENHANCED) ───
     function EmployeeManager() {
       const [unlocked, setUnlocked] = useState(false);
       const [pin, setPin] = useState('');
@@ -1694,11 +1694,13 @@
       const [loading, setLoading] = useState(false);
       const [selectedEmployee, setSelectedEmployee] = useState(null);
       const [showForm, setShowForm] = useState(false);
-      const [formData, setFormData] = useState({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true, dateOfJoining: new Date().toISOString().split('T')[0] });
+      const [searchTerm, setSearchTerm] = useState('');
+      const [formData, setFormData] = useState({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true, dateOfJoining: BillsoftUtils.todayStr() });
       const [activeTab, setActiveTab] = useState('overview');
       
       const [advances, setAdvances] = useState([]);
       const [salaries, setSalaries] = useState([]);
+      const [ytdData, setYtdData] = useState(null);
       const [advanceAmount, setAdvanceAmount] = useState('');
       const [advanceDesc, setAdvanceDesc] = useState('');
       
@@ -1707,6 +1709,7 @@
       const [bonus, setBonus] = useState(0);
       const [advanceDeduct, setAdvanceDeduct] = useState(0);
       const [daysInMonth, setDaysInMonth] = useState(30);
+      const [salaryPreview, setSalaryPreview] = useState(null);
       
       const [promotions, setPromotions] = useState([]);
       const [showPromote, setShowPromote] = useState(false);
@@ -1720,6 +1723,8 @@
         try {
           const data = await API.employees.getAll();
           setEmployees(data);
+          // Auto-apply pending promotions silently
+          API.employees.applyPromotions().catch(() => {});
         } catch(e) { showToast('Error fetching employees', 'error'); }
         setLoading(false);
       };
@@ -1745,6 +1750,7 @@
 
       const handleSaveEmployee = async (e) => {
         e.preventDefault();
+        if (!formData.name || !formData.name.trim()) { showToast('Name is required', 'error'); return; }
         setLoading(true);
         try {
           if (selectedEmployee && selectedEmployee.id) {
@@ -1761,17 +1767,31 @@
         setLoading(false);
       };
 
+      const handleDeleteEmployee = async (emp) => {
+        if (!confirm(`Delete employee "${emp.name}" and all related records? This cannot be undone.`)) return;
+        try {
+          await API.employees.delete(emp.id);
+          showToast('Employee deleted', 'success');
+          if (selectedEmployee && selectedEmployee.id === emp.id) setSelectedEmployee(null);
+          fetchEmployees();
+        } catch(e) { showToast('Error deleting employee', 'error'); }
+      };
+
       const openEmployee = async (emp) => {
         setSelectedEmployee(emp);
         setActiveTab('overview');
         setShowForm(false);
         try {
-          const advs = await API.employees.getAdvances(emp.id);
+          const [advs, sals, proms, ytd] = await Promise.all([
+            API.employees.getAdvances(emp.id),
+            API.employees.getSalaries(emp.id),
+            API.employees.getPromotions(emp.id),
+            API.employees.getYtd(emp.id)
+          ]);
           setAdvances(advs);
-          const sals = await API.employees.getSalaries(emp.id);
           setSalaries(sals);
-          const proms = await API.employees.getPromotions(emp.id);
           setPromotions(proms);
+          setYtdData(ytd);
         } catch(e) { showToast('Error loading details', 'error'); }
       };
       
@@ -1792,9 +1812,9 @@
       
       const handleGiveAdvance = async (e) => {
         e.preventDefault();
-        if(!advanceAmount) return;
+        if(!advanceAmount || parseFloat(advanceAmount) <= 0) { showToast('Enter a valid amount', 'error'); return; }
         try {
-          await API.employees.addAdvance(selectedEmployee.id, { amount: parseFloat(advanceAmount), description: advanceDesc });
+          await API.employees.addAdvance(selectedEmployee.id, { amount: parseFloat(advanceAmount), description: advanceDesc || 'Advance payment' });
           showToast('Advance recorded', 'success');
           setAdvanceAmount(''); setAdvanceDesc('');
           openEmployee(selectedEmployee);
@@ -1802,40 +1822,80 @@
         } catch(e) { showToast('Error recording advance', 'error'); }
       };
 
+      // Calculate salary preview (shown before submission)
+      const calcSalaryPreview = useCallback(() => {
+        if (!selectedEmployee || !salaryMonth) return null;
+        const baseSal = selectedEmployee.monthlyBaseSalary || 0;
+        const dAbsent = parseInt(daysAbsent) || 0;
+        const allowed = selectedEmployee.allowedPaidLeavesPerMonth || 0;
+        const pUsed = Math.min(dAbsent, allowed);
+        const uLeaves = Math.max(0, dAbsent - allowed);
+        const dim = parseInt(daysInMonth) || 30;
+        const perDay = dim > 0 ? baseSal / dim : 0;
+        const leaveDed = uLeaves * perDay;
+        const bon = parseFloat(bonus) || 0;
+        const advD = Math.min(parseFloat(advanceDeduct) || 0, selectedEmployee.currentAdvanceBalance || 0);
+        const net = baseSal - leaveDed + bon - advD;
+        return { baseSal, dAbsent, pUsed, uLeaves, dim, perDay, leaveDed, bon, advD, net };
+      }, [selectedEmployee, salaryMonth, daysAbsent, bonus, advanceDeduct, daysInMonth]);
+
+      // Update preview whenever inputs change
+      useEffect(() => {
+        setSalaryPreview(calcSalaryPreview());
+      }, [calcSalaryPreview]);
+
       const handleProcessSalary = async (e) => {
         e.preventDefault();
-        if(!salaryMonth) { showToast('Select month', 'error'); return; }
-        
-        let dAbsent = parseInt(daysAbsent) || 0;
-        let allowed = selectedEmployee.allowedPaidLeavesPerMonth || 0;
-        let pUsed = Math.min(dAbsent, allowed);
-        let uLeaves = Math.max(0, dAbsent - allowed);
-        
-        let perDay = selectedEmployee.monthlyBaseSalary / daysInMonth;
-        let leaveDed = uLeaves * perDay;
-        let bon = parseFloat(bonus) || 0;
-        let advD = parseFloat(advanceDeduct) || 0;
-        
-        let net = selectedEmployee.monthlyBaseSalary - leaveDed + bon - advD;
-        
+        if(!salaryMonth) { showToast('Enter month/year', 'error'); return; }
+        const preview = calcSalaryPreview();
+        if (!preview) return;
+
         try {
           await API.employees.processSalary(selectedEmployee.id, {
             monthYear: salaryMonth,
             baseSalaryAtTime: selectedEmployee.monthlyBaseSalary,
-            daysAbsent: dAbsent,
-            paidLeavesUsed: pUsed,
-            unpaidLeaves: uLeaves,
-            leaveDeductionAmount: leaveDed,
-            bonusAmount: bon,
-            advanceDeducted: advD,
-            netPaid: net
+            daysAbsent: preview.dAbsent,
+            paidLeavesUsed: preview.pUsed,
+            unpaidLeaves: preview.uLeaves,
+            leaveDeductionAmount: preview.leaveDed,
+            bonusAmount: preview.bon,
+            advanceDeducted: preview.advD,
+            netPaid: preview.net
           });
           showToast('Salary processed!', 'success');
           setSalaryMonth(''); setDaysAbsent(0); setBonus(0); setAdvanceDeduct(0);
+          setSalaryPreview(null);
           openEmployee(selectedEmployee);
           fetchEmployees();
-        } catch(e) { showToast('Error processing salary', 'error'); }
+        } catch(e) { showToast(e.message || 'Error processing salary', 'error'); }
       };
+
+      const handleDownloadPayslip = async (salaryId) => {
+        try {
+          const blob = await API.employees.downloadPayslipPdf(selectedEmployee.id, salaryId);
+          BillsoftUtils.downloadBlob(blob, `payslip-${selectedEmployee.name}-${salaryId}.pdf`);
+          showToast('Payslip downloaded', 'success');
+        } catch(e) { showToast('Failed to download payslip', 'error'); }
+      };
+
+      const handleDownloadStatement = async () => {
+        try {
+          const blob = await API.employees.downloadStatementPdf(selectedEmployee.id);
+          BillsoftUtils.downloadBlob(blob, `employee-statement-${selectedEmployee.name}.pdf`);
+          showToast('Statement downloaded', 'success');
+        } catch(e) { showToast('Failed to download statement', 'error'); }
+      };
+
+      // Filter employees by search
+      const filteredEmployees = useMemo(() => {
+        if (!searchTerm.trim()) return employees;
+        const q = searchTerm.toLowerCase();
+        return employees.filter(e =>
+          (e.name && e.name.toLowerCase().includes(q)) ||
+          (e.role && e.role.toLowerCase().includes(q)) ||
+          (e.phone && e.phone.toLowerCase().includes(q))
+        );
+      }, [employees, searchTerm]);
 
       if (!unlocked) {
         return React.createElement('div', { className: 'card', style: { maxWidth: 400, margin: '60px auto' } },
@@ -1853,10 +1913,11 @@
       return React.createElement('div', null,
         React.createElement('div', { className: 'manager-header' },
           React.createElement('div', { className: 'card-title' }, 'Employees'),
-          React.createElement('div', { style: { display: 'flex', gap: 10 } },
+          React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+            !selectedEmployee && !showForm && React.createElement('input', { className: 'input', placeholder: 'Search employees...', value: searchTerm, onChange: e => setSearchTerm(e.target.value), style: { maxWidth: 200 } }),
             React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowPinChange(true) }, 'Change PIN'),
-            !selectedEmployee && !showForm && React.createElement('button', { className: 'btn btn-primary', onClick: () => { setSelectedEmployee(null); setFormData({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true, dateOfJoining: new Date().toISOString().split('T')[0] }); setShowForm(true); } }, '+ New Employee'),
-            (selectedEmployee || showForm) && React.createElement('button', { className: 'btn btn-outline', onClick: () => { setSelectedEmployee(null); setShowForm(false); } }, 'Back to List')
+            !selectedEmployee && !showForm && React.createElement('button', { className: 'btn btn-primary', onClick: () => { setSelectedEmployee(null); setFormData({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true, dateOfJoining: BillsoftUtils.todayStr() }); setShowForm(true); } }, '+ New Employee'),
+            (selectedEmployee || showForm) && React.createElement('button', { className: 'btn btn-outline', onClick: () => { setSelectedEmployee(null); setShowForm(false); } }, '← Back to List')
           )
         ),
         
@@ -1874,16 +1935,24 @@
         ),
         
         !selectedEmployee && !showForm && React.createElement('div', { className: 'card' },
+          loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
           React.createElement('div', { className: 'table-container' },
             React.createElement('table', { className: 'table' },
-              React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', null, 'Name'), React.createElement('th', null, 'Role'), React.createElement('th', null, 'Base Salary'), React.createElement('th', null, 'Advance Balance'), React.createElement('th', null, 'Status'))),
+              React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', null, 'Name'), React.createElement('th', null, 'Role'), React.createElement('th', null, 'Base Salary'), React.createElement('th', null, 'Advance Balance'), React.createElement('th', null, 'Status'), React.createElement('th', null, 'Actions'))),
               React.createElement('tbody', null,
-                employees.map(emp => React.createElement('tr', { key: emp.id, style: { cursor: 'pointer' }, onClick: () => openEmployee(emp) },
-                  React.createElement('td', { style: { fontWeight: 500 } }, emp.name),
+                filteredEmployees.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No employees found')) :
+                filteredEmployees.map(emp => React.createElement('tr', { key: emp.id },
+                  React.createElement('td', { style: { fontWeight: 500, cursor: 'pointer' }, onClick: () => openEmployee(emp) }, emp.name),
                   React.createElement('td', { style: { color: 'var(--text-secondary)' } }, emp.role || '-'),
                   React.createElement('td', null, BillsoftUtils.formatCurrency(emp.monthlyBaseSalary)),
                   React.createElement('td', { style: { color: emp.currentAdvanceBalance > 0 ? 'var(--danger)' : 'inherit' } }, BillsoftUtils.formatCurrency(emp.currentAdvanceBalance)),
-                  React.createElement('td', null, emp.isActive ? React.createElement('span', { className: 'badge badge-success' }, 'Active') : React.createElement('span', { className: 'badge' }, 'Inactive'))
+                  React.createElement('td', null, emp.isActive ? React.createElement('span', { className: 'badge badge-success' }, 'Active') : React.createElement('span', { className: 'badge badge-inactive' }, 'Inactive')),
+                  React.createElement('td', null,
+                    React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                      React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'View', onClick: () => openEmployee(emp) }, Icons.eye),
+                      React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Delete', style: { color: 'var(--danger)' }, onClick: (e) => { e.stopPropagation(); handleDeleteEmployee(emp); } }, Icons.trash)
+                    )
+                  )
                 ))
               )
             )
@@ -1891,38 +1960,41 @@
         ),
         
         showForm && React.createElement('div', { className: 'card', style: { maxWidth: 600 } },
-          React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, selectedEmployee ? 'Edit Employee' : 'New Employee')),
+          React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, selectedEmployee && selectedEmployee.id ? 'Edit Employee' : 'New Employee')),
           React.createElement('div', { className: 'card-body' },
             React.createElement('form', { onSubmit: handleSaveEmployee, style: { display: 'flex', flexDirection: 'column', gap: 16 } },
               React.createElement('div', { style: { display: 'flex', gap: 16 } },
-                React.createElement('div', { className: 'form-group', style: { flex: 2 } }, React.createElement('label', { className: 'form-label' }, 'Full Name'), React.createElement('input', { className: 'input', value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}), required: true })),
-                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Date of Joining'), React.createElement('input', { className: 'input', type: 'date', value: formData.dateOfJoining || '', onChange: e => setFormData({...formData, dateOfJoining: e.target.value}), required: true }))
+                React.createElement('div', { className: 'form-group', style: { flex: 2 } }, React.createElement('label', { className: 'form-label' }, 'Full Name *'), React.createElement('input', { className: 'input', value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}), required: true })),
+                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Date of Joining *'), React.createElement('input', { className: 'input', type: 'date', value: formData.dateOfJoining || '', onChange: e => setFormData({...formData, dateOfJoining: e.target.value}), required: true }))
               ),
               React.createElement('div', { style: { display: 'flex', gap: 16 } },
                 React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Role'), React.createElement('input', { className: 'input', value: formData.role, onChange: e => setFormData({...formData, role: e.target.value}) })),
                 React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Phone'), React.createElement('input', { className: 'input', value: formData.phone, onChange: e => setFormData({...formData, phone: e.target.value}) }))
               ),
               React.createElement('div', { style: { display: 'flex', gap: 16 } },
-                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Monthly Base Salary (₹)'), React.createElement('input', { className: 'input', type: 'number', value: formData.monthlyBaseSalary, onChange: e => setFormData({...formData, monthlyBaseSalary: e.target.value}), required: true })),
-                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Allowed Paid Leaves/Mo'), React.createElement('input', { className: 'input', type: 'number', value: formData.allowedPaidLeavesPerMonth, onChange: e => setFormData({...formData, allowedPaidLeavesPerMonth: e.target.value}), required: true }))
+                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Monthly Base Salary (₹) *'), React.createElement('input', { className: 'input', type: 'number', value: formData.monthlyBaseSalary, onChange: e => setFormData({...formData, monthlyBaseSalary: e.target.value}), required: true })),
+                React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Allowed Paid Leaves/Mo'), React.createElement('input', { className: 'input', type: 'number', value: formData.allowedPaidLeavesPerMonth, onChange: e => setFormData({...formData, allowedPaidLeavesPerMonth: e.target.value}) }))
               ),
               React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'ID Proof Number (Aadhar/PAN)'), React.createElement('input', { className: 'input', value: formData.idProofNumber, onChange: e => setFormData({...formData, idProofNumber: e.target.value}) })),
               React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } }, React.createElement('input', { type: 'checkbox', checked: formData.isActive, onChange: e => setFormData({...formData, isActive: e.target.checked}) }), 'Active Employee'),
-              React.createElement('button', { type: 'submit', className: 'btn btn-primary', disabled: loading }, 'Save Employee')
+              React.createElement('button', { type: 'submit', className: 'btn btn-primary', disabled: loading }, loading ? 'Saving...' : 'Save Employee')
             )
           )
         ),
         
         selectedEmployee && !showForm && React.createElement('div', { style: { display: 'flex', gap: 20, alignItems: 'flex-start' } },
+          // Left sidebar - Employee profile card
           React.createElement('div', { style: { width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20 } },
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'card-body', style: { textAlign: 'center' } },
                 React.createElement('div', { style: { width: 80, height: 80, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 16px', fontWeight: 600 } }, selectedEmployee.name.charAt(0).toUpperCase()),
                 React.createElement('h3', { style: { fontSize: '1.2rem', margin: '0 0 4px 0' } }, selectedEmployee.name),
                 React.createElement('p', { style: { color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' } }, selectedEmployee.role || 'Employee'),
-                React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 16 } },
-                  React.createElement('button', { className: 'btn btn-outline', style: { flex: 1 }, onClick: () => { setFormData({...selectedEmployee}); setShowForm(true); } }, 'Edit'),
-                  React.createElement('button', { className: 'btn btn-primary', style: { flex: 1 }, onClick: () => { setPromData({ effectiveDate: new Date().toISOString().split('T')[0], type: 'BOTH', newRole: selectedEmployee.role || '', newSalary: selectedEmployee.monthlyBaseSalary || '', reason: '' }); setShowPromote(true); } }, 'Promote')
+                React.createElement('div', { style: { marginTop: 8, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, selectedEmployee.isActive ? '🟢 Active' : '🔴 Inactive'),
+                React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' } },
+                  React.createElement('button', { className: 'btn btn-outline', style: { flex: 1, minWidth: 80 }, onClick: () => { setFormData({...selectedEmployee}); setShowForm(true); } }, 'Edit'),
+                  React.createElement('button', { className: 'btn btn-primary', style: { flex: 1, minWidth: 80 }, onClick: () => { setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: selectedEmployee.role || '', newSalary: selectedEmployee.monthlyBaseSalary || '', reason: '' }); setShowPromote(true); } }, 'Promote'),
+                  React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)', width: '100%', marginTop: 4 }, onClick: () => handleDeleteEmployee(selectedEmployee) }, '🗑 Delete')
                 )
               )
             ),
@@ -1930,25 +2002,40 @@
               React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Financials')),
               React.createElement('div', { className: 'card-body' },
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)' } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Base Salary'), React.createElement('span', { style: { fontWeight: 500 } }, BillsoftUtils.formatCurrency(selectedEmployee.monthlyBaseSalary))),
-                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Advance Owed'), React.createElement('span', { style: { fontWeight: 600, color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(selectedEmployee.currentAdvanceBalance)))
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Advance Owed'), React.createElement('span', { style: { fontWeight: 600, color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(selectedEmployee.currentAdvanceBalance))),
+                // Download statement button
+                React.createElement('button', { className: 'btn btn-sm btn-outline', style: { width: '100%', marginTop: 8 }, onClick: handleDownloadStatement }, '📄 Download Statement PDF')
+              )
+            ),
+            // YTD Card
+            ytdData && React.createElement('div', { className: 'card' },
+              React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, `YTD ${ytdData.year}`)),
+              React.createElement('div', { className: 'card-body' },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 } }, React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'Gross Earnings'), React.createElement('span', { style: { fontWeight: 500 } }, BillsoftUtils.formatCurrency(ytdData.ytdGross))),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 } }, React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'Total Bonus'), React.createElement('span', { style: { fontWeight: 500, color: 'var(--success)' } }, BillsoftUtils.formatCurrency(ytdData.ytdBonus))),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 } }, React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'Total Deductions'), React.createElement('span', { style: { fontWeight: 500, color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(ytdData.ytdDeductions))),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '2px solid var(--primary)' } }, React.createElement('span', { style: { fontWeight: 600 } }, 'Net YTD'), React.createElement('span', { style: { fontWeight: 700, color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(ytdData.ytdNet))),
+                React.createElement('div', { style: { marginTop: 8, fontSize: '0.75rem', color: 'var(--text-muted)' } }, `${ytdData.salaryCount} month${ytdData.salaryCount !== 1 ? 's' : ''} paid`)
               )
             )
           ),
           
+          // Right content area
           React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 20 } },
-            React.createElement('div', { style: { display: 'flex', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+            React.createElement('div', { style: { display: 'flex', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' } },
               React.createElement('button', { className: `btn ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setActiveTab('overview') }, 'Advances & Ledger'),
               React.createElement('button', { className: `btn ${activeTab === 'salary' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setActiveTab('salary') }, 'Process Salary'),
               React.createElement('button', { className: `btn ${activeTab === 'history' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setActiveTab('history') }, 'History & Timeline')
             ),
             
+            // Advances & Ledger tab
             activeTab === 'overview' && React.createElement('div', { style: { display: 'flex', gap: 20 } },
               React.createElement('div', { className: 'card', style: { flex: 1 } },
                 React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Give Advance')),
                 React.createElement('div', { className: 'card-body' },
                   React.createElement('form', { onSubmit: handleGiveAdvance, style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-                    React.createElement('input', { className: 'input', type: 'number', placeholder: 'Amount (₹)', value: advanceAmount, onChange: e => setAdvanceAmount(e.target.value), required: true }),
-                    React.createElement('input', { className: 'input', placeholder: 'Description', value: advanceDesc, onChange: e => setAdvanceDesc(e.target.value) }),
+                    React.createElement('input', { className: 'input', type: 'number', step: '0.01', min: '1', placeholder: 'Amount (₹)', value: advanceAmount, onChange: e => setAdvanceAmount(e.target.value), required: true }),
+                    React.createElement('input', { className: 'input', placeholder: 'Description (optional)', value: advanceDesc, onChange: e => setAdvanceDesc(e.target.value) }),
                     React.createElement('button', { type: 'submit', className: 'btn btn-primary' }, 'Record Advance')
                   )
                 )
@@ -1960,8 +2047,8 @@
                     React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', null, 'Date'), React.createElement('th', null, 'Description'), React.createElement('th', { style: { textAlign: 'right' } }, 'Amount'))),
                     React.createElement('tbody', null,
                       advances.map(a => React.createElement('tr', { key: a.id },
-                        React.createElement('td', null, new Date(a.date).toLocaleDateString()),
-                        React.createElement('td', null, a.description),
+                        React.createElement('td', null, BillsoftUtils.formatDate(a.date)),
+                        React.createElement('td', null, a.description || '-'),
                         React.createElement('td', { style: { textAlign: 'right', color: a.amount > 0 ? 'var(--danger)' : 'var(--success)' } }, a.amount > 0 ? `+${BillsoftUtils.formatCurrency(a.amount)}` : BillsoftUtils.formatCurrency(a.amount))
                       )),
                       advances.length === 0 && React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', color: 'var(--text-secondary)' } }, 'No advance records found.'))
@@ -1971,40 +2058,44 @@
               )
             ),
             
-            
+            // History & Timeline tab
             activeTab === 'history' && React.createElement('div', { className: 'card' },
-                React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Timeline & Promotions')),
+                React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Timeline & Promotions'),
+                  React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${promotions.length} record${promotions.length !== 1 ? 's' : ''}`)
+                ),
                 React.createElement('div', { className: 'card-body', style: { padding: '20px 0' } },
+                  promotions.length === 0 && React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' } }, 'No promotion records yet.'),
                   promotions.map(p => React.createElement('div', { key: p.id, style: { display: 'flex', gap: 16, padding: '0 20px', marginBottom: 20 } },
-                    React.createElement('div', { style: { minWidth: 100, textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 500 } }, new Date(p.effectiveDate).toLocaleDateString()),
+                    React.createElement('div', { style: { minWidth: 100, textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 500 } }, BillsoftUtils.formatDate(p.effectiveDate)),
                     React.createElement('div', { style: { position: 'relative', width: 2, backgroundColor: 'var(--border)' } },
                       React.createElement('div', { style: { position: 'absolute', top: 0, left: -4, width: 10, height: 10, borderRadius: '50%', backgroundColor: p.isApplied ? 'var(--primary)' : 'var(--warning)' } })
                     ),
                     React.createElement('div', { style: { paddingBottom: 20 } },
-                      React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem', color: p.isApplied ? 'inherit' : 'var(--warning)' } }, p.isApplied ? 'Applied Change' : 'Scheduled Future Change'),
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem', color: p.isApplied ? 'inherit' : 'var(--warning)' } }, p.isApplied ? 'Applied Change' : '⏳ Scheduled Future Change'),
                       p.newRole !== p.previousRole && React.createElement('div', null, `Role: ${p.previousRole || 'None'} ➔ ${p.newRole}`),
-                      p.newSalary !== p.previousSalary && React.createElement('div', null, `Salary: ₹${p.previousSalary || 0} ➔ ₹${p.newSalary}`),
+                      p.newSalary && p.newSalary !== p.previousSalary && React.createElement('div', null, `Salary: ${BillsoftUtils.formatCurrency(p.previousSalary)} ➔ ${BillsoftUtils.formatCurrency(p.newSalary)}`),
                       p.reason && React.createElement('div', { style: { color: 'var(--text-secondary)', marginTop: 4, fontStyle: 'italic' } }, `"${p.reason}"`)
                     )
                   )),
                   React.createElement('div', { style: { display: 'flex', gap: 16, padding: '0 20px' } },
-                    React.createElement('div', { style: { minWidth: 100, textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 500 } }, selectedEmployee.dateOfJoining ? new Date(selectedEmployee.dateOfJoining).toLocaleDateString() : 'N/A'),
+                    React.createElement('div', { style: { minWidth: 100, textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 500 } }, selectedEmployee.dateOfJoining ? BillsoftUtils.formatDate(selectedEmployee.dateOfJoining) : 'N/A'),
                     React.createElement('div', { style: { position: 'relative', width: 2, backgroundColor: 'transparent' } },
                       React.createElement('div', { style: { position: 'absolute', top: 0, left: -4, width: 10, height: 10, borderRadius: '50%', backgroundColor: 'var(--success)' } })
                     ),
                     React.createElement('div', null,
-                      React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem' } }, 'Date of Joining')
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem' } }, '📅 Date of Joining')
                     )
                   )
                 )
             ),
             
+            // Promotion Modal
             showPromote && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowPromote(false) },
               React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
                 React.createElement('div', { className: 'modal-header' }, React.createElement('div', { className: 'modal-title' }, 'Promote / Update Details'), React.createElement('button', { className: 'modal-close', onClick: () => setShowPromote(false) }, '✕')),
                 React.createElement('div', { className: 'modal-body' },
                   React.createElement('form', { onSubmit: handlePromote, style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Effective Date'), React.createElement('input', { className: 'input', type: 'date', value: promData.effectiveDate, onChange: e => setPromData({...promData, effectiveDate: e.target.value}), required: true })),
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Effective Date *'), React.createElement('input', { className: 'input', type: 'date', value: promData.effectiveDate, onChange: e => setPromData({...promData, effectiveDate: e.target.value}), required: true })),
                     React.createElement('div', { style: { display: 'flex', gap: 16 } },
                       React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'New Role'), React.createElement('input', { className: 'input', value: promData.newRole, onChange: e => setPromData({...promData, newRole: e.target.value}) })),
                       React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'New Salary (₹)'), React.createElement('input', { className: 'input', type: 'number', value: promData.newSalary, onChange: e => setPromData({...promData, newSalary: e.target.value}) }))
@@ -2016,38 +2107,56 @@
               )
             ),
             
+            // Process Salary tab
             activeTab === 'salary' && React.createElement('div', { style: { display: 'flex', gap: 20 } },
               React.createElement('div', { className: 'card', style: { flex: 1.5 } },
                 React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Process Monthly Salary')),
                 React.createElement('div', { className: 'card-body' },
                   React.createElement('form', { onSubmit: handleProcessSalary, style: { display: 'flex', flexDirection: 'column', gap: 16 } },
                     React.createElement('div', { style: { display: 'flex', gap: 12 } },
-                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Month/Year'), React.createElement('input', { className: 'input', placeholder: 'e.g. 05-2026', value: salaryMonth, onChange: e => setSalaryMonth(e.target.value), required: true })),
-                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Days in Month'), React.createElement('input', { className: 'input', type: 'number', value: daysInMonth, onChange: e => setDaysInMonth(e.target.value), required: true }))
+                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Month/Year *'), React.createElement('input', { className: 'input', placeholder: 'e.g. 05-2026', value: salaryMonth, onChange: e => setSalaryMonth(e.target.value), required: true })),
+                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Days in Month'), React.createElement('input', { className: 'input', type: 'number', value: daysInMonth, onChange: e => setDaysInMonth(e.target.value) }))
                     ),
-                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Days Absent'), React.createElement('input', { className: 'input', type: 'number', value: daysAbsent, onChange: e => setDaysAbsent(e.target.value) })),
-                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Bonus / Overtime (₹)'), React.createElement('input', { className: 'input', type: 'number', value: bonus, onChange: e => setBonus(e.target.value) })),
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Days Absent'), React.createElement('input', { className: 'input', type: 'number', min: 0, value: daysAbsent, onChange: e => setDaysAbsent(e.target.value) })),
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Bonus / Overtime (₹)'), React.createElement('input', { className: 'input', type: 'number', min: 0, value: bonus, onChange: e => setBonus(e.target.value) })),
                     React.createElement('div', { className: 'form-group' },
                       React.createElement('label', { className: 'form-label', style: { display: 'flex', justifyContent: 'space-between' } }, React.createElement('span', null, 'Deduct from Advance (₹)'), React.createElement('span', { style: { color: 'var(--danger)', fontSize: '0.85rem' } }, `Max: ${BillsoftUtils.formatCurrency(selectedEmployee.currentAdvanceBalance)}`)),
-                      React.createElement('input', { className: 'input', type: 'number', max: selectedEmployee.currentAdvanceBalance, value: advanceDeduct, onChange: e => setAdvanceDeduct(e.target.value) })
+                      React.createElement('input', { className: 'input', type: 'number', min: 0, max: selectedEmployee.currentAdvanceBalance, value: advanceDeduct, onChange: e => setAdvanceDeduct(e.target.value) })
                     ),
+                    
+                    // Salary Preview
+                    salaryPreview && React.createElement('div', { className: 'summary-panel', style: { marginTop: 10 } },
+                      React.createElement('div', { style: { fontWeight: 600, marginBottom: 8, color: 'var(--primary)' } }, '📊 Salary Calculation Preview'),
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0' } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Base Salary'), React.createElement('span', { style: { fontWeight: 500 } }, BillsoftUtils.formatCurrency(salaryPreview.baseSal))),
+                      salaryPreview.leaveDed > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0' } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, `Leave Deduction (${salaryPreview.uLeaves} unpaid @ ${BillsoftUtils.formatCurrency(salaryPreview.perDay)}/day)`), React.createElement('span', { style: { color: 'var(--danger)' } }, `-${BillsoftUtils.formatCurrency(salaryPreview.leaveDed)}`)),
+                      salaryPreview.bon > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0' } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Bonus'), React.createElement('span', { style: { color: 'var(--success)' } }, `+${BillsoftUtils.formatCurrency(salaryPreview.bon)}`)),
+                      salaryPreview.advD > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0' } }, React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Advance Deduction'), React.createElement('span', { style: { color: 'var(--danger)' } }, `-${BillsoftUtils.formatCurrency(salaryPreview.advD)}`)),
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', marginTop: 4, borderTop: '2px solid var(--primary)' } }, React.createElement('span', { style: { fontWeight: 700 } }, 'Net Payable'), React.createElement('span', { style: { fontWeight: 700, color: 'var(--primary)', fontSize: '1.1rem' } }, BillsoftUtils.formatCurrency(salaryPreview.net)))
+                    ),
+                    
                     React.createElement('button', { type: 'submit', className: 'btn btn-primary', style: { marginTop: 10 } }, 'Mark as Paid')
                   )
                 )
               ),
               React.createElement('div', { className: 'card', style: { flex: 1 } },
-                React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Salary History')),
+                React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Salary History'),
+                  React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${salaries.length} record${salaries.length !== 1 ? 's' : ''}`)
+                ),
                 React.createElement('div', { className: 'card-body', style: { padding: 0 } },
+                  salaries.length === 0 ? React.createElement('div', { style: { padding: 20, textAlign: 'center', color: 'var(--text-secondary)' } }, 'No salary history.') :
                   salaries.map(s => React.createElement('div', { key: s.id, style: { padding: '12px 16px', borderBottom: '1px solid var(--border)' } },
-                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } }, React.createElement('strong', null, s.monthYear), React.createElement('strong', { style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(s.netPaid))),
-                    React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } }, `Paid on ${new Date(s.paymentDate).toLocaleDateString()}`),
-                    React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: 8, marginTop: 4 } },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                      React.createElement('strong', null, s.monthYear),
+                      React.createElement('strong', { style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(s.netPaid))
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } }, `Paid on ${BillsoftUtils.formatDate(s.paymentDate)}`),
+                    React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' } },
                       s.leaveDeductionAmount > 0 && React.createElement('span', { className: 'badge', style: { backgroundColor: 'var(--danger)', color: 'white' } }, `-${BillsoftUtils.formatCurrency(s.leaveDeductionAmount)} Absences`),
                       s.bonusAmount > 0 && React.createElement('span', { className: 'badge', style: { backgroundColor: 'var(--success)', color: 'white' } }, `+${BillsoftUtils.formatCurrency(s.bonusAmount)} Bonus`),
-                      s.advanceDeducted > 0 && React.createElement('span', { className: 'badge' }, `-${BillsoftUtils.formatCurrency(s.advanceDeducted)} Adv`)
+                      s.advanceDeducted > 0 && React.createElement('span', { className: 'badge' }, `-${BillsoftUtils.formatCurrency(s.advanceDeducted)} Adv`),
+                      React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Download Payslip', onClick: () => handleDownloadPayslip(s.id), style: { marginLeft: 'auto', fontSize: '0.75rem' } }, Icons.download, ' Payslip')
                     )
-                  )),
-                  salaries.length === 0 && React.createElement('div', { style: { padding: 20, textAlign: 'center', color: 'var(--text-secondary)' } }, 'No salary history.')
+                  ))
                 )
               )
             )

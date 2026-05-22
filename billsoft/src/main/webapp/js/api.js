@@ -202,12 +202,27 @@ const API = {
     getAll: () => API._json(API._qs('/api/employees')),
     create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => API._request(`/api/employees/${id}`, { method: 'DELETE' }),
     getAdvances: (id) => API._json(`/api/employees/${id}/advances`),
     addAdvance: (id, data) => API._json(`/api/employees/${id}/advances`, { method: 'POST', body: data }),
     getSalaries: (id) => API._json(`/api/employees/${id}/salaries`),
     processSalary: (id, data) => API._json(`/api/employees/${id}/salaries`, { method: 'POST', body: data }),
     getPromotions: (id) => API._json(`/api/employees/${id}/promotions`),
-    addPromotion: (id, data) => API._json(`/api/employees/${id}/promotions`, { method: 'POST', body: data })
+    addPromotion: (id, data) => API._json(`/api/employees/${id}/promotions`, { method: 'POST', body: data }),
+    getYtd: (id) => API._json(`/api/employees/${id}/ytd`),
+    applyPromotions: () => API._json('/api/employees/apply-promotions', { method: 'POST' }),
+    // PDF downloads - returns blob
+    downloadPayslipPdf: async (id, salaryId) => {
+      const res = await API._request(`/api/employees/${id}/salaries/${salaryId}/payslip`);
+      return res.blob();
+    },
+    downloadStatementPdf: async (id, from, to) => {
+      const params = {};
+      if (from) params.from = from;
+      if (to) params.to = to;
+      const res = await API._request(API._qs(`/api/employees/${id}/statement`, params));
+      return res.blob();
+    }
   },
 
   // ─── System & Updates ───

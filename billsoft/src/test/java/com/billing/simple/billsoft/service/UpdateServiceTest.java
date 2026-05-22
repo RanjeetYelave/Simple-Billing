@@ -10,7 +10,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,14 +42,11 @@ class UpdateServiceTest {
         mockRelease.put("tag_name", "v1.1.0");
         mockRelease.put("body", "Release notes");
         mockRelease.put("assets", Collections.singletonList(
-            Collections.singletonMap("browser_download_url", "http://example.com/update.war")
+                Collections.singletonMap("browser_download_url", "http://example.com/update.war")
         ));
-
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
-            .thenReturn(ResponseEntity.ok(mockRelease));
-
+                .thenReturn(ResponseEntity.ok(mockRelease));
         Map<String, Object> result = service.checkUpdate();
-
         assertNotNull(result);
         assertEquals("v1.1.0", result.get("latestVersion"));
         assertTrue((Boolean) result.get("updateAvailable"));
@@ -58,15 +54,11 @@ class UpdateServiceTest {
 
     @Test
     void testCheckUpdateNoNewer() {
-        // Mock current version to match latest
         Map<String, Object> mockRelease = new HashMap<>();
         mockRelease.put("tag_name", "v1.0.0");
-        
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
-            .thenReturn(ResponseEntity.ok(mockRelease));
-
+                .thenReturn(ResponseEntity.ok(mockRelease));
         Map<String, Object> result = service.checkUpdate();
-
         assertNotNull(result);
         assertFalse((Boolean) result.get("updateAvailable"));
     }
@@ -74,10 +66,8 @@ class UpdateServiceTest {
     @Test
     void testCheckUpdateError() {
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
-            .thenThrow(new RuntimeException("API error"));
-
+                .thenThrow(new RuntimeException("API error"));
         Map<String, Object> result = service.checkUpdate();
-
         assertNotNull(result);
         assertFalse((Boolean) result.get("updateAvailable"));
         assertTrue(result.containsKey("error"));

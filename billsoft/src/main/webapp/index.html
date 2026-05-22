@@ -612,7 +612,8 @@
         React.createElement('div', { className: 'invoice-form-header' },
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Customer'),
-            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+                React.createElement('button', { className: 'btn btn-ghost', title: showSalaries ? 'Hide Salaries' : 'Show Salaries', onClick: () => setShowSalaries(!showSalaries) }, Icons.eye),
               React.createElement('select', { className: 'select', style: { flex: 1 }, value: form.customerId, onChange: e => setForm(f => ({ ...f, customerId: e.target.value })) },
                 React.createElement('option', { value: '' }, '— Select Customer —'),
                 customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
@@ -1708,6 +1709,7 @@
       const [daysAbsent, setDaysAbsent] = useState(0);
       const [bonus, setBonus] = useState(0);
       const [advanceDeduct, setAdvanceDeduct] = useState(0);
+      const [showSalaries, setShowSalaries] = useState(false);
       const [daysInMonth, setDaysInMonth] = useState(30);
       const [salaryPreview, setSalaryPreview] = useState(null);
       
@@ -1964,8 +1966,8 @@
                 filteredEmployees.map(emp => React.createElement('tr', { key: emp.id },
                   React.createElement('td', { style: { fontWeight: 500, cursor: 'pointer' }, onClick: () => openEmployee(emp) }, emp.name),
                   React.createElement('td', { style: { color: 'var(--text-secondary)' } }, emp.role || '-'),
-                  React.createElement('td', null, BillsoftUtils.formatCurrency(emp.monthlyBaseSalary)),
-                  React.createElement('td', { style: { color: emp.currentAdvanceBalance > 0 ? 'var(--danger)' : 'inherit' } }, BillsoftUtils.formatCurrency(emp.currentAdvanceBalance)),
+                  React.createElement('td', null, showSalaries ? BillsoftUtils.formatCurrency(emp.monthlyBaseSalary) : '*****'),
+                  React.createElement('td', { style: { color: emp.currentAdvanceBalance > 0 ? 'var(--danger)' : 'inherit' } }, showSalaries ? BillsoftUtils.formatCurrency(emp.currentAdvanceBalance) : '*****'),
                   React.createElement('td', null, emp.isActive ? React.createElement('span', { className: 'badge badge-success' }, 'Active') : React.createElement('span', { className: 'badge badge-inactive' }, 'Inactive')),
                   React.createElement('td', null,
                     React.createElement('div', { style: { display: 'flex', gap: 4 } },

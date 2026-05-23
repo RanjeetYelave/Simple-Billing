@@ -1721,8 +1721,10 @@
       const [showPinChange, setShowPinChange] = useState(false);
       const [oldPin, setOldPin] = useState('');
       const [newPin, setNewPin] = useState('');
+      const [salaryTab, setSalaryTab] = useState('process'); // 'process' or 'history'
       const [showRejoinModal, setShowRejoinModal] = useState(false);
       const [rejoinData, setRejoinData] = useState({ dateOfJoining: BillsoftUtils.todayStr(), monthlyBaseSalary: '', role: '' });
+      const [salaryMonthPicker, setSalaryMonthPicker] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
       const fetchEmployees = async () => {
         setLoading(true);

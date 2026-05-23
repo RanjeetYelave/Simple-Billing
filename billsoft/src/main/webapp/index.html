@@ -1721,6 +1721,8 @@
       const [showPinChange, setShowPinChange] = useState(false);
       const [oldPin, setOldPin] = useState('');
       const [newPin, setNewPin] = useState('');
+      const [showRejoinModal, setShowRejoinModal] = useState(false);
+      const [rejoinData, setRejoinData] = useState({ dateOfJoining: BillsoftUtils.todayStr(), monthlyBaseSalary: '', role: '' });
 
       const fetchEmployees = async () => {
         setLoading(true);
@@ -1839,11 +1841,24 @@
       };
 
       const handleRejoin = async (emp) => {
-        if (!confirm(`Rejoin employee "${emp.name}"? They will be marked as active again.`)) return;
+        setRejoinData({ dateOfJoining: BillsoftUtils.todayStr(), monthlyBaseSalary: emp.monthlyBaseSalary || '', role: emp.role || '' });
+        setShowRejoinModal(true);
+      };
+
+      const handleRejoinConfirm = async () => {
+        if (!selectedEmployee) return;
         try {
-          await API.employees.changeStatus(emp.id, true, 'Employee rejoined');
-          showToast('Employee rejoined', 'success');
-          openEmployee(emp);
+          await API.employees.changeStatus(selectedEmployee.id, true, 'Employee rejoined with updated details');
+          // Update DOJ, salary, role after rejoin
+          await API.employees.update(selectedEmployee.id, {
+            ...selectedEmployee,
+            dateOfJoining: rejoinData.dateOfJoining,
+            monthlyBaseSalary: parseFloat(rejoinData.monthlyBaseSalary) || selectedEmployee.monthlyBaseSalary,
+            role: rejoinData.role || selectedEmployee.role
+          });
+          showToast('Employee rejoined with updated details', 'success');
+          setShowRejoinModal(false);
+          openEmployee(selectedEmployee);
           fetchEmployees();
         } catch(e) { showToast('Error rejoining employee', 'error'); }
       };
@@ -1941,7 +1956,7 @@
           React.createElement('div', { className: 'card-title' }, 'Employees'),
           React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
             !selectedEmployee && !showForm && React.createElement('input', { className: 'input', placeholder: 'Search employees...', value: searchTerm, onChange: e => setSearchTerm(e.target.value), style: { maxWidth: 200 } }),
-            React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowPinChange(true) }, 'Change PIN'),
+            !selectedEmployee && !showForm && React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowPinChange(true) }, 'Change PIN'),
             !selectedEmployee && !showForm && React.createElement('button', { className: 'btn btn-primary', onClick: () => { setSelectedEmployee(null); setFormData({ name: '', phone: '', role: '', idProofNumber: '', monthlyBaseSalary: '', allowedPaidLeavesPerMonth: 0, isActive: true, dateOfJoining: BillsoftUtils.todayStr() }); setShowForm(true); } }, '+ New Employee'),
             (selectedEmployee || showForm) && React.createElement('button', { className: 'btn btn-outline', onClick: () => { setSelectedEmployee(null); setShowForm(false); } }, '← Back to List')
           )

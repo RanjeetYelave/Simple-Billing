@@ -213,9 +213,11 @@
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
       const [updateInfo, setUpdateInfo] = useState(null);
+      const [empAnalytics, setEmpAnalytics] = useState(null);
       useEffect(() => {
         API.analytics.firm().then(d => { setData(d); setLoading(false); }).catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
         API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => {});
+        API.employees.analytics().then(setEmpAnalytics).catch(() => {});
       }, []);
       const handleSearch = useCallback(BillsoftUtils.debounce((name) => {
         if (!name || name.trim().length < 2) { setSearchResults(null); return; }
@@ -1726,7 +1728,9 @@
           const data = await API.employees.getAll();
           setEmployees(data);
           // Auto-apply pending promotions silently
-          API.employees.applyPromotions().catch(() => {});
+          if (API.firmId) {
+            API._json(API._qs('/api/employees/apply-promotions'), { method: 'POST' }).catch(() => {});
+          }
         } catch(e) { showToast('Error fetching employees', 'error'); }
         setLoading(false);
       };

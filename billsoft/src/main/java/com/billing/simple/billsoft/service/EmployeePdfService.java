@@ -139,9 +139,26 @@ public class EmployeePdfService {
             details.addCell(cell);
         }
 
+        // Calculate actual days in month from monthYear (FIX B6)
+        int totalDays = 30;
+        String my = salary.getMonthYear();
+        if (my != null && my.contains("-")) {
+            try {
+                String[] parts = my.split("-");
+                if (parts.length == 2) {
+                    java.time.YearMonth ym = java.time.YearMonth.of(
+                        Integer.parseInt(parts[1].trim()),
+                        Integer.parseInt(parts[0].trim())
+                    );
+                    totalDays = ym.lengthOfMonth();
+                }
+            } catch (Exception ignored) {}
+        }
+        int workingDays = totalDays - (salary.getDaysAbsent() != null ? salary.getDaysAbsent() : 0);
+        
         // Earnings
         details.addCell(new PdfPCell(new Phrase("Base Salary", normal)));
-        details.addCell(new PdfPCell(new Phrase(String.valueOf(salary.getDaysAbsent() != null ? 30 - salary.getDaysAbsent() : 30), normal)));
+        details.addCell(new PdfPCell(new Phrase(String.valueOf(workingDays) + "/" + totalDays, normal)));
         details.addCell(new PdfPCell(new Phrase(formatAmount(salary.getBaseSalaryAtTime()), normal)));
 
         if (salary.getBonusAmount() != null && salary.getBonusAmount() > 0) {
@@ -360,7 +377,8 @@ public class EmployeePdfService {
     private static String getYearFromMonth(String monthYear) {
         if (monthYear == null || !monthYear.contains("-")) return "current";
         String[] parts = monthYear.split("-");
-        return parts.length >= 2 ? "20" + parts[1] : "current";
+        // FIX B5: monthYear format is "MM-YYYY" (e.g., "05-2026"), parts[1] is already 4-digit year
+        return parts.length >= 2 ? parts[1] : "current";
     }
 
     /**

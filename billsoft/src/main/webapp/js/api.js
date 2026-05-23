@@ -211,7 +211,7 @@ const API = {
     getPromotions: (id) => API._json(`/api/employees/${id}/promotions`),
     addPromotion: (id, data) => API._json(`/api/employees/${id}/promotions`, { method: 'POST', body: data }),
     getYtd: (id) => API._json(`/api/employees/${id}/ytd`),
-    applyPromotions: () => API._json('/api/employees/apply-promotions', { method: 'POST' }),
+    applyPromotions: () => API._json(API._qs('/api/employees/apply-promotions'), { method: 'POST' }),
     // PDF downloads - returns blob
     downloadPayslipPdf: async (id, salaryId) => {
       const res = await API._request(`/api/employees/${id}/salaries/${salaryId}/payslip`);
@@ -223,7 +223,51 @@ const API = {
       if (to) params.to = to;
       const res = await API._request(API._qs(`/api/employees/${id}/statement`, params));
       return res.blob();
-    }
+    },
+    // F10: Employee Analytics
+    analytics: () => API._json(API._qs('/api/employees/analytics')),
+    // F2: Bulk Salary Processing
+    bulkSalary: (data) => API._json('/api/employees/bulk-salary', { method: 'POST', body: data }),
+    // F1: Attendance
+    attendance: {
+      get: (id) => API._json(`/api/employees/${id}/attendance`),
+      set: (id, date, status, remarks) => API._json(`/api/employees/${id}/attendance`, {
+        method: 'POST',
+        body: { date, status, remarks }
+      }),
+      getRange: (id, from, to) => API._json(`/api/employees/${id}/attendance/range?from=${from}&to=${to}`),
+      getMonth: (id, year, month) => API._json(`/api/employees/${id}/attendance/month/${year}/${month}`)
+    },
+    // F3: Documents
+    documents: {
+      list: (id) => API._json(`/api/employees/${id}/documents`),
+      upload: async (id, type, file) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = reader.result;
+            API._json(`/api/employees/${id}/documents`, {
+              method: 'POST',
+              body: { type, fileName: file.name, dataBase64: base64 }
+            }).then(resolve).catch(reject);
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+      },
+      delete: (docId) => API._request(`/api/employees/documents/${docId}`, { method: 'DELETE' })
+    },
+    // F4: Leave Management
+    leaves: {
+      list: (id) => API._json(`/api/employees/${id}/leaves`),
+      request: (id, data) => API._json(`/api/employees/${id}/leaves`, { method: 'POST', body: data }),
+      approve: (leaveId) => API._json(`/api/employees/leaves/${leaveId}/approve`, { method: 'PUT' }),
+      reject: (leaveId, reason) => API._json(`/api/employees/leaves/${leaveId}/reject`, { method: 'PUT', body: { reason } })
+    },
+    // F5: CSV Export
+    exportCsv: () => API._request(API._qs('/api/employees/export/csv')).then(r => r.blob()),
+    exportSalariesCsv: (id) => API._request(`/api/employees/${id}/salaries/export/csv`).then(r => r.blob()),
+    exportAdvancesCsv: (id) => API._request(`/api/employees/${id}/advances/export/csv`).then(r => r.blob())
   },
 
   // ─── System & Updates ───

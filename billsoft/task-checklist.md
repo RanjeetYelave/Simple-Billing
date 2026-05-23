@@ -1,38 +1,41 @@
-# Invoice + Quotation Management System - Build & Fix Checklist
+# Employee Management - Bug Fixes & Features
 
-## Backend Changes
-- [x] Add findByConvertedInvoiceId to InvoiceRepository
-- [ ] Add endpoint to get linked invoice for a quotation
-- [ ] Fix getAll invoices query to properly include firmId
-- [ ] Ensure quotation conversion returns linked invoice data
+## Bug Fixes
+- [ ] B1: Server-side net salary computation (EmployeeController.java)
+- [ ] B2: Add firmId filter to apply-promotions (EmployeeController.java)
+- [ ] B3: Prevent duplicate salary months (EmployeeController.java + repo)
+- [ ] B4: Configure max advance limit (EmployeeController.java)
+- [ ] B5: Fix PDF year display bug (EmployeePdfService.java)
+- [ ] B6: Use actual days in month for payslip (EmployeePdfService.java + SalaryRecord)
+- [ ] B7: Remove @CrossOrigin from controller
 
-## Frontend - Invoice System
-- [ ] Fix InvoiceList - add sort dropdown (newest, oldest, number, customer, amount, status)
-- [ ] Fix InvoiceList - proper empty states
-- [ ] Fix InvoiceForm - calculations (no NaN, no duplicate)
-- [ ] Fix InvoiceForm - item autocomplete suggestions
-- [ ] Fix InvoiceForm - inline item creation
-- [ ] Fix InvoiceForm - preview flow
-- [ ] Fix InvoiceForm - edit flow
-- [ ] Fix InvoiceForm - save flow
+## Feature F1: Attendance Tracking Module
+- [ ] Create AttendanceRecord entity
+- [ ] Create AttendanceRepository
+- [ ] Create AttendanceController
+- [ ] Add attendance UI component
+- [ ] Wire attendance into salary calculation
 
-## Frontend - Quotation System
-- [ ] Add "Quotations" nav item to sidebar
-- [ ] Create QuotationList component (same as InvoiceList but for quotations)
-- [ ] Create QuotationForm component (reuse InvoiceForm logic)
-- [ ] Add convert to invoice flow with edit mode
-- [ ] Show "converted to Invoice" note with link
-- [ ] Prevent duplicate conversions
+## Feature F2: Bulk Salary Processing
+- [ ] Backend endpoint for bulk salary processing
+- [ ] Frontend multi-select UI
 
-## Frontend - UX
-- [ ] Proper loading states
-- [ ] Error handling
-- [ ] Success toasts
-- [ ] Form validation
-- [ ] Prevent duplicate submissions
+## Feature F3: Employee Document Upload
+- [ ] Create EmployeeDocument entity
+- [ ] Create DocumentController
+- [ ] Create DocumentRepository
+- [ ] Add document upload UI
 
-## State Management & Data Integrity
-- [ ] Invoice list refreshes correctly after save
-- [ ] Quotation list refreshes correctly after save
-- [ ] Autocomplete updates after new items added
-- [ ] No stale state issues
+## Feature F4: Leave Management System
+- [ ] Create LeaveRecord entity
+- [ ] Create LeaveRepository
+- [ ] Add leave tracking UI integrated into employee view
+
+## Feature F5: Employee Dashboard Export (CSV)
+- [ ] CSV export endpoint for employees
+- [ ] CSV export for salary records
+- [ ] CSV export for advances
+
+## Feature F10: Dashboard Analytics for Employees
+- [ ] Backend analytics endpoint for employee summary
+- [ ] Frontend dashboard widgets

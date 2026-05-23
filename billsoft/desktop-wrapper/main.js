@@ -169,7 +169,7 @@ function pollServerAfterUpdate(win) {
 
   const checkServer = () => {
     pollCount++;
-    http.get('http://127.0.0.1:8080', (res) => {
+    http.get('http://127.0.0.1:8080/api/health', (res) => {
       if (res.statusCode < 400) {
         console.log("Backend is back up after update!");
         isUpdating = false;
@@ -197,12 +197,19 @@ function pollServerAfterUpdate(win) {
 
 function pollServerAndLoad(win) {
   const checkServer = () => {
-    http.get('http://127.0.0.1:8080', (res) => {
-      if (res.statusCode < 400) {
-        win.loadURL('http://127.0.0.1:8080');
-      } else {
+    http.get('http://127.0.0.1:8080/api/health', (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.status === 'UP') {
+            win.loadURL('http://127.0.0.1:8080');
+            return;
+          }
+        } catch (e) { /* not ready yet */ }
         setTimeout(checkServer, 1000);
-      }
+      });
     }).on('error', () => {
       setTimeout(checkServer, 1000);
     });

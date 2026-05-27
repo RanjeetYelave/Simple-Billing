@@ -2160,7 +2160,7 @@
                 React.createElement('div', { className: 'card-body' },
                   React.createElement('form', { onSubmit: handleProcessSalary, style: { display: 'flex', flexDirection: 'column', gap: 16 } },
                     React.createElement('div', { style: { display: 'flex', gap: 12 } },
-                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Month/Year *'), React.createElement('input', { className: 'input', placeholder: 'e.g. 05-2026', value: salaryMonth, onChange: e => setSalaryMonth(e.target.value), required: true })),
+                      React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Month/Year *'), React.createElement('input', { className: 'input', type: 'month', value: salaryMonthPicker, onChange: e => { const val = e.target.value; setSalaryMonthPicker(val); if (val) { const parts = val.split('-'); setSalaryMonth(parts[1] + '-' + parts[0]); } }, required: true })),
                       React.createElement('div', { className: 'form-group', style: { flex: 1 } }, React.createElement('label', { className: 'form-label' }, 'Days in Month'), React.createElement('input', { className: 'input', type: 'number', value: daysInMonth, onChange: e => setDaysInMonth(e.target.value) }))
                     ),
                     React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Days Absent'), React.createElement('input', { className: 'input', type: 'number', min: 0, value: daysAbsent, onChange: e => setDaysAbsent(e.target.value) })),

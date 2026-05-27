@@ -2205,6 +2205,22 @@
                   ))
                 )
               )
+            ),
+
+            // Rejoin Modal (previously missing from UI)
+            showRejoinModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowRejoinModal(false) },
+              React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
+                React.createElement('div', { className: 'modal-header' }, React.createElement('div', { className: 'modal-title' }, '🟢 Rejoin Employee'), React.createElement('button', { className: 'modal-close', onClick: () => setShowRejoinModal(false) }, '✕')),
+                React.createElement('div', { className: 'modal-body' },
+                  React.createElement('form', { onSubmit: e => { e.preventDefault(); handleRejoinConfirm(); }, style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'Date of Rejoining *'), React.createElement('input', { className: 'input', type: 'date', value: rejoinData.dateOfJoining, onChange: e => setRejoinData({...rejoinData, dateOfJoining: e.target.value}), required: true })),
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'New Salary (₹) *'), React.createElement('input', { className: 'input', type: 'number', value: rejoinData.monthlyBaseSalary, onChange: e => setRejoinData({...rejoinData, monthlyBaseSalary: e.target.value}), required: true })),
+                    React.createElement('div', { className: 'form-group' }, React.createElement('label', { className: 'form-label' }, 'New Role'), React.createElement('input', { className: 'input', value: rejoinData.role, onChange: e => setRejoinData({...rejoinData, role: e.target.value}) })),
+                    React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'This will be recorded as a rejoin event in the employee timeline with updated details.'),
+                    React.createElement('button', { type: 'submit', className: 'btn btn-success', style: { backgroundColor: '#16a34a', color: 'white' } }, 'Confirm Rejoin')
+                  )
+                )
+              )
             )
           )
         )

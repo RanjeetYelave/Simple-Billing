@@ -1850,17 +1850,27 @@
       const handleRejoinConfirm = async () => {
         if (!selectedEmployee) return;
         try {
-          await API.employees.changeStatus(selectedEmployee.id, true, 'Employee rejoined with updated details');
-          // Update DOJ, salary, role after rejoin
+          // First update employee details (DOJ, salary, role)
+          const newSalary = parseFloat(rejoinData.monthlyBaseSalary) || selectedEmployee.monthlyBaseSalary;
+          const newRole = rejoinData.role || selectedEmployee.role;
           await API.employees.update(selectedEmployee.id, {
-            ...selectedEmployee,
             dateOfJoining: rejoinData.dateOfJoining,
-            monthlyBaseSalary: parseFloat(rejoinData.monthlyBaseSalary) || selectedEmployee.monthlyBaseSalary,
-            role: rejoinData.role || selectedEmployee.role
+            monthlyBaseSalary: newSalary,
+            role: newRole,
+            isActive: true,
+            name: selectedEmployee.name,
+            phone: selectedEmployee.phone,
+            idProofNumber: selectedEmployee.idProofNumber,
+            allowedPaidLeavesPerMonth: selectedEmployee.allowedPaidLeavesPerMonth,
+            firmId: selectedEmployee.firmId
           });
-          showToast('Employee rejoined with updated details', 'success');
+          // Then change status to active (creates REJOIN timeline entry)
+          await API.employees.changeStatus(selectedEmployee.id, true, 'Employee rejoined with updated details');
+          // Update local state immediately for instant UI reflection
+          const updatedEmp = { ...selectedEmployee, isActive: true, dateOfJoining: rejoinData.dateOfJoining, monthlyBaseSalary: newSalary, role: newRole };
+          setSelectedEmployee(updatedEmp);
           setShowRejoinModal(false);
-          openEmployee(selectedEmployee);
+          showToast('Employee rejoined with updated details', 'success');
           fetchEmployees();
         } catch(e) { showToast('Error rejoining employee', 'error'); }
       };

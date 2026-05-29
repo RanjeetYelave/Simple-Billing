@@ -2371,9 +2371,7 @@
       const pageComponents = {
         dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
         invoices: { title: 'Invoices & Quotations', comp: React.createElement(InvoiceQuotationView, { key: API.firmId, tab: invoiceTab, onTabChange: setInvoiceTab, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, onConvertToInvoice: handleConvertToInvoice }) },
-        create: { title: React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } }, React.createElement('span', null, 'Create'), React.createElement('select', { className: 'select', style: { width: 160, fontSize: '0.85rem' }, onChange: e => { if (e.target.value === 'invoice') navigate('create-invoice'); else if (e.target.value === 'quotation') navigate('create-quotation'); e.target.value = ''; } }, React.createElement('option', { value: '' }, '▼ Type'), React.createElement('option', { value: 'invoice' }, 'Invoice'), React.createElement('option', { value: 'quotation' }, 'Quotation'))), comp: React.createElement(CreateTabView, { key: API.firmId }) },
-        'create-invoice': { title: 'New Invoice', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-new-invoice`, editId: null, isQuotationMode: false, onSaved: () => { showToast('Invoice created!', 'success'); navigate('invoices'); } }) },
-        'create-quotation': { title: 'New Quotation', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-new-quotation`, editId: null, isQuotationMode: true, onSaved: () => { showToast('Quotation created!', 'success'); navigate('invoices'); } }) },
+        create: { title: 'Create Invoice/Quotation', comp: React.createElement(CreateTabView, { key: API.firmId }) },
         products: { title: 'Products', comp: React.createElement(ProductManager, { key: API.firmId }) },
         customers: { title: 'Customers', comp: React.createElement(CustomerManager, { key: API.firmId }) },
         employees: { title: 'Employees', comp: React.createElement(EmployeeManager, { key: API.firmId }) },

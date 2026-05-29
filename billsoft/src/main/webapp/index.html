@@ -167,9 +167,7 @@
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
         { id: 'invoices', label: 'Invoices', icon: Icons.invoice },
-        { id: 'new-invoice', label: 'New Invoice', icon: Icons.plus },
-        { id: 'quotations', label: 'Quotations', icon: Icons.fileText },
-        { id: 'new-quotation', label: 'New Quotation', icon: Icons.plus },
+        { id: 'create', label: 'Create', icon: Icons.plus },
         { id: 'products', label: 'Products', icon: Icons.package },
         { id: 'customers', label: 'Customers', icon: Icons.users },
         { id: 'employees', label: 'Employees', icon: Icons.users },
@@ -2228,6 +2226,54 @@
       );
     }
 
+    // ─── COMBINED INVOICE & QUOTATION VIEW ───
+    function InvoiceQuotationView({ tab, onTabChange, onEditInvoice, onEditQuotation, onConvertToInvoice }) {
+      return React.createElement('div', { className: 'tabs', style: { marginBottom: 24 } },
+        React.createElement('div', { style: { display: 'flex', gap: 2, borderBottom: '2px solid var(--border)', marginBottom: 16 } },
+          React.createElement('button', { className: `tab ${tab === 'invoices' ? 'active' : ''}`, style: { padding: '10px 24px', border: 'none', background: tab === 'invoices' ? 'var(--primary)' : 'transparent', color: tab === 'invoices' ? 'white' : 'var(--text)', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }, onClick: () => onTabChange('invoices') }, '📄 Invoices'),
+          React.createElement('button', { className: `tab ${tab === 'quotations' ? 'active' : ''}`, style: { padding: '10px 24px', border: 'none', background: tab === 'quotations' ? 'var(--primary)' : 'transparent', color: tab === 'quotations' ? 'white' : 'var(--text)', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }, onClick: () => onTabChange('quotations') }, '📋 Quotations')
+        ),
+        tab === 'invoices' 
+          ? React.createElement(InvoiceList, { onEditInvoice }) 
+          : React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice })
+      );
+    }
+
+    // ─── CREATE TAB VIEW ───
+    function CreateTabView() {
+      const [tabs, setTabs] = useState([]);
+      const [activeTab, setActiveTab] = useState(null);
+      const addTab = (type) => {
+        if (tabs.length >= 10) { showToast('Maximum 10 tabs allowed', 'warning'); return; }
+        const newTab = { id: BillsoftUtils.generateId(), type, title: type === 'invoice' ? `Invoice ${tabs.filter(t => t.type === 'invoice').length + 1}` : `Quotation ${tabs.filter(t => t.type === 'quotation').length + 1}` };
+        setTabs(prev => [...prev, newTab]);
+        setActiveTab(newTab.id);
+      };
+      const closeTab = (id, e) => { e.stopPropagation(); setTabs(prev => { const remaining = prev.filter(t => t.id !== id); if (activeTab === id && remaining.length > 0) setActiveTab(remaining[remaining.length - 1].id); else if (remaining.length === 0) setActiveTab(null); return remaining; }); };
+      return React.createElement('div', null,
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+          React.createElement('span', { style: { fontWeight: 600, fontSize: '0.9rem', marginRight: 8 } }, 'Create:'),
+          React.createElement('button', { className: 'btn btn-sm btn-primary', onClick: () => addTab('invoice') }, '+ Invoice'),
+          React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => addTab('quotation') }, '+ Quotation'),
+          React.createElement('span', { style: { marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${tabs.length}/10 tabs`)
+        ),
+        tabs.length === 0 && React.createElement('div', { className: 'empty-state' },
+          React.createElement('h3', null, 'No open tabs'),
+          React.createElement('p', null, 'Click "+ Invoice" or "+ Quotation" to start creating.')
+        ),
+        tabs.length > 0 && React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap', borderBottom: '2px solid var(--border)', paddingBottom: 2 } },
+          tabs.map(t => React.createElement('div', { key: t.id, onClick: () => setActiveTab(t.id), style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: '8px 8px 0 0', cursor: 'pointer', background: activeTab === t.id ? 'var(--primary)' : '#f1f5f9', color: activeTab === t.id ? 'white' : 'var(--text)', fontWeight: 500, fontSize: '0.85rem', border: 'none', whiteSpace: 'nowrap' } },
+            t.type === 'invoice' ? '📄 ' : '📋 ',
+            t.title,
+            React.createElement('span', { onClick: (e) => closeTab(t.id, e), style: { marginLeft: 4, cursor: 'pointer', opacity: 0.7, fontSize: '0.8rem' } }, '✕')
+          ))
+        ),
+        tabs.length > 0 && activeTab && React.createElement('div', { key: activeTab },
+          React.createElement(InvoiceForm, { editId: null, isQuotationMode: tabs.find(t => t.id === activeTab)?.type === 'quotation', onSaved: () => { const tab = tabs.find(t => t.id === activeTab); if (tab) closeTab(activeTab, { stopPropagation: () => {} }); showToast('Saved successfully!', 'success'); } })
+        )
+      );
+    }
+
     // ─── MAIN APP ───
     function App() {
       const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
@@ -2328,12 +2374,14 @@
       };
       const handleUpdateComplete = () => { setIsUpdating(false); setUpdateProgress(null); if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; } };
 
+      const [invoiceTab, setInvoiceTab] = useState('invoices'); // invoices | quotations
+
       const pageComponents = {
         dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
-        invoices: { title: 'Invoices', comp: React.createElement(InvoiceList, { key: API.firmId, onEditInvoice: handleEditInvoice }) },
-        'new-invoice': { title: editInvoiceId ? (convertedFromQuotationId ? 'Convert Quotation to Invoice' : 'Edit Invoice') : 'New Invoice', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-${editInvoiceId || 'new'}-${convertedFromQuotationId || '0'}`, editId: editInvoiceId, isQuotationMode: false, onSaved: handleSaved, convertedFromQuotationId }) },
-        quotations: { title: 'Quotations', comp: React.createElement(QuotationList, { key: API.firmId, onEditQuotation: handleEditQuotation, onConvertToInvoice: handleConvertToInvoice }) },
-        'new-quotation': { title: editQuotationId ? 'Edit Quotation' : 'New Quotation', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-${editQuotationId || 'new'}`, editId: editQuotationId, isQuotationMode: true, onSaved: handleQuotationSaved }) },
+        invoices: { title: 'Invoices & Quotations', comp: React.createElement(InvoiceQuotationView, { key: API.firmId, tab: invoiceTab, onTabChange: setInvoiceTab, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, onConvertToInvoice: handleConvertToInvoice }) },
+        create: { title: React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } }, React.createElement('span', null, 'Create'), React.createElement('select', { className: 'select', style: { width: 160, fontSize: '0.85rem' }, onChange: e => { if (e.target.value === 'invoice') navigate('create-invoice'); else if (e.target.value === 'quotation') navigate('create-quotation'); e.target.value = ''; } }, React.createElement('option', { value: '' }, '▼ Type'), React.createElement('option', { value: 'invoice' }, 'Invoice'), React.createElement('option', { value: 'quotation' }, 'Quotation'))), comp: React.createElement(CreateTabView, { key: API.firmId }) },
+        'create-invoice': { title: 'New Invoice', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-new-invoice`, editId: null, isQuotationMode: false, onSaved: () => { showToast('Invoice created!', 'success'); navigate('invoices'); } }) },
+        'create-quotation': { title: 'New Quotation', comp: React.createElement(InvoiceForm, { key: `${API.firmId}-new-quotation`, editId: null, isQuotationMode: true, onSaved: () => { showToast('Quotation created!', 'success'); navigate('invoices'); } }) },
         products: { title: 'Products', comp: React.createElement(ProductManager, { key: API.firmId }) },
         customers: { title: 'Customers', comp: React.createElement(CustomerManager, { key: API.firmId }) },
         employees: { title: 'Employees', comp: React.createElement(EmployeeManager, { key: API.firmId }) },

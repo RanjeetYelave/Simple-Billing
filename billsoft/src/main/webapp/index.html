@@ -166,8 +166,8 @@
       const [mobileOpen, setMobileOpen] = useState(false);
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
-        { id: 'invoices', label: 'Invoices', icon: Icons.invoice },
-        { id: 'create', label: 'Create', icon: Icons.plus },
+        { id: 'invoices', label: 'Invoice/Quotation History', icon: Icons.invoice },
+        { id: 'create', label: 'Create Invoice/Quotation', icon: Icons.plus },
         { id: 'products', label: 'Products', icon: Icons.package },
         { id: 'customers', label: 'Customers', icon: Icons.users },
         { id: 'employees', label: 'Employees', icon: Icons.users },
@@ -2226,12 +2226,23 @@
       );
     }
 
-    // ─── COMBINED INVOICE & QUOTATION VIEW ───
+    // ─── INVOICE / QUOTATION VIEW ───
     function InvoiceQuotationView({ tab, onTabChange, onEditInvoice, onEditQuotation, onConvertToInvoice }) {
-      return React.createElement('div', { className: 'tabs', style: { marginBottom: 24 } },
-        React.createElement('div', { style: { display: 'flex', gap: 2, borderBottom: '2px solid var(--border)', marginBottom: 16 } },
-          React.createElement('button', { className: `tab ${tab === 'invoices' ? 'active' : ''}`, style: { padding: '10px 24px', border: 'none', background: tab === 'invoices' ? 'var(--primary)' : 'transparent', color: tab === 'invoices' ? 'white' : 'var(--text)', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }, onClick: () => onTabChange('invoices') }, '📄 Invoices'),
-          React.createElement('button', { className: `tab ${tab === 'quotations' ? 'active' : ''}`, style: { padding: '10px 24px', border: 'none', background: tab === 'quotations' ? 'var(--primary)' : 'transparent', color: tab === 'quotations' ? 'white' : 'var(--text)', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }, onClick: () => onTabChange('quotations') }, '📋 Quotations')
+      const pillStyle = (isActive) => ({
+        padding: '6px 20px',
+        border: 'none',
+        background: isActive ? 'var(--primary)' : '#f1f5f9',
+        color: isActive ? 'white' : 'var(--text-secondary)',
+        borderRadius: '20px',
+        cursor: 'pointer',
+        fontWeight: isActive ? 600 : 400,
+        fontSize: '0.85rem',
+        transition: 'all 0.15s ease'
+      });
+      return React.createElement(Fragment, null,
+        React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 20 } },
+          React.createElement('button', { style: pillStyle(tab === 'invoices'), onClick: () => onTabChange('invoices') }, 'Invoices'),
+          React.createElement('button', { style: pillStyle(tab === 'quotations'), onClick: () => onTabChange('quotations') }, 'Quotations')
         ),
         tab === 'invoices' 
           ? React.createElement(InvoiceList, { onEditInvoice }) 
@@ -2239,38 +2250,19 @@
       );
     }
 
-    // ─── CREATE TAB VIEW ───
+    // ─── CREATE INVOICE / QUOTATION ───
     function CreateTabView() {
-      const [tabs, setTabs] = useState([]);
-      const [activeTab, setActiveTab] = useState(null);
-      const addTab = (type) => {
-        if (tabs.length >= 10) { showToast('Maximum 10 tabs allowed', 'warning'); return; }
-        const newTab = { id: BillsoftUtils.generateId(), type, title: type === 'invoice' ? `Invoice ${tabs.filter(t => t.type === 'invoice').length + 1}` : `Quotation ${tabs.filter(t => t.type === 'quotation').length + 1}` };
-        setTabs(prev => [...prev, newTab]);
-        setActiveTab(newTab.id);
-      };
-      const closeTab = (id, e) => { e.stopPropagation(); setTabs(prev => { const remaining = prev.filter(t => t.id !== id); if (activeTab === id && remaining.length > 0) setActiveTab(remaining[remaining.length - 1].id); else if (remaining.length === 0) setActiveTab(null); return remaining; }); };
+      const [mode, setMode] = useState('invoice');
+      const formKey = mode;
       return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
-          React.createElement('span', { style: { fontWeight: 600, fontSize: '0.9rem', marginRight: 8 } }, 'Create:'),
-          React.createElement('button', { className: 'btn btn-sm btn-primary', onClick: () => addTab('invoice') }, '+ Invoice'),
-          React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => addTab('quotation') }, '+ Quotation'),
-          React.createElement('span', { style: { marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${tabs.length}/10 tabs`)
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 } },
+          React.createElement('label', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 } }, 'Document Type:'),
+          React.createElement('select', { className: 'select', style: { width: 200 }, value: mode, onChange: e => setMode(e.target.value) },
+            React.createElement('option', { value: 'invoice' }, '📄 New Invoice'),
+            React.createElement('option', { value: 'quotation' }, '📋 New Quotation')
+          )
         ),
-        tabs.length === 0 && React.createElement('div', { className: 'empty-state' },
-          React.createElement('h3', null, 'No open tabs'),
-          React.createElement('p', null, 'Click "+ Invoice" or "+ Quotation" to start creating.')
-        ),
-        tabs.length > 0 && React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap', borderBottom: '2px solid var(--border)', paddingBottom: 2 } },
-          tabs.map(t => React.createElement('div', { key: t.id, onClick: () => setActiveTab(t.id), style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: '8px 8px 0 0', cursor: 'pointer', background: activeTab === t.id ? 'var(--primary)' : '#f1f5f9', color: activeTab === t.id ? 'white' : 'var(--text)', fontWeight: 500, fontSize: '0.85rem', border: 'none', whiteSpace: 'nowrap' } },
-            t.type === 'invoice' ? '📄 ' : '📋 ',
-            t.title,
-            React.createElement('span', { onClick: (e) => closeTab(t.id, e), style: { marginLeft: 4, cursor: 'pointer', opacity: 0.7, fontSize: '0.8rem' } }, '✕')
-          ))
-        ),
-        tabs.length > 0 && activeTab && React.createElement('div', { key: activeTab },
-          React.createElement(InvoiceForm, { editId: null, isQuotationMode: tabs.find(t => t.id === activeTab)?.type === 'quotation', onSaved: () => { const tab = tabs.find(t => t.id === activeTab); if (tab) closeTab(activeTab, { stopPropagation: () => {} }); showToast('Saved successfully!', 'success'); } })
-        )
+        React.createElement(InvoiceForm, { key: formKey, editId: null, isQuotationMode: mode === 'quotation', onSaved: () => { showToast(mode === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success'); } })
       );
     }
 

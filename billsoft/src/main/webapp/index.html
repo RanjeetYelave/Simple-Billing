@@ -2250,19 +2250,76 @@
       );
     }
 
-    // ─── CREATE INVOICE / QUOTATION ───
+    // ─── CREATE INVOICE / QUOTATION TABS ───
     function CreateTabView() {
-      const [mode, setMode] = useState('invoice');
-      const formKey = mode;
+      const [tabs, setTabs] = useState([]);
+      const [activeTab, setActiveTab] = useState(null);
+      const tabsRef = useRef(tabs);
+      tabsRef.current = tabs;
+      const activeTabRef = useRef(activeTab);
+      activeTabRef.current = activeTab;
+      const addTab = (type) => {
+        if (tabs.length >= 10) { showToast('Maximum 10 tabs allowed', 'warning'); return; }
+        const count = tabs.filter(t => t.type === type).length + 1;
+        const label = type === 'invoice' ? `Inv ${count}` : `Qtn ${count}`;
+        const newTab = { id: Date.now() + Math.random(), type, label };
+        setTabs(prev => [...prev, newTab]);
+        setActiveTab(newTab.id);
+      };
+      const closeTab = (id, e) => {
+        e.stopPropagation();
+        setTabs(prev => {
+          const remaining = prev.filter(t => t.id !== id);
+          if (id === activeTabRef.current) {
+            if (remaining.length > 0) {
+              const idx = prev.findIndex(t => t.id === id);
+              const newActiveIdx = Math.min(idx, remaining.length - 1);
+              setActiveTab(remaining[newActiveIdx].id);
+            } else {
+              setActiveTab(null);
+            }
+          }
+          return remaining;
+        });
+      };
+      const currentTab = tabs.find(t => t.id === activeTab);
       return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 } },
-          React.createElement('label', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 } }, 'Document Type:'),
-          React.createElement('select', { className: 'select', style: { width: 200 }, value: mode, onChange: e => setMode(e.target.value) },
-            React.createElement('option', { value: 'invoice' }, '📄 New Invoice'),
-            React.createElement('option', { value: 'quotation' }, '📋 New Quotation')
-          )
+        React.createElement('div', { className: 'create-toolbar' },
+          React.createElement('span', { className: 'create-label' }, 'Create:'),
+          React.createElement('button', { className: 'btn btn-sm btn-primary', onClick: () => addTab('invoice') }, '+ Invoice'),
+          React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => addTab('quotation') }, '+ Quotation'),
+          React.createElement('span', { className: 'tab-counter' }, `${tabs.length}/10`)
         ),
-        React.createElement(InvoiceForm, { key: formKey, editId: null, isQuotationMode: mode === 'quotation', onSaved: () => { showToast(mode === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success'); } })
+        tabs.length === 0 && React.createElement('div', { className: 'empty-state' },
+          React.createElement('h3', null, 'No open documents'),
+          React.createElement('p', null, 'Click "+ Invoice" or "+ Quotation" to start creating.')
+        ),
+        tabs.length > 0 && React.createElement('div', { className: 'chrome-tab-bar' },
+          tabs.map(t => React.createElement('div', { key: t.id, className: `chrome-tab${activeTab === t.id ? ' active' : ''}`, onClick: () => setActiveTab(t.id) },
+            React.createElement('span', { className: 'tab-icon' }, t.type === 'invoice' ? '📄' : '📋'),
+            React.createElement('span', { className: 'tab-label' }, t.label),
+            React.createElement('span', { className: 'tab-close', onClick: (e) => closeTab(t.id, e) }, '✕')
+          ))
+        ),
+        currentTab && React.createElement('div', { key: currentTab.id },
+          React.createElement(InvoiceForm, { editId: null, isQuotationMode: currentTab.type === 'quotation', onSaved: () => { 
+            showToast(currentTab.type === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success');
+            const id = currentTab.id;
+            setTabs(prev => {
+              const remaining = prev.filter(t => t.id !== id);
+              if (id === activeTabRef.current) {
+                if (remaining.length > 0) {
+                  const idx = prev.findIndex(t => t.id === id);
+                  const newActiveIdx = Math.min(idx, remaining.length - 1);
+                  setActiveTab(remaining[newActiveIdx].id);
+                } else {
+                  setActiveTab(null);
+                }
+              }
+              return remaining;
+            });
+          } })
+        )
       );
     }
 

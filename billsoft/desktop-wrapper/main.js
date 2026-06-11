@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -37,9 +37,20 @@ ipcMain.on('set-updating', () => {
 
 function startJavaBackend() {
   console.log("Starting Spring Boot...");
+  console.log(`Java executable: ${javaExecutable}`);
+  console.log(`WAR path: ${warPath}`);
+
+  if (!fs.existsSync(javaExecutable)) {
+    const msg = `Java executable not found:\n${javaExecutable}\n\nMake sure the correct JRE for your platform is bundled.`;
+    console.error(msg);
+    dialog.showErrorBox('Billsoft - Startup Error', msg);
+    return;
+  }
 
   if (!fs.existsSync(warPath)) {
-    console.error(`WAR not found at ${warPath}`);
+    const msg = `Application backend not found:\n${warPath}\n\nPlease reinstall Billsoft.`;
+    console.error(msg);
+    dialog.showErrorBox('Billsoft - Startup Error', msg);
     return;
   }
 
@@ -254,6 +265,15 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   if (javaProcess) {
-    javaProcess.kill('SIGTERM');
+    if (process.platform === 'win32') {
+      // SIGTERM is not supported on Windows — use taskkill to force-kill the Java process tree
+      try {
+        require('child_process').execSync(`taskkill /F /T /PID ${javaProcess.pid}`);
+      } catch (e) {
+        console.error('Failed to kill Java process on Windows:', e.message);
+      }
+    } else {
+      javaProcess.kill('SIGTERM');
+    }
   }
 });

@@ -6,23 +6,49 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
+    "clean": "rm -rf dist/win-unpacked dist/mac-arm64 dist/*.7z",
+    "build:win": "npm run clean && electron-builder --win --x64",
+    "build:win:arm64": "npm run clean && electron-builder --win --arm64",
+    "build:mac": "npm run clean && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
   },
   "build": {
     "appId": "com.billing.simple.billsoft",
     "productName": "Billsoft",
     "mac": {
-      "identity": null
+      "identity": null,
+      "extraResources": [
+        {
+          "from": "../target/billsoft-0.0.1-SNAPSHOT.war",
+          "to": "backend/billsoft.war"
+        },
+        {
+          "from": "jre-mac",
+          "to": "jre"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "../target/billsoft-0.0.1-SNAPSHOT.war",
+          "to": "backend/billsoft.war"
+        },
+        {
+          "from": "jre-win",
+          "to": "jre"
+        }
+      ]
     },
     "extraResources": [
       {
         "from": "../target/billsoft-0.0.1-SNAPSHOT.war",
         "to": "backend/billsoft.war"
-      },
-      {
-        "from": "jre",
-        "to": "jre"
       }
     ]
   },

@@ -3,6 +3,8 @@ package com.billing.simple.billsoft.repo;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -37,6 +39,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items WHERE i.firmId = :firmId AND LOWER(i.customer.name) LIKE LOWER(CONCAT('%',:name,'%'))")
     List<Invoice> findByFirmIdAndCustomerNameContainingIgnoreCase(@Param("firmId") Long firmId, @Param("name") String name);
 
+    // Paginated queries
+    Page<Invoice> findByFirmId(Long firmId, Pageable pageable);
+    Page<Invoice> findByFirmIdAndStatus(Long firmId, InvoiceStatus status, Pageable pageable);
+    Page<Invoice> findByFirmIdAndStatusIn(Long firmId, List<InvoiceStatus> statuses, Pageable pageable);
+
     List<Invoice> findByCustomer_NameContainingIgnoreCase(String name);
     
     List<Invoice> findAllByFirmIdAndStatusOrderByInvoiceDateAsc(Long firmId, InvoiceStatus status);
@@ -50,4 +57,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     // For quotation conversion lookup
     Invoice findByConvertedInvoiceId(Long convertedInvoiceId);
+
+    // ── Aggregation queries for analytics ──
+    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
+    long countByFirmIdAndStatusIn(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
+
+    @Query("SELECT COALESCE(SUM(i.totalAmount), 0) FROM Invoice i WHERE i.firmId = :firmId AND i.paid = :paid")
+    double sumTotalAmountByFirmIdAndPaid(@Param("firmId") Long firmId, @Param("paid") boolean paid);
+
+    @Query("SELECT COALESCE(SUM(i.totalAmount), 0) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
+    double sumTotalAmountByFirmIdAndStatusIn(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
 }

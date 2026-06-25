@@ -2,6 +2,9 @@ package com.billing.simple.billsoft.controllers;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -77,19 +80,37 @@ public class InvoiceController {
         return ResponseEntity.ok(service.previewInvoice(request));
     }
 
-    // ---------------- LIST ----------------
+    // ---------------- LIST (with pagination) ----------------
     @GetMapping
-    public ResponseEntity<List<Invoice>> getAll(@RequestParam(required = false) Long firmId) {
+    public ResponseEntity<List<Invoice>> getAll(
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        if (page >= 0) {
+            return ResponseEntity.ok(service.getAll(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
+        }
         return ResponseEntity.ok(service.getAll(firmId));
     }
 
     @GetMapping("/estimates")
-    public ResponseEntity<List<Invoice>> getAllEstimates(@RequestParam(required = false) Long firmId) {
+    public ResponseEntity<List<Invoice>> getAllEstimates(
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        if (page >= 0) {
+            return ResponseEntity.ok(service.getAllEstimates(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
+        }
         return ResponseEntity.ok(service.getAllEstimates(firmId));
     }
 
     @GetMapping("/final")
-    public ResponseEntity<List<Invoice>> getAllFinalInvoices(@RequestParam(required = false) Long firmId) {
+    public ResponseEntity<List<Invoice>> getAllFinalInvoices(
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        if (page >= 0) {
+            return ResponseEntity.ok(service.getAllFinalInvoices(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
+        }
         return ResponseEntity.ok(service.getAllFinalInvoices(firmId));
     }
 

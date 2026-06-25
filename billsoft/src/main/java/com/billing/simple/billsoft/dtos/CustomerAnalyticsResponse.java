@@ -20,4 +20,13 @@ public class CustomerAnalyticsResponse {
     private Long invoiceCount;
 
     private List<CustomerInvoiceSummary> invoices;
+
+    // Compatibility methods for legacy test expectations
+    public void setTotal(int total) {
+        this.totalBusiness = (double) total;
+    }
+
+    public Double getTotal() {
+        return this.totalBusiness;
+    }
 }

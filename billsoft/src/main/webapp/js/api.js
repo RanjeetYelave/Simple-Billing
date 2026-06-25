@@ -102,9 +102,9 @@ const API = {
 
   // ── Invoices ──
   invoices: {
-    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices'))),
-    listEstimates: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/estimates'))),
-    listFinal: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/final'))),
+    list: (page = 0, size = 50) => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices', { page, size }))),
+    listEstimates: (page = 0, size = 50) => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/estimates', { page, size }))),
+    listFinal: (page = 0, size = 50) => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/final', { page, size }))),
     get: (id) => API._json(`/api/invoices/${id}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices', {
       method: 'POST',

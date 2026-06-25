@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.billing.simple.billsoft.dtos.CustomerRequest;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 
@@ -28,15 +29,15 @@ public class CustomerService {
         return repo.findById(id).orElse(null);
     }
 
-    public Customer update(Long id, Customer updated) {
+    public Customer update(Long id, CustomerRequest request) {
         Customer existing = repo.findById(id).orElse(null);
         if (existing == null)
             return null;
 
-        existing.setName(updated.getName());
-        existing.setPhone(updated.getPhone());
-        existing.setEmail(updated.getEmail());
-        existing.setAddress(updated.getAddress());
+        if (request.getName() != null) existing.setName(request.getName().trim());
+        existing.setPhone(request.getPhone());
+        existing.setEmail(request.getEmail());
+        existing.setAddress(request.getAddress());
 
         return repo.save(existing);
     }

@@ -837,10 +837,12 @@
       const [sortField, setSortField] = useState('date');
       const [sortDir, setSortDir] = useState('desc');
       const [convertingId, setConvertingId] = useState(null);
+      const [page, setPage] = useState(0);
+      const pageSize = 50;
       const load = useCallback(() => {
         setLoading(true);
-        API.invoices.listFinal().then(d => { setInvoices(d); setLoading(false); }).catch(() => { showToast('Failed to load invoices', 'error'); setLoading(false); });
-      }, []);
+        API.invoices.listFinal(page, pageSize).then(d => { setInvoices(d); setLoading(false); }).catch(() => { showToast('Failed to load invoices', 'error'); setLoading(false); });
+      }, [page]);
       useEffect(() => { load(); }, [load]);
       const toggleSort = (field) => {
         if (sortField === field) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
@@ -898,8 +900,9 @@
           React.createElement('h3', null, 'No invoices found'),
           React.createElement('p', null, 'Create your first invoice to get started.')
         ) :
-        React.createElement('div', { className: 'card' },
-          React.createElement('div', { className: 'table-container' },
+        React.createElement(Fragment, null,
+          React.createElement('div', { className: 'card' },
+            React.createElement('div', { className: 'table-container' },
             React.createElement('table', null,
               React.createElement('thead', null,
                 React.createElement('tr', null,
@@ -943,9 +946,11 @@
       const [sortDir, setSortDir] = useState('desc');
       const [convertingId, setConvertingId] = useState(null);
       const [linkedInvoices, setLinkedInvoices] = useState({});
+      const [page, setPage] = useState(0);
+      const pageSize = 50;
       const load = useCallback(() => {
         setLoading(true);
-        API.invoices.listEstimates().then(async list => {
+        API.invoices.listEstimates(page, pageSize).then(async list => {
           setQuotations(list);
           // Check for linked invoices
           const links = {};

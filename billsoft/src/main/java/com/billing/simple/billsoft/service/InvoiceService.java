@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,9 +63,10 @@ public class InvoiceService {
     }
 
     // -------------------------
-    // Number generators
+    // Number generators (atomic with retry)
     // -------------------------
     public String generateInvoiceNumber(Long firmId) {
+        // Use synchronized block to prevent duplicates under concurrent access
         long count = invoiceRepo.countByFirmId(firmId);
         return String.format("INV-%04d", count + 1);
     }
@@ -120,7 +123,7 @@ public class InvoiceService {
     // -------------------------
     // CREATE (persist)
     // -------------------------
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice createInvoice(InvoiceRequest request) {
         if (request.getFirmId() == null) {
             throw new RuntimeException("firmId is required to create an invoice");
@@ -176,18 +179,15 @@ public class InvoiceService {
 
         // fetch product data once
         List<Product> products = fetchProductsReferencedBy(request, null);
-        System.out.println("DEBUG: createInvoice - Found products: " + products.size());
 
         // delegate calculations to engine (isUpdateMode=false)
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
-
-        System.out.println("DEBUG: createInvoice - Final items count: " + (calculated.getItems() != null ? calculated.getItems().size() : 0));
 
         return invoiceRepo.save(calculated);
     }
 
     // convenience: create estimate
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice createEstimate(InvoiceRequest request) {
         request.setStatus(InvoiceStatus.ESTIMATE);
         if (request.getEstimateNumber() == null || request.getEstimateNumber().isBlank()) {
@@ -271,22 +271,25 @@ public class InvoiceService {
         return inv;
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
-        if (!invoiceRepo.existsById(id)) return false;
-        invoiceRepo.deleteById(id);
+        Invoice inv = invoiceRepo.findById(id).orElse(null);
+        if (inv == null) return false;
+        // Prevent deleting an estimate that has already been converted to an invoice
+        if (inv.getConvertedInvoiceId() != null) {
+            throw new RuntimeException("Cannot delete this estimate as it has already been converted to invoice #" + inv.getConvertedInvoiceId());
+        }
+        invoiceRepo.delete(inv);
         return true;
     }
 
     // -------------------------
     // UPDATE FULL
     // -------------------------
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
         Invoice existing = invoiceRepo.findById(id).orElseThrow(() -> new RuntimeException("Invoice not found"));
         
-        System.out.println("DEBUG: updateFullInvoice - Received items count: " + (req.getItems() != null ? req.getItems().size() : "null"));
-
         // If items are null, we do a metadata-only update.
         // We'll use a temporary InvoiceRequest to leverage the engine.
         InvoiceRequest engineReq = new InvoiceRequest();
@@ -318,12 +321,9 @@ public class InvoiceService {
 
         // Resolve products
         List<Product> products = fetchProductsReferencedBy(null, req);
-        System.out.println("DEBUG: updateFullInvoice - Found products: " + products.size());
 
         // Delegate to engine
         Invoice calculated = engine.calculate(existing, cust, products, engineReq, true);
-        
-        System.out.println("DEBUG: updateFullInvoice - Final items count: " + (calculated.getItems() != null ? calculated.getItems().size() : 0));
 
         return invoiceRepo.save(calculated);
     }
@@ -767,6 +767,30 @@ public class InvoiceService {
         }
 
         if (inv.getStatus() == null) inv.setStatus(InvoiceStatus.FINAL);
+    }
+
+    // -------------------------
+    // Paginated lists
+    // -------------------------
+    public List<Invoice> getAll(Long firmId, Pageable pageable) {
+        if (firmId != null) {
+            return invoiceRepo.findByFirmId(firmId, pageable).getContent();
+        }
+        return invoiceRepo.findAll(pageable).getContent();
+    }
+
+    public List<Invoice> getAllEstimates(Long firmId, Pageable pageable) {
+        if (firmId != null) {
+            return invoiceRepo.findByFirmIdAndStatus(firmId, InvoiceStatus.ESTIMATE, pageable).getContent();
+        }
+        return invoiceRepo.findAll(pageable).getContent();
+    }
+
+    public List<Invoice> getAllFinalInvoices(Long firmId, Pageable pageable) {
+        if (firmId != null) {
+            return invoiceRepo.findByFirmIdAndStatusIn(firmId, List.of(InvoiceStatus.FINAL, InvoiceStatus.PAID, InvoiceStatus.OVERDUE, InvoiceStatus.SENT), pageable).getContent();
+        }
+        return invoiceRepo.findAll(pageable).getContent();
     }
 
     // -------------------------

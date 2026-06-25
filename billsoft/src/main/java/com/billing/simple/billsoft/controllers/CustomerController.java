@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.billing.simple.billsoft.dtos.CustomerRequest;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.service.CustomerService;
 
@@ -29,7 +30,17 @@ public class CustomerController {
 	}
 
 	@PostMapping
-	public ResponseEntity<Customer> create(@RequestBody Customer customer) {
+	public ResponseEntity<Customer> create(@RequestBody CustomerRequest request) {
+		if (request.getName() == null || request.getName().trim().isEmpty()) {
+			return ResponseEntity.badRequest().build();
+		}
+		Customer customer = new Customer();
+		customer.setName(request.getName().trim());
+		customer.setPhone(request.getPhone());
+		customer.setEmail(request.getEmail());
+		customer.setAddress(request.getAddress());
+		customer.setGstin(request.getGstin());
+		customer.setFirmId(request.getFirmId());
 		return ResponseEntity.ok(service.create(customer));
 	}
 
@@ -47,8 +58,8 @@ public class CustomerController {
 	}
 
 	@PutMapping("/{id}")
-	public ResponseEntity<Customer> update(@PathVariable Long id, @RequestBody Customer customer) {
-		Customer updated = service.update(id, customer);
+	public ResponseEntity<Customer> update(@PathVariable Long id, @RequestBody CustomerRequest request) {
+		Customer updated = service.update(id, request);
 		if (updated == null)
 			return ResponseEntity.notFound().build();
 		return ResponseEntity.ok(updated);

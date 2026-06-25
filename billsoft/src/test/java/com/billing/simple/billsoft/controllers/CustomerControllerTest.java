@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.controllers;
 
+import com.billing.simple.billsoft.dtos.CustomerRequest;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.service.CustomerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,13 +68,13 @@ class CustomerControllerTest {
 
     @Test
     void testUpdate() throws Exception {
-        Customer c = new Customer();
-        c.setName("Updated");
-        when(service.update(eq(1L), any(Customer.class))).thenReturn(c);
+        CustomerRequest req = new CustomerRequest();
+        req.setName("Updated");
+        when(service.update(eq(1L), any(CustomerRequest.class))).thenReturn(new Customer());
 
         mockMvc.perform(put("/api/customers/1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(c)))
+                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Updated"));
     }

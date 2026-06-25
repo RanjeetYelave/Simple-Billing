@@ -2,6 +2,7 @@ package com.billing.simple.billsoft.service;
 
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.repo.CustomerRepository;
+import com.billing.simple.billsoft.dtos.CustomerRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -78,7 +79,9 @@ class CustomerServiceTest {
         when(repo.findById(id)).thenReturn(Optional.of(existing));
         when(repo.save(existing)).thenReturn(existing);
 
-        Customer result = service.update(id, updated);
+        CustomerRequest req = new CustomerRequest();
+req.setName("New Name");
+Customer result = service.update(id, req);
 
         assertNotNull(result);
         assertEquals("New Name", result.getName());
@@ -89,7 +92,8 @@ class CustomerServiceTest {
         Long id = 1L;
         when(repo.findById(id)).thenReturn(Optional.empty());
 
-        Customer result = service.update(id, new Customer());
+        CustomerRequest req = new CustomerRequest();
+Customer result = service.update(id, req);
 
         assertNull(result);
     }

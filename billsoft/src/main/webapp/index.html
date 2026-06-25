@@ -430,7 +430,11 @@
         items: [emptyItem()]
       });
 
+      const loadedRef = useRef(false);
+
       useEffect(() => {
+        if (loadedRef.current) return;
+        loadedRef.current = true;
         Promise.all([API.customers.list(), API.products.list()])
           .then(([custs, prods]) => {
             setCustomers(custs);
@@ -719,10 +723,10 @@
                         }
                       })
                     ),
-                    React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', min: 1, style: { width: 60 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 100 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 80 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value) })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value) })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value) })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value) })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value) })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕'))
                   );

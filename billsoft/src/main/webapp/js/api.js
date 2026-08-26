@@ -4,7 +4,9 @@
  * Multi-firm support: firmId is read from localStorage and appended to queries.
  */
 const API = {
-  BASE_URL: 'http://localhost:8080',
+  // Keep all calls on the origin that served the application. This lets the
+  // browser client work on any configured local port without a desktop shell.
+  BASE_URL: window.location.origin,
 
   // current firm ID from localStorage
   get firmId() {
@@ -131,13 +133,27 @@ const API = {
     nextEstimateNumber: () => API._json(API._qs('/api/invoices/next-estimate-number')),
     downloadPdf: async (id, size = 'A4') => {
       const res = await API._request(`/api/invoices/${id}/pdf?size=${size}`);
-      return res.blob();
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
     },
     analyticsByCustomer: (id) => API._json(`/api/invoices/analytics/customer/${id}`),
     analyticsSearch: (name) => API._json(`/api/invoices/analytics/search?name=${encodeURIComponent(name)}`),
   },
 
-  // ── Firm (multi-row) ──
+  // ── Reminders ──
+  reminders: {
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/reminders'))),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/reminders', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    markDone: (id) => API._ensureFirmReady().then(() => API._json(`/api/reminders/${id}/done`, { method: 'PUT' })),
+  },
+
+  // ── Messages ──
+  messages: {
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/messages'))),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/messages', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    markRead: (id) => API._ensureFirmReady().then(() => API._json(`/api/messages/${id}/read`, { method: 'PUT' })),
+  },
+// ── Firm (multi-row) ──
   firm: {
     list: () => API._json('/api/firm'),
     get: (id) => {
@@ -152,6 +168,8 @@ const API = {
   // ── Analytics ──
   analytics: {
     firm: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/analytics/firm'))),
+    customerStats: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/analytics/customer/${id}`))),
+    productStats: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/analytics/product/${id}`))),
   },
 
   // ── Statements ──

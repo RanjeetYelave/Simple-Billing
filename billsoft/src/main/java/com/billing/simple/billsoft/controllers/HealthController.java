@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Health check endpoint for Electron desktop wrapper polling.
+ * Health check endpoint for local launchers and service monitoring.
  * Returns 200 OK as soon as the backend is ready.
  */
 @RestController

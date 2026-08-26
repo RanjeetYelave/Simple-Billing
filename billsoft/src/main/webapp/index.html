@@ -7,13 +7,19 @@
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/utils.js"></script>
+
+  <script src="js/api.js?v=3"></script>
+  <script src="js/utils.js?v=3"></script>
+
+  <!-- PDF.js for standalone cross-browser print preview without system extensions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel">
+  <script type="text/javascript">
     const { useState, useEffect, useMemo, useCallback, useRef, Fragment } = React;
 
     // ─── Toast System ───
@@ -159,6 +165,16 @@
         React.createElement('polyline', { points: '1 4 1 10 7 10' }),
         React.createElement('path', { d: 'M3.51 15a9 9 0 1 0 2.13-9.36L1 10' })
       ),
+      planner: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('rect', { x: 3, y: 4, width: 18, height: 18, rx: 2, ry: 2 }),
+        React.createElement('line', { x1: 16, y1: 2, x2: 16, y2: 6 }),
+        React.createElement('line', { x1: 8, y1: 2, x2: 8, y2: 6 }),
+        React.createElement('line', { x1: 3, y1: 10, x2: 21, y2: 10 })
+      ),
+      inbox: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '22 12 16 12 14 15 10 15 8 12 2 12' }),
+        React.createElement('path', { d: 'M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z' })
+      ),
     };
 
     // ─── SIDEBAR ───
@@ -166,16 +182,13 @@
       const [mobileOpen, setMobileOpen] = useState(false);
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
-        { id: 'invoices', label: 'Invoice/Quotation History', icon: Icons.invoice },
-        { id: 'create', label: 'Create Invoice/Quotation', icon: Icons.plus },
-        { id: 'products', label: 'Products', icon: Icons.package },
-        { id: 'customers', label: 'Customers', icon: Icons.users },
+        { id: 'invoices', label: 'Invoices & Quotes', icon: Icons.invoice },
+        { id: 'firm', label: 'Firm', icon: Icons.building },
+        { id: 'planner', label: 'Planner', icon: Icons.planner },
+        { id: 'inbox', label: 'Inbox', icon: Icons.inbox },
         { id: 'employees', label: 'Employees', icon: Icons.users },
-        { id: 'firm', label: 'Firm Profile', icon: Icons.building },
         { id: 'statements', label: 'Statements', icon: Icons.barChart },
-        { id: 'backup', label: 'Backup & Restore', icon: Icons.database },
         { id: 'settings', label: 'Settings', icon: Icons.settings },
-        { id: 'updates', label: 'Software Update', icon: Icons.update },
       ];
       const handleNav = (id) => { onNavigate(id); setMobileOpen(false); };
       return React.createElement(Fragment, null,
@@ -203,6 +216,355 @@
         )
       );
     }
+
+    // ─── FIRM PAGE ───
+    function InvoiceStatusesView({ onEditInvoice, onEditQuotation }) {
+      const [invoices, setInvoices] = useState([]);
+      const [estimates, setEstimates] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [statusFilter, setStatusFilter] = useState('ALL');
+      const [searchQuery, setSearchQuery] = useState('');
+
+      const loadData = useCallback(() => {
+        setLoading(true);
+        Promise.all([
+          API.invoices.list(0, 1000),
+          API.invoices.listEstimates(0, 1000)
+        ]).then(([invList, estList]) => {
+          setInvoices(invList);
+          setEstimates(estList);
+          setLoading(false);
+        }).catch(() => {
+          showToast('Failed to load documents', 'error');
+          setLoading(false);
+        });
+      }, []);
+
+      useEffect(() => {
+        loadData();
+      }, [loadData]);
+
+      const handleStatusChange = (id, newStatus) => {
+        const isEst = estimates.some(e => e.id === id);
+        if (isEst) {
+          setEstimates(prev => prev.map(est => est.id === id ? { ...est, status: newStatus } : est));
+        } else {
+          setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
+        }
+      };
+
+      const filteredDocs = useMemo(() => {
+        let combined = [
+          ...invoices.map(inv => ({ ...inv, docType: 'Invoice', docNumber: inv.invoiceNumber || `Inv #${inv.id}`, isEstimate: false })),
+          ...estimates.map(est => ({ ...est, docType: 'Quotation', docNumber: est.estimateNumber || `Qtn #${est.id}`, isEstimate: true }))
+        ];
+
+        if (statusFilter !== 'ALL') {
+          combined = combined.filter(doc => doc.status === statusFilter);
+        }
+
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          combined = combined.filter(doc => {
+            const num = (doc.docNumber || '').toLowerCase();
+            const cust = doc.customer && doc.customer.name ? doc.customer.name.toLowerCase() : '';
+            const date = doc.invoiceDate ? BillsoftUtils.formatDate(doc.invoiceDate).toLowerCase() : '';
+            const estDate = doc.estimateDate ? BillsoftUtils.formatDate(doc.estimateDate).toLowerCase() : '';
+            const amt = (doc.totalAmount || '').toString();
+            return num.includes(q) || cust.includes(q) || date.includes(q) || estDate.includes(q) || amt.includes(q);
+          });
+        }
+
+        combined.sort((a, b) => {
+          const da = a.invoiceDate ? new Date(a.invoiceDate).getTime() : (a.estimateDate ? new Date(a.estimateDate).getTime() : 0);
+          const db = b.invoiceDate ? new Date(b.invoiceDate).getTime() : (b.estimateDate ? new Date(b.estimateDate).getTime() : 0);
+          return db - da;
+        });
+
+        return combined;
+      }, [invoices, estimates, statusFilter, searchQuery]);
+
+      const statusOptions = [
+        { value: 'ALL', label: 'All Statuses' },
+        { value: 'DRAFT', label: 'Draft' },
+        { value: 'FINAL', label: 'Final' },
+        { value: 'SENT', label: 'Sent' },
+        { value: 'PAID', label: 'Paid' },
+        { value: 'OVERDUE', label: 'Overdue' },
+        { value: 'CANCELLED', label: 'Cancelled' },
+        { value: 'ESTIMATE', label: 'Estimate/Quotation' }
+      ];
+
+      return React.createElement('div', null,
+        React.createElement('div', { className: 'manager-header', style: { gap: 16, flexWrap: 'wrap' } },
+          React.createElement('div', { className: 'manager-search', style: { flex: 1, minWidth: 260 } },
+            React.createElement('input', { 
+              className: 'input', 
+              placeholder: 'Search by customer, date, number...', 
+              value: searchQuery, 
+              onChange: e => setSearchQuery(e.target.value) 
+            })
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+            React.createElement('select', { 
+              className: 'select', 
+              value: statusFilter, 
+              onChange: e => setStatusFilter(e.target.value),
+              style: { minWidth: 160 }
+            },
+              statusOptions.map(o => React.createElement('option', { key: o.value, value: o.value }, o.label))
+            ),
+            React.createElement('button', { className: 'btn btn-ghost', onClick: loadData }, Icons.refresh)
+          )
+        ),
+        loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
+        filteredDocs.length === 0 ? React.createElement('div', { className: 'empty-state', style: { padding: 40 } },
+          React.createElement('h3', null, 'No documents found'),
+          React.createElement('p', null, 'Try matching a different status or search filter.')
+        ) :
+        React.createElement('div', { className: 'card' },
+          React.createElement('div', { className: 'table-container' },
+            React.createElement('table', null,
+              React.createElement('thead', null,
+                React.createElement('tr', null,
+                  React.createElement('th', null, 'Type'),
+                  React.createElement('th', null, 'Number'),
+                  React.createElement('th', null, 'Customer'),
+                  React.createElement('th', null, 'Date'),
+                  React.createElement('th', null, 'Amount (₹)'),
+                  React.createElement('th', null, 'Status'),
+                  React.createElement('th', null, 'Actions')
+                )
+              ),
+              React.createElement('tbody', null,
+                filteredDocs.map(doc => React.createElement('tr', { key: `${doc.docType}-${doc.id}` },
+                  React.createElement('td', null, React.createElement('span', { className: `badge ${doc.isEstimate ? 'badge-draft' : 'badge-final'}` }, doc.docType)),
+                  React.createElement('td', { style: { fontWeight: 500 } }, doc.docNumber),
+                  React.createElement('td', null, doc.customer ? doc.customer.name : '—'),
+                  React.createElement('td', null, BillsoftUtils.formatDate(doc.invoiceDate || doc.estimateDate)),
+                  React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(doc.totalAmount)),
+                  React.createElement('td', null, React.createElement(StatusDropdown, { 
+                    invoiceId: doc.id, 
+                    currentStatus: doc.status, 
+                    isEstimate: doc.isEstimate, 
+                    onStatusChange: handleStatusChange 
+                  })),
+                  React.createElement('td', null,
+                    React.createElement('button', { 
+                      className: 'btn btn-sm btn-outline', 
+                      onClick: () => {
+                        if (doc.isEstimate) {
+                          if (onEditQuotation) onEditQuotation(doc.id);
+                        } else {
+                          if (onEditInvoice) onEditInvoice(doc.id);
+                        }
+                      } 
+                    }, 'Edit')
+                  )
+                ))
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // ─── FIRM PAGE ───
+    function FirmPage({ onFirmChanged, onEditInvoice, onEditQuotation }) {
+      const [tab, setTab] = useState('inventory');
+      return React.createElement('div', null,
+        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+          React.createElement('button', { className: `btn ${tab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, 'Inventory'),
+          React.createElement('button', { className: `btn ${tab === 'customers' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('customers') }, 'All Customers'),
+          React.createElement('button', { className: `btn ${tab === 'statuses' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('statuses') }, 'Invoice Statuses'),
+          React.createElement('button', { className: `btn ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, 'Settings / Profile')
+        ),
+        tab === 'inventory' && React.createElement(ProductManager, { key: API.firmId }),
+        tab === 'customers' && React.createElement(CustomerManager, { key: API.firmId }),
+        tab === 'statuses' && React.createElement(InvoiceStatusesView, { key: API.firmId, onEditInvoice, onEditQuotation }),
+        tab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged })
+      );
+    }
+
+    // ─── PLANNER PAGE ───
+    function PlannerPage({ reminders, onMarkDone, onOpenReminderModal, onOpenTaskModal }) {
+      const filteredReminders = reminders.filter(r => r.type !== 'task');
+      const tasks = reminders.filter(r => r.type === 'task');
+
+      return React.createElement('div', { className: 'planner-container' },
+        React.createElement('div', { className: 'planner-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 } },
+          React.createElement('div', { className: 'card planner-column' },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+              React.createElement('h3', { style: { margin: 0 } }, 'Reminders'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: onOpenReminderModal }, '+ Add Reminder')
+            ),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              filteredReminders.length > 0 ? filteredReminders.map(r =>
+                React.createElement('div', { key: r.id, className: 'planner-item', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--primary)' } },
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { fontWeight: '600' } }, r.title),
+                    r.note && React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, r.note),
+                    r.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Due: ${r.dueDate.split('T')[0]}`)
+                  ),
+                  React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => onMarkDone(r.id) }, 'Done')
+                )
+              ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No reminders found')
+            )
+          ),
+          React.createElement('div', { className: 'card planner-column' },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+              React.createElement('h3', { style: { margin: 0 } }, 'Tasks'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: onOpenTaskModal }, '+ Add Task')
+            ),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              tasks.length > 0 ? tasks.map(t =>
+                React.createElement('div', { key: t.id, className: 'planner-item', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--primary)' } },
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { fontWeight: '600' } }, t.title),
+                    t.note && React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, t.note),
+                    t.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Due: ${t.dueDate.split('T')[0]}`)
+                  ),
+                  React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => onMarkDone(t.id) }, 'Done')
+                )
+              ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No tasks found')
+            )
+          )
+        )
+      );
+    }
+
+    // ─── INBOX PAGE ───
+    function InboxPage({ messages, onSendMessage, onMarkRead }) {
+      const [selectedMessage, setSelectedMessage] = useState(null);
+      const [composeOpen, setComposeOpen] = useState(false);
+
+      const handleSelect = (msg) => {
+        setSelectedMessage(msg);
+        if (!msg.isRead) {
+          onMarkRead(msg.id);
+        }
+      };
+
+      return React.createElement('div', { className: 'inbox-container', style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, height: 'calc(100vh - 160px)' } },
+        React.createElement('div', { className: 'card inbox-list-pane', style: { display: 'flex', flexDirection: 'column', padding: 0 } },
+          React.createElement('div', { style: { padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            React.createElement('h3', { style: { margin: 0 } }, 'Inbox'),
+            React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => setComposeOpen(true) }, 'Compose')
+          ),
+          React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: 12 } },
+            messages && messages.length > 0 ? messages.map(m =>
+              React.createElement('div', {
+                key: m.id,
+                onClick: () => handleSelect(m),
+                style: {
+                  padding: '12px 16px',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  backgroundColor: selectedMessage && selectedMessage.id === m.id ? 'var(--primary-light)' : 'var(--bg-hover)',
+                  borderLeft: !m.isRead ? '4px solid var(--primary)' : 'none',
+                  fontWeight: !m.isRead ? 'bold' : 'normal'
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                  React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, m.sender || 'System'),
+                  React.createElement('span', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, m.createdAt ? m.createdAt.split('T')[0] : '')
+                ),
+                React.createElement('div', { style: { fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, m.subject || 'No Subject')
+              )
+            ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No messages')
+          )
+        ),
+        React.createElement('div', { className: 'card inbox-detail-pane', style: { padding: 24, display: 'flex', flexDirection: 'column' } },
+          selectedMessage ? React.createElement(Fragment, null,
+            React.createElement('div', { style: { borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 } },
+              React.createElement('h2', { style: { margin: '0 0 8px 0' } }, selectedMessage.subject),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
+                React.createElement('span', null, `From: ${selectedMessage.sender || 'System'}`),
+                React.createElement('span', null, selectedMessage.createdAt ? selectedMessage.createdAt.replace('T', ' ').substring(0, 19) : '')
+              )
+            ),
+            React.createElement('div', { style: { flex: 1, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: '1.6' } }, selectedMessage.body)
+          ) : React.createElement('div', { style: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } }, 'Select a message to view details')
+        ),
+        React.createElement(ComposeMessageModal, { isOpen: composeOpen, onClose: () => setComposeOpen(false), onSend: onSendMessage })
+      );
+    }
+
+    function ComposeMessageModal({ isOpen, onClose, onSend }) {
+      const [subject, setSubject] = useState('');
+      const [sender, setSender] = useState('');
+      const [body, setBody] = useState('');
+
+      const handleSubmit = () => {
+        if (!subject || !body) return;
+        onSend({ subject, sender: sender || 'System', body });
+        setSubject(''); setSender(''); setBody('');
+        onClose();
+      };
+
+      return isOpen ? React.createElement('div', { className: 'modal-overlay' },
+        React.createElement('div', { className: 'card reminder-modal', style: { maxWidth: 500 } },
+          React.createElement('h3', null, 'New Message'),
+          React.createElement('input', { type: 'text', placeholder: 'From (Sender Name)', value: sender, onChange: e => setSender(e.target.value) }),
+          React.createElement('input', { type: 'text', placeholder: 'Subject', value: subject, onChange: e => setSubject(e.target.value) }),
+          React.createElement('textarea', { placeholder: 'Message Body', rows: 6, value: body, onChange: e => setBody(e.target.value) }),
+          React.createElement('div', { className: 'modal-actions' },
+            React.createElement('button', { className: 'btn', onClick: onClose }, 'Cancel'),
+            React.createElement('button', { className: 'btn btn-primary', onClick: handleSubmit }, 'Send')
+          )
+        )
+      ) : null;
+    }
+
+    function ReminderModal({ isOpen, onClose, onCreate }) {
+      const [title, setTitle] = useState('');
+      const [note, setNote] = useState('');
+      const [dueDate, setDueDate] = useState('');
+      const handleSubmit = () => {
+        if (!title) return;
+        onCreate({ title, note, dueDate });
+        setTitle(''); setNote(''); setDueDate('');
+        onClose();
+      };
+      return isOpen ? React.createElement('div', { className: 'modal-overlay' },
+        React.createElement('div', { className: 'card reminder-modal' },
+          React.createElement('h3', null, 'New Reminder'),
+          React.createElement('input', { type: 'text', placeholder: 'Title', value: title, onChange: e => setTitle(e.target.value) }),
+          React.createElement('textarea', { placeholder: 'Note', value: note, onChange: e => setNote(e.target.value) }),
+          React.createElement('input', { type: 'date', value: dueDate, onChange: e => setDueDate(e.target.value) }),
+          React.createElement('div', { className: 'modal-actions' },
+            React.createElement('button', { className: 'btn', onClick: onClose }, 'Cancel'),
+            React.createElement('button', { className: 'btn btn-primary', onClick: handleSubmit }, 'Create')
+          )
+        )
+      ) : null;
+    }
+
+    function TaskModal({ isOpen, onClose, onCreate }) {
+      const [title, setTitle] = useState('');
+      const [note, setNote] = useState('');
+      const [dueDate, setDueDate] = useState('');
+      const handleSubmit = () => {
+        if (!title) return;
+        onCreate({ title, note, dueDate });
+        setTitle(''); setNote(''); setDueDate('');
+        onClose();
+      };
+      return isOpen ? React.createElement('div', { className: 'modal-overlay' },
+        React.createElement('div', { className: 'card reminder-modal' },
+          React.createElement('h3', null, 'New Task'),
+          React.createElement('input', { type: 'text', placeholder: 'Task title', value: title, onChange: e => setTitle(e.target.value) }),
+          React.createElement('textarea', { placeholder: 'Note', value: note, onChange: e => setNote(e.target.value) }),
+          React.createElement('input', { type: 'date', value: dueDate, onChange: e => setDueDate(e.target.value) }),
+          React.createElement('div', { className: 'modal-actions' },
+            React.createElement('button', { className: 'btn', onClick: onClose }, 'Cancel'),
+            React.createElement('button', { className: 'btn btn-primary', onClick: handleSubmit }, 'Create')
+          )
+        )
+      ) : null;
+    }
+
 
     // ─── DASHBOARD ───
     function Dashboard({ onStartUpdate }) {
@@ -236,7 +598,9 @@
             React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, 'Update Available!'),
             React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
           ),
-          React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Update')
+          updateInfo.automaticInstallSupported ?
+            React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Update') :
+            React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: 180, textAlign: 'right' } }, 'Download and installation will be available with the standalone updater.')
         ),
         React.createElement('div', { className: 'kpi-grid' }, kpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
           React.createElement('div', { className: 'kpi-icon' }, k.icon),
@@ -330,7 +694,7 @@
     }
 
     // ─── PRODUCT SEARCH INPUT ───
-    function ProductSearchInput({ products, value, onChange, onProductCreated }) {
+    function ProductSearchInput({ products, value, onChange, onProductCreated, onEnterAfterSelect }) {
       const [text, setText] = useState('');
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [highlightIdx, setHighlightIdx] = useState(-1);
@@ -365,10 +729,13 @@
         if (e.key === 'Escape') { setShowSuggestions(false); return; }
         if (e.key === 'Enter') {
           e.preventDefault();
-          if (value) return;
-          if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) { selectProduct(filtered[highlightIdx]); return; }
+          if (value) {
+            if (onEnterAfterSelect) onEnterAfterSelect();
+            return;
+          }
+          if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) { selectProduct(filtered[highlightIdx]); if (onEnterAfterSelect) setTimeout(onEnterAfterSelect, 50); return; }
           const match = products.find(p => p.name.toLowerCase() === text.trim().toLowerCase());
-          if (match) { selectProduct(match); return; }
+          if (match) { selectProduct(match); if (onEnterAfterSelect) setTimeout(onEnterAfterSelect, 50); return; }
           handleCreateNew(text);
         }
       };
@@ -382,6 +749,7 @@
           onChange(String(created.id), created);
           setText(created.name);
           showToast(`Product "${created.name}" created`, 'success');
+          if (onEnterAfterSelect) setTimeout(onEnterAfterSelect, 100);
         } catch (e) { showToast('Failed to create product', 'error'); }
         finally { setCreating(false); }
       };
@@ -408,20 +776,24 @@
     }
 
     // ─── SHARED INVOICE/QUOTATION FORM ───
-    function InvoiceForm({ editId, isQuotationMode, onSaved, convertedFromQuotationId }) {
+        function InvoiceForm({ editId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange }) {
       const [customers, setCustomers] = useState([]);
       const [products, setProducts] = useState([]);
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [preview, setPreview] = useState(null);
       const [submitDisabled, setSubmitDisabled] = useState(false);
+      const [showExtraCustomer, setShowExtraCustomer] = useState(false);
+      const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+      const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
+      
       const isEstimate = isQuotationMode;
       const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', qty: 1, unit: '', pricePerUnit: '', discountValue: 0, gstPercent: '' });
-      const [showCustomerModal, setShowCustomerModal] = useState(false);
-      const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', email: '', address: '', gstin: '' });
-      const [savingInline, setSavingInline] = useState(false);
+      
       const [form, setForm] = useState({
-        customerId: '', invoiceNumber: '', estimateNumber: '', status: isEstimate ? 'ESTIMATE' : 'FINAL',
+        customerId: '', customerName: '', customerPhone: '', customerAddress: '',
+        customerEmail: '', customerGstin: '',
+        invoiceNumber: '', estimateNumber: '', status: isEstimate ? 'ESTIMATE' : 'FINAL',
         invoiceDate: BillsoftUtils.todayStr(), dueDate: BillsoftUtils.futureDateStr(14),
         paymentMethod: 'Cash', customerNote: '', termsAndConditions: '', currency: 'INR',
         tags: '', paid: false,
@@ -431,10 +803,16 @@
       });
 
       const loadedRef = useRef(false);
-
+      const refName = useRef(null);
+      const refPhone = useRef(null);
+      const refAddress = useRef(null);
+      
       useEffect(() => {
         if (loadedRef.current) return;
         loadedRef.current = true;
+        const prevFirmId = API.firmId;
+        if (activeFirmId) API.firmId = activeFirmId;
+        
         Promise.all([API.customers.list(), API.products.list()])
           .then(([custs, prods]) => {
             setCustomers(custs);
@@ -444,52 +822,72 @@
                 const items = (inv.items || []).map(it => ({
                   _id: BillsoftUtils.generateId(),
                   productId: it.product ? String(it.product.id) : '',
-                  qty: it.qty || 1,
-                  unit: it.unit || '',
-                  pricePerUnit: it.pricePerUnit || '',
-                  discountValue: it.discountValue || 0,
-                  gstPercent: it.gstPercent || ''
+                  qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
+                  discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
                 }));
                 setForm({
                   customerId: inv.customer ? String(inv.customer.id) : '',
-                  invoiceNumber: inv.invoiceNumber || '',
-                  estimateNumber: inv.estimateNumber || '',
+                  customerName: inv.customer ? inv.customer.name : '',
+                  customerPhone: inv.customer ? (inv.customer.phone || '') : '',
+                  customerAddress: inv.customer ? (inv.customer.address || '') : '',
+                  customerEmail: inv.customer ? (inv.customer.email || '') : '',
+                  customerGstin: inv.customer ? (inv.customer.gstin || '') : '',
+                  invoiceNumber: inv.invoiceNumber || '', estimateNumber: inv.estimateNumber || '',
                   status: inv.status || (isEstimate ? 'ESTIMATE' : 'FINAL'),
                   invoiceDate: inv.invoiceDate ? inv.invoiceDate.substring(0, 10) : BillsoftUtils.todayStr(),
                   dueDate: inv.dueDate || BillsoftUtils.futureDateStr(14),
-                  paymentMethod: inv.paymentMethod || 'Cash',
-                  customerNote: inv.customerNote || '',
-                  termsAndConditions: inv.termsAndConditions || '',
-                  currency: inv.currency || 'INR',
-                  tags: inv.tags || '',
-                  paid: inv.paid || false,
+                  paymentMethod: inv.paymentMethod || 'Cash', customerNote: inv.customerNote || '',
+                  termsAndConditions: inv.termsAndConditions || '', currency: inv.currency || 'INR',
+                  tags: inv.tags || '', paid: inv.paid || false,
                   invoiceDiscount: inv.invoiceDiscountType ? { type: inv.invoiceDiscountType, value: inv.invoiceDiscountValue || '' } : { type: 'PERCENT', value: '' },
                   roundOff: !!inv.roundOff,
                   items: items.length ? items : [emptyItem()]
                 });
               });
+            } else if (convertedFromQuotationId) {
+              return API.invoices.get(convertedFromQuotationId).then(async (q) => {
+                const items = (q.items || []).map(it => ({
+                  _id: BillsoftUtils.generateId(),
+                  productId: it.product ? String(it.product.id) : '',
+                  qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
+                  discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
+                }));
+                const nextNum = await API.invoices.nextInvoiceNumber();
+                setForm({
+                  customerId: q.customer ? String(q.customer.id) : '',
+                  customerName: q.customer ? q.customer.name : '',
+                  customerPhone: q.customer ? (q.customer.phone || '') : '',
+                  customerAddress: q.customer ? (q.customer.address || '') : '',
+                  customerEmail: q.customer ? (q.customer.email || '') : '',
+                  customerGstin: q.customer ? (q.customer.gstin || '') : '',
+                  invoiceNumber: nextNum || '', estimateNumber: '',
+                  status: 'FINAL',
+                  invoiceDate: BillsoftUtils.todayStr(),
+                  dueDate: BillsoftUtils.futureDateStr(14),
+                  paymentMethod: q.paymentMethod || 'Cash', customerNote: q.customerNote || '',
+                  termsAndConditions: q.termsAndConditions || '', currency: q.currency || 'INR',
+                  tags: q.tags || '', paid: false,
+                  invoiceDiscount: q.invoiceDiscountType ? { type: q.invoiceDiscountType, value: q.invoiceDiscountValue || '' } : { type: 'PERCENT', value: '' },
+                  roundOff: !!q.roundOff,
+                  items: items.length ? items : [emptyItem()]
+                });
+              });
             } else {
-              if (isEstimate) {
-                return API.invoices.nextEstimateNumber().then(n => setForm(f => ({ ...f, estimateNumber: n }))).catch(() => {});
-              } else {
-                return API.invoices.nextInvoiceNumber().then(n => setForm(f => ({ ...f, invoiceNumber: n }))).catch(() => {});
-              }
+              if (isEstimate) { return API.invoices.nextEstimateNumber().then(n => setForm(f => ({ ...f, estimateNumber: n }))).catch(() => {}); }
+              else { return API.invoices.nextInvoiceNumber().then(n => setForm(f => ({ ...f, invoiceNumber: n }))).catch(() => {}); }
             }
           })
           .catch(e => { showToast('Failed to load data', 'error'); })
-          .finally(() => setLoading(false));
-      }, [editId, isEstimate]);
+          .finally(() => {
+            setLoading(false);
+            if (activeFirmId) API.firmId = prevFirmId;
+          });
+      }, [editId, isEstimate, activeFirmId, convertedFromQuotationId]);
 
       const updateItem = (idx, field, value, product) => {
         const items = [...form.items];
         if (field === 'productId' && product) {
-          items[idx] = {
-            ...items[idx],
-            productId: value,
-            pricePerUnit: product.price || '',
-            unit: product.unit || '',
-            gstPercent: product.gstPercentage || ''
-          };
+          items[idx] = { ...items[idx], productId: value, pricePerUnit: product.price || '', unit: product.unit || '', gstPercent: product.gstPercentage || '' };
         } else {
           items[idx] = { ...items[idx], [field]: value };
         }
@@ -512,187 +910,228 @@
           const gstPct = parseFloat(item.gstPercent) || 0;
           gstTotal += taxable * gstPct / 100;
         });
-        if (isNaN(subtotal)) subtotal = 0;
-        if (isNaN(itemDisc)) itemDisc = 0;
-        if (isNaN(gstTotal)) gstTotal = 0;
-        let taxableTotal = subtotal - itemDisc;
-        if (taxableTotal < 0) taxableTotal = 0;
+        let taxableTotal = Math.max(0, subtotal - itemDisc);
         let invDiscAmt = 0;
         if (form.invoiceDiscount.value) {
           const val = parseFloat(form.invoiceDiscount.value) || 0;
-          if (form.invoiceDiscount.type === 'PERCENT') invDiscAmt = taxableTotal * val / 100;
-          else invDiscAmt = val;
+          invDiscAmt = form.invoiceDiscount.type === 'PERCENT' ? taxableTotal * val / 100 : val;
         }
-        if (isNaN(invDiscAmt)) invDiscAmt = 0;
         const finalTaxable = Math.max(0, taxableTotal - invDiscAmt);
-        let grand, gstOnFinal;
-        if (taxableTotal > 0) {
-          gstOnFinal = (gstTotal / taxableTotal) * finalTaxable;
-        } else {
-          gstOnFinal = 0;
-        }
-        if (isNaN(gstOnFinal)) gstOnFinal = 0;
-        grand = finalTaxable + gstOnFinal;
+        const gstOnFinal = taxableTotal > 0 ? (gstTotal / taxableTotal) * finalTaxable : 0;
+        let grand = finalTaxable + gstOnFinal;
         let roundOffVal = 0;
-        if (form.roundOff) {
-          const rounded = Math.round(grand);
-          roundOffVal = rounded - grand;
-          grand = rounded;
-        }
-        return {
-          subtotal, itemDiscount: itemDisc, invoiceDiscount: invDiscAmt,
-          totalDiscount: itemDisc + invDiscAmt,
-          taxableAmount: finalTaxable,
-          gstAmount: gstOnFinal,
-          roundOff: roundOffVal,
-          totalAmount: grand
-        };
+        if (form.roundOff) { const rounded = Math.round(grand); roundOffVal = rounded - grand; grand = rounded; }
+        return { subtotal, itemDiscount: itemDisc, invoiceDiscount: invDiscAmt, totalDiscount: itemDisc + invDiscAmt, taxableAmount: finalTaxable, gstAmount: gstOnFinal, roundOff: roundOffVal, totalAmount: grand };
       }, [form.items, form.invoiceDiscount, form.roundOff]);
 
-      const buildRequest = () => {
-        const validItems = form.items
-          .filter(it => it.productId && it.productId.toString().trim() !== '')
-          .map(it => ({
-            productId: parseInt(it.productId),
-            qty: parseInt(it.qty) || 1,
-            unit: it.unit || undefined,
+      const handleSave = async (andPrint = false, keepOpen = false) => {
+        if (submitDisabled) return;
+        if (!form.customerName) { showToast('Customer Name is mandatory', 'error'); return; }
+        const validItems = form.items.filter(it => it.productId || it.pricePerUnit > 0);
+        if (validItems.length === 0) { showToast('Please add at least one product item', 'error'); return; }
+        
+        setSaving(true);
+        setSubmitDisabled(true);
+        
+        const prevFirmId = API.firmId;
+        if (activeFirmId) API.firmId = activeFirmId;
+
+        try {
+          let finalCustId = form.customerId;
+          if (!finalCustId) {
+             const created = await API.customers.create({ name: form.customerName, phone: form.customerPhone || null, address: form.customerAddress || null, email: form.customerEmail || null, gstin: form.customerGstin || null });
+             finalCustId = created.id;
+             setCustomers(prev => [...prev, created]);
+             setForm(f => ({ ...f, customerId: String(created.id) }));
+          }
+
+          const reqItems = validItems.map(it => ({
+            productId: it.productId ? parseInt(it.productId) : undefined,
+            productName: !it.productId ? "Custom Item" : undefined,
+            qty: parseInt(it.qty) || 1, unit: it.unit || undefined,
             pricePerUnit: parseFloat(it.pricePerUnit) || 0,
             discountValue: parseFloat(it.discountValue) || 0,
             gstPercent: parseFloat(it.gstPercent) || undefined,
           }));
-        return {
-          customerId: form.customerId ? parseInt(form.customerId) : undefined,
-          items: validItems,
-          invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
-          estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
-          status: isEstimate ? 'ESTIMATE' : (form.status || 'FINAL'),
-          invoiceDate: form.invoiceDate || undefined,
-          dueDate: form.dueDate || undefined,
-          paymentMethod: form.paymentMethod || undefined,
-          customerNote: form.customerNote || undefined,
-          termsAndConditions: form.termsAndConditions || undefined,
-          currency: form.currency,
-          paid: form.paid,
-          tags: form.tags || undefined,
-          invoiceDiscount: form.invoiceDiscount.value ? form.invoiceDiscount : undefined,
-          roundOff: form.roundOff || undefined,
-        };
-      };
 
-      const handlePreview = async () => {
-        try {
-          const result = await API.invoices.preview(buildRequest());
-          setPreview(result);
-        } catch (e) { showToast(e.message || 'Preview failed', 'error'); }
-      };
+          const req = {
+            customerId: parseInt(finalCustId), items: reqItems,
+            invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
+            estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
+            status: isEstimate ? 'ESTIMATE' : (form.status || 'FINAL'),
+            invoiceDate: form.invoiceDate || undefined, dueDate: form.dueDate || undefined,
+            paymentMethod: form.paymentMethod || undefined, customerNote: form.customerNote || undefined,
+            termsAndConditions: form.termsAndConditions || undefined, currency: form.currency,
+            paid: form.paid, tags: form.tags || undefined,
+            invoiceDiscount: form.invoiceDiscount.value ? form.invoiceDiscount : undefined,
+            roundOff: form.roundOff || undefined,
+            convertedInvoiceId: convertedFromQuotationId || undefined,
+          };
 
-      const handleSave = async () => {
-        if (submitDisabled) return;
-        if (!form.customerId) { showToast('Please select a customer', 'error'); return; }
-        const req = buildRequest();
-        if (req.items.length === 0) { showToast('Please add at least one product item', 'error'); return; }
-        setSaving(true);
-        setSubmitDisabled(true);
-        try {
+          let savedInv;
           if (editId) {
-            await API.invoices.update(editId, req);
+            savedInv = await API.invoices.update(editId, req);
             showToast(isEstimate ? 'Quotation updated' : 'Invoice updated', 'success');
           } else if (isEstimate) {
-            await API.invoices.createEstimate(req);
+            savedInv = await API.invoices.createEstimate(req);
             showToast('Quotation created', 'success');
           } else {
-            await API.invoices.create(req);
+            savedInv = await API.invoices.create(req);
             showToast('Invoice created', 'success');
           }
-          if (onSaved) onSaved();
-        } catch (e) { showToast(e.message || 'Save failed', 'error'); setSubmitDisabled(false); }
-        finally { setSaving(false); }
+          
+          setCreatedInvoiceId(savedInv.id);
+
+          if (andPrint) {
+             try {
+               const blob = await API.invoices.downloadPdf(savedInv.id); 
+               BillsoftUtils.printBlob(blob);
+             } catch(e) {
+               console.error('Print failed:', e);
+               showToast('Print failed', 'error');
+             }
+          }
+
+          if (!keepOpen && onSaved) {
+            onSaved();
+          } else {
+            setShowCompletionPopup(false);
+          }
+        } catch (e) { 
+          showToast(e.message || 'Save failed', 'error'); 
+        } finally { 
+          setSubmitDisabled(false);
+          setSaving(false); 
+          if (activeFirmId) API.firmId = prevFirmId;
+        }
+      };
+      
+      const handleCustomerSelect = (e) => {
+        const id = e.target.value;
+        if (!id) {
+          setForm(f => ({ ...f, customerId: '', customerName: '', customerPhone: '', customerAddress: '', customerEmail: '', customerGstin: '' }));
+          return;
+        }
+        const c = customers.find(x => String(x.id) === id);
+        if (c) {
+          setForm(f => ({ ...f, customerId: id, customerName: c.name, customerPhone: c.phone || '', customerAddress: c.address || '', customerEmail: c.email || '', customerGstin: c.gstin || '' }));
+        }
+      };
+
+      const handleKeyDown = (e, nextRef) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (nextRef && nextRef.current) nextRef.current.focus();
+          else if (nextRef === 'first-item') {
+            const el = document.querySelector('.invoice-items-table input');
+            if (el) el.focus();
+          }
+        }
+      };
+
+      const handleTabCompletion = (e) => {
+         if (e.key === 'Tab' && !e.shiftKey) {
+             e.preventDefault();
+             setShowCompletionPopup(true);
+         }
       };
 
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading form...'));
-      if (preview) return React.createElement(PreviewInvoice, { data: preview, onBack: () => setPreview(null), onSave: handleSave, saving });
 
-      return React.createElement('div', { className: 'invoice-form' },
-        React.createElement('div', { className: 'invoice-form-header' },
-          React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Customer'),
-            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
-              React.createElement('select', { className: 'select', style: { flex: 1 }, value: form.customerId, onChange: e => setForm(f => ({ ...f, customerId: e.target.value })) },
-                React.createElement('option', { value: '' }, '— Select Customer —'),
-                customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
-              ),
-              React.createElement('button', { className: 'btn btn-sm btn-primary-outline', style: { whiteSpace: 'nowrap' }, onClick: () => { setNewCustomerForm({ name: '', phone: '', email: '', address: '', gstin: '' }); setShowCustomerModal(true); } }, '+ New')
+      return React.createElement('div', { className: 'invoice-form', style: { paddingBottom: 100 } },
+        
+        showCompletionPopup && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCompletionPopup(false) },
+          React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
+            React.createElement('div', { className: 'modal-header' },
+              React.createElement('div', { className: 'modal-title' }, 'Complete Invoice'),
+              React.createElement('button', { className: 'modal-close', onClick: () => setShowCompletionPopup(false) }, '✕')
             ),
-            showCustomerModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCustomerModal(false) },
-              React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
-                React.createElement('div', { className: 'modal-header' },
-                  React.createElement('div', { className: 'modal-title' }, 'Add Customer'),
-                  React.createElement('button', { className: 'modal-close', onClick: () => setShowCustomerModal(false) }, '✕')
-                ),
-                React.createElement('div', { className: 'modal-body' },
-                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-                    React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Name *'),
-                      React.createElement('input', { className: 'input', value: newCustomerForm.name, onChange: e => setNewCustomerForm(f => ({ ...f, name: e.target.value })) })),
-                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                      React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Phone'),
-                        React.createElement('input', { className: 'input', value: newCustomerForm.phone, onChange: e => setNewCustomerForm(f => ({ ...f, phone: e.target.value })) })),
-                      React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Email'),
-                        React.createElement('input', { className: 'input', type: 'email', value: newCustomerForm.email, onChange: e => setNewCustomerForm(f => ({ ...f, email: e.target.value })) }))
-                    ),
-                    React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Address'),
-                      React.createElement('textarea', { className: 'textarea', value: newCustomerForm.address, onChange: e => setNewCustomerForm(f => ({ ...f, address: e.target.value })) })),
-                    React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'GSTIN'),
-                      React.createElement('input', { className: 'input', value: newCustomerForm.gstin, onChange: e => setNewCustomerForm(f => ({ ...f, gstin: e.target.value })) }))
-                  )
-                ),
-                React.createElement('div', { className: 'modal-footer' },
-                  React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowCustomerModal(false) }, 'Cancel'),
-                  React.createElement('button', { className: 'btn btn-primary', disabled: savingInline || !newCustomerForm.name, onClick: async () => {
-                    if (!newCustomerForm.name) return;
-                    setSavingInline(true);
-                    try {
-                      const body = { name: newCustomerForm.name, phone: newCustomerForm.phone || null, email: newCustomerForm.email || null, address: newCustomerForm.address || null, gstin: newCustomerForm.gstin || null };
-                      const created = await API.customers.create(body);
-                      setCustomers(prev => [...prev, created]);
-                      setForm(f => ({ ...f, customerId: String(created.id) }));
-                      setShowCustomerModal(false);
-                      showToast('Customer created', 'success');
-                    } catch (e) { showToast('Failed to create customer', 'error'); }
-                    finally { setSavingInline(false); }
-                  } }, savingInline ? 'Saving...' : 'Save')
-                )
-              )
-            ),
-            React.createElement('div', { style: { marginTop: 12 } },
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, isEstimate ? 'Quotation Number' : 'Invoice Number'),
-              React.createElement('input', { className: 'input', value: isEstimate ? (form.estimateNumber || 'Auto') : (form.invoiceNumber || 'Auto'), onChange: e => { if (isEstimate) setForm(f => ({ ...f, estimateNumber: e.target.value })); else setForm(f => ({ ...f, invoiceNumber: e.target.value })); }, placeholder: isEstimate ? 'QTN-0001' : 'INV-0001' })
-            )
-          ),
-          React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Details'),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-              React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
-                React.createElement('input', { className: 'input', type: 'date', value: form.invoiceDate, onChange: e => setForm(f => ({ ...f, invoiceDate: e.target.value })) })),
-              React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
-                React.createElement('input', { className: 'input', type: 'date', value: form.dueDate, onChange: e => setForm(f => ({ ...f, dueDate: e.target.value })) })),
-              React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment Method'),
-                React.createElement('select', { className: 'select', value: form.paymentMethod, onChange: e => setForm(f => ({ ...f, paymentMethod: e.target.value })) },
-                  ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Credit Card'].map(m => React.createElement('option', { key: m, value: m }, m)))),
-              React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags'),
-                React.createElement('input', { className: 'input', placeholder: 'comma,separated', value: form.tags, onChange: e => setForm(f => ({ ...f, tags: e.target.value })) }))
+            React.createElement('div', { className: 'modal-body', style: { display: 'flex', gap: 16, flexDirection: 'column' } },
+               React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false) }, 'Save & Exit'),
+               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => handleSave(true, false) }, 'Save & Print'),
+               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => { handleSave(false, true); setTimeout(() => window.location.reload(), 1000); } }, 'Save & Create Another')
             )
           )
         ),
+
+        React.createElement('div', { className: 'invoice-form-header', style: { display: 'flex', gap: 20, alignItems: 'flex-start' } },
+          
+          React.createElement('div', { className: 'card', style: { flex: 2 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+              React.createElement('div', { className: 'card-title' }, 'Customer Details'),
+              React.createElement('select', { className: 'select', value: form.customerId, onChange: handleCustomerSelect, style: { width: 180, fontSize: '0.85rem' } },
+                React.createElement('option', { value: '' }, 'Or select existing...'),
+                customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+               React.createElement('div', null, 
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Name *'),
+                  React.createElement('input', { ref: refName, className: 'input', value: form.customerName, onChange: e => setForm(f => ({ ...f, customerName: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refPhone), placeholder: 'Enter Name' })
+               ),
+               React.createElement('div', null, 
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Mobile'),
+                  React.createElement('input', { ref: refPhone, className: 'input', value: form.customerPhone, onChange: e => setForm(f => ({ ...f, customerPhone: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refAddress), placeholder: 'Enter Mobile' })
+               ),
+               React.createElement('div', null, 
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Address'),
+                  React.createElement('input', { ref: refAddress, className: 'input', value: form.customerAddress, onChange: e => setForm(f => ({ ...f, customerAddress: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, 'first-item'), placeholder: 'Enter Address' })
+               )
+            ),
+            React.createElement('div', { style: { marginTop: 12 } },
+              React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setShowExtraCustomer(!showExtraCustomer) }, showExtraCustomer ? '− Hide Extra Details' : '+ Add More Details')
+            ),
+            showExtraCustomer && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' } },
+               React.createElement('div', null, 
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Email'),
+                  React.createElement('input', { className: 'input', value: form.customerEmail, onChange: e => setForm(f => ({ ...f, customerEmail: e.target.value, customerId: '' })) })
+               ),
+               React.createElement('div', null, 
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'GSTIN'),
+                  React.createElement('input', { className: 'input', value: form.customerGstin, onChange: e => setForm(f => ({ ...f, customerGstin: e.target.value, customerId: '' })) })
+               )
+            )
+          ),
+
+          React.createElement('div', { className: 'card', style: { flex: 1, minWidth: 300 } },
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Invoice Details'),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr', gap: 12 } },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, 
+                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Billing Firm'),
+                 React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                   onTypeChange && !editId && React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: isQuotationMode ? 'quotation' : 'invoice', onChange: e => { setForm(f => ({ ...f, status: e.target.value === 'quotation' ? 'ESTIMATE' : 'FINAL' })); onTypeChange(e.target.value); } },
+                     React.createElement('option', { value: 'invoice' }, 'Invoice'),
+                     React.createElement('option', { value: 'quotation' }, 'Quotation')
+                   ),
+                   React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: activeFirmId || API.firmId, onChange: e => onFirmChange(e.target.value) },
+                      firms && firms.map(f => React.createElement('option', { key: f.id, value: String(f.id) }, f.firmName))
+                   )
+                 )
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 12 } },
+                React.createElement('div', { style: { flex: 1 } }, 
+                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
+                   React.createElement('input', { className: 'input', type: 'date', value: form.invoiceDate, onChange: e => setForm(f => ({ ...f, invoiceDate: e.target.value })) })
+                ),
+                React.createElement('div', { style: { flex: 1 } }, 
+                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
+                   React.createElement('input', { className: 'input', type: 'date', value: form.dueDate, onChange: e => setForm(f => ({ ...f, dueDate: e.target.value })) })
+                )
+              )
+            )
+          )
+        ),
+        
         React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
           React.createElement('div', { className: 'card-header' },
             React.createElement('div', { className: 'card-title' }, 'Line Items'),
             React.createElement('button', { className: 'btn btn-sm btn-primary-outline', onClick: addItem }, '+ Add Row')
           ),
-          React.createElement('div', { className: 'table-container' },
+          React.createElement('div', { className: 'table-container', style: { overflow: 'visible' } },
             React.createElement('table', { className: 'invoice-items-table' },
               React.createElement('thead', null,
                 React.createElement('tr', null,
-                  React.createElement('th', null, 'Product'),
+                  React.createElement('th', { style: { width: '35%' } }, 'Product'),
                   React.createElement('th', null, 'Qty'),
                   React.createElement('th', null, 'Price'),
                   React.createElement('th', null, 'Disc'),
@@ -712,6 +1151,7 @@
                   const taxable = Math.max(0, amt - clampedDisc);
                   const gstAmt = taxable * gst / 100;
                   const lineTotal = taxable + gstAmt;
+                  const isLast = idx === form.items.length - 1;
                   return React.createElement('tr', { key: item._id },
                     React.createElement('td', null,
                       React.createElement(ProductSearchInput, {
@@ -720,21 +1160,28 @@
                         onProductCreated: (created) => {
                           setProducts(prev => [...prev, created]);
                           updateItem(idx, 'productId', String(created.id), created);
+                        },
+                        onEnterAfterSelect: () => {
+                           const row = document.querySelectorAll('.invoice-items-table tbody tr')[idx];
+                           if (row) { const inputs = row.querySelectorAll('input'); if (inputs[1]) inputs[1].focus(); }
                         }
                       })
                     ),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value) })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value) })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value), onKeyDown: e => { if (e.key === 'Tab' && isLast) { handleTabCompletion(e); } else if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
-                    React.createElement('td', null, React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕'))
+                    React.createElement('td', null, 
+                       React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
+                    )
                   );
                 })
               )
             )
           )
         ),
+        
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24, marginBottom: 24 } },
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Notes & Terms'),
@@ -748,11 +1195,11 @@
             React.createElement('div', { style: { margin: '8px 0' } },
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Invoice Discount'),
               React.createElement('div', { style: { display: 'flex', gap: 8 } },
-                React.createElement('select', { className: 'select', style: { width: 100 }, value: form.invoiceDiscount.type, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, type: e.target.value } })) },
+                React.createElement('select', { className: 'select', style: { width: 80 }, value: form.invoiceDiscount.type, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, type: e.target.value } })) },
                   React.createElement('option', { value: 'PERCENT' }, '%'),
                   React.createElement('option', { value: 'VALUE' }, '₹')
                 ),
-                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value } })) })
+                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value } }) ) })
               )
             ),
             calcTotals.invoiceDiscount > 0 && createSumRow('Invoice Disc.', -calcTotals.invoiceDiscount),
@@ -771,10 +1218,13 @@
             )
           )
         ),
-        React.createElement('div', { className: 'form-actions' },
-          React.createElement('button', { className: 'btn btn-outline', onClick: handlePreview }, 'Preview'),
-          React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: handleSave, disabled: saving || submitDisabled },
-            saving ? 'Saving...' : (editId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : 'Save Invoice')))
+        React.createElement('div', { className: 'form-actions', style: { position: 'fixed', bottom: 0, right: 0, left: 240, padding: '12px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)', zIndex: 100, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          React.createElement('div', { style: { fontSize: '0.9rem', color: 'var(--text-secondary)' } }, 'Press TAB on last item row to finish'),
+          React.createElement('div', { style: { display: 'flex', gap: 12 } },
+             React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowCompletionPopup(true) }, 'Options...'),
+             React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false), disabled: saving || submitDisabled },
+               saving ? 'Saving...' : (editId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : 'Save Invoice')))
+          )
         )
       );
     }
@@ -833,6 +1283,41 @@
       );
     }
 
+    function StatusDropdown({ invoiceId, currentStatus, isEstimate, onStatusChange }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const [saving, setSaving] = useState(false);
+
+      const statuses = isEstimate
+        ? ['ESTIMATE', 'SENT', 'CANCELLED']
+        : ['DRAFT', 'FINAL', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
+
+      const handleSelect = async (e) => {
+        const newStatus = e.target.value;
+        if (newStatus === currentStatus) return;
+        setSaving(true);
+        try {
+          await API.invoices.updateStatus(invoiceId, newStatus);
+          showToast('Status updated', 'success');
+          if (onStatusChange) onStatusChange(invoiceId, newStatus);
+        } catch (e) {
+          console.error(e);
+          showToast('Failed to update status', 'error');
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      return React.createElement('select', { 
+        className: `badge ${BillsoftUtils.getStatusClass(currentStatus)}`,
+        value: currentStatus,
+        onChange: handleSelect,
+        disabled: saving,
+        style: { cursor: saving ? 'wait' : 'pointer', border: 'none', appearance: 'none', textAlign: 'center', fontSize: '0.8rem', padding: '2px 8px' }
+      },
+        statuses.map(s => React.createElement('option', { key: s, value: s }, BillsoftUtils.getStatusLabel(s)))
+      );
+    }
+
     // ─── INVOICE LIST ───
     function InvoiceList({ onEditInvoice }) {
       const [invoices, setInvoices] = useState([]);
@@ -840,7 +1325,6 @@
       const [search, setSearch] = useState('');
       const [sortField, setSortField] = useState('date');
       const [sortDir, setSortDir] = useState('desc');
-      const [convertingId, setConvertingId] = useState(null);
       const [page, setPage] = useState(0);
       const pageSize = 50;
       const load = useCallback(() => {
@@ -848,6 +1332,9 @@
         API.invoices.listFinal(page, pageSize).then(d => { setInvoices(d); setLoading(false); }).catch(() => { showToast('Failed to load invoices', 'error'); setLoading(false); });
       }, [page]);
       useEffect(() => { load(); }, [load]);
+      const handleStatusChange = (id, newStatus) => {
+        setInvoices(invoices.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
+      };
       const toggleSort = (field) => {
         if (sortField === field) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
         else { setSortField(field); setSortDir('desc'); }
@@ -872,6 +1359,14 @@
       const handleDelete = (id) => { if (!confirm('Delete this invoice?')) return; API.invoices.delete(id).then(() => { showToast('Invoice deleted', 'success'); load(); }).catch(() => showToast('Delete failed', 'error')); };
       const handleMarkPaid = (id) => { API.invoices.markPaid(id, true).then(() => { showToast('Marked as paid', 'success'); load(); }).catch(() => showToast('Failed to update', 'error')); };
       const handleDownloadPdf = async (id) => { try { const blob = await API.invoices.downloadPdf(id); BillsoftUtils.downloadBlob(blob, `invoice-${id}.pdf`); } catch (e) { showToast('PDF download failed', 'error'); } };
+      const handlePrintPdf = async (id) => {
+        try {
+          const blob = await API.invoices.downloadPdf(id);
+          BillsoftUtils.printBlob(blob);
+        } catch (e) {
+          showToast('Print failed', 'error');
+        }
+      };
       const sortOptions = [
         { value: 'date|desc', label: 'Newest First' },
         { value: 'date|asc', label: 'Oldest First' },
@@ -924,19 +1419,20 @@
                   React.createElement('td', null, inv.customer ? inv.customer.name : '—'),
                   React.createElement('td', null, BillsoftUtils.formatDate(inv.invoiceDate)),
                   React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
-                  React.createElement('td', null, React.createElement('span', { className: `badge ${BillsoftUtils.getStatusClass(inv.status)}` }, React.createElement('span', { className: 'badge-dot' }), BillsoftUtils.getStatusLabel(inv.status))),
+                  React.createElement('td', null, React.createElement(StatusDropdown, { invoiceId: inv.id, currentStatus: inv.status, isEstimate: false, onStatusChange: handleStatusChange })),
                   React.createElement('td', null,
                     React.createElement('div', { className: 'action-buttons' },
-                      React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'View/Edit', onClick: () => onEditInvoice(inv.id) }, Icons.eye),
-                      React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Download PDF', onClick: () => handleDownloadPdf(inv.id) }, Icons.download),
-                      inv.status !== 'PAID' && inv.status !== 'CANCELLED' && React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Mark Paid', onClick: () => handleMarkPaid(inv.id) }, Icons.check),
-                      React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(inv.id) }, Icons.trash)
+                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditInvoice(inv.id) }, 'Edit'),
+                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(inv.id) }, 'Print'),
+                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(inv.id) }, 'PDF'),
+                      React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(inv.id) }, 'Del')
                     )
                   )
                 ))
               )
             )
           )
+        )
         )
       );
     }
@@ -995,8 +1491,19 @@
         });
         return result;
       }, [quotations, search, sortField, sortDir]);
+      const handleStatusChange = (id, newStatus) => {
+        setQuotations(quotations.map(q => q.id === id ? { ...q, status: newStatus } : q));
+      };
       const handleDelete = (id) => { if (!confirm('Delete this quotation?')) return; API.invoices.delete(id).then(() => { showToast('Quotation deleted', 'success'); load(); }).catch(() => showToast('Delete failed', 'error')); };
       const handleDownloadPdf = async (id) => { try { const blob = await API.invoices.downloadPdf(id); BillsoftUtils.downloadBlob(blob, `quotation-${id}.pdf`); } catch (e) { showToast('PDF download failed', 'error'); } };
+      const handlePrintPdf = async (id) => {
+        try {
+          const blob = await API.invoices.downloadPdf(id);
+          BillsoftUtils.printBlob(blob);
+        } catch (e) {
+          showToast('Print failed', 'error');
+        }
+      };
       const handleConvertToInvoice = async (quotation) => {
         if (quotation.convertedInvoiceId) { showToast('Already converted', 'warning'); return; }
         if (onConvertToInvoice) onConvertToInvoice(quotation);
@@ -1043,14 +1550,15 @@
                     React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(q.totalAmount)),
                     React.createElement('td', null, isConverted
                       ? React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af' } }, 'Converted')
-                      : React.createElement('span', { className: `badge ${BillsoftUtils.getStatusClass(q.status)}` }, React.createElement('span', { className: 'badge-dot' }), BillsoftUtils.getStatusLabel(q.status))
+                      : React.createElement(StatusDropdown, { invoiceId: q.id, currentStatus: q.status, isEstimate: true, onStatusChange: handleStatusChange })
                     ),
                     React.createElement('td', null,
                       React.createElement('div', { className: 'action-buttons' },
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, Icons.eye),
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, Icons.download),
-                        !isConverted && React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Convert to Invoice', style: { color: 'var(--primary)' }, onClick: () => handleConvertToInvoice(q), disabled: convertingId === q.id }, convertingId === q.id ? '...' : Icons.rotateCcw),
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(q.id) }, Icons.trash)
+                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, 'Edit'),
+                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(q.id) }, 'Print'),
+                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, 'PDF'),
+                        !isConverted && React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Convert to Invoice', style: { color: 'var(--primary)' }, onClick: () => handleConvertToInvoice(q), disabled: convertingId === q.id }, convertingId === q.id ? '...' : 'Convert'),
+                        React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(q.id) }, 'Del')
                       ),
                       isConverted && React.createElement('div', { style: { marginTop: 4, fontSize: '0.75rem', color: 'var(--primary)' } },
                         `Converted to Invoice ${linkedInv ? linkedInv.invoiceNumber : ''}`,
@@ -1185,7 +1693,18 @@
                   analytics && analytics.customerId === c.id && React.createElement('tr', null,
                     React.createElement('td', { colSpan: 5 },
                       React.createElement('div', { className: 'customer-analytics' },
-                        React.createElement('strong', null, `${c.name} - Analytics`),
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                          React.createElement('strong', null, `${c.name} - Analytics`),
+                          React.createElement('button', {
+                            className: 'btn btn-sm btn-outline',
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              API.statements.customerPdf(c.id)
+                                .then(blob => BillsoftUtils.downloadBlob(blob, `statement-customer-${c.name}.pdf`))
+                                .catch(() => showToast('Failed to download statement', 'error'));
+                            }
+                          }, 'Download PDF Statement')
+                        ),
                         React.createElement('div', { className: 'customer-analytics-grid' },
                           React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalBusiness))),
                           React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPaid))),
@@ -1231,6 +1750,7 @@
       const [data, setData] = useState(null);
       const [showCreateModal, setShowCreateModal] = useState(false);
       const [newFirmName, setNewFirmName] = useState('');
+      const tableRef = useRef(null);
       const loadFirms = () => {
         API.firm.list().then(firms => {
           setFirms(firms);
@@ -1284,7 +1804,7 @@
           React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Firms'), React.createElement('button', { className: 'btn btn-primary', onClick: () => setShowCreateModal(true) }, '+ New Firm')),
           React.createElement('div', null,
             firms.length === 0 ? React.createElement('p', { style: { color: 'var(--text-secondary)', padding: 12 } }, 'No firms. Create one to get started.')
-            : React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, firms.map(f => React.createElement('div', { key: f.id, className: `firm-chip${selectedFirmId === f.id ? ' active' : ''}`, onClick: () => handleSwitchFirm(f.id), style: { padding: '10px 16px', borderRadius: 'var(--radius)', border: selectedFirmId === f.id ? '2px solid var(--primary)' : '1px solid var(--border)', background: selectedFirmId === f.id ? 'var(--primary-light)' : 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'var(--transition)' } },
+            : React.createElement('div', { ref: tableRef, style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, firms.map(f => React.createElement('div', { key: f.id, className: `firm-chip${selectedFirmId === f.id ? ' active' : ''}`, onClick: () => handleSwitchFirm(f.id), style: { padding: '10px 16px', borderRadius: 'var(--radius)', border: selectedFirmId === f.id ? '2px solid var(--primary)' : '1px solid var(--border)', background: selectedFirmId === f.id ? 'var(--primary-light)' : 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'var(--transition)' } },
               React.createElement('div', { style: { width: 32, height: 32, borderRadius: '50%', background: selectedFirmId === f.id ? 'var(--primary)' : 'var(--border)', color: selectedFirmId === f.id ? 'white' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 } }, (f.firmName || '?').charAt(0).toUpperCase()),
               React.createElement('div', null, React.createElement('div', { style: { fontWeight: 500, fontSize: '0.9rem' } }, f.firmName || 'Unnamed'), React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, selectedFirmId === f.id ? 'Active' : 'Click to switch')),
               firms.length > 1 && React.createElement('button', { style: { marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '4px', fontSize: '0.8rem', opacity: 0.7 }, onClick: (e) => { e.stopPropagation(); handleDeleteFirm(f.id); }, title: 'Delete firm' }, '✕')
@@ -1634,6 +2154,22 @@
       );
     }
 
+    function SettingsHub({ onFirmChanged, onStartUpdate }) {
+      const [tab, setTab] = useState('general');
+      return React.createElement('div', null,
+        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+          React.createElement('button', { className: `btn ${tab === 'general' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('general') }, 'General & Security'),
+          React.createElement('button', { className: `btn ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, 'Firm Profile'),
+          React.createElement('button', { className: `btn ${tab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, 'Backup & Restore'),
+          React.createElement('button', { className: `btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('updates') }, 'Software Update')
+        ),
+        tab === 'general' && React.createElement(Settings, null),
+        tab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
+        tab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
+        tab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate })
+      );
+    }
+
     // ─── UPDATE PROGRESS OVERLAY ───
     function UpdateProgressOverlay({ progress, onComplete, isUpdating }) {
       const status = progress && progress.status ? progress.status : 'idle';
@@ -1680,7 +2216,10 @@
             React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, 'New Update Available!'),
             React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready.`),
             info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } }, React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'), info.releaseNotes),
-            React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } }, info.downloadUrl && React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, 'Install Update'))) :
+            React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
+              info.automaticInstallSupported && info.downloadUrl ?
+                React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, 'Install Update') :
+                React.createElement('p', { style: { margin: 0, color: 'var(--text-secondary)', textAlign: 'center' } }, 'Automatic installation will be available with the standalone updater.'))) :
           React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.'))
         ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information. Check your internet connection and try again.'),
         React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } }, React.createElement('button', { className: 'btn btn-ghost', style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }, disabled: loading, onClick: fetchUpdateInfo }, React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh), loading ? 'Checking...' : 'Check for Updates'))
@@ -2235,48 +2774,95 @@
       );
     }
 
-    // ─── INVOICE / QUOTATION VIEW ───
-    function InvoiceQuotationView({ tab, onTabChange, onEditInvoice, onEditQuotation, onConvertToInvoice }) {
-      const pillStyle = (isActive) => ({
-        padding: '6px 20px',
-        border: 'none',
-        background: isActive ? 'var(--primary)' : '#f1f5f9',
-        color: isActive ? 'white' : 'var(--text-secondary)',
-        borderRadius: '20px',
-        cursor: 'pointer',
-        fontWeight: isActive ? 600 : 400,
-        fontSize: '0.85rem',
-        transition: 'all 0.15s ease'
-      });
-      return React.createElement(Fragment, null,
-        React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 20 } },
-          React.createElement('button', { style: pillStyle(tab === 'invoices'), onClick: () => onTabChange('invoices') }, 'Invoices'),
-          React.createElement('button', { style: pillStyle(tab === 'quotations'), onClick: () => onTabChange('quotations') }, 'Quotations')
+    // ─── INVOICES & QUOTES HUB ───
+    function InvoicesQuotesHub({
+      editInvoiceId,
+      editQuotationId,
+      convertedFromQuotationId,
+      onEditInvoice,
+      onEditQuotation,
+      onConvertToInvoice,
+      onClearEdit,
+      firms
+    }) {
+      const [subTab, setSubTab] = useState('invoices');
+
+      useEffect(() => {
+        if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
+          setSubTab('create');
+        }
+      }, [editInvoiceId, editQuotationId, convertedFromQuotationId]);
+
+      return React.createElement('div', null,
+        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+          React.createElement('button', { className: `btn ${subTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('invoices') }, 'Invoices'),
+          React.createElement('button', { className: `btn ${subTab === 'quotations' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('quotations') }, 'Quotations'),
+          React.createElement('button', { className: `btn ${subTab === 'create' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('create') }, 'Create Document')
         ),
-        tab === 'invoices' 
-          ? React.createElement(InvoiceList, { onEditInvoice }) 
-          : React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice })
+        subTab === 'invoices' && React.createElement(InvoiceList, { onEditInvoice }),
+        subTab === 'quotations' && React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice }),
+        subTab === 'create' && React.createElement(CreateTabView, {
+          globalFirms: firms,
+          editInvoiceId,
+          editQuotationId,
+          convertedFromQuotationId,
+          onClearEdit
+        })
       );
     }
 
     // ─── CREATE INVOICE / QUOTATION TABS ───
-    function CreateTabView() {
+        function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit }) {
       const [tabs, setTabs] = useState([]);
       const [activeTab, setActiveTab] = useState(null);
       const tabsRef = useRef(tabs);
       tabsRef.current = tabs;
       const activeTabRef = useRef(activeTab);
       activeTabRef.current = activeTab;
+
+      useEffect(() => {
+        if (editInvoiceId) {
+          const existing = tabs.find(t => t.editId === editInvoiceId && t.type === 'invoice');
+          if (existing) { setActiveTab(existing.id); } 
+          else {
+            const newTab = { id: Date.now() + Math.random(), type: 'invoice', label: `Inv #${editInvoiceId}`, firmId: API.firmId, editId: editInvoiceId, convertedFromQuotationId };
+            setTabs(prev => [...prev, newTab]);
+            setActiveTab(newTab.id);
+          }
+          if (onClearEdit) onClearEdit();
+        } else if (editQuotationId) {
+          const existing = tabs.find(t => t.editId === editQuotationId && t.type === 'quotation');
+          if (existing) { setActiveTab(existing.id); }
+          else {
+            const newTab = { id: Date.now() + Math.random(), type: 'quotation', label: `Qtn #${editQuotationId}`, firmId: API.firmId, editId: editQuotationId };
+            setTabs(prev => [...prev, newTab]);
+            setActiveTab(newTab.id);
+          }
+          if (onClearEdit) onClearEdit();
+        } else if (convertedFromQuotationId) {
+          const label = `Inv (Conv Qtn #${convertedFromQuotationId})`;
+          const newTab = { id: Date.now() + Math.random(), type: 'invoice', label, firmId: API.firmId, convertedFromQuotationId };
+          setTabs(prev => [...prev, newTab]);
+          setActiveTab(newTab.id);
+          if (onClearEdit) onClearEdit();
+        }
+      }, [editInvoiceId, editQuotationId, convertedFromQuotationId]);
+
       const addTab = (type) => {
         if (tabs.length >= 10) { showToast('Maximum 10 tabs allowed', 'warning'); return; }
         const count = tabs.filter(t => t.type === type).length + 1;
         const label = type === 'invoice' ? `Inv ${count}` : `Qtn ${count}`;
-        const newTab = { id: Date.now() + Math.random(), type, label };
+        const newTab = { id: Date.now() + Math.random(), type, label, firmId: API.firmId };
         setTabs(prev => [...prev, newTab]);
         setActiveTab(newTab.id);
       };
+
       const closeTab = (id, e) => {
         e.stopPropagation();
+        const tabToClose = tabs.find(t => t.id === id);
+        if (tabToClose && (tabToClose.editId || tabToClose.convertedFromQuotationId)) {
+          if (onClearEdit) onClearEdit();
+        }
         setTabs(prev => {
           const remaining = prev.filter(t => t.id !== id);
           if (id === activeTabRef.current) {
@@ -2291,6 +2877,15 @@
           return remaining;
         });
       };
+
+      const updateTabFirm = (id, newFirmId) => {
+         setTabs(prev => prev.map(t => t.id === id ? { ...t, firmId: newFirmId } : t));
+      };
+
+      const updateTabType = (id, newType) => {
+         setTabs(prev => prev.map(t => t.id === id ? { ...t, type: newType, label: (newType === 'invoice' ? 'Inv ' : 'Qtn ') + t.label.split(' ')[1] } : t));
+      };
+
       const currentTab = tabs.find(t => t.id === activeTab);
       return React.createElement('div', null,
         React.createElement('div', { className: 'create-toolbar' },
@@ -2311,23 +2906,20 @@
           ))
         ),
         currentTab && React.createElement('div', { key: currentTab.id },
-          React.createElement(InvoiceForm, { editId: null, isQuotationMode: currentTab.type === 'quotation', onSaved: () => { 
-            showToast(currentTab.type === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success');
-            const id = currentTab.id;
-            setTabs(prev => {
-              const remaining = prev.filter(t => t.id !== id);
-              if (id === activeTabRef.current) {
-                if (remaining.length > 0) {
-                  const idx = prev.findIndex(t => t.id === id);
-                  const newActiveIdx = Math.min(idx, remaining.length - 1);
-                  setActiveTab(remaining[newActiveIdx].id);
-                } else {
-                  setActiveTab(null);
-                }
-              }
-              return remaining;
-            });
-          } })
+          React.createElement(InvoiceForm, { 
+            editId: currentTab.editId || null, 
+            convertedFromQuotationId: currentTab.convertedFromQuotationId || null,
+            isQuotationMode: currentTab.type === 'quotation', 
+            activeFirmId: currentTab.firmId,
+            firms: globalFirms,
+            onFirmChange: (newFirmId) => updateTabFirm(currentTab.id, newFirmId),
+            onTypeChange: (newType) => updateTabType(currentTab.id, newType),
+            onSaved: () => { 
+              showToast(currentTab.type === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success');
+              closeTab(currentTab.id, { stopPropagation: () => {} });
+              if (onClearEdit) onClearEdit();
+            } 
+          })
         )
       );
     }
@@ -2335,6 +2927,10 @@
     // ─── MAIN APP ───
     function App() {
       const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
+      const [reminders, setReminders] = useState([]);
+      const [messages, setMessages] = useState([]);
+      const [reminderModalOpen, setReminderModalOpen] = useState(false);
+    const [taskModalOpen, setTaskModalOpen] = useState(false);
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
@@ -2344,11 +2940,49 @@
       const [firmName, setFirmName] = useState('');
       const [firms, setFirms] = useState([]);
       const [toasts, setToasts] = useState([]);
+      const [newMsgPopup, setNewMsgPopup] = useState(null);
       const [firmLoadKey, setFirmLoadKey] = useState(0);
 
+      // ─── Initialise firm before we touch any endpoint that may need it ───
       useEffect(() => {
-        API.auth.status().then(res => { setAuthEnabled(res.authEnabled); if (!res.authEnabled) setIsAuthenticated(true); setAppLoaded(true); }).catch(() => setAppLoaded(true));
-      }, []);
+        /** Ensure a firm is available before any other API call.
+         *  If the backend already has firms we pick the first one.
+         *  Otherwise we create a default firm and store its id.
+         */
+        const ensureFirm = async () => {
+          const firms = await API.firm.list().catch(() => []);
+          if (firms && firms.length) {
+            API.firmId = firms[0].id;
+            setFirmName(firms[0].firmName || '');
+            setFirms(firms);
+          } else {
+            const created = await API.firm.create();
+            API.firmId = created.id;
+            setFirmName(created.firmName || '');
+            setFirms([created]);
+            window.showToast && window.showToast('Default firm created', 'info');
+          }
+        };
+
+        const initApp = async () => {
+          await ensureFirm();
+          try {
+            const res = await API.auth.status();
+            if (res && typeof res.authEnabled === 'boolean') {
+              setAuthEnabled(res.authEnabled);
+              if (!res.authEnabled) setIsAuthenticated(true);
+            } else {
+              setIsAuthenticated(true);
+            }
+          } catch (_) {
+            setIsAuthenticated(true);
+          } finally {
+            setAppLoaded(true);
+          }
+        };
+
+        initApp();
+    }, []); // close the useEffect that contains initApp
 
       const handleLogin = (firmId) => { setIsAuthenticated(true); localStorage.setItem('isAuthenticated', 'true'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
       const handleLogout = () => { setIsAuthenticated(false); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
@@ -2365,6 +2999,51 @@
         }).catch(() => {});
       };
       useEffect(() => { loadFirms(); }, [firmLoadKey]);
+      // Load reminders after firm is ready
+      useEffect(() => {
+        if (API.firmId && API.reminders && typeof API.reminders.list === 'function') {
+          API.reminders.list().then(setReminders).catch(() => {});
+        }
+      }, [API.firmId]);
+      const lastSeenMsgIdRef = useRef(null);
+
+      const checkNewMessages = () => {
+        if (!API.firmId) return;
+        API.messages.list().then(list => {
+          if (list && list.length > 0) {
+            setMessages(list);
+            const maxId = Math.max(...list.map(m => m.id));
+            if (lastSeenMsgIdRef.current !== null && lastSeenMsgIdRef.current > 0) {
+              const newMsgs = list.filter(m => m.id > lastSeenMsgIdRef.current);
+              if (newMsgs.length > 0) {
+                setNewMsgPopup(newMsgs[0]);
+                showToast(`New message: ${newMsgs[0].subject}`, 'info');
+              }
+            }
+            lastSeenMsgIdRef.current = maxId;
+          }
+        }).catch(() => {});
+      };
+
+      useEffect(() => {
+        if (API.firmId) {
+          API.messages.list().then(list => {
+            setMessages(list);
+            if (list && list.length > 0) {
+              lastSeenMsgIdRef.current = Math.max(...list.map(m => m.id));
+            } else {
+              lastSeenMsgIdRef.current = 0;
+            }
+          }).catch(() => {});
+        }
+      }, [API.firmId]);
+
+      useEffect(() => {
+        const timer = setInterval(() => {
+          checkNewMessages();
+        }, 5000);
+        return () => clearInterval(timer);
+      }, [API.firmId]);
       const refreshFirm = () => {
         const currentId = API.firmId;
         if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => {}); }).catch(() => {}); }
@@ -2377,36 +3056,94 @@
         API.firm.list().then(list => setFirms(list)).catch(() => {});
         showToast('Switched firm', 'success');
       };
+      // Handle browser back button (popstate)
+      useEffect(() => {
+        const handlePopState = (event) => {
+          if (event.state && event.state.page) {
+            setPage(event.state.page);
+            if (event.state.page !== 'new-invoice') setEditInvoiceId(null);
+            if (event.state.page !== 'new-quotation') { setEditQuotationId(null); setConvertedFromQuotationId(null); }
+          } else {
+            setPage('dashboard');
+          }
+        };
+        window.addEventListener('popstate', handlePopState);
+        // Push initial state
+        window.history.replaceState({ page: 'dashboard' }, '', '');
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, []);
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (e.key === 'Escape') {
+            if (document.querySelector('.modal-overlay')) return;
+            if (page !== 'dashboard') {
+              window.history.back();
+            }
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [page]);
+
       const navigate = (p) => {
         setPage(p);
+        window.history.pushState({ page: p }, '', '');
         if (p !== 'new-invoice') setEditInvoiceId(null);
         if (p !== 'new-quotation') { setEditQuotationId(null); setConvertedFromQuotationId(null); }
       };
-      const handleEditInvoice = (id) => { setEditInvoiceId(id); setEditQuotationId(null); setConvertedFromQuotationId(null); setPage('new-invoice'); };
-      const handleEditQuotation = (id) => { setEditQuotationId(id); setEditInvoiceId(null); setConvertedFromQuotationId(null); setPage('new-quotation'); };
+      const handleEditInvoice = (id) => { setEditInvoiceId(id); setEditQuotationId(null); setConvertedFromQuotationId(null); setPage('invoices'); };
+      const handleMarkReminderDone = (id) => {
+        API.reminders.markDone(id).then(() => {
+          setReminders(prev => prev.filter(r => r.id !== id));
+        }).catch(() => {});
+      };
+      const handleCreateReminder = (data) => {
+        API.reminders.create(data).then(newRem => {
+          setReminders(prev => [...prev, newRem]);
+        }).catch(() => {});
+      };
+      const handleCreateTask = (data) => {
+        API.reminders.create({ ...data, type: 'task' }).then(newTask => {
+          setReminders(prev => [...prev, newTask]);
+        }).catch(() => {});
+      };
+      const handleEditQuotation = (id) => { setEditQuotationId(id); setEditInvoiceId(null); setConvertedFromQuotationId(null); setPage('invoices'); };
       const handleConvertToInvoice = (quotation) => {
-        setEditInvoiceId(quotation.id);
+        setEditInvoiceId(null);
         setEditQuotationId(null);
         setConvertedFromQuotationId(quotation.id);
-        setPage('new-invoice');
-        showToast('Edit quotation details and save to convert', 'info');
+        setPage('invoices');
       };
       const handleSaved = () => {
         setEditInvoiceId(null);
-        if (convertedFromQuotationId) {
-          setPage('quotations');
-          setConvertedFromQuotationId(null);
-          showToast('Quotation converted to invoice successfully', 'success');
-        } else {
-          setPage(editQuotationId ? 'quotations' : 'invoices');
-          setEditQuotationId(null);
-        }
+        setEditQuotationId(null);
+        setConvertedFromQuotationId(null);
+        setPage('invoices');
       };
       const handleQuotationSaved = () => {
+        setEditInvoiceId(null);
         setEditQuotationId(null);
-        setPage('quotations');
+        setConvertedFromQuotationId(null);
+        setPage('invoices');
       };
       const handleFirmChanged = () => { refreshFirm(); setFirmLoadKey(k => k + 1); };
+      const handleSendMessage = (data) => {
+        API.messages.create(data).then(newMsg => {
+          setMessages(prev => [newMsg, ...prev]);
+          if (lastSeenMsgIdRef.current === null || newMsg.id > lastSeenMsgIdRef.current) {
+            lastSeenMsgIdRef.current = newMsg.id;
+          }
+          showToast('Message sent successfully', 'success');
+        }).catch(() => {
+          showToast('Failed to send message', 'error');
+        });
+      };
+      const handleMarkMessageRead = (id) => {
+        API.messages.markRead(id).then(updated => {
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+        }).catch(() => {});
+      };
 
       const [isUpdating, setIsUpdating] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
@@ -2426,7 +3163,6 @@
       const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
         setUpdateProgress({ status: 'downloading', percent: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
-        if (window.electron && window.electron.setUpdating) window.electron.setUpdating();
         await connectUpdateProgressSSE();
         try { await API.system.applyUpdate(); } catch (e) { setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' }); }
       };
@@ -2436,16 +3172,23 @@
 
       const pageComponents = {
         dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
-        invoices: { title: 'Invoices & Quotations', comp: React.createElement(InvoiceQuotationView, { key: API.firmId, tab: invoiceTab, onTabChange: setInvoiceTab, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, onConvertToInvoice: handleConvertToInvoice }) },
-        create: { title: 'Create Invoice/Quotation', comp: React.createElement(CreateTabView, { key: API.firmId }) },
-        products: { title: 'Products', comp: React.createElement(ProductManager, { key: API.firmId }) },
-        customers: { title: 'Customers', comp: React.createElement(CustomerManager, { key: API.firmId }) },
+        invoices: { title: 'Invoices & Quotes', comp: React.createElement(InvoicesQuotesHub, {
+          key: API.firmId,
+          editInvoiceId,
+          editQuotationId,
+          convertedFromQuotationId,
+          onEditInvoice: handleEditInvoice,
+          onEditQuotation: handleEditQuotation,
+          onConvertToInvoice: handleConvertToInvoice,
+          onClearEdit: () => { setEditInvoiceId(null); setEditQuotationId(null); setConvertedFromQuotationId(null); },
+          firms
+        }) },
+        firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation }) },
+        planner: { title: 'Planner', comp: React.createElement(PlannerPage, { reminders: reminders, onMarkDone: handleMarkReminderDone, onOpenReminderModal: () => setReminderModalOpen(true), onOpenTaskModal: () => setTaskModalOpen(true) }) },
+        inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead }) },
         employees: { title: 'Employees', comp: React.createElement(EmployeeManager, { key: API.firmId }) },
-        firm: { title: 'Firm Profile', comp: React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: handleFirmChanged }) },
         statements: { title: 'Statements', comp: React.createElement(Statements, { key: API.firmId }) },
-        backup: { title: 'Backup & Restore', comp: React.createElement(BackupRestore, { key: API.firmId }) },
-        settings: { title: 'Settings', comp: React.createElement(Settings, { key: API.firmId }) },
-        updates: { title: 'Software Update', comp: React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
+        settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
       };
       const current = pageComponents[page] || pageComponents.dashboard;
 
@@ -2453,17 +3196,21 @@
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
       return React.createElement('div', { className: 'app-layout' },
-        React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null }),
+        React.createElement('div', { className: 'sidebar-container' },
+          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null })
+        ),
         React.createElement('main', { className: 'main-content' },
+          React.createElement(ReminderModal, { isOpen: reminderModalOpen, onClose: () => setReminderModalOpen(false), onCreate: handleCreateReminder }),
+          React.createElement(TaskModal, { isOpen: taskModalOpen, onClose: () => setTaskModalOpen(false), onCreate: handleCreateTask }),
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right' },
-              React.createElement('div', { className: 'firm-switch' },
+              (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))
                 )
               ),
-              firmName && React.createElement('span', { className: 'topbar-firm' }, firmName),
+              (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && firmName && React.createElement('span', { className: 'topbar-firm' }, firmName),
               React.createElement('div', { className: 'topbar-avatar' }, firmName ? firmName.charAt(0).toUpperCase() : 'B')
             )
           ),
@@ -2477,6 +3224,21 @@
             React.createElement('h3', { style: { marginBottom: 8, color: '#16a34a' } }, 'Update Complete!'),
             React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } }, updateCompleteBanner === true ? 'Your app has been updated successfully.' : `Updated to version ${updateCompleteBanner}`),
             React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { setUpdateCompleteBanner(null); window.location.reload(); } }, 'Continue')
+          )
+        ),
+        newMsgPopup && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+          React.createElement('div', { className: 'card', style: { maxWidth: 400, width: '90%', padding: 24, borderTop: '4px solid var(--primary)' } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+              React.createElement('h3', { style: { margin: 0 } }, '✉️ New Message Received'),
+              React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: 4 }, onClick: () => setNewMsgPopup(null) }, '✕')
+            ),
+            React.createElement('div', { style: { fontWeight: '600', marginBottom: 4 } }, newMsgPopup.subject),
+            React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 12 } }, `From: ${newMsgPopup.sender || 'System'}`),
+            React.createElement('p', { style: { fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0, maxHeight: 150, overflowY: 'auto', whiteSpace: 'pre-wrap' } }, newMsgPopup.body),
+            React.createElement('div', { className: 'modal-actions', style: { marginTop: 16 } },
+              React.createElement('button', { className: 'btn', onClick: () => setNewMsgPopup(null) }, 'Dismiss'),
+              React.createElement('button', { className: 'btn btn-primary', onClick: () => { setNewMsgPopup(null); navigate('inbox'); } }, 'Open Inbox')
+            )
           )
         )
       );

@@ -38,10 +38,8 @@ class UpdateControllerTest {
 
     @Test
     void testApplyUpdate() throws Exception {
-        when(service.applyUpdate()).thenReturn(true);
-
         mockMvc.perform(post("/api/system/apply-update"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").exists());
     }
 }

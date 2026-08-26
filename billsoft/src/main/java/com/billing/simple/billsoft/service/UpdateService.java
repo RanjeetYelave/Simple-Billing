@@ -189,6 +189,9 @@ public class UpdateService {
         }
 
         Map<String, Object> response = new HashMap<>();
+        // Installing a downloaded WAR used to depend on Electron replacing the
+        // running file. Browser-only distributions need a dedicated updater.
+        response.put("automaticInstallSupported", false);
         String currentVersion = getCurrentVersion();
         response.put("currentVersion", currentVersion);
 

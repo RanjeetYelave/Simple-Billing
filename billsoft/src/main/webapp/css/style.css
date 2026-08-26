@@ -216,12 +216,50 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 /* Main */
 .main-content { margin-left: var(--sidebar-width); flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+.page-content { padding: 28px 32px; flex: 1; }
 .topbar { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
 .topbar-title { font-size: 1.15rem; font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .topbar-firm { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
 .topbar-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.85rem; }
-.page-content { padding: 28px 32px; flex: 1; }
+
+/* Sidebar container: the left fixed nav */
+.sidebar-container { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; display: flex; flex-direction: row; }
+
+/* Sub-tabs bar styling */
+.sub-tabs-bar {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+.sub-tabs-bar .btn {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* Planner / Inbox Layout */
+.planner-container, .inbox-container {
+  animation: slideIn 0.2s ease-out;
+}
+.planner-grid {
+  margin-top: 12px;
+}
+.planner-column {
+  padding: 24px;
+}
+.planner-item {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.planner-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.reminder-modal { max-width: 380px; width: 90%; margin: auto; display: flex; flex-direction: column; gap: 12px; }
+.reminder-modal input, .reminder-modal textarea { width: 100%; box-sizing: border-box; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.empty-state.small { font-size: 0.8rem; color: var(--text-secondary); padding: 4px 0; }
+
 
 /* ============================================================
    INVOICE / QUOTATION FORM - COMPLETE REDESIGN

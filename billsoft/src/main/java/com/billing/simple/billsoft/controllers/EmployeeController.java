@@ -694,4 +694,91 @@ public class EmployeeController {
         dto.setCreatedAt(emp.getCreatedAt());
         return dto;
     }
+
+    // ─── Attendance Endpoints ───
+    @GetMapping("/{id}/attendance")
+    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendance(@PathVariable Long id) {
+        return attendanceRepo.findByEmployeeIdOrderByDateDesc(id);
+    }
+
+    @PostMapping("/{id}/attendance")
+    public ResponseEntity<?> setAttendance(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.AttendanceRecord record) {
+        Optional<Employee> emp = employeeRepo.findById(id);
+        if(emp.isEmpty()) return ResponseEntity.notFound().build();
+        record.setEmployee(emp.get());
+        Optional<com.billing.simple.billsoft.entities.AttendanceRecord> existing = attendanceRepo.findByEmployeeIdAndDate(id, record.getDate());
+        if(existing.isPresent()) {
+            com.billing.simple.billsoft.entities.AttendanceRecord ext = existing.get();
+            ext.setStatus(record.getStatus());
+            ext.setRemarks(record.getRemarks());
+            return ResponseEntity.ok(attendanceRepo.save(ext));
+        }
+        return ResponseEntity.ok(attendanceRepo.save(record));
+    }
+
+    @GetMapping("/{id}/attendance/range")
+    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceRange(@PathVariable Long id, @RequestParam("from") String from, @RequestParam("to") String to) {
+        return attendanceRepo.findByEmployeeIdAndDateBetween(id, LocalDate.parse(from), LocalDate.parse(to));
+    }
+
+    @GetMapping("/{id}/attendance/month/{year}/{month}")
+    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceMonth(@PathVariable Long id, @PathVariable int year, @PathVariable int month) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+        return attendanceRepo.findByEmployeeIdAndDateBetween(id, start, end);
+    }
+
+    // ─── Document Endpoints ───
+    @GetMapping("/{id}/documents")
+    public List<com.billing.simple.billsoft.entities.EmployeeDocument> getDocuments(@PathVariable Long id) {
+        return documentRepo.findByEmployeeIdOrderByUploadedAtDesc(id);
+    }
+
+    @PostMapping("/{id}/documents")
+    public ResponseEntity<?> uploadDocument(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.EmployeeDocument doc) {
+        Optional<Employee> emp = employeeRepo.findById(id);
+        if(emp.isEmpty()) return ResponseEntity.notFound().build();
+        doc.setEmployee(emp.get());
+        return ResponseEntity.ok(documentRepo.save(doc));
+    }
+
+    @DeleteMapping("/documents/{docId}")
+    public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
+        documentRepo.deleteById(docId);
+        return ResponseEntity.ok(Map.of("status", "deleted"));
+    }
+
+    // ─── Leave Endpoints ───
+    @GetMapping("/{id}/leaves")
+    public List<com.billing.simple.billsoft.entities.LeaveRecord> getLeaves(@PathVariable Long id) {
+        return leaveRepo.findByEmployeeIdOrderByStartDateDesc(id);
+    }
+
+    @PostMapping("/{id}/leaves")
+    public ResponseEntity<?> requestLeave(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.LeaveRecord record) {
+        Optional<Employee> emp = employeeRepo.findById(id);
+        if(emp.isEmpty()) return ResponseEntity.notFound().build();
+        record.setEmployee(emp.get());
+        record.setStatus("PENDING");
+        return ResponseEntity.ok(leaveRepo.save(record));
+    }
+
+    @PutMapping("/leaves/{leaveId}/approve")
+    public ResponseEntity<?> approveLeave(@PathVariable Long leaveId) {
+        Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
+        if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
+        com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
+        l.setStatus("APPROVED");
+        return ResponseEntity.ok(leaveRepo.save(l));
+    }
+
+    @PutMapping("/leaves/{leaveId}/reject")
+    public ResponseEntity<?> rejectLeave(@PathVariable Long leaveId, @RequestBody Map<String, String> body) {
+        Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
+        if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
+        com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
+        l.setStatus("REJECTED");
+        l.setReason(body.get("reason"));
+        return ResponseEntity.ok(leaveRepo.save(l));
+    }
 }

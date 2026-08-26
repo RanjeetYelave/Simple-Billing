@@ -182,8 +182,16 @@ public class InvoiceService {
 
         // delegate calculations to engine (isUpdateMode=false)
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
+        Invoice saved = invoiceRepo.save(calculated);
 
-        return invoiceRepo.save(calculated);
+        // If this invoice is converted from a quotation/estimate, delete that quotation
+        if (request.getConvertedInvoiceId() != null) {
+            invoiceRepo.findById(request.getConvertedInvoiceId()).ifPresent(estimate -> {
+                invoiceRepo.delete(estimate);
+            });
+        }
+
+        return saved;
     }
 
     // convenience: create estimate

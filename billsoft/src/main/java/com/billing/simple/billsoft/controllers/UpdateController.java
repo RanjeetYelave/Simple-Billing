@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.service.UpdateService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -35,11 +36,8 @@ public class UpdateController {
 
     @PostMapping("/apply-update")
     public ResponseEntity<Map<String, String>> applyUpdate() {
-        boolean success = updateService.applyUpdate();
-        if (success) {
-            return ResponseEntity.ok(Map.of("message", "Update downloaded successfully. Restarting..."));
-        } else {
-            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to download update"));
-        }
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "Automatic updates require the standalone updater, which is not installed yet."
+        ));
     }
 }

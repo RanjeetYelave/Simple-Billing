@@ -2,6 +2,7 @@ package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.entities.Reminder;
 import com.billing.simple.billsoft.service.ReminderService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -34,7 +35,18 @@ public class ReminderController {
         return reminderService.create(reminder);
     }
 
-    @PatchMapping("/{id}/done")
+    @PutMapping("/{id}")
+    public Reminder update(@PathVariable Long id, @RequestBody Reminder reminder) {
+        return reminderService.update(id, reminder);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        boolean deleted = reminderService.delete(id);
+        return deleted ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
+    }
+
+    @RequestMapping(value = "/{id}/done", method = {RequestMethod.PUT, RequestMethod.PATCH})
     public Reminder markDone(@PathVariable Long id) {
         return reminderService.markDone(id);
     }

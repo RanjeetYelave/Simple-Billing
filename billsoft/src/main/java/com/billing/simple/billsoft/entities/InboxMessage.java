@@ -30,6 +30,8 @@ public class InboxMessage {
 
     private boolean isRead = false;
 
+    private Long reminderId;
+
     private LocalDateTime createdAt;
 
     @PrePersist

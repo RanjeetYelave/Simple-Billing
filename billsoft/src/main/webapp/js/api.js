@@ -143,8 +143,20 @@ const API = {
   // ── Reminders ──
   reminders: {
     list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/reminders'))),
+    listByFirm: (firmId) => API._json(`/api/reminders/firm/${firmId}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/reminders', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    update: (id, data) => API._json(`/api/reminders/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => API._json(`/api/reminders/${id}`, { method: 'DELETE' }),
     markDone: (id) => API._ensureFirmReady().then(() => API._json(`/api/reminders/${id}/done`, { method: 'PUT' })),
+  },
+
+  // ── Notes ──
+  notes: {
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/notes'))),
+    listByFirm: (firmId) => API._json(`/api/notes/firm/${firmId}`),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/notes', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    update: (id, data) => API._json(`/api/notes/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => API._json(`/api/notes/${id}`, { method: 'DELETE' }),
   },
 
   // ── Messages ──
@@ -152,6 +164,7 @@ const API = {
     list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/messages'))),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/messages', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
     markRead: (id) => API._ensureFirmReady().then(() => API._json(`/api/messages/${id}/read`, { method: 'PUT' })),
+    delete: (id) => API._ensureFirmReady().then(() => API._request(`/api/messages/${id}`, { method: 'DELETE' })),
   },
 // ── Firm (multi-row) ──
   firm: {

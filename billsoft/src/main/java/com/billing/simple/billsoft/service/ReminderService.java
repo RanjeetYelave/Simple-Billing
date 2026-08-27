@@ -33,10 +33,46 @@ public class ReminderService {
     }
 
     @Transactional
+    public Reminder update(Long id, Reminder updated) {
+        Reminder r = reminderRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
+        r.setTitle(updated.getTitle());
+        r.setNote(updated.getNote());
+        r.setDueDate(updated.getDueDate());
+        if (updated.getDueDate() != null && !updated.getDueDate().equals(r.getDueDate())) {
+            r.setInboxNotified(false);
+        }
+        if (!updated.isCompleted() && r.isCompleted()) {
+            r.setInboxNotified(false);
+        }
+        r.setCompleted(updated.isCompleted());
+        r.setType(updated.getType());
+        r.setTags(updated.getTags());
+        r.setStatus(updated.getStatus());
+        r.setProgress(updated.getProgress());
+        r.setCustomerId(updated.getCustomerId());
+        r.setFirmId(updated.getFirmId());
+        if (updated.isCompleted() && r.getCompletedAt() == null) {
+            r.setCompletedAt(LocalDateTime.now());
+        } else if (!updated.isCompleted()) {
+            r.setCompletedAt(null);
+        }
+        return reminderRepository.save(r);
+    }
+
+    @Transactional
+    public boolean delete(Long id) {
+        if (!reminderRepository.existsById(id)) return false;
+        reminderRepository.deleteById(id);
+        return true;
+    }
+
+    @Transactional
     public Reminder markDone(Long id) {
         Reminder r = reminderRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
         r.setCompleted(true);
         r.setCompletedAt(LocalDateTime.now());
+        r.setStatus("DONE");
+        r.setProgress(100);
         return r;
     }
 }

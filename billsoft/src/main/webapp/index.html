@@ -178,7 +178,7 @@
     };
 
     // ─── SIDEBAR ───
-    function Sidebar({ activePage, onNavigate, firmName, onLogout }) {
+    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate }) {
       const [mobileOpen, setMobileOpen] = useState(false);
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
@@ -201,6 +201,13 @@
               React.createElement('div', { className: 'sidebar-logo-text' }, 'Billsoft'),
               React.createElement('div', { className: 'sidebar-logo-version' }, 'v1.0')
             )
+          ),
+          onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
+            React.createElement('button', {
+              className: 'btn btn-primary w-full',
+              onClick: () => { onQuickCreate(); setMobileOpen(false); },
+              style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 16px', borderRadius: 'var(--radius)', fontSize: '0.95rem', fontWeight: 600 }
+            }, Icons.plus, 'Quick Invoice')
           ),
           React.createElement('nav', { className: 'sidebar-nav' },
             navItems.map(item =>
@@ -387,46 +394,514 @@
     }
 
     // ─── PLANNER PAGE ───
-    function PlannerPage({ reminders, onMarkDone, onOpenReminderModal, onOpenTaskModal }) {
-      const filteredReminders = reminders.filter(r => r.type !== 'task');
-      const tasks = reminders.filter(r => r.type === 'task');
+    function PlannerPage({
+      reminders,
+      notes,
+      firms,
+      onMarkDone,
+      onUpdateReminder,
+      onDeleteReminder,
+      onCreateReminder,
+      onCreateTask,
+      onCreateNote,
+      onUpdateNote,
+      onDeleteNote
+    }) {
+      const [customers, setCustomers] = useState([]);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [activeTag, setActiveTag] = useState(null);
 
-      return React.createElement('div', { className: 'planner-container' },
-        React.createElement('div', { className: 'planner-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 } },
-          React.createElement('div', { className: 'card planner-column' },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
-              React.createElement('h3', { style: { margin: 0 } }, 'Reminders'),
-              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: onOpenReminderModal }, '+ Add Reminder')
-            ),
-            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              filteredReminders.length > 0 ? filteredReminders.map(r =>
-                React.createElement('div', { key: r.id, className: 'planner-item', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--primary)' } },
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { fontWeight: '600' } }, r.title),
-                    r.note && React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, r.note),
-                    r.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Due: ${r.dueDate.split('T')[0]}`)
-                  ),
-                  React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => onMarkDone(r.id) }, 'Done')
-                )
-              ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No reminders found')
+
+      // Modal state
+      const [modalOpen, setModalOpen] = useState(false);
+      const [modalType, setModalType] = useState('reminder'); // 'reminder' | 'task' | 'note'
+      const [editingItem, setEditingItem] = useState(null); // item being edited or null for create
+
+      // Form fields state
+      const [formTitle, setFormTitle] = useState('');
+      const [formNote, setFormNote] = useState('');
+      const [formDueDate, setFormDueDate] = useState('');
+      const [formTags, setFormTags] = useState('');
+      const [formStatus, setFormStatus] = useState('TODO'); // TODO | IN_PROGRESS | DONE
+      const [formProgress, setFormProgress] = useState(0);
+      const [formCustomerId, setFormCustomerId] = useState('');
+      const [formFirmId, setFormFirmId] = useState('');
+
+      useEffect(() => {
+        API.customers.list().then(setCustomers).catch(() => []);
+      }, []);
+
+      // Extract unique tags across reminders, tasks, and notes
+      const allUniqueTags = useMemo(() => {
+        const tagsSet = new Set();
+        const addTags = (tagsStr) => {
+          if (!tagsStr) return;
+          tagsStr.split(',').forEach(t => {
+            const trimmed = t.trim().toLowerCase();
+            if (trimmed) tagsSet.add(trimmed);
+          });
+        };
+        reminders.forEach(r => addTags(r.tags));
+        notes.forEach(n => addTags(n.tags));
+        return Array.from(tagsSet);
+      }, [reminders, notes]);
+
+      // Filter helpers
+      const matchesSearch = (title, text, tagsStr) => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return true;
+        const inTitle = title ? title.toLowerCase().includes(q) : false;
+        const inText = text ? text.toLowerCase().includes(q) : false;
+        const inTags = tagsStr ? tagsStr.toLowerCase().includes(q) : false;
+        return inTitle || inText || inTags;
+      };
+
+      const matchesTag = (tagsStr) => {
+        if (!activeTag) return true;
+        if (!tagsStr) return false;
+        return tagsStr.split(',').map(t => t.trim().toLowerCase()).includes(activeTag);
+      };
+
+      const filteredReminders = useMemo(() => {
+        return reminders.filter(r => {
+          if (r.type === 'task') return false;
+          if (r.completed) return false;
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+        });
+      }, [reminders, searchQuery, activeTag]);
+
+      const filteredTasks = useMemo(() => {
+        return reminders.filter(r => {
+          if (r.type !== 'task') return false;
+          if (r.completed) return false;
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+        });
+      }, [reminders, searchQuery, activeTag]);
+
+      const completedItems = useMemo(() => {
+        return reminders.filter(r => r.completed && matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags));
+      }, [reminders, searchQuery, activeTag]);
+
+      const filteredNotes = useMemo(() => {
+        return notes.filter(n => {
+          return matchesSearch(n.title, n.content, n.tags) && matchesTag(n.tags);
+        });
+      }, [notes, searchQuery, activeTag]);
+
+      // Modal Handlers
+      const openCreateModal = (type) => {
+        setModalType(type);
+        setEditingItem(null);
+        setFormTitle('');
+        setFormNote('');
+        setFormDueDate(BillsoftUtils.todayStr());
+        setFormTags('');
+        setFormStatus('TODO');
+        setFormProgress(0);
+        setFormCustomerId('');
+        setFormFirmId(API.firmId ? String(API.firmId) : '');
+        setModalOpen(true);
+      };
+
+      const openEditModal = (type, item) => {
+        setModalType(type);
+        setEditingItem(item);
+        setFormTitle(item.title || '');
+        setFormNote(type === 'note' ? (item.content || '') : (item.note || ''));
+        setFormDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
+        setFormTags(item.tags || '');
+        setFormStatus(item.status || 'TODO');
+        setFormProgress(item.progress || 0);
+        setFormCustomerId(item.customerId ? String(item.customerId) : '');
+        setFormFirmId(item.firmId ? String(item.firmId) : '');
+        setModalOpen(true);
+      };
+
+      const handleSave = () => {
+        if (!formTitle.trim()) {
+          window.showToast('Title is required', 'error');
+          return;
+        }
+
+        const payload = {
+          title: formTitle.trim(),
+          tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+          customerId: formCustomerId ? parseInt(formCustomerId, 10) : null,
+          firmId: formFirmId ? parseInt(formFirmId, 10) : (API.firmId ? API.firmId : null)
+        };
+
+        if (modalType === 'note') {
+          payload.content = formNote.trim();
+        } else {
+          payload.note = formNote.trim();
+          payload.dueDate = formDueDate ? formDueDate + 'T12:00:00' : null;
+          payload.type = modalType;
+          if (modalType === 'task') {
+            payload.status = formStatus;
+            payload.progress = formStatus === 'DONE' ? 100 : parseInt(formProgress, 10);
+            payload.completed = formStatus === 'DONE' || parseInt(formProgress, 10) === 100;
+          } else {
+            payload.status = 'TODO';
+            payload.progress = 0;
+          }
+        }
+
+        if (editingItem) {
+          if (modalType === 'note') {
+            onUpdateNote(editingItem.id, payload);
+          } else {
+            onUpdateReminder(editingItem.id, payload);
+          }
+        } else {
+          if (modalType === 'note') {
+            onCreateNote(payload);
+          } else if (modalType === 'task') {
+            onCreateTask(payload);
+          } else {
+            onCreateReminder(payload);
+          }
+        }
+        setModalOpen(false);
+      };
+
+      const handleStatusChangeInline = (task, newStatus) => {
+        const updated = {
+          ...task,
+          status: newStatus,
+          progress: newStatus === 'DONE' ? 100 : (task.progress === 100 ? 50 : task.progress),
+          completed: newStatus === 'DONE'
+        };
+        onUpdateReminder(task.id, updated);
+      };
+
+      const handleProgressChangeInline = (task, newProgress) => {
+        const progressVal = parseInt(newProgress, 10);
+        const updated = {
+          ...task,
+          progress: progressVal,
+          status: progressVal === 100 ? 'DONE' : (progressVal === 0 ? 'TODO' : 'IN_PROGRESS'),
+          completed: progressVal === 100
+        };
+        onUpdateReminder(task.id, updated);
+      };
+
+      // UI Helpers
+      const renderTags = (tagsStr) => {
+        if (!tagsStr) return null;
+        return React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 } },
+          tagsStr.split(',').map((t, idx) => {
+            const trimmed = t.trim();
+            if (!trimmed) return null;
+            return React.createElement('span', {
+              key: idx,
+              style: {
+                fontSize: '0.7rem',
+                padding: '2px 6px',
+                borderRadius: 4,
+                backgroundColor: 'var(--primary-light)',
+                color: 'var(--primary)',
+                fontWeight: 600
+              }
+            }, trimmed);
+          })
+        );
+      };
+
+      const renderAssociations = (customerId, firmId) => {
+        const cust = customerId ? customers.find(c => c.id === customerId) : null;
+        const fName = firmId ? (firms.find(f => f.id === firmId)?.firmName) : null;
+        if (!cust && !fName) return null;
+        return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 2, marginTop: 8, fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+          cust && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+            React.createElement('span', { style: { color: 'var(--primary)' } }, '👤'),
+            cust.name
+          ),
+          fName && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+            React.createElement('span', { style: { color: '#059669' } }, '🏢'),
+            fName
+          )
+        );
+      };
+
+      return React.createElement('div', { className: 'planner-container', style: { padding: 16 } },
+        // Top Filter Section
+        React.createElement('div', { className: 'card', style: { marginBottom: 24, padding: 16 } },
+          React.createElement('div', { style: { display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' } },
+            React.createElement('input', {
+              className: 'input',
+              style: { flex: 1, minWidth: 260 },
+              placeholder: 'Search by title, notes, or tags...',
+              value: searchQuery,
+              onChange: e => setSearchQuery(e.target.value)
+            }),
+
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => openCreateModal('reminder') }, '+ Reminder'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => openCreateModal('task') }, '+ Task'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => openCreateModal('note') }, '+ Note')
             )
           ),
-          React.createElement('div', { className: 'card planner-column' },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
-              React.createElement('h3', { style: { margin: 0 } }, 'Tasks'),
-              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: onOpenTaskModal }, '+ Add Task')
-            ),
-            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              tasks.length > 0 ? tasks.map(t =>
-                React.createElement('div', { key: t.id, className: 'planner-item', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--primary)' } },
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { fontWeight: '600' } }, t.title),
-                    t.note && React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, t.note),
-                    t.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Due: ${t.dueDate.split('T')[0]}`)
+          allUniqueTags.length > 0 && React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12, alignItems: 'center' } },
+            React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Filter by Tag:'),
+            React.createElement('span', {
+              onClick: () => setActiveTag(null),
+              style: {
+                fontSize: '0.75rem',
+                padding: '4px 10px',
+                borderRadius: 12,
+                cursor: 'pointer',
+                backgroundColor: !activeTag ? 'var(--primary)' : 'var(--bg-hover)',
+                color: !activeTag ? 'white' : 'var(--text-primary)',
+                fontWeight: 600
+              }
+            }, 'All'),
+            allUniqueTags.map(tag => React.createElement('span', {
+              key: tag,
+              onClick: () => setActiveTag(activeTag === tag ? null : tag),
+              style: {
+                fontSize: '0.75rem',
+                padding: '4px 10px',
+                borderRadius: 12,
+                cursor: 'pointer',
+                backgroundColor: activeTag === tag ? 'var(--primary)' : 'var(--bg-hover)',
+                color: activeTag === tag ? 'white' : 'var(--text-primary)',
+                fontWeight: 600
+              }
+            }, tag))
+          )
+        ),
+
+        // Grid Board
+        React.createElement('div', { className: 'planner-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 } },
+          
+          // Column 1: Reminders
+          React.createElement('div', { className: 'card planner-column', style: { display: 'flex', flexDirection: 'column', minHeight: 400 } },
+            React.createElement('h3', { style: { marginTop: 0, marginBottom: 16, borderBottom: '2px solid var(--primary)', paddingBottom: 8 } }, 'Reminders'),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
+              filteredReminders.length > 0 ? filteredReminders.map(r =>
+                React.createElement('div', { key: r.id, className: 'planner-itemCard', style: { padding: 16, background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--primary)', opacity: r.completed ? 0.6 : 1, position: 'relative' } },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
+                      React.createElement('input', {
+                        type: 'checkbox',
+                        checked: r.completed,
+                        onChange: () => onMarkDone(r.id),
+                        style: { marginTop: 4 }
+                      }),
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontWeight: '600', textDecoration: r.completed ? 'line-through' : 'none' } }, r.title),
+                        r.note && React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, r.note),
+                        r.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `🔔 Due: ${r.dueDate.split('T')[0]}`)
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => openEditModal('reminder', r) }, '✏️'),
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => { if(confirm('Delete reminder?')) onDeleteReminder(r.id); } }, '🗑️')
+                    )
                   ),
-                  React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => onMarkDone(t.id) }, 'Done')
+                  renderTags(r.tags),
+                  renderAssociations(r.customerId, r.firmId)
                 )
-              ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No tasks found')
+              ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 32 } }, 'No reminders')
+            )
+          ),
+
+          // Column 2: Tasks
+          React.createElement('div', { className: 'card planner-column', style: { display: 'flex', flexDirection: 'column', minHeight: 400 } },
+            React.createElement('h3', { style: { marginTop: 0, marginBottom: 16, borderBottom: '2px solid #0284c7', paddingBottom: 8 } }, 'Tasks'),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
+              filteredTasks.length > 0 ? filteredTasks.map(t =>
+                React.createElement('div', { key: t.id, className: 'planner-itemCard', style: { padding: 16, background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid #0284c7', opacity: t.completed ? 0.6 : 1 } },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
+                      React.createElement('input', {
+                        type: 'checkbox',
+                        checked: t.completed,
+                        onChange: () => handleProgressChangeInline(t, t.completed ? 0 : 100),
+                        style: { marginTop: 4 }
+                      }),
+                      React.createElement('div', { style: { flex: 1 } },
+                        React.createElement('div', { style: { fontWeight: '600', textDecoration: t.completed ? 'line-through' : 'none' } }, t.title),
+                        t.note && React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, t.note),
+                        t.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `📅 Due: ${t.dueDate.split('T')[0]}`)
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => openEditModal('task', t) }, '✏️'),
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => { if(confirm('Delete task?')) onDeleteReminder(t.id); } }, '🗑️')
+                    )
+                  ),
+
+                  // Progress & Status Inline Editors
+                  React.createElement('div', { style: { marginTop: 12, background: 'var(--bg-card)', padding: 10, borderRadius: 6, border: '1px solid var(--border-light)' } },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+                      React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600 } }, 'Progress'),
+                      React.createElement('select', {
+                        style: { fontSize: '0.75rem', padding: '2px 4px', borderRadius: 4 },
+                        value: t.status || 'TODO',
+                        onChange: e => handleStatusChangeInline(t, e.target.value)
+                      },
+                        React.createElement('option', { value: 'TODO' }, 'To Do'),
+                        React.createElement('option', { value: 'IN_PROGRESS' }, 'In Progress'),
+                        React.createElement('option', { value: 'DONE' }, 'Done')
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('input', {
+                        type: 'range',
+                        min: 0,
+                        max: 100,
+                        style: { flex: 1, height: 4 },
+                        value: t.progress || 0,
+                        onChange: e => handleProgressChangeInline(t, e.target.value)
+                      }),
+                      React.createElement('span', { style: { fontSize: '0.75rem', minWidth: 32, textAlign: 'right' } }, `${t.progress || 0}%`)
+                    )
+                  ),
+                  renderTags(t.tags),
+                  renderAssociations(t.customerId, t.firmId)
+                )
+              ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 32 } }, 'No tasks')
+            )
+          ),
+
+          // Column 3: Notes
+          React.createElement('div', { className: 'card planner-column', style: { display: 'flex', flexDirection: 'column', minHeight: 400 } },
+            React.createElement('h3', { style: { marginTop: 0, marginBottom: 16, borderBottom: '2px solid #059669', paddingBottom: 8 } }, 'Notes'),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
+              filteredNotes.length > 0 ? filteredNotes.map(n =>
+                React.createElement('div', { key: n.id, className: 'planner-itemCard', style: { padding: 16, background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: '4px solid #059669' } },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+                    React.createElement('div', { style: { flex: 1 } },
+                      React.createElement('div', { style: { fontWeight: '600' } }, n.title),
+                      n.content && React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4, whiteSpace: 'pre-wrap', maxHeight: 150, overflowY: 'auto' } }, n.content)
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => openEditModal('note', n) }, '✏️'),
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => { if(confirm('Delete note?')) onDeleteNote(n.id); } }, '🗑️')
+                    )
+                  ),
+                  renderTags(n.tags),
+                  renderAssociations(n.customerId, n.firmId)
+                )
+              ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 32 } }, 'No notes')
+            )
+          ),
+
+          // Column 4: Completed
+          React.createElement('div', { className: 'card planner-column', style: { display: 'flex', flexDirection: 'column', minHeight: 400 } },
+            React.createElement('h3', { style: { marginTop: 0, marginBottom: 16, borderBottom: '2px solid #6b7280', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('span', null, '✅ Completed'),
+              React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-secondary)' } }, `${completedItems.length} item${completedItems.length !== 1 ? 's' : ''}`)
+            ),
+            React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
+              completedItems.length > 0 ? completedItems.map(item => {
+                const isTask = item.type === 'task';
+                return React.createElement('div', { key: item.id, className: 'planner-itemCard', style: { padding: 16, background: 'var(--bg-hover)', borderRadius: 'var(--radius)', borderLeft: `4px solid ${isTask ? '#0284c7' : 'var(--primary)'}`, opacity: 0.7 } },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
+                      React.createElement('input', {
+                        type: 'checkbox',
+                        checked: true,
+                        onChange: () => {
+                          if (isTask) {
+                            handleProgressChangeInline(item, 0);
+                          } else {
+                            onUpdateReminder(item.id, { ...item, completed: false, inboxNotified: false });
+                          }
+                        },
+                        title: 'Uncheck to restore',
+                        style: { marginTop: 4 }
+                      }),
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontWeight: '600', textDecoration: 'line-through' } }, item.title),
+                        React.createElement('span', {
+                          style: { fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4, backgroundColor: isTask ? '#dbeafe' : '#ede9fe', color: isTask ? '#0284c7' : '#7c3aed', marginLeft: 4 }
+                        }, isTask ? 'Task' : 'Reminder'),
+                        item.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Due: ${item.dueDate.split('T')[0]}`)
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('span', { style: { cursor: 'pointer', fontSize: '0.9rem' }, onClick: () => { if(confirm('Delete completed item?')) onDeleteReminder(item.id); } }, '🗑️')
+                    )
+                  ),
+                  renderTags(item.tags),
+                  renderAssociations(item.customerId, item.firmId)
+                );
+              }) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 32 } }, 'No completed items')
+            )
+          )
+        ),
+
+        // Add / Edit Modal Dialog
+        modalOpen && React.createElement('div', { className: 'modal-overlay', onClick: () => setModalOpen(false) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 500, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
+              editingItem ? `Edit ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}` : `New ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}`
+            ),
+            
+            // Title Input
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title *'),
+              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'Enter Title', value: formTitle, onChange: e => setFormTitle(e.target.value) })
+            ),
+
+            // Note / Content input
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, modalType === 'note' ? 'Content' : 'Note'),
+              React.createElement('textarea', { className: 'textarea w-full', placeholder: 'Enter description...', rows: 4, value: formNote, onChange: e => setFormNote(e.target.value) })
+            ),
+
+            // Due Date (only for reminders and tasks)
+            modalType !== 'note' && React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
+              React.createElement('input', { className: 'input w-full', type: 'date', value: formDueDate, onChange: e => setFormDueDate(e.target.value) })
+            ),
+
+            // Task Custom Fields (status & progress)
+            modalType === 'task' && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--bg-hover)', padding: 12, borderRadius: 6 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Status'),
+                React.createElement('select', { className: 'select w-full', value: formStatus, onChange: e => { setFormStatus(e.target.value); if (e.target.value === 'DONE') setFormProgress(100); } },
+                  React.createElement('option', { value: 'TODO' }, 'To Do'),
+                  React.createElement('option', { value: 'IN_PROGRESS' }, 'In Progress'),
+                  React.createElement('option', { value: 'DONE' }, 'Done')
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, `Progress (${formProgress}%)`),
+                React.createElement('input', { type: 'range', min: 0, max: 100, style: { width: '100%', marginTop: 8 }, value: formProgress, onChange: e => { setFormProgress(e.target.value); if (parseInt(e.target.value, 10) === 100) setFormStatus('DONE'); else if (parseInt(e.target.value, 10) === 0) setFormStatus('TODO'); else setFormStatus('IN_PROGRESS'); } })
+              )
+            ),
+
+            // Tags Input
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags (comma separated)'),
+              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'e.g. urgent, invoice, billing', value: formTags, onChange: e => setFormTags(e.target.value) })
+            ),
+
+            // Associations
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Customer Association'),
+                React.createElement('select', { className: 'select w-full', value: formCustomerId, onChange: e => setFormCustomerId(e.target.value) },
+                  React.createElement('option', { value: '' }, 'None'),
+                  customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Firm Association'),
+                React.createElement('select', { className: 'select w-full', value: formFirmId, onChange: e => setFormFirmId(e.target.value) },
+                  React.createElement('option', { value: '' }, 'None'),
+                  firms.map(f => React.createElement('option', { key: f.id, value: String(f.id) }, f.firmName))
+                )
+              )
+            ),
+
+            // Modal Actions
+            React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setModalOpen(false) }, 'Cancel'),
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, editingItem ? 'Save Changes' : 'Create')
             )
           )
         )
@@ -434,15 +909,92 @@
     }
 
     // ─── INBOX PAGE ───
-    function InboxPage({ messages, onSendMessage, onMarkRead }) {
+    function InboxPage({ messages, onSendMessage, onMarkRead, onDeleteMessage, reminders, onMarkDone, onUpdateReminder }) {
       const [selectedMessage, setSelectedMessage] = useState(null);
       const [composeOpen, setComposeOpen] = useState(false);
 
+      const isUnread = (msg) => msg && !msg.read && !msg.isRead;
+
+      const handleDismissMsg = (msgId) => {
+        if (selectedMessage && selectedMessage.id === msgId) {
+          setSelectedMessage(null);
+        }
+        if (onDeleteMessage) {
+          onDeleteMessage(msgId);
+        } else if (onMarkRead) {
+          onMarkRead(msgId);
+        }
+      };
+
       const handleSelect = (msg) => {
         setSelectedMessage(msg);
-        if (!msg.isRead) {
+        if (isUnread(msg)) {
           onMarkRead(msg.id);
         }
+      };
+
+      const handleInboxSnooze = (msg, hours) => {
+        const rem = reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        if (rem && onUpdateReminder) {
+          const currentDue = rem.dueDate ? new Date(rem.dueDate) : new Date();
+          currentDue.setHours(currentDue.getHours() + hours);
+          const newDueStr = currentDue.toISOString().slice(0, 19);
+          onUpdateReminder(rem.id, { ...rem, dueDate: newDueStr, inboxNotified: false });
+        }
+        handleDismissMsg(msg.id);
+        showToast(`Snoozed for ${hours === 1 ? '1 hour' : hours + ' hours'}`, 'success');
+      };
+
+      const handleInboxDone = (msg) => {
+        if (msg.reminderId && onMarkDone) {
+          onMarkDone(msg.reminderId);
+        }
+        handleDismissMsg(msg.id);
+      };
+
+      const handleInboxProgress = (msg, progressVal) => {
+        const rem = reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        if (rem && onUpdateReminder) {
+          const pv = parseInt(progressVal, 10);
+          onUpdateReminder(rem.id, {
+            ...rem,
+            progress: pv,
+            status: pv === 100 ? 'DONE' : (pv === 0 ? 'TODO' : 'IN_PROGRESS'),
+            completed: pv === 100
+          });
+          if (pv === 100) handleDismissMsg(msg.id);
+        }
+      };
+
+      const renderDetailActions = (msg) => {
+        if (!msg) return null;
+        const rem = msg.reminderId && reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        const isTask = rem && rem.type === 'task';
+
+        return React.createElement('div', {
+          style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 0', borderTop: '1px solid var(--border)', marginTop: 16 }
+        },
+          React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginRight: 8 } }, '⚡ Quick Actions:'),
+          React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleDismissMsg(msg.id) }, '✕ Dismiss'),
+          rem && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleInboxSnooze(msg, 1) }, '⏰ Snooze 1h'),
+          rem && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleInboxSnooze(msg, 24) }, '📅 Snooze 1d'),
+          rem && React.createElement('button', { className: 'btn btn-primary btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleInboxDone(msg) }, '✓ Mark Done'),
+          isTask && rem && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 } },
+            React.createElement('span', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Progress:'),
+            React.createElement('input', {
+              type: 'range', min: 0, max: 100, value: rem.progress || 0,
+              style: { width: 100, height: 4 },
+              onChange: e => handleInboxProgress(msg, e.target.value)
+            }),
+            React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600 } }, `${rem.progress || 0}%`)
+          ),
+          rem && React.createElement('div', { style: { width: '100%', marginTop: 8, padding: '8px 12px', backgroundColor: 'var(--bg-hover)', borderRadius: 'var(--radius)', fontSize: '0.8rem' } },
+            React.createElement('strong', null, isTask ? '📋 Linked Task: ' : '🔔 Linked Reminder: '),
+            React.createElement('span', null, rem.title),
+            rem.status && React.createElement('span', { style: { marginLeft: 8, padding: '1px 6px', borderRadius: 4, backgroundColor: rem.status === 'DONE' ? '#dcfce7' : rem.status === 'IN_PROGRESS' ? '#dbeafe' : '#fef3c7', fontSize: '0.7rem' } }, rem.status),
+            rem.dueDate && React.createElement('span', { style: { marginLeft: 8, color: 'var(--text-secondary)' } }, `Due: ${rem.dueDate.split('T')[0]}`)
+          )
+        );
       };
 
       return React.createElement('div', { className: 'inbox-container', style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, height: 'calc(100vh - 160px)' } },
@@ -462,15 +1014,16 @@
                   cursor: 'pointer',
                   marginBottom: 8,
                   backgroundColor: selectedMessage && selectedMessage.id === m.id ? 'var(--primary-light)' : 'var(--bg-hover)',
-                  borderLeft: !m.isRead ? '4px solid var(--primary)' : 'none',
-                  fontWeight: !m.isRead ? 'bold' : 'normal'
+                  borderLeft: isUnread(m) ? '4px solid var(--primary)' : 'none',
+                  fontWeight: isUnread(m) ? 'bold' : 'normal'
                 }
               },
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
                   React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, m.sender || 'System'),
                   React.createElement('span', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, m.createdAt ? m.createdAt.split('T')[0] : '')
                 ),
-                React.createElement('div', { style: { fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, m.subject || 'No Subject')
+                React.createElement('div', { style: { fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, m.subject || 'No Subject'),
+                m.reminderId && React.createElement('div', { style: { fontSize: '0.7rem', color: '#0284c7', marginTop: 4 } }, '🔗 Linked to planner item')
               )
             ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No messages')
           )
@@ -484,7 +1037,8 @@
                 React.createElement('span', null, selectedMessage.createdAt ? selectedMessage.createdAt.replace('T', ' ').substring(0, 19) : '')
               )
             ),
-            React.createElement('div', { style: { flex: 1, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: '1.6' } }, selectedMessage.body)
+            React.createElement('div', { style: { flex: 1, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: '1.6' } }, selectedMessage.body),
+            renderDetailActions(selectedMessage)
           ) : React.createElement('div', { style: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } }, 'Select a message to view details')
         ),
         React.createElement(ComposeMessageModal, { isOpen: composeOpen, onClose: () => setComposeOpen(false), onSend: onSendMessage })
@@ -517,63 +1071,20 @@
       ) : null;
     }
 
-    function ReminderModal({ isOpen, onClose, onCreate }) {
-      const [title, setTitle] = useState('');
-      const [note, setNote] = useState('');
-      const [dueDate, setDueDate] = useState('');
-      const handleSubmit = () => {
-        if (!title) return;
-        onCreate({ title, note, dueDate });
-        setTitle(''); setNote(''); setDueDate('');
-        onClose();
-      };
-      return isOpen ? React.createElement('div', { className: 'modal-overlay' },
-        React.createElement('div', { className: 'card reminder-modal' },
-          React.createElement('h3', null, 'New Reminder'),
-          React.createElement('input', { type: 'text', placeholder: 'Title', value: title, onChange: e => setTitle(e.target.value) }),
-          React.createElement('textarea', { placeholder: 'Note', value: note, onChange: e => setNote(e.target.value) }),
-          React.createElement('input', { type: 'date', value: dueDate, onChange: e => setDueDate(e.target.value) }),
-          React.createElement('div', { className: 'modal-actions' },
-            React.createElement('button', { className: 'btn', onClick: onClose }, 'Cancel'),
-            React.createElement('button', { className: 'btn btn-primary', onClick: handleSubmit }, 'Create')
-          )
-        )
-      ) : null;
-    }
 
-    function TaskModal({ isOpen, onClose, onCreate }) {
-      const [title, setTitle] = useState('');
-      const [note, setNote] = useState('');
-      const [dueDate, setDueDate] = useState('');
-      const handleSubmit = () => {
-        if (!title) return;
-        onCreate({ title, note, dueDate });
-        setTitle(''); setNote(''); setDueDate('');
-        onClose();
-      };
-      return isOpen ? React.createElement('div', { className: 'modal-overlay' },
-        React.createElement('div', { className: 'card reminder-modal' },
-          React.createElement('h3', null, 'New Task'),
-          React.createElement('input', { type: 'text', placeholder: 'Task title', value: title, onChange: e => setTitle(e.target.value) }),
-          React.createElement('textarea', { placeholder: 'Note', value: note, onChange: e => setNote(e.target.value) }),
-          React.createElement('input', { type: 'date', value: dueDate, onChange: e => setDueDate(e.target.value) }),
-          React.createElement('div', { className: 'modal-actions' },
-            React.createElement('button', { className: 'btn', onClick: onClose }, 'Cancel'),
-            React.createElement('button', { className: 'btn btn-primary', onClick: handleSubmit }, 'Create')
-          )
-        )
-      ) : null;
-    }
 
 
     // ─── DASHBOARD ───
-    function Dashboard({ onStartUpdate }) {
+    function Dashboard({ onStartUpdate, messages, reminders, onMarkDone, onUpdateReminder, onMarkMessageRead, onDeleteMessage }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
       const [updateInfo, setUpdateInfo] = useState(null);
+      const [updateDismissed, setUpdateDismissed] = useState(false);
       const [empAnalytics, setEmpAnalytics] = useState(null);
+      const [dismissedIds, setDismissedIds] = useState([]);
+
       useEffect(() => {
         API.analytics.firm().then(d => { setData(d); setLoading(false); }).catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
         API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => {});
@@ -584,6 +1095,64 @@
         API.invoices.analyticsSearch(name.trim()).then(r => setSearchResults(r)).catch(() => setSearchResults([]));
       }, 500), []);
       useEffect(() => { handleSearch(searchName); }, [searchName]);
+
+      const isMsgUnread = (m) => m && !m.read && !m.isRead;
+
+      // Get unread planner notifications (messages with reminderId)
+      const plannerAlerts = useMemo(() => {
+        if (!messages) return [];
+        return messages.filter(m => m.reminderId && isMsgUnread(m) && !dismissedIds.includes(m.id));
+      }, [messages, dismissedIds]);
+
+      // Get latest unread message for banner
+      const latestUnread = useMemo(() => {
+        if (!messages) return null;
+        const unread = messages.filter(m => isMsgUnread(m) && !dismissedIds.includes(m.id));
+        return unread.length > 0 ? unread[0] : null;
+      }, [messages, dismissedIds]);
+
+      const handleDismiss = (msgId) => {
+        setDismissedIds(prev => [...prev, msgId]);
+        if (onDeleteMessage) {
+          onDeleteMessage(msgId);
+        } else if (onMarkMessageRead) {
+          onMarkMessageRead(msgId);
+        }
+      };
+
+      const handleSnooze = (msg, hours) => {
+        const rem = reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        if (rem) {
+          const currentDue = rem.dueDate ? new Date(rem.dueDate) : new Date();
+          currentDue.setHours(currentDue.getHours() + hours);
+          const newDueStr = currentDue.toISOString().slice(0, 19);
+          onUpdateReminder(rem.id, { ...rem, dueDate: newDueStr, inboxNotified: false });
+        }
+        handleDismiss(msg.id);
+        showToast(`Snoozed for ${hours === 1 ? '1 hour' : hours + ' hours'}`, 'success');
+      };
+
+      const handleQuickDone = (msg) => {
+        if (msg.reminderId && onMarkDone) {
+          onMarkDone(msg.reminderId);
+        }
+        handleDismiss(msg.id);
+      };
+
+      const handleQuickProgress = (msg, progressVal) => {
+        const rem = reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        if (rem) {
+          const pv = parseInt(progressVal, 10);
+          onUpdateReminder(rem.id, {
+            ...rem,
+            progress: pv,
+            status: pv === 100 ? 'DONE' : (pv === 0 ? 'TODO' : 'IN_PROGRESS'),
+            completed: pv === 100
+          });
+          if (pv === 100) handleDismiss(msg.id);
+        }
+      };
+
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading dashboard...'));
       if (!data) return React.createElement('div', { className: 'empty-state' }, React.createElement('h3', null, 'No data available'));
       const kpis = [
@@ -592,16 +1161,126 @@
         { label: 'Total Pending', value: BillsoftUtils.formatCurrency(data.totalPending), sub: 'Awaiting payment', cls: 'kpi-amber', icon: Icons.clock },
         { label: 'Today', value: BillsoftUtils.formatCurrency(data.businessToday), sub: 'Current day', cls: 'kpi-red', icon: Icons.alert },
       ];
+
+      const renderReminderForAlert = (msg) => {
+        const rem = reminders ? reminders.find(r => r.id === msg.reminderId) : null;
+        const isTask = rem && rem.type === 'task';
+        const borderColor = isTask ? '#0284c7' : 'var(--primary)';
+        const typeLabel = isTask ? '📋 Task Due' : '🔔 Reminder Due';
+
+        return React.createElement('div', {
+          key: msg.id,
+          className: 'card',
+          style: { borderLeft: `4px solid ${borderColor}`, backgroundColor: '#fffbeb', marginBottom: 12, padding: '14px 20px' }
+        },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 } },
+            React.createElement('div', { style: { flex: 1 } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+                React.createElement('span', { style: { fontWeight: 700, color: '#92400e', fontSize: '0.95rem' } }, typeLabel),
+                rem && rem.tags && React.createElement('span', { style: { fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, backgroundColor: '#fef3c7', color: '#92400e' } }, rem.tags.split(',')[0])
+              ),
+              React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem' } }, rem ? rem.title : msg.subject),
+              rem && rem.note && React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 2 } }, rem.note),
+              rem && rem.dueDate && React.createElement('div', { style: { fontSize: '0.75rem', color: '#92400e', marginTop: 4 } }, `Due: ${rem.dueDate.split('T')[0]}`)
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 280 } },
+              // Quick Action Buttons
+              React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleDismiss(msg.id) }, '✕ Dismiss'),
+              React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(msg, 1) }, '⏰ +1h'),
+              React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(msg, 24) }, '📅 +1d'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleQuickDone(msg) }, '✓ Done'),
+              // Progress slider for tasks
+              isTask && rem && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                React.createElement('input', {
+                  type: 'range', min: 0, max: 100, value: rem.progress || 0,
+                  style: { width: 80, height: 4 },
+                  onChange: e => handleQuickProgress(msg, e.target.value)
+                }),
+                React.createElement('span', { style: { fontSize: '0.7rem', minWidth: 28 } }, `${rem.progress || 0}%`)
+              )
+            )
+          )
+        );
+      };
+
       return React.createElement('div', null,
-        updateInfo && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+
+        // Primary Banner: Latest Inbox Message (replaces update banner when message exists)
+        latestUnread ? React.createElement('div', { className: 'card', style: {
+          borderLeft: `4px solid ${latestUnread.reminderId ? '#f59e0b' : 'var(--primary)'}`,
+          backgroundColor: latestUnread.reminderId ? '#fffbeb' : '#eef2ff',
+          marginBottom: 20, padding: '14px 20px'
+        } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 } },
+            React.createElement('div', { style: { flex: 1 } },
+              // Header
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+                React.createElement('span', { style: { fontWeight: 700, fontSize: '0.95rem', color: latestUnread.reminderId ? '#92400e' : 'var(--primary)' } },
+                  latestUnread.reminderId
+                    ? ((() => { const rem = reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null; return rem && rem.type === 'task' ? '📋 Task Due' : '🔔 Reminder Due'; })())
+                    : '📩 New Message'
+                ),
+                React.createElement('span', { style: { fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, backgroundColor: latestUnread.reminderId ? '#fef3c7' : '#e0e7ff', color: latestUnread.reminderId ? '#92400e' : 'var(--primary)' } }, latestUnread.sender || 'System'),
+                (() => {
+                  const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
+                  return rem && rem.tags ? React.createElement('span', { style: { fontSize: '0.65rem', padding: '1px 5px', borderRadius: 4, backgroundColor: '#fef3c7', color: '#92400e' } }, rem.tags.split(',')[0]) : null;
+                })()
+              ),
+              // Subject/Title
+              React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem' } },
+                (() => {
+                  const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
+                  return rem ? rem.title : latestUnread.subject;
+                })()
+              ),
+              // Body preview
+              (() => {
+                const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
+                const preview = rem ? rem.note : (latestUnread.body || '');
+                return preview ? React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 2, maxWidth: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, preview) : null;
+              })(),
+              // Due date for planner items
+              (() => {
+                const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
+                return rem && rem.dueDate ? React.createElement('div', { style: { fontSize: '0.75rem', color: '#92400e', marginTop: 4 } }, `Due: ${rem.dueDate.split('T')[0]}`) : null;
+              })()
+            ),
+            // Quick Actions
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 260 } },
+              React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleDismiss(latestUnread.id) }, '✕ Dismiss'),
+              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(latestUnread, 1) }, '⏰ +1h'),
+              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(latestUnread, 24) }, '📅 +1d'),
+              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-primary btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleQuickDone(latestUnread) }, '✓ Done'),
+              // Progress slider for tasks
+              (() => {
+                const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
+                const isTask = rem && rem.type === 'task';
+                return isTask ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                  React.createElement('input', {
+                    type: 'range', min: 0, max: 100, value: rem.progress || 0,
+                    style: { width: 80, height: 4 },
+                    onChange: e => handleQuickProgress(latestUnread, e.target.value)
+                  }),
+                  React.createElement('span', { style: { fontSize: '0.7rem', minWidth: 28 } }, `${rem.progress || 0}%`)
+                ) : null;
+              })()
+            )
+          )
+        ) :
+        // Fallback: Update Banner (only shown when no unread messages)
+        (updateInfo && !updateDismissed) && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
           React.createElement('div', null,
             React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, 'Update Available!'),
             React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
           ),
-          updateInfo.automaticInstallSupported ?
-            React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Update') :
-            React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: 180, textAlign: 'right' } }, 'Download and installation will be available with the standalone updater.')
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            updateInfo.automaticInstallSupported ?
+              React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Update') :
+              React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: 180, textAlign: 'right' } }, 'Download and installation will be available with the standalone updater.'),
+            React.createElement('button', { className: 'btn btn-sm', style: { backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }, onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
+          )
         ),
+
         React.createElement('div', { className: 'kpi-grid' }, kpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
           React.createElement('div', { className: 'kpi-icon' }, k.icon),
           React.createElement('div', { className: 'kpi-label' }, k.label),
@@ -723,12 +1402,13 @@
       const handleBlur = () => { setTimeout(() => { setShowSuggestions(false); setHighlightIdx(-1); }, 200); };
       const handleKeyDown = (e) => {
         if (showSuggestions && filtered.length > 0) {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setHighlightIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
-          if (e.key === 'ArrowUp') { e.preventDefault(); setHighlightIdx(i => Math.max(i - 1, 0)); return; }
+          if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setHighlightIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setHighlightIdx(i => Math.max(i - 1, 0)); return; }
         }
-        if (e.key === 'Escape') { setShowSuggestions(false); return; }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setShowSuggestions(false); return; }
         if (e.key === 'Enter') {
           e.preventDefault();
+          e.stopPropagation();
           if (value) {
             if (onEnterAfterSelect) onEnterAfterSelect();
             return;
@@ -788,7 +1468,7 @@
       const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
       
       const isEstimate = isQuotationMode;
-      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', qty: 1, unit: '', pricePerUnit: '', discountValue: 0, gstPercent: '' });
+      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
       
       const [form, setForm] = useState({
         customerId: '', customerName: '', customerPhone: '', customerAddress: '',
@@ -1029,16 +1709,60 @@
         }
       };
 
-      const handleTabCompletion = (e) => {
-         if (e.key === 'Tab' && !e.shiftKey) {
-             e.preventDefault();
-             setShowCompletionPopup(true);
-         }
+      useEffect(() => {
+        if (!loading && refName.current) {
+          setTimeout(() => {
+            if (refName.current) {
+              refName.current.focus();
+              refName.current.select();
+            }
+          }, 100);
+        }
+      }, [loading]);
+
+      useEffect(() => {
+        if (!showCompletionPopup) return;
+        const handleModalKey = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowCompletionPopup(false);
+          } else if (e.key === 'Enter' || e.key === '1') {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSave(false, false);
+          } else if (e.key.toLowerCase() === 'p' || e.key === '2') {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSave(true, false);
+          } else if (e.key.toLowerCase() === 'c' || e.key === '3') {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSave(false, true);
+            setTimeout(() => window.location.reload(), 1000);
+          }
+        };
+        window.addEventListener('keydown', handleModalKey, true);
+        return () => window.removeEventListener('keydown', handleModalKey, true);
+      }, [showCompletionPopup, form, customers, products]);
+
+      const handleFormKeyDown = (e) => {
+        if (e.key === 'Tab' && !e.shiftKey) {
+          e.preventDefault();
+          setShowCompletionPopup(true);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          if (showCompletionPopup) {
+            setShowCompletionPopup(false);
+          } else {
+            if (onSaved) onSaved();
+          }
+        }
       };
 
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading form...'));
 
-      return React.createElement('div', { className: 'invoice-form', style: { paddingBottom: 100 } },
+      return React.createElement('div', { className: 'invoice-form', onKeyDown: handleFormKeyDown, style: { paddingBottom: 100 } },
         
         showCompletionPopup && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCompletionPopup(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
@@ -1047,9 +1771,9 @@
               React.createElement('button', { className: 'modal-close', onClick: () => setShowCompletionPopup(false) }, '✕')
             ),
             React.createElement('div', { className: 'modal-body', style: { display: 'flex', gap: 16, flexDirection: 'column' } },
-               React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false) }, 'Save & Exit'),
-               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => handleSave(true, false) }, 'Save & Print'),
-               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => { handleSave(false, true); setTimeout(() => window.location.reload(), 1000); } }, 'Save & Create Another')
+               React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false) }, 'Save & Exit [Enter or 1]'),
+               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => handleSave(true, false) }, 'Save & Print [P or 2]'),
+               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => { handleSave(false, true); setTimeout(() => window.location.reload(), 1000); } }, 'Save & Create Another [C or 3]')
             )
           )
         ),
@@ -1170,7 +1894,7 @@
                     React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
                     React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
                     React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value), onKeyDown: e => { if (e.key === 'Tab' && isLast) { handleTabCompletion(e); } else if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, 
                        React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
@@ -2776,6 +3500,8 @@
 
     // ─── INVOICES & QUOTES HUB ───
     function InvoicesQuotesHub({
+      subTab,
+      onSubTabChange,
       editInvoiceId,
       editQuotationId,
       convertedFromQuotationId,
@@ -2785,19 +3511,21 @@
       onClearEdit,
       firms
     }) {
-      const [subTab, setSubTab] = useState('invoices');
-
       useEffect(() => {
         if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
-          setSubTab('create');
+          if (onSubTabChange) onSubTabChange('create');
         }
       }, [editInvoiceId, editQuotationId, convertedFromQuotationId]);
 
+      const changeSubTab = (t) => {
+        if (onSubTabChange) onSubTabChange(t);
+      };
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
-          React.createElement('button', { className: `btn ${subTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('invoices') }, 'Invoices'),
-          React.createElement('button', { className: `btn ${subTab === 'quotations' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('quotations') }, 'Quotations'),
-          React.createElement('button', { className: `btn ${subTab === 'create' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setSubTab('create') }, 'Create Document')
+          React.createElement('button', { className: `btn ${subTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => changeSubTab('invoices') }, 'Invoices'),
+          React.createElement('button', { className: `btn ${subTab === 'quotations' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => changeSubTab('quotations') }, 'Quotations'),
+          React.createElement('button', { className: `btn ${subTab === 'create' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => changeSubTab('create') }, 'Create Document')
         ),
         subTab === 'invoices' && React.createElement(InvoiceList, { onEditInvoice }),
         subTab === 'quotations' && React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice }),
@@ -2813,8 +3541,18 @@
 
     // ─── CREATE INVOICE / QUOTATION TABS ───
         function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit }) {
-      const [tabs, setTabs] = useState([]);
-      const [activeTab, setActiveTab] = useState(null);
+      const [tabs, setTabs] = useState(() => {
+        if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
+          return [];
+        }
+        return [{ id: 1, type: 'invoice', label: 'Inv 1', firmId: API.firmId }];
+      });
+      const [activeTab, setActiveTab] = useState(() => {
+        if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
+          return null;
+        }
+        return 1;
+      });
       const tabsRef = useRef(tabs);
       tabsRef.current = tabs;
       const activeTabRef = useRef(activeTab);
@@ -2928,9 +3666,8 @@
     function App() {
       const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
       const [reminders, setReminders] = useState([]);
+      const [notes, setNotes] = useState([]);
       const [messages, setMessages] = useState([]);
-      const [reminderModalOpen, setReminderModalOpen] = useState(false);
-    const [taskModalOpen, setTaskModalOpen] = useState(false);
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
@@ -2999,10 +3736,15 @@
         }).catch(() => {});
       };
       useEffect(() => { loadFirms(); }, [firmLoadKey]);
-      // Load reminders after firm is ready
+      // Load reminders and notes after firm is ready
       useEffect(() => {
-        if (API.firmId && API.reminders && typeof API.reminders.list === 'function') {
-          API.reminders.list().then(setReminders).catch(() => {});
+        if (API.firmId) {
+          if (API.reminders && typeof API.reminders.list === 'function') {
+            API.reminders.list().then(setReminders).catch(() => {});
+          }
+          if (API.notes && typeof API.notes.listByFirm === 'function') {
+            API.notes.listByFirm(API.firmId).then(setNotes).catch(() => {});
+          }
         }
       }, [API.firmId]);
       const lastSeenMsgIdRef = useRef(null);
@@ -3094,19 +3836,69 @@
       };
       const handleEditInvoice = (id) => { setEditInvoiceId(id); setEditQuotationId(null); setConvertedFromQuotationId(null); setPage('invoices'); };
       const handleMarkReminderDone = (id) => {
-        API.reminders.markDone(id).then(() => {
-          setReminders(prev => prev.filter(r => r.id !== id));
-        }).catch(() => {});
+        API.reminders.markDone(id).then((updated) => {
+          setReminders(prev => prev.map(r => r.id === id ? updated : r));
+          showToast('Marked as done', 'success');
+        }).catch(() => {
+          showToast('Failed to mark as done', 'error');
+        });
       };
       const handleCreateReminder = (data) => {
-        API.reminders.create(data).then(newRem => {
+        return API.reminders.create({ ...data, type: 'reminder', status: 'TODO', progress: 0 }).then(newRem => {
           setReminders(prev => [...prev, newRem]);
-        }).catch(() => {});
+          showToast('Reminder created successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to create reminder', 'error');
+        });
       };
       const handleCreateTask = (data) => {
-        API.reminders.create({ ...data, type: 'task' }).then(newTask => {
+        return API.reminders.create({ ...data, type: 'task' }).then(newTask => {
           setReminders(prev => [...prev, newTask]);
-        }).catch(() => {});
+          showToast('Task created successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to create task', 'error');
+        });
+      };
+      const handleUpdateReminder = (id, data) => {
+        return API.reminders.update(id, data).then(updated => {
+          setReminders(prev => prev.map(r => r.id === id ? updated : r));
+          showToast('Updated successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to update', 'error');
+        });
+      };
+      const handleDeleteReminder = (id) => {
+        return API.reminders.delete(id).then(() => {
+          setReminders(prev => prev.filter(r => r.id !== id));
+          showToast('Deleted successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to delete', 'error');
+        });
+      };
+
+      const handleCreateNote = (data) => {
+        return API.notes.create(data).then(newNote => {
+          setNotes(prev => [...prev, newNote]);
+          showToast('Note created successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to create note', 'error');
+        });
+      };
+      const handleUpdateNote = (id, data) => {
+        return API.notes.update(id, data).then(updated => {
+          setNotes(prev => prev.map(n => n.id === id ? updated : n));
+          showToast('Note updated successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to update note', 'error');
+        });
+      };
+      const handleDeleteNote = (id) => {
+        return API.notes.delete(id).then(() => {
+          setNotes(prev => prev.filter(n => n.id !== id));
+          showToast('Note deleted successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to delete note', 'error');
+        });
       };
       const handleEditQuotation = (id) => { setEditQuotationId(id); setEditInvoiceId(null); setConvertedFromQuotationId(null); setPage('invoices'); };
       const handleConvertToInvoice = (quotation) => {
@@ -3141,8 +3933,16 @@
       };
       const handleMarkMessageRead = (id) => {
         API.messages.markRead(id).then(updated => {
-          setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true, read: true } : m));
         }).catch(() => {});
+      };
+      const handleDeleteMessage = (id) => {
+        return API.messages.delete(id).then(() => {
+          setMessages(prev => prev.filter(m => m.id !== id));
+          showToast('Message dismissed', 'success');
+        }).catch(() => {
+          showToast('Failed to dismiss message', 'error');
+        });
       };
 
       const [isUpdating, setIsUpdating] = useState(false);
@@ -3168,12 +3968,22 @@
       };
       const handleUpdateComplete = () => { setIsUpdating(false); setUpdateProgress(null); if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; } };
 
-      const [invoiceTab, setInvoiceTab] = useState('invoices'); // invoices | quotations
+      const [invoiceSubTab, setInvoiceSubTab] = useState('invoices');
+
+      const handleQuickCreate = () => {
+        setEditInvoiceId(null);
+        setEditQuotationId(null);
+        setConvertedFromQuotationId(null);
+        setInvoiceSubTab('create');
+        setPage('invoices');
+      };
 
       const pageComponents = {
-        dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate }) },
+        dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, { key: API.firmId, onStartUpdate: handleStartUpdate, messages, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder, onMarkMessageRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage }) },
         invoices: { title: 'Invoices & Quotes', comp: React.createElement(InvoicesQuotesHub, {
           key: API.firmId,
+          subTab: invoiceSubTab,
+          onSubTabChange: setInvoiceSubTab,
           editInvoiceId,
           editQuotationId,
           convertedFromQuotationId,
@@ -3184,8 +3994,20 @@
           firms
         }) },
         firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation }) },
-        planner: { title: 'Planner', comp: React.createElement(PlannerPage, { reminders: reminders, onMarkDone: handleMarkReminderDone, onOpenReminderModal: () => setReminderModalOpen(true), onOpenTaskModal: () => setTaskModalOpen(true) }) },
-        inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead }) },
+        planner: { title: 'Planner', comp: React.createElement(PlannerPage, {
+          reminders,
+          notes,
+          firms,
+          onMarkDone: handleMarkReminderDone,
+          onUpdateReminder: handleUpdateReminder,
+          onDeleteReminder: handleDeleteReminder,
+          onCreateReminder: handleCreateReminder,
+          onCreateTask: handleCreateTask,
+          onCreateNote: handleCreateNote,
+          onUpdateNote: handleUpdateNote,
+          onDeleteNote: handleDeleteNote
+        }) },
+        inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },
         employees: { title: 'Employees', comp: React.createElement(EmployeeManager, { key: API.firmId }) },
         statements: { title: 'Statements', comp: React.createElement(Statements, { key: API.firmId }) },
         settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
@@ -3197,11 +4019,9 @@
 
       return React.createElement('div', { className: 'app-layout' },
         React.createElement('div', { className: 'sidebar-container' },
-          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null })
+          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null, onQuickCreate: handleQuickCreate })
         ),
         React.createElement('main', { className: 'main-content' },
-          React.createElement(ReminderModal, { isOpen: reminderModalOpen, onClose: () => setReminderModalOpen(false), onCreate: handleCreateReminder }),
-          React.createElement(TaskModal, { isOpen: taskModalOpen, onClose: () => setTaskModalOpen(false), onCreate: handleCreateTask }),
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right' },

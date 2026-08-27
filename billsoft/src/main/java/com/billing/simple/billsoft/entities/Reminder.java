@@ -35,6 +35,12 @@ public class Reminder {
     private LocalDateTime dueDate;
 
     private boolean completed = false;
+    private Boolean inboxNotified = false;
+
+    private String type; // "reminder" or "task"
+    private String tags; // comma-separated values
+    private String status; // "TODO", "IN_PROGRESS", "DONE"
+    private Integer progress; // 0-100
 
     private LocalDateTime completedAt;
 
@@ -43,5 +49,9 @@ public class Reminder {
     @PrePersist
     public void prePersist() {
         createdAt = LocalDateTime.now();
+    }
+
+    public boolean isInboxNotified() {
+        return inboxNotified != null && inboxNotified;
     }
 }

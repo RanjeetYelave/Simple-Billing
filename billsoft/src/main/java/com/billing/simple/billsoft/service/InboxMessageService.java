@@ -28,4 +28,11 @@ public class InboxMessageService {
         msg.setRead(true);
         return msg;
     }
+
+    @Transactional
+    public boolean deleteMessage(Long id) {
+        if (!repository.existsById(id)) return false;
+        repository.deleteById(id);
+        return true;
+    }
 }

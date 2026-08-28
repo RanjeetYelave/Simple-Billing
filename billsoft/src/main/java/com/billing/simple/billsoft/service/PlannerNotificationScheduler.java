@@ -56,4 +56,30 @@ public class PlannerNotificationScheduler {
             }
         }
     }
+
+    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds
+    @Transactional
+    public void checkPayrollMonthlyReminders() {
+        LocalDateTime now = LocalDateTime.now();
+        if (now.getDayOfMonth() >= 27) {
+            String monthName = now.getMonth().name();
+            String subject = "💰 Monthly Payroll Reminder — " + monthName.substring(0, 1) + monthName.substring(1).toLowerCase() + " " + now.getYear();
+            
+            // Check if reminder message for this month already exists
+            List<InboxMessage> existingMsgs = inboxMessageRepository.findAll();
+            boolean exists = existingMsgs.stream()
+                    .anyMatch(m -> m.getSubject() != null && m.getSubject().equals(subject));
+            
+            if (!exists) {
+                InboxMessage msg = new InboxMessage();
+                msg.setFirmId(1L);
+                msg.setSubject(subject);
+                msg.setBody("Monthly payroll processing is unlocked starting today (27th of " + monthName.substring(0, 1) + monthName.substring(1).toLowerCase() + "). Please visit the HR module -> Monthly Payroll section to calculate final salary disbursals, review leaves, and generate payslip PDFs.");
+                msg.setSender("HR System");
+                msg.setRead(false);
+                msg.setCreatedAt(now);
+                inboxMessageRepository.save(msg);
+            }
+        }
+    }
 }

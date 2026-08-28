@@ -52,20 +52,44 @@ const BillsoftUtils = {
     return Math.random().toString(36).substring(2, 10);
   },
 
+  downloadPdfUrl(url, filename) {
+    // Navigate directly to the server URL.
+    // Since the backend returns Content-Disposition: attachment, the browser
+    // will download the file — and use the filename from the server header.
+    const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
+    const a = document.createElement('a');
+    a.style.cssText = 'display:none;position:fixed;top:-100px;left:-100px';
+    a.href = fullUrl;
+    // Do NOT set a.download here — let the server Content-Disposition drive the filename
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1000);
+  },
+
   downloadBlob(blob, filename) {
-    if (filename.toLowerCase().endsWith('.pdf') && blob.type !== 'application/pdf') {
-      blob = new Blob([blob], { type: 'application/pdf' });
-    }
+    if (!blob) return;
+    const mimeType = filename.toLowerCase().endsWith('.pdf')
+      ? 'application/pdf'
+      : (blob.type || 'application/octet-stream');
+
+    // Use FileReader → data: URL approach.
+    // This always works because data: URLs are inline resources, not navigations,
+    // so the `download` attribute is always respected by the browser.
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onloadend = function () {
+      if (!reader.result) return;
+      const dataUrl = reader.result.replace(/^data:[^;]+/, 'data:' + mimeType);
       const a = document.createElement('a');
-      a.href = reader.result;
+      a.style.cssText = 'display:none;position:fixed;top:-100px;left:-100px';
+      a.href = dataUrl;
       a.download = filename;
+      a.setAttribute('download', filename);
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1000);
     };
-    reader.readAsDataURL(blob);
+    reader.onerror = function (err) { console.error('FileReader error:', err); };
+    reader.readAsDataURL(new Blob([blob], { type: mimeType }));
   },
 
   printBlob(blob) {

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,6 +48,7 @@ public class UpdateService {
     private final AtomicReference<String> progressSpeed = new AtomicReference<>("");
     private final AtomicReference<String> progressSize = new AtomicReference<>("");
     private final AtomicReference<String> cachedDownloadUrl = new AtomicReference<>("");
+    private final AtomicReference<String> cachedChecksumUrl = new AtomicReference<>("");
     // Emitter used for Server‑Sent Events
     private volatile SseEmitter progressEmitter;
 
@@ -213,8 +215,17 @@ public class UpdateService {
 
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> assets = (List<Map<String, Object>>) githubRelease.get("assets");
-                if (assets != null && !assets.isEmpty()) {
-                    cachedDownloadUrl.set((String) assets.get(0).get("browser_download_url"));
+                if (assets != null) {
+                    for (Map<String, Object> asset : assets) {
+                        String name = (String) asset.get("name");
+                        if ("billsoft.war".equals(name)) {
+                            cachedDownloadUrl.set((String) asset.get("browser_download_url"));
+                        } else if ("billsoft.war.sha256".equals(name)) {
+                            cachedChecksumUrl.set((String) asset.get("browser_download_url"));
+                        }
+                    }
+                }
+                if (!cachedDownloadUrl.get().isEmpty()) {
                     response.put("downloadUrl", "internal");
                 }
                 
@@ -365,6 +376,25 @@ public class UpdateService {
             return;
         }
 
+        // Verify SHA-256 Checksum if URL is set
+        String checksumUrl = cachedChecksumUrl.get();
+        if (checksumUrl != null && !checksumUrl.isEmpty()) {
+            setProgress("downloading", 90, "Verifying checksum...", latestVersion);
+            try {
+                String expectedHash = downloadExpectedHash(checksumUrl);
+                String actualHash = computeSha256(targetPath);
+                if (!expectedHash.equalsIgnoreCase(actualHash)) {
+                    Files.deleteIfExists(targetPath);
+                    setProgress("error", 0, "Update failed: SHA-256 checksum mismatch (expected: " + expectedHash + ", got: " + actualHash + ")");
+                    return;
+                }
+            } catch (Exception e) {
+                Files.deleteIfExists(targetPath);
+                setProgress("error", 0, "Update failed during checksum verification: " + e.getMessage());
+                return;
+            }
+        }
+
         // Installation phase
         setProgress("installing", 90, "Installing update...", latestVersion);
         Thread.sleep(100);
@@ -409,5 +439,41 @@ public class UpdateService {
      */
     public boolean applyUpdate() {
         return startUpdateAsync();
+    }
+
+    private String downloadExpectedHash(String urlString) throws Exception {
+        java.net.URL url = new java.net.URI(urlString).toURL();
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(10000);
+        conn.setRequestProperty("User-Agent", "Billsoft-App");
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()))) {
+            String line = reader.readLine();
+            if (line != null) {
+                return line.trim();
+            }
+        }
+        throw new IOException("Failed to read expected hash from " + urlString);
+    }
+
+    private String computeSha256(Path file) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (java.io.InputStream is = Files.newInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        byte[] hash = digest.digest();
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 }

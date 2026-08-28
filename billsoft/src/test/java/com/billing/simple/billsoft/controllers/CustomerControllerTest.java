@@ -70,7 +70,9 @@ class CustomerControllerTest {
     void testUpdate() throws Exception {
         CustomerRequest req = new CustomerRequest();
         req.setName("Updated");
-        when(service.update(eq(1L), any(CustomerRequest.class))).thenReturn(new Customer());
+        Customer updated = new Customer();
+        updated.setName("Updated");
+        when(service.update(eq(1L), any(CustomerRequest.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/customers/1")
                 .contentType(MediaType.APPLICATION_JSON)

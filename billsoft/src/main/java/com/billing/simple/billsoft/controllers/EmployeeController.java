@@ -565,7 +565,8 @@ public class EmployeeController {
 
         try {
             FirmDetails firm = firmService.getFirst();
-            byte[] pdf = pdfService.generatePayslip(empOpt.get(), salOpt.get(), firm);
+            List<SalaryRecord> allSalaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
+            byte[] pdf = pdfService.generatePayslip(empOpt.get(), salOpt.get(), firm, allSalaries);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "payslip-" + id + "-" + salaryId + ".pdf");
@@ -711,6 +712,8 @@ public class EmployeeController {
             com.billing.simple.billsoft.entities.AttendanceRecord ext = existing.get();
             ext.setStatus(record.getStatus());
             ext.setRemarks(record.getRemarks());
+            ext.setLeaveType(record.getLeaveType());
+            ext.setApprovedBy(record.getApprovedBy());
             return ResponseEntity.ok(attendanceRepo.save(ext));
         }
         return ResponseEntity.ok(attendanceRepo.save(record));
@@ -746,6 +749,34 @@ public class EmployeeController {
     public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
         documentRepo.deleteById(docId);
         return ResponseEntity.ok(Map.of("status", "deleted"));
+    }
+
+    @GetMapping("/documents/{docId}/download")
+    public ResponseEntity<byte[]> downloadDocumentFile(@PathVariable Long docId) {
+        Optional<com.billing.simple.billsoft.entities.EmployeeDocument> docOpt = documentRepo.findById(docId);
+        if (docOpt.isEmpty()) return ResponseEntity.notFound().build();
+        com.billing.simple.billsoft.entities.EmployeeDocument doc = docOpt.get();
+        
+        String b64 = doc.getDataBase64();
+        if (b64 == null || b64.isBlank()) return ResponseEntity.notFound().build();
+        
+        String mimeType = "application/octet-stream";
+        if (b64.startsWith("data:")) {
+            int mimeEnd = b64.indexOf(";base64,");
+            if (mimeEnd > 5) {
+                mimeType = b64.substring(5, mimeEnd);
+            }
+            int dataStart = b64.indexOf("base64,");
+            if (dataStart >= 0) {
+                b64 = b64.substring(dataStart + 7);
+            }
+        }
+        byte[] bytes = java.util.Base64.getDecoder().decode(b64.trim());
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(mimeType));
+        headers.setContentDispositionFormData("inline", doc.getFileName() != null ? doc.getFileName() : "document.bin");
+        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
     }
 
     // ─── Leave Endpoints ───

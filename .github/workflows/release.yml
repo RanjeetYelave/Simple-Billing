@@ -26,16 +26,13 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Make Maven wrapper executable
-        run: chmod +x ./mvnw
-
       - name: Update version in application.properties
         working-directory: ./billsoft
         run: |
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
       - name: Build with Maven
-        run: ./mvnw clean package -DskipTests
+        run: mvn clean package -DskipTests
 
       - name: Rename WAR file
         working-directory: ./billsoft

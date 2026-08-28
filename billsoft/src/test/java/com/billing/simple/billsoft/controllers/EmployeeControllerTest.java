@@ -3,6 +3,10 @@ package com.billing.simple.billsoft.controllers;
 import com.billing.simple.billsoft.dtos.EmployeeDTO;
 import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
+import com.billing.simple.billsoft.repo.EmployeeRepository;
+import com.billing.simple.billsoft.repo.PromotionRecordRepository;
+import com.billing.simple.billsoft.entities.Employee;
+import com.billing.simple.billsoft.entities.PromotionRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +39,12 @@ public class EmployeeControllerTest {
 
     @Autowired
     private AppConfigRepository appConfigRepo;
+
+    @Autowired
+    private EmployeeRepository employeeRepo;
+
+    @Autowired
+    private PromotionRecordRepository promotionRepo;
 
     @BeforeEach
     void setUp() {
@@ -108,15 +118,19 @@ public class EmployeeControllerTest {
                 .andReturn();
         EmployeeDTO saved = objectMapper.readValue(createResult.getResponse().getContentAsString(), EmployeeDTO.class);
 
-        // Add a promotion scheduled for today.
-        String promotionJson = "{\"effectiveDate\": \"" + LocalDate.now().toString() + "\", \"type\": \"BOTH\", \"newRole\": \"Senior Developer\", \"newSalary\": 30000, \"reason\": \"Annual Increment\"}";
-        mockMvc.perform(post("/api/employees/" + saved.getId() + "/promotions")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(promotionJson))
-                .andExpect(status().isOk());
+        // Add a promotion scheduled for today but save it as NOT applied
+        Employee emp = employeeRepo.findById(saved.getId()).get();
+        PromotionRecord record = new PromotionRecord();
+        record.setEmployee(emp);
+        record.setEffectiveDate(LocalDate.now());
+        record.setType("BOTH");
+        record.setNewRole("Senior Developer");
+        record.setNewSalary(30000.0);
+        record.setIsApplied(false);
+        promotionRepo.save(record);
 
         // Apply pending promotions.
-        mockMvc.perform(post("/api/employees/apply-promotions"))
+        mockMvc.perform(post("/api/employees/apply-promotions").param("firmId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.appliedCount").value(1));
     }

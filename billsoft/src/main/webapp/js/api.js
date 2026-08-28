@@ -55,7 +55,10 @@ const API = {
 
   async _json(url, options = {}) {
     const res = await this._request(url, options);
-    return res.json();
+    if (res.status === 204) return null;
+    const text = await res.text();
+    if (!text || !text.trim()) return null;
+    return JSON.parse(text);
   },
 
   // -- Ensure there is a firm selected before operations that need it
@@ -146,7 +149,7 @@ const API = {
     listByFirm: (firmId) => API._json(`/api/reminders/firm/${firmId}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/reminders', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
     update: (id, data) => API._json(`/api/reminders/${id}`, { method: 'PUT', body: data }),
-    delete: (id) => API._json(`/api/reminders/${id}`, { method: 'DELETE' }),
+    delete: (id) => API._ensureFirmReady().then(() => API._request(`/api/reminders/${id}`, { method: 'DELETE' })),
     markDone: (id) => API._ensureFirmReady().then(() => API._json(`/api/reminders/${id}/done`, { method: 'PUT' })),
   },
 
@@ -156,7 +159,17 @@ const API = {
     listByFirm: (firmId) => API._json(`/api/notes/firm/${firmId}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/notes', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
     update: (id, data) => API._json(`/api/notes/${id}`, { method: 'PUT', body: data }),
-    delete: (id) => API._json(`/api/notes/${id}`, { method: 'DELETE' }),
+    delete: (id) => API._ensureFirmReady().then(() => API._request(`/api/notes/${id}`, { method: 'DELETE' })),
+  },
+
+  // ── Expenses ──
+  expenses: {
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses'))),
+    listByFirm: (firmId) => API._json(`/api/expenses/firm/${firmId}`),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/expenses', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    update: (id, data) => API._json(`/api/expenses/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => API._ensureFirmReady().then(() => API._request(`/api/expenses/${id}`, { method: 'DELETE' })),
+    summary: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses/summary'))),
   },
 
   // ── Messages ──
@@ -190,16 +203,24 @@ const API = {
     customer: (id, from, to) => {
       return API._json(API._qs(`/api/statements/customer/${id}`, { from, to }));
     },
+    customerPdfUrl: (id, from, to) => {
+      return API._qs(`/api/statements/customer/${id}/pdf`, { from, to });
+    },
     customerPdf: async (id, from, to) => {
       const res = await API._request(API._qs(`/api/statements/customer/${id}/pdf`, { from, to }));
-      return res.blob();
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
     },
     firm: (from, to) => {
       return API._json(API._qs('/api/statements/firm', { from, to }));
     },
+    firmPdfUrl: (from, to) => {
+      return API._qs('/api/statements/firm/pdf', { from, to });
+    },
     firmPdf: async (from, to) => {
       const res = await API._request(API._qs('/api/statements/firm/pdf', { from, to }));
-      return res.blob();
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
     },
   },
 
@@ -272,21 +293,28 @@ const API = {
     // F3: Documents
     documents: {
       list: (id) => API._json(`/api/employees/${id}/documents`),
-      upload: async (id, type, file) => {
+      upload: async (id, typeOrData, file) => {
+        if (typeof typeOrData === 'object' && typeOrData.dataBase64) {
+          return API._json(`/api/employees/${id}/documents`, {
+            method: 'POST',
+            body: typeOrData
+          });
+        }
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = reader.result;
             API._json(`/api/employees/${id}/documents`, {
               method: 'POST',
-              body: { type, fileName: file.name, dataBase64: base64 }
+              body: { type: typeOrData, fileName: file.name, dataBase64: base64 }
             }).then(resolve).catch(reject);
           };
           reader.onerror = () => reject(new Error('Failed to read file'));
           reader.readAsDataURL(file);
         });
       },
-      delete: (docId) => API._request(`/api/employees/documents/${docId}`, { method: 'DELETE' })
+      delete: (docId) => API._request(`/api/employees/documents/${docId}`, { method: 'DELETE' }),
+      downloadUrl: (docId) => `${API.BASE_URL}/api/employees/documents/${docId}/download`
     },
     // F4: Leave Management
     leaves: {

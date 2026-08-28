@@ -28,9 +28,9 @@ public class EmployeePdfService {
     }
 
     /**
-     * Generate a payslip PDF for a given salary record.
+     * Generate a payslip PDF for a given salary record, including YTD summary.
      */
-    public byte[] generatePayslip(Employee emp, SalaryRecord salary, FirmDetails firm) throws Exception {
+    public byte[] generatePayslip(Employee emp, SalaryRecord salary, FirmDetails firm, List<SalaryRecord> allEmpSalaries) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         PdfWriter.getInstance(doc, baos);
@@ -139,17 +139,17 @@ public class EmployeePdfService {
             details.addCell(cell);
         }
 
-        // Calculate actual days in month from monthYear (FIX B6)
+        // Calculate actual days in month from monthYear
         int totalDays = 30;
         String my = salary.getMonthYear();
+        int targetYear = LocalDate.now().getYear();
         if (my != null && my.contains("-")) {
             try {
                 String[] parts = my.split("-");
                 if (parts.length == 2) {
-                    java.time.YearMonth ym = java.time.YearMonth.of(
-                        Integer.parseInt(parts[1].trim()),
-                        Integer.parseInt(parts[0].trim())
-                    );
+                    int mo = Integer.parseInt(parts[0].trim());
+                    targetYear = Integer.parseInt(parts[1].trim());
+                    java.time.YearMonth ym = java.time.YearMonth.of(targetYear, mo);
                     totalDays = ym.lengthOfMonth();
                 }
             } catch (Exception ignored) {}
@@ -201,8 +201,49 @@ public class EmployeePdfService {
         doc.add(new Paragraph("Amount in words: " + numberToWords(salary.getNetPaid()), normal));
         doc.add(new Paragraph("\n"));
 
-        // YTD Earnings
-        doc.add(new Paragraph("Year-to-Date (YTD) gross earnings for " + getYearFromMonth(salary.getMonthYear()) + ": Computed from salary records.", small));
+        // --- YTD Summary Table ---
+        double ytdGross = 0;
+        double ytdDeductions = 0;
+        double ytdNet = 0;
+        int ytdCount = 0;
+
+        if (allEmpSalaries != null) {
+            for (SalaryRecord s : allEmpSalaries) {
+                String sMy = s.getMonthYear();
+                if (sMy != null && sMy.contains("-")) {
+                    try {
+                        String[] p = sMy.split("-");
+                        if (p.length == 2 && Integer.parseInt(p[1].trim()) == targetYear) {
+                            ytdGross += (s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0) + (s.getBonusAmount() != null ? s.getBonusAmount() : 0);
+                            ytdDeductions += (s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0) + (s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0);
+                            ytdNet += (s.getNetPaid() != null ? s.getNetPaid() : 0);
+                            ytdCount++;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        doc.add(new Paragraph("Year-to-Date (YTD) Financial Summary (" + targetYear + ")", hFont));
+        PdfPTable ytdTable = new PdfPTable(new float[]{2f, 1.5f, 1.5f, 1.5f});
+        ytdTable.setWidthPercentage(100);
+        ytdTable.setHeaderRows(1);
+
+        String[] ytdHeads = {"Period", "YTD Gross Earnings", "YTD Deductions", "YTD Net Paid"};
+        for (String h : ytdHeads) {
+            PdfPCell c = new PdfPCell(new Phrase(h, hFont));
+            c.setBackgroundColor(new Color(240, 243, 246));
+            c.setPadding(5);
+            ytdTable.addCell(c);
+        }
+
+        ytdTable.addCell(new PdfPCell(new Phrase("Jan - " + salary.getMonthYear() + " (" + ytdCount + " months)", normal)));
+        ytdTable.addCell(new PdfPCell(new Phrase("₹" + formatAmount(ytdGross), normal)));
+        ytdTable.addCell(new PdfPCell(new Phrase("₹" + formatAmount(ytdDeductions), normal)));
+        ytdTable.addCell(new PdfPCell(new Phrase("₹" + formatAmount(ytdNet), bold)));
+
+        doc.add(ytdTable);
+        doc.add(new Paragraph("\n"));
 
         // Footer signature
         PdfPTable sig = new PdfPTable(new float[]{1f, 1f});

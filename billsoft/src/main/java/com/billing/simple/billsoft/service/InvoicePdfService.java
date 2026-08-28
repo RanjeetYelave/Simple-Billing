@@ -152,7 +152,7 @@ public class InvoicePdfService {
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
         boolean isEstimate = invoice != null && invoice.getStatus() != null && invoice.getStatus().name().equalsIgnoreCase("ESTIMATE");
-        String title = isEstimate ? "QUOTATION" : "TAX INVOICE";
+        String title = isEstimate ? "ESTIMATE" : "TAX INVOICE";
         
         Paragraph titleP = new Paragraph(title, titleFont);
         titleP.setAlignment(Element.ALIGN_RIGHT);
@@ -204,7 +204,7 @@ public class InvoicePdfService {
         
         billToCell.addElement(new Paragraph("BILL TO:", smallBold));
         if (invoice.getCustomer() != null) {
-            billToCell.addElement(new Paragraph(invoice.getCustomer().getName() != null ? invoice.getCustomer().getName().toUpperCase() : "-", hFont));
+            billToCell.addElement(new Paragraph(invoice.getCustomer().getName() != null ? invoice.getCustomer().getName() : "-", hFont));
             if (invoice.getCustomer().getPhone() != null && !invoice.getCustomer().getPhone().isBlank())
                 billToCell.addElement(new Paragraph("Phone: " + invoice.getCustomer().getPhone(), normal));
             if (invoice.getCustomer().getEmail() != null && !invoice.getCustomer().getEmail().isBlank())

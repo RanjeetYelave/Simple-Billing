@@ -25,6 +25,9 @@ public class AttendanceRecord {
 
     private String remarks;
 
+    private String leaveType; // CASUAL, SICK, UNPAID, EARNED
+    private String approvedBy; // Manager Name
+
     @Column(updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -39,6 +42,10 @@ public class AttendanceRecord {
     public void setStatus(String status) { this.status = status; }
     public String getRemarks() { return remarks; }
     public void setRemarks(String remarks) { this.remarks = remarks; }
+    public String getLeaveType() { return leaveType; }
+    public void setLeaveType(String leaveType) { this.leaveType = leaveType; }
+    public String getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(String approvedBy) { this.approvedBy = approvedBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

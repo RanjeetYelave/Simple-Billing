@@ -155,7 +155,7 @@ class InvoiceControllerTest {
         i1.setId(8L);
         Invoice i2 = new Invoice();
         i2.setId(9L);
-        when(invoiceService.getAll(any())).thenReturn(Arrays.asList(i1, i2));
+        when(invoiceService.getAll(any(), any())).thenReturn(Arrays.asList(i1, i2));
 
         mockMvc.perform(get("/api/invoices"))
                 .andExpect(status().isOk())

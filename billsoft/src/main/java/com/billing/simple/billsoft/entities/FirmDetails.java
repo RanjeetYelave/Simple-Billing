@@ -32,6 +32,7 @@ public class FirmDetails {
     private String bankName;
     private String bankAccount;
     private String bankIfsc;
+    private String upiId;
 
     private String footerNote;
 }

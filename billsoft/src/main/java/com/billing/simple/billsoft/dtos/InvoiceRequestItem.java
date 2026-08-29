@@ -21,6 +21,7 @@ public class InvoiceRequestItem {
     ------------------------------------------------------------- */
     private Integer qty;
     private String unit; // pcs, kg, box, etc.
+    private String hsnCode; // HSN or SAC code
 
     /* -------------------------------------------------------------
        PRICING

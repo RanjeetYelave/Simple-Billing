@@ -257,6 +257,9 @@ public class InvoiceCalculationEngine {
         item.setUnit(req.getUnit() != null ? req.getUnit()
                 : (product != null ? product.getUnit() : null));
 
+        item.setHsnCode(req.getHsnCode() != null && !req.getHsnCode().isBlank() ? req.getHsnCode()
+                : (product != null ? product.getHsnCode() : null));
+
         BigDecimal price = req.getPricePerUnit() != null
                 ? req.getPricePerUnit()
                 : (product != null ? nz(product.getPrice()) : ZERO);

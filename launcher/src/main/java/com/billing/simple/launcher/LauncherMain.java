@@ -165,8 +165,17 @@ public class LauncherMain {
         command.add(jarFile.getAbsolutePath());
 
         ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        try {
+            Path logsDir = getDataDirectory().resolve("logs");
+            if (!Files.exists(logsDir)) {
+                Files.createDirectories(logsDir);
+            }
+            pb.redirectOutput(ProcessBuilder.Redirect.to(logsDir.resolve("shell-stdout.log").toFile()));
+            pb.redirectError(ProcessBuilder.Redirect.to(logsDir.resolve("shell-stderr.log").toFile()));
+        } catch (Exception e) {
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        }
         return pb.start();
     }
 

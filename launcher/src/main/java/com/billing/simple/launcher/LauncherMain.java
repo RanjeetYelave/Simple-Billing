@@ -27,6 +27,8 @@ public class LauncherMain {
     private Process backendProcess;
     private TrayIcon trayIcon;
     private boolean isBackgroundMode = false;
+    private volatile boolean restartRequested = false;
+    private volatile boolean exitRequested = false;
 
     public static void main(String[] args) {
         // Ensure AWT GUI subsystem is active for SystemTray
@@ -113,6 +115,20 @@ public class LauncherMain {
                 break;
             }
 
+            if (exitRequested) {
+                System.out.println("Exit requested. Terminating supervisor loop.");
+                break;
+            }
+
+            if (restartRequested) {
+                restartRequested = false;
+                System.out.println("Manual service restart requested. Re-launching backend...");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {}
+                continue;
+            }
+
             // Check if there is an update pending
             File updateWar = findUpdateWar();
             if (updateWar != null && updateWar.exists() && updateWar.length() > 0) {
@@ -125,8 +141,11 @@ public class LauncherMain {
                 }
             }
 
-            // If backend exited and no update was pending, break or exit
-            break;
+            // Backend stopped unexpectedly without user exit request
+            System.out.println("Backend process stopped. Re-launching in 2 seconds...");
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ignored) {}
         }
 
         System.out.println("RupeeCRM service shutting down.");
@@ -256,16 +275,13 @@ public class LauncherMain {
                 popup.add(autoStartItem);
 
                 MenuItem restartItem = new MenuItem("🔄 Restart Service");
-                restartItem.addActionListener(e -> stopBackend());
+                restartItem.addActionListener(e -> restartService());
                 popup.add(restartItem);
 
                 popup.addSeparator();
 
                 MenuItem exitItem = new MenuItem("🛑 Exit RupeeCRM");
-                exitItem.addActionListener(e -> {
-                    stopBackend();
-                    System.exit(0);
-                });
+                exitItem.addActionListener(e -> exitApplication());
                 popup.add(exitItem);
 
                 trayIcon = new TrayIcon(image, "RupeeCRM (Active)", popup);
@@ -419,13 +435,53 @@ public class LauncherMain {
         }
     }
 
+    private void restartService() {
+        System.out.println("User requested service restart from system tray.");
+        showTrayNotification("Restarting", "Restarting RupeeCRM service...", TrayIcon.MessageType.INFO);
+        restartRequested = true;
+        stopBackend();
+    }
+
+    private void exitApplication() {
+        System.out.println("User requested exit from system tray.");
+        exitRequested = true;
+        stopBackend();
+        System.exit(0);
+    }
+
     private void stopBackend() {
         if (backendProcess != null && backendProcess.isAlive()) {
-            backendProcess.destroy();
             try {
-                backendProcess.waitFor(5, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {}
+                backendProcess.destroy();
+                if (!backendProcess.waitFor(3, TimeUnit.SECONDS)) {
+                    backendProcess.destroyForcibly();
+                    backendProcess.waitFor(2, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException ignored) {
+                if (backendProcess != null) {
+                    backendProcess.destroyForcibly();
+                }
+            }
         }
+        killProcessOnPort(PORT);
+    }
+
+    private void killProcessOnPort(int port) {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                Process p = Runtime.getRuntime().exec(new String[]{
+                    "cmd.exe", "/c",
+                    "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :" + port + " ^| findstr LISTENING') do taskkill /f /pid %a"
+                });
+                p.waitFor(3, TimeUnit.SECONDS);
+            } else {
+                Process p = Runtime.getRuntime().exec(new String[]{
+                    "/bin/sh", "-c", "lsof -ti :" + port + " | xargs kill -9 2>/dev/null || true"
+                });
+                p.waitFor(3, TimeUnit.SECONDS);
+            }
+        } catch (Exception ignored) {}
     }
 
     private File getAppDirectory() {

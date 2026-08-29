@@ -5284,29 +5284,175 @@
       const latestVersion = progress ? progress.latestVersion : '';
       const speed = progress ? progress.speed : '';
       const size = progress ? progress.size : '';
+      const elapsedSeconds = progress && progress.elapsedSeconds ? progress.elapsedSeconds : 0;
       const showBar = status === 'downloading' || status === 'installing';
       const isRestarting = status === 'restarting';
-      const showSpinner = isRestarting || (status === 'downloading' && percent === 0);
       const showComplete = status === 'complete';
       const isError = status === 'error';
+
       if (!isUpdating) return null;
-      return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center', borderRadius: 16, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' } },
-          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 16 } }, showComplete ? '✅' : isError ? '❌' : isRestarting ? '⚡' : '🔄'),
-          React.createElement('h3', { style: { marginBottom: 8, fontSize: '1.4rem', fontWeight: 700, color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)' } }, isError ? 'Update Failed' : showComplete ? 'Update Installed!' : isRestarting ? 'Restarting RupeeCRM' : 'Updating RupeeCRM'),
-          latestVersion ? React.createElement('p', { style: { margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '0.9rem' } }, `Installing version ${latestVersion}`) : null,
-          showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 8 } }, React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.4s ease-in-out' } })) : null,
-          showBar ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '0 4px' } }, React.createElement('span', { style: { visibility: speed ? 'visible' : 'hidden' } }, speed || '0.00 MB/s'), React.createElement('span', { style: { visibility: size ? 'visible' : 'hidden' } }, size || '0.0 MB / 0.0 MB' )) : null,
-          showBar ? React.createElement('p', { style: { fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary)', margin: '0 0 8px 0' } }, percent + '%') : null,
-          React.createElement('p', { style: { color: isError ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.92rem', margin: '8px 0 0 0', lineHeight: 1.5 } }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')),
-          isRestarting ? React.createElement('div', { style: { marginTop: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 } },
-            React.createElement('div', { className: 'spinner', style: { width: 24, height: 24 } }),
-            React.createElement('p', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 } }, 'RupeeCRM service will automatically reconnect once booted.'),
-            React.createElement('button', { className: 'btn btn-outline', style: { marginTop: 8, fontSize: '0.85rem', padding: '6px 14px' }, onClick: () => { window.location.reload(); } }, '🔄 Check Server & Reload')
-          ) : null,
-          !showComplete && !isError && !isRestarting ? React.createElement('p', { style: { marginTop: 20, fontSize: '0.8rem', color: '#ef4444', fontWeight: 500 } }, 'Do not close the application during the update') : null,
-          showComplete ? React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { window.location.reload(); } }, 'Reload App Now') : null,
-          isError ? React.createElement('button', { className: 'btn btn-outline', style: { marginTop: 20 }, onClick: onComplete }, 'Close') : null
+
+      const formatTime = (secs) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return m > 0 ? `${m}m ${s < 10 ? '0' : ''}${s}s` : `${s}s`;
+      };
+
+      return React.createElement('div', {
+        className: 'modal-overlay',
+        style: {
+          zIndex: 9999,
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(8px)',
+          padding: 16
+        }
+      },
+        React.createElement('div', {
+          className: 'card',
+          style: {
+            maxWidth: 540,
+            width: '100%',
+            padding: '36px 32px',
+            textAlign: 'center',
+            borderRadius: 20,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'var(--bg-card)'
+          }
+        },
+          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 14 } },
+            showComplete ? '🎉' : isError ? '❌' : isRestarting ? '⚡' : '📥'
+          ),
+          React.createElement('h3', {
+            style: {
+              marginBottom: 6,
+              fontSize: '1.35rem',
+              fontWeight: 700,
+              color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)'
+            }
+          },
+            isError ? 'Update Process Interrupted' :
+            showComplete ? 'Update Successfully Installed!' :
+            isRestarting ? 'Applying Update & Restarting Service' :
+            'Downloading RupeeCRM Update'
+          ),
+          latestVersion ? React.createElement('div', {
+            style: {
+              display: 'inline-block',
+              padding: '3px 10px',
+              borderRadius: 20,
+              background: 'rgba(59, 130, 246, 0.1)',
+              color: 'var(--primary)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              marginBottom: 18
+            }
+          }, `Target Version: ${latestVersion}`) : null,
+
+          // Downloading Progress Bar
+          showBar && React.createElement('div', { style: { marginTop: 8, marginBottom: 16 } },
+            React.createElement('div', {
+              style: {
+                width: '100%', height: 12, backgroundColor: 'rgba(226, 232, 240, 0.6)',
+                borderRadius: 6, overflow: 'hidden', marginBottom: 8
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: `${percent}%`, height: '100%',
+                  backgroundColor: 'var(--primary)',
+                  borderRadius: 6, transition: 'width 0.4s ease-in-out'
+                }
+              })
+            ),
+            React.createElement('div', {
+              style: {
+                display: 'flex', justifyContent: 'space-between',
+                fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '0 2px'
+              }
+            },
+              React.createElement('span', null, speed ? `⚡ ${speed}` : 'Preparing download...'),
+              React.createElement('span', { style: { fontWeight: 600 } }, `${percent}%`),
+              React.createElement('span', null, size ? `📦 ${size}` : '')
+            )
+          ),
+
+          // Restarting Explanatory Panel (Graceful 2-3 min notice)
+          isRestarting && React.createElement('div', {
+            style: {
+              marginTop: 12,
+              marginBottom: 20,
+              padding: '18px 20px',
+              borderRadius: 14,
+              backgroundColor: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.22)',
+              textAlign: 'left'
+            }
+          },
+            React.createElement('div', {
+              style: {
+                display: 'flex', alignItems: 'center', gap: 8,
+                color: 'var(--primary)', fontWeight: 700, fontSize: '0.92rem', marginBottom: 6
+              }
+            },
+              React.createElement('span', null, '⏳'),
+              React.createElement('span', null, 'Please wait 2–3 minutes for completion')
+            ),
+            React.createElement('p', {
+              style: {
+                fontSize: '0.84rem', color: 'var(--text-secondary)',
+                lineHeight: 1.55, margin: '0 0 14px 0'
+              }
+            }, 'The update files are being replaced and the RupeeCRM background service is restarting. Please do not close or manually reload this window; the system will automatically reconnect as soon as it is ready.'),
+            
+            // Steps Checklist
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
+                '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
+              ),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
+                '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
+              ),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
+                '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
+              )
+            ),
+
+            React.createElement('div', {
+              style: {
+                marginTop: 14, paddingTop: 10, borderTop: '1px dashed rgba(59,130,246,0.2)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: '0.78rem', color: 'var(--text-secondary)'
+              }
+            },
+              React.createElement('span', null, `⏱️ Time elapsed: ${formatTime(elapsedSeconds)}`),
+              React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600 } }, 'Auto-monitoring server...')
+            )
+          ),
+
+          // General Status Message
+          !isRestarting && React.createElement('p', {
+            style: {
+              color: isError ? 'var(--danger)' : 'var(--text-secondary)',
+              fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
+            }
+          }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
+
+          // Footer Action Buttons
+          showComplete && React.createElement('button', {
+            className: 'btn btn-primary btn-lg',
+            style: { marginTop: 12, width: '100%' },
+            onClick: () => { window.location.reload(); }
+          }, '🚀 Launch Updated App Now'),
+
+          isError && React.createElement('button', {
+            className: 'btn btn-outline',
+            style: { marginTop: 12 },
+            onClick: onComplete
+          }, 'Close')
         )
       );
     }
@@ -7812,39 +7958,58 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       const startRestartPolling = (latestVer) => {
         if (restartPollingRef.current) return;
         let attempts = 0;
-        const maxAttempts = 60;
+        const maxAttempts = 120; // 120 * 1.5s = 180s (3 minutes)
+        const startTime = Date.now();
+
+        // Prevent accidental page reloads that cause ERR_CONNECTION_REFUSED
+        window.onbeforeunload = (e) => {
+          e.preventDefault();
+          return (e.returnValue = "RupeeCRM is currently updating and restarting. Leaving or reloading may interrupt the reconnection process.");
+        };
+
         restartPollingRef.current = setInterval(async () => {
           attempts++;
+          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
           try {
             const res = await fetch(API.BASE_URL + '/api/health', { cache: 'no-cache' });
             if (res.ok) {
               clearInterval(restartPollingRef.current);
               restartPollingRef.current = null;
-              setUpdateProgress({ status: 'complete', percent: 100, message: 'Update installed successfully! Reloading...', latestVersion: latestVer || '' });
+              window.onbeforeunload = null;
+              setUpdateProgress({
+                status: 'complete',
+                percent: 100,
+                elapsedSeconds: elapsedSec,
+                message: 'RupeeCRM service is back online with the new update!',
+                latestVersion: latestVer || ''
+              });
               setTimeout(() => {
                 window.location.reload();
-              }, 1200);
+              }, 1500);
             }
           } catch (e) {
             setUpdateProgress(prev => ({
               ...(prev || {}),
               status: 'restarting',
               percent: 100,
-              message: `Applying update and restarting RupeeCRM... (${attempts}s)`,
+              elapsedSeconds: elapsedSec,
+              message: `Applying update and restarting service... (${elapsedSec}s elapsed)`,
               latestVersion: latestVer || (prev ? prev.latestVersion : '')
             }));
             if (attempts >= maxAttempts) {
               clearInterval(restartPollingRef.current);
               restartPollingRef.current = null;
+              window.onbeforeunload = null;
               setUpdateProgress({
                 status: 'error',
                 percent: 0,
-                message: 'Restart is taking longer than usual. Please refresh the page or restart RupeeCRM.',
+                elapsedSeconds: elapsedSec,
+                message: 'Restart is taking longer than expected. Please check your terminal/logs or launch RupeeCRM manually.',
                 latestVersion: latestVer || ''
               });
             }
           }
-        }, 1000);
+        }, 1500);
       };
 
       const connectUpdateProgressSSE = (latestVersion) => {
@@ -7862,6 +8027,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
             } else if (data.status === 'error') {
               source.close();
               updatePollRef.current = null;
+              window.onbeforeunload = null;
             }
           } catch (err) {}
         });
@@ -7879,13 +8045,19 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
 
       const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
-        setUpdateProgress({ status: 'downloading', percent: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
+        setUpdateProgress({ status: 'downloading', percent: 0, elapsedSeconds: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
         await connectUpdateProgressSSE(latestVersion);
-        try { await API.system.applyUpdate(); } catch (e) { setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' }); }
+        try {
+          await API.system.applyUpdate();
+        } catch (e) {
+          window.onbeforeunload = null;
+          setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' });
+        }
       };
       const handleUpdateComplete = () => {
         setIsUpdating(false);
         setUpdateProgress(null);
+        window.onbeforeunload = null;
         if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; }
         if (restartPollingRef.current) { clearInterval(restartPollingRef.current); restartPollingRef.current = null; }
       };

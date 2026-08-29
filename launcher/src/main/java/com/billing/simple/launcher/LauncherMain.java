@@ -1,7 +1,13 @@
 package com.billing.simple.launcher;
 
+import java.awt.*;
+import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -14,71 +20,359 @@ import java.util.concurrent.TimeUnit;
 
 public class LauncherMain {
 
-    private static final String APP_DIR = System.getProperty("user.dir");
+    private static final String APP_URL = "http://app.billsoft.localhost:8080/";
+    private static final String HEALTH_URL = "http://localhost:8080/api/health";
+    private static final int PORT = 8080;
+
+    private Process backendProcess;
+    private TrayIcon trayIcon;
+    private boolean isBackgroundMode = false;
 
     public static void main(String[] args) {
-        System.out.println("Starting Simple Billing Launcher...");
-        System.out.println("App Directory: " + APP_DIR);
+        boolean background = false;
+        for (String arg : args) {
+            if ("--background".equalsIgnoreCase(arg) || "-b".equalsIgnoreCase(arg)) {
+                background = true;
+            }
+        }
 
-        LauncherMain launcher = new LauncherMain();
-        launcher.runLoop();
+        // 1. Single-instance check: if server is already running, open browser and exit
+        if (isBackendHealthy(1000)) {
+            System.out.println("Billsoft service is already running. Opening browser...");
+            if (!background) {
+                openBrowser(APP_URL);
+            }
+            System.exit(0);
+            return;
+        }
+
+        LauncherMain app = new LauncherMain();
+        app.isBackgroundMode = background;
+        app.startService();
     }
 
-    private void runLoop() {
+    public void startService() {
+        System.out.println("Starting Billsoft Background Service...");
+
+        // Setup shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
+
+        // Auto-register Windows Startup on first run
+        setupWindowsAutoStart(true);
+
+        // Setup System Tray
+        setupSystemTray();
+
+        // Run the main service management loop
+        runServiceLoop();
+    }
+
+    private void runServiceLoop() {
         while (true) {
-            File shellJar = findShellJar();
-            if (shellJar == null || !shellJar.exists()) {
-                System.err.println("Fatal: JavaFX Shell jar not found.");
+            File warFile = findCurrentWar();
+            if (warFile == null || !warFile.exists()) {
+                showTrayNotification("Error", "Billsoft WAR package not found.", TrayIcon.MessageType.ERROR);
+                System.err.println("Fatal: Billsoft WAR file not found.");
                 break;
             }
 
-            System.out.println("Launching shell: " + shellJar.getAbsolutePath());
-            Process process = null;
             try {
-                process = launchProcess(shellJar);
+                System.out.println("Launching backend: " + warFile.getAbsolutePath());
+                backendProcess = launchBackendProcess(warFile);
             } catch (IOException e) {
-                System.err.println("Failed to launch shell process: " + e.getMessage());
+                System.err.println("Failed to launch backend: " + e.getMessage());
+                showTrayNotification("Startup Failed", "Could not start backend process: " + e.getMessage(), TrayIcon.MessageType.ERROR);
                 break;
             }
 
-            // Monitor boot for 25 seconds
-            boolean bootedSuccessfully = monitorBoot(process, 25000);
-
-            if (!bootedSuccessfully) {
-                System.err.println("Boot failure detected! Initiating rollback...");
-                handleBootFailure(process);
-                // After rollback, the loop will re-launch the restored version in the next iteration.
+            // Wait for backend to be healthy (up to 30s)
+            boolean healthy = waitForBackend(30);
+            if (!healthy) {
+                System.err.println("Backend failed to become healthy. Initiating rollback...");
+                handleBootFailure(backendProcess);
                 continue;
             }
 
-            // If it booted successfully, wait for it to exit normally
-            int exitCode = -1;
+            System.out.println("Billsoft backend is healthy and running on port " + PORT);
+            showTrayNotification("Billsoft Ready", "Service is running at " + APP_URL, TrayIcon.MessageType.INFO);
+
+            // If launched interactively by user double-click, open browser
+            if (!isBackgroundMode) {
+                openBrowser(APP_URL);
+            }
+
+            // Monitor backend process execution
             try {
-                exitCode = process.waitFor();
-                System.out.println("Shell exited with code: " + exitCode);
+                int exitCode = backendProcess.waitFor();
+                System.out.println("Backend process stopped with exit code: " + exitCode);
             } catch (InterruptedException e) {
-                System.err.println("Launcher interrupted while waiting for shell: " + e.getMessage());
+                System.err.println("Launcher service interrupted: " + e.getMessage());
                 break;
             }
 
             // Check if there is an update pending
             File updateWar = findUpdateWar();
             if (updateWar != null && updateWar.exists() && updateWar.length() > 0) {
-                System.out.println("Pending update found at: " + updateWar.getAbsolutePath());
+                System.out.println("Pending update found. Applying update...");
+                showTrayNotification("Updating", "Applying Billsoft update...", TrayIcon.MessageType.INFO);
                 boolean prepared = prepareAndApplyUpdate(updateWar);
                 if (prepared) {
-                    System.out.println("Update applied successfully. Restarting...");
-                    // Continue loop to start the updated app
+                    System.out.println("Update applied successfully. Restarting service...");
                     continue;
-                } else {
-                    System.err.println("Failed to apply update.");
                 }
             }
 
-            // Normal exit, break out of loop
+            // If backend exited and no update was pending, break or exit
             break;
         }
-        System.out.println("Launcher exiting.");
+
+        System.out.println("Billsoft service shutting down.");
+        System.exit(0);
+    }
+
+    private Process launchBackendProcess(File warFile) throws IOException {
+        List<String> command = new ArrayList<>();
+
+        String javaHome = System.getProperty("java.home");
+        String javaBin = javaHome + File.separator + "bin" + File.separator + (System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java");
+
+        File javaBinFile = new File(javaBin);
+        if (javaBinFile.exists()) {
+            command.add(javaBinFile.getAbsolutePath());
+        } else {
+            command.add("java");
+        }
+
+        // Lightweight JVM tuning for client background service
+        command.add("-Xms128m");
+        command.add("-Xmx512m");
+        command.add("-XX:+TieredCompilation");
+        command.add("-XX:TieredStopAtLevel=1");
+        command.add("-jar");
+        command.add(warFile.getAbsolutePath());
+        command.add("--server.port=" + PORT);
+        command.add("--server.address=0.0.0.0");
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        try {
+            Path logsDir = getDataDirectory().resolve("logs");
+            if (!Files.exists(logsDir)) {
+                Files.createDirectories(logsDir);
+            }
+            pb.redirectOutput(ProcessBuilder.Redirect.to(logsDir.resolve("backend-stdout.log").toFile()));
+            pb.redirectError(ProcessBuilder.Redirect.to(logsDir.resolve("backend-stderr.log").toFile()));
+        } catch (Exception e) {
+            pb.redirectErrorStream(true);
+        }
+        return pb.start();
+    }
+
+    private static boolean isBackendHealthy(int timeoutMs) {
+        try {
+            URL url = new URL(HEALTH_URL);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setRequestMethod("GET");
+            return conn.getResponseCode() == 200;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean waitForBackend(int maxSeconds) {
+        long start = System.currentTimeMillis();
+        long maxMs = maxSeconds * 1000L;
+        while (System.currentTimeMillis() - start < maxMs) {
+            if (backendProcess != null && !backendProcess.isAlive()) {
+                return false;
+            }
+            if (isBackendHealthy(1000)) {
+                return true;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    public static void openBrowser(String urlStr) {
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI(urlStr));
+            } else {
+                String os = System.getProperty("os.name").toLowerCase();
+                if (os.contains("win")) {
+                    Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", urlStr});
+                } else if (os.contains("mac")) {
+                    Runtime.getRuntime().exec(new String[]{"open", urlStr});
+                } else {
+                    Runtime.getRuntime().exec(new String[]{"xdg-open", urlStr});
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to open browser: " + e.getMessage());
+        }
+    }
+
+    private void setupSystemTray() {
+        if (!SystemTray.isSupported()) {
+            System.out.println("System tray is not supported on this platform.");
+            return;
+        }
+
+        try {
+            SystemTray tray = SystemTray.getSystemTray();
+            Image image = createTrayIconImage();
+
+            PopupMenu popup = new PopupMenu();
+
+            MenuItem openItem = new MenuItem("🌐 Open Billsoft");
+            openItem.addActionListener(e -> openBrowser(APP_URL));
+            popup.add(openItem);
+
+            popup.addSeparator();
+
+            MenuItem dataDirItem = new MenuItem("📂 Open Data Folder");
+            dataDirItem.addActionListener(e -> {
+                try {
+                    Desktop.getDesktop().open(getDataDirectory().toFile());
+                } catch (Exception ex) {
+                    System.err.println("Cannot open data directory: " + ex.getMessage());
+                }
+            });
+            popup.add(dataDirItem);
+
+            CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
+            autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
+            popup.add(autoStartItem);
+
+            MenuItem restartItem = new MenuItem("🔄 Restart Service");
+            restartItem.addActionListener(e -> {
+                stopBackend();
+            });
+            popup.add(restartItem);
+
+            popup.addSeparator();
+
+            MenuItem exitItem = new MenuItem("🛑 Exit Billsoft");
+            exitItem.addActionListener(e -> {
+                stopBackend();
+                System.exit(0);
+            });
+            popup.add(exitItem);
+
+            trayIcon = new TrayIcon(image, "Billsoft - Simple Billing (Running)", popup);
+            trayIcon.setImageAutoSize(true);
+            trayIcon.addActionListener(e -> openBrowser(APP_URL)); // Double click tray icon opens app
+
+            tray.add(trayIcon);
+        } catch (Exception e) {
+            System.err.println("Failed to initialize system tray: " + e.getMessage());
+        }
+    }
+
+    private void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+        if (trayIcon != null) {
+            trayIcon.displayMessage(title, message, type);
+        }
+    }
+
+    private Image createTrayIconImage() {
+        int width = 16;
+        int height = 16;
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Draw indigo circle with white 'B'
+        g2.setColor(new Color(79, 70, 229));
+        g2.fillOval(0, 0, width, height);
+
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("SansSerif", Font.BOLD, 10));
+        FontMetrics fm = g2.getFontMetrics();
+        int x = (width - fm.stringWidth("B")) / 2;
+        int y = ((height - fm.getHeight()) / 2) + fm.getAscent() - 1;
+        g2.drawString("B", x, y);
+
+        g2.dispose();
+        return image;
+    }
+
+    private void setupWindowsAutoStart(boolean enable) {
+        if (!System.getProperty("os.name").toLowerCase().contains("win")) return;
+
+        try {
+            File currentExe = getAppExecutable();
+            if (currentExe == null || !currentExe.exists()) return;
+
+            String keyPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+            String appName = "BillsoftService";
+
+            if (enable) {
+                String cmd = String.format("reg add \"%s\" /v \"%s\" /t REG_SZ /d \"\\\"%s\\\" --background\" /f",
+                        keyPath, appName, currentExe.getAbsolutePath());
+                Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
+            } else {
+                String cmd = String.format("reg delete \"%s\" /v \"%s\" /f", keyPath, appName);
+                Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to update Windows startup registry: " + e.getMessage());
+        }
+    }
+
+    private boolean isWindowsAutoStartEnabled() {
+        if (!System.getProperty("os.name").toLowerCase().contains("win")) return false;
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{
+                    "cmd.exe", "/c", "reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"BillsoftService\""
+            });
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private File getAppExecutable() {
+        try {
+            File codeSourceFile = new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            if (codeSourceFile.getName().toLowerCase().endsWith(".exe")) {
+                return codeSourceFile;
+            }
+            File parentDir = codeSourceFile.getParentFile();
+            if (parentDir != null) {
+                File exe = new File(parentDir, "Billsoft.exe");
+                if (exe.exists()) return exe;
+
+                File grandParent = parentDir.getParentFile();
+                if (grandParent != null) {
+                    File grandExe = new File(grandParent, "Billsoft.exe");
+                    if (grandExe.exists()) return grandExe;
+                }
+            }
+
+            File userDirExe = new File(System.getProperty("user.dir"), "Billsoft.exe");
+            if (userDirExe.exists()) return userDirExe;
+
+            return codeSourceFile;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void stopBackend() {
+        if (backendProcess != null && backendProcess.isAlive()) {
+            backendProcess.destroy();
+            try {
+                backendProcess.waitFor(5, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {}
+        }
     }
 
     private File getAppDirectory() {
@@ -92,33 +386,29 @@ public class LauncherMain {
 
     private File resolveFile(String relativePath) {
         File appDir = getAppDirectory();
-        // Check relative to appDir
         File file = new File(appDir, relativePath);
         if (file.exists()) return file;
-        
-        // Check relative to appDir's parent (useful if launcher is run inside app/ subfolder or launcher/target/)
+
         file = new File(appDir.getParentFile(), relativePath);
         if (file.exists()) return file;
 
-        // Check relative to appDir's grandparent (useful if launcher is inside launcher/target/)
         if (appDir.getParentFile() != null) {
             file = new File(appDir.getParentFile().getParentFile(), relativePath);
             if (file.exists()) return file;
         }
 
-        // Fallback to user.dir
         return new File(relativePath);
     }
 
-    private File findShellJar() {
-        File shell = resolveFile("shell.jar");
-        if (shell.exists()) return shell;
+    private File findCurrentWar() {
+        File current = resolveFile("runtime/billsoft.war");
+        if (current.exists()) return current;
 
-        shell = resolveFile("shell/target/shell-0.0.1-SNAPSHOT.jar");
-        if (shell.exists()) return shell;
+        current = resolveFile("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
+        if (current.exists()) return current;
 
-        shell = resolveFile("../shell/target/shell-0.0.1-SNAPSHOT.jar");
-        if (shell.exists()) return shell;
+        current = resolveFile("../billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
+        if (current.exists()) return current;
 
         return null;
     }
@@ -136,112 +426,29 @@ public class LauncherMain {
         return null;
     }
 
-    private File findCurrentWar() {
-        File current = resolveFile("runtime/billsoft.war");
-        if (current.exists()) return current;
-
-        current = resolveFile("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
-        if (current.exists()) return current;
-
-        current = resolveFile("../billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
-        if (current.exists()) return current;
-
-        return null;
-    }
-
-    private Process launchProcess(File jarFile) throws IOException {
-        List<String> command = new ArrayList<>();
-        
-        String javaHome = System.getProperty("java.home");
-        String javaBin = javaHome + File.separator + "bin" + File.separator + (System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java");
-        
-        File javaBinFile = new File(javaBin);
-        if (javaBinFile.exists()) {
-            command.add(javaBinFile.getAbsolutePath());
-        } else {
-            command.add("java"); // fallback
-        }
-        command.add("-jar");
-        command.add(jarFile.getAbsolutePath());
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        try {
-            Path logsDir = getDataDirectory().resolve("logs");
-            if (!Files.exists(logsDir)) {
-                Files.createDirectories(logsDir);
-            }
-            pb.redirectOutput(ProcessBuilder.Redirect.to(logsDir.resolve("shell-stdout.log").toFile()));
-            pb.redirectError(ProcessBuilder.Redirect.to(logsDir.resolve("shell-stderr.log").toFile()));
-        } catch (Exception e) {
-            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-        }
-        return pb.start();
-    }
-
-    private boolean monitorBoot(Process process, long timeoutMs) {
-        long start = System.currentTimeMillis();
-        while (System.currentTimeMillis() - start < timeoutMs) {
-            if (!process.isAlive()) {
-                // If it exited with a non-zero code or exited early, it's a crash
-                int exitVal = process.exitValue();
-                System.err.println("Process terminated early during boot with exit code: " + exitVal);
-                return false;
-            }
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return true; // Still alive after timeout window, assume healthy
-    }
-
     private boolean prepareAndApplyUpdate(File updateWar) {
         File currentWar = findCurrentWar();
         if (currentWar == null || !currentWar.exists()) {
-            System.err.println("Current WAR not found. Cannot update.");
             return false;
         }
 
         Path dataDir = getDataDirectory();
-        System.out.println("User Data Directory: " + dataDir);
-
-        // 1. Unconditional Database Backup
         backupDatabase(dataDir);
 
-        // 2. Backup Current WAR
-        File backupWar = getBackupWarPath(currentWar);
+        File backupWar = new File(currentWar.getParentFile(), "billsoft-backup.war");
         try {
-            System.out.println("Backing up current WAR to: " + backupWar.getAbsolutePath());
             Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            System.err.println("Failed to backup current WAR: " + e.getMessage());
-            return false;
-        }
-
-        // 3. Overwrite current WAR with update WAR
-        try {
-            System.out.println("Replacing current WAR with updated version...");
             Files.copy(updateWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.deleteIfExists(updateWar.toPath());
             return true;
         } catch (IOException e) {
-            System.err.println("Failed to replace WAR file: " + e.getMessage());
-            // Attempt to restore from the backup we just made
-            try {
-                Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException ex) {
-                System.err.println("Critical: Failed to restore WAR backup: " + ex.getMessage());
-            }
+            System.err.println("Failed to apply update: " + e.getMessage());
             return false;
         }
     }
 
     private void handleBootFailure(Process failedProcess) {
-        // Stop failed process just in case
-        if (failedProcess.isAlive()) {
+        if (failedProcess != null && failedProcess.isAlive()) {
             failedProcess.destroy();
             try {
                 failedProcess.waitFor(5, TimeUnit.SECONDS);
@@ -251,22 +458,17 @@ public class LauncherMain {
         File currentWar = findCurrentWar();
         if (currentWar == null) return;
 
-        File backupWar = getBackupWarPath(currentWar);
+        File backupWar = new File(currentWar.getParentFile(), "billsoft-backup.war");
         Path dataDir = getDataDirectory();
 
-        System.out.println("Initiating database and WAR rollback...");
-
-        // 1. Rollback Database
         rollbackDatabase(dataDir);
 
-        // 2. Rollback WAR
         if (backupWar.exists()) {
             try {
-                System.out.println("Restoring WAR from backup...");
                 Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 Files.deleteIfExists(backupWar.toPath());
             } catch (IOException e) {
-                System.err.println("Failed to restore WAR from backup: " + e.getMessage());
+                System.err.println("Failed to rollback WAR: " + e.getMessage());
             }
         }
     }
@@ -290,20 +492,14 @@ public class LauncherMain {
 
     private void backupDatabase(Path dataDir) {
         Path dbFile = dataDir.resolve("database.mv.db");
-        if (!Files.exists(dbFile)) {
-            System.out.println("No database file found at " + dbFile.toAbsolutePath() + ", skipping backup.");
-            return;
-        }
+        if (!Files.exists(dbFile)) return;
 
         Path backupDir = dataDir.resolve("backup");
         try {
             Files.createDirectories(backupDir);
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
             Path backupFile = backupDir.resolve("database_" + timestamp + ".mv.db");
-            System.out.println("Backing up database to: " + backupFile.toAbsolutePath());
             Files.copy(dbFile, backupFile, StandardCopyOption.REPLACE_EXISTING);
-
-            // Also keep reference to the latest backup for immediate rollback support
             Path latestBackup = dataDir.resolve("database_latest_backup.mv.db");
             Files.copy(dbFile, latestBackup, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
@@ -317,18 +513,11 @@ public class LauncherMain {
 
         if (Files.exists(latestBackup)) {
             try {
-                System.out.println("Restoring database from latest backup...");
                 Files.copy(latestBackup, dbFile, StandardCopyOption.REPLACE_EXISTING);
                 Files.deleteIfExists(latestBackup);
             } catch (IOException e) {
-                System.err.println("Failed to restore database from backup: " + e.getMessage());
+                System.err.println("Failed to rollback database: " + e.getMessage());
             }
-        } else {
-            System.out.println("No latest database backup file found to restore.");
         }
-    }
-
-    private File getBackupWarPath(File currentWar) {
-        return new File(currentWar.getParentFile(), "billsoft-backup.war");
     }
 }

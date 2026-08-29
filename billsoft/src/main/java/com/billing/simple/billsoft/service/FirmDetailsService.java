@@ -30,9 +30,7 @@ public class FirmDetailsService {
     public FirmDetails getFirst() {
         List<FirmDetails> all = repo.findAll();
         if (!all.isEmpty()) return all.get(0);
-        FirmDetails f = new FirmDetails();
-        f.setFirmName("My Firm");
-        return repo.save(f);
+        return null;
     }
 
     public FirmDetails create() {

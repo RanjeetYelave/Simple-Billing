@@ -165,17 +165,22 @@ public class EmployeeController {
      */
     @PostMapping("/apply-promotions")
     @Transactional
-    public ResponseEntity<Map<String, Integer>> applyPendingPromotions(@RequestParam("firmId") Long firmId) {
+    public ResponseEntity<Map<String, Integer>> applyPendingPromotions(@RequestParam(value = "firmId", required = false) Long firmId) {
         List<PromotionRecord> unapplied = promotionRepo.findByIsAppliedFalse();
         LocalDate today = LocalDate.now();
         int count = 0;
         for (PromotionRecord p : unapplied) {
             Employee emp = p.getEmployee();
-            // FIX B2: Only apply promotions for employees in the requested firm
-            if (emp == null || !emp.getFirmId().equals(firmId)) continue;
+            if (emp == null) continue;
+            if (firmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(firmId)) continue;
             if (!p.getEffectiveDate().isAfter(today)) {
-                if (p.getNewRole() != null && !p.getNewRole().isEmpty()) emp.setRole(p.getNewRole());
-                if (p.getNewSalary() != null) emp.setMonthlyBaseSalary(p.getNewSalary());
+                if (p.getNewRole() != null && !p.getNewRole().isEmpty()) {
+                    emp.setRole(p.getNewRole());
+                    emp.setDesignation(p.getNewRole());
+                }
+                if (p.getNewSalary() != null && p.getNewSalary() > 0) {
+                    emp.setMonthlyBaseSalary(p.getNewSalary());
+                }
                 employeeRepo.save(emp);
                 p.setIsApplied(true);
                 promotionRepo.save(p);
@@ -492,10 +497,30 @@ public class EmployeeController {
         record.setEmployee(emp);
         if (record.getEffectiveDate() == null) record.setEffectiveDate(LocalDate.now());
 
+        if (record.getPreviousRole() == null || record.getPreviousRole().isEmpty()) {
+            record.setPreviousRole(emp.getRole() != null ? emp.getRole() : emp.getDesignation());
+        }
+        if (record.getPreviousSalary() == null) {
+            record.setPreviousSalary(emp.getMonthlyBaseSalary());
+        }
+
+        if (record.getType() == null || record.getType().isEmpty()) {
+            boolean hasRole = record.getNewRole() != null && !record.getNewRole().trim().isEmpty();
+            boolean hasSalary = record.getNewSalary() != null && record.getNewSalary() > 0;
+            if (hasRole && hasSalary) record.setType("BOTH");
+            else if (hasRole) record.setType("ROLE_CHANGE");
+            else record.setType("INCREMENT");
+        }
+
         // Apply immediately if effective date is today or past
         if (!record.getEffectiveDate().isAfter(LocalDate.now())) {
-            if (record.getNewRole() != null && !record.getNewRole().isEmpty()) emp.setRole(record.getNewRole());
-            if (record.getNewSalary() != null) emp.setMonthlyBaseSalary(record.getNewSalary());
+            if (record.getNewRole() != null && !record.getNewRole().trim().isEmpty()) {
+                emp.setRole(record.getNewRole().trim());
+                emp.setDesignation(record.getNewRole().trim());
+            }
+            if (record.getNewSalary() != null && record.getNewSalary() > 0) {
+                emp.setMonthlyBaseSalary(record.getNewSalary());
+            }
             employeeRepo.save(emp);
             record.setIsApplied(true);
         } else {

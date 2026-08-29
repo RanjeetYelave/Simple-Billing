@@ -134,4 +134,38 @@ public class EmployeeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.appliedCount").value(1));
     }
+
+    @Test
+    void addPromotion_successful() throws Exception {
+        EmployeeDTO dto = new EmployeeDTO();
+        dto.setFirmId(1L);
+        dto.setName("Promotion Candidate");
+        dto.setRole("Junior Dev");
+        dto.setMonthlyBaseSalary(15000.0);
+        dto.setDateOfJoining(LocalDate.now().minusMonths(3));
+        String json = objectMapper.writeValueAsString(dto);
+
+        MvcResult createResult = mockMvc.perform(post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk())
+                .andReturn();
+        EmployeeDTO saved = objectMapper.readValue(createResult.getResponse().getContentAsString(), EmployeeDTO.class);
+
+        String promoJson = "{\"effectiveDate\":\"" + LocalDate.now() + "\",\"newRole\":\"Lead Dev\",\"newSalary\":25000.0,\"reason\":\"Outstanding performance\"}";
+
+        mockMvc.perform(post("/api/employees/" + saved.getId() + "/promotions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(promoJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.newRole").value("Lead Dev"))
+                .andExpect(jsonPath("$.newSalary").value(25000.0))
+                .andExpect(jsonPath("$.type").value("BOTH"))
+                .andExpect(jsonPath("$.isApplied").value(true));
+
+        Employee updated = employeeRepo.findById(saved.getId()).get();
+        assertThat(updated.getRole()).isEqualTo("Lead Dev");
+        assertThat(updated.getMonthlyBaseSalary()).isEqualTo(25000.0);
+    }
 }

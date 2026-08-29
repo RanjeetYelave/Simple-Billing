@@ -3608,10 +3608,11 @@
         setLoading(true);
         try {
           await API.backup.factoryReset();
+          try { localStorage.clear(); sessionStorage.clear(); API.firmId = null; } catch(e) {}
           showToast('Factory reset complete. All data deleted.', 'success');
-          setTimeout(() => window.location.href = '/', 1500);
+          setTimeout(() => window.location.href = '/', 1000);
         } catch (error) {
-          showToast('Failed to factory reset.', 'error');
+          showToast('Failed to factory reset: ' + (error.message || 'Server error'), 'error');
           setLoading(false);
           setShowResetModal(false);
         }
@@ -5022,19 +5023,37 @@
       const handlePromoteSubmit = async (e) => {
         e.preventDefault();
         if (!selectedEmployee) return;
+        const nRole = (promData.newRole || '').trim();
+        const nSal = promData.newSalary ? parseFloat(promData.newSalary) : undefined;
+        if (!nRole && (!nSal || isNaN(nSal))) {
+          showToast('Please provide at least a new designation/role or a new salary', 'error');
+          return;
+        }
         try {
+          const pType = (nRole && nSal) ? 'BOTH' : nRole ? 'ROLE_CHANGE' : 'INCREMENT';
           const promoPayload = {
-            effectiveDate: promData.effectiveDate,
-            newRole: promData.newRole.trim() || undefined,
-            newSalary: promData.newSalary ? parseFloat(promData.newSalary) : undefined,
-            reason: promData.reason.trim() || undefined
+            effectiveDate: promData.effectiveDate || BillsoftUtils.todayStr(),
+            type: pType,
+            previousRole: selectedEmployee.role || selectedEmployee.designation || '',
+            previousSalary: selectedEmployee.monthlyBaseSalary || 0,
+            newRole: nRole || undefined,
+            newSalary: nSal,
+            reason: (promData.reason || '').trim() || undefined
           };
           await API.employees.addPromotion(selectedEmployee.id, promoPayload);
-          showToast('Promotion / increment recorded', 'success');
+          showToast('Promotion / increment recorded successfully!', 'success');
           setShowPromote(false);
           setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: '', newSalary: '', reason: '' });
-          fetchEmployees();
-          openEmployeeProfile(selectedEmployee);
+          
+          const updatedEmps = await fetchEmployees();
+          const refreshed = (updatedEmps && updatedEmps.find(x => x.id === selectedEmployee.id)) || {
+            ...selectedEmployee,
+            role: nRole || selectedEmployee.role,
+            designation: nRole || selectedEmployee.designation,
+            monthlyBaseSalary: nSal !== undefined ? nSal : selectedEmployee.monthlyBaseSalary
+          };
+          setSelectedEmployee(refreshed);
+          openEmployeeProfile(refreshed);
         } catch (err) {
           showToast(err.message || 'Failed to record promotion', 'error');
         }

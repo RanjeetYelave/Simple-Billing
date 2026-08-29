@@ -3608,10 +3608,11 @@
         setLoading(true);
         try {
           await API.backup.factoryReset();
+          try { localStorage.clear(); sessionStorage.clear(); API.firmId = null; } catch(e) {}
           showToast('Factory reset complete. All data deleted.', 'success');
-          setTimeout(() => window.location.href = '/', 1500);
+          setTimeout(() => window.location.href = '/', 1000);
         } catch (error) {
-          showToast('Failed to factory reset.', 'error');
+          showToast('Failed to factory reset: ' + (error.message || 'Server error'), 'error');
           setLoading(false);
           setShowResetModal(false);
         }

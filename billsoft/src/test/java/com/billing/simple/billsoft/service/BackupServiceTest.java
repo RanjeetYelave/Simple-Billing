@@ -25,6 +25,32 @@ class BackupServiceTest {
     private ProductRepository productRepo;
     @Mock
     private InvoiceRepository invoiceRepo;
+    @Mock
+    private InvoiceItemRepository invoiceItemRepo;
+    @Mock
+    private AppConfigRepository appConfigRepo;
+    @Mock
+    private EmployeeRepository employeeRepo;
+    @Mock
+    private EmployeeAdvanceRepository advanceRepo;
+    @Mock
+    private EmployeeDocumentRepository employeeDocumentRepo;
+    @Mock
+    private AttendanceRecordRepository attendanceRecordRepo;
+    @Mock
+    private LeaveRecordRepository leaveRecordRepo;
+    @Mock
+    private SalaryRecordRepository salaryRepo;
+    @Mock
+    private PromotionRecordRepository promotionRepo;
+    @Mock
+    private ExpenseRepository expenseRepo;
+    @Mock
+    private ReminderRepository reminderRepo;
+    @Mock
+    private InboxMessageRepository inboxMessageRepo;
+    @Mock
+    private NoteRepository noteRepo;
 
     @InjectMocks
     private BackupService service;
@@ -90,5 +116,14 @@ class BackupServiceTest {
     @Test
     void testImportDataInvalid() {
         assertThrows(RuntimeException.class, () -> service.importData(null, 1L, true));
+    }
+
+    @Test
+    void testFactoryReset() {
+        service.factoryReset();
+        verify(firmDetailsRepo, times(1)).deleteAllInBatch();
+        verify(customerRepo, times(1)).deleteAllInBatch();
+        verify(productRepo, times(1)).deleteAllInBatch();
+        verify(invoiceRepo, times(1)).deleteAllInBatch();
     }
 }

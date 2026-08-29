@@ -9,11 +9,19 @@ import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
+import com.billing.simple.billsoft.repo.InvoiceItemRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.EmployeeRepository;
 import com.billing.simple.billsoft.repo.EmployeeAdvanceRepository;
+import com.billing.simple.billsoft.repo.EmployeeDocumentRepository;
+import com.billing.simple.billsoft.repo.AttendanceRecordRepository;
+import com.billing.simple.billsoft.repo.LeaveRecordRepository;
 import com.billing.simple.billsoft.repo.SalaryRecordRepository;
 import com.billing.simple.billsoft.repo.PromotionRecordRepository;
+import com.billing.simple.billsoft.repo.ExpenseRepository;
+import com.billing.simple.billsoft.repo.ReminderRepository;
+import com.billing.simple.billsoft.repo.InboxMessageRepository;
+import com.billing.simple.billsoft.repo.NoteRepository;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,30 +39,54 @@ public class BackupService {
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
     private final InvoiceRepository invoiceRepo;
+    private final InvoiceItemRepository invoiceItemRepo;
     private final AppConfigRepository appConfigRepo;
     private final EmployeeRepository employeeRepo;
     private final EmployeeAdvanceRepository advanceRepo;
+    private final EmployeeDocumentRepository employeeDocumentRepo;
+    private final AttendanceRecordRepository attendanceRecordRepo;
+    private final LeaveRecordRepository leaveRecordRepo;
     private final SalaryRecordRepository salaryRepo;
     private final PromotionRecordRepository promotionRepo;
+    private final ExpenseRepository expenseRepo;
+    private final ReminderRepository reminderRepo;
+    private final InboxMessageRepository inboxMessageRepo;
+    private final NoteRepository noteRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
                          ProductRepository productRepo,
                          InvoiceRepository invoiceRepo,
+                         InvoiceItemRepository invoiceItemRepo,
                          AppConfigRepository appConfigRepo,
                          EmployeeRepository employeeRepo,
                          EmployeeAdvanceRepository advanceRepo,
+                         EmployeeDocumentRepository employeeDocumentRepo,
+                         AttendanceRecordRepository attendanceRecordRepo,
+                         LeaveRecordRepository leaveRecordRepo,
                          SalaryRecordRepository salaryRepo,
-                         PromotionRecordRepository promotionRepo) {
+                         PromotionRecordRepository promotionRepo,
+                         ExpenseRepository expenseRepo,
+                         ReminderRepository reminderRepo,
+                         InboxMessageRepository inboxMessageRepo,
+                         NoteRepository noteRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.invoiceRepo = invoiceRepo;
+        this.invoiceItemRepo = invoiceItemRepo;
         this.appConfigRepo = appConfigRepo;
         this.employeeRepo = employeeRepo;
         this.advanceRepo = advanceRepo;
+        this.employeeDocumentRepo = employeeDocumentRepo;
+        this.attendanceRecordRepo = attendanceRecordRepo;
+        this.leaveRecordRepo = leaveRecordRepo;
         this.salaryRepo = salaryRepo;
         this.promotionRepo = promotionRepo;
+        this.expenseRepo = expenseRepo;
+        this.reminderRepo = reminderRepo;
+        this.inboxMessageRepo = inboxMessageRepo;
+        this.noteRepo = noteRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -204,14 +236,29 @@ public class BackupService {
 
     @Transactional
     public void factoryReset() {
-        invoiceRepo.deleteAll();
-        productRepo.deleteAll();
-        customerRepo.deleteAll();
-        firmDetailsRepo.deleteAll();
-        appConfigRepo.deleteAll();
-        salaryRepo.deleteAll();
-        promotionRepo.deleteAll();
-        advanceRepo.deleteAll();
-        employeeRepo.deleteAll();
+        // Child tables referencing invoices
+        invoiceItemRepo.deleteAllInBatch();
+        invoiceRepo.deleteAllInBatch();
+
+        // Child tables referencing employees
+        attendanceRecordRepo.deleteAllInBatch();
+        leaveRecordRepo.deleteAllInBatch();
+        employeeDocumentRepo.deleteAllInBatch();
+        salaryRepo.deleteAllInBatch();
+        promotionRepo.deleteAllInBatch();
+        advanceRepo.deleteAllInBatch();
+        employeeRepo.deleteAllInBatch();
+
+        // Operational business records
+        expenseRepo.deleteAllInBatch();
+        reminderRepo.deleteAllInBatch();
+        inboxMessageRepo.deleteAllInBatch();
+        noteRepo.deleteAllInBatch();
+
+        // Core business catalogs & firms
+        productRepo.deleteAllInBatch();
+        customerRepo.deleteAllInBatch();
+        firmDetailsRepo.deleteAllInBatch();
+        appConfigRepo.deleteAllInBatch();
     }
 }

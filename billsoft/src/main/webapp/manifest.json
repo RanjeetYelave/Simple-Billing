@@ -1,7 +1,7 @@
 {
-  "name": "Billsoft - Simple Billing",
-  "short_name": "Billsoft",
-  "description": "Professional offline-first billing & business management suite",
+  "name": "RupeeCRM - Business Suite",
+  "short_name": "RupeeCRM",
+  "description": "Professional offline-first CRM, billing & business management suite",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

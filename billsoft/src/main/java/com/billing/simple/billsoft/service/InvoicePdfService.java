@@ -325,6 +325,12 @@ public class InvoicePdfService {
                 String itemName = "-";
                 String hsnCode = "-";
                 try {
+                    if (it.getHsnCode() != null && !it.getHsnCode().isBlank()) {
+                        hsnCode = it.getHsnCode().trim();
+                    } else if (it.getProduct() != null && it.getProduct().getHsnCode() != null && !it.getProduct().getHsnCode().isBlank()) {
+                        hsnCode = it.getProduct().getHsnCode().trim();
+                    }
+
                     if (it.getProduct() != null && it.getProduct().getName() != null) {
                         itemName = it.getProduct().getName();
                     } else if (it.getUnit() != null) {
@@ -461,34 +467,40 @@ public class InvoicePdfService {
         qrCell.setPadding(8f);
         qrCell.setHorizontalAlignment(Element.ALIGN_LEFT);
 
-        try {
-            String upiPayee = (firm != null && firm.getPhone() != null && !firm.getPhone().isBlank()) ? firm.getPhone() : "9822972403";
-            String upiFirmName = (firm != null && firm.getFirmName() != null) ? firm.getFirmName() : "RupeeCRM";
-            String upiUri = String.format("upi://pay?pa=%s@upi&pn=%s&am=%s&cu=INR", upiPayee, upiFirmName.replaceAll(" ", "%20"), formatAmount(grandTotal));
+        boolean showUpiQr = !isEstimate && firm != null && firm.getUpiId() != null && !firm.getUpiId().trim().isBlank();
+        if (showUpiQr) {
+            try {
+                String upiId = firm.getUpiId().trim();
+                String upiFirmName = (firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName() : "Business";
+                String upiUri = String.format("upi://pay?pa=%s&pn=%s&am=%s&cu=INR", upiId, upiFirmName.replaceAll(" ", "%20"), formatAmount(grandTotal));
 
-            QRCodeWriter qrWriter = new QRCodeWriter();
-            BitMatrix bitMatrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140);
-            ByteArrayOutputStream qrBaos = new ByteArrayOutputStream();
-            MatrixToImageWriter.writeToStream(bitMatrix, "PNG", qrBaos);
+                QRCodeWriter qrWriter = new QRCodeWriter();
+                BitMatrix bitMatrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140);
+                ByteArrayOutputStream qrBaos = new ByteArrayOutputStream();
+                MatrixToImageWriter.writeToStream(bitMatrix, "PNG", qrBaos);
 
-            Image qrImage = Image.getInstance(qrBaos.toByteArray());
-            qrImage.scaleToFit(isA5 ? 65f : 78f, isA5 ? 65f : 78f);
-            qrImage.setAlignment(Image.LEFT);
-            qrCell.addElement(qrImage);
+                Image qrImage = Image.getInstance(qrBaos.toByteArray());
+                qrImage.scaleToFit(isA5 ? 65f : 78f, isA5 ? 65f : 78f);
+                qrImage.setAlignment(Image.LEFT);
+                qrCell.addElement(qrImage);
 
-            // UPI Scan to Pay Badge
-            Paragraph pUpiBadge = new Paragraph("  UPI SCAN TO PAY  ", new Font(Font.HELVETICA, 7.5f, Font.BOLD, Color.WHITE));
-            PdfPTable badgeTable = new PdfPTable(1);
-            badgeTable.setWidthPercentage(42);
-            badgeTable.setHorizontalAlignment(Element.ALIGN_LEFT);
-            PdfPCell badgeCell = new PdfPCell(pUpiBadge);
-            badgeCell.setBackgroundColor(UPI_GREEN);
-            badgeCell.setBorder(Rectangle.NO_BORDER);
-            badgeCell.setPadding(2f);
-            badgeCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            badgeTable.addCell(badgeCell);
-            qrCell.addElement(badgeTable);
-        } catch (Exception ignored) {}
+                // UPI Scan to Pay Badge
+                Paragraph pUpiBadge = new Paragraph("  UPI SCAN TO PAY  ", new Font(Font.HELVETICA, 7.5f, Font.BOLD, Color.WHITE));
+                PdfPTable badgeTable = new PdfPTable(1);
+                badgeTable.setWidthPercentage(42);
+                badgeTable.setHorizontalAlignment(Element.ALIGN_LEFT);
+                PdfPCell badgeCell = new PdfPCell(pUpiBadge);
+                badgeCell.setBackgroundColor(UPI_GREEN);
+                badgeCell.setBorder(Rectangle.NO_BORDER);
+                badgeCell.setPadding(2f);
+                badgeCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                badgeTable.addCell(badgeCell);
+                qrCell.addElement(badgeTable);
+            } catch (Exception ignored) {}
+        } else {
+            // If Quotation or no UPI ID configured, show clean empty space / footer note
+            qrCell.addElement(new Paragraph(" ", normalText));
+        }
 
         footerTable.addCell(qrCell);
 

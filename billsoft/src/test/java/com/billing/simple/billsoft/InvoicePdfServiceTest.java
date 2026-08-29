@@ -128,4 +128,41 @@ public class InvoicePdfServiceTest {
 
         assertThat(text).contains("20.00"); // discount amount visible
     }
+
+    @Test
+    void pdfShouldIncludeHsnCodeWhenPresent() throws Exception {
+        Invoice invoice = sampleInvoice();
+        invoice.getItems().get(0).setHsnCode("8481");
+
+        byte[] pdf = pdfService.generatePdf(invoice, "A4");
+        String text = extractPdfText(pdf);
+
+        assertThat(text).contains("8481");
+    }
+
+    @Test
+    void pdfShouldRenderUpiQrOnlyWhenUpiIdConfiguredAndNotQuotation() throws Exception {
+        // 1. Without UPI ID -> Generates successfully without error
+        Invoice invoice = sampleInvoice();
+        byte[] pdfNoUpi = pdfService.generatePdf(invoice, "A4");
+        assertThat(pdfNoUpi).isNotEmpty();
+
+        // 2. With UPI ID -> Generates with UPI QR code
+        FirmDetails firmWithUpi = new FirmDetails();
+        firmWithUpi.setFirmName("Test Firm");
+        firmWithUpi.setUpiId("teststore@okaxis");
+        when(firmService.getFirst()).thenReturn(firmWithUpi);
+        when(firmService.get(any())).thenReturn(firmWithUpi);
+
+        byte[] pdfWithUpi = pdfService.generatePdf(invoice, "A4");
+        assertThat(pdfWithUpi).isNotEmpty();
+        String textWithUpi = extractPdfText(pdfWithUpi);
+        assertThat(textWithUpi).contains("UPI SCAN TO PAY");
+
+        // 3. Quotation with UPI ID -> Quotation must NOT have UPI QR code
+        invoice.setStatus(InvoiceStatus.ESTIMATE);
+        byte[] quotePdf = pdfService.generatePdf(invoice, "A4");
+        String quoteText = extractPdfText(quotePdf);
+        assertThat(quoteText).doesNotContain("UPI SCAN TO PAY");
+    }
 }

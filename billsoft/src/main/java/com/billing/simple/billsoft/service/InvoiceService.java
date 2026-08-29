@@ -491,6 +491,7 @@ public class InvoiceService {
                 ni.setProduct(it.getProduct());
                 ni.setQty(it.getQty());
                 ni.setUnit(it.getUnit());
+                ni.setHsnCode(it.getHsnCode());
                 ni.setPricePerUnit(it.getPricePerUnit());
                 ni.setAmountWithoutTax(it.getAmountWithoutTax());
                 ni.setDiscountType(it.getDiscountType());

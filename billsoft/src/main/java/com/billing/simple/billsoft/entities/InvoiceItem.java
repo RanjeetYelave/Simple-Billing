@@ -36,6 +36,7 @@ public class InvoiceItem {
     // ITEM BASIC FIELDS
     private Integer qty;
     private String unit;
+    private String hsnCode; // HSN or SAC code
 
     // -------------------------------
     // MONEY FIELDS – BigDecimal

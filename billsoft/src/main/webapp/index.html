@@ -2365,7 +2365,7 @@
       const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
       
       const isEstimate = isQuotationMode;
-      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
+      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', hsnCode: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
       
       const [form, setForm] = useState({
         customerId: '', customerName: '', customerPhone: '', customerAddress: '',
@@ -2399,6 +2399,7 @@
                 const items = (inv.items || []).map(it => ({
                   _id: BillsoftUtils.generateId(),
                   productId: it.product ? String(it.product.id) : '',
+                  hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
                   qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
                   discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
                 }));
@@ -2426,6 +2427,7 @@
                 const items = (q.items || []).map(it => ({
                   _id: BillsoftUtils.generateId(),
                   productId: it.product ? String(it.product.id) : '',
+                  hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
                   qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
                   discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
                 }));
@@ -2464,7 +2466,14 @@
       const updateItem = (idx, field, value, product) => {
         const items = [...form.items];
         if (field === 'productId' && product) {
-          items[idx] = { ...items[idx], productId: value, pricePerUnit: product.price || '', unit: product.unit || '', gstPercent: product.gstPercentage || '' };
+          items[idx] = {
+            ...items[idx],
+            productId: value,
+            hsnCode: product.hsnCode || items[idx].hsnCode || '',
+            pricePerUnit: product.price || '',
+            unit: product.unit || '',
+            gstPercent: product.gstPercentage || ''
+          };
         } else {
           items[idx] = { ...items[idx], [field]: value };
         }
@@ -2525,6 +2534,7 @@
           const reqItems = validItems.map(it => ({
             productId: it.productId ? parseInt(it.productId) : undefined,
             productName: !it.productId ? "Custom Item" : undefined,
+            hsnCode: it.hsnCode ? it.hsnCode.trim() : undefined,
             qty: parseInt(it.qty) || 1, unit: it.unit || undefined,
             pricePerUnit: parseFloat(it.pricePerUnit) || 0,
             discountValue: parseFloat(it.discountValue) || 0,
@@ -2752,7 +2762,8 @@
             React.createElement('table', { className: 'invoice-items-table' },
               React.createElement('thead', null,
                 React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '35%' } }, 'Product'),
+                  React.createElement('th', { style: { width: '30%' } }, 'Product'),
+                  React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
                   React.createElement('th', null, 'Qty'),
                   React.createElement('th', null, 'Price'),
                   React.createElement('th', null, 'Disc'),
@@ -2788,10 +2799,11 @@
                         }
                       })
                     ),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value.replace(/[^0-9]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', style: { width: 85 }, placeholder: 'HSN', value: item.hsnCode || '', onChange: e => updateItem(idx, 'hsnCode', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value.replace(/[^0-9]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 85 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 65 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[5]) inputs[5].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 55 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, 
                        React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
@@ -3238,15 +3250,15 @@
       const [loading, setLoading] = useState(true);
       const [showModal, setShowModal] = useState(false);
       const [editItem, setEditItem] = useState(null);
-      const [form, setForm] = useState({ name: '', price: '', unit: 'pcs', gstPercentage: '' });
+      const [form, setForm] = useState({ name: '', price: '', unit: 'pcs', hsnCode: '', gstPercentage: '' });
       const load = () => { setLoading(true); API.products.list().then(d => { setProducts(d); setLoading(false); }).catch(() => { showToast('Failed to load', 'error'); setLoading(false); }); };
       useEffect(() => { load(); }, []);
-      const openCreate = () => { setEditItem(null); setForm({ name: '', price: '', unit: 'pcs', gstPercentage: '' }); setShowModal(true); };
-      const openEdit = (p) => { setEditItem(p); setForm({ name: p.name, price: p.price, unit: p.unit || 'pcs', gstPercentage: p.gstPercentage || '' }); setShowModal(true); };
+      const openCreate = () => { setEditItem(null); setForm({ name: '', price: '', unit: 'pcs', hsnCode: '', gstPercentage: '' }); setShowModal(true); };
+      const openEdit = (p) => { setEditItem(p); setForm({ name: p.name, price: p.price, unit: p.unit || 'pcs', hsnCode: p.hsnCode || '', gstPercentage: p.gstPercentage || '' }); setShowModal(true); };
       const handleSave = async () => {
         if (!form.name || !form.price) { showToast('Name and price required', 'error'); return; }
         try {
-          const body = { name: form.name, price: parseFloat(form.price), unit: form.unit, gstPercentage: form.gstPercentage ? parseFloat(form.gstPercentage) : null };
+          const body = { name: form.name, price: parseFloat(form.price), unit: form.unit, hsnCode: form.hsnCode || null, gstPercentage: form.gstPercentage ? parseFloat(form.gstPercentage) : null };
           if (editItem) { await API.products.update(editItem.id, body); showToast('Product updated', 'success'); }
           else { await API.products.create(body); showToast('Product created', 'success'); }
           setShowModal(false); load();
@@ -3265,12 +3277,13 @@
           React.createElement('div', { className: 'table-container' },
             React.createElement('table', null,
               React.createElement('thead', null, React.createElement('tr', null,
-                React.createElement('th', null, 'Name'), React.createElement('th', null, 'Price'), React.createElement('th', null, 'Unit'), React.createElement('th', null, 'GST %'), React.createElement('th', null, 'Actions')
+                React.createElement('th', null, 'Name'), React.createElement('th', null, 'HSN/SAC'), React.createElement('th', null, 'Price'), React.createElement('th', null, 'Unit'), React.createElement('th', null, 'GST %'), React.createElement('th', null, 'Actions')
               )),
               React.createElement('tbody', null,
-                products.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 40 } }, 'No products yet')) :
+                products.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40 } }, 'No products yet')) :
                 products.map(p => React.createElement('tr', { key: p.id },
                   React.createElement('td', { style: { fontWeight: 500 } }, p.name),
+                  React.createElement('td', null, p.hsnCode || '—'),
                   React.createElement('td', null, BillsoftUtils.formatCurrency(p.price)),
                   React.createElement('td', null, p.unit || '—'),
                   React.createElement('td', null, p.gstPercentage ? `${p.gstPercentage}%` : '—'),
@@ -3293,10 +3306,13 @@
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
                 React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Product Name *'), React.createElement('input', { className: 'input', value: form.name, onChange: e => setForm(f => ({ ...f, name: e.target.value })), placeholder: 'e.g. Widget' })),
                 React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Price *'), React.createElement('input', { className: 'input', type: 'number', step: 0.01, value: form.price, onChange: e => setForm(f => ({ ...f, price: e.target.value })) })),
-                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Unit'), React.createElement('select', { className: 'select', value: form.unit, onChange: e => setForm(f => ({ ...f, unit: e.target.value })) }, ['pcs', 'kg', 'litre', 'm', 'box', 'dozen'].map(u => React.createElement('option', { key: u, value: u }, u))))
+                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'HSN / SAC Code'), React.createElement('input', { className: 'input', value: form.hsnCode, onChange: e => setForm(f => ({ ...f, hsnCode: e.target.value })), placeholder: 'e.g. 8481, 9983' })),
+                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Price *'), React.createElement('input', { className: 'input', type: 'number', step: 0.01, value: form.price, onChange: e => setForm(f => ({ ...f, price: e.target.value })) }))
                 ),
-                React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'GST %'), React.createElement('input', { className: 'input', type: 'number', step: 0.01, value: form.gstPercentage, onChange: e => setForm(f => ({ ...f, gstPercentage: e.target.value })), placeholder: 'e.g. 18' }))
+                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Unit'), React.createElement('select', { className: 'select', value: form.unit, onChange: e => setForm(f => ({ ...f, unit: e.target.value })) }, ['pcs', 'kg', 'litre', 'm', 'box', 'dozen', 'Ft', 'Nos', 'Set'].map(u => React.createElement('option', { key: u, value: u }, u)))),
+                  React.createElement('div', null, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'GST %'), React.createElement('input', { className: 'input', type: 'number', step: 0.01, value: form.gstPercentage, onChange: e => setForm(f => ({ ...f, gstPercentage: e.target.value })), placeholder: 'e.g. 18' }))
+                )
               )
             ),
             React.createElement('div', { className: 'modal-footer' },
@@ -3535,8 +3551,13 @@
             )
           ),
           React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
-            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, 'Bank Details'),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } }, ['bankName', 'bankAccount', 'bankIfsc'].map(f => React.createElement('div', { key: f }, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', textTransform: 'capitalize' } }, f === 'bankIfsc' ? 'IFSC' : f.replace('bank', 'Bank ')), React.createElement('input', { className: 'input', value: data ? data[f] || '' : '', onChange: e => update(f, e.target.value) }))))
+            React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, 'Bank & UPI Payment Details'),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 } }, ['bankName', 'bankAccount', 'bankIfsc'].map(f => React.createElement('div', { key: f }, React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', textTransform: 'capitalize' } }, f === 'bankIfsc' ? 'IFSC' : f.replace('bank', 'Bank ')), React.createElement('input', { className: 'input', value: data ? data[f] || '' : '', onChange: e => update(f, e.target.value) })))),
+            React.createElement('div', { style: { borderTop: '1px dashed var(--border)', paddingTop: 14 } },
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, '📱 UPI ID / VPA (for Live Payment QR on Invoices)'),
+              React.createElement('input', { className: 'input', placeholder: 'e.g. yourstore@okaxis, 9876543210@paytm', value: data ? data.upiId || '' : '', onChange: e => update('upiId', e.target.value) }),
+              React.createElement('small', { style: { fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: 4 } }, 'When provided, a payment QR code is generated on tax invoices. Quotations will not include payment QR.')
+            )
           ),
           React.createElement('div', { className: 'card', style: { marginBottom: 24 } }, React.createElement('div', { className: 'card-title', style: { marginBottom: 20 } }, 'Footer Note'),
             React.createElement('textarea', { className: 'textarea', value: data ? data.footerNote || '' : '', onChange: e => update('footerNote', e.target.value), placeholder: 'This note appears on all invoices...' })),

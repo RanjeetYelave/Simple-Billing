@@ -111,8 +111,34 @@ public class ShellMain extends Application {
         command.add("--server.port=" + port);
 
         ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
+        try {
+            File logsDir = new File(getDataDirectory(), "logs");
+            if (!logsDir.exists()) {
+                logsDir.mkdirs();
+            }
+            pb.redirectOutput(ProcessBuilder.Redirect.to(new File(logsDir, "backend-stdout.log")));
+            pb.redirectError(ProcessBuilder.Redirect.to(new File(logsDir, "backend-stderr.log")));
+        } catch (Exception e) {
+            pb.redirectErrorStream(true);
+        }
         backendProcess = pb.start();
+    }
+
+    private File getDataDirectory() {
+        String envPath = System.getenv("BILLSOFT_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return new File(envPath.trim());
+        }
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                return new File(appData, "SimpleBilling");
+            }
+        } else if (os.contains("mac")) {
+            return new File(System.getProperty("user.home"), "Library/Application Support/SimpleBilling");
+        }
+        return new File(System.getProperty("user.home"), ".simplebilling");
     }
 
     private void waitForBackend() throws InterruptedException {

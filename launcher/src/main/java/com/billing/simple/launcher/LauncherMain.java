@@ -1,9 +1,9 @@
 package com.billing.simple.launcher;
 
 import java.awt.*;
-import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -29,6 +29,9 @@ public class LauncherMain {
     private boolean isBackgroundMode = false;
 
     public static void main(String[] args) {
+        // Ensure AWT GUI subsystem is active for SystemTray
+        System.setProperty("java.awt.headless", "false");
+
         boolean background = false;
         for (String arg : args) {
             if ("--background".equalsIgnoreCase(arg) || "-b".equalsIgnoreCase(arg)) {
@@ -36,7 +39,7 @@ public class LauncherMain {
             }
         }
 
-        // 1. Single-instance check: if server is already running, open browser and exit
+        // 1. Single-instance check: if server is already running, focus/open browser and exit
         if (isBackendHealthy(1000)) {
             System.out.println("Billsoft service is already running. Opening browser...");
             if (!background) {
@@ -57,10 +60,10 @@ public class LauncherMain {
         // Setup shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
 
-        // Auto-register Windows Startup on first run
+        // Auto-register Windows Startup on first run (Registry + Startup Folder VBS)
         setupWindowsAutoStart(true);
 
-        // Setup System Tray
+        // Setup System Tray on GUI Event Thread
         setupSystemTray();
 
         // Run the main service management loop
@@ -220,84 +223,90 @@ public class LauncherMain {
     }
 
     private void setupSystemTray() {
-        if (!SystemTray.isSupported()) {
-            System.out.println("System tray is not supported on this platform.");
-            return;
-        }
-
-        try {
-            SystemTray tray = SystemTray.getSystemTray();
-            Image image = createTrayIconImage();
-
-            PopupMenu popup = new PopupMenu();
-
-            MenuItem openItem = new MenuItem("🌐 Open Billsoft");
-            openItem.addActionListener(e -> openBrowser(APP_URL));
-            popup.add(openItem);
-
-            popup.addSeparator();
-
-            MenuItem dataDirItem = new MenuItem("📂 Open Data Folder");
-            dataDirItem.addActionListener(e -> {
-                try {
-                    Desktop.getDesktop().open(getDataDirectory().toFile());
-                } catch (Exception ex) {
-                    System.err.println("Cannot open data directory: " + ex.getMessage());
+        EventQueue.invokeLater(() -> {
+            try {
+                if (!SystemTray.isSupported()) {
+                    System.out.println("System tray is not supported on this platform environment.");
+                    return;
                 }
-            });
-            popup.add(dataDirItem);
 
-            CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
-            autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
-            popup.add(autoStartItem);
+                SystemTray tray = SystemTray.getSystemTray();
+                Image image = createTrayIconImage();
 
-            MenuItem restartItem = new MenuItem("🔄 Restart Service");
-            restartItem.addActionListener(e -> {
-                stopBackend();
-            });
-            popup.add(restartItem);
+                PopupMenu popup = new PopupMenu();
 
-            popup.addSeparator();
+                MenuItem openItem = new MenuItem("🌐 Open Billsoft (Browser)");
+                openItem.addActionListener(e -> openBrowser(APP_URL));
+                popup.add(openItem);
 
-            MenuItem exitItem = new MenuItem("🛑 Exit Billsoft");
-            exitItem.addActionListener(e -> {
-                stopBackend();
-                System.exit(0);
-            });
-            popup.add(exitItem);
+                popup.addSeparator();
 
-            trayIcon = new TrayIcon(image, "Billsoft - Simple Billing (Running)", popup);
-            trayIcon.setImageAutoSize(true);
-            trayIcon.addActionListener(e -> openBrowser(APP_URL)); // Double click tray icon opens app
+                MenuItem dataDirItem = new MenuItem("📂 Open Data Folder");
+                dataDirItem.addActionListener(e -> {
+                    try {
+                        Desktop.getDesktop().open(getDataDirectory().toFile());
+                    } catch (Exception ex) {
+                        System.err.println("Cannot open data directory: " + ex.getMessage());
+                    }
+                });
+                popup.add(dataDirItem);
 
-            tray.add(trayIcon);
-        } catch (Exception e) {
-            System.err.println("Failed to initialize system tray: " + e.getMessage());
-        }
+                CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
+                autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
+                popup.add(autoStartItem);
+
+                MenuItem restartItem = new MenuItem("🔄 Restart Service");
+                restartItem.addActionListener(e -> stopBackend());
+                popup.add(restartItem);
+
+                popup.addSeparator();
+
+                MenuItem exitItem = new MenuItem("🛑 Exit Billsoft");
+                exitItem.addActionListener(e -> {
+                    stopBackend();
+                    System.exit(0);
+                });
+                popup.add(exitItem);
+
+                trayIcon = new TrayIcon(image, "Billsoft - Simple Billing (Active)", popup);
+                trayIcon.setImageAutoSize(true);
+                trayIcon.addActionListener(e -> openBrowser(APP_URL)); // Click opens browser
+
+                tray.add(trayIcon);
+                System.out.println("System tray icon initialized successfully.");
+            } catch (Exception e) {
+                System.err.println("Failed to initialize system tray: " + e.getMessage());
+            }
+        });
     }
 
     private void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
         if (trayIcon != null) {
-            trayIcon.displayMessage(title, message, type);
+            EventQueue.invokeLater(() -> {
+                try {
+                    trayIcon.displayMessage(title, message, type);
+                } catch (Exception ignored) {}
+            });
         }
     }
 
     private Image createTrayIconImage() {
-        int width = 16;
-        int height = 16;
+        int width = 32;
+        int height = 32;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        // Draw indigo circle with white 'B'
+        // Indigo background circle with subtle shadow
         g2.setColor(new Color(79, 70, 229));
-        g2.fillOval(0, 0, width, height);
+        g2.fillOval(2, 2, width - 4, height - 4);
 
         g2.setColor(Color.WHITE);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 10));
+        g2.setFont(new Font("SansSerif", Font.BOLD, 18));
         FontMetrics fm = g2.getFontMetrics();
         int x = (width - fm.stringWidth("B")) / 2;
-        int y = ((height - fm.getHeight()) / 2) + fm.getAscent() - 1;
+        int y = ((height - fm.getHeight()) / 2) + fm.getAscent();
         g2.drawString("B", x, y);
 
         g2.dispose();
@@ -311,19 +320,39 @@ public class LauncherMain {
             File currentExe = getAppExecutable();
             if (currentExe == null || !currentExe.exists()) return;
 
+            String exePath = currentExe.getAbsolutePath();
+
+            // 1. Windows Registry Auto-Start: HKCU\Software\Microsoft\Windows\CurrentVersion\Run
             String keyPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
             String appName = "BillsoftService";
 
             if (enable) {
                 String cmd = String.format("reg add \"%s\" /v \"%s\" /t REG_SZ /d \"\\\"%s\\\" --background\" /f",
-                        keyPath, appName, currentExe.getAbsolutePath());
+                        keyPath, appName, exePath);
                 Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
             } else {
                 String cmd = String.format("reg delete \"%s\" /v \"%s\" /f", keyPath, appName);
                 Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
             }
+
+            // 2. Windows User Startup Folder VBS Fallback (100% Reliable across all Windows versions)
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                File startupDir = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup");
+                if (startupDir.exists()) {
+                    File vbsFile = new File(startupDir, "Billsoft.vbs");
+                    if (enable) {
+                        try (FileWriter writer = new FileWriter(vbsFile)) {
+                            writer.write("Set WshShell = CreateObject(\"WScript.Shell\")\r\n");
+                            writer.write("WshShell.Run \"\"\"" + exePath.replace("\\", "\\\\") + "\"\" --background\", 0, False\r\n");
+                        }
+                    } else {
+                        vbsFile.delete();
+                    }
+                }
+            }
         } catch (Exception e) {
-            System.err.println("Failed to update Windows startup registry: " + e.getMessage());
+            System.err.println("Failed to update Windows startup registration: " + e.getMessage());
         }
     }
 
@@ -333,7 +362,15 @@ public class LauncherMain {
             Process p = Runtime.getRuntime().exec(new String[]{
                     "cmd.exe", "/c", "reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"BillsoftService\""
             });
-            return p.waitFor() == 0;
+            boolean regOk = (p.waitFor() == 0);
+            if (regOk) return true;
+
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                File vbsFile = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Billsoft.vbs");
+                return vbsFile.exists();
+            }
+            return false;
         } catch (Exception e) {
             return false;
         }

@@ -64,12 +64,15 @@ public class LicenseController {
         return ResponseEntity.ok(response);
     }
 
+    // SHA-256 hash of permanent product activation key
+    private static final String ACTIVATION_KEY_HASH = "d3cabc0fb935434bde119edecbc620a0a0bb6257279ae1071af8d753d80da7b0";
+
     @PostMapping("/activate")
     public ResponseEntity<Map<String, Object>> activate(@RequestBody Map<String, String> request) {
         String key = request.get("productKey");
         Map<String, Object> response = new HashMap<>();
 
-        if (key != null && "saidarshan".equalsIgnoreCase(key.trim())) {
+        if (verifyKey(key)) {
             AppConfig statusConfig = appConfigRepo.findById("license_status").orElse(new AppConfig());
             statusConfig.setConfigKey("license_status");
             statusConfig.setConfigValue("activated");
@@ -83,6 +86,23 @@ public class LicenseController {
         response.put("success", false);
         response.put("message", "Invalid product key");
         return ResponseEntity.badRequest().body(response);
+    }
+
+    private boolean verifyKey(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(key.trim().toLowerCase().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return ACTIVATION_KEY_HASH.equalsIgnoreCase(hex.toString());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @PostMapping("/init-trial")

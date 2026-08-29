@@ -3787,12 +3787,22 @@
       const timeRemaining = Math.max(0, Math.ceil((lockoutTime - now) / 1000));
       const mins = Math.floor(timeRemaining / 60);
       const secs = timeRemaining % 60;
-      const addLog = (msg, type = 'normal') => setLogs(prev => [...prev, { msg, type }]);
+      const [savedMasterKey, setSavedMasterKey] = useState('');
+      const hashStr = async (str) => {
+        try {
+          const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (e) {
+          return '';
+        }
+      };
       const handleLoginSubmit = async (e) => {
         e.preventDefault();
         if (isLocked) return;
         addLog('> ********');
-        if (password === "Saidarshan*1") {
+        const h = await hashStr(password);
+        if (h === "3680e811ded1a1831a688d594243e727a23d8bc801a9e2fa31279dba46b635ce") {
+          setSavedMasterKey(password);
           addLog("ACCESS GRANTED.", "success"); addLog("ENTER NEW GLOBAL PASSWORD:", "normal"); setStage('reset'); setPassword(''); setAttempts(0); localStorage.removeItem('recoveryAttempts');
         } else {
           addLog("ACCESS DENIED. INVALID MASTER KEY.", "error");
@@ -3804,7 +3814,7 @@
       const handleResetSubmit = async (e) => {
         e.preventDefault(); addLog('> ********');
         try {
-          const res = await API.auth.resetPasswordMaster("Saidarshan*1", newPassword);
+          const res = await API.auth.resetPasswordMaster(savedMasterKey, newPassword);
           if (res.success) {
             addLog("PASSWORD UPDATED.", "success"); setStage('animating');
             const scripts = ["Bypassing security protocols...","Flushing DNS caches...","Decrypting root partition...","Updating master records...","Recompiling kernel modules...","SYSTEM UNLOCKED. REBOOTING..."];
@@ -4550,7 +4560,7 @@
               React.createElement('div', { className: 'settings-item-desc' }, `Trial Mode: ${licenseInfo.trialDaysRemaining} days remaining. Enter permanent key to activate.`)
             ),
             React.createElement('form', { onSubmit: handleActivate, style: { display: 'flex', gap: 10, alignItems: 'center' } },
-              React.createElement('input', { type: 'password', className: 'input', style: { width: 200, padding: '6px 12px', fontSize: '0.85rem' }, placeholder: 'Saidarshan Key', value: productKey, onChange: e => setProductKey(e.target.value), required: true }),
+              React.createElement('input', { type: 'password', className: 'input', style: { width: 220, padding: '6px 12px', fontSize: '0.85rem' }, placeholder: 'Enter Product Key', value: productKey, onChange: e => setProductKey(e.target.value), required: true }),
               React.createElement('button', { type: 'submit', className: 'btn btn-primary btn-sm', disabled: actLoading }, actLoading ? 'Activating...' : 'Activate')
             )
           ),

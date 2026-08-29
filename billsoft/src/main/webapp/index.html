@@ -4593,21 +4593,27 @@
       const speed = progress ? progress.speed : '';
       const size = progress ? progress.size : '';
       const showBar = status === 'downloading' || status === 'installing';
-      const showSpinner = status === 'restarting' || (status === 'downloading' && percent === 0);
+      const isRestarting = status === 'restarting';
+      const showSpinner = isRestarting || (status === 'downloading' && percent === 0);
       const showComplete = status === 'complete';
       const isError = status === 'error';
       if (!isUpdating) return null;
-      return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center' } },
-          React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } }, showSpinner ? '⏳' : showComplete ? '✅' : isError ? '❌' : '🔄'),
-          React.createElement('h3', { style: { marginBottom: 8, color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)' } }, isError ? 'Update Failed' : showComplete ? 'Update Complete!' : 'Updating Billsoft'),
+      return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '90%', padding: '40px 30px', textAlign: 'center', borderRadius: 16, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' } },
+          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 16 } }, showComplete ? '✅' : isError ? '❌' : isRestarting ? '⚡' : '🔄'),
+          React.createElement('h3', { style: { marginBottom: 8, fontSize: '1.4rem', fontWeight: 700, color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)' } }, isError ? 'Update Failed' : showComplete ? 'Update Installed!' : isRestarting ? 'Restarting RupeeCRM' : 'Updating RupeeCRM'),
           latestVersion ? React.createElement('p', { style: { margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '0.9rem' } }, `Installing version ${latestVersion}`) : null,
           showBar ? React.createElement('div', { style: { width: '100%', height: 12, backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden', marginBottom: 8 } }, React.createElement('div', { style: { width: percent + '%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: 6, transition: 'width 0.4s ease-in-out' } })) : null,
           showBar ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '0 4px' } }, React.createElement('span', { style: { visibility: speed ? 'visible' : 'hidden' } }, speed || '0.00 MB/s'), React.createElement('span', { style: { visibility: size ? 'visible' : 'hidden' } }, size || '0.0 MB / 0.0 MB' )) : null,
-          showBar ? React.createElement('p', { style: { fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)', margin: '0 0 8px 0' } }, percent + '%') : null,
-          React.createElement('p', { style: { color: isError ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.9rem', margin: '8px 0 0 0' } }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')),
-          !showComplete && !isError ? React.createElement('p', { style: { marginTop: 20, fontSize: '0.8rem', color: '#ef4444', fontWeight: 500 } }, 'Do not close the application during the update') : null,
-          showComplete ? React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { window.location.reload(); } }, 'Reload App') : null,
+          showBar ? React.createElement('p', { style: { fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary)', margin: '0 0 8px 0' } }, percent + '%') : null,
+          React.createElement('p', { style: { color: isError ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.92rem', margin: '8px 0 0 0', lineHeight: 1.5 } }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your app is now up to date!' : 'Please wait...')),
+          isRestarting ? React.createElement('div', { style: { marginTop: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 } },
+            React.createElement('div', { className: 'spinner', style: { width: 24, height: 24 } }),
+            React.createElement('p', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 } }, 'RupeeCRM service will automatically reconnect once booted.'),
+            React.createElement('button', { className: 'btn btn-outline', style: { marginTop: 8, fontSize: '0.85rem', padding: '6px 14px' }, onClick: () => { window.location.reload(); } }, '🔄 Check Server & Reload')
+          ) : null,
+          !showComplete && !isError && !isRestarting ? React.createElement('p', { style: { marginTop: 20, fontSize: '0.8rem', color: '#ef4444', fontWeight: 500 } }, 'Do not close the application during the update') : null,
+          showComplete ? React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { window.location.reload(); } }, 'Reload App Now') : null,
           isError ? React.createElement('button', { className: 'btn btn-outline', style: { marginTop: 20 }, onClick: onComplete }, 'Close') : null
         )
       );
@@ -7085,21 +7091,88 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       }, []);
       const [updateProgress, setUpdateProgress] = useState(null);
       const updatePollRef = useRef(null);
-      const connectUpdateProgressSSE = () => {
+      const restartPollingRef = useRef(null);
+
+      const startRestartPolling = (latestVer) => {
+        if (restartPollingRef.current) return;
+        let attempts = 0;
+        const maxAttempts = 60;
+        restartPollingRef.current = setInterval(async () => {
+          attempts++;
+          try {
+            const res = await fetch(API.BASE_URL + '/api/health', { cache: 'no-cache' });
+            if (res.ok) {
+              clearInterval(restartPollingRef.current);
+              restartPollingRef.current = null;
+              setUpdateProgress({ status: 'complete', percent: 100, message: 'Update installed successfully! Reloading...', latestVersion: latestVer || '' });
+              setTimeout(() => {
+                window.location.reload();
+              }, 1200);
+            }
+          } catch (e) {
+            setUpdateProgress(prev => ({
+              ...(prev || {}),
+              status: 'restarting',
+              percent: 100,
+              message: `Applying update and restarting RupeeCRM... (${attempts}s)`,
+              latestVersion: latestVer || (prev ? prev.latestVersion : '')
+            }));
+            if (attempts >= maxAttempts) {
+              clearInterval(restartPollingRef.current);
+              restartPollingRef.current = null;
+              setUpdateProgress({
+                status: 'error',
+                percent: 0,
+                message: 'Restart is taking longer than usual. Please refresh the page or restart RupeeCRM.',
+                latestVersion: latestVer || ''
+              });
+            }
+          }
+        }, 1000);
+      };
+
+      const connectUpdateProgressSSE = (latestVersion) => {
         if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; }
         const source = new EventSource(API.BASE_URL + '/api/system/update-progress');
         updatePollRef.current = source;
-        source.addEventListener('progress', e => { try { const data = JSON.parse(e.data); setUpdateProgress(data); if (data.status === 'complete' || data.status === 'error') { source.close(); updatePollRef.current = null; } } catch (err) {} });
-        source.onerror = () => { setUpdateProgress(prev => { if (prev && (prev.status === 'downloading' || prev.status === 'installing')) { return { ...prev, status: 'restarting', message: 'Restarting application...', percent: 100 }; } return prev; }); };
-        return new Promise(resolve => setTimeout(resolve, 2000));
+        source.addEventListener('progress', e => {
+          try {
+            const data = JSON.parse(e.data);
+            setUpdateProgress(data);
+            if (data.status === 'restarting' || data.status === 'complete') {
+              source.close();
+              updatePollRef.current = null;
+              startRestartPolling(data.latestVersion || latestVersion);
+            } else if (data.status === 'error') {
+              source.close();
+              updatePollRef.current = null;
+            }
+          } catch (err) {}
+        });
+        source.onerror = () => {
+          setUpdateProgress(prev => {
+            if (prev && (prev.status === 'downloading' || prev.status === 'installing' || prev.status === 'restarting')) {
+              startRestartPolling(prev.latestVersion || latestVersion);
+              return { ...prev, status: 'restarting', message: 'Restarting RupeeCRM service...', percent: 100 };
+            }
+            return prev;
+          });
+        };
+        return new Promise(resolve => setTimeout(resolve, 500));
       };
+
       const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
         setUpdateProgress({ status: 'downloading', percent: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
-        await connectUpdateProgressSSE();
+        await connectUpdateProgressSSE(latestVersion);
         try { await API.system.applyUpdate(); } catch (e) { setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' }); }
       };
-      const handleUpdateComplete = () => { setIsUpdating(false); setUpdateProgress(null); if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; } };
+      const handleUpdateComplete = () => {
+        setIsUpdating(false);
+        setUpdateProgress(null);
+        if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; }
+        if (restartPollingRef.current) { clearInterval(restartPollingRef.current); restartPollingRef.current = null; }
+      };
 
       const [invoiceSubTab, setInvoiceSubTab] = useState('invoices');
 

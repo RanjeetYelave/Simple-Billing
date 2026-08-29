@@ -33,7 +33,10 @@ public class FirmDetailsController {
     }
 
     @PostMapping
-    public ResponseEntity<FirmDetails> create() {
+    public ResponseEntity<FirmDetails> create(@RequestBody(required = false) FirmDetails details) {
+        if (details != null) {
+            return ResponseEntity.ok(service.create(details));
+        }
         return ResponseEntity.ok(service.create());
     }
 

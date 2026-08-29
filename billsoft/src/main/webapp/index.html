@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Billsoft - Simple Billing</title>
   <link rel="stylesheet" href="css/style.css" />
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="js/vendor/react.production.min.js"></script>
+  <script src="js/vendor/react-dom.production.min.js"></script>
 
-  <script src="js/api.js?v=3"></script>
-  <script src="js/utils.js?v=3"></script>
+  <script src="js/api.js?v=4"></script>
+  <script src="js/utils.js?v=4"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="js/vendor/pdf.min.js"></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/vendor/pdf.worker.min.js';
+    }
   </script>
 </head>
 <body>
@@ -416,6 +418,15 @@
       const [searchQuery, setSearchQuery] = useState('');
       const [activeTag, setActiveTag] = useState(null);
 
+      const [boardFromDate, setBoardFromDate] = useState('');
+      const [boardToDate, setBoardToDate] = useState('');
+      const [reminderPage, setReminderPage] = useState(1);
+      const [taskPage, setTaskPage] = useState(1);
+      const [notePage, setNotePage] = useState(1);
+      const [completedPage, setCompletedPage] = useState(1);
+      const [expensePage, setExpensePage] = useState(1);
+      const [expensePageSize, setExpensePageSize] = useState(10);
+
       // Modal state
       const [modalOpen, setModalOpen] = useState(false);
       const [modalType, setModalType] = useState('reminder'); // 'reminder' | 'task' | 'note' | 'expense'
@@ -471,6 +482,14 @@
       }, [reminders, notes]);
 
       // Filter helpers for Planner Board
+      const matchesBoardDateRange = (dateStr) => {
+        if (!dateStr) return true;
+        const d = dateStr.split('T')[0];
+        if (boardFromDate && d < boardFromDate) return false;
+        if (boardToDate && d > boardToDate) return false;
+        return true;
+      };
+
       const matchesSearch = (title, text, tagsStr) => {
         const q = searchQuery.toLowerCase().trim();
         if (!q) return true;
@@ -490,33 +509,45 @@
         return reminders.filter(r => {
           if (r.type === 'task') return false;
           if (r.completed) return false;
-          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt);
         });
-      }, [reminders, searchQuery, activeTag]);
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const filteredTasks = useMemo(() => {
         return reminders.filter(r => {
           if (r.type !== 'task') return false;
           if (r.completed) return false;
-          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt);
         });
-      }, [reminders, searchQuery, activeTag]);
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const completedItems = useMemo(() => {
-        return reminders.filter(r => r.completed && matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags));
-      }, [reminders, searchQuery, activeTag]);
+        return reminders.filter(r => r.completed && matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt));
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const filteredNotes = useMemo(() => {
         return notes.filter(n => {
-          return matchesSearch(n.title, n.content, n.tags) && matchesTag(n.tags);
+          return matchesSearch(n.title, n.content, n.tags) && matchesTag(n.tags) && matchesBoardDateRange(n.createdAt);
         });
-      }, [notes, searchQuery, activeTag]);
+      }, [notes, searchQuery, activeTag, boardFromDate, boardToDate]);
+
+      // Reset page numbers on filter changes
+      useEffect(() => {
+        setReminderPage(1);
+        setTaskPage(1);
+        setNotePage(1);
+        setCompletedPage(1);
+      }, [searchQuery, activeTag, boardFromDate, boardToDate]);
 
       // Expense-specific filters & Date Range
       const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('');
       const [expenseMonthFilter, setExpenseMonthFilter] = useState(''); // e.g. '2026-08'
       const [fromDateFilter, setFromDateFilter] = useState('');
       const [toDateFilter, setToDateFilter] = useState('');
+
+      useEffect(() => {
+        setExpensePage(1);
+      }, [searchQuery, expenseCategoryFilter, expenseMonthFilter, fromDateFilter, toDateFilter]);
 
       // Expense Tracker Computations & Filtering
       const filteredExpenses = useMemo(() => {
@@ -897,6 +928,29 @@
                   fontWeight: 600
                 }
               }, tag))
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, borderTop: '1px solid var(--border-light)', paddingTop: 12, fontSize: '0.82rem' } },
+              React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                placeholder: 'From Date',
+                value: boardFromDate,
+                onChange: e => setBoardFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                placeholder: 'To Date',
+                value: boardToDate,
+                onChange: e => setBoardToDate(e.target.value)
+              }),
+              (boardFromDate || boardToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                style: { padding: '2px 8px' },
+                onClick: () => { setBoardFromDate(''); setBoardToDate(''); }
+              }, 'Clear')
             )
           ),
 
@@ -910,7 +964,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#ede9fe', color: '#7c3aed', fontSize: '0.75rem' } }, filteredReminders.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredReminders.length > 0 ? filteredReminders.map(r =>
+                filteredReminders.length > 0 ? filteredReminders.slice((reminderPage - 1) * 5, reminderPage * 5).map(r =>
                   React.createElement('div', { key: r.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #7c3aed', position: 'relative' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
@@ -935,7 +989,12 @@
                     renderAssociations(r.customerId, r.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No pending reminders')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: reminderPage,
+                totalPages: Math.ceil(filteredReminders.length / 5),
+                onPageChange: setReminderPage
+              })
             ),
 
             // Column 2: Tasks
@@ -945,7 +1004,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#e0f2fe', color: '#0284c7', fontSize: '0.75rem' } }, filteredTasks.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredTasks.length > 0 ? filteredTasks.map(t =>
+                filteredTasks.length > 0 ? filteredTasks.slice((taskPage - 1) * 5, taskPage * 5).map(t =>
                   React.createElement('div', { key: t.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #0284c7' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
@@ -993,7 +1052,12 @@
                     renderAssociations(t.customerId, t.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No active tasks')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: taskPage,
+                totalPages: Math.ceil(filteredTasks.length / 5),
+                onPageChange: setTaskPage
+              })
             ),
 
             // Column 3: Notes
@@ -1003,7 +1067,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#d1fae5', color: '#059669', fontSize: '0.75rem' } }, filteredNotes.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredNotes.length > 0 ? filteredNotes.map(n =>
+                filteredNotes.length > 0 ? filteredNotes.slice((notePage - 1) * 5, notePage * 5).map(n =>
                   React.createElement('div', { key: n.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #059669' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { flex: 1 } },
@@ -1019,7 +1083,12 @@
                     renderAssociations(n.customerId, n.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No notes saved')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: notePage,
+                totalPages: Math.ceil(filteredNotes.length / 5),
+                onPageChange: setNotePage
+              })
             ),
 
             // Column 4: Completed
@@ -1029,7 +1098,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#f3f4f6', color: '#4b5563', fontSize: '0.75rem' } }, completedItems.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                completedItems.length > 0 ? completedItems.map(item => {
+                completedItems.length > 0 ? completedItems.slice((completedPage - 1) * 5, completedPage * 5).map(item => {
                   const isTask = item.type === 'task';
                   return React.createElement('div', { key: item.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: `4px solid ${isTask ? '#0284c7' : '#7c3aed'}`, opacity: 0.65 } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
@@ -1061,7 +1130,12 @@
                     renderAssociations(item.customerId, item.firmId)
                   );
                 }) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No completed items')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: completedPage,
+                totalPages: Math.ceil(completedItems.length / 5),
+                onPageChange: setCompletedPage
+              })
             )
           )
         ),
@@ -1191,57 +1265,66 @@
               React.createElement('span', { style: { fontSize: '1.05rem', fontWeight: 700 } }, 'Expense Transactions'),
               React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)' } }, `${filteredExpenses.length} record${filteredExpenses.length !== 1 ? 's' : ''}`)
             ),
-            filteredExpenses.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              filteredExpenses.map(exp => React.createElement('div', {
-                key: exp.id,
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 16px',
-                  backgroundColor: 'var(--bg-card)',
-                  borderRadius: 'var(--radius)',
-                  border: '1px solid var(--border)',
-                  borderLeft: '4px solid #dc2626'
-                }
-              },
-                React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
-                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                    React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
-                    exp.category && React.createElement('span', {
-                      style: {
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        backgroundColor: '#fee2e2',
-                        color: '#991b1b',
-                        fontWeight: 600
-                      }
-                    }, exp.category),
-                    exp.paymentMode && React.createElement('span', {
-                      style: {
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        backgroundColor: '#e0e7ff',
-                        color: '#3730a3',
-                        fontWeight: 500
-                      }
-                    }, exp.paymentMode)
+            filteredExpenses.length > 0 ? React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                filteredExpenses.slice((expensePage - 1) * expensePageSize, expensePage * expensePageSize).map(exp => React.createElement('div', {
+                  key: exp.id,
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    backgroundColor: 'var(--bg-card)',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)',
+                    borderLeft: '4px solid #dc2626'
+                  }
+                },
+                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
+                      exp.category && React.createElement('span', {
+                        style: {
+                          fontSize: '0.7rem',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          backgroundColor: '#fee2e2',
+                          color: '#991b1b',
+                          fontWeight: 600
+                        }
+                      }, exp.category),
+                      exp.paymentMode && React.createElement('span', {
+                        style: {
+                          fontSize: '0.7rem',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          backgroundColor: '#e0e7ff',
+                          color: '#3730a3',
+                          fontWeight: 500
+                        }
+                      }, exp.paymentMode)
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
+                      exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
+                      exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
+                    )
                   ),
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
-                    exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
-                    exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+                    React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
+                    React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem' }, onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
+                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️ Delete')
+                    )
                   )
-                ),
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
-                  React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
-                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem' }, onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
-                    React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️ Delete')
-                  )
-                )
-              ))
+                ))
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: expensePage,
+                totalPages: Math.ceil(filteredExpenses.length / expensePageSize),
+                onPageChange: setExpensePage,
+                pageSize: expensePageSize,
+                onPageSizeChange: setExpensePageSize
+              })
             ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } },
               React.createElement('h4', { style: { color: 'var(--text-secondary)', margin: 0 } }, 'No expense records found'),
               React.createElement('p', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Click "+ Record Expense" above to add your first entry.')
@@ -2617,10 +2700,10 @@
                         }
                       })
                     ),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value.replace(/[^0-9]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, 
                        React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
@@ -2649,7 +2732,7 @@
                   React.createElement('option', { value: 'PERCENT' }, '%'),
                   React.createElement('option', { value: 'VALUE' }, '₹')
                 ),
-                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value } }) ) })
+                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value.replace(/[^0-9.]/g, '') } }) ) })
               )
             ),
             calcTotals.invoiceDiscount > 0 && createSumRow('Invoice Disc.', -calcTotals.invoiceDiscount),
@@ -3657,6 +3740,23 @@
       );
     }
 
+    function PaginationControls({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
+      if (totalPages <= 1) return null;
+      return React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '10px 0', borderTop: '1px solid var(--border-light)', fontSize: '0.85rem' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          onPageSizeChange && React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Rows per page:'),
+          onPageSizeChange && React.createElement('select', { className: 'select select-sm', style: { width: 70 }, value: pageSize, onChange: e => onPageSizeChange(parseInt(e.target.value, 10)) },
+            [5, 10, 20, 50].map(sz => React.createElement('option', { key: sz, value: sz }, sz))
+          )
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+          React.createElement('button', { type: 'button', className: 'btn btn-sm btn-outline', disabled: currentPage === 1, onClick: () => onPageChange(currentPage - 1) }, 'Previous'),
+          React.createElement('span', { style: { fontWeight: 600 } }, `Page ${currentPage} of ${totalPages}`),
+          React.createElement('button', { type: 'button', className: 'btn btn-sm btn-outline', disabled: currentPage === totalPages, onClick: () => onPageChange(currentPage + 1) }, 'Next')
+        )
+      );
+    }
+
     function Login({ onLogin }) {
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
@@ -3685,7 +3785,9 @@
     }
 
     function FirstTimeSetupComponent({ onComplete }) {
-      const [wizardMode, setWizardMode] = useState('new'); // 'new' | 'restore'
+      const [wizardMode, setWizardMode] = useState(null); // null = welcome screen | 'new' | 'restore'
+      const [step, setStep] = useState(1); // current step within a mode
+      const [animDir, setAnimDir] = useState('forward'); // 'forward' | 'back'
 
       // New Firm details
       const [firmName, setFirmName] = useState('');
@@ -3701,7 +3803,7 @@
       const [bankName, setBankName] = useState('');
       const [bankAccount, setBankAccount] = useState('');
       const [bankIfsc, setBankIfsc] = useState('');
-      
+
       const [enableLock, setEnableLock] = useState(false);
       const [password, setPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
@@ -3714,6 +3816,10 @@
       const [restoreProductKey, setRestoreProductKey] = useState('');
       const [restoreError, setRestoreError] = useState('');
       const [restoreLoading, setRestoreLoading] = useState(false);
+
+      const goNext = () => { setAnimDir('forward'); setError(''); setStep(s => s + 1); };
+      const goBack = () => { setAnimDir('back'); setError(''); setStep(s => s - 1); };
+      const startMode = (mode) => { setWizardMode(mode); setStep(1); setAnimDir('forward'); };
 
       const handleSubmit = async (e) => {
         e.preventDefault();
@@ -3811,134 +3917,470 @@
         }
       };
 
-      return React.createElement('div', { className: 'login-container', style: { padding: '40px 20px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 640, width: '100%', padding: '40px 32px' } },
-          React.createElement('div', { style: { textAlign: 'center', marginBottom: 24 } },
-            React.createElement('div', { className: 'login-logo', style: { margin: '0 auto 12px' } }, 'B'),
-            React.createElement('h2', { style: { fontSize: '1.6rem', fontWeight: 700 } }, 'First-Time Setup Wizard'),
-            React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 } }, 'Configure your firm details, security, and activation to get started.')
-          ),
-          
-          React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24 } },
-            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'new' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('new') }, 'Set Up New Firm'),
-            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'restore' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('restore') }, 'Restore from Backup')
-          ),
+      // ── Step validators ──────────────────────────────────────────────────────────
+      const validateNewStep = (s) => {
+        if (s === 1 && !firmName.trim()) { setError('Firm Name is required to continue.'); return false; }
+        if (s === 3 && enableLock) {
+          if (!password) { setError('Please enter a lock password.'); return false; }
+          if (password !== confirmPassword) { setError('Passwords do not match.'); return false; }
+        }
+        return true;
+      };
+      const handleNextStep = () => { if (validateNewStep(step)) goNext(); };
 
-          wizardMode === 'new' ? React.createElement(Fragment, null,
-            error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, error),
-            React.createElement('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Firm Information'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Firm Name (Required)'),
-                  React.createElement('input', { type: 'text', className: 'input', value: firmName, onChange: e => setFirmName(e.target.value), required: true })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Owner Name'),
-                  React.createElement('input', { type: 'text', className: 'input', value: ownerName, onChange: e => setOwnerName(e.target.value) })
-                )
+      // ── Wizard layout helpers ─────────────────────────────────────────────────────
+      const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
+      const RESTORE_STEPS = ['Upload Backup', 'Activation'];
+
+      const WizardContainer = ({ children, title, subtitle }) =>
+        React.createElement('div', {
+          style: {
+            minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px',
+            fontFamily: "'Inter', -apple-system, sans-serif"
+          }
+        },
+          React.createElement('div', {
+            style: {
+              width: '100%', maxWidth: 620,
+              background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20,
+              boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+              overflow: 'hidden'
+            }
+          },
+            // Header band
+            React.createElement('div', {
+              style: {
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                padding: '28px 32px 24px', textAlign: 'center'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.4rem', fontWeight: 800, color: '#fff',
+                  margin: '0 auto 12px', letterSpacing: '-1px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+                }
+              }, 'B'),
+              React.createElement('h1', { style: { color: '#fff', fontSize: '1.4rem', fontWeight: 700, margin: '0 0 4px' } }, title),
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0 } }, subtitle)
+            ),
+            // Card body
+            React.createElement('div', { style: { padding: '28px 32px 32px' } }, children)
+          )
+        );
+
+      const StepIndicator = ({ steps, current }) =>
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 } },
+          steps.map((label, i) => {
+            const idx = i + 1;
+            const done = idx < current;
+            const active = idx === current;
+            return React.createElement(Fragment, { key: idx },
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 } },
+                React.createElement('div', {
+                  style: {
+                    width: 32, height: 32, borderRadius: '50%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700,
+                    background: done ? '#22c55e' : active ? '#6366f1' : 'rgba(255,255,255,0.08)',
+                    color: done || active ? '#fff' : 'rgba(255,255,255,0.4)',
+                    border: active ? '2px solid #a5b4fc' : done ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
+                    transition: 'all 0.3s ease', boxShadow: active ? '0 0 0 4px rgba(99,102,241,0.25)' : 'none'
+                  }
+                }, done ? '✓' : idx),
+                React.createElement('span', {
+                  style: {
+                    fontSize: '0.65rem', marginTop: 5, color: active ? '#a5b4fc' : done ? '#86efac' : 'rgba(255,255,255,0.35)',
+                    fontWeight: active ? 700 : 500, textAlign: 'center', maxWidth: 70, lineHeight: 1.2
+                  }
+                }, label)
               ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Email Address'),
-                  React.createElement('input', { type: 'email', className: 'input', value: email, onChange: e => setEmail(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Phone Number'),
-                  React.createElement('input', { type: 'text', className: 'input', value: phone, onChange: e => setPhone(e.target.value) })
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Address Line 1'),
-                  React.createElement('input', { type: 'text', className: 'input', value: address1, onChange: e => setAddress1(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Address Line 2'),
-                  React.createElement('input', { type: 'text', className: 'input', value: address2, onChange: e => setAddress2(e.target.value) })
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'City'),
-                  React.createElement('input', { type: 'text', className: 'input', value: city, onChange: e => setCity(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'State'),
-                  React.createElement('input', { type: 'text', className: 'input', value: state, onChange: e => setState(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Pincode'),
-                  React.createElement('input', { type: 'text', className: 'input', value: pincode, onChange: e => setPincode(e.target.value) })
-                )
-              ),
+              i < steps.length - 1 && React.createElement('div', {
+                style: {
+                  flex: 1, height: 2, marginBottom: 22,
+                  background: done ? '#22c55e' : 'rgba(255,255,255,0.1)',
+                  transition: 'background 0.3s ease'
+                }
+              })
+            );
+          })
+        );
+
+      const FieldGroup = ({ label, children, required }) =>
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          React.createElement('label', {
+            style: { fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+          }, label, required && React.createElement('span', { style: { color: '#f87171', marginLeft: 3 } }, '*')),
+          children
+        );
+
+      const WizardInput = (props) =>
+        React.createElement('input', {
+          ...props,
+          style: {
+            width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '0.9rem', boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+            color: '#fff', outline: 'none', transition: 'border-color 0.2s',
+            ...(props.style || {})
+          },
+          onFocus: e => { e.target.style.borderColor = '#6366f1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.2)'; },
+          onBlur: e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.boxShadow = 'none'; }
+        });
+
+      const NavRow = ({ onBack, onNext, nextLabel, loading, nextDisabled }) =>
+        React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 } },
+          onBack
+            ? React.createElement('button', {
+                type: 'button', onClick: onBack,
+                style: {
+                  padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
+                  fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                },
+                onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
+                onMouseOut: e => e.target.style.background = 'transparent'
+              }, '← Back')
+            : React.createElement('div', null),
+          React.createElement('button', {
+            type: 'button', onClick: onNext, disabled: loading || nextDisabled,
+            style: {
+              padding: '10px 28px', borderRadius: 10, border: 'none',
+              background: loading || nextDisabled ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff', cursor: loading || nextDisabled ? 'not-allowed' : 'pointer',
+              fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+              transition: 'all 0.2s', letterSpacing: '0.01em'
+            }
+          }, loading ? '⏳ Please wait...' : nextLabel || 'Next →')
+        );
+
+      const ErrorBox = ({ msg }) => msg
+        ? React.createElement('div', {
+            style: {
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+              color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
+            }
+          }, '⚠ ', msg)
+        : null;
+
+      // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
+      if (!wizardMode) {
+        return React.createElement(WizardContainer, {
+          title: 'Welcome to Billsoft', subtitle: 'Professional billing & business management'
+        },
+          React.createElement('p', {
+            style: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }
+          }, 'Get started in minutes. Set up your business profile or restore an existing backup to continue where you left off.'),
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            React.createElement('button', {
+              onClick: () => startMode('new'),
+              style: {
+                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(99,102,241,0.4)',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))',
+                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 16
+              },
+              onMouseOver: e => e.currentTarget.style.borderColor = '#6366f1',
+              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'
+            },
+              React.createElement('div', {
+                style: {
+                  width: 44, height: 44, borderRadius: 12, background: 'rgba(99,102,241,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
+                }
+              }, '🏢'),
               React.createElement('div', null,
-                React.createElement('label', { className: 'label' }, 'GSTIN'),
-                React.createElement('input', { type: 'text', className: 'input', value: gstin, onChange: e => setGstin(e.target.value) })
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Bank Information'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Bank Name'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankName, onChange: e => setBankName(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Account Number'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'IFSC Code'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
-                )
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '3. Security Preferences'),
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-                React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' } },
-                  React.createElement('input', { type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked) }),
-                  React.createElement('span', { style: { fontSize: '0.9rem', fontWeight: 600 } }, 'Enable Access Password Lock?')
-                ),
-                enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                  React.createElement('div', null,
-                    React.createElement('label', { className: 'label' }, 'Enter Lock Password'),
-                    React.createElement('input', { type: 'password', className: 'input', value: password, onChange: e => setPassword(e.target.value), required: true })
-                  ),
-                  React.createElement('div', null,
-                    React.createElement('label', { className: 'label' }, 'Confirm Lock Password'),
-                    React.createElement('input', { type: 'password', className: 'input', value: confirmPassword, onChange: e => setConfirmPassword(e.target.value), required: true })
-                  )
-                )
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '4. Product Activation'),
-              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
-                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'By default, skipping the activation key starts a 30-day free trial. If you possess a permanent activation key, enter it below.'),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
-                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: productKey, onChange: e => setProductKey(e.target.value) })
-                )
-              ),
-              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, loading ? 'Initializing Application...' : 'Complete First-Time Setup')
-            )
-          ) : React.createElement(Fragment, null,
-            restoreError && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, restoreError),
-            React.createElement('form', { onSubmit: handleRestoreSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Choose Backup File'),
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Set Up New Firm'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Create your firm profile and start fresh')
+              )
+            ),
+            React.createElement('button', {
+              onClick: () => startMode('restore'),
+              style: {
+                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.04)',
+                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 16
+              },
+              onMouseOver: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)',
+              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+            },
+              React.createElement('div', {
+                style: {
+                  width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
+                }
+              }, '📂'),
               React.createElement('div', null,
-                React.createElement('label', { className: 'label' }, 'Backup JSON File'),
-                React.createElement('input', { type: 'file', accept: '.json', onChange: e => setBackupFile(e.target.files[0]), required: true, style: { padding: '8px 0' } })
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Product Activation'),
-              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
-                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'Skipping the activation key preserves/starts a 30-day free trial on the restored data.'),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
-                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
-                )
-              ),
-              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: restoreLoading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, restoreLoading ? 'Restoring Data...' : 'Restore Backup & Start Application')
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Restore from Backup'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Import your existing data from a backup file')
+              )
             )
           )
+        );
+      }
+
+      // ── NEW FIRM WIZARD ───────────────────────────────────────────────────────────
+      if (wizardMode === 'new') {
+        return React.createElement(WizardContainer, {
+          title: 'Set Up Your Firm',
+          subtitle: `Step ${step} of ${NEW_STEPS.length} — ${NEW_STEPS[step - 1]}`
+        },
+          React.createElement(StepIndicator, { steps: NEW_STEPS, current: step }),
+          React.createElement(ErrorBox, { msg: error }),
+
+          // Step 1 – Firm Details
+          step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Firm Name', required: true },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Sai Enterprises', value: firmName, onChange: e => setFirmName(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Owner / Proprietor Name' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Ranjeet Yelave', value: ownerName, onChange: e => setOwnerName(e.target.value) })
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Email Address' },
+                React.createElement(WizardInput, { type: 'email', placeholder: 'contact@firm.com', value: email, onChange: e => setEmail(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Phone Number' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '+91 98765 43210', value: phone, onChange: e => setPhone(e.target.value) })
+              )
+            ),
+            React.createElement(FieldGroup, { label: 'GSTIN' },
+              React.createElement(WizardInput, { type: 'text', placeholder: '27AAAAA0000A1Z5', value: gstin, onChange: e => setGstin(e.target.value), style: { textTransform: 'uppercase' } })
+            ),
+            React.createElement(NavRow, {
+              onBack: () => { setWizardMode(null); },
+              onNext: handleNextStep, nextLabel: 'Next: Address & Banking →'
+            })
+          ),
+
+          // Step 2 – Address & Banking
+          step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Address Line 1' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '123 Business Park', value: address1, onChange: e => setAddress1(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Address Line 2' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Near Town Hall', value: address2, onChange: e => setAddress2(e.target.value) })
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+              React.createElement(FieldGroup, { label: 'City' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Mumbai', value: city, onChange: e => setCity(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'State' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Maharashtra', value: state, onChange: e => setState(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Pincode' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '400001', value: pincode, onChange: e => setPincode(e.target.value) })
+              )
+            ),
+            React.createElement('div', {
+              style: { borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 16, marginTop: 4 }
+            },
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 } }, '🏦 Bank Details (optional)'),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+                React.createElement(FieldGroup, { label: 'Bank Name' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBI', value: bankName, onChange: e => setBankName(e.target.value) })
+                ),
+                React.createElement(FieldGroup, { label: 'Account Number' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: '0000000000000', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
+                ),
+                React.createElement(FieldGroup, { label: 'IFSC Code' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBIN0000001', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
+                )
+              )
+            ),
+            React.createElement(NavRow, { onBack: goBack, onNext: goNext, nextLabel: 'Next: Security →' })
+          ),
+
+          // Step 3 – Security
+          step === 3 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', {
+              style: {
+                padding: '16px 20px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
+                border: '1px solid rgba(99,102,241,0.25)', marginBottom: 6
+              }
+            },
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+                '🔒 You can optionally set a PIN/password to lock the application. This adds an extra layer of security when the app is opened.')
+            ),
+            React.createElement('label', {
+              style: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: 10 }
+            },
+              React.createElement('input', {
+                type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked),
+                style: { width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }
+              }),
+              React.createElement('span', { style: { fontWeight: 600, color: '#fff', fontSize: '0.9rem' } }, 'Enable access lock / PIN protection'),
+            ),
+            enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Lock Password', required: true },
+                React.createElement(WizardInput, { type: 'password', placeholder: '••••••', value: password, onChange: e => setPassword(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Confirm Password', required: true },
+                React.createElement(WizardInput, { type: 'password', placeholder: '••••••', value: confirmPassword, onChange: e => setConfirmPassword(e.target.value) })
+              )
+            ),
+            React.createElement(NavRow, { onBack: goBack, onNext: handleNextStep, nextLabel: 'Next: Activation →' })
+          ),
+
+          // Step 4 – Activation
+          step === 4 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', {
+              style: {
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  padding: '16px', background: 'rgba(251,191,36,0.1)', borderRadius: 12,
+                  border: '1px solid rgba(251,191,36,0.3)', textAlign: 'center'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '⏳'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#fbbf24', fontSize: '0.9rem', marginBottom: 4 } }, '30-Day Free Trial'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Skip the key below to begin a 30-day fully featured trial')
+              ),
+              React.createElement('div', {
+                style: {
+                  padding: '16px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
+                  border: '1px solid rgba(99,102,241,0.3)', textAlign: 'center'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '🔑'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#a5b4fc', fontSize: '0.9rem', marginBottom: 4 } }, 'Activate Now'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Enter your product key for permanent activation')
+              )
+            ),
+            React.createElement(FieldGroup, { label: 'Product Key (leave blank for free trial)' },
+              React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: productKey, onChange: e => setProductKey(e.target.value) })
+            ),
+            React.createElement(NavRow, {
+              onBack: goBack,
+              onNext: async () => {
+                setError('');
+                setLoading(true);
+                try {
+                  const firmPayload = {
+                    firmName, ownerName, email, phone,
+                    addressLine1: address1, addressLine2: address2,
+                    city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                  };
+                  const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
+                  API.firmId = createdFirm.id;
+                  if (enableLock) await API.auth.enable(password);
+                  if (productKey.trim()) {
+                    const actRes = await API.license.activate(productKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
+                    if (!actRes.success) throw new Error('Invalid Product Key. Please check and try again.');
+                  } else {
+                    await API.license.initTrial();
+                  }
+                  window.showToast && window.showToast('Setup complete! Welcome to Billsoft.', 'success');
+                  onComplete();
+                } catch (err) {
+                  setError(err.message || 'Setup failed. Please try again.');
+                  setLoading(false);
+                }
+              },
+              nextLabel: productKey.trim() ? '🔑 Activate & Launch App' : '🚀 Start Free Trial & Launch',
+              loading
+            })
+          )
+        );
+      }
+
+      // ── RESTORE FLOW ──────────────────────────────────────────────────────────────
+      return React.createElement(WizardContainer, {
+        title: 'Restore from Backup',
+        subtitle: `Step ${step} of ${RESTORE_STEPS.length} — ${RESTORE_STEPS[step - 1]}`
+      },
+        React.createElement(StepIndicator, { steps: RESTORE_STEPS, current: step }),
+        React.createElement(ErrorBox, { msg: restoreError }),
+
+        step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', {
+            style: {
+              border: '2px dashed rgba(99,102,241,0.4)', borderRadius: 14,
+              padding: '28px 20px', textAlign: 'center',
+              background: backupFile ? 'rgba(34,197,94,0.08)' : 'rgba(99,102,241,0.05)',
+              transition: 'all 0.2s', cursor: 'pointer'
+            }
+          },
+            React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, backupFile ? '✅' : '📂'),
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 14px', fontSize: '0.9rem' } },
+              backupFile ? `Selected: ${backupFile.name}` : 'Click to select your Billsoft backup JSON file'
+            ),
+            React.createElement('label', {
+              style: {
+                display: 'inline-block', padding: '8px 20px', borderRadius: 8,
+                background: 'rgba(99,102,241,0.3)', color: '#fff', cursor: 'pointer',
+                fontSize: '0.85rem', fontWeight: 600, border: '1px solid rgba(99,102,241,0.5)'
+              }
+            },
+              backupFile ? '📁 Change File' : '📁 Browse File',
+              React.createElement('input', {
+                type: 'file', accept: '.json',
+                style: { display: 'none' },
+                onChange: e => { setBackupFile(e.target.files[0]); setRestoreError(''); }
+              })
+            )
+          ),
+          React.createElement(NavRow, {
+            onBack: () => { setWizardMode(null); setStep(1); },
+            onNext: () => {
+              if (!backupFile) { setRestoreError('Please select a backup file to continue.'); return; }
+              setRestoreError(''); goNext();
+            },
+            nextLabel: 'Next: Activation →',
+            nextDisabled: !backupFile
+          })
+        ),
+
+        step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', {
+            style: { padding: '14px 18px', background: 'rgba(255,255,255,0.05)', borderRadius: 10, marginBottom: 6 }
+          },
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+              'Restoring: ', React.createElement('strong', { style: { color: '#a5b4fc' } }, backupFile && backupFile.name)
+            )
+          ),
+          React.createElement(FieldGroup, { label: 'Product Key (leave blank for 30-day trial)' },
+            React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
+          ),
+          React.createElement(NavRow, {
+            onBack: goBack,
+            onNext: async () => {
+              setRestoreError('');
+              setRestoreLoading(true);
+              try {
+                const importRes = await API.backup.import(backupFile, 'override');
+                if (importRes.error) throw new Error(importRes.error);
+                const list = await API.firm.list();
+                if (list && list.length) { API.firmId = list[0].id; }
+                else throw new Error('Failed to find restored firm.');
+                if (restoreProductKey.trim()) {
+                  const actRes = await API.license.activate(restoreProductKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
+                  if (!actRes.success) throw new Error('Invalid Product Key.');
+                } else {
+                  await API.license.initTrial();
+                }
+                window.showToast && window.showToast('Backup restored successfully! Welcome back.', 'success');
+                onComplete();
+              } catch (err) {
+                setRestoreError(err.message || 'Restore failed. Please ensure the JSON file is valid.');
+                setRestoreLoading(false);
+              }
+            },
+            nextLabel: restoreProductKey.trim() ? '🔑 Activate & Restore' : '🚀 Restore & Start Trial',
+            loading: restoreLoading
+          })
         )
-      );
     }
 
     function TrialExpiredComponent({ onComplete }) {
@@ -4271,11 +4713,29 @@
       // Attendance & Leaves State
       const [allLeaves, setAllLeaves] = useState([]);
       const [leaveEmpFilter, setLeaveEmpFilter] = useState('');
+      const [leavePage, setLeavePage] = useState(1);
+      const [leavePageSize, setLeavePageSize] = useState(10);
+      const [leaveSearchQuery, setLeaveSearchQuery] = useState('');
+      const [leaveFromDate, setLeaveFromDate] = useState('');
+      const [leaveToDate, setLeaveToDate] = useState('');
+
+      useEffect(() => {
+        setLeavePage(1);
+      }, [payrollMonth, leaveEmpFilter, leaveSearchQuery, leaveFromDate, leaveToDate]);
 
       // Salary History State
       const [allSalaries, setAllSalaries] = useState([]);
       const [historyEmpFilter, setHistoryEmpFilter] = useState('');
       const [historyMonthFilter, setHistoryMonthFilter] = useState('');
+      const [salaryPage, setSalaryPage] = useState(1);
+      const [salaryPageSize, setSalaryPageSize] = useState(10);
+      const [salarySearchQuery, setSalarySearchQuery] = useState('');
+      const [salaryFromDate, setSalaryFromDate] = useState('');
+      const [salaryToDate, setSalaryToDate] = useState('');
+
+      useEffect(() => {
+        setSalaryPage(1);
+      }, [historyEmpFilter, historyMonthFilter, salarySearchQuery, salaryFromDate, salaryToDate]);
 
       // Helper: get days in a given YYYY-MM
       const getDaysInMonth = (yyyymm) => {
@@ -4602,6 +5062,76 @@
         showToast('Equipment asset assigned', 'success');
       };
 
+      const handleGiveAdvanceSubmit = async (e) => {
+        e.preventDefault();
+        if (!advanceEmpId) { showToast('Please select a staff member', 'error'); return; }
+        const amt = parseFloat(advanceAmount);
+        if (isNaN(amt) || amt <= 0) { showToast('Please enter a valid advance amount', 'error'); return; }
+        try {
+          await API.employees.addAdvance(advanceEmpId, {
+            amount: amt,
+            notes: advanceDesc,
+            date: BillsoftUtils.todayStr()
+          });
+          showToast('Advance payment issued successfully', 'success');
+          setShowAdvanceModal(false);
+          setAdvanceAmount('');
+          setAdvanceDesc('');
+          fetchEmployees();
+          if (selectedEmployee && selectedEmployee.id === advanceEmpId) {
+            openEmployeeProfile(selectedEmployee);
+          }
+        } catch (err) {
+          showToast(err.message || 'Failed to issue advance payment', 'error');
+        }
+      };
+
+      const handleUploadDocumentSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedEmployee) return;
+        if (!selectedFile && !docData.documentName.trim()) {
+          showToast('Please provide a document name or file', 'error');
+          return;
+        }
+        try {
+          const newDoc = {
+            id: Date.now(),
+            documentType: docData.documentType,
+            documentName: docData.documentName.trim() || (selectedFile ? selectedFile.name : 'Document'),
+            uploadDate: BillsoftUtils.todayStr(),
+            notes: docData.notes
+          };
+          setDocuments(prev => [...prev, newDoc]);
+          setShowDocModal(false);
+          setSelectedFile(null);
+          setDocData({ documentType: 'Aadhar Card', documentName: '', notes: '' });
+          showToast('Document added to staff vault', 'success');
+        } catch (err) {
+          showToast('Failed to upload document', 'error');
+        }
+      };
+
+      const handlePromoteSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedEmployee) return;
+        try {
+          const promoPayload = {
+            effectiveDate: promData.effectiveDate,
+            newRole: promData.newRole.trim() || undefined,
+            newSalary: promData.newSalary ? parseFloat(promData.newSalary) : undefined,
+            reason: promData.reason.trim() || undefined
+          };
+          await API.employees.addPromotion(selectedEmployee.id, promoPayload);
+          showToast('Promotion / increment recorded', 'success');
+          setShowPromote(false);
+          setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: '', newSalary: '', reason: '' });
+          fetchEmployees();
+          openEmployeeProfile(selectedEmployee);
+        } catch (err) {
+          showToast(err.message || 'Failed to record promotion', 'error');
+        }
+      };
+
       const [processingSalaryEmpId, setProcessingSalaryEmpId] = useState(null);
 
       const handleProcessPayrollForEmployee = async (emp) => {
@@ -4878,7 +5408,7 @@
         // ════════════════════════════════════════
         // TAB 2: ATTENDANCE & LEAVES (FULL LEAVE TRACKER & MODAL)
         // ════════════════════════════════════════
-        hrTab === 'attendance' && React.createElement(Fragment, null,
+hrTab === 'attendance' && React.createElement(Fragment, null,
           // Leave Overview KPIs
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
             React.createElement('div', { className: 'kpi-card kpi-amber' },
@@ -4946,6 +5476,35 @@
               )
             ),
 
+            // Search and Date Range Filter Bar
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, paddingTop: 10, borderTop: '1px solid var(--border-light)' } },
+              React.createElement('input', {
+                className: 'input input-sm',
+                style: { flex: 1, minWidth: 200 },
+                placeholder: 'Search leaves by name or remarks...',
+                value: leaveSearchQuery,
+                onChange: e => setLeaveSearchQuery(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: leaveFromDate,
+                onChange: e => setLeaveFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: leaveToDate,
+                onChange: e => setLeaveToDate(e.target.value)
+              }),
+              (leaveSearchQuery || leaveFromDate || leaveToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => { setLeaveSearchQuery(''); setLeaveFromDate(''); setLeaveToDate(''); }
+              }, 'Reset')
+            ),
+
             // Logged Leaves Table
             React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
               React.createElement('table', { className: 'table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.85rem' } },
@@ -4958,7 +5517,19 @@
                 )),
                 React.createElement('tbody', null,
                   (() => {
-                    const filteredLeaves = allLeaves.filter(l => !leaveEmpFilter || String(l.empId) === String(leaveEmpFilter));
+                    const filteredLeaves = allLeaves.filter(l => {
+                      const matchesEmp = !leaveEmpFilter || String(l.empId) === String(leaveEmpFilter);
+                      const q = leaveSearchQuery.toLowerCase().trim();
+                      const matchesSearch = !q || (l.empName && l.empName.toLowerCase().includes(q)) || (l.remarks && l.remarks.toLowerCase().includes(q));
+                      
+                      let matchesDateRange = true;
+                      const d = l.date ? l.date.split('T')[0] : '';
+                      if (leaveFromDate && d < leaveFromDate) matchesDateRange = false;
+                      if (leaveToDate && d > leaveToDate) matchesDateRange = false;
+
+                      return matchesEmp && matchesSearch && matchesDateRange;
+                    });
+
                     if (filteredLeaves.length === 0) {
                       return React.createElement('tr', null,
                         React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
@@ -4967,7 +5538,7 @@
                       );
                     }
 
-                    return filteredLeaves.map((l, idx) => {
+                    return filteredLeaves.slice((leavePage - 1) * leavePageSize, leavePage * leavePageSize).map((l, idx) => {
                       const isUnpaid = l.status === 'UNPAID' || l.status === 'ABSENT' || l.status === 'LEAVE';
                       const isSick = l.status === 'SICK';
                       const isCasual = l.status === 'CASUAL';
@@ -4984,11 +5555,11 @@
                           React.createElement('span', {
                             className: 'badge',
                             style: {
-                              backgroundColor: isUnpaid ? '#fee2e2' : (isSick ? '#ede9fe' : (isCasual ? '#dbeafe' : '#dcfce7')),
-                              color: isUnpaid ? '#991b1b' : (isSick ? '#6d28d9' : (isCasual ? '#1e40af' : '#15803d')),
-                              fontWeight: 700
+                              backgroundColor: isUnpaid ? '#fee2e2' : (isSick ? '#fef3c7' : '#dcfce7'),
+                              color: isUnpaid ? '#991b1b' : (isSick ? '#b45309' : '#166534'),
+                              fontSize: '0.72rem'
                             }
-                          }, l.status)
+                          }, l.status || 'UNPAID')
                         ),
                         React.createElement('td', { style: { verticalAlign: 'middle', padding: '8px 10px' } },
                           l.remarks || 'Standard Leave Request'
@@ -5374,6 +5945,35 @@
               )
             ),
 
+            // Search and Date Range Filter Bar for Salary History
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, paddingTop: 10, borderTop: '1px solid var(--border-light)' } },
+              React.createElement('input', {
+                className: 'input input-sm',
+                style: { flex: 1, minWidth: 200 },
+                placeholder: 'Search salaries by name...',
+                value: salarySearchQuery,
+                onChange: e => setSalarySearchQuery(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: salaryFromDate,
+                onChange: e => setSalaryFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: salaryToDate,
+                onChange: e => setSalaryToDate(e.target.value)
+              }),
+              (salarySearchQuery || salaryFromDate || salaryToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => { setSalarySearchQuery(''); setSalaryFromDate(''); setSalaryToDate(''); }
+              }, 'Reset')
+            ),
+
             React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
               React.createElement('table', { className: 'table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.82rem' } },
                 React.createElement('thead', null, React.createElement('tr', null,
@@ -5396,14 +5996,23 @@
                         const targetMonthYear = parts[1] + '-' + parts[0];
                         matchesMonth = s.monthYear === targetMonthYear;
                       }
-                      return matchesEmp && matchesMonth;
+                      
+                      const q = salarySearchQuery.toLowerCase().trim();
+                      const matchesSearch = !q || (s.empName && s.empName.toLowerCase().includes(q));
+
+                      let matchesDateRange = true;
+                      const d = s.paymentDate ? s.paymentDate.split('T')[0] : '';
+                      if (salaryFromDate && d < salaryFromDate) matchesDateRange = false;
+                      if (salaryToDate && d > salaryToDate) matchesDateRange = false;
+
+                      return matchesEmp && matchesMonth && matchesSearch && matchesDateRange;
                     });
 
                     if (filteredSalaries.length === 0) {
                       return React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } }, 'No salary history records found for the selected filters.'));
                     }
 
-                    return filteredSalaries.map(s => React.createElement('tr', { key: `${s.empId}-${s.id}` },
+                    return filteredSalaries.slice((salaryPage - 1) * salaryPageSize, salaryPage * salaryPageSize).map(s => React.createElement('tr', { key: `${s.empId}-${s.id}` },
                       React.createElement('td', { style: { fontWeight: 600 } },
                         s.empName,
                         React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 400 } }, s.empDept || 'Operations')
@@ -5428,7 +6037,31 @@
                     ));
                   })()
                 )
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: salaryPage,
+                totalPages: Math.ceil(allSalaries.filter(s => {
+                  const matchesEmp = !historyEmpFilter || String(s.empId) === String(historyEmpFilter);
+                  let matchesMonth = true;
+                  if (historyMonthFilter) {
+                    const parts = historyMonthFilter.split('-');
+                    const targetMonthYear = parts[1] + '-' + parts[0];
+                    matchesMonth = s.monthYear === targetMonthYear;
+                  }
+                  const q = salarySearchQuery.toLowerCase().trim();
+                  const matchesSearch = !q || (s.empName && s.empName.toLowerCase().includes(q));
+
+                  let matchesDateRange = true;
+                  const d = s.paymentDate ? s.paymentDate.split('T')[0] : '';
+                  if (salaryFromDate && d < salaryFromDate) matchesDateRange = false;
+                  if (salaryToDate && d > salaryToDate) matchesDateRange = false;
+
+                  return matchesEmp && matchesMonth && matchesSearch && matchesDateRange;
+                }).length / salaryPageSize),
+                onPageChange: setSalaryPage,
+                pageSize: salaryPageSize,
+                onPageSizeChange: setSalaryPageSize
+              })
             )
           )
         ),
@@ -6139,11 +6772,14 @@
 
       const initApp = async () => {
         try {
-          const lic = await API.license.status().catch(() => ({ hasFirm: true, status: 'activated', trialDaysRemaining: 30 }));
-          setLicenseStatus(lic.status);
-          setTrialDaysRemaining(lic.trialDaysRemaining);
+          const list = await API.firm.list().catch(() => []);
+          const hasFirmInDb = list && list.length > 0;
+
+          const lic = await API.license.status().catch(() => ({ hasFirm: hasFirmInDb, status: 'trial', trialDaysRemaining: 30 }));
+          setLicenseStatus(lic.status || 'trial');
+          setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
           
-          if (!lic.hasFirm) {
+          if (!hasFirmInDb || !lic.hasFirm) {
             setFirstTimeSetup(true);
             setAppLoaded(true);
             return;
@@ -6151,7 +6787,6 @@
             setFirstTimeSetup(false);
           }
 
-          const list = await API.firm.list().catch(() => []);
           if (list && list.length) {
             API.firmId = list[0].id;
             setFirmName(list[0].firmName || '');
@@ -6531,7 +7166,8 @@
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right' },
-              licenseStatus === 'trial' && React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`),
+              licenseStatus === 'trial' ? React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15, display: 'flex', alignItems: 'center', gap: 6 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`) :
+              licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, marginRight: 15, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))
@@ -6556,7 +7192,58 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, errorInfo) {
+        console.error('Unhandled UI Exception caught by ErrorBoundary:', error, errorInfo);
+      }
+      render() {
+        if (this.state.hasError) {
+          return React.createElement('div', {
+            style: {
+              minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: '#0f172a', color: '#fff', fontFamily: "'Inter', sans-serif", padding: 24
+            }
+          },
+            React.createElement('div', {
+              style: {
+                maxWidth: 480, width: '100%', padding: '36px 30px', textAlign: 'center',
+                background: 'rgba(255,255,255,0.06)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)'
+              }
+            },
+              React.createElement('div', { style: { fontSize: '3rem', marginBottom: 14 } }, '⚠️'),
+              React.createElement('h2', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '0 0 8px', color: '#f87171' } }, 'Something went wrong'),
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.65)', fontSize: '0.88rem', margin: '0 0 20px', lineHeight: 1.5 } },
+                'An unexpected error occurred in the application view. You can reload to restore normal operation.'
+              ),
+              this.state.error && React.createElement('pre', {
+                style: {
+                  background: 'rgba(0,0,0,0.4)', padding: '10px 14px', borderRadius: 8,
+                  fontSize: '0.75rem', color: '#fca5a5', textAlign: 'left', overflowX: 'auto',
+                  maxHeight: 120, marginBottom: 20
+                }
+              }, String(this.state.error.message || this.state.error)),
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: { padding: '10px 24px', borderRadius: 8, fontWeight: 600 },
+                onClick: () => { window.location.reload(); }
+              }, '🔄 Reload Application')
+            )
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      React.createElement(ErrorBoundary, null, React.createElement(App))
+    );
   </script>
 </body>
 </html>

@@ -179,7 +179,7 @@ const API = {
       if (id == null) return Promise.reject(new Error('firmId is required'));
       return API._json(`/api/firm/${id}`);
     },
-    create: () => API._json('/api/firm', { method: 'POST' }),
+    create: (data) => API._json('/api/firm', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/firm/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/firm/${id}`, { method: 'DELETE' }),
   },

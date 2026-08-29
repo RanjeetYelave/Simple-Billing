@@ -72,12 +72,19 @@ const BillsoftUtils = {
       ? 'application/pdf'
       : (blob.type || 'application/octet-stream');
 
-    // Use FileReader → data: URL approach.
-    // This always works because data: URLs are inline resources, not navigations,
-    // so the `download` attribute is always respected by the browser.
     const reader = new FileReader();
     reader.onloadend = function () {
       if (!reader.result) return;
+
+      // Native JavaFX Shell bridge
+      if (window.javafxFileHelper && typeof window.javafxFileHelper.saveBase64File === 'function') {
+        const parts = String(reader.result).split(',');
+        const base64 = parts.length > 1 ? parts[1] : parts[0];
+        window.javafxFileHelper.saveBase64File(base64, filename, mimeType);
+        return;
+      }
+
+      // Standard browser download fallback
       const dataUrl = reader.result.replace(/^data:[^;]+/, 'data:' + mimeType);
       const a = document.createElement('a');
       a.style.cssText = 'display:none;position:fixed;top:-100px;left:-100px';

@@ -26,6 +26,11 @@ public class ShellMain extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            System.err.println("Uncaught exception on " + thread.getName() + ": " + throwable.getMessage());
+            throwable.printStackTrace();
+        });
+
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
         try {
             port = PortUtil.findFreePort();
@@ -40,6 +45,38 @@ public class ShellMain extends Application {
 
         WebView webView = new WebView();
         WebEngine engine = webView.getEngine();
+
+        // WebEngine safety handlers for browser dialogs
+        engine.setOnAlert(event -> {
+            Platform.runLater(() -> {
+                javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+                alert.initOwner(primaryStage);
+                alert.setHeaderText(null);
+                alert.setContentText(event.getData());
+                alert.showAndWait();
+            });
+        });
+
+        engine.setConfirmHandler(message -> {
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION);
+            alert.initOwner(primaryStage);
+            alert.setHeaderText(null);
+            alert.setContentText(message);
+            java.util.Optional<javafx.scene.control.ButtonType> result = alert.showAndWait();
+            return result.isPresent() && result.get() == javafx.scene.control.ButtonType.OK;
+        });
+
+        engine.setPromptHandler(promptData -> {
+            javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog(promptData.getDefaultValue());
+            dialog.initOwner(primaryStage);
+            dialog.setHeaderText(null);
+            dialog.setContentText(promptData.getMessage());
+            java.util.Optional<String> result = dialog.showAndWait();
+            return result.orElse(null);
+        });
+
+        engine.setCreatePopupHandler(config -> engine);
+
         String url = "http://localhost:" + port + "/"; // root context of the WAR
         engine.load(url);
 
@@ -54,9 +91,10 @@ public class ShellMain extends Application {
                 try {
                     netscape.javascript.JSObject win = (netscape.javascript.JSObject) engine.executeScript("window");
                     win.setMember("javafxPrintHelper", new JavafxPrintHelper(primaryStage, webView));
+                    win.setMember("javafxFileHelper", new JavafxFileHelper(primaryStage));
                     engine.executeScript("window.print = function() { if (window.javafxPrintHelper && window.javafxPrintHelper.print) { window.javafxPrintHelper.print(); } };");
                 } catch (Exception e) {
-                    System.err.println("Failed to inject print bridge: " + e.getMessage());
+                    System.err.println("Failed to inject desktop bridge: " + e.getMessage());
                 }
             }
         });
@@ -118,6 +156,10 @@ public class ShellMain extends Application {
         } else {
             command.add("java"); // fallback
         }
+        command.add("-Xms128m");
+        command.add("-Xmx512m");
+        command.add("-XX:+TieredCompilation");
+        command.add("-XX:TieredStopAtLevel=1");
         command.add("-jar");
         command.add(warFile.getAbsolutePath());
         command.add("--server.port=" + port);
@@ -206,6 +248,42 @@ public class ShellMain extends Application {
                         webView.getEngine().print(job);
                         job.endJob();
                     }
+                }
+            });
+        }
+    }
+
+    public static class JavafxFileHelper {
+        private final Stage stage;
+
+        public JavafxFileHelper(Stage stage) {
+            this.stage = stage;
+        }
+
+        public void saveBase64File(String base64Data, String defaultFilename, String mimeType) {
+            Platform.runLater(() -> {
+                try {
+                    javafx.stage.FileChooser fileChooser = new javafx.stage.FileChooser();
+                    fileChooser.setTitle("Save File");
+                    fileChooser.setInitialFileName(defaultFilename != null ? defaultFilename : "document.pdf");
+
+                    if (defaultFilename != null && defaultFilename.toLowerCase().endsWith(".pdf")) {
+                        fileChooser.getExtensionFilters().add(
+                            new javafx.stage.FileChooser.ExtensionFilter("PDF Documents (*.pdf)", "*.pdf")
+                        );
+                    }
+                    fileChooser.getExtensionFilters().add(
+                        new javafx.stage.FileChooser.ExtensionFilter("All Files (*.*)", "*.*")
+                    );
+
+                    File file = fileChooser.showSaveDialog(stage);
+                    if (file != null) {
+                        byte[] bytes = java.util.Base64.getDecoder().decode(base64Data.trim());
+                        java.nio.file.Files.write(file.toPath(), bytes);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error saving file via native file helper: " + e.getMessage());
+                    e.printStackTrace();
                 }
             });
         }

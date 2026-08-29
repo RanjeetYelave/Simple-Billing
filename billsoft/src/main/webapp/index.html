@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Billsoft - Simple Billing</title>
   <link rel="stylesheet" href="css/style.css" />
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="js/vendor/react.production.min.js"></script>
+  <script src="js/vendor/react-dom.production.min.js"></script>
 
-  <script src="js/api.js?v=3"></script>
-  <script src="js/utils.js?v=3"></script>
+  <script src="js/api.js?v=4"></script>
+  <script src="js/utils.js?v=4"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="js/vendor/pdf.min.js"></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/vendor/pdf.worker.min.js';
+    }
   </script>
 </head>
 <body>
@@ -2698,10 +2700,10 @@
                         }
                       })
                     ),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
-                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', min: 1, style: { width: 56 }, value: item.qty, onChange: e => updateItem(idx, 'qty', e.target.value.replace(/[^0-9]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[2]) inputs[2].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 90 }, value: item.pricePerUnit, onChange: e => updateItem(idx, 'pricePerUnit', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[3]) inputs[3].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 70 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[4]) inputs[4].focus(); } } })),
+                    React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 60 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
                     React.createElement('td', null, 
                        React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
@@ -2730,7 +2732,7 @@
                   React.createElement('option', { value: 'PERCENT' }, '%'),
                   React.createElement('option', { value: 'VALUE' }, '₹')
                 ),
-                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value } }) ) })
+                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value.replace(/[^0-9.]/g, '') } }) ) })
               )
             ),
             calcTotals.invoiceDiscount > 0 && createSumRow('Invoice Disc.', -calcTotals.invoiceDiscount),
@@ -5060,6 +5062,76 @@
         showToast('Equipment asset assigned', 'success');
       };
 
+      const handleGiveAdvanceSubmit = async (e) => {
+        e.preventDefault();
+        if (!advanceEmpId) { showToast('Please select a staff member', 'error'); return; }
+        const amt = parseFloat(advanceAmount);
+        if (isNaN(amt) || amt <= 0) { showToast('Please enter a valid advance amount', 'error'); return; }
+        try {
+          await API.employees.addAdvance(advanceEmpId, {
+            amount: amt,
+            notes: advanceDesc,
+            date: BillsoftUtils.todayStr()
+          });
+          showToast('Advance payment issued successfully', 'success');
+          setShowAdvanceModal(false);
+          setAdvanceAmount('');
+          setAdvanceDesc('');
+          fetchEmployees();
+          if (selectedEmployee && selectedEmployee.id === advanceEmpId) {
+            openEmployeeProfile(selectedEmployee);
+          }
+        } catch (err) {
+          showToast(err.message || 'Failed to issue advance payment', 'error');
+        }
+      };
+
+      const handleUploadDocumentSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedEmployee) return;
+        if (!selectedFile && !docData.documentName.trim()) {
+          showToast('Please provide a document name or file', 'error');
+          return;
+        }
+        try {
+          const newDoc = {
+            id: Date.now(),
+            documentType: docData.documentType,
+            documentName: docData.documentName.trim() || (selectedFile ? selectedFile.name : 'Document'),
+            uploadDate: BillsoftUtils.todayStr(),
+            notes: docData.notes
+          };
+          setDocuments(prev => [...prev, newDoc]);
+          setShowDocModal(false);
+          setSelectedFile(null);
+          setDocData({ documentType: 'Aadhar Card', documentName: '', notes: '' });
+          showToast('Document added to staff vault', 'success');
+        } catch (err) {
+          showToast('Failed to upload document', 'error');
+        }
+      };
+
+      const handlePromoteSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedEmployee) return;
+        try {
+          const promoPayload = {
+            effectiveDate: promData.effectiveDate,
+            newRole: promData.newRole.trim() || undefined,
+            newSalary: promData.newSalary ? parseFloat(promData.newSalary) : undefined,
+            reason: promData.reason.trim() || undefined
+          };
+          await API.employees.addPromotion(selectedEmployee.id, promoPayload);
+          showToast('Promotion / increment recorded', 'success');
+          setShowPromote(false);
+          setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: '', newSalary: '', reason: '' });
+          fetchEmployees();
+          openEmployeeProfile(selectedEmployee);
+        } catch (err) {
+          showToast(err.message || 'Failed to record promotion', 'error');
+        }
+      };
+
       const [processingSalaryEmpId, setProcessingSalaryEmpId] = useState(null);
 
       const handleProcessPayrollForEmployee = async (emp) => {
@@ -7120,7 +7192,58 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, errorInfo) {
+        console.error('Unhandled UI Exception caught by ErrorBoundary:', error, errorInfo);
+      }
+      render() {
+        if (this.state.hasError) {
+          return React.createElement('div', {
+            style: {
+              minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: '#0f172a', color: '#fff', fontFamily: "'Inter', sans-serif", padding: 24
+            }
+          },
+            React.createElement('div', {
+              style: {
+                maxWidth: 480, width: '100%', padding: '36px 30px', textAlign: 'center',
+                background: 'rgba(255,255,255,0.06)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)'
+              }
+            },
+              React.createElement('div', { style: { fontSize: '3rem', marginBottom: 14 } }, '⚠️'),
+              React.createElement('h2', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '0 0 8px', color: '#f87171' } }, 'Something went wrong'),
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.65)', fontSize: '0.88rem', margin: '0 0 20px', lineHeight: 1.5 } },
+                'An unexpected error occurred in the application view. You can reload to restore normal operation.'
+              ),
+              this.state.error && React.createElement('pre', {
+                style: {
+                  background: 'rgba(0,0,0,0.4)', padding: '10px 14px', borderRadius: 8,
+                  fontSize: '0.75rem', color: '#fca5a5', textAlign: 'left', overflowX: 'auto',
+                  maxHeight: 120, marginBottom: 20
+                }
+              }, String(this.state.error.message || this.state.error)),
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: { padding: '10px 24px', borderRadius: 8, fontWeight: 600 },
+                onClick: () => { window.location.reload(); }
+              }, '🔄 Reload Application')
+            )
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      React.createElement(ErrorBoundary, null, React.createElement(App))
+    );
   </script>
 </body>
 </html>

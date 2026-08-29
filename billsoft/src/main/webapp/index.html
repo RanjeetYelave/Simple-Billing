@@ -1947,9 +1947,7 @@
             React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
           ),
           React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-            updateInfo.automaticInstallSupported ?
-              React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Update') :
-              React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: 180, textAlign: 'right' } }, 'Download and installation will be available with the standalone updater.'),
+            React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, '⚡ Install Update'),
             React.createElement('button', { className: 'btn btn-sm', style: { backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }, onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
           )
         ),
@@ -4542,9 +4540,8 @@
             React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready.`),
             info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } }, React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'), info.releaseNotes),
             React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
-              info.automaticInstallSupported && info.downloadUrl ?
-                React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, 'Install Update') :
-                React.createElement('p', { style: { margin: 0, color: 'var(--text-secondary)', textAlign: 'center' } }, 'Automatic installation will be available with the standalone updater.'))) :
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, '⚡ Install Update Now')
+            )) :
           React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.'))
         ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information. Check your internet connection and try again.'),
         React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } }, React.createElement('button', { className: 'btn btn-ghost', style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }, disabled: loading, onClick: fetchUpdateInfo }, React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh), loading ? 'Checking...' : 'Check for Updates'))

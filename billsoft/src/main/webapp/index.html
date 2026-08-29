@@ -5132,19 +5132,126 @@
       );
     }
 
+    // ─── CREDITS & HELPDESK ───
+    function CreditsHelpdesk() {
+      const [copied, setCopied] = useState(false);
+      const email = 'yelaveranjeet@gmail.com';
+
+      const handleCopyEmail = () => {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(email);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+          window.showToast && window.showToast('Email address copied to clipboard!', 'success');
+        }
+      };
+
+      return React.createElement('div', { style: { maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
+        // Brand Header Card
+        React.createElement('div', {
+          className: 'card',
+          style: {
+            padding: '32px 28px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center',
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(16,185,129,0.08) 100%)',
+            border: '1px solid rgba(99,102,241,0.2)', borderRadius: 16
+          }
+        },
+          React.createElement(RupeeCRMLogo, { size: 56, showWordmark: true, showTagline: true, isDarkBg: false }),
+          React.createElement('div', { style: { marginTop: 14, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 } },
+            'Version 1.0 • Offline-First CRM & Enterprise Billing Suite'
+          )
+        ),
+
+        // Helpdesk & Support Card
+        React.createElement('div', { className: 'card', style: { padding: '28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
+            React.createElement('div', { style: { fontSize: '1.6rem', padding: 10, borderRadius: 12, background: 'rgba(37,99,235,0.1)', color: '#2563eb' } }, '🎧'),
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'Technical Support & Helpdesk'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Reach out for troubleshooting, feature requests, or enterprise support')
+            )
+          ),
+          React.createElement('div', {
+            style: {
+              background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)', padding: '18px 20px',
+              borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { fontSize: '1.4rem' } }, '✉️'),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' } }, 'Primary Support Email'),
+                React.createElement('a', {
+                  href: `mailto:${email}`,
+                  style: { fontSize: '1.05rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }
+                }, email)
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline btn-sm',
+                onClick: handleCopyEmail,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, copied ? '✅ Copied' : '📋 Copy Email'),
+              React.createElement('a', {
+                href: `mailto:${email}?subject=RupeeCRM%20Support%20Request`,
+                className: 'btn btn-primary btn-sm',
+                style: { textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '✉️ Send Email')
+            )
+          )
+        ),
+
+        // Credits Card
+        React.createElement('div', { className: 'card', style: { padding: '28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } },
+            React.createElement('div', { style: { fontSize: '1.6rem', padding: 10, borderRadius: 12, background: 'rgba(16,185,129,0.1)', color: '#10b981' } }, '🏆'),
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'Engineering & Development Credits'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Crafted with precision for modern high-performance businesses')
+            )
+          ),
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 } },
+            React.createElement('div', { style: { padding: '16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-secondary, #f8fafc)' } },
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Lead Developer & Architect'),
+              React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 800, marginTop: 4, color: 'var(--text)' } }, 'Ranjeet Yelave')
+            ),
+            React.createElement('div', { style: { padding: '16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-secondary, #f8fafc)' } },
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Release Year'),
+              React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 800, marginTop: 4, color: 'var(--text)' } }, 'Created 2026')
+            )
+          ),
+          React.createElement('div', {
+            style: {
+              marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--border)',
+              display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.85rem', color: 'var(--text-secondary)'
+            }
+          },
+            React.createElement('div', { style: { fontWeight: 600, color: 'var(--text)' } }, '© 2026 Ranjeet Yelave. All Rights Reserved.'),
+            React.createElement('div', { style: { fontSize: '0.8rem', lineHeight: 1.5 } },
+              'RupeeCRM is proprietary business billing, quotation, customer relationship, inventory & HR management software. Unauthorized distribution, copying, or reverse engineering is strictly prohibited.'
+            )
+          )
+        )
+      );
+    }
+
     function SettingsHub({ onFirmChanged, onStartUpdate }) {
       const [tab, setTab] = useState('general');
       return React.createElement('div', null,
-        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' } },
           React.createElement('button', { className: `btn ${tab === 'general' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('general') }, 'General & Security'),
           React.createElement('button', { className: `btn ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, 'Firm Profile'),
           React.createElement('button', { className: `btn ${tab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, 'Backup & Restore'),
-          React.createElement('button', { className: `btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('updates') }, 'Software Update')
+          React.createElement('button', { className: `btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('updates') }, 'Software Update'),
+          React.createElement('button', { className: `btn ${tab === 'credits' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('credits') }, 'Credits & Helpdesk')
         ),
         tab === 'general' && React.createElement(Settings, null),
         tab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
         tab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
-        tab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate })
+        tab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate }),
+        tab === 'credits' && React.createElement(CreditsHelpdesk, null)
       );
     }
 

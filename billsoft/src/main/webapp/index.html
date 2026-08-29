@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Billsoft - Simple Billing</title>
+  <title>RupeeCRM - Business Billing & Management</title>
   <link rel="stylesheet" href="css/style.css" />
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
@@ -20,12 +20,103 @@
   </script>
   <meta name="theme-color" content="#4f46e5" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%234f46e5'/><text x='50%' y='63%' font-size='46' font-weight='bold' fill='white' text-anchor='middle' font-family='sans-serif'>B</text></svg>" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110'%3E%3Cdefs%3E%3ClinearGradient id='bl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='40%25' stop-color='%231d4ed8'/%3E%3Cstop offset='100%25' stop-color='%230f2766'/%3E%3C/linearGradient%3E%3ClinearGradient id='br' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%231e40af'/%3E%3C/linearGradient%3E%3ClinearGradient id='gl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300d685'/%3E%3Cstop offset='60%25' stop-color='%23059669'/%3E%3Cstop offset='100%25' stop-color='%23047857'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z' fill='url(%23bl)'/%3E%3Crect x='10' y='38' width='38' height='9' rx='4.5' fill='url(%23br)'/%3E%3Crect x='10' y='52' width='36' height='9' rx='4.5' fill='url(%23br)'/%3E%3Cpath d='M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z' fill='url(%23br)'/%3E%3Cpath d='M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z' fill='url(%23gl)'/%3E%3C/svg%3E" />
 </head>
 <body>
   <div id="root"></div>
   <script type="text/javascript">
     const { useState, useEffect, useMemo, useCallback, useRef, Fragment } = React;
+    const RupeeCRMUtils = (typeof BillsoftUtils !== 'undefined') ? BillsoftUtils : {};
+
+    // ─── Exact RupeeCRM Vector Brand Icon & Logo ───
+    function RupeeCRMIcon({ size = 36, className = '', style = {} }) {
+      return React.createElement('svg', {
+        xmlns: 'http://www.w3.org/2000/svg',
+        width: size,
+        height: size,
+        viewBox: '0 0 110 110',
+        className: className,
+        style: { display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, overflow: 'visible', ...style }
+      },
+        React.createElement('defs', null,
+          // Royal Blue to Deep Navy gradient for the upper 'R' loop
+          React.createElement('linearGradient', { id: 'rcrmBlueLoop', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#3b82f6' }),
+            React.createElement('stop', { offset: '40%', stopColor: '#1d4ed8' }),
+            React.createElement('stop', { offset: '100%', stopColor: '#0f2766' })
+          ),
+          // Royal Blue for the Rupee bars & left spine
+          React.createElement('linearGradient', { id: 'rcrmBlueRupee', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#2563eb' }),
+            React.createElement('stop', { offset: '100%', stopColor: '#1e40af' })
+          ),
+          // Emerald Green gradient for the right leg of 'R'
+          React.createElement('linearGradient', { id: 'rcrmGreenLeg', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#00d685' }),
+            React.createElement('stop', { offset: '60%', stopColor: '#059669' }),
+            React.createElement('stop', { offset: '100%', stopColor: '#047857' })
+          )
+        ),
+
+        // 1. Top Loop / Arch Ribbon of 'R' (Deep Blue Gradient)
+        React.createElement('path', {
+          d: 'M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z',
+          fill: 'url(#rcrmBlueLoop)'
+        }),
+
+        // 2. Rupee Upper Horizontal Bar
+        React.createElement('rect', {
+          x: '10', y: '38', width: '38', height: '9', rx: '4.5',
+          fill: 'url(#rcrmBlueRupee)'
+        }),
+
+        // 3. Rupee Lower Horizontal Bar
+        React.createElement('rect', {
+          x: '10', y: '52', width: '36', height: '9', rx: '4.5',
+          fill: 'url(#rcrmBlueRupee)'
+        }),
+
+        // 4. Rupee Left Lower Slash / Spine
+        React.createElement('path', {
+          d: 'M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z',
+          fill: 'url(#rcrmBlueRupee)'
+        }),
+
+        // 5. Emerald Green Right Leg of 'R'
+        React.createElement('path', {
+          d: 'M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z',
+          fill: 'url(#rcrmGreenLeg)'
+        })
+      );
+    }
+
+    // Full Brandmark Logo Component (Icon + RupeeCRM Text + Optional Tagline)
+    function RupeeCRMLogo({ size = 38, showWordmark = true, showTagline = false, isDarkBg = true, className = '', style = {} }) {
+      const textColor = isDarkBg ? '#ffffff' : '#0f172a';
+      const taglineColor = isDarkBg ? '#94a3b8' : '#64748b';
+
+      if (!showWordmark) {
+        return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
+      }
+
+      return React.createElement('div', {
+        className: `rupeecrm-logo-wrapper ${className}`,
+        style: { display: 'inline-flex', alignItems: 'center', gap: Math.round(size * 0.28), textDecoration: 'none', ...style }
+      },
+        React.createElement(RupeeCRMIcon, { size: size }),
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', fontSize: `${Math.round(size * 0.72)}px`, fontWeight: 800, letterSpacing: '-0.03em', fontFamily: 'system-ui, -apple-system, sans-serif' } },
+            React.createElement('span', { style: { color: textColor } }, 'Rupee'),
+            React.createElement('span', { style: { color: '#00c875', marginLeft: 1 } }, 'CRM')
+          ),
+          showTagline && React.createElement('div', { style: { fontSize: `${Math.max(10, Math.round(size * 0.24))}px`, color: taglineColor, marginTop: 4, fontWeight: 500, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('span', { style: { opacity: 0.5 } }, '—'),
+            'Manage. Connect. Grow.',
+            React.createElement('span', { style: { opacity: 0.5 } }, '—')
+          )
+        )
+      );
+    }
 
     // ─── Toast System ───
     function Toast({ toasts, removeToast }) {
@@ -200,12 +291,8 @@
         mobileOpen && React.createElement('div', { className: 'sidebar-overlay', onClick: () => setMobileOpen(false) }),
         React.createElement('button', { className: 'mobile-toggle', onClick: () => setMobileOpen(true), style: { position: 'fixed', top: 12, left: 12, zIndex: 101 } }, Icons.menu),
         React.createElement('aside', { className: `sidebar${mobileOpen ? ' open' : ''}` },
-          React.createElement('div', { className: 'sidebar-logo' },
-            React.createElement('div', { className: 'sidebar-logo-icon' }, 'B'),
-            React.createElement('div', null,
-              React.createElement('div', { className: 'sidebar-logo-text' }, 'Billsoft'),
-              React.createElement('div', { className: 'sidebar-logo-version' }, 'v1.0')
-            )
+          React.createElement('div', { className: 'sidebar-logo', style: { padding: '20px 16px', display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)' } },
+            React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, isDarkBg: true })
           ),
           onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
             React.createElement('button', {
@@ -602,7 +689,7 @@
       }, [expenses, filteredExpenses]);
 
       const handlePrintExpenseStatement = () => {
-        const firmObj = firms && firms.length > 0 ? (firms.find(f => f.id === API.firmId) || firms[0]) : { firmName: 'Billsoft Business' };
+        const firmObj = firms && firms.length > 0 ? (firms.find(f => f.id === API.firmId) || firms[0]) : { firmName: 'RupeeCRM Business' };
         
         let rangeLabel = 'All Historical Records';
         if (fromDateFilter || toDateFilter) {
@@ -652,7 +739,7 @@
             </div>
             <div class="header">
               <div>
-                <h1 class="title">${firmObj.firmName || 'Billsoft Business'}</h1>
+                <h1 class="title">${firmObj.firmName || 'RupeeCRM Business'}</h1>
                 <div class="subtitle">Official Expense Statement • Statement Period: <strong>${rangeLabel}</strong></div>
               </div>
               <div style="text-align: right;">
@@ -705,7 +792,7 @@
             </table>
 
             <div class="footer">
-              Generated automatically by Billsoft Simple Billing System
+              Generated automatically by RupeeCRM Business Suite
             </div>
           </body>
           </html>
@@ -3772,10 +3859,11 @@
         finally { setLoading(false); }
       };
       return React.createElement('div', { className: 'login-container' },
-        React.createElement('div', { className: 'login-card' },
-          React.createElement('div', { className: 'login-logo' }, 'B'),
-          React.createElement('h2', { className: 'login-title' }, 'Welcome back'),
-          React.createElement('p', { className: 'login-subtitle' }, 'Please enter your PIN to continue'),
+        React.createElement('div', { className: 'login-card', style: { maxWidth: 420, padding: '36px 32px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 20 } },
+            React.createElement(RupeeCRMLogo, { size: 52, showWordmark: true, showTagline: true, isDarkBg: false })
+          ),
+          React.createElement('p', { className: 'login-subtitle', style: { margin: '0 0 20px', color: 'var(--text-secondary)', fontSize: '0.9rem' } }, 'Enter your Master PIN to unlock'),
           error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' } }, Icons.alert, React.createElement('span', null, error)),
           React.createElement('form', { onSubmit: handleSubmit, style: { textAlign: 'left' } },
             React.createElement('div', { style: { marginBottom: 24 } }, React.createElement('label', { style: { display: 'block', marginBottom: 8, fontWeight: 600, color: 'var(--text)' } }, 'Password / PIN'),
@@ -3975,8 +4063,11 @@
       // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
       if (!wizardMode) {
         return React.createElement(WizardContainer, {
-          title: 'Welcome to Billsoft', subtitle: 'Professional billing & business management'
+          title: '', subtitle: ''
         },
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 } },
+            React.createElement(RupeeCRMLogo, { size: 58, showWordmark: true, showTagline: true, isDarkBg: true })
+          ),
           React.createElement('p', {
             style: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }
           }, 'Get started in minutes. Set up your business profile or restore an existing backup to continue where you left off.'),
@@ -4220,7 +4311,7 @@
           },
             React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, backupFile ? '✅' : '📂'),
             React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 14px', fontSize: '0.9rem' } },
-              backupFile ? `Selected: ${backupFile.name}` : 'Click to select your Billsoft backup JSON file'
+              backupFile ? `Selected: ${backupFile.name}` : 'Click to select your RupeeCRM backup JSON file'
             ),
             React.createElement('label', {
               style: {
@@ -4542,7 +4633,7 @@
             React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
               React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, '⚡ Install Update Now')
             )) :
-          React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of Billsoft.'))
+          React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of RupeeCRM.'))
         ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information. Check your internet connection and try again.'),
         React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } }, React.createElement('button', { className: 'btn btn-ghost', style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }, disabled: loading, onClick: fetchUpdateInfo }, React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh), loading ? 'Checking...' : 'Check for Updates'))
       );

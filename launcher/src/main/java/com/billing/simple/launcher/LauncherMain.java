@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 public class LauncherMain {
 
-    private static final String APP_URL = "http://app.billsoft.localhost:8080/";
+    private static final String APP_URL = "http://app.rupeecrm.localhost:8080/";
     private static final String HEALTH_URL = "http://localhost:8080/api/health";
     private static final int PORT = 8080;
 
@@ -41,7 +41,7 @@ public class LauncherMain {
 
         // 1. Single-instance check: if server is already running, focus/open browser and exit
         if (isBackendHealthy(1000)) {
-            System.out.println("Billsoft service is already running. Opening browser...");
+            System.out.println("RupeeCRM service is already running. Opening browser...");
             if (!background) {
                 openBrowser(APP_URL);
             }
@@ -55,7 +55,7 @@ public class LauncherMain {
     }
 
     public void startService() {
-        System.out.println("Starting Billsoft Background Service...");
+        System.out.println("Starting RupeeCRM Background Service...");
 
         // Setup shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
@@ -74,8 +74,8 @@ public class LauncherMain {
         while (true) {
             File warFile = findCurrentWar();
             if (warFile == null || !warFile.exists()) {
-                showTrayNotification("Error", "Billsoft WAR package not found.", TrayIcon.MessageType.ERROR);
-                System.err.println("Fatal: Billsoft WAR file not found.");
+                showTrayNotification("Error", "RupeeCRM WAR package not found.", TrayIcon.MessageType.ERROR);
+                System.err.println("Fatal: RupeeCRM WAR file not found.");
                 break;
             }
 
@@ -96,8 +96,8 @@ public class LauncherMain {
                 continue;
             }
 
-            System.out.println("Billsoft backend is healthy and running on port " + PORT);
-            showTrayNotification("Billsoft Ready", "Service is running at " + APP_URL, TrayIcon.MessageType.INFO);
+            System.out.println("RupeeCRM backend is healthy and running on port " + PORT);
+            showTrayNotification("RupeeCRM Ready", "Service is running at " + APP_URL, TrayIcon.MessageType.INFO);
 
             // If launched interactively by user double-click, open browser
             if (!isBackgroundMode) {
@@ -117,7 +117,7 @@ public class LauncherMain {
             File updateWar = findUpdateWar();
             if (updateWar != null && updateWar.exists() && updateWar.length() > 0) {
                 System.out.println("Pending update found. Applying update...");
-                showTrayNotification("Updating", "Applying Billsoft update...", TrayIcon.MessageType.INFO);
+                showTrayNotification("Updating", "Applying RupeeCRM update...", TrayIcon.MessageType.INFO);
                 boolean prepared = prepareAndApplyUpdate(updateWar);
                 if (prepared) {
                     System.out.println("Update applied successfully. Restarting service...");
@@ -129,7 +129,7 @@ public class LauncherMain {
             break;
         }
 
-        System.out.println("Billsoft service shutting down.");
+        System.out.println("RupeeCRM service shutting down.");
         System.exit(0);
     }
 
@@ -235,7 +235,7 @@ public class LauncherMain {
 
                 PopupMenu popup = new PopupMenu();
 
-                MenuItem openItem = new MenuItem("🌐 Open Billsoft (Browser)");
+                MenuItem openItem = new MenuItem("🌐 Open RupeeCRM (Browser)");
                 openItem.addActionListener(e -> openBrowser(APP_URL));
                 popup.add(openItem);
 
@@ -261,19 +261,19 @@ public class LauncherMain {
 
                 popup.addSeparator();
 
-                MenuItem exitItem = new MenuItem("🛑 Exit Billsoft");
+                MenuItem exitItem = new MenuItem("🛑 Exit RupeeCRM");
                 exitItem.addActionListener(e -> {
                     stopBackend();
                     System.exit(0);
                 });
                 popup.add(exitItem);
 
-                trayIcon = new TrayIcon(image, "Billsoft - Simple Billing (Active)", popup);
+                trayIcon = new TrayIcon(image, "RupeeCRM (Active)", popup);
                 trayIcon.setImageAutoSize(true);
                 trayIcon.addActionListener(e -> openBrowser(APP_URL)); // Click opens browser
 
                 tray.add(trayIcon);
-                System.out.println("System tray icon initialized successfully.");
+                System.out.println("System tray icon initialized successfully for RupeeCRM.");
             } catch (Exception e) {
                 System.err.println("Failed to initialize system tray: " + e.getMessage());
             }
@@ -291,23 +291,35 @@ public class LauncherMain {
     }
 
     private Image createTrayIconImage() {
-        int width = 32;
-        int height = 32;
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int size = 32;
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
 
-        // Indigo background circle with subtle shadow
-        g2.setColor(new Color(79, 70, 229));
-        g2.fillOval(2, 2, width - 4, height - 4);
+        // Vibrant gradient circle from Indigo (#4f46e5) to Royal Violet (#7c3aed)
+        GradientPaint gp = new GradientPaint(0, 0, new Color(99, 102, 241), size, size, new Color(124, 58, 237));
+        g2.setPaint(gp);
+        g2.fillOval(2, 2, size - 4, size - 4);
 
+        // Soft subtle border
+        g2.setColor(new Color(255, 255, 255, 70));
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.drawOval(2, 2, size - 4, size - 4);
+
+        // Draw crisp Indian Rupee symbol (₹)
         g2.setColor(Color.WHITE);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 18));
-        FontMetrics fm = g2.getFontMetrics();
-        int x = (width - fm.stringWidth("B")) / 2;
-        int y = ((height - fm.getHeight()) / 2) + fm.getAscent();
-        g2.drawString("B", x, y);
+        g2.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+        // Upper bar 1: x: 10 -> 22, y: 9
+        g2.drawLine(10, 9, 22, 9);
+        // Upper bar 2: x: 10 -> 20, y: 13
+        g2.drawLine(10, 13, 20, 13);
+        // Spine & Top loop
+        g2.drawLine(14, 9, 14, 18);
+        g2.drawArc(8, 9, 12, 9, -90, 180);
+        // Diagonal slash
+        g2.drawLine(14, 18, 22, 24);
 
         g2.dispose();
         return image;
@@ -324,7 +336,7 @@ public class LauncherMain {
 
             // 1. Windows Registry Auto-Start: HKCU\Software\Microsoft\Windows\CurrentVersion\Run
             String keyPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-            String appName = "BillsoftService";
+            String appName = "RupeeCRMService";
 
             if (enable) {
                 String cmd = String.format("reg add \"%s\" /v \"%s\" /t REG_SZ /d \"\\\"%s\\\" --background\" /f",
@@ -340,7 +352,7 @@ public class LauncherMain {
             if (appData != null && !appData.isEmpty()) {
                 File startupDir = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup");
                 if (startupDir.exists()) {
-                    File vbsFile = new File(startupDir, "Billsoft.vbs");
+                    File vbsFile = new File(startupDir, "RupeeCRM.vbs");
                     if (enable) {
                         try (FileWriter writer = new FileWriter(vbsFile)) {
                             writer.write("Set WshShell = CreateObject(\"WScript.Shell\")\r\n");
@@ -360,14 +372,14 @@ public class LauncherMain {
         if (!System.getProperty("os.name").toLowerCase().contains("win")) return false;
         try {
             Process p = Runtime.getRuntime().exec(new String[]{
-                    "cmd.exe", "/c", "reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"BillsoftService\""
+                    "cmd.exe", "/c", "reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"RupeeCRMService\""
             });
             boolean regOk = (p.waitFor() == 0);
             if (regOk) return true;
 
             String appData = System.getenv("APPDATA");
             if (appData != null && !appData.isEmpty()) {
-                File vbsFile = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Billsoft.vbs");
+                File vbsFile = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\RupeeCRM.vbs");
                 return vbsFile.exists();
             }
             return false;
@@ -384,17 +396,21 @@ public class LauncherMain {
             }
             File parentDir = codeSourceFile.getParentFile();
             if (parentDir != null) {
-                File exe = new File(parentDir, "Billsoft.exe");
+                File exe = new File(parentDir, "RupeeCRM.exe");
                 if (exe.exists()) return exe;
+                File oldExe = new File(parentDir, "Billsoft.exe");
+                if (oldExe.exists()) return oldExe;
 
                 File grandParent = parentDir.getParentFile();
                 if (grandParent != null) {
-                    File grandExe = new File(grandParent, "Billsoft.exe");
+                    File grandExe = new File(grandParent, "RupeeCRM.exe");
                     if (grandExe.exists()) return grandExe;
+                    File oldGrandExe = new File(grandParent, "Billsoft.exe");
+                    if (oldGrandExe.exists()) return oldGrandExe;
                 }
             }
 
-            File userDirExe = new File(System.getProperty("user.dir"), "Billsoft.exe");
+            File userDirExe = new File(System.getProperty("user.dir"), "RupeeCRM.exe");
             if (userDirExe.exists()) return userDirExe;
 
             return codeSourceFile;
@@ -438,7 +454,10 @@ public class LauncherMain {
     }
 
     private File findCurrentWar() {
-        File current = resolveFile("runtime/billsoft.war");
+        File current = resolveFile("runtime/rupeecrm.war");
+        if (current.exists()) return current;
+
+        current = resolveFile("runtime/billsoft.war");
         if (current.exists()) return current;
 
         current = resolveFile("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
@@ -451,7 +470,10 @@ public class LauncherMain {
     }
 
     private File findUpdateWar() {
-        File update = resolveFile("runtime/billsoft-update.war");
+        File update = resolveFile("runtime/rupeecrm-update.war");
+        if (update.exists()) return update;
+
+        update = resolveFile("runtime/billsoft-update.war");
         if (update.exists()) return update;
 
         update = resolveFile("billsoft/target/billsoft-update.war");
@@ -472,7 +494,7 @@ public class LauncherMain {
         Path dataDir = getDataDirectory();
         backupDatabase(dataDir);
 
-        File backupWar = new File(currentWar.getParentFile(), "billsoft-backup.war");
+        File backupWar = new File(currentWar.getParentFile(), "rupeecrm-backup.war");
         try {
             Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(updateWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -495,7 +517,7 @@ public class LauncherMain {
         File currentWar = findCurrentWar();
         if (currentWar == null) return;
 
-        File backupWar = new File(currentWar.getParentFile(), "billsoft-backup.war");
+        File backupWar = new File(currentWar.getParentFile(), "rupeecrm-backup.war");
         Path dataDir = getDataDirectory();
 
         rollbackDatabase(dataDir);
@@ -511,7 +533,11 @@ public class LauncherMain {
     }
 
     private Path getDataDirectory() {
-        String envPath = System.getenv("BILLSOFT_DATA_DIR");
+        String envPath = System.getenv("RUPEECRM_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return Paths.get(envPath.trim());
+        }
+        envPath = System.getenv("BILLSOFT_DATA_DIR");
         if (envPath != null && !envPath.trim().isEmpty()) {
             return Paths.get(envPath.trim());
         }

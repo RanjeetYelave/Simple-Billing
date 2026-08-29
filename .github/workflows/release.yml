@@ -86,44 +86,45 @@ jobs:
       - name: Package Standalone Portable Zip
         shell: pwsh
         run: |
-          jpackage --name Billsoft `
+          jpackage --name RupeeCRM `
                    --input package-input `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type app-image `
                    --dest dist-pkg `
                    --app-version 1.0.${{ github.run_number }} `
-                   --vendor "Billsoft" `
+                   --vendor "RupeeCRM" `
                    --java-options "-Djava.awt.headless=false"
 
-          "@echo off`r`nstart `"`" `"%~dp0Billsoft.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/Billsoft/Start-Billsoft.bat
+          "@echo off`r`nstart `"`" `"%~dp0RupeeCRM.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/RupeeCRM/Start-RupeeCRM.bat
+          Copy-Item deleteall.bat dist-pkg/RupeeCRM/deleteall.bat
 
-          Compress-Archive -Path dist-pkg/Billsoft/* -DestinationPath Billsoft-Windows-x64.zip
+          Compress-Archive -Path dist-pkg/RupeeCRM/* -DestinationPath RupeeCRM-Windows-x64.zip
 
       - name: Package Windows Installer (MSI)
         shell: pwsh
         run: |
-          jpackage --name Billsoft `
+          jpackage --name RupeeCRM `
                    --input package-input `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type msi `
                    --app-version 1.0.${{ github.run_number }} `
-                   --vendor "Billsoft" `
+                   --vendor "RupeeCRM" `
                    --win-menu `
                    --win-shortcut `
                    --win-per-user-install `
                    --java-options "-Djava.awt.headless=false"
 
-          Get-ChildItem -Filter *.msi | Rename-Item -NewName Billsoft-Setup.msi
+          Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-distribution
           path: |
-            Billsoft-Windows-x64.zip
-            Billsoft-Setup.msi
+            RupeeCRM-Windows-x64.zip
+            RupeeCRM-Setup.msi
           if-no-files-found: error
 
   release:
@@ -151,20 +152,20 @@ jobs:
           if [ -f billsoft/release-notes.txt ]; then
             cat billsoft/release-notes.txt > release-notes.txt
           else
-            echo "## Billsoft Release v1.0.${{ github.run_number }}" > release-notes.txt
-            echo "Standalone background service with custom offline domain and bundled JRE." >> release-notes.txt
+            echo "## RupeeCRM Release v1.0.${{ github.run_number }}" > release-notes.txt
+            echo "Professional CRM and billing background service with custom offline domain and bundled JRE." >> release-notes.txt
           fi
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: Release v1.0.${{ github.run_number }}
+          name: RupeeCRM v1.0.${{ github.run_number }}
           body_path: release-notes.txt
           files: |
             dist/billsoft.war
             dist/billsoft.war.sha256
-            dist/Billsoft-Windows-x64.zip
-            dist/Billsoft-Setup.msi
+            dist/RupeeCRM-Windows-x64.zip
+            dist/RupeeCRM-Setup.msi
           generate_release_notes: false
           fail_on_unmatched_files: true

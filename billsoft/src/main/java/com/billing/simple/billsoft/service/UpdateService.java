@@ -58,7 +58,7 @@ public class UpdateService {
      */
     private String getCurrentVersion() {
         try {
-            Path versionFile = Paths.get(VERSION_FILE);
+            Path versionFile = getVersionFilePath();
             if (Files.exists(versionFile)) {
                 String version = new String(Files.readAllBytes(versionFile)).trim();
                 if (!version.isEmpty()) {
@@ -75,7 +75,11 @@ public class UpdateService {
      */
     private void saveCurrentVersion(String version) {
         try {
-            Files.write(Paths.get(VERSION_FILE), version.getBytes());
+            Path versionFile = getVersionFilePath();
+            if (versionFile.getParent() != null) {
+                Files.createDirectories(versionFile.getParent());
+            }
+            Files.write(versionFile, version.getBytes());
         } catch (Exception ignored) {
         }
     }
@@ -171,13 +175,25 @@ public class UpdateService {
     }
 
     private Path getMarkerPath() {
-        String basePath;
         try {
-            basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
-        } catch (Exception e) {
-            basePath = System.getProperty("user.dir");
-        }
-        return Paths.get(basePath, ".billsoft-updated");
+            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            java.io.File parentDir = codeSourceFile.getParentFile();
+            if (parentDir != null && isWritableDirectory(parentDir)) {
+                return parentDir.toPath().resolve(UPDATE_MARKER_FILE);
+            }
+        } catch (Exception ignored) {}
+        return getDataDirectory().resolve(UPDATE_MARKER_FILE);
+    }
+
+    private Path getVersionFilePath() {
+        try {
+            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            java.io.File parentDir = codeSourceFile.getParentFile();
+            if (parentDir != null && isWritableDirectory(parentDir)) {
+                return parentDir.toPath().resolve(VERSION_FILE);
+            }
+        } catch (Exception ignored) {}
+        return getDataDirectory().resolve(VERSION_FILE);
     }
 
     private long lastCheckTime = 0;
@@ -469,19 +485,72 @@ public class UpdateService {
         return hexString.toString();
     }
 
+    private Path getDataDirectory() {
+        String envPath = System.getenv("RUPEECRM_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return Paths.get(envPath.trim());
+        }
+        envPath = System.getenv("BILLSOFT_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return Paths.get(envPath.trim());
+        }
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                return Paths.get(appData, "SimpleBilling");
+            }
+        } else if (os.contains("mac")) {
+            return Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
+        }
+        return Paths.get(System.getProperty("user.home"), ".simplebilling");
+    }
+
     private Path getUpdateFilePath() {
+        // 1. Try parent directory of running code source if it's a writable non-system directory
         try {
             java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
             java.io.File parentDir = codeSourceFile.getParentFile();
-            if (parentDir != null && parentDir.exists()) {
+            if (parentDir != null && isWritableDirectory(parentDir)) {
                 return parentDir.toPath().resolve("billsoft-update.war");
             }
         } catch (Exception ignored) {}
 
-        java.io.File runtimeDir = new java.io.File(System.getProperty("user.dir"), "runtime");
-        if (runtimeDir.exists()) {
-            return runtimeDir.toPath().resolve("billsoft-update.war");
+        // 2. Try runtime subdirectory or app directory if writable
+        try {
+            java.io.File userDir = new java.io.File(System.getProperty("user.dir"));
+            if (isWritableDirectory(userDir)) {
+                java.io.File runtimeDir = new java.io.File(userDir, "runtime");
+                if (runtimeDir.exists() && isWritableDirectory(runtimeDir)) {
+                    return runtimeDir.toPath().resolve("billsoft-update.war");
+                }
+                return userDir.toPath().resolve("billsoft-update.war");
+            }
+        } catch (Exception ignored) {}
+
+        // 3. Fallback to user AppData data directory (guaranteed writable on all Windows/Mac systems)
+        Path dataDir = getDataDirectory();
+        try {
+            Files.createDirectories(dataDir);
+        } catch (Exception ignored) {}
+        return dataDir.resolve("billsoft-update.war");
+    }
+
+    private boolean isWritableDirectory(java.io.File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return false;
+        String path = dir.getAbsolutePath().toLowerCase();
+        if (path.contains("system32") || path.contains("windows\\system") || path.contains("windows/system")) {
+            return false;
         }
-        return Paths.get(System.getProperty("user.dir"), "billsoft-update.war");
+        try {
+            java.io.File testFile = new java.io.File(dir, ".write_test_" + System.currentTimeMillis());
+            if (testFile.createNewFile()) {
+                testFile.delete();
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return false;
     }
 }

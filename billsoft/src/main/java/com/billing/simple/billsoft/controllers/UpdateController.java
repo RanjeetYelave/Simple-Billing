@@ -36,8 +36,16 @@ public class UpdateController {
 
     @PostMapping("/apply-update")
     public ResponseEntity<Map<String, String>> applyUpdate() {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "error", "Automatic updates require the standalone updater, which is not installed yet."
-        ));
+        boolean started = updateService.startUpdateAsync();
+        if (started) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "message", "Update download started successfully"
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "error", "Failed to start update download"
+            ));
+        }
     }
 }

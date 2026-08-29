@@ -65,6 +65,11 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Update version in application.properties
+        shell: pwsh
+        run: |
+          (Get-Content billsoft/src/main/resources/application.properties) -replace 'app.version=.*', 'app.version=v1.0.${{ github.run_number }}' | Set-Content billsoft/src/main/resources/application.properties
+
       - name: Build with Maven
         run: mvn clean package -DskipTests
 

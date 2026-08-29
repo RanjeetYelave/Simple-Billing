@@ -416,6 +416,15 @@
       const [searchQuery, setSearchQuery] = useState('');
       const [activeTag, setActiveTag] = useState(null);
 
+      const [boardFromDate, setBoardFromDate] = useState('');
+      const [boardToDate, setBoardToDate] = useState('');
+      const [reminderPage, setReminderPage] = useState(1);
+      const [taskPage, setTaskPage] = useState(1);
+      const [notePage, setNotePage] = useState(1);
+      const [completedPage, setCompletedPage] = useState(1);
+      const [expensePage, setExpensePage] = useState(1);
+      const [expensePageSize, setExpensePageSize] = useState(10);
+
       // Modal state
       const [modalOpen, setModalOpen] = useState(false);
       const [modalType, setModalType] = useState('reminder'); // 'reminder' | 'task' | 'note' | 'expense'
@@ -471,6 +480,14 @@
       }, [reminders, notes]);
 
       // Filter helpers for Planner Board
+      const matchesBoardDateRange = (dateStr) => {
+        if (!dateStr) return true;
+        const d = dateStr.split('T')[0];
+        if (boardFromDate && d < boardFromDate) return false;
+        if (boardToDate && d > boardToDate) return false;
+        return true;
+      };
+
       const matchesSearch = (title, text, tagsStr) => {
         const q = searchQuery.toLowerCase().trim();
         if (!q) return true;
@@ -490,33 +507,45 @@
         return reminders.filter(r => {
           if (r.type === 'task') return false;
           if (r.completed) return false;
-          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt);
         });
-      }, [reminders, searchQuery, activeTag]);
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const filteredTasks = useMemo(() => {
         return reminders.filter(r => {
           if (r.type !== 'task') return false;
           if (r.completed) return false;
-          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags);
+          return matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt);
         });
-      }, [reminders, searchQuery, activeTag]);
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const completedItems = useMemo(() => {
-        return reminders.filter(r => r.completed && matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags));
-      }, [reminders, searchQuery, activeTag]);
+        return reminders.filter(r => r.completed && matchesSearch(r.title, r.note, r.tags) && matchesTag(r.tags) && matchesBoardDateRange(r.dueDate || r.createdAt));
+      }, [reminders, searchQuery, activeTag, boardFromDate, boardToDate]);
 
       const filteredNotes = useMemo(() => {
         return notes.filter(n => {
-          return matchesSearch(n.title, n.content, n.tags) && matchesTag(n.tags);
+          return matchesSearch(n.title, n.content, n.tags) && matchesTag(n.tags) && matchesBoardDateRange(n.createdAt);
         });
-      }, [notes, searchQuery, activeTag]);
+      }, [notes, searchQuery, activeTag, boardFromDate, boardToDate]);
+
+      // Reset page numbers on filter changes
+      useEffect(() => {
+        setReminderPage(1);
+        setTaskPage(1);
+        setNotePage(1);
+        setCompletedPage(1);
+      }, [searchQuery, activeTag, boardFromDate, boardToDate]);
 
       // Expense-specific filters & Date Range
       const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('');
       const [expenseMonthFilter, setExpenseMonthFilter] = useState(''); // e.g. '2026-08'
       const [fromDateFilter, setFromDateFilter] = useState('');
       const [toDateFilter, setToDateFilter] = useState('');
+
+      useEffect(() => {
+        setExpensePage(1);
+      }, [searchQuery, expenseCategoryFilter, expenseMonthFilter, fromDateFilter, toDateFilter]);
 
       // Expense Tracker Computations & Filtering
       const filteredExpenses = useMemo(() => {
@@ -897,6 +926,29 @@
                   fontWeight: 600
                 }
               }, tag))
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, borderTop: '1px solid var(--border-light)', paddingTop: 12, fontSize: '0.82rem' } },
+              React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                placeholder: 'From Date',
+                value: boardFromDate,
+                onChange: e => setBoardFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                placeholder: 'To Date',
+                value: boardToDate,
+                onChange: e => setBoardToDate(e.target.value)
+              }),
+              (boardFromDate || boardToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                style: { padding: '2px 8px' },
+                onClick: () => { setBoardFromDate(''); setBoardToDate(''); }
+              }, 'Clear')
             )
           ),
 
@@ -910,7 +962,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#ede9fe', color: '#7c3aed', fontSize: '0.75rem' } }, filteredReminders.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredReminders.length > 0 ? filteredReminders.map(r =>
+                filteredReminders.length > 0 ? filteredReminders.slice((reminderPage - 1) * 5, reminderPage * 5).map(r =>
                   React.createElement('div', { key: r.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #7c3aed', position: 'relative' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
@@ -935,7 +987,12 @@
                     renderAssociations(r.customerId, r.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No pending reminders')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: reminderPage,
+                totalPages: Math.ceil(filteredReminders.length / 5),
+                onPageChange: setReminderPage
+              })
             ),
 
             // Column 2: Tasks
@@ -945,7 +1002,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#e0f2fe', color: '#0284c7', fontSize: '0.75rem' } }, filteredTasks.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredTasks.length > 0 ? filteredTasks.map(t =>
+                filteredTasks.length > 0 ? filteredTasks.slice((taskPage - 1) * 5, taskPage * 5).map(t =>
                   React.createElement('div', { key: t.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #0284c7' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
@@ -993,7 +1050,12 @@
                     renderAssociations(t.customerId, t.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No active tasks')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: taskPage,
+                totalPages: Math.ceil(filteredTasks.length / 5),
+                onPageChange: setTaskPage
+              })
             ),
 
             // Column 3: Notes
@@ -1003,7 +1065,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#d1fae5', color: '#059669', fontSize: '0.75rem' } }, filteredNotes.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                filteredNotes.length > 0 ? filteredNotes.map(n =>
+                filteredNotes.length > 0 ? filteredNotes.slice((notePage - 1) * 5, notePage * 5).map(n =>
                   React.createElement('div', { key: n.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: '4px solid #059669' } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
                       React.createElement('div', { style: { flex: 1 } },
@@ -1019,7 +1081,12 @@
                     renderAssociations(n.customerId, n.firmId)
                   )
                 ) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No notes saved')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: notePage,
+                totalPages: Math.ceil(filteredNotes.length / 5),
+                onPageChange: setNotePage
+              })
             ),
 
             // Column 4: Completed
@@ -1029,7 +1096,7 @@
                 React.createElement('span', { className: 'badge', style: { backgroundColor: '#f3f4f6', color: '#4b5563', fontSize: '0.75rem' } }, completedItems.length)
               ),
               React.createElement('div', { className: 'planner-list', style: { display: 'flex', flexDirection: 'column', gap: 12, flex: 1 } },
-                completedItems.length > 0 ? completedItems.map(item => {
+                completedItems.length > 0 ? completedItems.slice((completedPage - 1) * 5, completedPage * 5).map(item => {
                   const isTask = item.type === 'task';
                   return React.createElement('div', { key: item.id, className: 'planner-itemCard', style: { padding: 14, background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', borderLeft: `4px solid ${isTask ? '#0284c7' : '#7c3aed'}`, opacity: 0.65 } },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
@@ -1061,7 +1128,12 @@
                     renderAssociations(item.customerId, item.firmId)
                   );
                 }) : React.createElement('div', { style: { textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px', fontSize: '0.88rem' } }, 'No completed items')
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: completedPage,
+                totalPages: Math.ceil(completedItems.length / 5),
+                onPageChange: setCompletedPage
+              })
             )
           )
         ),
@@ -1191,57 +1263,66 @@
               React.createElement('span', { style: { fontSize: '1.05rem', fontWeight: 700 } }, 'Expense Transactions'),
               React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)' } }, `${filteredExpenses.length} record${filteredExpenses.length !== 1 ? 's' : ''}`)
             ),
-            filteredExpenses.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              filteredExpenses.map(exp => React.createElement('div', {
-                key: exp.id,
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 16px',
-                  backgroundColor: 'var(--bg-card)',
-                  borderRadius: 'var(--radius)',
-                  border: '1px solid var(--border)',
-                  borderLeft: '4px solid #dc2626'
-                }
-              },
-                React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
-                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                    React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
-                    exp.category && React.createElement('span', {
-                      style: {
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        backgroundColor: '#fee2e2',
-                        color: '#991b1b',
-                        fontWeight: 600
-                      }
-                    }, exp.category),
-                    exp.paymentMode && React.createElement('span', {
-                      style: {
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        backgroundColor: '#e0e7ff',
-                        color: '#3730a3',
-                        fontWeight: 500
-                      }
-                    }, exp.paymentMode)
+            filteredExpenses.length > 0 ? React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                filteredExpenses.slice((expensePage - 1) * expensePageSize, expensePage * expensePageSize).map(exp => React.createElement('div', {
+                  key: exp.id,
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    backgroundColor: 'var(--bg-card)',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)',
+                    borderLeft: '4px solid #dc2626'
+                  }
+                },
+                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
+                      exp.category && React.createElement('span', {
+                        style: {
+                          fontSize: '0.7rem',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          backgroundColor: '#fee2e2',
+                          color: '#991b1b',
+                          fontWeight: 600
+                        }
+                      }, exp.category),
+                      exp.paymentMode && React.createElement('span', {
+                        style: {
+                          fontSize: '0.7rem',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          backgroundColor: '#e0e7ff',
+                          color: '#3730a3',
+                          fontWeight: 500
+                        }
+                      }, exp.paymentMode)
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
+                      exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
+                      exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
+                    )
                   ),
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
-                    exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
-                    exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+                    React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
+                    React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem' }, onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
+                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️ Delete')
+                    )
                   )
-                ),
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
-                  React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
-                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem' }, onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
-                    React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️ Delete')
-                  )
-                )
-              ))
+                ))
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: expensePage,
+                totalPages: Math.ceil(filteredExpenses.length / expensePageSize),
+                onPageChange: setExpensePage,
+                pageSize: expensePageSize,
+                onPageSizeChange: setExpensePageSize
+              })
             ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } },
               React.createElement('h4', { style: { color: 'var(--text-secondary)', margin: 0 } }, 'No expense records found'),
               React.createElement('p', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Click "+ Record Expense" above to add your first entry.')
@@ -3657,6 +3738,23 @@
       );
     }
 
+    function PaginationControls({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
+      if (totalPages <= 1) return null;
+      return React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '10px 0', borderTop: '1px solid var(--border-light)', fontSize: '0.85rem' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          onPageSizeChange && React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Rows per page:'),
+          onPageSizeChange && React.createElement('select', { className: 'select select-sm', style: { width: 70 }, value: pageSize, onChange: e => onPageSizeChange(parseInt(e.target.value, 10)) },
+            [5, 10, 20, 50].map(sz => React.createElement('option', { key: sz, value: sz }, sz))
+          )
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+          React.createElement('button', { type: 'button', className: 'btn btn-sm btn-outline', disabled: currentPage === 1, onClick: () => onPageChange(currentPage - 1) }, 'Previous'),
+          React.createElement('span', { style: { fontWeight: 600 } }, `Page ${currentPage} of ${totalPages}`),
+          React.createElement('button', { type: 'button', className: 'btn btn-sm btn-outline', disabled: currentPage === totalPages, onClick: () => onPageChange(currentPage + 1) }, 'Next')
+        )
+      );
+    }
+
     function Login({ onLogin }) {
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
@@ -4271,11 +4369,29 @@
       // Attendance & Leaves State
       const [allLeaves, setAllLeaves] = useState([]);
       const [leaveEmpFilter, setLeaveEmpFilter] = useState('');
+      const [leavePage, setLeavePage] = useState(1);
+      const [leavePageSize, setLeavePageSize] = useState(10);
+      const [leaveSearchQuery, setLeaveSearchQuery] = useState('');
+      const [leaveFromDate, setLeaveFromDate] = useState('');
+      const [leaveToDate, setLeaveToDate] = useState('');
+
+      useEffect(() => {
+        setLeavePage(1);
+      }, [payrollMonth, leaveEmpFilter, leaveSearchQuery, leaveFromDate, leaveToDate]);
 
       // Salary History State
       const [allSalaries, setAllSalaries] = useState([]);
       const [historyEmpFilter, setHistoryEmpFilter] = useState('');
       const [historyMonthFilter, setHistoryMonthFilter] = useState('');
+      const [salaryPage, setSalaryPage] = useState(1);
+      const [salaryPageSize, setSalaryPageSize] = useState(10);
+      const [salarySearchQuery, setSalarySearchQuery] = useState('');
+      const [salaryFromDate, setSalaryFromDate] = useState('');
+      const [salaryToDate, setSalaryToDate] = useState('');
+
+      useEffect(() => {
+        setSalaryPage(1);
+      }, [historyEmpFilter, historyMonthFilter, salarySearchQuery, salaryFromDate, salaryToDate]);
 
       // Helper: get days in a given YYYY-MM
       const getDaysInMonth = (yyyymm) => {
@@ -4878,7 +4994,7 @@
         // ════════════════════════════════════════
         // TAB 2: ATTENDANCE & LEAVES (FULL LEAVE TRACKER & MODAL)
         // ════════════════════════════════════════
-        hrTab === 'attendance' && React.createElement(Fragment, null,
+hrTab === 'attendance' && React.createElement(Fragment, null,
           // Leave Overview KPIs
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
             React.createElement('div', { className: 'kpi-card kpi-amber' },
@@ -4946,6 +5062,35 @@
               )
             ),
 
+            // Search and Date Range Filter Bar
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, paddingTop: 10, borderTop: '1px solid var(--border-light)' } },
+              React.createElement('input', {
+                className: 'input input-sm',
+                style: { flex: 1, minWidth: 200 },
+                placeholder: 'Search leaves by name or remarks...',
+                value: leaveSearchQuery,
+                onChange: e => setLeaveSearchQuery(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: leaveFromDate,
+                onChange: e => setLeaveFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: leaveToDate,
+                onChange: e => setLeaveToDate(e.target.value)
+              }),
+              (leaveSearchQuery || leaveFromDate || leaveToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => { setLeaveSearchQuery(''); setLeaveFromDate(''); setLeaveToDate(''); }
+              }, 'Reset')
+            ),
+
             // Logged Leaves Table
             React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
               React.createElement('table', { className: 'table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.85rem' } },
@@ -4958,7 +5103,19 @@
                 )),
                 React.createElement('tbody', null,
                   (() => {
-                    const filteredLeaves = allLeaves.filter(l => !leaveEmpFilter || String(l.empId) === String(leaveEmpFilter));
+                    const filteredLeaves = allLeaves.filter(l => {
+                      const matchesEmp = !leaveEmpFilter || String(l.empId) === String(leaveEmpFilter);
+                      const q = leaveSearchQuery.toLowerCase().trim();
+                      const matchesSearch = !q || (l.empName && l.empName.toLowerCase().includes(q)) || (l.remarks && l.remarks.toLowerCase().includes(q));
+                      
+                      let matchesDateRange = true;
+                      const d = l.date ? l.date.split('T')[0] : '';
+                      if (leaveFromDate && d < leaveFromDate) matchesDateRange = false;
+                      if (leaveToDate && d > leaveToDate) matchesDateRange = false;
+
+                      return matchesEmp && matchesSearch && matchesDateRange;
+                    });
+
                     if (filteredLeaves.length === 0) {
                       return React.createElement('tr', null,
                         React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
@@ -4967,7 +5124,7 @@
                       );
                     }
 
-                    return filteredLeaves.map((l, idx) => {
+                    return filteredLeaves.slice((leavePage - 1) * leavePageSize, leavePage * leavePageSize).map((l, idx) => {
                       const isUnpaid = l.status === 'UNPAID' || l.status === 'ABSENT' || l.status === 'LEAVE';
                       const isSick = l.status === 'SICK';
                       const isCasual = l.status === 'CASUAL';
@@ -4984,11 +5141,11 @@
                           React.createElement('span', {
                             className: 'badge',
                             style: {
-                              backgroundColor: isUnpaid ? '#fee2e2' : (isSick ? '#ede9fe' : (isCasual ? '#dbeafe' : '#dcfce7')),
-                              color: isUnpaid ? '#991b1b' : (isSick ? '#6d28d9' : (isCasual ? '#1e40af' : '#15803d')),
-                              fontWeight: 700
+                              backgroundColor: isUnpaid ? '#fee2e2' : (isSick ? '#fef3c7' : '#dcfce7'),
+                              color: isUnpaid ? '#991b1b' : (isSick ? '#b45309' : '#166534'),
+                              fontSize: '0.72rem'
                             }
-                          }, l.status)
+                          }, l.status || 'UNPAID')
                         ),
                         React.createElement('td', { style: { verticalAlign: 'middle', padding: '8px 10px' } },
                           l.remarks || 'Standard Leave Request'
@@ -5374,6 +5531,35 @@
               )
             ),
 
+            // Search and Date Range Filter Bar for Salary History
+            React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, paddingTop: 10, borderTop: '1px solid var(--border-light)' } },
+              React.createElement('input', {
+                className: 'input input-sm',
+                style: { flex: 1, minWidth: 200 },
+                placeholder: 'Search salaries by name...',
+                value: salarySearchQuery,
+                onChange: e => setSalarySearchQuery(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' } }, '📅 Date Range:'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: salaryFromDate,
+                onChange: e => setSalaryFromDate(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to'),
+              React.createElement('input', {
+                className: 'input input-sm',
+                type: 'date',
+                value: salaryToDate,
+                onChange: e => setSalaryToDate(e.target.value)
+              }),
+              (salarySearchQuery || salaryFromDate || salaryToDate) && React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => { setSalarySearchQuery(''); setSalaryFromDate(''); setSalaryToDate(''); }
+              }, 'Reset')
+            ),
+
             React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
               React.createElement('table', { className: 'table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.82rem' } },
                 React.createElement('thead', null, React.createElement('tr', null,
@@ -5396,14 +5582,23 @@
                         const targetMonthYear = parts[1] + '-' + parts[0];
                         matchesMonth = s.monthYear === targetMonthYear;
                       }
-                      return matchesEmp && matchesMonth;
+                      
+                      const q = salarySearchQuery.toLowerCase().trim();
+                      const matchesSearch = !q || (s.empName && s.empName.toLowerCase().includes(q));
+
+                      let matchesDateRange = true;
+                      const d = s.paymentDate ? s.paymentDate.split('T')[0] : '';
+                      if (salaryFromDate && d < salaryFromDate) matchesDateRange = false;
+                      if (salaryToDate && d > salaryToDate) matchesDateRange = false;
+
+                      return matchesEmp && matchesMonth && matchesSearch && matchesDateRange;
                     });
 
                     if (filteredSalaries.length === 0) {
                       return React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } }, 'No salary history records found for the selected filters.'));
                     }
 
-                    return filteredSalaries.map(s => React.createElement('tr', { key: `${s.empId}-${s.id}` },
+                    return filteredSalaries.slice((salaryPage - 1) * salaryPageSize, salaryPage * salaryPageSize).map(s => React.createElement('tr', { key: `${s.empId}-${s.id}` },
                       React.createElement('td', { style: { fontWeight: 600 } },
                         s.empName,
                         React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 400 } }, s.empDept || 'Operations')
@@ -5428,7 +5623,31 @@
                     ));
                   })()
                 )
-              )
+              ),
+              React.createElement(PaginationControls, {
+                currentPage: salaryPage,
+                totalPages: Math.ceil(allSalaries.filter(s => {
+                  const matchesEmp = !historyEmpFilter || String(s.empId) === String(historyEmpFilter);
+                  let matchesMonth = true;
+                  if (historyMonthFilter) {
+                    const parts = historyMonthFilter.split('-');
+                    const targetMonthYear = parts[1] + '-' + parts[0];
+                    matchesMonth = s.monthYear === targetMonthYear;
+                  }
+                  const q = salarySearchQuery.toLowerCase().trim();
+                  const matchesSearch = !q || (s.empName && s.empName.toLowerCase().includes(q));
+
+                  let matchesDateRange = true;
+                  const d = s.paymentDate ? s.paymentDate.split('T')[0] : '';
+                  if (salaryFromDate && d < salaryFromDate) matchesDateRange = false;
+                  if (salaryToDate && d > salaryToDate) matchesDateRange = false;
+
+                  return matchesEmp && matchesMonth && matchesSearch && matchesDateRange;
+                }).length / salaryPageSize),
+                onPageChange: setSalaryPage,
+                pageSize: salaryPageSize,
+                onPageSizeChange: setSalaryPageSize
+              })
             )
           )
         ),

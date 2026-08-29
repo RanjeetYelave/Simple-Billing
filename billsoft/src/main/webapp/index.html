@@ -3785,6 +3785,10 @@
       const [progressStepText, setProgressStepText] = useState('');
       const [showLogModal, setShowLogModal] = useState(false);
       const [savedMasterKey, setSavedMasterKey] = useState('');
+      const [devLogsEnabled, setDevLogsEnabled] = useState(false);
+      const [devLogPath, setDevLogPath] = useState('');
+      const [devLogSize, setDevLogSize] = useState('');
+      const [devLogLoading, setDevLogLoading] = useState(false);
       const [logs, setLogs] = useState([
         { time: '00:00:01', text: 'SEC_KERNEL: Initializing hardware audit daemon... [OK]' },
         { time: '00:00:02', text: 'SEC_KERNEL: Host IP 127.0.0.1 mapped to Localhost Bridge.' },
@@ -3792,6 +3796,52 @@
         { time: '00:00:04', text: 'SEC_KERNEL: Awaiting Level-5 Master Clearance Key...' }
       ]);
       const inputRef = useRef(null);
+
+      // Load initial Dev Logs Status from backend
+      const fetchDevLogStatus = () => {
+        if (API.system && API.system.getDevLogs) {
+          API.system.getDevLogs().then(res => {
+            if (res) {
+              setDevLogsEnabled(!!res.enabled);
+              setDevLogPath(res.logFilePath || '');
+              setDevLogSize(res.sizeFormatted || '');
+            }
+          }).catch(() => {});
+        }
+      };
+
+      useEffect(() => {
+        fetchDevLogStatus();
+      }, []);
+
+      const handleToggleDevLogs = async (enable) => {
+        setDevLogLoading(true);
+        try {
+          const res = await API.system.setDevLogs(enable);
+          if (res) {
+            setDevLogsEnabled(!!res.enabled);
+            setDevLogPath(res.logFilePath || '');
+            setDevLogSize(res.sizeFormatted || '');
+            addLog(`DEV_LOGS: Verbose developer logs ${enable ? 'ENABLED' : 'DISABLED'}. Target: ${res.logFilePath}`, enable ? 'success' : 'normal');
+          }
+        } catch (e) {
+          addLog(`DEV_LOGS: Failed to toggle developer logs - ${e.message}`, 'error');
+        } finally {
+          setDevLogLoading(false);
+        }
+      };
+
+      const handleCopyLogPath = () => {
+        if (devLogPath && navigator.clipboard) {
+          navigator.clipboard.writeText(devLogPath);
+          addLog(`DEV_LOGS: Log path copied to clipboard: ${devLogPath}`, 'success');
+        }
+      };
+
+      const handleRefreshDevLogs = () => {
+        fetchDevLogStatus();
+        addLog('DEV_LOGS: Refreshed developer log status.', 'normal');
+      };
 
       useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -4084,6 +4134,81 @@
                         cursor: 'pointer', fontFamily: 'inherit'
                       }
                     }, '🔑 Authenticate & Override')
+                  )
+                )
+              ),
+
+              // ── DEVELOPER DIAGNOSTICS & STACK TRACE LOGS SWITCH ──
+              React.createElement('fieldset', {
+                style: {
+                  border: '2px solid #dfdfdf', borderRightColor: '#808080', borderBottomColor: '#808080',
+                  padding: '10px 14px', margin: 0, backgroundColor: devLogsEnabled ? '#fefce8' : '#fafafa'
+                }
+              },
+                React.createElement('legend', { style: { fontSize: '11px', fontWeight: 700, padding: '0 4px', color: devLogsEnabled ? '#854d0e' : '#333333' } },
+                  ' 🛠️ Developer Diagnostics & Stack Trace Logging '
+                ),
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  React.createElement('label', {
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '11px', fontWeight: 700,
+                      color: devLogsEnabled ? '#854d0e' : '#111827'
+                    }
+                  },
+                    React.createElement('input', {
+                      type: 'checkbox',
+                      checked: devLogsEnabled,
+                      disabled: devLogLoading,
+                      onChange: e => handleToggleDevLogs(e.target.checked),
+                      style: { width: 14, height: 14, cursor: 'pointer' }
+                    }),
+                    'Enable Verbose Developer Logs (Captures SQL queries, HTTP calls & Error Stack Traces)'
+                  ),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '10px', color: '#4b5563', backgroundColor: '#ffffff',
+                      border: '1px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                      padding: '4px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontFamily: "'Courier New', monospace"
+                    }
+                  },
+                    React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 } },
+                      devLogsEnabled
+                        ? `📁 Target: ${devLogPath || 'Active'}`
+                        : '⚪ Logs Disabled (Standard production mode)'
+                    ),
+                    React.createElement('span', { style: { color: devLogsEnabled ? '#16a34a' : '#9ca3af', fontWeight: 700, marginLeft: 8 } },
+                      devLogsEnabled ? `[RECORDING ${devLogSize || ''}]` : '[IDLE]'
+                    )
+                  ),
+                  devLogsEnabled && React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 4 } },
+                    React.createElement('a', {
+                      href: API.system.exportDevLogsUrl(),
+                      download: 'rupeecrm-developer-debug.log',
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        color: '#000', textDecoration: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
+                      }
+                    }, '📥 Download Debug Log File'),
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: handleCopyLogPath,
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '📋 Copy Log Path'),
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: handleRefreshDevLogs,
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '🔄 Refresh')
                   )
                 )
               ),

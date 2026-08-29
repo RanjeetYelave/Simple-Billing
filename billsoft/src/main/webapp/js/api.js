@@ -334,6 +334,12 @@ const API = {
     updateStatus: () => API._json('/api/system/update-status'),
     applyUpdate: () => API._json('/api/system/apply-update', {
       method: 'POST'
-    })
+    }),
+    getDevLogs: () => API._json('/api/system/dev-logs'),
+    setDevLogs: (enabled) => API._json('/api/system/dev-logs', {
+      method: 'POST',
+      body: { enabled }
+    }),
+    exportDevLogsUrl: () => `${API.BASE_URL}/api/system/dev-logs/export`
   }
 };

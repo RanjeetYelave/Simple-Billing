@@ -93,7 +93,9 @@ jobs:
                    --type app-image `
                    --dest dist-pkg `
                    --app-version 1.0.${{ github.run_number }} `
-                   --vendor "Billsoft"
+                   --vendor "Billsoft" `
+                   --win-console false `
+                   --java-options "-Djava.awt.headless=false"
 
           "@echo off`r`nstart `"`" `"%~dp0Billsoft.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/Billsoft/Start-Billsoft.bat
 
@@ -111,7 +113,9 @@ jobs:
                    --vendor "Billsoft" `
                    --win-menu `
                    --win-shortcut `
-                   --win-per-user-install
+                   --win-per-user-install `
+                   --win-console false `
+                   --java-options "-Djava.awt.headless=false"
 
           Get-ChildItem -Filter *.msi | Rename-Item -NewName Billsoft-Setup.msi
 

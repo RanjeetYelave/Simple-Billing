@@ -3771,23 +3771,98 @@
       );
     }
 
-    // ─── LOGIN & SETTINGS ─────
+    // ─── 90s WINDOWS RETRO RESTRICTED RECOVERY ENVIRONMENT ─────
     function RecoveryTool({ onRecovered, onCancel }) {
       const [password, setPassword] = useState('');
       const [attempts, setAttempts] = useState(() => parseInt(localStorage.getItem('recoveryAttempts') || '0', 10));
       const [lockoutTime, setLockoutTime] = useState(() => parseInt(localStorage.getItem('lockoutTime') || '0', 10));
       const [now, setNow] = useState(Date.now());
-      const [logs, setLogs] = useState([]);
-      const [stage, setStage] = useState('login');
+      const [stage, setStage] = useState('login'); // 'login' | 'reset' | 'rebuilding'
       const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [resetError, setResetError] = useState('');
+      const [progressPercent, setProgressPercent] = useState(0);
+      const [progressStepText, setProgressStepText] = useState('');
+      const [showLogModal, setShowLogModal] = useState(false);
+      const [savedMasterKey, setSavedMasterKey] = useState('');
+      const [devLogsEnabled, setDevLogsEnabled] = useState(false);
+      const [devLogPath, setDevLogPath] = useState('');
+      const [devLogSize, setDevLogSize] = useState('');
+      const [devLogLoading, setDevLogLoading] = useState(false);
+      const [logs, setLogs] = useState([
+        { time: '00:00:01', text: 'SEC_KERNEL: Initializing hardware audit daemon... [OK]' },
+        { time: '00:00:02', text: 'SEC_KERNEL: Host IP 127.0.0.1 mapped to Localhost Bridge.' },
+        { time: '00:00:03', text: 'SEC_KERNEL: Cryptographic SHA-256 HMAC integrity verified.' },
+        { time: '00:00:04', text: 'SEC_KERNEL: Awaiting Level-5 Master Clearance Key...' }
+      ]);
       const inputRef = useRef(null);
-      useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-      useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, [logs, stage]);
+
+      // Load initial Dev Logs Status from backend
+      const fetchDevLogStatus = () => {
+        if (API.system && API.system.getDevLogs) {
+          API.system.getDevLogs().then(res => {
+            if (res) {
+              setDevLogsEnabled(!!res.enabled);
+              setDevLogPath(res.logFilePath || '');
+              setDevLogSize(res.sizeFormatted || '');
+            }
+          }).catch(() => {});
+        }
+      };
+
+      useEffect(() => {
+        fetchDevLogStatus();
+      }, []);
+
+      const handleToggleDevLogs = async (enable) => {
+        setDevLogLoading(true);
+        try {
+          const res = await API.system.setDevLogs(enable);
+          if (res) {
+            setDevLogsEnabled(!!res.enabled);
+            setDevLogPath(res.logFilePath || '');
+            setDevLogSize(res.sizeFormatted || '');
+            addLog(`DEV_LOGS: Verbose developer logs ${enable ? 'ENABLED' : 'DISABLED'}. Target: ${res.logFilePath}`, enable ? 'success' : 'normal');
+          }
+        } catch (e) {
+          addLog(`DEV_LOGS: Failed to toggle developer logs - ${e.message}`, 'error');
+        } finally {
+          setDevLogLoading(false);
+        }
+      };
+
+      const handleCopyLogPath = () => {
+        if (devLogPath && navigator.clipboard) {
+          navigator.clipboard.writeText(devLogPath);
+          addLog(`DEV_LOGS: Log path copied to clipboard: ${devLogPath}`, 'success');
+        }
+      };
+
+      const handleRefreshDevLogs = () => {
+        fetchDevLogStatus();
+        addLog('DEV_LOGS: Refreshed developer log status.', 'normal');
+      };
+
+      useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+      }, []);
+
+      useEffect(() => {
+        if (inputRef.current && stage !== 'rebuilding') inputRef.current.focus();
+      }, [stage, logs]);
+
       const isLocked = lockoutTime > now;
       const timeRemaining = Math.max(0, Math.ceil((lockoutTime - now) / 1000));
       const mins = Math.floor(timeRemaining / 60);
       const secs = timeRemaining % 60;
-      const [savedMasterKey, setSavedMasterKey] = useState('');
+
+      const addLog = (text, type = 'normal') => {
+        const d = new Date();
+        const timeStr = d.toTimeString().split(' ')[0];
+        setLogs(prev => [...prev, { time: timeStr, text, type }]);
+      };
+
       const hashStr = async (str) => {
         try {
           const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -3796,46 +3871,525 @@
           return '';
         }
       };
+
       const handleLoginSubmit = async (e) => {
         e.preventDefault();
         if (isLocked) return;
-        addLog('> ********');
-        const h = await hashStr(password);
+        if (!password.trim()) return;
+
+        addLog(`SEC_AUTH: Verifying clearance token [${'*'.repeat(password.length)}]...`, 'normal');
+        const h = await hashStr(password.trim());
         if (h === "3680e811ded1a1831a688d594243e727a23d8bc801a9e2fa31279dba46b635ce") {
-          setSavedMasterKey(password);
-          addLog("ACCESS GRANTED.", "success"); addLog("ENTER NEW GLOBAL PASSWORD:", "normal"); setStage('reset'); setPassword(''); setAttempts(0); localStorage.removeItem('recoveryAttempts');
+          setSavedMasterKey(password.trim());
+          addLog("SEC_AUTH: [CLEARANCE GRANTED] Root Security Override Enabled.", "success");
+          addLog("SEC_AUTH: Ready for master password re-initialization.", "normal");
+          setStage('reset');
+          setPassword('');
+          setAttempts(0);
+          localStorage.removeItem('recoveryAttempts');
         } else {
-          addLog("ACCESS DENIED. INVALID MASTER KEY.", "error");
-          const newAttempts = attempts + 1; setAttempts(newAttempts); localStorage.setItem('recoveryAttempts', newAttempts.toString());
-          if (newAttempts >= 3) { const lockTime = Date.now() + 30 * 60 * 1000; setLockoutTime(lockTime); localStorage.setItem('lockoutTime', lockTime.toString()); addLog("SECURITY PROTOCOL INITIATED. SYSTEM LOCKED.", "error"); }
+          addLog("SEC_AUTH: [ACCESS DENIED] Invalid Master Clearance Token.", "error");
+          const newAttempts = attempts + 1;
+          setAttempts(newAttempts);
+          localStorage.setItem('recoveryAttempts', newAttempts.toString());
+          if (newAttempts >= 3) {
+            const lockTime = Date.now() + 30 * 60 * 1000;
+            setLockoutTime(lockTime);
+            localStorage.setItem('lockoutTime', lockTime.toString());
+            addLog("SEC_PROTOCOL: Maximum failed attempts exceeded! SYSTEM LOCKDOWN ACTIVE.", "critical");
+          }
           setPassword('');
         }
       };
+
       const handleResetSubmit = async (e) => {
-        e.preventDefault(); addLog('> ********');
+        e.preventDefault();
+        setResetError('');
+        if (!newPassword) {
+          setResetError('New password / PIN cannot be empty.');
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setResetError('Passwords / PINs do not match.');
+          return;
+        }
+
+        setStage('rebuilding');
+        addLog(`SEC_REBUILD: Deploying new master PIN hash...`, 'normal');
+
+        const steps = [
+          { p: 15, msg: 'Acquiring exclusive lock on secure H2 storage...' },
+          { p: 35, msg: 'Flushing active authentication session tokens...' },
+          { p: 60, msg: 'Decrypting and updating master credentials database...' },
+          { p: 85, msg: 'Recompiling cryptographic integrity checksums...' },
+          { p: 100, msg: 'Kernel security cleared. Rebooting system...' }
+        ];
+
         try {
           const res = await API.auth.resetPasswordMaster(savedMasterKey, newPassword);
           if (res.success) {
-            addLog("PASSWORD UPDATED.", "success"); setStage('animating');
-            const scripts = ["Bypassing security protocols...","Flushing DNS caches...","Decrypting root partition...","Updating master records...","Recompiling kernel modules...","SYSTEM UNLOCKED. REBOOTING..."];
-            for (let i = 0; i < scripts.length; i++) { await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 800)); addLog(scripts[i], i === scripts.length - 1 ? "success" : "normal"); }
-            setTimeout(() => onRecovered(), 1000);
-          } else { addLog("ERROR: " + res.message, "error"); setNewPassword(''); }
-        } catch (err) { addLog("NETWORK ERROR.", "error"); setNewPassword(''); }
+            for (let i = 0; i < steps.length; i++) {
+              setProgressPercent(steps[i].p);
+              setProgressStepText(steps[i].msg);
+              addLog(`SEC_REBUILD: ${steps[i].msg}`, i === steps.length - 1 ? 'success' : 'normal');
+              await new Promise(r => setTimeout(r, 600));
+            }
+            setTimeout(() => onRecovered(), 1200);
+          } else {
+            setStage('reset');
+            setResetError(res.message || 'Password reset rejected by security kernel.');
+            addLog(`SEC_ERROR: Reset failed - ${res.message}`, 'error');
+          }
+        } catch (err) {
+          setStage('reset');
+          setResetError('Network error connecting to security kernel.');
+          addLog('SEC_ERROR: Network connection failed.', 'error');
+        }
       };
-      return React.createElement('div', { className: 'terminal-mode', onClick: () => inputRef.current && inputRef.current.focus() },
-        React.createElement('div', { className: 'terminal-warning' }, "CRITICAL SYSTEM WARNING: Unauthorized access is strictly prohibited."),
-        logs.map((l, i) => React.createElement('div', { key: i, className: `terminal-line terminal-${l.type}` }, l.msg)),
-        isLocked ? React.createElement('div', { className: 'terminal-line terminal-error' }, `ACCESS DENIED. TRY AGAIN IN ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`) :
-        stage === 'login' ? React.createElement('form', { onSubmit: handleLoginSubmit, className: 'terminal-line' },
-          React.createElement('span', { className: 'terminal-prompt' }, "billsoft_recovery_tool> ENTER MASTER OVERRIDE KEY:"),
-          React.createElement('input', { ref: inputRef, type: 'password', className: 'terminal-input', value: password, onChange: e => setPassword(e.target.value) }),
-          React.createElement('span', { className: 'terminal-cursor' })) :
-        React.createElement('form', { onSubmit: handleResetSubmit, className: 'terminal-line' },
-          React.createElement('span', { className: 'terminal-prompt' }, "billsoft_recovery_tool> ENTER NEW GLOBAL PASSWORD:"),
-          React.createElement('input', { ref: inputRef, type: 'password', className: 'terminal-input', value: newPassword, onChange: e => setNewPassword(e.target.value) }),
-          React.createElement('span', { className: 'terminal-cursor' })),
-        React.createElement('div', { style: { marginTop: 'auto', paddingTop: 20 } }, React.createElement('button', { onClick: onCancel, style: { background: 'transparent', border: '1px solid #0f0', color: '#0f0', padding: '4px 12px', cursor: 'pointer', fontFamily: 'inherit' } }, "EXIT RECOVERY TOOL"))
+
+      const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      return React.createElement('div', {
+        style: {
+          position: 'fixed', inset: 0, zIndex: 99999,
+          backgroundColor: '#008080',
+          backgroundImage: 'radial-gradient(#009090 1px, transparent 1px)',
+          backgroundSize: '8px 8px',
+          fontFamily: "'MS Sans Serif', 'Tahoma', 'Segoe UI', system-ui, sans-serif",
+          color: '#000000', userSelect: 'none', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column'
+        }
+      },
+        // ── Retro Desktop Icons ──
+        React.createElement('div', {
+          style: {
+            position: 'absolute', top: 16, left: 16, display: 'flex', flexDirection: 'column', gap: 20, zIndex: 1
+          }
+        },
+          [
+            { icon: '🖥️', name: 'My Computer' },
+            { icon: '🌐', name: 'Network' },
+            { icon: '📁', name: 'C:\\RupeeCRM' },
+            { icon: '🛡️', name: 'Security_Log' },
+            { icon: '🗑️', name: 'Recycle Bin' }
+          ].map((item, idx) =>
+            React.createElement('div', {
+              key: idx,
+              style: {
+                display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76, textAlign: 'center', cursor: 'pointer'
+              }
+            },
+              React.createElement('div', { style: { fontSize: '2rem', filter: 'drop-shadow(1px 1px 0px rgba(0,0,0,0.6))' } }, item.icon),
+              React.createElement('span', {
+                style: {
+                  color: '#ffffff', fontSize: '11px', textShadow: '1px 1px 1px #000', marginTop: 3, padding: '1px 3px',
+                  backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 2
+                }
+              }, item.name)
+            )
+          )
+        ),
+
+        // ── Center Active Windows Window ──
+        React.createElement('div', {
+          style: {
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 2
+          }
+        },
+          React.createElement('div', {
+            style: {
+              width: '100%', maxWidth: 580,
+              backgroundColor: '#c0c0c0',
+              border: '2px solid #ffffff',
+              borderRightColor: '#000000',
+              borderBottomColor: '#000000',
+              boxShadow: 'inset 1px 1px 0px #dfdfdf, inset -1px -1px 0px #808080, 4px 4px 10px rgba(0,0,0,0.5)',
+              padding: 3, display: 'flex', flexDirection: 'column'
+            }
+          },
+            // Title Bar
+            React.createElement('div', {
+              style: {
+                background: isLocked ? 'linear-gradient(90deg, #b91c1c, #ef4444)' : 'linear-gradient(90deg, #000080, #1084d0)',
+                color: '#ffffff', padding: '3px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                fontWeight: 700, fontSize: '12px', letterSpacing: '0.02em', height: 22
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                React.createElement('span', null, isLocked ? '🚨' : '🛡️'),
+                React.createElement('span', null, isLocked ? 'SYSTEM LOCKDOWN - RESTRICTED OVERRIDE' : 'RupeeCRM Security Kernel v1.0.4 - [RESTRICTED]')
+              ),
+              // Classic Window Title Buttons
+              React.createElement('div', { style: { display: 'flex', gap: 2 } },
+                ['_', '□', '✕'].map((btn, i) =>
+                  React.createElement('button', {
+                    key: i,
+                    onClick: btn === '✕' ? onCancel : undefined,
+                    style: {
+                      width: 16, height: 14, backgroundColor: '#c0c0c0', border: '1px solid #ffffff',
+                      borderRightColor: '#000000', borderBottomColor: '#000000',
+                      fontSize: '9px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', padding: 0, color: '#000000', lineHeight: 1
+                    }
+                  }, btn)
+                )
+              )
+            ),
+
+            // Window Inner Body
+            React.createElement('div', { style: { padding: 14, display: 'flex', flexDirection: 'column', gap: 12 } },
+              // Scary Restricted Area Hazard Banner
+              React.createElement('div', {
+                style: {
+                  border: '2px solid #b91c1c', backgroundColor: '#fee2e2', padding: '10px 12px',
+                  borderRadius: 2, display: 'flex', gap: 10, alignItems: 'flex-start'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.8rem', lineHeight: 1 } }, '⛔'),
+                React.createElement('div', { style: { fontSize: '11px', color: '#7f1d1d', lineHeight: 1.4 } },
+                  React.createElement('div', { style: { fontWeight: 800, textTransform: 'uppercase', color: '#991b1b', marginBottom: 2, fontSize: '12px' } },
+                    'RESTRICTED AUDIT AREA — LEVEL 5 CLEARANCE REQUIRED'
+                  ),
+                  'WARNING: Direct database partition override is restricted under Cyber Security Audit protocols. Host IP (127.0.0.1) and hardware MAC are logged to persistent registers. Unauthorized attempts trigger permanent lockdown.'
+                )
+              ),
+
+              // Threat Status Bar
+              React.createElement('div', {
+                style: {
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  backgroundColor: '#ffffff', border: '1px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                  padding: '4px 8px', fontSize: '11px'
+                }
+              },
+                React.createElement('div', null,
+                  React.createElement('strong', null, 'System Threat Level: '),
+                  React.createElement('span', { style: { color: isLocked ? '#dc2626' : attempts > 0 ? '#d97706' : '#16a34a', fontWeight: 700 } },
+                    isLocked ? '🔴 CRITICAL LOCKOUT' : attempts === 0 ? '🟢 NORMAL' : `🟡 ELEVATED (${attempts}/3 failed)`
+                  )
+                ),
+                React.createElement('div', { style: { color: '#666' } },
+                  isLocked ? `Cool down: ${mins}m ${secs}s` : `Clearance: ROOT_ADMIN`
+                )
+              ),
+
+              // Sunken Retro Security Terminal Box
+              React.createElement('div', {
+                style: {
+                  backgroundColor: '#050505', border: '2px solid #808080', borderRightColor: '#ffffff', borderBottomColor: '#ffffff',
+                  boxShadow: 'inset 1px 1px 0px #000000', padding: '8px 10px', height: 100, overflowY: 'auto',
+                  fontFamily: "'Courier New', Courier, monospace", fontSize: '11px', color: '#22c55e', lineHeight: 1.4
+                }
+              },
+                logs.map((l, idx) =>
+                  React.createElement('div', {
+                    key: idx,
+                    style: {
+                      color: l.type === 'error' ? '#ef4444' : l.type === 'critical' ? '#dc2626' : l.type === 'success' ? '#4ade80' : '#22c55e',
+                      fontWeight: l.type === 'critical' || l.type === 'error' ? 700 : 400
+                    }
+                  }, `[${l.time}] ${l.text}`)
+                )
+              ),
+
+              // ── STAGE 1: MASTER KEY ENTRY ──
+              stage === 'login' && !isLocked && React.createElement('fieldset', {
+                style: {
+                  border: '2px solid #dfdfdf', borderRightColor: '#808080', borderBottomColor: '#808080',
+                  padding: '12px 14px', margin: 0
+                }
+              },
+                React.createElement('legend', { style: { fontSize: '11px', fontWeight: 700, padding: '0 4px' } }, ' Cryptographic Master Key Verification '),
+                React.createElement('form', { onSubmit: handleLoginSubmit, style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '11px', marginBottom: 4, fontWeight: 600 } }, 'Enter Master Clearance Key:'),
+                    React.createElement('input', {
+                      ref: inputRef,
+                      type: 'password',
+                      value: password,
+                      onChange: e => setPassword(e.target.value),
+                      placeholder: '••••••••••••',
+                      style: {
+                        width: '100%', boxSizing: 'border-box', height: 26, padding: '3px 6px',
+                        backgroundColor: '#ffffff', border: '2px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                        fontFamily: "'Courier New', monospace", fontSize: '13px', outline: 'none'
+                      }
+                    })
+                  ),
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 } },
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: onCancel,
+                      style: {
+                        padding: '4px 14px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '⛔ Abort & Return'),
+                    React.createElement('button', {
+                      type: 'submit',
+                      style: {
+                        padding: '4px 18px', fontSize: '11px', fontWeight: 700, backgroundColor: '#c0c0c0',
+                        border: '2px solid #000000', outline: '1px solid #000000', outlineOffset: -3,
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '🔑 Authenticate & Override')
+                  )
+                )
+              ),
+
+              // ── DEVELOPER DIAGNOSTICS & STACK TRACE LOGS SWITCH ──
+              React.createElement('fieldset', {
+                style: {
+                  border: '2px solid #dfdfdf', borderRightColor: '#808080', borderBottomColor: '#808080',
+                  padding: '10px 14px', margin: 0, backgroundColor: devLogsEnabled ? '#fefce8' : '#fafafa'
+                }
+              },
+                React.createElement('legend', { style: { fontSize: '11px', fontWeight: 700, padding: '0 4px', color: devLogsEnabled ? '#854d0e' : '#333333' } },
+                  ' 🛠️ Developer Diagnostics & Stack Trace Logging '
+                ),
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  React.createElement('label', {
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '11px', fontWeight: 700,
+                      color: devLogsEnabled ? '#854d0e' : '#111827'
+                    }
+                  },
+                    React.createElement('input', {
+                      type: 'checkbox',
+                      checked: devLogsEnabled,
+                      disabled: devLogLoading,
+                      onChange: e => handleToggleDevLogs(e.target.checked),
+                      style: { width: 14, height: 14, cursor: 'pointer' }
+                    }),
+                    'Enable Verbose Developer Logs (Captures SQL queries, HTTP calls & Error Stack Traces)'
+                  ),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '10px', color: '#4b5563', backgroundColor: '#ffffff',
+                      border: '1px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                      padding: '4px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontFamily: "'Courier New', monospace"
+                    }
+                  },
+                    React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 } },
+                      devLogsEnabled
+                        ? `📁 Target: ${devLogPath || 'Active'}`
+                        : '⚪ Logs Disabled (Standard production mode)'
+                    ),
+                    React.createElement('span', { style: { color: devLogsEnabled ? '#16a34a' : '#9ca3af', fontWeight: 700, marginLeft: 8 } },
+                      devLogsEnabled ? `[RECORDING ${devLogSize || ''}]` : '[IDLE]'
+                    )
+                  ),
+                  devLogsEnabled && React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 4 } },
+                    React.createElement('a', {
+                      href: API.system.exportDevLogsUrl(),
+                      download: 'rupeecrm-developer-debug.log',
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        color: '#000', textDecoration: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
+                      }
+                    }, '📥 Download Debug Log File'),
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: handleCopyLogPath,
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '📋 Copy Log Path'),
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: handleRefreshDevLogs,
+                      style: {
+                        padding: '3px 10px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '🔄 Refresh')
+                  )
+                )
+              ),
+
+              // ── STAGE 2: PASSWORD / PIN RESET ──
+              stage === 'reset' && React.createElement('fieldset', {
+                style: {
+                  border: '2px solid #dfdfdf', borderRightColor: '#808080', borderBottomColor: '#808080',
+                  padding: '12px 14px', margin: 0, backgroundColor: '#f0fdf4'
+                }
+              },
+                React.createElement('legend', { style: { fontSize: '11px', fontWeight: 700, padding: '0 4px', color: '#15803d' } }, ' ✅ Security Clearance: GRANTED — Reset Master PIN '),
+                React.createElement('form', { onSubmit: handleResetSubmit, style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                  resetError && React.createElement('div', { style: { color: '#b91c1c', fontSize: '11px', fontWeight: 700 } }, `⚠️ ${resetError}`),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '11px', marginBottom: 4, fontWeight: 600 } }, 'Enter New Master Password / PIN:'),
+                    React.createElement('input', {
+                      ref: inputRef,
+                      type: 'password',
+                      value: newPassword,
+                      onChange: e => setNewPassword(e.target.value),
+                      placeholder: 'New Password / PIN',
+                      style: {
+                        width: '100%', boxSizing: 'border-box', height: 26, padding: '3px 6px',
+                        backgroundColor: '#ffffff', border: '2px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                        fontFamily: "'Courier New', monospace", fontSize: '13px', outline: 'none'
+                      }
+                    })
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '11px', marginBottom: 4, fontWeight: 600 } }, 'Confirm New Password / PIN:'),
+                    React.createElement('input', {
+                      type: 'password',
+                      value: confirmPassword,
+                      onChange: e => setConfirmPassword(e.target.value),
+                      placeholder: 'Confirm Password / PIN',
+                      style: {
+                        width: '100%', boxSizing: 'border-box', height: 26, padding: '3px 6px',
+                        backgroundColor: '#ffffff', border: '2px solid #808080', borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf',
+                        fontFamily: "'Courier New', monospace", fontSize: '13px', outline: 'none'
+                      }
+                    })
+                  ),
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 } },
+                    React.createElement('button', {
+                      type: 'button',
+                      onClick: onCancel,
+                      style: {
+                        padding: '4px 14px', fontSize: '11px', backgroundColor: '#c0c0c0',
+                        border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, 'Cancel'),
+                    React.createElement('button', {
+                      type: 'submit',
+                      style: {
+                        padding: '4px 18px', fontSize: '11px', fontWeight: 700, backgroundColor: '#c0c0c0',
+                        border: '2px solid #000000', outline: '1px solid #000000', outlineOffset: -3,
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }
+                    }, '💾 Commit New Credentials & Reboot')
+                  )
+                )
+              ),
+
+              // ── STAGE 3: REBUILDING PROGRESS ──
+              stage === 'rebuilding' && React.createElement('div', {
+                style: {
+                  border: '2px solid #dfdfdf', borderRightColor: '#808080', borderBottomColor: '#808080',
+                  padding: '16px', backgroundColor: '#f8fafc', textAlign: 'center'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '12px', fontWeight: 700, marginBottom: 8, color: '#1e3a8a' } },
+                  progressStepText || 'Updating Security Partition...'
+                ),
+                // Retro Windows XP / 95 Segmented Block Progress Bar
+                React.createElement('div', {
+                  style: {
+                    height: 20, backgroundColor: '#ffffff', border: '2px solid #808080',
+                    borderRightColor: '#dfdfdf', borderBottomColor: '#dfdfdf', padding: 2,
+                    display: 'flex', gap: 2, overflow: 'hidden'
+                  }
+                },
+                  Array.from({ length: 24 }).map((_, i) =>
+                    React.createElement('div', {
+                      key: i,
+                      style: {
+                        flex: 1,
+                        backgroundColor: (i / 24) * 100 <= progressPercent ? '#000080' : 'transparent',
+                        height: '100%'
+                      }
+                    })
+                  )
+                ),
+                React.createElement('div', { style: { fontSize: '11px', color: '#64748b', marginTop: 8 } },
+                  `Progress: ${progressPercent}% — Do not power off or close the application.`
+                )
+              ),
+
+              // ── LOCKOUT ACTIVE NOTICE ──
+              isLocked && React.createElement('div', {
+                style: {
+                  backgroundColor: '#fee2e2', border: '2px solid #b91c1c', padding: 14, textAlign: 'center', color: '#7f1d1d'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 800, marginBottom: 4 } }, 'SYSTEM LOCKDOWN ACTIVE'),
+                React.createElement('p', { style: { fontSize: '11px', margin: '0 0 10px' } },
+                  `All cryptographic override interfaces are temporarily locked due to repeated invalid authentication tokens.`
+                ),
+                React.createElement('div', { style: { fontSize: '16px', fontWeight: 800, fontFamily: "'Courier New', monospace", color: '#991b1b', marginBottom: 12 } },
+                  `TIME REMAINING: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+                ),
+                React.createElement('button', {
+                  onClick: onCancel,
+                  style: {
+                    padding: '5px 16px', fontSize: '11px', fontWeight: 700, backgroundColor: '#c0c0c0',
+                    border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000', cursor: 'pointer'
+                  }
+                }, 'Return to Main Login Screen')
+              )
+            ),
+
+            // Window Status Bar at Bottom
+            React.createElement('div', {
+              style: {
+                borderTop: '1px solid #808080', padding: '3px 8px', fontSize: '10px', color: '#444444',
+                display: 'flex', justifyContent: 'space-between', backgroundColor: '#d4d0c8'
+              }
+            },
+              React.createElement('span', null, 'Zone: Local Machine (Security Token Mode)'),
+              React.createElement('span', null, 'Port: 8080 | SSL: Ready')
+            )
+          )
+        ),
+
+        // ── Retro Windows 90s Bottom Taskbar ──
+        React.createElement('div', {
+          style: {
+            height: 30, backgroundColor: '#c0c0c0',
+            borderTop: '2px solid #ffffff',
+            boxShadow: 'inset 0 1px 0 #dfdfdf',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', zIndex: 10
+          }
+        },
+          // Start Button & Running Tasks
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('button', {
+              style: {
+                height: 22, padding: '2px 8px', backgroundColor: '#c0c0c0',
+                border: '2px solid #ffffff', borderRightColor: '#000000', borderBottomColor: '#000000',
+                display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: '11px', cursor: 'pointer'
+              }
+            },
+              React.createElement('span', null, '🪟'),
+              React.createElement('span', null, 'Start')
+            ),
+            // Active Window Taskbar Item (Sunken 3D)
+            React.createElement('div', {
+              style: {
+                height: 22, padding: '2px 10px', backgroundColor: '#dfdfdf',
+                border: '2px solid #808080', borderRightColor: '#ffffff', borderBottomColor: '#ffffff',
+                display: 'flex', alignItems: 'center', gap: 6, fontSize: '11px', fontWeight: 700
+              }
+            },
+              React.createElement('span', null, '🚨'),
+              React.createElement('span', null, 'RupeeCRM - Security Override')
+            )
+          ),
+          // System Tray on right
+          React.createElement('div', {
+            style: {
+              height: 22, padding: '2px 8px', backgroundColor: '#c0c0c0',
+              border: '1px solid #808080', borderRightColor: '#ffffff', borderBottomColor: '#ffffff',
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: '11px'
+            }
+          },
+            React.createElement('span', null, '🛡️'),
+            React.createElement('span', null, '🔊'),
+            React.createElement('span', { style: { fontWeight: 600 } }, currentTimeStr)
+          )
+        )
       );
     }
 

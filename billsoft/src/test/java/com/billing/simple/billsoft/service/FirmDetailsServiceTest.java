@@ -66,12 +66,10 @@ class FirmDetailsServiceTest {
     @Test
     void testGetFirstEmpty() {
         when(repo.findAll()).thenReturn(new ArrayList<>());
-        when(repo.save(any(FirmDetails.class))).thenAnswer(i -> i.getArguments()[0]);
 
         FirmDetails result = service.getFirst();
 
-        assertNotNull(result);
-        assertEquals("My Firm", result.getFirmName());
+        assertNull(result);
     }
 
     @Test

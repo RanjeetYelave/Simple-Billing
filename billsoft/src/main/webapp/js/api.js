@@ -70,14 +70,7 @@ const API = {
         this.firmId = firms[0].id;
         return this.firmId;
       }
-      // No firms exist - create one
-      return this.firm.create().then(created => {
-        this.firmId = created.id;
-        return this.firmId;
-      });
-    }).catch(e => {
-      console.warn('Failed to ensure firm is ready:', e);
-      return null;
+      throw new Error("No firm configured");
     });
   },
 
@@ -232,6 +225,13 @@ const API = {
     changePassword: (oldPassword, newPassword) => API._json('/api/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),
     login: (firmId, password) => API._json('/api/auth/login', { method: 'POST', body: { firmId, password } }),
     resetPasswordMaster: (masterPassword, newPassword) => API._json('/api/auth/reset-password-master', { method: 'POST', body: { masterPassword, newPassword } })
+  },
+
+  // ── Licensing ──
+  license: {
+    status: () => API._json('/api/license/status'),
+    activate: (productKey) => API._json('/api/license/activate', { method: 'POST', body: { productKey } }),
+    initTrial: () => API._json('/api/license/init-trial', { method: 'POST' }),
   },
 
   // ─── Backup & Restore ───

@@ -3684,6 +3684,309 @@
       );
     }
 
+    function FirstTimeSetupComponent({ onComplete }) {
+      const [wizardMode, setWizardMode] = useState('new'); // 'new' | 'restore'
+
+      // New Firm details
+      const [firmName, setFirmName] = useState('');
+      const [ownerName, setOwnerName] = useState('');
+      const [email, setEmail] = useState('');
+      const [phone, setPhone] = useState('');
+      const [address1, setAddress1] = useState('');
+      const [address2, setAddress2] = useState('');
+      const [city, setCity] = useState('');
+      const [state, setState] = useState('');
+      const [pincode, setPincode] = useState('');
+      const [gstin, setGstin] = useState('');
+      const [bankName, setBankName] = useState('');
+      const [bankAccount, setBankAccount] = useState('');
+      const [bankIfsc, setBankIfsc] = useState('');
+      
+      const [enableLock, setEnableLock] = useState(false);
+      const [password, setPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [productKey, setProductKey] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      // Restore parameters
+      const [backupFile, setBackupFile] = useState(null);
+      const [restoreProductKey, setRestoreProductKey] = useState('');
+      const [restoreError, setRestoreError] = useState('');
+      const [restoreLoading, setRestoreLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!firmName.trim()) {
+          setError('Firm Name is required');
+          return;
+        }
+        if (enableLock) {
+          if (!password) {
+            setError('Password is required when lock is enabled');
+            return;
+          }
+          if (password !== confirmPassword) {
+            setError('Passwords do not match');
+            return;
+          }
+        }
+
+        setLoading(true);
+        try {
+          const firmPayload = {
+            firmName, ownerName, email, phone,
+            addressLine1: address1, addressLine2: address2,
+            city, state, pincode, gstin,
+            bankName, bankAccount, bankIfsc
+          };
+          const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
+          API.firmId = createdFirm.id;
+
+          if (enableLock) {
+            await API.auth.enable(password);
+          }
+
+          if (productKey.trim()) {
+            const actRes = await API.license.activate(productKey.trim()).catch(err => {
+              throw new Error("Invalid Product Key. Setup aborted.");
+            });
+            if (!actRes.success) {
+              throw new Error("Invalid Product Key. Setup aborted.");
+            }
+          } else {
+            await API.license.initTrial();
+          }
+
+          window.showToast && window.showToast('First-time setup completed successfully!', 'success');
+          onComplete();
+        } catch (err) {
+          setError(err.message || 'Setup failed. Please try again.');
+          setLoading(false);
+        }
+      };
+
+      const handleRestoreSubmit = async (e) => {
+        e.preventDefault();
+        setRestoreError('');
+        if (!backupFile) {
+          setRestoreError('Please select a backup file');
+          return;
+        }
+
+        setRestoreLoading(true);
+        try {
+          // Import backup as a new firm (merge = false/override)
+          const importRes = await API.backup.import(backupFile, 'override');
+          if (importRes.error) {
+            throw new Error(importRes.error);
+          }
+
+          // Fetch the restored firm list to select the first one
+          const list = await API.firm.list();
+          if (list && list.length) {
+            API.firmId = list[0].id;
+          } else {
+            throw new Error("Failed to find the restored firm details.");
+          }
+
+          // Handle product activation or start trial
+          if (restoreProductKey.trim()) {
+            const actRes = await API.license.activate(restoreProductKey.trim()).catch(err => {
+              throw new Error("Invalid Product Key. Activation failed.");
+            });
+            if (!actRes.success) {
+              throw new Error("Invalid Product Key. Activation failed.");
+            }
+          } else {
+            await API.license.initTrial();
+          }
+
+          window.showToast && window.showToast('Backup restored and setup completed successfully!', 'success');
+          onComplete();
+        } catch (err) {
+          setRestoreError(err.message || 'Restore failed. Please make sure the JSON file is valid.');
+          setRestoreLoading(false);
+        }
+      };
+
+      return React.createElement('div', { className: 'login-container', style: { padding: '40px 20px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 640, width: '100%', padding: '40px 32px' } },
+          React.createElement('div', { style: { textAlign: 'center', marginBottom: 24 } },
+            React.createElement('div', { className: 'login-logo', style: { margin: '0 auto 12px' } }, 'B'),
+            React.createElement('h2', { style: { fontSize: '1.6rem', fontWeight: 700 } }, 'First-Time Setup Wizard'),
+            React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 } }, 'Configure your firm details, security, and activation to get started.')
+          ),
+          
+          React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24 } },
+            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'new' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('new') }, 'Set Up New Firm'),
+            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'restore' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('restore') }, 'Restore from Backup')
+          ),
+
+          wizardMode === 'new' ? React.createElement(Fragment, null,
+            error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, error),
+            React.createElement('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Firm Information'),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Firm Name (Required)'),
+                  React.createElement('input', { type: 'text', className: 'input', value: firmName, onChange: e => setFirmName(e.target.value), required: true })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Owner Name'),
+                  React.createElement('input', { type: 'text', className: 'input', value: ownerName, onChange: e => setOwnerName(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Email Address'),
+                  React.createElement('input', { type: 'email', className: 'input', value: email, onChange: e => setEmail(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Phone Number'),
+                  React.createElement('input', { type: 'text', className: 'input', value: phone, onChange: e => setPhone(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Address Line 1'),
+                  React.createElement('input', { type: 'text', className: 'input', value: address1, onChange: e => setAddress1(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Address Line 2'),
+                  React.createElement('input', { type: 'text', className: 'input', value: address2, onChange: e => setAddress2(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'City'),
+                  React.createElement('input', { type: 'text', className: 'input', value: city, onChange: e => setCity(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'State'),
+                  React.createElement('input', { type: 'text', className: 'input', value: state, onChange: e => setState(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Pincode'),
+                  React.createElement('input', { type: 'text', className: 'input', value: pincode, onChange: e => setPincode(e.target.value) })
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'label' }, 'GSTIN'),
+                React.createElement('input', { type: 'text', className: 'input', value: gstin, onChange: e => setGstin(e.target.value) })
+              ),
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Bank Information'),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Bank Name'),
+                  React.createElement('input', { type: 'text', className: 'input', value: bankName, onChange: e => setBankName(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Account Number'),
+                  React.createElement('input', { type: 'text', className: 'input', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'IFSC Code'),
+                  React.createElement('input', { type: 'text', className: 'input', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
+                )
+              ),
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '3. Security Preferences'),
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' } },
+                  React.createElement('input', { type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked) }),
+                  React.createElement('span', { style: { fontSize: '0.9rem', fontWeight: 600 } }, 'Enable Access Password Lock?')
+                ),
+                enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { className: 'label' }, 'Enter Lock Password'),
+                    React.createElement('input', { type: 'password', className: 'input', value: password, onChange: e => setPassword(e.target.value), required: true })
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { className: 'label' }, 'Confirm Lock Password'),
+                    React.createElement('input', { type: 'password', className: 'input', value: confirmPassword, onChange: e => setConfirmPassword(e.target.value), required: true })
+                  )
+                )
+              ),
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '4. Product Activation'),
+              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
+                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'By default, skipping the activation key starts a 30-day free trial. If you possess a permanent activation key, enter it below.'),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
+                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: productKey, onChange: e => setProductKey(e.target.value) })
+                )
+              ),
+              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, loading ? 'Initializing Application...' : 'Complete First-Time Setup')
+            )
+          ) : React.createElement(Fragment, null,
+            restoreError && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, restoreError),
+            React.createElement('form', { onSubmit: handleRestoreSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Choose Backup File'),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'label' }, 'Backup JSON File'),
+                React.createElement('input', { type: 'file', accept: '.json', onChange: e => setBackupFile(e.target.files[0]), required: true, style: { padding: '8px 0' } })
+              ),
+              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Product Activation'),
+              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
+                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'Skipping the activation key preserves/starts a 30-day free trial on the restored data.'),
+                React.createElement('div', null,
+                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
+                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
+                )
+              ),
+              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: restoreLoading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, restoreLoading ? 'Restoring Data...' : 'Restore Backup & Start Application')
+            )
+          )
+        )
+      );
+    }
+
+    function TrialExpiredComponent({ onComplete }) {
+      const [productKey, setProductKey] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!productKey.trim()) {
+          setError('Product key is required');
+          return;
+        }
+
+        setLoading(true);
+        try {
+          const res = await API.license.activate(productKey.trim());
+          if (res.success) {
+            window.showToast && window.showToast('Product activated permanently!', 'success');
+            onComplete();
+          } else {
+            setError(res.message || 'Invalid product key');
+          }
+        } catch (err) {
+          setError('Activation failed. Invalid product key.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return React.createElement('div', { className: 'login-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 440, width: '90%', padding: '40px 30px', textAlign: 'center' } },
+          React.createElement('div', { style: { fontSize: '3.5rem', marginBottom: 16 } }, '⚠️'),
+          React.createElement('h2', { style: { color: 'var(--danger)', fontSize: '1.5rem', fontWeight: 700, marginBottom: 8 } }, 'Trial Period Expired'),
+          React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 24 } }, 'Your 30-day free trial has ended. Please enter a valid product key to activate Simple Billing permanently.'),
+          error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.85rem', textAlign: 'left' } }, error),
+          React.createElement('form', { onSubmit: handleSubmit, style: { textAlign: 'left' } },
+            React.createElement('div', { style: { marginBottom: 20 } },
+              React.createElement('label', { className: 'label' }, 'Product Key'),
+              React.createElement('input', { type: 'password', className: 'input', placeholder: 'Enter permanent product key', value: productKey, onChange: e => setProductKey(e.target.value), required: true })
+            ),
+            React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600 } }, loading ? 'Verifying Key...' : 'Activate Software')
+          )
+        )
+      );
+    }
+
     function Settings() {
       const [authEnabled, setAuthEnabled] = useState(false);
       const [statusLoaded, setStatusLoaded] = useState(false);
@@ -3691,11 +3994,105 @@
       const [oldPassword, setOldPassword] = useState('');
       const [newPassword, setNewPassword] = useState('');
       const [loading, setLoading] = useState(false);
-      useEffect(() => { API.auth.status().then(res => { setAuthEnabled(res.authEnabled); setStatusLoaded(true); }).catch(() => setStatusLoaded(true)); }, []);
-      const closeAction = () => { setModalState(null); setOldPassword(''); setNewPassword(''); setLoading(false); };
-      const handleEnable = async (e) => { e.preventDefault(); setLoading(true); try { const res = await API.auth.enable(newPassword); if (res.success) { window.showToast('Authentication enabled', 'success'); setAuthEnabled(true); closeAction(); } else { window.showToast(res.message || 'Failed', 'error'); setLoading(false); } } catch (err) { window.showToast('Error', 'error'); setLoading(false); } };
-      const handleDisable = async (e) => { e.preventDefault(); setLoading(true); try { const res = await API.auth.disable(oldPassword); if (res.success) { window.showToast('Authentication disabled', 'success'); setAuthEnabled(false); closeAction(); } else { window.showToast(res.message || 'Failed', 'error'); setLoading(false); } } catch (err) { window.showToast('Error', 'error'); setLoading(false); } };
-      const handleChange = async (e) => { e.preventDefault(); setLoading(true); try { const res = await API.auth.changePassword(oldPassword, newPassword); if (res.success) { window.showToast('Password changed successfully', 'success'); closeAction(); } else { window.showToast(res.message || 'Failed', 'error'); setLoading(false); } } catch (err) { window.showToast('Error', 'error'); setLoading(false); } };
+
+      useEffect(() => {
+        API.auth.status().then(res => {
+          setAuthEnabled(res.authEnabled);
+          setStatusLoaded(true);
+        }).catch(() => setStatusLoaded(true));
+      }, []);
+
+      const closeAction = () => {
+        setModalState(null);
+        setOldPassword('');
+        setNewPassword('');
+        setLoading(false);
+      };
+
+      const handleEnable = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+          const res = await API.auth.enable(newPassword);
+          if (res.success) {
+            window.showToast('Authentication enabled', 'success');
+            setAuthEnabled(true);
+            closeAction();
+          } else {
+            window.showToast(res.message || 'Failed', 'error');
+            setLoading(false);
+          }
+        } catch (err) {
+          window.showToast('Error', 'error');
+          setLoading(false);
+        }
+      };
+
+      const handleDisable = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+          const res = await API.auth.disable(oldPassword);
+          if (res.success) {
+            window.showToast('Authentication disabled', 'success');
+            setAuthEnabled(false);
+            closeAction();
+          } else {
+            window.showToast(res.message || 'Failed', 'error');
+            setLoading(false);
+          }
+        } catch (err) {
+          window.showToast('Error', 'error');
+          setLoading(false);
+        }
+      };
+
+      const handleChange = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+          const res = await API.auth.changePassword(oldPassword, newPassword);
+          if (res.success) {
+            window.showToast('Password changed successfully', 'success');
+            closeAction();
+          } else {
+            window.showToast(res.message || 'Failed', 'error');
+            setLoading(false);
+          }
+        } catch (err) {
+          window.showToast('Error', 'error');
+          setLoading(false);
+        }
+      };
+
+      const [licenseInfo, setLicenseInfo] = useState(null);
+      const [productKey, setProductKey] = useState('');
+      const [actLoading, setActLoading] = useState(false);
+
+      useEffect(() => {
+        API.license.status().then(setLicenseInfo).catch(() => {});
+      }, []);
+
+      const handleActivate = async (e) => {
+        e.preventDefault();
+        if (!productKey.trim()) return;
+        setActLoading(true);
+        try {
+          const res = await API.license.activate(productKey.trim());
+          if (res.success) {
+            window.showToast('Product activated permanently!', 'success');
+            setProductKey('');
+            API.license.status().then(setLicenseInfo).catch(() => {});
+          } else {
+            window.showToast('Invalid product key', 'error');
+          }
+        } catch (err) {
+          window.showToast('Activation failed. Invalid product key.', 'error');
+        } finally {
+          setActLoading(false);
+        }
+      };
+
       if (!statusLoaded) return React.createElement('div', { className: 'spinner' });
       return React.createElement('div', { className: 'card', style: { padding: '32px' } },
         React.createElement('div', { className: 'card-header', style: { borderBottom: 'none', paddingBottom: 0, marginBottom: 8 } }, React.createElement('div', null, React.createElement('div', { className: 'card-title', style: { fontSize: '1.4rem' } }, 'Settings'), React.createElement('div', { className: 'card-subtitle', style: { fontSize: '0.95rem' } }, 'Manage application preferences and security'))),
@@ -3706,6 +4103,23 @@
               authEnabled && React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => setModalState('change') }, Icons.edit, ' Change PIN'),
               React.createElement('label', { className: 'switch' }, React.createElement('input', { type: 'checkbox', checked: authEnabled, onChange: (e) => { if (e.target.checked && !authEnabled) setModalState('enable'); else if (!e.target.checked && authEnabled) setModalState('disable'); } }), React.createElement('span', { className: 'slider' }))
             )
+          ),
+          licenseInfo && licenseInfo.status === 'trial' && React.createElement('div', { className: 'settings-item', style: { marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 } },
+            React.createElement('div', { className: 'settings-item-info' },
+              React.createElement('div', { className: 'settings-item-title' }, 'Product Licensing'),
+              React.createElement('div', { className: 'settings-item-desc' }, `Trial Mode: ${licenseInfo.trialDaysRemaining} days remaining. Enter permanent key to activate.`)
+            ),
+            React.createElement('form', { onSubmit: handleActivate, style: { display: 'flex', gap: 10, alignItems: 'center' } },
+              React.createElement('input', { type: 'password', className: 'input', style: { width: 200, padding: '6px 12px', fontSize: '0.85rem' }, placeholder: 'Saidarshan Key', value: productKey, onChange: e => setProductKey(e.target.value), required: true }),
+              React.createElement('button', { type: 'submit', className: 'btn btn-primary btn-sm', disabled: actLoading }, actLoading ? 'Activating...' : 'Activate')
+            )
+          ),
+          licenseInfo && licenseInfo.status === 'activated' && React.createElement('div', { className: 'settings-item', style: { marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 } },
+            React.createElement('div', { className: 'settings-item-info' },
+              React.createElement('div', { className: 'settings-item-title' }, 'Product Licensing'),
+              React.createElement('div', { className: 'settings-item-desc' }, 'Permanent License Activated')
+            ),
+            React.createElement('div', { style: { color: '#16a34a', fontWeight: 600, fontSize: '0.9rem' } }, '✅ Activated')
           )
         ),
         modalState === 'enable' && React.createElement('div', { className: 'modal-overlay' }, React.createElement('div', { className: 'modal' }, React.createElement('div', { className: 'modal-header' }, React.createElement('div', { className: 'modal-title' }, 'Enable Authentication'), React.createElement('button', { className: 'modal-close', onClick: () => setModalState(null) }, '✕')), React.createElement('form', { onSubmit: handleEnable }, React.createElement('div', { className: 'modal-body' }, React.createElement('div', { style: { marginBottom: 16 } }, React.createElement('label', { style: { display: 'block', marginBottom: 8, fontWeight: 600 } }, 'Create Password / PIN'), React.createElement('input', { type: 'password', className: 'input', value: newPassword, onChange: e => setNewPassword(e.target.value), required: true, autoFocus: true }))), React.createElement('div', { className: 'modal-footer' }, React.createElement('button', { type: 'button', className: 'btn btn-ghost', onClick: () => setModalState(null) }, 'Cancel'), React.createElement('button', { type: 'submit', className: 'btn btn-primary', disabled: loading }, loading ? 'Saving...' : 'Enable Auth'))))),
@@ -5719,46 +6133,48 @@
       const [newMsgPopup, setNewMsgPopup] = useState(null);
       const [firmLoadKey, setFirmLoadKey] = useState(0);
 
-      // ─── Initialise firm before we touch any endpoint that may need it ───
-      useEffect(() => {
-        /** Ensure a firm is available before any other API call.
-         *  If the backend already has firms we pick the first one.
-         *  Otherwise we create a default firm and store its id.
-         */
-        const ensureFirm = async () => {
-          const firms = await API.firm.list().catch(() => []);
-          if (firms && firms.length) {
-            API.firmId = firms[0].id;
-            setFirmName(firms[0].firmName || '');
-            setFirms(firms);
-          } else {
-            const created = await API.firm.create();
-            API.firmId = created.id;
-            setFirmName(created.firmName || '');
-            setFirms([created]);
-            window.showToast && window.showToast('Default firm created', 'info');
-          }
-        };
+      const [licenseStatus, setLicenseStatus] = useState('trial');
+      const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
+      const [firstTimeSetup, setFirstTimeSetup] = useState(false);
 
-        const initApp = async () => {
-          await ensureFirm();
-          try {
-            const res = await API.auth.status();
-            if (res && typeof res.authEnabled === 'boolean') {
-              setAuthEnabled(res.authEnabled);
-              if (!res.authEnabled) setIsAuthenticated(true);
-            } else {
-              setIsAuthenticated(true);
-            }
-          } catch (_) {
-            setIsAuthenticated(true);
-          } finally {
+      const initApp = async () => {
+        try {
+          const lic = await API.license.status().catch(() => ({ hasFirm: true, status: 'activated', trialDaysRemaining: 30 }));
+          setLicenseStatus(lic.status);
+          setTrialDaysRemaining(lic.trialDaysRemaining);
+          
+          if (!lic.hasFirm) {
+            setFirstTimeSetup(true);
             setAppLoaded(true);
+            return;
+          } else {
+            setFirstTimeSetup(false);
           }
-        };
 
+          const list = await API.firm.list().catch(() => []);
+          if (list && list.length) {
+            API.firmId = list[0].id;
+            setFirmName(list[0].firmName || '');
+            setFirms(list);
+          }
+
+          const res = await API.auth.status().catch(() => ({ authEnabled: false }));
+          if (res && typeof res.authEnabled === 'boolean') {
+            setAuthEnabled(res.authEnabled);
+            if (!res.authEnabled) setIsAuthenticated(true);
+          } else {
+            setIsAuthenticated(true);
+          }
+        } catch (_) {
+          setIsAuthenticated(true);
+        } finally {
+          setAppLoaded(true);
+        }
+      };
+
+      useEffect(() => {
         initApp();
-    }, []); // close the useEffect that contains initApp
+      }, [firmLoadKey]);
 
       const handleLogin = (firmId) => { setIsAuthenticated(true); localStorage.setItem('isAuthenticated', 'true'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
       const handleLogout = () => { setIsAuthenticated(false); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
@@ -5768,7 +6184,7 @@
         API.firm.list().then(list => {
           setFirms(list);
           const savedId = API.firmId;
-          if (list.length === 0) { return API.firm.create().then(f => { API.firmId = f.id; setFirms([f]); if (f.firmName) setFirmName(f.firmName); showToast('Default firm created', 'info'); }); }
+          if (list.length === 0) return;
           if (!savedId) API.firmId = list[0].id;
           const currentId = API.firmId;
           if (currentId) { const firm = list.find(f => f.id === currentId); if (firm && firm.firmName) setFirmName(firm.firmName); }
@@ -6103,6 +6519,8 @@
       const current = pageComponents[page] || pageComponents.dashboard;
 
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
+      if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
+      if (licenseStatus === 'expired') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { setLicenseStatus('activated'); } }), React.createElement(Toast, { toasts, removeToast }));
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
       return React.createElement('div', { className: 'app-layout' },
@@ -6113,6 +6531,7 @@
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right' },
+              licenseStatus === 'trial' && React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`),
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))

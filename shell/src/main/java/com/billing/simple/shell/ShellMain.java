@@ -49,6 +49,31 @@ public class ShellMain extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
 
+        engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == javafx.concurrent.Worker.State.SUCCEEDED) {
+                try {
+                    netscape.javascript.JSObject win = (netscape.javascript.JSObject) engine.executeScript("window");
+                    win.setMember("javafxPrintHelper", new Object() {
+                        public void print() {
+                            Platform.runLater(() -> {
+                                javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
+                                if (job != null) {
+                                    boolean proceed = job.showPrintDialog(primaryStage);
+                                    if (proceed) {
+                                        webView.getEngine().print(job);
+                                        job.endJob();
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    engine.executeScript("window.print = function() { window.javafxPrintHelper.print(); };");
+                } catch (Exception e) {
+                    System.err.println("Failed to inject print bridge: " + e.getMessage());
+                }
+            }
+        });
+
         primaryStage.setOnCloseRequest(event -> {
             stopBackend();
             Platform.exit();

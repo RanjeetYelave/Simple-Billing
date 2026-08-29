@@ -7462,16 +7462,38 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
 
-      const initApp = async () => {
+      const initApp = async (retryCount = 0) => {
         try {
-          const list = await API.firm.list().catch(() => []);
-          const hasFirmInDb = list && list.length > 0;
+          // 1. Fetch firms list, license status, and auth status concurrently
+          const [list, lic, authRes] = await Promise.all([
+            API.firm.list().catch(err => {
+              console.warn("Firm list fetch initial attempt:", err);
+              return null; // Return null so we distinguish connection error from empty array []
+            }),
+            API.license.status().catch(err => {
+              console.warn("License status fetch initial attempt:", err);
+              return null;
+            }),
+            API.auth.status().catch(() => null)
+          ]);
 
-          const lic = await API.license.status().catch(() => ({ hasFirm: hasFirmInDb, status: 'trial', trialDaysRemaining: 30 }));
-          setLicenseStatus(lic.status || 'trial');
-          setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
-          
-          if (!hasFirmInDb || !lic.hasFirm) {
+          // If backend didn't respond yet (e.g., system just restarted and Spring Boot is still booting up)
+          if (list === null && lic === null && retryCount < 6) {
+            console.log(`Backend warming up... retrying initApp (${retryCount + 1}/6)`);
+            setTimeout(() => initApp(retryCount + 1), 800);
+            return;
+          }
+
+          const validList = Array.isArray(list) ? list : [];
+          const hasFirmInDb = validList.length > 0 || (lic && lic.hasFirm === true);
+
+          if (lic) {
+            setLicenseStatus(lic.status || 'trial');
+            setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+          }
+
+          // ONLY enter first-time setup if the server explicitly confirmed zero firms exist
+          if (!hasFirmInDb && list !== null) {
             setFirstTimeSetup(true);
             setAppLoaded(true);
             return;
@@ -7479,20 +7501,22 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
             setFirstTimeSetup(false);
           }
 
-          if (list && list.length) {
-            API.firmId = list[0].id;
-            setFirmName(list[0].firmName || '');
-            setFirms(list);
+          if (validList.length > 0) {
+            const savedFirmId = API.firmId;
+            const currentFirm = validList.find(f => f.id === savedFirmId) || validList[0];
+            API.firmId = currentFirm.id;
+            setFirmName(currentFirm.firmName || '');
+            setFirms(validList);
           }
 
-          const res = await API.auth.status().catch(() => ({ authEnabled: false }));
-          if (res && typeof res.authEnabled === 'boolean') {
-            setAuthEnabled(res.authEnabled);
-            if (!res.authEnabled) setIsAuthenticated(true);
+          if (authRes && typeof authRes.authEnabled === 'boolean') {
+            setAuthEnabled(authRes.authEnabled);
+            if (!authRes.authEnabled) setIsAuthenticated(true);
           } else {
             setIsAuthenticated(true);
           }
-        } catch (_) {
+        } catch (err) {
+          console.error("Initialization error:", err);
           setIsAuthenticated(true);
         } finally {
           setAppLoaded(true);

@@ -471,16 +471,31 @@ public class LauncherMain {
 
     private File findUpdateWar() {
         File update = resolveFile("runtime/rupeecrm-update.war");
-        if (update.exists()) return update;
+        if (update.exists() && update.length() > 0) return update;
 
         update = resolveFile("runtime/billsoft-update.war");
-        if (update.exists()) return update;
+        if (update.exists() && update.length() > 0) return update;
+
+        update = resolveFile("rupeecrm-update.war");
+        if (update.exists() && update.length() > 0) return update;
+
+        update = resolveFile("billsoft-update.war");
+        if (update.exists() && update.length() > 0) return update;
+
+        Path dataDir = getDataDirectory();
+        if (dataDir != null) {
+            File dataUpdate = dataDir.resolve("billsoft-update.war").toFile();
+            if (dataUpdate.exists() && dataUpdate.length() > 0) return dataUpdate;
+
+            dataUpdate = dataDir.resolve("rupeecrm-update.war").toFile();
+            if (dataUpdate.exists() && dataUpdate.length() > 0) return dataUpdate;
+        }
 
         update = resolveFile("billsoft/target/billsoft-update.war");
-        if (update.exists()) return update;
+        if (update.exists() && update.length() > 0) return update;
 
         update = resolveFile("../billsoft/target/billsoft-update.war");
-        if (update.exists()) return update;
+        if (update.exists() && update.length() > 0) return update;
 
         return null;
     }

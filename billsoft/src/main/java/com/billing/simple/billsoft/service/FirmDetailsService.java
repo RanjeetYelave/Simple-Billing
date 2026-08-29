@@ -33,10 +33,32 @@ public class FirmDetailsService {
         return null;
     }
 
-    public FirmDetails create() {
+    public FirmDetails create(FirmDetails payload) {
         FirmDetails f = new FirmDetails();
-        f.setFirmName("New Firm");
+        if (payload != null) {
+            f.setFirmName(nullIfBlank(payload.getFirmName()) != null ? payload.getFirmName().trim() : "New Firm");
+            f.setOwnerName(nullIfBlank(payload.getOwnerName()));
+            f.setAddressLine1(nullIfBlank(payload.getAddressLine1()));
+            f.setAddressLine2(nullIfBlank(payload.getAddressLine2()));
+            f.setCity(nullIfBlank(payload.getCity()));
+            f.setState(nullIfBlank(payload.getState()));
+            f.setPincode(nullIfBlank(payload.getPincode()));
+            f.setPhone(nullIfBlank(payload.getPhone()));
+            f.setEmail(nullIfBlank(payload.getEmail()));
+            f.setGstin(nullIfBlank(payload.getGstin()));
+            f.setBankName(nullIfBlank(payload.getBankName()));
+            f.setBankAccount(nullIfBlank(payload.getBankAccount()));
+            f.setBankIfsc(nullIfBlank(payload.getBankIfsc()));
+            f.setFooterNote(nullIfBlank(payload.getFooterNote()));
+            f.setLogoBase64(payload.getLogoBase64());
+        } else {
+            f.setFirmName("New Firm");
+        }
         return repo.save(f);
+    }
+
+    public FirmDetails create() {
+        return create(null);
     }
 
     public FirmDetails update(Long id, FirmDetails payload) {

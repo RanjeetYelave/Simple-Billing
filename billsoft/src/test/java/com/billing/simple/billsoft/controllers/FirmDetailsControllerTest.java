@@ -51,6 +51,20 @@ class FirmDetailsControllerTest {
     }
 
     @Test
+    void testCreateWithBody() throws Exception {
+        FirmDetails f = new FirmDetails();
+        f.setId(2L);
+        f.setFirmName("Sai Enterprises");
+        when(service.create(any(FirmDetails.class))).thenReturn(f);
+        mockMvc.perform(post("/api/firm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(f)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.firmName").value("Sai Enterprises"));
+    }
+
+    @Test
     void testUpdate() throws Exception {
         FirmDetails f = new FirmDetails();
         f.setFirmName("Updated");

@@ -3783,7 +3783,9 @@
     }
 
     function FirstTimeSetupComponent({ onComplete }) {
-      const [wizardMode, setWizardMode] = useState('new'); // 'new' | 'restore'
+      const [wizardMode, setWizardMode] = useState(null); // null = welcome screen | 'new' | 'restore'
+      const [step, setStep] = useState(1); // current step within a mode
+      const [animDir, setAnimDir] = useState('forward'); // 'forward' | 'back'
 
       // New Firm details
       const [firmName, setFirmName] = useState('');
@@ -3799,7 +3801,7 @@
       const [bankName, setBankName] = useState('');
       const [bankAccount, setBankAccount] = useState('');
       const [bankIfsc, setBankIfsc] = useState('');
-      
+
       const [enableLock, setEnableLock] = useState(false);
       const [password, setPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
@@ -3812,6 +3814,10 @@
       const [restoreProductKey, setRestoreProductKey] = useState('');
       const [restoreError, setRestoreError] = useState('');
       const [restoreLoading, setRestoreLoading] = useState(false);
+
+      const goNext = () => { setAnimDir('forward'); setError(''); setStep(s => s + 1); };
+      const goBack = () => { setAnimDir('back'); setError(''); setStep(s => s - 1); };
+      const startMode = (mode) => { setWizardMode(mode); setStep(1); setAnimDir('forward'); };
 
       const handleSubmit = async (e) => {
         e.preventDefault();
@@ -3909,134 +3915,470 @@
         }
       };
 
-      return React.createElement('div', { className: 'login-container', style: { padding: '40px 20px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 640, width: '100%', padding: '40px 32px' } },
-          React.createElement('div', { style: { textAlign: 'center', marginBottom: 24 } },
-            React.createElement('div', { className: 'login-logo', style: { margin: '0 auto 12px' } }, 'B'),
-            React.createElement('h2', { style: { fontSize: '1.6rem', fontWeight: 700 } }, 'First-Time Setup Wizard'),
-            React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 } }, 'Configure your firm details, security, and activation to get started.')
-          ),
-          
-          React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24 } },
-            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'new' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('new') }, 'Set Up New Firm'),
-            React.createElement('button', { type: 'button', className: `btn ${wizardMode === 'restore' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setWizardMode('restore') }, 'Restore from Backup')
-          ),
+      // ── Step validators ──────────────────────────────────────────────────────────
+      const validateNewStep = (s) => {
+        if (s === 1 && !firmName.trim()) { setError('Firm Name is required to continue.'); return false; }
+        if (s === 3 && enableLock) {
+          if (!password) { setError('Please enter a lock password.'); return false; }
+          if (password !== confirmPassword) { setError('Passwords do not match.'); return false; }
+        }
+        return true;
+      };
+      const handleNextStep = () => { if (validateNewStep(step)) goNext(); };
 
-          wizardMode === 'new' ? React.createElement(Fragment, null,
-            error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, error),
-            React.createElement('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Firm Information'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Firm Name (Required)'),
-                  React.createElement('input', { type: 'text', className: 'input', value: firmName, onChange: e => setFirmName(e.target.value), required: true })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Owner Name'),
-                  React.createElement('input', { type: 'text', className: 'input', value: ownerName, onChange: e => setOwnerName(e.target.value) })
-                )
+      // ── Wizard layout helpers ─────────────────────────────────────────────────────
+      const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
+      const RESTORE_STEPS = ['Upload Backup', 'Activation'];
+
+      const WizardContainer = ({ children, title, subtitle }) =>
+        React.createElement('div', {
+          style: {
+            minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px',
+            fontFamily: "'Inter', -apple-system, sans-serif"
+          }
+        },
+          React.createElement('div', {
+            style: {
+              width: '100%', maxWidth: 620,
+              background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20,
+              boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+              overflow: 'hidden'
+            }
+          },
+            // Header band
+            React.createElement('div', {
+              style: {
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                padding: '28px 32px 24px', textAlign: 'center'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.4rem', fontWeight: 800, color: '#fff',
+                  margin: '0 auto 12px', letterSpacing: '-1px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+                }
+              }, 'B'),
+              React.createElement('h1', { style: { color: '#fff', fontSize: '1.4rem', fontWeight: 700, margin: '0 0 4px' } }, title),
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0 } }, subtitle)
+            ),
+            // Card body
+            React.createElement('div', { style: { padding: '28px 32px 32px' } }, children)
+          )
+        );
+
+      const StepIndicator = ({ steps, current }) =>
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 } },
+          steps.map((label, i) => {
+            const idx = i + 1;
+            const done = idx < current;
+            const active = idx === current;
+            return React.createElement(Fragment, { key: idx },
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 } },
+                React.createElement('div', {
+                  style: {
+                    width: 32, height: 32, borderRadius: '50%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700,
+                    background: done ? '#22c55e' : active ? '#6366f1' : 'rgba(255,255,255,0.08)',
+                    color: done || active ? '#fff' : 'rgba(255,255,255,0.4)',
+                    border: active ? '2px solid #a5b4fc' : done ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
+                    transition: 'all 0.3s ease', boxShadow: active ? '0 0 0 4px rgba(99,102,241,0.25)' : 'none'
+                  }
+                }, done ? '✓' : idx),
+                React.createElement('span', {
+                  style: {
+                    fontSize: '0.65rem', marginTop: 5, color: active ? '#a5b4fc' : done ? '#86efac' : 'rgba(255,255,255,0.35)',
+                    fontWeight: active ? 700 : 500, textAlign: 'center', maxWidth: 70, lineHeight: 1.2
+                  }
+                }, label)
               ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Email Address'),
-                  React.createElement('input', { type: 'email', className: 'input', value: email, onChange: e => setEmail(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Phone Number'),
-                  React.createElement('input', { type: 'text', className: 'input', value: phone, onChange: e => setPhone(e.target.value) })
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Address Line 1'),
-                  React.createElement('input', { type: 'text', className: 'input', value: address1, onChange: e => setAddress1(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Address Line 2'),
-                  React.createElement('input', { type: 'text', className: 'input', value: address2, onChange: e => setAddress2(e.target.value) })
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'City'),
-                  React.createElement('input', { type: 'text', className: 'input', value: city, onChange: e => setCity(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'State'),
-                  React.createElement('input', { type: 'text', className: 'input', value: state, onChange: e => setState(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Pincode'),
-                  React.createElement('input', { type: 'text', className: 'input', value: pincode, onChange: e => setPincode(e.target.value) })
-                )
-              ),
+              i < steps.length - 1 && React.createElement('div', {
+                style: {
+                  flex: 1, height: 2, marginBottom: 22,
+                  background: done ? '#22c55e' : 'rgba(255,255,255,0.1)',
+                  transition: 'background 0.3s ease'
+                }
+              })
+            );
+          })
+        );
+
+      const FieldGroup = ({ label, children, required }) =>
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          React.createElement('label', {
+            style: { fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+          }, label, required && React.createElement('span', { style: { color: '#f87171', marginLeft: 3 } }, '*')),
+          children
+        );
+
+      const WizardInput = (props) =>
+        React.createElement('input', {
+          ...props,
+          style: {
+            width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '0.9rem', boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+            color: '#fff', outline: 'none', transition: 'border-color 0.2s',
+            ...(props.style || {})
+          },
+          onFocus: e => { e.target.style.borderColor = '#6366f1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.2)'; },
+          onBlur: e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.boxShadow = 'none'; }
+        });
+
+      const NavRow = ({ onBack, onNext, nextLabel, loading, nextDisabled }) =>
+        React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 } },
+          onBack
+            ? React.createElement('button', {
+                type: 'button', onClick: onBack,
+                style: {
+                  padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
+                  fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                },
+                onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
+                onMouseOut: e => e.target.style.background = 'transparent'
+              }, '← Back')
+            : React.createElement('div', null),
+          React.createElement('button', {
+            type: 'button', onClick: onNext, disabled: loading || nextDisabled,
+            style: {
+              padding: '10px 28px', borderRadius: 10, border: 'none',
+              background: loading || nextDisabled ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff', cursor: loading || nextDisabled ? 'not-allowed' : 'pointer',
+              fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+              transition: 'all 0.2s', letterSpacing: '0.01em'
+            }
+          }, loading ? '⏳ Please wait...' : nextLabel || 'Next →')
+        );
+
+      const ErrorBox = ({ msg }) => msg
+        ? React.createElement('div', {
+            style: {
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+              color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
+            }
+          }, '⚠ ', msg)
+        : null;
+
+      // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
+      if (!wizardMode) {
+        return React.createElement(WizardContainer, {
+          title: 'Welcome to Billsoft', subtitle: 'Professional billing & business management'
+        },
+          React.createElement('p', {
+            style: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }
+          }, 'Get started in minutes. Set up your business profile or restore an existing backup to continue where you left off.'),
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            React.createElement('button', {
+              onClick: () => startMode('new'),
+              style: {
+                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(99,102,241,0.4)',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))',
+                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 16
+              },
+              onMouseOver: e => e.currentTarget.style.borderColor = '#6366f1',
+              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'
+            },
+              React.createElement('div', {
+                style: {
+                  width: 44, height: 44, borderRadius: 12, background: 'rgba(99,102,241,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
+                }
+              }, '🏢'),
               React.createElement('div', null,
-                React.createElement('label', { className: 'label' }, 'GSTIN'),
-                React.createElement('input', { type: 'text', className: 'input', value: gstin, onChange: e => setGstin(e.target.value) })
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Bank Information'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Bank Name'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankName, onChange: e => setBankName(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Account Number'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'IFSC Code'),
-                  React.createElement('input', { type: 'text', className: 'input', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
-                )
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '3. Security Preferences'),
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-                React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' } },
-                  React.createElement('input', { type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked) }),
-                  React.createElement('span', { style: { fontSize: '0.9rem', fontWeight: 600 } }, 'Enable Access Password Lock?')
-                ),
-                enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
-                  React.createElement('div', null,
-                    React.createElement('label', { className: 'label' }, 'Enter Lock Password'),
-                    React.createElement('input', { type: 'password', className: 'input', value: password, onChange: e => setPassword(e.target.value), required: true })
-                  ),
-                  React.createElement('div', null,
-                    React.createElement('label', { className: 'label' }, 'Confirm Lock Password'),
-                    React.createElement('input', { type: 'password', className: 'input', value: confirmPassword, onChange: e => setConfirmPassword(e.target.value), required: true })
-                  )
-                )
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '4. Product Activation'),
-              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
-                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'By default, skipping the activation key starts a 30-day free trial. If you possess a permanent activation key, enter it below.'),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
-                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: productKey, onChange: e => setProductKey(e.target.value) })
-                )
-              ),
-              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, loading ? 'Initializing Application...' : 'Complete First-Time Setup')
-            )
-          ) : React.createElement(Fragment, null,
-            restoreError && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', textAlign: 'left' } }, restoreError),
-            React.createElement('form', { onSubmit: handleRestoreSubmit, style: { display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' } },
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '1. Choose Backup File'),
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Set Up New Firm'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Create your firm profile and start fresh')
+              )
+            ),
+            React.createElement('button', {
+              onClick: () => startMode('restore'),
+              style: {
+                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.04)',
+                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 16
+              },
+              onMouseOver: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)',
+              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+            },
+              React.createElement('div', {
+                style: {
+                  width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
+                }
+              }, '📂'),
               React.createElement('div', null,
-                React.createElement('label', { className: 'label' }, 'Backup JSON File'),
-                React.createElement('input', { type: 'file', accept: '.json', onChange: e => setBackupFile(e.target.files[0]), required: true, style: { padding: '8px 0' } })
-              ),
-              React.createElement('h3', { style: { fontSize: '1.1rem', fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: 6, margin: '10px 0 0' } }, '2. Product Activation'),
-              React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' } },
-                React.createElement('p', { style: { fontSize: '0.85rem', margin: '0 0 10px 0', color: 'var(--text-secondary)' } }, 'Skipping the activation key preserves/starts a 30-day free trial on the restored data.'),
-                React.createElement('div', null,
-                  React.createElement('label', { className: 'label' }, 'Product Key (Masked)'),
-                  React.createElement('input', { type: 'password', className: 'input', placeholder: 'Leave blank to start 30-day trial', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
-                )
-              ),
-              React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: restoreLoading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600, marginTop: 10 } }, restoreLoading ? 'Restoring Data...' : 'Restore Backup & Start Application')
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Restore from Backup'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Import your existing data from a backup file')
+              )
             )
           )
+        );
+      }
+
+      // ── NEW FIRM WIZARD ───────────────────────────────────────────────────────────
+      if (wizardMode === 'new') {
+        return React.createElement(WizardContainer, {
+          title: 'Set Up Your Firm',
+          subtitle: `Step ${step} of ${NEW_STEPS.length} — ${NEW_STEPS[step - 1]}`
+        },
+          React.createElement(StepIndicator, { steps: NEW_STEPS, current: step }),
+          React.createElement(ErrorBox, { msg: error }),
+
+          // Step 1 – Firm Details
+          step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Firm Name', required: true },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Sai Enterprises', value: firmName, onChange: e => setFirmName(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Owner / Proprietor Name' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Ranjeet Yelave', value: ownerName, onChange: e => setOwnerName(e.target.value) })
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Email Address' },
+                React.createElement(WizardInput, { type: 'email', placeholder: 'contact@firm.com', value: email, onChange: e => setEmail(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Phone Number' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '+91 98765 43210', value: phone, onChange: e => setPhone(e.target.value) })
+              )
+            ),
+            React.createElement(FieldGroup, { label: 'GSTIN' },
+              React.createElement(WizardInput, { type: 'text', placeholder: '27AAAAA0000A1Z5', value: gstin, onChange: e => setGstin(e.target.value), style: { textTransform: 'uppercase' } })
+            ),
+            React.createElement(NavRow, {
+              onBack: () => { setWizardMode(null); },
+              onNext: handleNextStep, nextLabel: 'Next: Address & Banking →'
+            })
+          ),
+
+          // Step 2 – Address & Banking
+          step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Address Line 1' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '123 Business Park', value: address1, onChange: e => setAddress1(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Address Line 2' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Near Town Hall', value: address2, onChange: e => setAddress2(e.target.value) })
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+              React.createElement(FieldGroup, { label: 'City' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Mumbai', value: city, onChange: e => setCity(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'State' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'Maharashtra', value: state, onChange: e => setState(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Pincode' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '400001', value: pincode, onChange: e => setPincode(e.target.value) })
+              )
+            ),
+            React.createElement('div', {
+              style: { borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 16, marginTop: 4 }
+            },
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 } }, '🏦 Bank Details (optional)'),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+                React.createElement(FieldGroup, { label: 'Bank Name' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBI', value: bankName, onChange: e => setBankName(e.target.value) })
+                ),
+                React.createElement(FieldGroup, { label: 'Account Number' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: '0000000000000', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
+                ),
+                React.createElement(FieldGroup, { label: 'IFSC Code' },
+                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBIN0000001', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
+                )
+              )
+            ),
+            React.createElement(NavRow, { onBack: goBack, onNext: goNext, nextLabel: 'Next: Security →' })
+          ),
+
+          // Step 3 – Security
+          step === 3 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', {
+              style: {
+                padding: '16px 20px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
+                border: '1px solid rgba(99,102,241,0.25)', marginBottom: 6
+              }
+            },
+              React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+                '🔒 You can optionally set a PIN/password to lock the application. This adds an extra layer of security when the app is opened.')
+            ),
+            React.createElement('label', {
+              style: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: 10 }
+            },
+              React.createElement('input', {
+                type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked),
+                style: { width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }
+              }),
+              React.createElement('span', { style: { fontWeight: 600, color: '#fff', fontSize: '0.9rem' } }, 'Enable access lock / PIN protection'),
+            ),
+            enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+              React.createElement(FieldGroup, { label: 'Lock Password', required: true },
+                React.createElement(WizardInput, { type: 'password', placeholder: '••••••', value: password, onChange: e => setPassword(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Confirm Password', required: true },
+                React.createElement(WizardInput, { type: 'password', placeholder: '••••••', value: confirmPassword, onChange: e => setConfirmPassword(e.target.value) })
+              )
+            ),
+            React.createElement(NavRow, { onBack: goBack, onNext: handleNextStep, nextLabel: 'Next: Activation →' })
+          ),
+
+          // Step 4 – Activation
+          step === 4 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('div', {
+              style: {
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  padding: '16px', background: 'rgba(251,191,36,0.1)', borderRadius: 12,
+                  border: '1px solid rgba(251,191,36,0.3)', textAlign: 'center'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '⏳'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#fbbf24', fontSize: '0.9rem', marginBottom: 4 } }, '30-Day Free Trial'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Skip the key below to begin a 30-day fully featured trial')
+              ),
+              React.createElement('div', {
+                style: {
+                  padding: '16px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
+                  border: '1px solid rgba(99,102,241,0.3)', textAlign: 'center'
+                }
+              },
+                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '🔑'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#a5b4fc', fontSize: '0.9rem', marginBottom: 4 } }, 'Activate Now'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Enter your product key for permanent activation')
+              )
+            ),
+            React.createElement(FieldGroup, { label: 'Product Key (leave blank for free trial)' },
+              React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: productKey, onChange: e => setProductKey(e.target.value) })
+            ),
+            React.createElement(NavRow, {
+              onBack: goBack,
+              onNext: async () => {
+                setError('');
+                setLoading(true);
+                try {
+                  const firmPayload = {
+                    firmName, ownerName, email, phone,
+                    addressLine1: address1, addressLine2: address2,
+                    city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                  };
+                  const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
+                  API.firmId = createdFirm.id;
+                  if (enableLock) await API.auth.enable(password);
+                  if (productKey.trim()) {
+                    const actRes = await API.license.activate(productKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
+                    if (!actRes.success) throw new Error('Invalid Product Key. Please check and try again.');
+                  } else {
+                    await API.license.initTrial();
+                  }
+                  window.showToast && window.showToast('Setup complete! Welcome to Billsoft.', 'success');
+                  onComplete();
+                } catch (err) {
+                  setError(err.message || 'Setup failed. Please try again.');
+                  setLoading(false);
+                }
+              },
+              nextLabel: productKey.trim() ? '🔑 Activate & Launch App' : '🚀 Start Free Trial & Launch',
+              loading
+            })
+          )
+        );
+      }
+
+      // ── RESTORE FLOW ──────────────────────────────────────────────────────────────
+      return React.createElement(WizardContainer, {
+        title: 'Restore from Backup',
+        subtitle: `Step ${step} of ${RESTORE_STEPS.length} — ${RESTORE_STEPS[step - 1]}`
+      },
+        React.createElement(StepIndicator, { steps: RESTORE_STEPS, current: step }),
+        React.createElement(ErrorBox, { msg: restoreError }),
+
+        step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', {
+            style: {
+              border: '2px dashed rgba(99,102,241,0.4)', borderRadius: 14,
+              padding: '28px 20px', textAlign: 'center',
+              background: backupFile ? 'rgba(34,197,94,0.08)' : 'rgba(99,102,241,0.05)',
+              transition: 'all 0.2s', cursor: 'pointer'
+            }
+          },
+            React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, backupFile ? '✅' : '📂'),
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 14px', fontSize: '0.9rem' } },
+              backupFile ? `Selected: ${backupFile.name}` : 'Click to select your Billsoft backup JSON file'
+            ),
+            React.createElement('label', {
+              style: {
+                display: 'inline-block', padding: '8px 20px', borderRadius: 8,
+                background: 'rgba(99,102,241,0.3)', color: '#fff', cursor: 'pointer',
+                fontSize: '0.85rem', fontWeight: 600, border: '1px solid rgba(99,102,241,0.5)'
+              }
+            },
+              backupFile ? '📁 Change File' : '📁 Browse File',
+              React.createElement('input', {
+                type: 'file', accept: '.json',
+                style: { display: 'none' },
+                onChange: e => { setBackupFile(e.target.files[0]); setRestoreError(''); }
+              })
+            )
+          ),
+          React.createElement(NavRow, {
+            onBack: () => { setWizardMode(null); setStep(1); },
+            onNext: () => {
+              if (!backupFile) { setRestoreError('Please select a backup file to continue.'); return; }
+              setRestoreError(''); goNext();
+            },
+            nextLabel: 'Next: Activation →',
+            nextDisabled: !backupFile
+          })
+        ),
+
+        step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', {
+            style: { padding: '14px 18px', background: 'rgba(255,255,255,0.05)', borderRadius: 10, marginBottom: 6 }
+          },
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+              'Restoring: ', React.createElement('strong', { style: { color: '#a5b4fc' } }, backupFile && backupFile.name)
+            )
+          ),
+          React.createElement(FieldGroup, { label: 'Product Key (leave blank for 30-day trial)' },
+            React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
+          ),
+          React.createElement(NavRow, {
+            onBack: goBack,
+            onNext: async () => {
+              setRestoreError('');
+              setRestoreLoading(true);
+              try {
+                const importRes = await API.backup.import(backupFile, 'override');
+                if (importRes.error) throw new Error(importRes.error);
+                const list = await API.firm.list();
+                if (list && list.length) { API.firmId = list[0].id; }
+                else throw new Error('Failed to find restored firm.');
+                if (restoreProductKey.trim()) {
+                  const actRes = await API.license.activate(restoreProductKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
+                  if (!actRes.success) throw new Error('Invalid Product Key.');
+                } else {
+                  await API.license.initTrial();
+                }
+                window.showToast && window.showToast('Backup restored successfully! Welcome back.', 'success');
+                onComplete();
+              } catch (err) {
+                setRestoreError(err.message || 'Restore failed. Please ensure the JSON file is valid.');
+                setRestoreLoading(false);
+              }
+            },
+            nextLabel: restoreProductKey.trim() ? '🔑 Activate & Restore' : '🚀 Restore & Start Trial',
+            loading: restoreLoading
+          })
         )
-      );
     }
 
     function TrialExpiredComponent({ onComplete }) {
@@ -6358,11 +6700,14 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
 
       const initApp = async () => {
         try {
-          const lic = await API.license.status().catch(() => ({ hasFirm: true, status: 'activated', trialDaysRemaining: 30 }));
-          setLicenseStatus(lic.status);
-          setTrialDaysRemaining(lic.trialDaysRemaining);
+          const list = await API.firm.list().catch(() => []);
+          const hasFirmInDb = list && list.length > 0;
+
+          const lic = await API.license.status().catch(() => ({ hasFirm: hasFirmInDb, status: 'trial', trialDaysRemaining: 30 }));
+          setLicenseStatus(lic.status || 'trial');
+          setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
           
-          if (!lic.hasFirm) {
+          if (!hasFirmInDb || !lic.hasFirm) {
             setFirstTimeSetup(true);
             setAppLoaded(true);
             return;
@@ -6370,7 +6715,6 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
             setFirstTimeSetup(false);
           }
 
-          const list = await API.firm.list().catch(() => []);
           if (list && list.length) {
             API.firmId = list[0].id;
             setFirmName(list[0].firmName || '');
@@ -6750,7 +7094,8 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right' },
-              licenseStatus === 'trial' && React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`),
+              licenseStatus === 'trial' ? React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15, display: 'flex', alignItems: 'center', gap: 6 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`) :
+              licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, marginRight: 15, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))

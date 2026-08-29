@@ -53,21 +53,8 @@ public class ShellMain extends Application {
             if (newState == javafx.concurrent.Worker.State.SUCCEEDED) {
                 try {
                     netscape.javascript.JSObject win = (netscape.javascript.JSObject) engine.executeScript("window");
-                    win.setMember("javafxPrintHelper", new Object() {
-                        public void print() {
-                            Platform.runLater(() -> {
-                                javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
-                                if (job != null) {
-                                    boolean proceed = job.showPrintDialog(primaryStage);
-                                    if (proceed) {
-                                        webView.getEngine().print(job);
-                                        job.endJob();
-                                    }
-                                }
-                            });
-                        }
-                    });
-                    engine.executeScript("window.print = function() { window.javafxPrintHelper.print(); };");
+                    win.setMember("javafxPrintHelper", new JavafxPrintHelper(primaryStage, webView));
+                    engine.executeScript("window.print = function() { if (window.javafxPrintHelper && window.javafxPrintHelper.print) { window.javafxPrintHelper.print(); } };");
                 } catch (Exception e) {
                     System.err.println("Failed to inject print bridge: " + e.getMessage());
                 }
@@ -198,6 +185,29 @@ public class ShellMain extends Application {
             try {
                 backendProcess.waitFor(5, TimeUnit.SECONDS);
             } catch (InterruptedException ignored) {}
+        }
+    }
+
+    public static class JavafxPrintHelper {
+        private final Stage stage;
+        private final WebView webView;
+
+        public JavafxPrintHelper(Stage stage, WebView webView) {
+            this.stage = stage;
+            this.webView = webView;
+        }
+
+        public void print() {
+            Platform.runLater(() -> {
+                javafx.print.PrinterJob job = javafx.print.PrinterJob.createPrinterJob();
+                if (job != null) {
+                    boolean proceed = job.showPrintDialog(stage);
+                    if (proceed) {
+                        webView.getEngine().print(job);
+                        job.endJob();
+                    }
+                }
+            });
         }
     }
 }

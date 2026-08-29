@@ -3784,6 +3784,144 @@
       );
     }
 
+    // ── Wizard layout helpers ─────────────────────────────────────────────────────
+    const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
+    const RESTORE_STEPS = ['Upload Backup', 'Activation'];
+
+    const WizardContainer = ({ children, title, subtitle }) =>
+      React.createElement('div', {
+        style: {
+          minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px',
+          fontFamily: "'Inter', -apple-system, sans-serif"
+        }
+      },
+        React.createElement('div', {
+          style: {
+            width: '100%', maxWidth: 620,
+            background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+            overflow: 'hidden'
+          }
+        },
+          // Header band
+          React.createElement('div', {
+            style: {
+              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+              padding: '28px 32px 24px', textAlign: 'center'
+            }
+          },
+            React.createElement('div', {
+              style: {
+                width: 52, height: 52, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.2)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.4rem', fontWeight: 800, color: '#fff',
+                margin: '0 auto 12px', letterSpacing: '-1px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+              }
+            }, 'B'),
+            React.createElement('h1', { style: { color: '#fff', fontSize: '1.4rem', fontWeight: 700, margin: '0 0 4px' } }, title),
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0 } }, subtitle)
+          ),
+          // Card body
+          React.createElement('div', { style: { padding: '28px 32px 32px' } }, children)
+        )
+      );
+
+    const StepIndicator = ({ steps, current }) =>
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 } },
+        steps.map((label, i) => {
+          const idx = i + 1;
+          const done = idx < current;
+          const active = idx === current;
+          return React.createElement(Fragment, { key: idx },
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 } },
+              React.createElement('div', {
+                style: {
+                  width: 32, height: 32, borderRadius: '50%', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700,
+                  background: done ? '#22c55e' : active ? '#6366f1' : 'rgba(255,255,255,0.08)',
+                  color: done || active ? '#fff' : 'rgba(255,255,255,0.4)',
+                  border: active ? '2px solid #a5b4fc' : done ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
+                  transition: 'all 0.3s ease', boxShadow: active ? '0 0 0 4px rgba(99,102,241,0.25)' : 'none'
+                }
+              }, done ? '✓' : idx),
+              React.createElement('span', {
+                style: {
+                  fontSize: '0.65rem', marginTop: 5, color: active ? '#a5b4fc' : done ? '#86efac' : 'rgba(255,255,255,0.35)',
+                  fontWeight: active ? 700 : 500, textAlign: 'center', maxWidth: 70, lineHeight: 1.2
+                }
+              }, label)
+            ),
+            i < steps.length - 1 && React.createElement('div', {
+              style: {
+                flex: 1, height: 2, marginBottom: 22,
+                background: done ? '#22c55e' : 'rgba(255,255,255,0.1)',
+                transition: 'background 0.3s ease'
+              }
+            })
+          );
+        })
+      );
+
+    const FieldGroup = ({ label, children, required }) =>
+      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+        React.createElement('label', {
+          style: { fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+        }, label, required && React.createElement('span', { style: { color: '#f87171', marginLeft: 3 } }, '*')),
+        children
+      );
+
+    const WizardInput = (props) =>
+      React.createElement('input', {
+        ...props,
+        style: {
+          width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '0.9rem', boxSizing: 'border-box',
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+          color: '#fff', outline: 'none', transition: 'border-color 0.2s',
+          ...(props.style || {})
+        },
+        onFocus: e => { e.target.style.borderColor = '#6366f1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.2)'; },
+        onBlur: e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.boxShadow = 'none'; }
+      });
+
+    const NavRow = ({ onBack, onNext, nextLabel, loading, nextDisabled }) =>
+      React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 } },
+        onBack
+          ? React.createElement('button', {
+              type: 'button', onClick: onBack,
+              style: {
+                padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
+                background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
+                fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+              },
+              onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
+              onMouseOut: e => e.target.style.background = 'transparent'
+            }, '← Back')
+          : React.createElement('div', null),
+        React.createElement('button', {
+          type: 'button', onClick: onNext, disabled: loading || nextDisabled,
+          style: {
+            padding: '10px 28px', borderRadius: 10, border: 'none',
+            background: loading || nextDisabled ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff', cursor: loading || nextDisabled ? 'not-allowed' : 'pointer',
+            fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+            transition: 'all 0.2s', letterSpacing: '0.01em'
+          }
+        }, loading ? '⏳ Please wait...' : nextLabel || 'Next →')
+      );
+
+    const ErrorBox = ({ msg }) => msg
+      ? React.createElement('div', {
+          style: {
+            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+            color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
+          }
+        }, '⚠ ', msg)
+      : null;
+
     function FirstTimeSetupComponent({ onComplete }) {
       const [wizardMode, setWizardMode] = useState(null); // null = welcome screen | 'new' | 'restore'
       const [step, setStep] = useState(1); // current step within a mode
@@ -3821,102 +3959,6 @@
       const goBack = () => { setAnimDir('back'); setError(''); setStep(s => s - 1); };
       const startMode = (mode) => { setWizardMode(mode); setStep(1); setAnimDir('forward'); };
 
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        if (!firmName.trim()) {
-          setError('Firm Name is required');
-          return;
-        }
-        if (enableLock) {
-          if (!password) {
-            setError('Password is required when lock is enabled');
-            return;
-          }
-          if (password !== confirmPassword) {
-            setError('Passwords do not match');
-            return;
-          }
-        }
-
-        setLoading(true);
-        try {
-          const firmPayload = {
-            firmName, ownerName, email, phone,
-            addressLine1: address1, addressLine2: address2,
-            city, state, pincode, gstin,
-            bankName, bankAccount, bankIfsc
-          };
-          const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
-          API.firmId = createdFirm.id;
-
-          if (enableLock) {
-            await API.auth.enable(password);
-          }
-
-          if (productKey.trim()) {
-            const actRes = await API.license.activate(productKey.trim()).catch(err => {
-              throw new Error("Invalid Product Key. Setup aborted.");
-            });
-            if (!actRes.success) {
-              throw new Error("Invalid Product Key. Setup aborted.");
-            }
-          } else {
-            await API.license.initTrial();
-          }
-
-          window.showToast && window.showToast('First-time setup completed successfully!', 'success');
-          onComplete();
-        } catch (err) {
-          setError(err.message || 'Setup failed. Please try again.');
-          setLoading(false);
-        }
-      };
-
-      const handleRestoreSubmit = async (e) => {
-        e.preventDefault();
-        setRestoreError('');
-        if (!backupFile) {
-          setRestoreError('Please select a backup file');
-          return;
-        }
-
-        setRestoreLoading(true);
-        try {
-          // Import backup as a new firm (merge = false/override)
-          const importRes = await API.backup.import(backupFile, 'override');
-          if (importRes.error) {
-            throw new Error(importRes.error);
-          }
-
-          // Fetch the restored firm list to select the first one
-          const list = await API.firm.list();
-          if (list && list.length) {
-            API.firmId = list[0].id;
-          } else {
-            throw new Error("Failed to find the restored firm details.");
-          }
-
-          // Handle product activation or start trial
-          if (restoreProductKey.trim()) {
-            const actRes = await API.license.activate(restoreProductKey.trim()).catch(err => {
-              throw new Error("Invalid Product Key. Activation failed.");
-            });
-            if (!actRes.success) {
-              throw new Error("Invalid Product Key. Activation failed.");
-            }
-          } else {
-            await API.license.initTrial();
-          }
-
-          window.showToast && window.showToast('Backup restored and setup completed successfully!', 'success');
-          onComplete();
-        } catch (err) {
-          setRestoreError(err.message || 'Restore failed. Please make sure the JSON file is valid.');
-          setRestoreLoading(false);
-        }
-      };
-
       // ── Step validators ──────────────────────────────────────────────────────────
       const validateNewStep = (s) => {
         if (s === 1 && !firmName.trim()) { setError('Firm Name is required to continue.'); return false; }
@@ -3927,144 +3969,6 @@
         return true;
       };
       const handleNextStep = () => { if (validateNewStep(step)) goNext(); };
-
-      // ── Wizard layout helpers ─────────────────────────────────────────────────────
-      const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
-      const RESTORE_STEPS = ['Upload Backup', 'Activation'];
-
-      const WizardContainer = ({ children, title, subtitle }) =>
-        React.createElement('div', {
-          style: {
-            minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px',
-            fontFamily: "'Inter', -apple-system, sans-serif"
-          }
-        },
-          React.createElement('div', {
-            style: {
-              width: '100%', maxWidth: 620,
-              background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20,
-              boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
-              overflow: 'hidden'
-            }
-          },
-            // Header band
-            React.createElement('div', {
-              style: {
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                padding: '28px 32px 24px', textAlign: 'center'
-              }
-            },
-              React.createElement('div', {
-                style: {
-                  width: 52, height: 52, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.2)', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4rem', fontWeight: 800, color: '#fff',
-                  margin: '0 auto 12px', letterSpacing: '-1px',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
-                }
-              }, 'B'),
-              React.createElement('h1', { style: { color: '#fff', fontSize: '1.4rem', fontWeight: 700, margin: '0 0 4px' } }, title),
-              React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0 } }, subtitle)
-            ),
-            // Card body
-            React.createElement('div', { style: { padding: '28px 32px 32px' } }, children)
-          )
-        );
-
-      const StepIndicator = ({ steps, current }) =>
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 } },
-          steps.map((label, i) => {
-            const idx = i + 1;
-            const done = idx < current;
-            const active = idx === current;
-            return React.createElement(Fragment, { key: idx },
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 } },
-                React.createElement('div', {
-                  style: {
-                    width: 32, height: 32, borderRadius: '50%', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700,
-                    background: done ? '#22c55e' : active ? '#6366f1' : 'rgba(255,255,255,0.08)',
-                    color: done || active ? '#fff' : 'rgba(255,255,255,0.4)',
-                    border: active ? '2px solid #a5b4fc' : done ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
-                    transition: 'all 0.3s ease', boxShadow: active ? '0 0 0 4px rgba(99,102,241,0.25)' : 'none'
-                  }
-                }, done ? '✓' : idx),
-                React.createElement('span', {
-                  style: {
-                    fontSize: '0.65rem', marginTop: 5, color: active ? '#a5b4fc' : done ? '#86efac' : 'rgba(255,255,255,0.35)',
-                    fontWeight: active ? 700 : 500, textAlign: 'center', maxWidth: 70, lineHeight: 1.2
-                  }
-                }, label)
-              ),
-              i < steps.length - 1 && React.createElement('div', {
-                style: {
-                  flex: 1, height: 2, marginBottom: 22,
-                  background: done ? '#22c55e' : 'rgba(255,255,255,0.1)',
-                  transition: 'background 0.3s ease'
-                }
-              })
-            );
-          })
-        );
-
-      const FieldGroup = ({ label, children, required }) =>
-        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-          React.createElement('label', {
-            style: { fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }
-          }, label, required && React.createElement('span', { style: { color: '#f87171', marginLeft: 3 } }, '*')),
-          children
-        );
-
-      const WizardInput = (props) =>
-        React.createElement('input', {
-          ...props,
-          style: {
-            width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '0.9rem', boxSizing: 'border-box',
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-            color: '#fff', outline: 'none', transition: 'border-color 0.2s',
-            ...(props.style || {})
-          },
-          onFocus: e => { e.target.style.borderColor = '#6366f1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.2)'; },
-          onBlur: e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.boxShadow = 'none'; }
-        });
-
-      const NavRow = ({ onBack, onNext, nextLabel, loading, nextDisabled }) =>
-        React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 } },
-          onBack
-            ? React.createElement('button', {
-                type: 'button', onClick: onBack,
-                style: {
-                  padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
-                  background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
-                  fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
-                },
-                onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
-                onMouseOut: e => e.target.style.background = 'transparent'
-              }, '← Back')
-            : React.createElement('div', null),
-          React.createElement('button', {
-            type: 'button', onClick: onNext, disabled: loading || nextDisabled,
-            style: {
-              padding: '10px 28px', borderRadius: 10, border: 'none',
-              background: loading || nextDisabled ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: '#fff', cursor: loading || nextDisabled ? 'not-allowed' : 'pointer',
-              fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-              transition: 'all 0.2s', letterSpacing: '0.01em'
-            }
-          }, loading ? '⏳ Please wait...' : nextLabel || 'Next →')
-        );
-
-      const ErrorBox = ({ msg }) => msg
-        ? React.createElement('div', {
-            style: {
-              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-              color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
-            }
-          }, '⚠ ', msg)
-        : null;
 
       // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
       if (!wizardMode) {
@@ -4381,6 +4285,7 @@
             loading: restoreLoading
           })
         )
+      );
     }
 
     function TrialExpiredComponent({ onComplete }) {

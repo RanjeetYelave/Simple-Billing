@@ -298,13 +298,7 @@ public class UpdateService {
         sendProgressEvent();
 
         java.net.URL url = new java.net.URI(downloadUrl).toURL();
-        String basePath;
-        try {
-            basePath = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
-        } catch (Exception e) {
-            basePath = System.getProperty("user.dir");
-        }
-        Path targetPath = Paths.get(basePath, "billsoft-update.war");
+        Path targetPath = getUpdateFilePath();
 
         // Cleanup: Delete any old or partial update file before starting a new download
         java.io.File oldUpdate = targetPath.toFile();
@@ -473,5 +467,21 @@ public class UpdateService {
             hexString.append(hex);
         }
         return hexString.toString();
+    }
+
+    private Path getUpdateFilePath() {
+        try {
+            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            java.io.File parentDir = codeSourceFile.getParentFile();
+            if (parentDir != null && parentDir.exists()) {
+                return parentDir.toPath().resolve("billsoft-update.war");
+            }
+        } catch (Exception ignored) {}
+
+        java.io.File runtimeDir = new java.io.File(System.getProperty("user.dir"), "runtime");
+        if (runtimeDir.exists()) {
+            return runtimeDir.toPath().resolve("billsoft-update.war");
+        }
+        return Paths.get(System.getProperty("user.dir"), "billsoft-update.war");
     }
 }

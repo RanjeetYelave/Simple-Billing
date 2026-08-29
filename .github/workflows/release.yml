@@ -97,6 +97,7 @@ jobs:
                    --java-options "-Djava.awt.headless=false"
 
           "@echo off`r`nstart `"`" `"%~dp0Billsoft.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/Billsoft/Start-Billsoft.bat
+          Copy-Item deleteall.bat dist-pkg/Billsoft/deleteall.bat
 
           Compress-Archive -Path dist-pkg/Billsoft/* -DestinationPath Billsoft-Windows-x64.zip
 

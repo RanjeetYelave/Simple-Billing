@@ -1,10 +1,12 @@
-name: Build and Release WAR
+name: Build and Release
 
 on:
   push:
     branches:
       - OTA_update
       - Release-branch
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -79,33 +81,47 @@ jobs:
           New-Item -ItemType Directory -Force -Path package-input
           New-Item -ItemType Directory -Force -Path package-input/runtime
           Copy-Item launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
-          Copy-Item shell/target/shell-0.0.1-SNAPSHOT.jar package-input/shell.jar
           Copy-Item billsoft/target/billsoft-0.0.1-SNAPSHOT.war package-input/runtime/billsoft.war
 
-      - name: Package Windows Installer
+      - name: Package Standalone Portable Zip
         shell: pwsh
         run: |
-          jpackage --name SimpleBilling `
+          jpackage --name Billsoft `
+                   --input package-input `
+                   --main-jar launcher.jar `
+                   --main-class com.billing.simple.launcher.LauncherMain `
+                   --type app-image `
+                   --dest dist-pkg `
+                   --app-version 1.0.${{ github.run_number }} `
+                   --vendor "Billsoft"
+
+          "@echo off`r`nstart `"`" `"%~dp0Billsoft.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/Billsoft/Start-Billsoft.bat
+
+          Compress-Archive -Path dist-pkg/Billsoft/* -DestinationPath Billsoft-Windows-x64.zip
+
+      - name: Package Windows Installer (MSI)
+        shell: pwsh
+        run: |
+          jpackage --name Billsoft `
                    --input package-input `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type msi `
                    --app-version 1.0.${{ github.run_number }} `
-                   --vendor "SimpleBilling" `
+                   --vendor "Billsoft" `
                    --win-menu `
                    --win-shortcut `
                    --win-per-user-install
 
-      - name: Locate and Rename MSI
-        shell: pwsh
-        run: |
-          Get-ChildItem -Filter *.msi | Rename-Item -NewName SimpleBillingInstaller.msi
+          Get-ChildItem -Filter *.msi | Rename-Item -NewName Billsoft-Setup.msi
 
-      - name: Upload MSI artifact
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi
-          path: SimpleBillingInstaller.msi
+          name: windows-distribution
+          path: |
+            Billsoft-Windows-x64.zip
+            Billsoft-Setup.msi
           if-no-files-found: error
 
   release:
@@ -122,10 +138,10 @@ jobs:
           name: war-payload
           path: ./dist
 
-      - name: Download Windows MSI
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          name: windows-msi
+          name: windows-distribution
           path: ./dist
 
       - name: Generate Release Notes
@@ -134,7 +150,7 @@ jobs:
             cat billsoft/release-notes.txt > release-notes.txt
           else
             echo "## Billsoft Release v1.0.${{ github.run_number }}" > release-notes.txt
-            echo "Standard update and improvements." >> release-notes.txt
+            echo "Standalone background service with custom offline domain and bundled JRE." >> release-notes.txt
           fi
 
       - name: Release to GitHub
@@ -146,6 +162,7 @@ jobs:
           files: |
             dist/billsoft.war
             dist/billsoft.war.sha256
-            dist/SimpleBillingInstaller.msi
+            dist/Billsoft-Windows-x64.zip
+            dist/Billsoft-Setup.msi
           generate_release_notes: false
           fail_on_unmatched_files: true

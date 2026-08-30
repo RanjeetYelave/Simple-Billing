@@ -5373,57 +5373,72 @@
                   borderRadius: 6, transition: 'width 0.4s ease-in-out'
                 }
               })
+            ),
+            React.createElement('div', {
               style: {
-              fontSize: '0.84rem', color: 'var(--text-secondary)',
-              lineHeight: 1.55, margin: '0 0 14px 0'
-            }
-            }, 'The update files are being replaced and the RupeeCRM background service is restarting. Please do not close or manually reload this window; the system will automatically reconnect as soon as it is ready.'),
-
-    // Steps Checklist
-    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
-        '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
-      ),
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
-        '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
-      ),
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
-        '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
-      )
-    ),
-
-      React.createElement('div', {
-        style: {
-          marginTop: 14, paddingTop: 10, borderTop: '1px dashed rgba(59,130,246,0.2)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          fontSize: '0.78rem', color: 'var(--text-secondary)'
-        }
-      },
-        React.createElement('span', null, `⏱️ Time elapsed: ${formatTime(elapsedSeconds)}`),
-        React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600 } }, 'Auto-monitoring server...')
-      )
+                display: 'flex', justifyContent: 'space-between',
+                fontSize: '0.8rem', color: 'var(--text-secondary)'
+              }
+            },
+              React.createElement('span', null, speed || ''),
+              React.createElement('span', null, `${percent}%`),
+              React.createElement('span', null, size || '')
+            )
           ),
 
-    // General Status Message
-    !isRestarting && React.createElement('p', {
-      style: {
-        color: isError ? 'var(--danger)' : 'var(--text-secondary)',
-        fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
-      }
-    }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
+          // Restarting Message & Steps Checklist
+          isRestarting && React.createElement('div', { style: { marginTop: 8, marginBottom: 16 } },
+            React.createElement('p', {
+              style: {
+                fontSize: '0.84rem', color: 'var(--text-secondary)',
+                lineHeight: 1.55, margin: '0 0 14px 0'
+              }
+            }, 'The update files are being replaced and the RupeeCRM background service is restarting. The system will automatically reconnect as soon as it is ready.'),
 
-      // Footer Action Buttons
-      showComplete && React.createElement('button', {
-        className: 'btn btn-primary btn-lg',
-        style: { marginTop: 12, width: '100%' },
-        onClick: () => { window.location.reload(); }
-      }, '🚀 Launch Updated App Now'),
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
+                '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
+              ),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
+                '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
+              ),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
+                '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
+              )
+            ),
 
-      isError && React.createElement('button', {
-        className: 'btn btn-outline',
-        style: { marginTop: 12 },
-        onClick: onComplete
-      }, 'Close')
+            React.createElement('div', {
+              style: {
+                marginTop: 14, paddingTop: 10, borderTop: '1px dashed rgba(59,130,246,0.2)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: '0.78rem', color: 'var(--text-secondary)'
+              }
+            },
+              React.createElement('span', null, `⏱️ Time elapsed: ${formatTime(elapsedSeconds)}`),
+              React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600 } }, 'Auto-monitoring server...')
+            )
+          ),
+
+          // General Status Message
+          !isRestarting && React.createElement('p', {
+            style: {
+              color: isError ? 'var(--danger)' : 'var(--text-secondary)',
+              fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
+            }
+          }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
+
+          // Footer Action Buttons
+          showComplete && React.createElement('button', {
+            className: 'btn btn-primary btn-lg',
+            style: { marginTop: 12, width: '100%' },
+            onClick: () => { window.location.reload(); }
+          }, '🚀 Launch Updated App Now'),
+
+          (isError || isRestarting) && React.createElement('button', {
+            className: 'btn btn-outline btn-sm',
+            style: { marginTop: 12, width: '100%', fontSize: '0.82rem' },
+            onClick: onComplete
+          }, isRestarting ? 'Dismiss Overlay (Backend Running in Background)' : 'Close')
         )
       );
     }

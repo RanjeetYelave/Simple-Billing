@@ -105,6 +105,7 @@ jobs:
       - name: Package Windows Installer (MSI)
         shell: pwsh
         run: |
+          # 1. Run jpackage with --temp to extract default WiX resources
           jpackage --name RupeeCRM `
                    --input package-input `
                    --main-jar launcher.jar `
@@ -115,7 +116,40 @@ jobs:
                    --win-menu `
                    --win-shortcut `
                    --win-per-user-install `
-                   --java-options "-Djava.awt.headless=false"
+                   --java-options "-Djava.awt.headless=false" `
+                   --temp wix-temp
+
+          # 2. Inject LaunchApplication CustomAction into main.wxs so MSI starts service on install
+          New-Item -ItemType Directory -Force -Path wix-resources
+          if (Test-Path "wix-temp/main.wxs") {
+              $customAction = @"
+    <CustomAction Id="LaunchAppOnExit" Directory="INSTALLDIR" ExeCommand="`"[INSTALLDIR]RupeeCRM.exe`"" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+    <InstallExecuteSequence>
+      <Custom Action="LaunchAppOnExit" After="InstallFinalize">NOT Installed</Custom>
+    </InstallExecuteSequence>
+  </Product>
+"@
+              $wxs = Get-Content "wix-temp/main.wxs" -Raw
+              $wxs = $wxs -replace '</Product>', $customAction
+              Set-Content -Path "wix-resources/main.wxs" -Value $wxs -Encoding UTF8
+
+              # Remove initial MSI before rebuilding with custom action
+              Remove-Item *.msi -Force -ErrorAction SilentlyContinue
+
+              # 3. Build final MSI with auto-launch capability
+              jpackage --name RupeeCRM `
+                       --input package-input `
+                       --main-jar launcher.jar `
+                       --main-class com.billing.simple.launcher.LauncherMain `
+                       --type msi `
+                       --app-version 1.0.${{ github.run_number }} `
+                       --vendor "RupeeCRM" `
+                       --win-menu `
+                       --win-shortcut `
+                       --win-per-user-install `
+                       --java-options "-Djava.awt.headless=false" `
+                       --resource-dir wix-resources
+          }
 
           Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
 

@@ -6,6 +6,7 @@ on:
       - OTA_update
       - Release-branch
       - main
+      - overhaul
   workflow_dispatch:
 
 permissions:

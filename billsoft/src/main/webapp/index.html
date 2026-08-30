@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,6 +13,7 @@
   <script src="js/utils.js?v=4"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
+  <script src="js/themeToggle.js"></script>
   <script src="js/vendor/pdf.min.js"></script>
   <script>
     if (typeof pdfjsLib !== 'undefined') {
@@ -20,8 +22,10 @@
   </script>
   <meta name="theme-color" content="#4f46e5" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110'%3E%3Cdefs%3E%3ClinearGradient id='bl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='40%25' stop-color='%231d4ed8'/%3E%3Cstop offset='100%25' stop-color='%230f2766'/%3E%3C/linearGradient%3E%3ClinearGradient id='br' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%231e40af'/%3E%3C/linearGradient%3E%3ClinearGradient id='gl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300d685'/%3E%3Cstop offset='60%25' stop-color='%23059669'/%3E%3Cstop offset='100%25' stop-color='%23047857'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z' fill='url(%23bl)'/%3E%3Crect x='10' y='38' width='38' height='9' rx='4.5' fill='url(%23br)'/%3E%3Crect x='10' y='52' width='36' height='9' rx='4.5' fill='url(%23br)'/%3E%3Cpath d='M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z' fill='url(%23br)'/%3E%3Cpath d='M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z' fill='url(%23gl)'/%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110'%3E%3Cdefs%3E%3ClinearGradient id='bl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='40%25' stop-color='%231d4ed8'/%3E%3Cstop offset='100%25' stop-color='%230f2766'/%3E%3C/linearGradient%3E%3ClinearGradient id='br' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%231e40af'/%3E%3C/linearGradient%3E%3ClinearGradient id='gl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300d685'/%3E%3Cstop offset='60%25' stop-color='%23059669'/%3E%3Cstop offset='100%25' stop-color='%23047857'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z' fill='url(%23bl)'/%3E%3Crect x='10' y='38' width='38' height='9' rx='4.5' fill='url(%23br)'/%3E%3Crect x='10' y='52' width='36' height='9' rx='4.5' fill='url(%23br)'/%3E%3Cpath d='M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z' fill='url(%23br)'/%3E%3Cpath d='M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z' fill='url(%23gl)'/%3E%3C/svg%3E" />
 </head>
+
 <body>
   <div id="root"></div>
   <script type="text/javascript">
@@ -397,17 +401,17 @@
       return React.createElement('div', null,
         React.createElement('div', { className: 'manager-header', style: { gap: 16, flexWrap: 'wrap' } },
           React.createElement('div', { className: 'manager-search', style: { flex: 1, minWidth: 260 } },
-            React.createElement('input', { 
-              className: 'input', 
-              placeholder: 'Search by customer, date, number...', 
-              value: searchQuery, 
-              onChange: e => setSearchQuery(e.target.value) 
+            React.createElement('input', {
+              className: 'input',
+              placeholder: 'Search by customer, date, number...',
+              value: searchQuery,
+              onChange: e => setSearchQuery(e.target.value)
             })
           ),
           React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
-            React.createElement('select', { 
-              className: 'select', 
-              value: statusFilter, 
+            React.createElement('select', {
+              className: 'select',
+              value: statusFilter,
               onChange: e => setStatusFilter(e.target.value),
               style: { minWidth: 160 }
             },
@@ -417,54 +421,54 @@
           )
         ),
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-        filteredDocs.length === 0 ? React.createElement('div', { className: 'empty-state', style: { padding: 40 } },
-          React.createElement('h3', null, 'No documents found'),
-          React.createElement('p', null, 'Try matching a different status or search filter.')
-        ) :
-        React.createElement('div', { className: 'card' },
-          React.createElement('div', { className: 'table-container' },
-            React.createElement('table', null,
-              React.createElement('thead', null,
-                React.createElement('tr', null,
-                  React.createElement('th', null, 'Type'),
-                  React.createElement('th', null, 'Number'),
-                  React.createElement('th', null, 'Customer'),
-                  React.createElement('th', null, 'Date'),
-                  React.createElement('th', null, 'Amount (₹)'),
-                  React.createElement('th', null, 'Status'),
-                  React.createElement('th', null, 'Actions')
-                )
-              ),
-              React.createElement('tbody', null,
-                filteredDocs.map(doc => React.createElement('tr', { key: `${doc.docType}-${doc.id}` },
-                  React.createElement('td', null, React.createElement('span', { className: `badge ${doc.isEstimate ? 'badge-draft' : 'badge-final'}` }, doc.docType)),
-                  React.createElement('td', { style: { fontWeight: 500 } }, doc.docNumber),
-                  React.createElement('td', null, doc.customer ? doc.customer.name : '—'),
-                  React.createElement('td', null, BillsoftUtils.formatDate(doc.invoiceDate || doc.estimateDate)),
-                  React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(doc.totalAmount)),
-                  React.createElement('td', null, React.createElement(StatusDropdown, { 
-                    invoiceId: doc.id, 
-                    currentStatus: doc.status, 
-                    isEstimate: doc.isEstimate, 
-                    onStatusChange: handleStatusChange 
-                  })),
-                  React.createElement('td', null,
-                    React.createElement('button', { 
-                      className: 'btn btn-sm btn-outline', 
-                      onClick: () => {
-                        if (doc.isEstimate) {
-                          if (onEditQuotation) onEditQuotation(doc.id);
-                        } else {
-                          if (onEditInvoice) onEditInvoice(doc.id);
-                        }
-                      } 
-                    }, 'Edit')
+          filteredDocs.length === 0 ? React.createElement('div', { className: 'empty-state', style: { padding: 40 } },
+            React.createElement('h3', null, 'No documents found'),
+            React.createElement('p', null, 'Try matching a different status or search filter.')
+          ) :
+            React.createElement('div', { className: 'card' },
+              React.createElement('div', { className: 'table-container' },
+                React.createElement('table', null,
+                  React.createElement('thead', null,
+                    React.createElement('tr', null,
+                      React.createElement('th', null, 'Type'),
+                      React.createElement('th', null, 'Number'),
+                      React.createElement('th', null, 'Customer'),
+                      React.createElement('th', null, 'Date'),
+                      React.createElement('th', null, 'Amount (₹)'),
+                      React.createElement('th', null, 'Status'),
+                      React.createElement('th', null, 'Actions')
+                    )
+                  ),
+                  React.createElement('tbody', null,
+                    filteredDocs.map(doc => React.createElement('tr', { key: `${doc.docType}-${doc.id}` },
+                      React.createElement('td', null, React.createElement('span', { className: `badge ${doc.isEstimate ? 'badge-draft' : 'badge-final'}` }, doc.docType)),
+                      React.createElement('td', { style: { fontWeight: 500 } }, doc.docNumber),
+                      React.createElement('td', null, doc.customer ? doc.customer.name : '—'),
+                      React.createElement('td', null, BillsoftUtils.formatDate(doc.invoiceDate || doc.estimateDate)),
+                      React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(doc.totalAmount)),
+                      React.createElement('td', null, React.createElement(StatusDropdown, {
+                        invoiceId: doc.id,
+                        currentStatus: doc.status,
+                        isEstimate: doc.isEstimate,
+                        onStatusChange: handleStatusChange
+                      })),
+                      React.createElement('td', null,
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-outline',
+                          onClick: () => {
+                            if (doc.isEstimate) {
+                              if (onEditQuotation) onEditQuotation(doc.id);
+                            } else {
+                              if (onEditInvoice) onEditInvoice(doc.id);
+                            }
+                          }
+                        }, 'Edit')
+                      )
+                    ))
                   )
-                ))
+                )
               )
             )
-          )
-        )
       );
     }
 
@@ -646,7 +650,7 @@
           const inSearch = !q || (e.title && e.title.toLowerCase().includes(q)) || (e.notes && e.notes.toLowerCase().includes(q));
           const inCat = !expenseCategoryFilter || e.category === expenseCategoryFilter;
           const inMonth = !expenseMonthFilter || (e.expenseDate && e.expenseDate.startsWith(expenseMonthFilter));
-          
+
           let inDateRange = true;
           if (fromDateFilter && e.expenseDate && e.expenseDate < fromDateFilter) inDateRange = false;
           if (toDateFilter && e.expenseDate && e.expenseDate > toDateFilter) inDateRange = false;
@@ -690,7 +694,7 @@
 
       const handlePrintExpenseStatement = () => {
         const firmObj = firms && firms.length > 0 ? (firms.find(f => f.id === API.firmId) || firms[0]) : { firmName: 'RupeeCRM Business' };
-        
+
         let rangeLabel = 'All Historical Records';
         if (fromDateFilter || toDateFilter) {
           rangeLabel = `${fromDateFilter || 'Beginning'} to ${toDateFilter || 'Today'}`;
@@ -1046,7 +1050,7 @@
 
           // 4-Column Board Grid Layout
           React.createElement('div', { className: 'planner-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 } },
-            
+
             // Column 1: Reminders
             React.createElement('div', { className: 'card planner-column', style: { display: 'flex', flexDirection: 'column', minHeight: 420, padding: 18 } },
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: '2px solid #7c3aed', paddingBottom: 8 } },
@@ -1313,7 +1317,7 @@
                   value: toDateFilter,
                   onChange: e => setToDateFilter(e.target.value)
                 }),
-                
+
                 // Date Presets
                 React.createElement('button', {
                   className: 'btn btn-ghost btn-sm',
@@ -1428,7 +1432,7 @@
             React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
               editingItem ? `Edit ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}` : `New ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}`
             ),
-            
+
             // Title Input
             React.createElement('div', null,
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title / Description *'),
@@ -1788,8 +1792,8 @@
 
       useEffect(() => {
         API.analytics.firm().then(d => { setData(d); setLoading(false); }).catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
-        API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => {});
-        API.employees.analytics().then(setEmpAnalytics).catch(() => {});
+        API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => { });
+        API.employees.analytics().then(setEmpAnalytics).catch(() => { });
         API.customers.list().then(setCustomers).catch(() => []);
       }, []);
       const handleSearch = useCallback(BillsoftUtils.debounce((name) => {
@@ -1819,8 +1823,8 @@
         const totalExpenses = expenses ? expenses.reduce((acc, e) => acc + (e.amount || 0), 0) : 0;
         const currentMonthExpenses = expenses
           ? expenses
-              .filter(e => e.expenseDate && e.expenseDate.startsWith(currentMonthStr))
-              .reduce((acc, e) => acc + (e.amount || 0), 0)
+            .filter(e => e.expenseDate && e.expenseDate.startsWith(currentMonthStr))
+            .reduce((acc, e) => acc + (e.amount || 0), 0)
           : 0;
 
         const pendingTasks = reminders ? reminders.filter(r => r.type === 'task' && !r.completed).length : 0;
@@ -1958,11 +1962,13 @@
       return React.createElement('div', null,
 
         // Primary Banner: Latest Inbox Message (replaces update banner when message exists)
-        latestUnread ? React.createElement('div', { className: 'card', style: {
-          borderLeft: `4px solid ${latestUnread.reminderId ? '#f59e0b' : 'var(--primary)'}`,
-          backgroundColor: latestUnread.reminderId ? '#fffbeb' : '#eef2ff',
-          marginBottom: 20, padding: '14px 20px'
-        } },
+        latestUnread ? React.createElement('div', {
+          className: 'card', style: {
+            borderLeft: `4px solid ${latestUnread.reminderId ? '#f59e0b' : 'var(--primary)'}`,
+            backgroundColor: latestUnread.reminderId ? '#fffbeb' : '#eef2ff',
+            marginBottom: 20, padding: '14px 20px'
+          }
+        },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 } },
             React.createElement('div', { style: { flex: 1 } },
               // Header
@@ -2027,17 +2033,17 @@
             )
           )
         ) :
-        // Fallback: Update Banner (only shown when no unread messages)
-        (updateInfo && !updateDismissed) && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-          React.createElement('div', null,
-            React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, 'Update Available!'),
-            React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
+          // Fallback: Update Banner (only shown when no unread messages)
+          (updateInfo && !updateDismissed) && React.createElement('div', { className: 'update-banner card', style: { borderLeft: '4px solid var(--primary)', backgroundColor: '#eef2ff', marginBottom: 24, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: '0 0 4px 0', color: 'var(--primary)' } }, 'Update Available!'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' } }, `Version ${updateInfo.latestVersion} is available.`)
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, '⚡ Install Update'),
+              React.createElement('button', { className: 'btn btn-sm', style: { backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }, onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
+            )
           ),
-          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-            React.createElement('button', { className: 'btn btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, '⚡ Install Update'),
-            React.createElement('button', { className: 'btn btn-sm', style: { backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }, onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
-          )
-        ),
 
         // Clean & Standardized Quick Controls Bar
         React.createElement('div', { className: 'card', style: { marginBottom: 24, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
@@ -2174,7 +2180,7 @@
             React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 } },
               quickModalType === 'reminder' ? '🔔 Quick Reminder' : (quickModalType === 'task' ? '📋 Quick Task' : (quickModalType === 'expense' ? '💸 Quick Expense' : '📝 Quick Note'))
             ),
-            
+
             // Title Input
             React.createElement('div', null,
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title *'),
@@ -2353,7 +2359,7 @@
     }
 
     // ─── SHARED INVOICE/QUOTATION FORM ───
-        function InvoiceForm({ editId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange }) {
+    function InvoiceForm({ editId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange }) {
       const [customers, setCustomers] = useState([]);
       const [products, setProducts] = useState([]);
       const [loading, setLoading] = useState(true);
@@ -2363,10 +2369,10 @@
       const [showExtraCustomer, setShowExtraCustomer] = useState(false);
       const [showCompletionPopup, setShowCompletionPopup] = useState(false);
       const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
-      
+
       const isEstimate = isQuotationMode;
       const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', hsnCode: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
-      
+
       const [form, setForm] = useState({
         customerId: '', customerName: '', customerPhone: '', customerAddress: '',
         customerEmail: '', customerGstin: '',
@@ -2383,13 +2389,13 @@
       const refName = useRef(null);
       const refPhone = useRef(null);
       const refAddress = useRef(null);
-      
+
       useEffect(() => {
         if (loadedRef.current) return;
         loadedRef.current = true;
         const prevFirmId = API.firmId;
         if (activeFirmId) API.firmId = activeFirmId;
-        
+
         Promise.all([API.customers.list(), API.products.list()])
           .then(([custs, prods]) => {
             setCustomers(custs);
@@ -2452,8 +2458,8 @@
                 });
               });
             } else {
-              if (isEstimate) { return API.invoices.nextEstimateNumber().then(n => setForm(f => ({ ...f, estimateNumber: n }))).catch(() => {}); }
-              else { return API.invoices.nextInvoiceNumber().then(n => setForm(f => ({ ...f, invoiceNumber: n }))).catch(() => {}); }
+              if (isEstimate) { return API.invoices.nextEstimateNumber().then(n => setForm(f => ({ ...f, estimateNumber: n }))).catch(() => { }); }
+              else { return API.invoices.nextInvoiceNumber().then(n => setForm(f => ({ ...f, invoiceNumber: n }))).catch(() => { }); }
             }
           })
           .catch(e => { showToast('Failed to load data', 'error'); })
@@ -2515,20 +2521,20 @@
         if (!form.customerName) { showToast('Customer Name is mandatory', 'error'); return; }
         const validItems = form.items.filter(it => it.productId || it.pricePerUnit > 0);
         if (validItems.length === 0) { showToast('Please add at least one product item', 'error'); return; }
-        
+
         setSaving(true);
         setSubmitDisabled(true);
-        
+
         const prevFirmId = API.firmId;
         if (activeFirmId) API.firmId = activeFirmId;
 
         try {
           let finalCustId = form.customerId;
           if (!finalCustId) {
-             const created = await API.customers.create({ name: form.customerName, phone: form.customerPhone || null, address: form.customerAddress || null, email: form.customerEmail || null, gstin: form.customerGstin || null });
-             finalCustId = created.id;
-             setCustomers(prev => [...prev, created]);
-             setForm(f => ({ ...f, customerId: String(created.id) }));
+            const created = await API.customers.create({ name: form.customerName, phone: form.customerPhone || null, address: form.customerAddress || null, email: form.customerEmail || null, gstin: form.customerGstin || null });
+            finalCustId = created.id;
+            setCustomers(prev => [...prev, created]);
+            setForm(f => ({ ...f, customerId: String(created.id) }));
           }
 
           const reqItems = validItems.map(it => ({
@@ -2566,17 +2572,17 @@
             savedInv = await API.invoices.create(req);
             showToast('Invoice created', 'success');
           }
-          
+
           setCreatedInvoiceId(savedInv.id);
 
           if (andPrint) {
-             try {
-               const blob = await API.invoices.downloadPdf(savedInv.id); 
-               BillsoftUtils.printBlob(blob);
-             } catch(e) {
-               console.error('Print failed:', e);
-               showToast('Print failed', 'error');
-             }
+            try {
+              const blob = await API.invoices.downloadPdf(savedInv.id);
+              BillsoftUtils.printBlob(blob);
+            } catch (e) {
+              console.error('Print failed:', e);
+              showToast('Print failed', 'error');
+            }
           }
 
           if (!keepOpen && onSaved) {
@@ -2584,15 +2590,15 @@
           } else {
             setShowCompletionPopup(false);
           }
-        } catch (e) { 
-          showToast(e.message || 'Save failed', 'error'); 
-        } finally { 
+        } catch (e) {
+          showToast(e.message || 'Save failed', 'error');
+        } finally {
           setSubmitDisabled(false);
-          setSaving(false); 
+          setSaving(false);
           if (activeFirmId) API.firmId = prevFirmId;
         }
       };
-      
+
       const handleCustomerSelect = (e) => {
         const id = e.target.value;
         if (!id) {
@@ -2670,7 +2676,7 @@
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading form...'));
 
       return React.createElement('div', { className: 'invoice-form', onKeyDown: handleFormKeyDown, style: { paddingBottom: 100 } },
-        
+
         showCompletionPopup && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCompletionPopup(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
@@ -2678,15 +2684,15 @@
               React.createElement('button', { className: 'modal-close', onClick: () => setShowCompletionPopup(false) }, '✕')
             ),
             React.createElement('div', { className: 'modal-body', style: { display: 'flex', gap: 16, flexDirection: 'column' } },
-               React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false) }, 'Save & Exit [Enter or 1]'),
-               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => handleSave(true, false) }, 'Save & Print [P or 2]'),
-               React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => { handleSave(false, true); setTimeout(() => window.location.reload(), 1000); } }, 'Save & Create Another [C or 3]')
+              React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false) }, 'Save & Exit [Enter or 1]'),
+              React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => handleSave(true, false) }, 'Save & Print [P or 2]'),
+              React.createElement('button', { className: 'btn btn-outline btn-lg', onClick: () => { handleSave(false, true); setTimeout(() => window.location.reload(), 1000); } }, 'Save & Create Another [C or 3]')
             )
           )
         ),
 
         React.createElement('div', { className: 'invoice-form-header', style: { display: 'flex', gap: 20, alignItems: 'flex-start' } },
-          
+
           React.createElement('div', { className: 'card', style: { flex: 2 } },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
               React.createElement('div', { className: 'card-title' }, 'Customer Details'),
@@ -2696,63 +2702,63 @@
               )
             ),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-               React.createElement('div', null, 
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Name *'),
-                  React.createElement('input', { ref: refName, className: 'input', value: form.customerName, onChange: e => setForm(f => ({ ...f, customerName: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refPhone), placeholder: 'Enter Name' })
-               ),
-               React.createElement('div', null, 
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Mobile'),
-                  React.createElement('input', { ref: refPhone, className: 'input', value: form.customerPhone, onChange: e => setForm(f => ({ ...f, customerPhone: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refAddress), placeholder: 'Enter Mobile' })
-               ),
-               React.createElement('div', null, 
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Address'),
-                  React.createElement('input', { ref: refAddress, className: 'input', value: form.customerAddress, onChange: e => setForm(f => ({ ...f, customerAddress: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, 'first-item'), placeholder: 'Enter Address' })
-               )
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Name *'),
+                React.createElement('input', { ref: refName, className: 'input', value: form.customerName, onChange: e => setForm(f => ({ ...f, customerName: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refPhone), placeholder: 'Enter Name' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Mobile'),
+                React.createElement('input', { ref: refPhone, className: 'input', value: form.customerPhone, onChange: e => setForm(f => ({ ...f, customerPhone: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refAddress), placeholder: 'Enter Mobile' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Address'),
+                React.createElement('input', { ref: refAddress, className: 'input', value: form.customerAddress, onChange: e => setForm(f => ({ ...f, customerAddress: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, 'first-item'), placeholder: 'Enter Address' })
+              )
             ),
             React.createElement('div', { style: { marginTop: 12 } },
               React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setShowExtraCustomer(!showExtraCustomer) }, showExtraCustomer ? '− Hide Extra Details' : '+ Add More Details')
             ),
             showExtraCustomer && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' } },
-               React.createElement('div', null, 
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Email'),
-                  React.createElement('input', { className: 'input', value: form.customerEmail, onChange: e => setForm(f => ({ ...f, customerEmail: e.target.value, customerId: '' })) })
-               ),
-               React.createElement('div', null, 
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'GSTIN'),
-                  React.createElement('input', { className: 'input', value: form.customerGstin, onChange: e => setForm(f => ({ ...f, customerGstin: e.target.value, customerId: '' })) })
-               )
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Email'),
+                React.createElement('input', { className: 'input', value: form.customerEmail, onChange: e => setForm(f => ({ ...f, customerEmail: e.target.value, customerId: '' })) })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'GSTIN'),
+                React.createElement('input', { className: 'input', value: form.customerGstin, onChange: e => setForm(f => ({ ...f, customerGstin: e.target.value, customerId: '' })) })
+              )
             )
           ),
 
           React.createElement('div', { className: 'card', style: { flex: 1, minWidth: 300 } },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Invoice Details'),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr', gap: 12 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, 
-                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Billing Firm'),
-                 React.createElement('div', { style: { display: 'flex', gap: 8 } },
-                   onTypeChange && !editId && React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: isQuotationMode ? 'quotation' : 'invoice', onChange: e => { setForm(f => ({ ...f, status: e.target.value === 'quotation' ? 'ESTIMATE' : 'FINAL' })); onTypeChange(e.target.value); } },
-                     React.createElement('option', { value: 'invoice' }, 'Invoice'),
-                     React.createElement('option', { value: 'quotation' }, 'Quotation')
-                   ),
-                   React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: activeFirmId || API.firmId, onChange: e => onFirmChange(e.target.value) },
-                      firms && firms.map(f => React.createElement('option', { key: f.id, value: String(f.id) }, f.firmName))
-                   )
-                 )
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Billing Firm'),
+                React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                  onTypeChange && !editId && React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: isQuotationMode ? 'quotation' : 'invoice', onChange: e => { setForm(f => ({ ...f, status: e.target.value === 'quotation' ? 'ESTIMATE' : 'FINAL' })); onTypeChange(e.target.value); } },
+                    React.createElement('option', { value: 'invoice' }, 'Invoice'),
+                    React.createElement('option', { value: 'quotation' }, 'Quotation')
+                  ),
+                  React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: activeFirmId || API.firmId, onChange: e => onFirmChange(e.target.value) },
+                    firms && firms.map(f => React.createElement('option', { key: f.id, value: String(f.id) }, f.firmName))
+                  )
+                )
               ),
               React.createElement('div', { style: { display: 'flex', gap: 12 } },
-                React.createElement('div', { style: { flex: 1 } }, 
-                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
-                   React.createElement('input', { className: 'input', type: 'date', value: form.invoiceDate, onChange: e => setForm(f => ({ ...f, invoiceDate: e.target.value })) })
+                React.createElement('div', { style: { flex: 1 } },
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
+                  React.createElement('input', { className: 'input', type: 'date', value: form.invoiceDate, onChange: e => setForm(f => ({ ...f, invoiceDate: e.target.value })) })
                 ),
-                React.createElement('div', { style: { flex: 1 } }, 
-                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
-                   React.createElement('input', { className: 'input', type: 'date', value: form.dueDate, onChange: e => setForm(f => ({ ...f, dueDate: e.target.value })) })
+                React.createElement('div', { style: { flex: 1 } },
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
+                  React.createElement('input', { className: 'input', type: 'date', value: form.dueDate, onChange: e => setForm(f => ({ ...f, dueDate: e.target.value })) })
                 )
               )
             )
           )
         ),
-        
+
         React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
           React.createElement('div', { className: 'card-header' },
             React.createElement('div', { className: 'card-title' }, 'Line Items'),
@@ -2794,8 +2800,8 @@
                           updateItem(idx, 'productId', String(created.id), created);
                         },
                         onEnterAfterSelect: () => {
-                           const row = document.querySelectorAll('.invoice-items-table tbody tr')[idx];
-                           if (row) { const inputs = row.querySelectorAll('input'); if (inputs[1]) inputs[1].focus(); }
+                          const row = document.querySelectorAll('.invoice-items-table tbody tr')[idx];
+                          if (row) { const inputs = row.querySelectorAll('input'); if (inputs[1]) inputs[1].focus(); }
                         }
                       })
                     ),
@@ -2805,8 +2811,8 @@
                     React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 65 }, value: item.discountValue, onChange: e => updateItem(idx, 'discountValue', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); const inputs = e.target.closest('tr').querySelectorAll('input'); if (inputs[5]) inputs[5].focus(); } } })),
                     React.createElement('td', null, React.createElement('input', { className: 'input input-sm', type: 'number', step: 0.01, min: 0, style: { width: 55 }, value: item.gstPercent, onChange: e => updateItem(idx, 'gstPercent', e.target.value.replace(/[^0-9.]/g, '')), onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); if (isLast) { addItem(); setTimeout(() => { const rows = document.querySelectorAll('.invoice-items-table tbody tr'); const lastRow = rows[rows.length - 1]; if (lastRow) { const firstInp = lastRow.querySelector('input'); if (firstInp) firstInp.focus(); } }, 50); } else { const nextRow = e.target.closest('tr').nextElementSibling; if (nextRow) { const firstInp = nextRow.querySelector('input'); if (firstInp) firstInp.focus(); } } } } })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
-                    React.createElement('td', null, 
-                       React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
+                    React.createElement('td', null,
+                      React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
                     )
                   );
                 })
@@ -2814,7 +2820,7 @@
             )
           )
         ),
-        
+
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24, marginBottom: 24 } },
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Notes & Terms'),
@@ -2832,7 +2838,7 @@
                   React.createElement('option', { value: 'PERCENT' }, '%'),
                   React.createElement('option', { value: 'VALUE' }, '₹')
                 ),
-                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value.replace(/[^0-9.]/g, '') } }) ) })
+                React.createElement('input', { className: 'input', type: 'number', step: 0.01, min: 0, placeholder: '0', value: form.invoiceDiscount.value, onChange: e => setForm(f => ({ ...f, invoiceDiscount: { ...f.invoiceDiscount, value: e.target.value.replace(/[^0-9.]/g, '') } })) })
               )
             ),
             calcTotals.invoiceDiscount > 0 && createSumRow('Invoice Disc.', -calcTotals.invoiceDiscount),
@@ -2854,9 +2860,9 @@
         React.createElement('div', { className: 'form-actions', style: { position: 'fixed', bottom: 0, right: 0, left: 240, padding: '12px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)', zIndex: 100, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
           React.createElement('div', { style: { fontSize: '0.9rem', color: 'var(--text-secondary)' } }, 'Press TAB on last item row to finish'),
           React.createElement('div', { style: { display: 'flex', gap: 12 } },
-             React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowCompletionPopup(true) }, 'Options...'),
-             React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false), disabled: saving || submitDisabled },
-               saving ? 'Saving...' : (editId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : 'Save Invoice')))
+            React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowCompletionPopup(true) }, 'Options...'),
+            React.createElement('button', { className: 'btn btn-primary btn-lg', onClick: () => handleSave(false, false), disabled: saving || submitDisabled },
+              saving ? 'Saving...' : (editId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : 'Save Invoice')))
           )
         )
       );
@@ -2940,7 +2946,7 @@
         }
       };
 
-      return React.createElement('select', { 
+      return React.createElement('select', {
         className: `badge ${BillsoftUtils.getStatusClass(currentStatus)}`,
         value: currentStatus,
         onChange: handleSelect,
@@ -3033,44 +3039,44 @@
           )
         ),
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-        filtered.length === 0 ? React.createElement('div', { className: 'empty-state' },
-          React.createElement('h3', null, 'No invoices found'),
-          React.createElement('p', null, 'Create your first invoice to get started.')
-        ) :
-        React.createElement(Fragment, null,
-          React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'table-container' },
-            React.createElement('table', null,
-              React.createElement('thead', null,
-                React.createElement('tr', null,
-                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('number') }, 'Number', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('customer') }, 'Customer', sortField === 'customer' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('date') }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('amount') }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => toggleSort('status') }, 'Status', sortField === 'status' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', null, 'Actions')
-                )
-              ),
-              React.createElement('tbody', null,
-                filtered.map(inv => React.createElement('tr', { key: inv.id },
-                  React.createElement('td', { style: { fontWeight: 500 } }, inv.invoiceNumber || '—'),
-                  React.createElement('td', null, inv.customer ? inv.customer.name : '—'),
-                  React.createElement('td', null, BillsoftUtils.formatDate(inv.invoiceDate)),
-                  React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
-                  React.createElement('td', null, React.createElement(StatusDropdown, { invoiceId: inv.id, currentStatus: inv.status, isEstimate: false, onStatusChange: handleStatusChange })),
-                  React.createElement('td', null,
-                    React.createElement('div', { className: 'action-buttons' },
-                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditInvoice(inv.id) }, 'Edit'),
-                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(inv.id) }, 'Print'),
-                      React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(inv.id) }, 'PDF'),
-                      React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(inv.id) }, 'Del')
+          filtered.length === 0 ? React.createElement('div', { className: 'empty-state' },
+            React.createElement('h3', null, 'No invoices found'),
+            React.createElement('p', null, 'Create your first invoice to get started.')
+          ) :
+            React.createElement(Fragment, null,
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'table-container' },
+                  React.createElement('table', null,
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { className: 'sortable', onClick: () => toggleSort('number') }, 'Number', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                        React.createElement('th', { className: 'sortable', onClick: () => toggleSort('customer') }, 'Customer', sortField === 'customer' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                        React.createElement('th', { className: 'sortable', onClick: () => toggleSort('date') }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                        React.createElement('th', { className: 'sortable', onClick: () => toggleSort('amount') }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                        React.createElement('th', { className: 'sortable', onClick: () => toggleSort('status') }, 'Status', sortField === 'status' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                        React.createElement('th', null, 'Actions')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      filtered.map(inv => React.createElement('tr', { key: inv.id },
+                        React.createElement('td', { style: { fontWeight: 500 } }, inv.invoiceNumber || '—'),
+                        React.createElement('td', null, inv.customer ? inv.customer.name : '—'),
+                        React.createElement('td', null, BillsoftUtils.formatDate(inv.invoiceDate)),
+                        React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
+                        React.createElement('td', null, React.createElement(StatusDropdown, { invoiceId: inv.id, currentStatus: inv.status, isEstimate: false, onStatusChange: handleStatusChange })),
+                        React.createElement('td', null,
+                          React.createElement('div', { className: 'action-buttons' },
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditInvoice(inv.id) }, 'Edit'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(inv.id) }, 'Print'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(inv.id) }, 'PDF'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(inv.id) }, 'Del')
+                          )
+                        )
+                      ))
                     )
                   )
-                ))
-              )
-            )
-          )
-        )),
+                )
+              )),
 
         // Delete Invoice Confirmation Modal
         deleteInvoiceId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteInvoiceId(null) },
@@ -3110,7 +3116,7 @@
               try {
                 const inv = await API.invoices.getLinkedInvoice(q.id);
                 if (inv) links[q.id] = inv;
-              } catch (e) {}
+              } catch (e) { }
             }
           }
           setLinkedInvoices(links);
@@ -3178,55 +3184,55 @@
           )
         ),
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-        filtered.length === 0 ? React.createElement('div', { className: 'empty-state' },
-          React.createElement('h3', null, 'No quotations found'),
-          React.createElement('p', null, 'Create your first quotation to get started.')
-        ) :
-        React.createElement('div', { className: 'card' },
-          React.createElement('div', { className: 'table-container' },
-            React.createElement('table', null,
-              React.createElement('thead', null,
-                React.createElement('tr', null,
-                  React.createElement('th', { className: 'sortable', onClick: () => { setSortField('number'); setSortDir(d => sortField === 'number' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Quotation #', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => { setSortField('customer'); setSortDir(d => sortField === 'customer' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Customer', sortField === 'customer' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => { setSortField('date'); setSortDir(d => sortField === 'date' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', { className: 'sortable', onClick: () => { setSortField('amount'); setSortDir(d => sortField === 'amount' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                  React.createElement('th', null, 'Status'),
-                  React.createElement('th', null, 'Actions')
-                )
-              ),
-              React.createElement('tbody', null,
-                filtered.map(q => {
-                  const linkedInv = linkedInvoices[q.id];
-                  const isConverted = !!(q.convertedInvoiceId || linkedInv);
-                  return React.createElement('tr', { key: q.id },
-                    React.createElement('td', { style: { fontWeight: 500 } }, q.estimateNumber || '—'),
-                    React.createElement('td', null, q.customer ? q.customer.name : '—'),
-                    React.createElement('td', null, BillsoftUtils.formatDate(q.invoiceDate)),
-                    React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(q.totalAmount)),
-                    React.createElement('td', null, isConverted
-                      ? React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af' } }, 'Converted')
-                      : React.createElement(StatusDropdown, { invoiceId: q.id, currentStatus: q.status, isEstimate: true, onStatusChange: handleStatusChange })
-                    ),
-                    React.createElement('td', null,
-                      React.createElement('div', { className: 'action-buttons' },
-                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, 'Edit'),
-                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(q.id) }, 'Print'),
-                        React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, 'PDF'),
-                        !isConverted && React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Convert to Invoice', style: { color: 'var(--primary)' }, onClick: () => handleConvertToInvoice(q), disabled: convertingId === q.id }, convertingId === q.id ? '...' : 'Convert'),
-                        React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(q.id) }, 'Del')
-                      ),
-                      isConverted && React.createElement('div', { style: { marginTop: 4, fontSize: '0.75rem', color: 'var(--primary)' } },
-                        `Converted to Invoice ${linkedInv ? linkedInv.invoiceNumber : ''}`,
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { fontSize: '0.75rem', marginLeft: 4 }, onClick: () => onEditQuotation(q.convertedInvoiceId) }, 'Go to Invoice')
-                      )
+          filtered.length === 0 ? React.createElement('div', { className: 'empty-state' },
+            React.createElement('h3', null, 'No quotations found'),
+            React.createElement('p', null, 'Create your first quotation to get started.')
+          ) :
+            React.createElement('div', { className: 'card' },
+              React.createElement('div', { className: 'table-container' },
+                React.createElement('table', null,
+                  React.createElement('thead', null,
+                    React.createElement('tr', null,
+                      React.createElement('th', { className: 'sortable', onClick: () => { setSortField('number'); setSortDir(d => sortField === 'number' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Quotation #', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                      React.createElement('th', { className: 'sortable', onClick: () => { setSortField('customer'); setSortDir(d => sortField === 'customer' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Customer', sortField === 'customer' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                      React.createElement('th', { className: 'sortable', onClick: () => { setSortField('date'); setSortDir(d => sortField === 'date' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                      React.createElement('th', { className: 'sortable', onClick: () => { setSortField('amount'); setSortDir(d => sortField === 'amount' ? (d === 'asc' ? 'desc' : 'asc') : 'desc'); } }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
+                      React.createElement('th', null, 'Status'),
+                      React.createElement('th', null, 'Actions')
                     )
-                  );
-                })
+                  ),
+                  React.createElement('tbody', null,
+                    filtered.map(q => {
+                      const linkedInv = linkedInvoices[q.id];
+                      const isConverted = !!(q.convertedInvoiceId || linkedInv);
+                      return React.createElement('tr', { key: q.id },
+                        React.createElement('td', { style: { fontWeight: 500 } }, q.estimateNumber || '—'),
+                        React.createElement('td', null, q.customer ? q.customer.name : '—'),
+                        React.createElement('td', null, BillsoftUtils.formatDate(q.invoiceDate)),
+                        React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(q.totalAmount)),
+                        React.createElement('td', null, isConverted
+                          ? React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af' } }, 'Converted')
+                          : React.createElement(StatusDropdown, { invoiceId: q.id, currentStatus: q.status, isEstimate: true, onStatusChange: handleStatusChange })
+                        ),
+                        React.createElement('td', null,
+                          React.createElement('div', { className: 'action-buttons' },
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, 'Edit'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(q.id) }, 'Print'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, 'PDF'),
+                            !isConverted && React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Convert to Invoice', style: { color: 'var(--primary)' }, onClick: () => handleConvertToInvoice(q), disabled: convertingId === q.id }, convertingId === q.id ? '...' : 'Convert'),
+                            React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(q.id) }, 'Del')
+                          ),
+                          isConverted && React.createElement('div', { style: { marginTop: 4, fontSize: '0.75rem', color: 'var(--primary)' } },
+                            `Converted to Invoice ${linkedInv ? linkedInv.invoiceNumber : ''}`,
+                            React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { fontSize: '0.75rem', marginLeft: 4 }, onClick: () => onEditQuotation(q.convertedInvoiceId) }, 'Go to Invoice')
+                          )
+                        )
+                      );
+                    })
+                  )
+                )
               )
-            )
-          )
-        ),
+            ),
 
         // Delete Quotation Confirmation Modal
         deleteQuotationId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteQuotationId(null) },
@@ -3273,29 +3279,29 @@
       return React.createElement(Fragment, null,
         React.createElement('div', { className: 'manager-header' }, React.createElement('div', { className: 'card-title' }, 'Products'), React.createElement('button', { className: 'btn btn-primary', onClick: openCreate }, '+ Add Product')),
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-        React.createElement('div', { className: 'card' },
-          React.createElement('div', { className: 'table-container' },
-            React.createElement('table', null,
-              React.createElement('thead', null, React.createElement('tr', null,
-                React.createElement('th', null, 'Name'), React.createElement('th', null, 'HSN/SAC'), React.createElement('th', null, 'Price'), React.createElement('th', null, 'Unit'), React.createElement('th', null, 'GST %'), React.createElement('th', null, 'Actions')
-              )),
-              React.createElement('tbody', null,
-                products.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40 } }, 'No products yet')) :
-                products.map(p => React.createElement('tr', { key: p.id },
-                  React.createElement('td', { style: { fontWeight: 500 } }, p.name),
-                  React.createElement('td', null, p.hsnCode || '—'),
-                  React.createElement('td', null, BillsoftUtils.formatCurrency(p.price)),
-                  React.createElement('td', null, p.unit || '—'),
-                  React.createElement('td', null, p.gstPercentage ? `${p.gstPercentage}%` : '—'),
-                  React.createElement('td', null, React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                    React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => openEdit(p) }, Icons.edit),
-                    React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, onClick: () => handleDelete(p.id) }, Icons.trash)
-                  ))
-                ))
+          React.createElement('div', { className: 'card' },
+            React.createElement('div', { className: 'table-container' },
+              React.createElement('table', null,
+                React.createElement('thead', null, React.createElement('tr', null,
+                  React.createElement('th', null, 'Name'), React.createElement('th', null, 'HSN/SAC'), React.createElement('th', null, 'Price'), React.createElement('th', null, 'Unit'), React.createElement('th', null, 'GST %'), React.createElement('th', null, 'Actions')
+                )),
+                React.createElement('tbody', null,
+                  products.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40 } }, 'No products yet')) :
+                    products.map(p => React.createElement('tr', { key: p.id },
+                      React.createElement('td', { style: { fontWeight: 500 } }, p.name),
+                      React.createElement('td', null, p.hsnCode || '—'),
+                      React.createElement('td', null, BillsoftUtils.formatCurrency(p.price)),
+                      React.createElement('td', null, p.unit || '—'),
+                      React.createElement('td', null, p.gstPercentage ? `${p.gstPercentage}%` : '—'),
+                      React.createElement('td', null, React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                        React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => openEdit(p) }, Icons.edit),
+                        React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, onClick: () => handleDelete(p.id) }, Icons.trash)
+                      ))
+                    ))
+                )
               )
             )
-          )
-        ),
+          ),
         showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
@@ -3365,58 +3371,58 @@
         if (!deleteCustomerId) return;
         API.customers.delete(deleteCustomerId).then(() => { showToast('Deleted', 'success'); load(); }).catch(() => showToast('Delete failed', 'error')).finally(() => setDeleteCustomerId(null));
       };
-      const showAnalytics = (custId) => { if (analytics && analytics.customerId === custId) { setAnalytics(null); return; } API.invoices.analyticsByCustomer(custId).then(d => setAnalytics(d)).catch(() => {}); };
+      const showAnalytics = (custId) => { if (analytics && analytics.customerId === custId) { setAnalytics(null); return; } API.invoices.analyticsByCustomer(custId).then(d => setAnalytics(d)).catch(() => { }); };
       return React.createElement(Fragment, null,
         React.createElement('div', { className: 'manager-header' }, React.createElement('div', { className: 'card-title' }, 'Customers'), React.createElement('button', { className: 'btn btn-primary', onClick: openCreate }, '+ Add Customer')),
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-        React.createElement('div', { className: 'card' },
-          React.createElement('div', { className: 'table-container' },
-            React.createElement('table', null,
-              React.createElement('thead', null, React.createElement('tr', null,
-                React.createElement('th', null, 'Name'), React.createElement('th', null, 'Phone'), React.createElement('th', null, 'Email'), React.createElement('th', null, 'GSTIN'), React.createElement('th', null, 'Actions')
-              )),
-              React.createElement('tbody', null,
-                customers.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 40 } }, 'No customers yet')) :
-                customers.map(c => React.createElement(Fragment, { key: c.id },
-                  React.createElement('tr', { onClick: () => showAnalytics(c.id), style: { cursor: 'pointer' } },
-                    React.createElement('td', { style: { fontWeight: 500 } }, c.name),
-                    React.createElement('td', null, c.phone || '—'),
-                    React.createElement('td', null, c.email || '—'),
-                    React.createElement('td', null, c.gstin || '—'),
-                    React.createElement('td', null, React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                      React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: (e) => { e.stopPropagation(); openEdit(c); } }, Icons.edit),
-                      React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, onClick: (e) => { e.stopPropagation(); handleDelete(c.id); } }, Icons.trash)
-                    ))
-                  ),
-                  analytics && analytics.customerId === c.id && React.createElement('tr', null,
-                    React.createElement('td', { colSpan: 5 },
-                      React.createElement('div', { className: 'customer-analytics' },
-                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
-                          React.createElement('strong', null, `${c.name} - Analytics`),
-                          React.createElement('button', {
-                            className: 'btn btn-sm btn-outline',
-                            onClick: (e) => {
-                              e.stopPropagation();
-                              API.statements.customerPdf(c.id)
-                                .then(blob => BillsoftUtils.downloadBlob(blob, `Cust_${(c.name || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_')}_All_Time.pdf`))
-                                .catch(() => showToast('Failed to download statement', 'error'));
-                            }
-                          }, 'Download PDF Statement')
-                        ),
-                        React.createElement('div', { className: 'customer-analytics-grid' },
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalBusiness))),
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPaid))),
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Pending'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPending))),
-                          React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Invoices'), React.createElement('div', { className: 'value' }, analytics.invoiceCount))
+          React.createElement('div', { className: 'card' },
+            React.createElement('div', { className: 'table-container' },
+              React.createElement('table', null,
+                React.createElement('thead', null, React.createElement('tr', null,
+                  React.createElement('th', null, 'Name'), React.createElement('th', null, 'Phone'), React.createElement('th', null, 'Email'), React.createElement('th', null, 'GSTIN'), React.createElement('th', null, 'Actions')
+                )),
+                React.createElement('tbody', null,
+                  customers.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 40 } }, 'No customers yet')) :
+                    customers.map(c => React.createElement(Fragment, { key: c.id },
+                      React.createElement('tr', { onClick: () => showAnalytics(c.id), style: { cursor: 'pointer' } },
+                        React.createElement('td', { style: { fontWeight: 500 } }, c.name),
+                        React.createElement('td', null, c.phone || '—'),
+                        React.createElement('td', null, c.email || '—'),
+                        React.createElement('td', null, c.gstin || '—'),
+                        React.createElement('td', null, React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                          React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: (e) => { e.stopPropagation(); openEdit(c); } }, Icons.edit),
+                          React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { color: 'var(--danger)' }, onClick: (e) => { e.stopPropagation(); handleDelete(c.id); } }, Icons.trash)
+                        ))
+                      ),
+                      analytics && analytics.customerId === c.id && React.createElement('tr', null,
+                        React.createElement('td', { colSpan: 5 },
+                          React.createElement('div', { className: 'customer-analytics' },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                              React.createElement('strong', null, `${c.name} - Analytics`),
+                              React.createElement('button', {
+                                className: 'btn btn-sm btn-outline',
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  API.statements.customerPdf(c.id)
+                                    .then(blob => BillsoftUtils.downloadBlob(blob, `Cust_${(c.name || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_')}_All_Time.pdf`))
+                                    .catch(() => showToast('Failed to download statement', 'error'));
+                                }
+                              }, 'Download PDF Statement')
+                            ),
+                            React.createElement('div', { className: 'customer-analytics-grid' },
+                              React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalBusiness))),
+                              React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPaid))),
+                              React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Pending'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalPending))),
+                              React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Invoices'), React.createElement('div', { className: 'value' }, analytics.invoiceCount))
+                            )
+                          )
                         )
                       )
-                    )
-                  )
-                ))
+                    ))
+                )
               )
             )
-          )
-        ),
+          ),
         showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() }, React.createElement('div', { className: 'modal-header' },
             React.createElement('div', { className: 'modal-title' }, editItem ? 'Edit Customer' : 'Add Customer'), React.createElement('button', { className: 'modal-close', onClick: () => setShowModal(false) }, '✕')),
@@ -3479,7 +3485,7 @@
         }).catch(() => { showToast('Failed to load firms', 'error'); setLoading(false); });
       };
       useEffect(() => { loadFirms(); }, []);
-      useEffect(() => { if (!selectedFirmId) return; API.firm.get(selectedFirmId).then(f => { setCurrentFirm(f); setData({ ...f }); }).catch(() => {}); }, [selectedFirmId]);
+      useEffect(() => { if (!selectedFirmId) return; API.firm.get(selectedFirmId).then(f => { setCurrentFirm(f); setData({ ...f }); }).catch(() => { }); }, [selectedFirmId]);
       const update = (field, value) => setData(d => d ? { ...d, [field]: value } : d);
       const handleSave = async () => {
         if (!data) return;
@@ -3520,11 +3526,11 @@
           React.createElement('div', { className: 'card-header' }, React.createElement('div', { className: 'card-title' }, 'Firms'), React.createElement('button', { className: 'btn btn-primary', onClick: () => setShowCreateModal(true) }, '+ New Firm')),
           React.createElement('div', null,
             firms.length === 0 ? React.createElement('p', { style: { color: 'var(--text-secondary)', padding: 12 } }, 'No firms. Create one to get started.')
-            : React.createElement('div', { ref: tableRef, style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, firms.map(f => React.createElement('div', { key: f.id, className: `firm-chip${selectedFirmId === f.id ? ' active' : ''}`, onClick: () => handleSwitchFirm(f.id), style: { padding: '10px 16px', borderRadius: 'var(--radius)', border: selectedFirmId === f.id ? '2px solid var(--primary)' : '1px solid var(--border)', background: selectedFirmId === f.id ? 'var(--primary-light)' : 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'var(--transition)' } },
-              React.createElement('div', { style: { width: 32, height: 32, borderRadius: '50%', background: selectedFirmId === f.id ? 'var(--primary)' : 'var(--border)', color: selectedFirmId === f.id ? 'white' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 } }, (f.firmName || '?').charAt(0).toUpperCase()),
-              React.createElement('div', null, React.createElement('div', { style: { fontWeight: 500, fontSize: '0.9rem' } }, f.firmName || 'Unnamed'), React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, selectedFirmId === f.id ? 'Active' : 'Click to switch')),
-              firms.length > 1 && React.createElement('button', { style: { marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '4px', fontSize: '0.8rem', opacity: 0.7 }, onClick: (e) => { e.stopPropagation(); handleDeleteFirm(f.id); }, title: 'Delete firm' }, '✕')
-            ))))
+              : React.createElement('div', { ref: tableRef, style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, firms.map(f => React.createElement('div', { key: f.id, className: `firm-chip${selectedFirmId === f.id ? ' active' : ''}`, onClick: () => handleSwitchFirm(f.id), style: { padding: '10px 16px', borderRadius: 'var(--radius)', border: selectedFirmId === f.id ? '2px solid var(--primary)' : '1px solid var(--border)', background: selectedFirmId === f.id ? 'var(--primary-light)' : 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'var(--transition)' } },
+                React.createElement('div', { style: { width: 32, height: 32, borderRadius: '50%', background: selectedFirmId === f.id ? 'var(--primary)' : 'var(--border)', color: selectedFirmId === f.id ? 'white' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 } }, (f.firmName || '?').charAt(0).toUpperCase()),
+                React.createElement('div', null, React.createElement('div', { style: { fontWeight: 500, fontSize: '0.9rem' } }, f.firmName || 'Unnamed'), React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, selectedFirmId === f.id ? 'Active' : 'Click to switch')),
+                firms.length > 1 && React.createElement('button', { style: { marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '4px', fontSize: '0.8rem', opacity: 0.7 }, onClick: (e) => { e.stopPropagation(); handleDeleteFirm(f.id); }, title: 'Delete firm' }, '✕')
+              ))))
         ),
         showCreateModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCreateModal(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
@@ -3589,7 +3595,7 @@
       const [to, setTo] = useState('');
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(false);
-      useEffect(() => { API.customers.list().then(setCustomers).catch(() => {}); }, []);
+      useEffect(() => { API.customers.list().then(setCustomers).catch(() => { }); }, []);
       const handleGenerate = async () => {
         if (mode === 'customer' && !customerId) { showToast('Select a customer', 'error'); return; }
         setLoading(true);
@@ -3683,7 +3689,7 @@
       const [countdown, setCountdown] = useState(10);
       const [resetConfirmText, setResetConfirmText] = useState('');
       const fileInputRef = useRef(null);
-      
+
       const handleExport = () => { window.location.href = API.backup.exportUrl(); showToast('Exporting backup...', 'info'); };
       const handleImportClick = () => { fileInputRef.current.click(); };
       const handleFileChange = (e) => { const file = e.target.files[0]; if (!file) return; setImportFile(file); e.target.value = ''; };
@@ -3714,7 +3720,7 @@
         setLoading(true);
         try {
           await API.backup.factoryReset();
-          try { localStorage.clear(); sessionStorage.clear(); API.firmId = null; } catch(e) {}
+          try { localStorage.clear(); sessionStorage.clear(); API.firmId = null; } catch (e) { }
           showToast('Factory reset complete. All data deleted.', 'success');
           setTimeout(() => window.location.href = '/', 1000);
         } catch (error) {
@@ -3827,7 +3833,7 @@
               setDevLogPath(res.logFilePath || '');
               setDevLogSize(res.sizeFormatted || '');
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       };
 
@@ -4566,15 +4572,15 @@
       React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 } },
         onBack
           ? React.createElement('button', {
-              type: 'button', onClick: onBack,
-              style: {
-                padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
-                background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
-                fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
-              },
-              onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
-              onMouseOut: e => e.target.style.background = 'transparent'
-            }, '← Back')
+            type: 'button', onClick: onBack,
+            style: {
+              padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
+              background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
+              fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+            },
+            onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
+            onMouseOut: e => e.target.style.background = 'transparent'
+          }, '← Back')
           : React.createElement('div', null),
         React.createElement('button', {
           type: 'button', onClick: onNext, disabled: loading || nextDisabled,
@@ -4590,11 +4596,11 @@
 
     const ErrorBox = ({ msg }) => msg
       ? React.createElement('div', {
-          style: {
-            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-            color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
-          }
-        }, '⚠ ', msg)
+        style: {
+          background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+          color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
+        }
+      }, '⚠ ', msg)
       : null;
 
     function FirstTimeSetupComponent({ onComplete }) {
@@ -5095,7 +5101,7 @@
       const [actLoading, setActLoading] = useState(false);
 
       useEffect(() => {
-        API.license.status().then(setLicenseInfo).catch(() => {});
+        API.license.status().then(setLicenseInfo).catch(() => { });
       }, []);
 
       const handleActivate = async (e) => {
@@ -5107,7 +5113,7 @@
           if (res.success) {
             window.showToast('Product activated permanently!', 'success');
             setProductKey('');
-            API.license.status().then(setLicenseInfo).catch(() => {});
+            API.license.status().then(setLicenseInfo).catch(() => { });
           } else {
             window.showToast('Invalid product key', 'error');
           }
@@ -5335,9 +5341,9 @@
             }
           },
             isError ? 'Update Process Interrupted' :
-            showComplete ? 'Update Successfully Installed!' :
-            isRestarting ? 'Applying Update & Restarting Service' :
-            'Downloading RupeeCRM Update'
+              showComplete ? 'Update Successfully Installed!' :
+                isRestarting ? 'Applying Update & Restarting Service' :
+                  'Downloading RupeeCRM Update'
           ),
           latestVersion ? React.createElement('div', {
             style: {
@@ -5367,92 +5373,57 @@
                   borderRadius: 6, transition: 'width 0.4s ease-in-out'
                 }
               })
-            ),
-            React.createElement('div', {
               style: {
-                display: 'flex', justifyContent: 'space-between',
-                fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '0 2px'
-              }
-            },
-              React.createElement('span', null, speed ? `⚡ ${speed}` : 'Preparing download...'),
-              React.createElement('span', { style: { fontWeight: 600 } }, `${percent}%`),
-              React.createElement('span', null, size ? `📦 ${size}` : '')
-            )
-          ),
-
-          // Restarting Explanatory Panel (Graceful 2-3 min notice)
-          isRestarting && React.createElement('div', {
-            style: {
-              marginTop: 12,
-              marginBottom: 20,
-              padding: '18px 20px',
-              borderRadius: 14,
-              backgroundColor: 'rgba(59, 130, 246, 0.08)',
-              border: '1px solid rgba(59, 130, 246, 0.22)',
-              textAlign: 'left'
+              fontSize: '0.84rem', color: 'var(--text-secondary)',
+              lineHeight: 1.55, margin: '0 0 14px 0'
             }
-          },
-            React.createElement('div', {
-              style: {
-                display: 'flex', alignItems: 'center', gap: 8,
-                color: 'var(--primary)', fontWeight: 700, fontSize: '0.92rem', marginBottom: 6
-              }
-            },
-              React.createElement('span', null, '⏳'),
-              React.createElement('span', null, 'Please wait 2–3 minutes for completion')
-            ),
-            React.createElement('p', {
-              style: {
-                fontSize: '0.84rem', color: 'var(--text-secondary)',
-                lineHeight: 1.55, margin: '0 0 14px 0'
-              }
             }, 'The update files are being replaced and the RupeeCRM background service is restarting. Please do not close or manually reload this window; the system will automatically reconnect as soon as it is ready.'),
-            
-            // Steps Checklist
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
-                '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
-              ),
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
-                '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
-              ),
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
-                '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
-              )
-            ),
 
-            React.createElement('div', {
-              style: {
-                marginTop: 14, paddingTop: 10, borderTop: '1px dashed rgba(59,130,246,0.2)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                fontSize: '0.78rem', color: 'var(--text-secondary)'
-              }
-            },
-              React.createElement('span', null, `⏱️ Time elapsed: ${formatTime(elapsedSeconds)}`),
-              React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600 } }, 'Auto-monitoring server...')
-            )
+    // Steps Checklist
+    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
+        '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
+      ),
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
+        '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
+      ),
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
+        '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
+      )
+    ),
+
+      React.createElement('div', {
+        style: {
+          marginTop: 14, paddingTop: 10, borderTop: '1px dashed rgba(59,130,246,0.2)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontSize: '0.78rem', color: 'var(--text-secondary)'
+        }
+      },
+        React.createElement('span', null, `⏱️ Time elapsed: ${formatTime(elapsedSeconds)}`),
+        React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600 } }, 'Auto-monitoring server...')
+      )
           ),
 
-          // General Status Message
-          !isRestarting && React.createElement('p', {
-            style: {
-              color: isError ? 'var(--danger)' : 'var(--text-secondary)',
-              fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
-            }
-          }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
+    // General Status Message
+    !isRestarting && React.createElement('p', {
+      style: {
+        color: isError ? 'var(--danger)' : 'var(--text-secondary)',
+        fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
+      }
+    }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
 
-          // Footer Action Buttons
-          showComplete && React.createElement('button', {
-            className: 'btn btn-primary btn-lg',
-            style: { marginTop: 12, width: '100%' },
-            onClick: () => { window.location.reload(); }
-          }, '🚀 Launch Updated App Now'),
+      // Footer Action Buttons
+      showComplete && React.createElement('button', {
+        className: 'btn btn-primary btn-lg',
+        style: { marginTop: 12, width: '100%' },
+        onClick: () => { window.location.reload(); }
+      }, '🚀 Launch Updated App Now'),
 
-          isError && React.createElement('button', {
-            className: 'btn btn-outline',
-            style: { marginTop: 12 },
-            onClick: onComplete
-          }, 'Close')
+      isError && React.createElement('button', {
+        className: 'btn btn-outline',
+        style: { marginTop: 12 },
+        onClick: onComplete
+      }, 'Close')
         )
       );
     }
@@ -5468,17 +5439,17 @@
       return React.createElement('div', { className: 'card', style: { maxWidth: 600, margin: '0 auto', padding: '40px 20px', position: 'relative' } },
         React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('div', { style: { marginBottom: 24, color: 'var(--primary)' } }, Icons.update), React.createElement('h2', { style: { marginBottom: 8 } }, 'Software Update')),
         loading ? React.createElement('div', { style: { textAlign: 'center', margin: '40px 0' } }, React.createElement('div', { className: 'spinner', style: { margin: '0 auto' } })) :
-        info ? React.createElement(Fragment, null,
-          React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24, textAlign: 'center' } }, `Current Version: ${info.currentVersion}`),
-          info.updateAvailable ? React.createElement('div', { style: { backgroundColor: '#eef2ff', padding: 20, borderRadius: 8, border: '1px solid #c7d2fe' } },
-            React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, 'New Update Available!'),
-            React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready.`),
-            info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } }, React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'), info.releaseNotes),
-            React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
-              React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, '⚡ Install Update Now')
-            )) :
-          React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of RupeeCRM.'))
-        ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information. Check your internet connection and try again.'),
+          info ? React.createElement(Fragment, null,
+            React.createElement('p', { style: { color: 'var(--text-secondary)', marginBottom: 24, textAlign: 'center' } }, `Current Version: ${info.currentVersion}`),
+            info.updateAvailable ? React.createElement('div', { style: { backgroundColor: '#eef2ff', padding: 20, borderRadius: 8, border: '1px solid #c7d2fe' } },
+              React.createElement('h3', { style: { color: 'var(--primary)', marginTop: 0, textAlign: 'center' } }, 'New Update Available!'),
+              React.createElement('p', { style: { textAlign: 'center' } }, `Version ${info.latestVersion} is ready.`),
+              info.releaseNotes && React.createElement('div', { style: { marginTop: 16, padding: '12px', backgroundColor: '#fff', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: '0.85rem', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' } }, React.createElement('strong', { style: { display: 'block', marginBottom: 6 } }, 'Release Notes:'), info.releaseNotes),
+              React.createElement('div', { style: { display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 } },
+                React.createElement('button', { className: 'btn btn-primary', onClick: handleInstall }, '⚡ Install Update Now')
+              )) :
+              React.createElement('div', { style: { backgroundColor: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'center' } }, React.createElement('h3', { style: { color: '#166534', marginTop: 0 } }, 'You are up to date!'), React.createElement('p', { style: { color: '#15803d', margin: 0 } }, 'You are running the latest version of RupeeCRM.'))
+          ) : React.createElement('p', { style: { color: 'var(--danger)', textAlign: 'center' } }, 'Could not fetch update information. Check your internet connection and try again.'),
         React.createElement('div', { style: { marginTop: 32, textAlign: 'center' } }, React.createElement('button', { className: 'btn btn-ghost', style: { fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }, disabled: loading, onClick: fetchUpdateInfo }, React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh), loading ? 'Checking...' : 'Check for Updates'))
       );
     }
@@ -5655,7 +5626,7 @@
           const parts = (payrollMonth || BillsoftUtils.todayStr()).split('-');
           const yr = parseInt(parts[0], 10);
           const mo = parseInt(parts[1], 10);
-          
+
           const promises = employees.map(emp =>
             API.employees.attendance.getMonth(emp.id, yr, mo)
               .then(recs => (recs || []).map(r => ({ ...r, empId: emp.id, empName: emp.name, empRole: emp.role || emp.designation || 'Staff' })))
@@ -5807,7 +5778,7 @@
           const data = await API.employees.getAll();
           setEmployees(data || []);
           if (API.firmId) {
-            API.employees.applyPromotions().catch(() => {});
+            API.employees.applyPromotions().catch(() => { });
           }
         } catch (e) {
           showToast('Error fetching staff list', 'error');
@@ -5976,7 +5947,7 @@
           showToast('Promotion / increment recorded successfully!', 'success');
           setShowPromote(false);
           setPromData({ effectiveDate: BillsoftUtils.todayStr(), type: 'BOTH', newRole: '', newSalary: '', reason: '' });
-          
+
           const updatedEmps = await fetchEmployees();
           const refreshed = (updatedEmps && updatedEmps.find(x => x.id === selectedEmployee.id)) || {
             ...selectedEmployee,
@@ -6033,14 +6004,14 @@
         const allowed = emp.allowedPaidLeavesPerMonth || 1.5;
         const uLeaves = Math.max(0, dAbsent - allowed);
         const perDay = baseSal / daysInMonth;
-        
+
         const leaveDed = (inp.autoLeaves !== false) ? (uLeaves * perDay) : (dAbsent * perDay);
         const bon = parseFloat(inp.bonus) || 0;
         if (bon < 0) {
           showToast('Bonus amount cannot be negative', 'error');
           return;
         }
-        
+
         const advBalance = emp.currentAdvanceBalance || 0;
         const grossEarnings = Math.max(0, baseSal - leaveDed + bon);
         const maxDeductibleAdv = Math.min(advBalance, grossEarnings);
@@ -6221,43 +6192,43 @@
                   filteredEmployees.length === 0 ? React.createElement('tr', null,
                     React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No staff records found.')
                   ) :
-                  filteredEmployees.map(emp => React.createElement('tr', { key: emp.id },
-                    React.createElement('td', { style: { cursor: 'pointer' }, onClick: () => openEmployeeProfile(emp) },
-                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                        React.createElement('div', { style: { width: 36, height: 36, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.9rem' } },
-                          emp.name.charAt(0).toUpperCase()
-                        ),
-                        React.createElement('div', null,
-                          React.createElement('div', { style: { fontWeight: 600 } }, emp.name),
-                          React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, `Joined: ${emp.dateOfJoining || 'N/A'}`)
+                    filteredEmployees.map(emp => React.createElement('tr', { key: emp.id },
+                      React.createElement('td', { style: { cursor: 'pointer' }, onClick: () => openEmployeeProfile(emp) },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                          React.createElement('div', { style: { width: 36, height: 36, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.9rem' } },
+                            emp.name.charAt(0).toUpperCase()
+                          ),
+                          React.createElement('div', null,
+                            React.createElement('div', { style: { fontWeight: 600 } }, emp.name),
+                            React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, `Joined: ${emp.dateOfJoining || 'N/A'}`)
+                          )
+                        )
+                      ),
+                      React.createElement('td', null,
+                        React.createElement('div', { style: { fontWeight: 500 } }, emp.designation || emp.role || 'Staff'),
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, emp.department || 'Operations')
+                      ),
+                      React.createElement('td', null,
+                        React.createElement('div', { style: { fontSize: '0.85rem' } }, emp.phone || '-'),
+                        emp.email && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, emp.email)
+                      ),
+                      React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(emp.monthlyBaseSalary || 0)),
+                      React.createElement('td', { style: { fontWeight: 600, color: emp.currentAdvanceBalance > 0 ? '#dc2626' : 'inherit' } },
+                        BillsoftUtils.formatCurrency(emp.currentAdvanceBalance || 0)
+                      ),
+                      React.createElement('td', null,
+                        emp.isActive
+                          ? React.createElement('span', { className: 'badge badge-success' }, 'Active')
+                          : React.createElement('span', { className: 'badge badge-inactive' }, 'Inactive')
+                      ),
+                      React.createElement('td', { style: { textAlign: 'right' } },
+                        React.createElement('div', { style: { display: 'inline-flex', gap: 6 } },
+                          React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'View Profile', onClick: () => openEmployeeProfile(emp) }, '👁️ View'),
+                          React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Edit', onClick: () => { setSelectedEmployee(emp); setFormData({ ...emp }); setShowForm(true); } }, '✏️ Edit'),
+                          React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Delete', style: { color: 'var(--danger)' }, onClick: () => handleDeleteEmployee(emp) }, '🗑️')
                         )
                       )
-                    ),
-                    React.createElement('td', null,
-                      React.createElement('div', { style: { fontWeight: 500 } }, emp.designation || emp.role || 'Staff'),
-                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, emp.department || 'Operations')
-                    ),
-                    React.createElement('td', null,
-                      React.createElement('div', { style: { fontSize: '0.85rem' } }, emp.phone || '-'),
-                      emp.email && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, emp.email)
-                    ),
-                    React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(emp.monthlyBaseSalary || 0)),
-                    React.createElement('td', { style: { fontWeight: 600, color: emp.currentAdvanceBalance > 0 ? '#dc2626' : 'inherit' } },
-                      BillsoftUtils.formatCurrency(emp.currentAdvanceBalance || 0)
-                    ),
-                    React.createElement('td', null,
-                      emp.isActive
-                        ? React.createElement('span', { className: 'badge badge-success' }, 'Active')
-                        : React.createElement('span', { className: 'badge badge-inactive' }, 'Inactive')
-                    ),
-                    React.createElement('td', { style: { textAlign: 'right' } },
-                      React.createElement('div', { style: { display: 'inline-flex', gap: 6 } },
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'View Profile', onClick: () => openEmployeeProfile(emp) }, '👁️ View'),
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Edit', onClick: () => { setSelectedEmployee(emp); setFormData({ ...emp }); setShowForm(true); } }, '✏️ Edit'),
-                        React.createElement('button', { className: 'btn btn-sm btn-ghost', title: 'Delete', style: { color: 'var(--danger)' }, onClick: () => handleDeleteEmployee(emp) }, '🗑️')
-                      )
-                    )
-                  ))
+                    ))
                 )
               )
             )
@@ -6267,7 +6238,7 @@
         // ════════════════════════════════════════
         // TAB 2: ATTENDANCE & LEAVES (FULL LEAVE TRACKER & MODAL)
         // ════════════════════════════════════════
-hrTab === 'attendance' && React.createElement(Fragment, null,
+        hrTab === 'attendance' && React.createElement(Fragment, null,
           // Leave Overview KPIs
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
             React.createElement('div', { className: 'kpi-card kpi-amber' },
@@ -6380,7 +6351,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                       const matchesEmp = !leaveEmpFilter || String(l.empId) === String(leaveEmpFilter);
                       const q = leaveSearchQuery.toLowerCase().trim();
                       const matchesSearch = !q || (l.empName && l.empName.toLowerCase().includes(q)) || (l.remarks && l.remarks.toLowerCase().includes(q));
-                      
+
                       let matchesDateRange = true;
                       const d = l.date ? l.date.split('T')[0] : '';
                       if (leaveFromDate && d < leaveFromDate) matchesDateRange = false;
@@ -6591,10 +6562,10 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                     const uLeaves = Math.max(0, dAbsent - allowed);
                     const daysInMonth = getDaysInMonth(payrollMonth);
                     const perDay = baseSal / daysInMonth;
-                    
+
                     const leaveDed = inp.autoLeaves !== false ? (uLeaves * perDay) : (dAbsent * perDay);
                     const bon = parseFloat(inp.bonus) || 0;
-                    
+
                     const advBalance = emp.currentAdvanceBalance || 0;
                     const maxGross = Math.max(0, baseSal - leaveDed + bon);
                     const maxDeductibleAdv = Math.min(advBalance, maxGross);
@@ -6624,7 +6595,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                         React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 400 } }, emp.designation || emp.role || 'Staff')
                       ),
                       React.createElement('td', { style: { fontWeight: 600, verticalAlign: 'middle', padding: '8px 6px' } }, BillsoftUtils.formatCurrency(baseSal)),
-                      
+
                       // If ALREADY PROCESSED for selected month
                       processedSal ? React.createElement(Fragment, null,
                         React.createElement('td', { colSpan: 5, style: { verticalAlign: 'middle', padding: '8px 6px' } },
@@ -6689,62 +6660,62 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                           advBalance <= 0
                             ? React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, '₹0')
                             : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-                                  React.createElement('input', {
-                                    type: 'checkbox',
-                                    id: `cb_adv_${emp.id}`,
-                                    checked: isAdvTicked,
-                                    title: 'Tick to deduct advance from this payroll',
-                                    style: { width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' },
-                                    onChange: e => {
-                                      const checked = e.target.checked;
-                                      setPayrollInputs(prev => ({
-                                        ...prev,
-                                        [emp.id]: {
-                                          ...(prev[emp.id] || {}),
-                                          deductAdvance: checked,
-                                          advanceDeduct: checked ? maxDeductibleAdv : 0,
-                                          autoAdvance: checked
-                                        }
-                                      }));
-                                    }
-                                  }),
-                                  isAdvTicked && React.createElement('input', {
-                                    className: 'input input-sm',
-                                    type: 'text',
-                                    style: { width: 60, padding: '2px 4px', fontSize: '0.78rem' },
-                                    value: inp.autoAdvance ? Math.round(advD) : (inp.advanceDeduct !== undefined ? inp.advanceDeduct : Math.round(advD)),
-                                    onChange: e => {
-                                      const val = parseFloat(e.target.value) || 0;
-                                      setPayrollInputs(prev => ({
-                                        ...prev,
-                                        [emp.id]: {
-                                          ...(prev[emp.id] || {}),
-                                          advanceDeduct: val,
-                                          autoAdvance: false,
-                                          deductAdvance: val > 0
-                                        }
-                                      }));
-                                    }
-                                  })
-                                ),
-                                (() => {
-                                  if (!isAdvTicked || advD <= 0) {
-                                    return React.createElement('div', { style: { fontSize: '0.65rem', color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' } },
-                                      `⏩ Full ${BillsoftUtils.formatCurrency(advBalance)} carries forward`
-                                    );
+                              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                React.createElement('input', {
+                                  type: 'checkbox',
+                                  id: `cb_adv_${emp.id}`,
+                                  checked: isAdvTicked,
+                                  title: 'Tick to deduct advance from this payroll',
+                                  style: { width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' },
+                                  onChange: e => {
+                                    const checked = e.target.checked;
+                                    setPayrollInputs(prev => ({
+                                      ...prev,
+                                      [emp.id]: {
+                                        ...(prev[emp.id] || {}),
+                                        deductAdvance: checked,
+                                        advanceDeduct: checked ? maxDeductibleAdv : 0,
+                                        autoAdvance: checked
+                                      }
+                                    }));
                                   }
-                                  const carryOver = Math.max(0, advBalance - advD);
-                                  if (carryOver > 0) {
-                                    return React.createElement('div', { style: { fontSize: '0.65rem', color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' } },
-                                      `Deduct ${BillsoftUtils.formatCurrency(Math.round(advD))} (${BillsoftUtils.formatCurrency(Math.round(carryOver))} carries over)`
-                                    );
+                                }),
+                                isAdvTicked && React.createElement('input', {
+                                  className: 'input input-sm',
+                                  type: 'text',
+                                  style: { width: 60, padding: '2px 4px', fontSize: '0.78rem' },
+                                  value: inp.autoAdvance ? Math.round(advD) : (inp.advanceDeduct !== undefined ? inp.advanceDeduct : Math.round(advD)),
+                                  onChange: e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollInputs(prev => ({
+                                      ...prev,
+                                      [emp.id]: {
+                                        ...(prev[emp.id] || {}),
+                                        advanceDeduct: val,
+                                        autoAdvance: false,
+                                        deductAdvance: val > 0
+                                      }
+                                    }));
                                   }
-                                  return React.createElement('div', { style: { fontSize: '0.65rem', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' } },
-                                    `Full Adv ${BillsoftUtils.formatCurrency(Math.round(advD))}`
+                                })
+                              ),
+                              (() => {
+                                if (!isAdvTicked || advD <= 0) {
+                                  return React.createElement('div', { style: { fontSize: '0.65rem', color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' } },
+                                    `⏩ Full ${BillsoftUtils.formatCurrency(advBalance)} carries forward`
                                   );
-                                })()
-                              )
+                                }
+                                const carryOver = Math.max(0, advBalance - advD);
+                                if (carryOver > 0) {
+                                  return React.createElement('div', { style: { fontSize: '0.65rem', color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' } },
+                                    `Deduct ${BillsoftUtils.formatCurrency(Math.round(advD))} (${BillsoftUtils.formatCurrency(Math.round(carryOver))} carries over)`
+                                  );
+                                }
+                                return React.createElement('div', { style: { fontSize: '0.65rem', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' } },
+                                  `Full Adv ${BillsoftUtils.formatCurrency(Math.round(advD))}`
+                                );
+                              })()
+                            )
                         ),
 
                         // Net Payable
@@ -6759,11 +6730,11 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                             : frozen
                               ? React.createElement('span', { className: 'badge', style: { backgroundColor: '#fffbeb', color: '#92400e', padding: '3px 6px', fontSize: '0.68rem' } }, '🔒 Locked')
                               : React.createElement('button', {
-                                  className: 'btn btn-primary btn-sm',
-                                  style: { padding: '3px 8px', fontSize: '0.75rem' },
-                                  disabled: processingSalaryEmpId === emp.id,
-                                  onClick: () => handleProcessPayrollForEmployee(emp)
-                                }, processingSalaryEmpId === emp.id ? '⏳ Paid...' : '✓ Pay')
+                                className: 'btn btn-primary btn-sm',
+                                style: { padding: '3px 8px', fontSize: '0.75rem' },
+                                disabled: processingSalaryEmpId === emp.id,
+                                onClick: () => handleProcessPayrollForEmployee(emp)
+                              }, processingSalaryEmpId === emp.id ? '⏳ Paid...' : '✓ Pay')
                         )
                       )
                     );
@@ -6855,7 +6826,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                         const targetMonthYear = parts[1] + '-' + parts[0];
                         matchesMonth = s.monthYear === targetMonthYear;
                       }
-                      
+
                       const q = salarySearchQuery.toLowerCase().trim();
                       const matchesSearch = !q || (s.empName && s.empName.toLowerCase().includes(q));
 
@@ -6930,7 +6901,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
         // ════════════════════════════════════════
         selectedEmployee && !showForm && React.createElement('div', { className: 'modal-overlay', onClick: () => setSelectedEmployee(null) },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 720, width: '95%', margin: '40px auto', maxHeight: '90vh', overflowY: 'auto', padding: 24 }, onClick: e => e.stopPropagation() },
-            
+
             // Header Info
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 } },
               React.createElement('div', { style: { display: 'flex', gap: 14, alignItems: 'center' } },
@@ -7278,8 +7249,8 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
                 const dayCount = Math.max(1, Math.floor((to - from) / 86400000) + 1);
                 return !isNaN(dayCount) && dayCount >= 1
                   ? React.createElement('div', { style: { padding: '6px 10px', borderRadius: 6, backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', fontSize: '0.82rem', color: '#0369a1' } },
-                      `📅 ${dayCount} leave day${dayCount > 1 ? 's' : ''} will be logged`
-                    )
+                    `📅 ${dayCount} leave day${dayCount > 1 ? 's' : ''} will be logged`
+                  )
                   : null;
               })(),
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
@@ -7484,7 +7455,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
     }
 
     // ─── CREATE INVOICE / QUOTATION TABS ───
-        function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit }) {
+    function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit }) {
       const [tabs, setTabs] = useState(() => {
         if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
           return [];
@@ -7505,7 +7476,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       useEffect(() => {
         if (editInvoiceId) {
           const existing = tabs.find(t => t.editId === editInvoiceId && t.type === 'invoice');
-          if (existing) { setActiveTab(existing.id); } 
+          if (existing) { setActiveTab(existing.id); }
           else {
             const newTab = { id: Date.now() + Math.random(), type: 'invoice', label: `Inv #${editInvoiceId}`, firmId: API.firmId, editId: editInvoiceId, convertedFromQuotationId };
             setTabs(prev => [...prev, newTab]);
@@ -7561,11 +7532,11 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       };
 
       const updateTabFirm = (id, newFirmId) => {
-         setTabs(prev => prev.map(t => t.id === id ? { ...t, firmId: newFirmId } : t));
+        setTabs(prev => prev.map(t => t.id === id ? { ...t, firmId: newFirmId } : t));
       };
 
       const updateTabType = (id, newType) => {
-         setTabs(prev => prev.map(t => t.id === id ? { ...t, type: newType, label: (newType === 'invoice' ? 'Inv ' : 'Qtn ') + t.label.split(' ')[1] } : t));
+        setTabs(prev => prev.map(t => t.id === id ? { ...t, type: newType, label: (newType === 'invoice' ? 'Inv ' : 'Qtn ') + t.label.split(' ')[1] } : t));
       };
 
       const currentTab = tabs.find(t => t.id === activeTab);
@@ -7588,19 +7559,19 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
           ))
         ),
         currentTab && React.createElement('div', { key: currentTab.id },
-          React.createElement(InvoiceForm, { 
-            editId: currentTab.editId || null, 
+          React.createElement(InvoiceForm, {
+            editId: currentTab.editId || null,
             convertedFromQuotationId: currentTab.convertedFromQuotationId || null,
-            isQuotationMode: currentTab.type === 'quotation', 
+            isQuotationMode: currentTab.type === 'quotation',
             activeFirmId: currentTab.firmId,
             firms: globalFirms,
             onFirmChange: (newFirmId) => updateTabFirm(currentTab.id, newFirmId),
             onTypeChange: (newType) => updateTabType(currentTab.id, newType),
-            onSaved: () => { 
+            onSaved: () => {
               showToast(currentTab.type === 'invoice' ? 'Invoice created!' : 'Quotation created!', 'success');
-              closeTab(currentTab.id, { stopPropagation: () => {} });
+              closeTab(currentTab.id, { stopPropagation: () => { } });
               if (onClearEdit) onClearEdit();
-            } 
+            }
           })
         )
       );
@@ -7706,20 +7677,20 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
           if (!savedId) API.firmId = list[0].id;
           const currentId = API.firmId;
           if (currentId) { const firm = list.find(f => f.id === currentId); if (firm && firm.firmName) setFirmName(firm.firmName); }
-        }).catch(() => {});
+        }).catch(() => { });
       };
       useEffect(() => { loadFirms(); }, [firmLoadKey]);
       // Load reminders, notes, and expenses after firm is ready
       useEffect(() => {
         if (API.firmId) {
           if (API.reminders && typeof API.reminders.list === 'function') {
-            API.reminders.list().then(setReminders).catch(() => {});
+            API.reminders.list().then(setReminders).catch(() => { });
           }
           if (API.notes && typeof API.notes.listByFirm === 'function') {
-            API.notes.listByFirm(API.firmId).then(setNotes).catch(() => {});
+            API.notes.listByFirm(API.firmId).then(setNotes).catch(() => { });
           }
           if (API.expenses && typeof API.expenses.listByFirm === 'function') {
-            API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => {});
+            API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { });
           }
         }
       }, [API.firmId]);
@@ -7739,7 +7710,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
             }
             lastSeenMsgIdRef.current = maxId;
           }
-        }).catch(() => {});
+        }).catch(() => { });
       };
 
       useEffect(() => {
@@ -7751,7 +7722,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
             } else {
               lastSeenMsgIdRef.current = 0;
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }, [API.firmId]);
 
@@ -7763,14 +7734,14 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       }, [API.firmId]);
       const refreshFirm = () => {
         const currentId = API.firmId;
-        if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => {}); }).catch(() => {}); }
+        if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => { }); }).catch(() => { }); }
       };
       const handleFirmSwitch = (firmId) => {
         const prevId = API.firmId;
         if (firmId === prevId) return;
         API.firmId = firmId;
-        API.firm.get(firmId).then(f => { if (f && f.firmName) setFirmName(f.firmName); }).catch(() => {});
-        API.firm.list().then(list => setFirms(list)).catch(() => {});
+        API.firm.get(firmId).then(f => { if (f && f.firmName) setFirmName(f.firmName); }).catch(() => { });
+        API.firm.list().then(list => setFirms(list)).catch(() => { });
         showToast('Switched firm', 'success');
       };
       // Handle browser back button (popstate)
@@ -7935,7 +7906,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       const handleMarkMessageRead = (id) => {
         API.messages.markRead(id).then(updated => {
           setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true, read: true } : m));
-        }).catch(() => {});
+        }).catch(() => { });
       };
       const handleDeleteMessage = (id) => {
         return API.messages.delete(id).then(() => {
@@ -7949,7 +7920,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       const [isUpdating, setIsUpdating] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
       useEffect(() => {
-        API._json('/api/system/check-update-complete').then(res => { if (res && res.justUpdated) setUpdateCompleteBanner(res.updatedVersion || true); }).catch(() => {});
+        API._json('/api/system/check-update-complete').then(res => { if (res && res.justUpdated) setUpdateCompleteBanner(res.updatedVersion || true); }).catch(() => { });
       }, []);
       const [updateProgress, setUpdateProgress] = useState(null);
       const updatePollRef = useRef(null);
@@ -7997,16 +7968,18 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
               latestVersion: latestVer || (prev ? prev.latestVersion : '')
             }));
             if (attempts >= maxAttempts) {
-              clearInterval(restartPollingRef.current);
-              restartPollingRef.current = null;
-              window.onbeforeunload = null;
-              setUpdateProgress({
-                status: 'error',
-                percent: 0,
-                elapsedSeconds: elapsedSec,
-                message: 'Restart is taking longer than expected. Please check your terminal/logs or launch RupeeCRM manually.',
-                latestVersion: latestVer || ''
-              });
+                clearInterval(restartPollingRef.current);
+                restartPollingRef.current = null;
+                window.onbeforeunload = null;
+                setUpdateProgress({
+                    status: 'error',
+                    percent: 0,
+                    elapsedSeconds: elapsedSec,
+                    message: 'Restart is taking longer than expected. Initiating rollback.',
+                    latestVersion: latestVer || ''
+                });
+                // Trigger automatic rollback request to backend
+                fetch(API.BASE_URL + '/api/system/rollbackNow', { method: 'POST' }).catch(() => {});
             }
           }
         }, 1500);
@@ -8029,7 +8002,7 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
               updatePollRef.current = null;
               window.onbeforeunload = null;
             }
-          } catch (err) {}
+          } catch (err) { }
         });
         source.onerror = () => {
           setUpdateProgress(prev => {
@@ -8073,54 +8046,60 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
       };
 
       const pageComponents = {
-        dashboard: { title: 'Dashboard', comp: React.createElement(Dashboard, {
-          key: API.firmId,
-          onStartUpdate: handleStartUpdate,
-          messages,
-          reminders,
-          notes,
-          expenses,
-          firms,
-          onMarkDone: handleMarkReminderDone,
-          onUpdateReminder: handleUpdateReminder,
-          onMarkMessageRead: handleMarkMessageRead,
-          onDeleteMessage: handleDeleteMessage,
-          onCreateReminder: handleCreateReminder,
-          onCreateTask: handleCreateTask,
-          onCreateNote: handleCreateNote,
-          onCreateExpense: handleCreateExpense
-        }) },
-        invoices: { title: 'Invoices & Quotes', comp: React.createElement(InvoicesQuotesHub, {
-          key: API.firmId,
-          subTab: invoiceSubTab,
-          onSubTabChange: setInvoiceSubTab,
-          editInvoiceId,
-          editQuotationId,
-          convertedFromQuotationId,
-          onEditInvoice: handleEditInvoice,
-          onEditQuotation: handleEditQuotation,
-          onConvertToInvoice: handleConvertToInvoice,
-          onClearEdit: () => { setEditInvoiceId(null); setEditQuotationId(null); setConvertedFromQuotationId(null); },
-          firms
-        }) },
+        dashboard: {
+          title: 'Dashboard', comp: React.createElement(Dashboard, {
+            key: API.firmId,
+            onStartUpdate: handleStartUpdate,
+            messages,
+            reminders,
+            notes,
+            expenses,
+            firms,
+            onMarkDone: handleMarkReminderDone,
+            onUpdateReminder: handleUpdateReminder,
+            onMarkMessageRead: handleMarkMessageRead,
+            onDeleteMessage: handleDeleteMessage,
+            onCreateReminder: handleCreateReminder,
+            onCreateTask: handleCreateTask,
+            onCreateNote: handleCreateNote,
+            onCreateExpense: handleCreateExpense
+          })
+        },
+        invoices: {
+          title: 'Invoices & Quotes', comp: React.createElement(InvoicesQuotesHub, {
+            key: API.firmId,
+            subTab: invoiceSubTab,
+            onSubTabChange: setInvoiceSubTab,
+            editInvoiceId,
+            editQuotationId,
+            convertedFromQuotationId,
+            onEditInvoice: handleEditInvoice,
+            onEditQuotation: handleEditQuotation,
+            onConvertToInvoice: handleConvertToInvoice,
+            onClearEdit: () => { setEditInvoiceId(null); setEditQuotationId(null); setConvertedFromQuotationId(null); },
+            firms
+          })
+        },
         firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation }) },
-        planner: { title: 'Planner', comp: React.createElement(PlannerPage, {
-          reminders,
-          notes,
-          expenses,
-          firms,
-          onMarkDone: handleMarkReminderDone,
-          onUpdateReminder: handleUpdateReminder,
-          onDeleteReminder: handleDeleteReminder,
-          onCreateReminder: handleCreateReminder,
-          onCreateTask: handleCreateTask,
-          onCreateNote: handleCreateNote,
-          onUpdateNote: handleUpdateNote,
-          onDeleteNote: handleDeleteNote,
-          onCreateExpense: handleCreateExpense,
-          onUpdateExpense: handleUpdateExpense,
-          onDeleteExpense: handleDeleteExpense
-        }) },
+        planner: {
+          title: 'Planner', comp: React.createElement(PlannerPage, {
+            reminders,
+            notes,
+            expenses,
+            firms,
+            onMarkDone: handleMarkReminderDone,
+            onUpdateReminder: handleUpdateReminder,
+            onDeleteReminder: handleDeleteReminder,
+            onCreateReminder: handleCreateReminder,
+            onCreateTask: handleCreateTask,
+            onCreateNote: handleCreateNote,
+            onUpdateNote: handleUpdateNote,
+            onDeleteNote: handleDeleteNote,
+            onCreateExpense: handleCreateExpense,
+            onUpdateExpense: handleUpdateExpense,
+            onDeleteExpense: handleDeleteExpense
+          })
+        },
         inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },
         hr: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         employees: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
@@ -8141,9 +8120,9 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
         React.createElement('main', { className: 'main-content' },
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
-            React.createElement('div', { className: 'topbar-right' },
+            React.createElement('div', { className: 'topbar-right' }, React.createElement('button', { className: 'theme-toggle-btn', onClick: window.toggleTheme, title: 'Toggle Light/Dark Mode' }, ''),
               licenseStatus === 'trial' ? React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15, display: 'flex', alignItems: 'center', gap: 6 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`) :
-              licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, marginRight: 15, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
+                licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, marginRight: 15, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))
@@ -8222,4 +8201,5 @@ hrTab === 'attendance' && React.createElement(Fragment, null,
     );
   </script>
 </body>
+
 </html>

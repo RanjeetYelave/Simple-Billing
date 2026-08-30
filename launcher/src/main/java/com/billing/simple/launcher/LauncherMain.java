@@ -28,6 +28,7 @@ public class LauncherMain {
     private TrayIcon trayIcon;
     private boolean isBackgroundMode = false;
     private volatile boolean restartRequested = false;
+    private static final java.util.concurrent.atomic.AtomicBoolean rollbackRequested = new java.util.concurrent.atomic.AtomicBoolean(false);
     private volatile boolean exitRequested = false;
 
     public static void main(String[] args) {
@@ -74,6 +75,13 @@ public class LauncherMain {
 
     private void runServiceLoop() {
         while (true) {
+            // Detect external rollback request marker
+            try {
+                java.nio.file.Path marker = getDataDirectory().resolve("rollback.request");
+                if (java.nio.file.Files.exists(marker)) {
+                    rollbackRequested.set(true);
+                }
+            } catch (Exception ignored) {}
             File warFile = findCurrentWar();
             if (warFile == null || !warFile.exists()) {
                 showTrayNotification("Error", "RupeeCRM WAR package not found.", TrayIcon.MessageType.ERROR);
@@ -123,9 +131,20 @@ public class LauncherMain {
             if (restartRequested) {
                 restartRequested = false;
                 System.out.println("Manual service restart requested. Re-launching backend...");
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                continue;
+            }
+
+            // Check for manual rollback request
+            if (rollbackRequested.get()) {
+                rollbackRequested.set(false);
+                System.out.println("Manual rollback requested. Performing rollback and restarting...");
                 try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ignored) {}
+                    performRollback();
+                } catch (Exception e) {
+                    System.err.println("Rollback failed: " + e.getMessage());
+                }
+                // After rollback, continue loop to relaunch backend (which will be previous version)
                 continue;
             }
 
@@ -440,6 +459,8 @@ public class LauncherMain {
         showTrayNotification("Restarting", "Restarting RupeeCRM service...", TrayIcon.MessageType.INFO);
         restartRequested = true;
         stopBackend();
+        // Refresh the tray icon to ensure it remains visible after restart
+        refreshTrayIcon();
     }
 
     private void exitApplication() {
@@ -464,6 +485,56 @@ public class LauncherMain {
             }
         }
         killProcessOnPort(PORT);
+    }
+    /**
+     * Re-initializes the system tray icon. This helps recover the icon after a restart request.
+     */
+    private void refreshTrayIcon() {
+        EventQueue.invokeLater(() -> {
+            try {
+                SystemTray tray = SystemTray.getSystemTray();
+                if (trayIcon != null) {
+                    tray.remove(trayIcon);
+                }
+                Image image = createTrayIconImage();
+                PopupMenu popup = new PopupMenu();
+
+                MenuItem openItem = new MenuItem("🌐 Open RupeeCRM (Browser)");
+                openItem.addActionListener(e -> openBrowser(APP_URL));
+                popup.add(openItem);
+                popup.addSeparator();
+
+                MenuItem dataDirItem = new MenuItem("📂 Open Data Folder");
+                dataDirItem.addActionListener(e -> {
+                    try {
+                        Desktop.getDesktop().open(getDataDirectory().toFile());
+                    } catch (Exception ex) {
+                        System.err.println("Cannot open data directory: " + ex.getMessage());
+                    }
+                });
+                popup.add(dataDirItem);
+
+                CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
+                autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
+                popup.add(autoStartItem);
+
+                MenuItem restartItem = new MenuItem("🔄 Restart Service");
+                restartItem.addActionListener(e -> restartService());
+                popup.add(restartItem);
+                popup.addSeparator();
+
+                MenuItem exitItem = new MenuItem("🛑 Exit RupeeCRM");
+                exitItem.addActionListener(e -> exitApplication());
+                popup.add(exitItem);
+
+                trayIcon = new TrayIcon(image, "RupeeCRM (Active)", popup);
+                trayIcon.setImageAutoSize(true);
+                trayIcon.addActionListener(e -> openBrowser(APP_URL));
+                tray.add(trayIcon);
+            } catch (Exception e) {
+                System.err.println("Failed to refresh system tray: " + e.getMessage());
+            }
+        });
     }
 
     private void killProcessOnPort(int port) {
@@ -601,6 +672,11 @@ public class LauncherMain {
                 System.err.println("Failed to rollback WAR: " + e.getMessage());
             }
         }
+        // Cleanup any rollback request marker file if present
+        try {
+            java.nio.file.Path marker = dataDir.resolve("rollback.request");
+            Files.deleteIfExists(marker);
+        } catch (IOException ignored) {}
     }
 
     private Path getDataDirectory() {
@@ -655,3 +731,36 @@ public class LauncherMain {
         }
     }
 }
+
+    // Method to create a rollback request marker file (called via REST endpoint)
+    public static void requestRollback() {
+        try {
+            java.nio.file.Path marker = getDataDirectoryStatic().resolve("rollback.request");
+            Files.createFile(marker);
+            rollbackRequested.set(true);
+        } catch (IOException e) {
+            System.err.println("Failed to create rollback request file: " + e.getMessage());
+        }
+    }
+
+    // Helper to get data directory in static context
+    private static java.nio.file.Path getDataDirectoryStatic() {
+        String envPath = System.getenv("RUPEECRM_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return java.nio.file.Paths.get(envPath.trim());
+        }
+        envPath = System.getenv("BILLSOFT_DATA_DIR");
+        if (envPath != null && !envPath.trim().isEmpty()) {
+            return java.nio.file.Paths.get(envPath.trim());
+        }
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            if (appData != null && !appData.isEmpty()) {
+                return java.nio.file.Paths.get(appData, "SimpleBilling");
+            }
+        } else if (os.contains("mac")) {
+            return java.nio.file.Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
+        }
+        return java.nio.file.Paths.get(System.getProperty("user.home"), ".simplebilling");
+    }

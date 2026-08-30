@@ -13,6 +13,7 @@
   <script src="js/utils.js?v=4"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
+  <script src="js/themeToggle.js"></script>
   <script src="js/vendor/pdf.min.js"></script>
   <script>
     if (typeof pdfjsLib !== 'undefined') {
@@ -8119,7 +8120,7 @@
         React.createElement('main', { className: 'main-content' },
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
-            React.createElement('div', { className: 'topbar-right' },
+            React.createElement('div', { className: 'topbar-right' }, React.createElement('button', { className: 'theme-toggle-btn', onClick: window.toggleTheme, title: 'Toggle Light/Dark Mode' }, ''),
               licenseStatus === 'trial' ? React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, marginRight: 15, display: 'flex', alignItems: 'center', gap: 6 } }, `⏳ Trial Mode: ${trialDaysRemaining} days remaining`) :
                 licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, marginRight: 15, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },

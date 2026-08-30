@@ -11,7 +11,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ./billsoft
+        working-directory: .
 
     services:
       mysql:

@@ -1,16 +1,24 @@
 package com.billing.simple.billsoft.service;
 
-import com.billing.simple.billsoft.entities.Reminder;
+import com.billing.simple.billsoft.entities.Employee;
+import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.InboxMessage;
-import com.billing.simple.billsoft.repo.ReminderRepository;
+import com.billing.simple.billsoft.entities.Reminder;
+import com.billing.simple.billsoft.entities.SalaryRecord;
+import com.billing.simple.billsoft.repo.EmployeeRepository;
+import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import com.billing.simple.billsoft.repo.InboxMessageRepository;
+import com.billing.simple.billsoft.repo.ReminderRepository;
+import com.billing.simple.billsoft.repo.SalaryRecordRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class PlannerNotificationScheduler {
@@ -20,6 +28,15 @@ public class PlannerNotificationScheduler {
 
     @Autowired
     private InboxMessageRepository inboxMessageRepository;
+
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private SalaryRecordRepository salaryRecordRepository;
+
+    @Autowired
+    private FirmDetailsRepository firmDetailsRepository;
 
     @Scheduled(fixedDelay = 10000) // Runs every 10 seconds
     @Transactional
@@ -63,23 +80,79 @@ public class PlannerNotificationScheduler {
         LocalDateTime now = LocalDateTime.now();
         if (now.getDayOfMonth() >= 27) {
             String monthName = now.getMonth().name();
-            String subject = "💰 Monthly Payroll Reminder — " + monthName.substring(0, 1) + monthName.substring(1).toLowerCase() + " " + now.getYear();
-            
-            // Check if reminder message for this month already exists
-            List<InboxMessage> existingMsgs = inboxMessageRepository.findAll();
-            boolean exists = existingMsgs.stream()
-                    .anyMatch(m -> m.getSubject() != null && m.getSubject().equals(subject));
-            
-            if (!exists) {
-                InboxMessage msg = new InboxMessage();
-                msg.setFirmId(1L);
-                msg.setSubject(subject);
-                msg.setBody("Monthly payroll processing is unlocked starting today (27th of " + monthName.substring(0, 1) + monthName.substring(1).toLowerCase() + "). Please visit the HR module -> Monthly Payroll section to calculate final salary disbursals, review leaves, and generate payslip PDFs.");
-                msg.setSender("HR System");
-                msg.setRead(false);
-                msg.setCreatedAt(now);
-                inboxMessageRepository.save(msg);
+            String monthNameFormatted = monthName.substring(0, 1) + monthName.substring(1).toLowerCase();
+            String monthYear = String.format("%02d-%d", now.getMonthValue(), now.getYear());
+
+            List<FirmDetails> firms = firmDetailsRepository.findAll();
+            if (firms.isEmpty()) {
+                checkAndSendPayrollReminderForFirm(1L, monthNameFormatted, monthYear, now);
+            } else {
+                for (FirmDetails firm : firms) {
+                    checkAndSendPayrollReminderForFirm(firm.getId(), monthNameFormatted, monthYear, now);
+                }
             }
         }
+    }
+
+    private void checkAndSendPayrollReminderForFirm(Long firmId, String monthNameFormatted, String monthYear, LocalDateTime now) {
+        List<Employee> allEmployees = employeeRepository.findByFirmId(firmId);
+        if (allEmployees == null || allEmployees.isEmpty()) {
+            return;
+        }
+
+        List<Employee> activeEmployees = allEmployees.stream()
+                .filter(e -> Boolean.TRUE.equals(e.getIsActive()))
+                .toList();
+
+        if (activeEmployees.isEmpty()) {
+            return;
+        }
+
+        List<Employee> pendingEmployees = new ArrayList<>();
+        for (Employee emp : activeEmployees) {
+            Optional<SalaryRecord> salOpt = salaryRecordRepository.findByEmployeeIdAndMonthYear(emp.getId(), monthYear);
+            if (salOpt.isEmpty()) {
+                pendingEmployees.add(emp);
+            }
+        }
+
+        // Only send if there are pending salaries
+        if (pendingEmployees.isEmpty()) {
+            return;
+        }
+
+        String subjectPrefix = "💰 Monthly Payroll Reminder — " + monthNameFormatted + " " + now.getYear();
+        List<InboxMessage> existingMsgs = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId);
+        boolean alreadySent = existingMsgs.stream()
+                .anyMatch(m -> m.getSubject() != null && m.getSubject().startsWith(subjectPrefix));
+
+        if (alreadySent) {
+            return;
+        }
+
+        String subject = subjectPrefix + " (" + pendingEmployees.size() + " Pending)";
+
+        StringBuilder bodyBuilder = new StringBuilder();
+        bodyBuilder.append("Monthly payroll processing is unlocked starting today (27th of ")
+                .append(monthNameFormatted).append(" ").append(now.getYear())
+                .append(").\n\n")
+                .append("Pending Employee Salaries (").append(pendingEmployees.size()).append("):\n");
+
+        for (Employee emp : pendingEmployees) {
+            String roleStr = (emp.getRole() != null && !emp.getRole().isBlank()) ? " (" + emp.getRole() + ")" : "";
+            bodyBuilder.append("• ").append(emp.getName()).append(roleStr).append("\n");
+        }
+
+        bodyBuilder.append("\nPlease visit the HR module -> Monthly Payroll section to calculate final salary disbursals, review leaves, and generate payslip PDFs.");
+
+        InboxMessage msg = new InboxMessage();
+        msg.setFirmId(firmId);
+        msg.setSubject(subject);
+        msg.setBody(bodyBuilder.toString());
+        msg.setSender("HR System");
+        msg.setRead(false);
+        msg.setCreatedAt(now);
+
+        inboxMessageRepository.save(msg);
     }
 }

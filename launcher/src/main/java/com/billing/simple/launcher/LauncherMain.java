@@ -655,7 +655,10 @@ public class LauncherMain {
                 failedProcess.waitFor(5, TimeUnit.SECONDS);
             } catch (InterruptedException ignored) {}
         }
+        performRollback();
+    }
 
+    public void performRollback() {
         File currentWar = findCurrentWar();
         if (currentWar == null) return;
 
@@ -730,7 +733,6 @@ public class LauncherMain {
             }
         }
     }
-}
 
     // Method to create a rollback request marker file (called via REST endpoint)
     public static void requestRollback() {
@@ -764,3 +766,4 @@ public class LauncherMain {
         }
         return java.nio.file.Paths.get(System.getProperty("user.home"), ".simplebilling");
     }
+}

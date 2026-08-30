@@ -7579,7 +7579,9 @@
 
     // ─── MAIN APP ───
     function App() {
-      const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
+      // Clear legacy persistent auth from localStorage so restarts require fresh authentication
+      localStorage.removeItem('isAuthenticated');
+      const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('isAuthenticated') === 'true');
       const [reminders, setReminders] = useState([]);
       const [notes, setNotes] = useState([]);
       const [expenses, setExpenses] = useState([]);
@@ -7649,7 +7651,11 @@
 
           if (authRes && typeof authRes.authEnabled === 'boolean') {
             setAuthEnabled(authRes.authEnabled);
-            if (!authRes.authEnabled) setIsAuthenticated(true);
+            if (authRes.authEnabled) {
+              setIsAuthenticated(sessionStorage.getItem('isAuthenticated') === 'true');
+            } else {
+              setIsAuthenticated(true);
+            }
           } else {
             setIsAuthenticated(true);
           }
@@ -7665,8 +7671,8 @@
         initApp();
       }, [firmLoadKey]);
 
-      const handleLogin = (firmId) => { setIsAuthenticated(true); localStorage.setItem('isAuthenticated', 'true'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
-      const handleLogout = () => { setIsAuthenticated(false); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
+      const handleLogin = (firmId) => { setIsAuthenticated(true); sessionStorage.setItem('isAuthenticated', 'true'); localStorage.removeItem('isAuthenticated'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
+      const handleLogout = () => { setIsAuthenticated(false); sessionStorage.removeItem('isAuthenticated'); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
       window.showToast = (message, type = 'info') => { const id = BillsoftUtils.generateId(); setToasts(t => [...t, { id, message, type }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000); };
       const removeToast = (id) => setToasts(t => t.filter(x => x.id !== id));
       const loadFirms = () => {

@@ -120,15 +120,9 @@ jobs:
           # 2. Inject LaunchApplication CustomAction into main.wxs so MSI starts service on install
           New-Item -ItemType Directory -Force -Path wix-resources
           if (Test-Path "wix-temp/main.wxs") {
-              $customAction = @"
-    <CustomAction Id="LaunchAppOnExit" Directory="INSTALLDIR" ExeCommand="`"[INSTALLDIR]RupeeCRM.exe`"" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
-    <InstallExecuteSequence>
-      <Custom Action="LaunchAppOnExit" After="InstallFinalize">NOT Installed</Custom>
-    </InstallExecuteSequence>
-  </Product>
-"@
+              $actionXml = '<CustomAction Id="LaunchAppOnExit" Directory="INSTALLDIR" ExeCommand="&quot;[INSTALLDIR]RupeeCRM.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" /><InstallExecuteSequence><Custom Action="LaunchAppOnExit" After="InstallFinalize">NOT Installed</Custom></InstallExecuteSequence></Product>'
               $wxs = Get-Content "wix-temp/main.wxs" -Raw
-              $wxs = $wxs -replace '</Product>', $customAction
+              $wxs = $wxs.Replace('</Product>', $actionXml)
               Set-Content -Path "wix-resources/main.wxs" -Value $wxs -Encoding UTF8
 
               # Remove initial MSI before rebuilding with custom action

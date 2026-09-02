@@ -86,7 +86,82 @@ const API = {
     delete: (id) => API._request(`/api/customers/${id}`, { method: 'DELETE' }),
   },
 
-  // ── Products ──
+  // ── Parties (Vendors / Suppliers) ──
+  parties: {
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/parties'))),
+    listSummaries: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/parties/summaries'))),
+    get: (id) => API._json(`/api/parties/${id}`),
+    financialSummary: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/parties/${id}/financial-summary`))),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/parties', {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    update: (id, data) => API._ensureFirmReady().then(() => API._json(`/api/parties/${id}`, {
+      method: 'PUT',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    delete: (id) => API._request(`/api/parties/${id}`, { method: 'DELETE' }),
+    payments: (partyId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/parties/${partyId}/payments`))),
+    recordPayment: (partyId, data) => API._ensureFirmReady().then(() => API._json(`/api/parties/${partyId}/payments`, {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    deletePayment: (paymentId) => API._request(`/api/parties/payments/${paymentId}`, { method: 'DELETE' }),
+  },
+
+  // ── Purchase Orders ──
+  purchaseOrders: {
+    list: (partyId) => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders', partyId ? { partyId } : {}))),
+    get: (id) => API._json(`/api/purchase-orders/${id}`),
+    nextNumber: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders/next-number'))),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/purchase-orders', {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    update: (id, data) => API._ensureFirmReady().then(() => API._json(`/api/purchase-orders/${id}`, {
+      method: 'PUT',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(`/api/purchase-orders/${id}/status`, {
+      method: 'PATCH',
+      body: { status }
+    })),
+    delete: (id) => API._request(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
+    pdfUrl: (id) => API._qs(API.BASE_URL + `/api/purchase-orders/${id}/pdf`),
+    downloadPdf: async (id) => {
+      const res = await API._request(API._qs(`/api/purchase-orders/${id}/pdf`));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    }
+  },
+
+  // ── Business Letters (Letter Pad) ──
+  letters: {
+    list: (filters = {}) => API._ensureFirmReady().then(() => API._json(API._qs('/api/letters', filters))),
+    get: (id) => API._json(`/api/letters/${id}`),
+    nextNumber: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/letters/next-number'))),
+    create: (data) => API._ensureFirmReady().then(() => API._json('/api/letters', {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    update: (id, data) => API._ensureFirmReady().then(() => API._json(`/api/letters/${id}`, {
+      method: 'PUT',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(`/api/letters/${id}/status`, {
+      method: 'PATCH',
+      body: { status }
+    })),
+    delete: (id) => API._request(`/api/letters/${id}`, { method: 'DELETE' }),
+    pdfUrl: (id) => API._qs(API.BASE_URL + `/api/letters/${id}/pdf`),
+    downloadPdf: async (id) => {
+      const res = await API._request(API._qs(`/api/letters/${id}/pdf`));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    }
+  },
+
+  // ── Products & Inventory ──
   products: {
     list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products'))),
     get: (id) => API._json(`/api/products/${id}`),
@@ -96,6 +171,11 @@ const API = {
     })),
     update: (id, data) => API._json(`/api/products/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/products/${id}`, { method: 'DELETE' }),
+    summary: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/summary'))),
+    categories: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/categories'))),
+    adjustStock: (id, data) => API._json(`/api/products/${id}/adjust-stock`, { method: 'POST', body: data }),
+    movements: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/movements`))),
+    allMovements: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/movements'))),
   },
 
   // ── Invoices ──
@@ -204,14 +284,25 @@ const API = {
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
-    firm: (from, to) => {
-      return API._json(API._qs('/api/statements/firm', { from, to }));
+    party: (id, from, to) => {
+      return API._json(API._qs(`/api/statements/party/${id}`, { from, to }));
     },
-    firmPdfUrl: (from, to) => {
-      return API._qs('/api/statements/firm/pdf', { from, to });
+    partyPdfUrl: (id, from, to) => {
+      return API._qs(`/api/statements/party/${id}/pdf`, { from, to });
     },
-    firmPdf: async (from, to) => {
-      const res = await API._request(API._qs('/api/statements/firm/pdf', { from, to }));
+    partyPdf: async (id, from, to) => {
+      const res = await API._request(API._qs(`/api/statements/party/${id}/pdf`, { from, to }));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
+    firm: (from, to, firmId) => {
+      return API._json(API._qs('/api/statements/firm', { firmId: firmId || API.firmId, from, to }));
+    },
+    firmPdfUrl: (from, to, firmId) => {
+      return API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to });
+    },
+    firmPdf: async (from, to, firmId) => {
+      const res = await API._request(API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to }));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },

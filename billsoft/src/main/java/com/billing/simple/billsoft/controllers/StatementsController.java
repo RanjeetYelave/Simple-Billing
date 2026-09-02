@@ -119,4 +119,45 @@ public class StatementsController {
                 .headers(headers)
                 .body(pdf);
     }
+
+    @GetMapping("/party/{partyId}")
+    public ResponseEntity<com.billing.simple.billsoft.dtos.PartyStatementResponse> partyStatement(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("partyId") Long partyId,
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        return ResponseEntity.ok(statementService.getPartyStatement(firmId, partyId, from, to));
+    }
+
+    @GetMapping("/party/{partyId}/pdf")
+    public ResponseEntity<byte[]> partyStatementPdf(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("partyId") Long partyId,
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) throws Exception {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        byte[] pdf = statementService.generatePartyStatementPdf(firmId, partyId, from, to);
+
+        String dateStr = (from != null || to != null)
+                ? (from != null ? from.toString() : "Start") + "_to_" + (to != null ? to.toString() : LocalDate.now().toString())
+                : "All_Time";
+        String filename = "Party_Statement_" + partyId + "_" + dateStr + ".pdf";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdf);
+    }
 }

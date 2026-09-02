@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.entities.Product;
+import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Arrays;
+import java.math.BigDecimal;
+import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -52,6 +54,48 @@ class ProductControllerTest {
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void testGetSummary() throws Exception {
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalProducts", 5L);
+        summary.put("lowStockCount", 1L);
+        when(service.getInventorySummary(any())).thenReturn(summary);
+
+        mockMvc.perform(get("/api/products/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalProducts").value(5))
+                .andExpect(jsonPath("$.lowStockCount").value(1));
+    }
+
+    @Test
+    void testAdjustStock() throws Exception {
+        Product p = new Product();
+        p.setId(1L);
+        p.setStockQuantity(new BigDecimal("25.000"));
+        when(service.adjustStock(eq(1L), any(), any(), any())).thenReturn(p);
+
+        Map<String, Object> req = new HashMap<>();
+        req.put("quantity", 25);
+        req.put("mode", "SET");
+        req.put("note", "Count audit");
+
+        mockMvc.perform(post("/api/products/1/adjust-stock")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockQuantity").value(25.0));
+    }
+
+    @Test
+    void testGetMovements() throws Exception {
+        StockMovement m = StockMovement.builder().id(10L).movementType("INVOICE_SALE").build();
+        when(service.getStockMovements(eq(1L), any())).thenReturn(Collections.singletonList(m));
+
+        mockMvc.perform(get("/api/products/1/movements"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
     }
 
     @Test

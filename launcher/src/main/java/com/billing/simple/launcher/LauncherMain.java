@@ -98,10 +98,10 @@ public class LauncherMain {
                 break;
             }
 
-            // Wait for backend to be healthy (up to 30s)
-            boolean healthy = waitForBackend(30);
+            // Wait for backend to be healthy (up to 90s)
+            boolean healthy = waitForBackend(90);
             if (!healthy) {
-                System.err.println("Backend failed to become healthy. Initiating rollback...");
+                System.err.println("Backend failed to become healthy within 90s. Initiating rollback...");
                 handleBootFailure(backendProcess);
                 continue;
             }
@@ -195,6 +195,9 @@ public class LauncherMain {
         command.add("--server.address=0.0.0.0");
 
         ProcessBuilder pb = new ProcessBuilder(command);
+        if (warFile.getParentFile() != null && warFile.getParentFile().exists()) {
+            pb.directory(warFile.getParentFile());
+        }
         try {
             Path logsDir = getDataDirectory().resolve("logs");
             if (!Files.exists(logsDir)) {
@@ -637,15 +640,25 @@ public class LauncherMain {
         backupDatabase(dataDir);
 
         File backupWar = new File(currentWar.getParentFile(), "rupeecrm-backup.war");
-        try {
-            Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            Files.copy(updateWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            Files.deleteIfExists(updateWar.toPath());
-            return true;
-        } catch (IOException e) {
-            System.err.println("Failed to apply update: " + e.getMessage());
-            return false;
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                if (currentWar.getParentFile() != null && !currentWar.getParentFile().exists()) {
+                    currentWar.getParentFile().mkdirs();
+                }
+                Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(updateWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                Files.deleteIfExists(updateWar.toPath());
+                System.out.println("Update applied successfully on attempt " + attempt);
+                return true;
+            } catch (IOException e) {
+                System.err.println("Attempt " + attempt + " to apply update failed: " + e.getMessage() + ". Retrying in 1s...");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {}
+            }
         }
+        System.err.println("Failed to apply update after 5 attempts.");
+        return false;
     }
 
     private void handleBootFailure(Process failedProcess) {
@@ -655,7 +668,10 @@ public class LauncherMain {
                 failedProcess.waitFor(5, TimeUnit.SECONDS);
             } catch (InterruptedException ignored) {}
         }
+        performRollback();
+    }
 
+    public void performRollback() {
         File currentWar = findCurrentWar();
         if (currentWar == null) return;
 
@@ -730,7 +746,6 @@ public class LauncherMain {
             }
         }
     }
-}
 
     // Method to create a rollback request marker file (called via REST endpoint)
     public static void requestRollback() {
@@ -764,3 +779,4 @@ public class LauncherMain {
         }
         return java.nio.file.Paths.get(System.getProperty("user.home"), ".simplebilling");
     }
+}

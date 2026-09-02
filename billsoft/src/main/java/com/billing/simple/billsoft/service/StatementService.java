@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 import com.billing.simple.billsoft.dtos.CustomerStatementResponse;
 import com.billing.simple.billsoft.dtos.FirmStatementResponse;
+import com.billing.simple.billsoft.dtos.PartyStatementResponse;
 
 public interface StatementService {
 
@@ -14,4 +15,8 @@ public interface StatementService {
     FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to);
 
     byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception;
+
+    PartyStatementResponse getPartyStatement(Long firmId, Long partyId, LocalDate from, LocalDate to);
+
+    byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception;
 }

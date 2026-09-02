@@ -42,6 +42,7 @@ public class InvoiceService {
     private final InvoiceRepository invoiceRepo;
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
+    private final ProductService productService;
     private final InvoiceCalculationEngine engine;
 
     // scales
@@ -54,11 +55,13 @@ public class InvoiceService {
     public InvoiceService(
             InvoiceRepository invoiceRepo,
             CustomerRepository customerRepo,
-            ProductRepository productRepo
+            ProductRepository productRepo,
+            ProductService productService
     ) {
         this.invoiceRepo = invoiceRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
+        this.productService = productService;
         this.engine = new InvoiceCalculationEngine();
     }
 
@@ -191,6 +194,24 @@ public class InvoiceService {
             });
         }
 
+        // Deduct inventory stock for sales invoices
+        if (saved.getStatus() != InvoiceStatus.ESTIMATE && saved.getItems() != null) {
+            for (InvoiceItem it : saved.getItems()) {
+                if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null && it.getQty() > 0) {
+                    BigDecimal qty = new BigDecimal(it.getQty());
+                    productService.recordStockMovement(
+                            it.getProduct().getId(),
+                            saved.getFirmId(),
+                            "INVOICE_SALE",
+                            qty.negate(),
+                            "INVOICE",
+                            saved.getInvoiceNumber() != null ? saved.getInvoiceNumber() : String.valueOf(saved.getId()),
+                            "Invoice sale to " + (saved.getCustomer() != null ? saved.getCustomer().getName() : "Customer")
+                    );
+                }
+            }
+        }
+
         return saved;
     }
 
@@ -287,6 +308,25 @@ public class InvoiceService {
         if (inv.getConvertedInvoiceId() != null) {
             throw new RuntimeException("Cannot delete this estimate as it has already been converted to invoice #" + inv.getConvertedInvoiceId());
         }
+
+        // Restore inventory stock if an invoice is deleted
+        if (inv.getStatus() != InvoiceStatus.ESTIMATE && inv.getItems() != null) {
+            for (InvoiceItem it : inv.getItems()) {
+                if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null && it.getQty() > 0) {
+                    BigDecimal qty = new BigDecimal(it.getQty());
+                    productService.recordStockMovement(
+                            it.getProduct().getId(),
+                            inv.getFirmId(),
+                            "INVOICE_CANCELLED",
+                            qty,
+                            "INVOICE",
+                            inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : String.valueOf(inv.getId()),
+                            "Invoice deleted / cancelled - stock restored"
+                    );
+                }
+            }
+        }
+
         invoiceRepo.delete(inv);
         return true;
     }

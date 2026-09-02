@@ -3,12 +3,14 @@ package com.billing.simple.billsoft.service;
 import com.billing.simple.billsoft.dto.BackupDTO;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.*;
+import com.billing.simple.billsoft.repositories.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -24,17 +26,27 @@ class BackupServiceTest {
     @Mock
     private ProductRepository productRepo;
     @Mock
+    private StockMovementRepository stockMovementRepo;
+    @Mock
     private InvoiceRepository invoiceRepo;
     @Mock
     private InvoiceItemRepository invoiceItemRepo;
     @Mock
-    private AppConfigRepository appConfigRepo;
+    private PartyRepository partyRepo;
+    @Mock
+    private PartyPaymentRepository partyPaymentRepo;
+    @Mock
+    private PurchaseOrderRepository purchaseOrderRepo;
+    @Mock
+    private PurchaseOrderItemRepository purchaseOrderItemRepo;
+    @Mock
+    private ReminderRepository reminderRepo;
+    @Mock
+    private NoteRepository noteRepo;
+    @Mock
+    private ExpenseRepository expenseRepo;
     @Mock
     private EmployeeRepository employeeRepo;
-    @Mock
-    private EmployeeAdvanceRepository advanceRepo;
-    @Mock
-    private EmployeeDocumentRepository employeeDocumentRepo;
     @Mock
     private AttendanceRecordRepository attendanceRecordRepo;
     @Mock
@@ -42,15 +54,17 @@ class BackupServiceTest {
     @Mock
     private SalaryRecordRepository salaryRepo;
     @Mock
+    private EmployeeAdvanceRepository advanceRepo;
+    @Mock
     private PromotionRecordRepository promotionRepo;
     @Mock
-    private ExpenseRepository expenseRepo;
+    private EmployeeDocumentRepository employeeDocumentRepo;
     @Mock
-    private ReminderRepository reminderRepo;
+    private BusinessLetterRepository businessLetterRepo;
     @Mock
     private InboxMessageRepository inboxMessageRepo;
     @Mock
-    private NoteRepository noteRepo;
+    private AppConfigRepository appConfigRepo;
 
     @InjectMocks
     private BackupService service;
@@ -70,13 +84,21 @@ class BackupServiceTest {
         when(firmDetailsRepo.findById(firmId)).thenReturn(Optional.of(firm));
         when(customerRepo.findByFirmIdOrderByNameAsc(firmId)).thenReturn(new ArrayList<>());
         when(productRepo.findByFirmId(firmId)).thenReturn(new ArrayList<>());
+        when(stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(firmId)).thenReturn(new ArrayList<>());
         when(invoiceRepo.findAllByFirmId(firmId)).thenReturn(new ArrayList<>());
+        when(partyRepo.findByFirmIdOrderByNameAsc(firmId)).thenReturn(new ArrayList<>());
+        when(partyPaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
+        when(purchaseOrderRepo.findByFirmIdOrderByPoDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
+        when(employeeRepo.findByFirmId(firmId)).thenReturn(new ArrayList<>());
+        when(businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
+        when(inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId)).thenReturn(new ArrayList<>());
 
         BackupDTO result = service.exportData(firmId);
 
         assertNotNull(result);
         assertEquals("Test Firm", result.getFirmDetails().getFirmName());
         assertNotNull(result.getMetadata());
+        assertEquals("2.0", result.getMetadata().get("version"));
     }
 
     @Test
@@ -85,12 +107,24 @@ class BackupServiceTest {
         backup.setMetadata(new HashMap<>());
         backup.setCustomers(Collections.singletonList(new Customer()));
         backup.getCustomers().get(0).setId(10L);
+
+        Product p = Product.builder().name("Item 1").price(new BigDecimal("100")).costPrice(new BigDecimal("70")).stockQuantity(BigDecimal.TEN).build();
+        p.setId(20L);
+        backup.setProducts(Collections.singletonList(p));
+
+        Party party = Party.builder().name("Vendor 1").build();
+        party.setId(30L);
+        backup.setParties(Collections.singletonList(party));
         
         when(customerRepo.save(any(Customer.class))).thenAnswer(i -> i.getArguments()[0]);
+        when(productRepo.save(any(Product.class))).thenAnswer(i -> i.getArguments()[0]);
+        when(partyRepo.save(any(Party.class))).thenAnswer(i -> i.getArguments()[0]);
 
         service.importData(backup, 1L, true);
 
         verify(customerRepo, times(1)).save(any(Customer.class));
+        verify(productRepo, times(1)).save(any(Product.class));
+        verify(partyRepo, times(1)).save(any(Party.class));
     }
 
     @Test
@@ -125,5 +159,9 @@ class BackupServiceTest {
         verify(customerRepo, times(1)).deleteAllInBatch();
         verify(productRepo, times(1)).deleteAllInBatch();
         verify(invoiceRepo, times(1)).deleteAllInBatch();
+        verify(partyRepo, times(1)).deleteAllInBatch();
+        verify(purchaseOrderRepo, times(1)).deleteAllInBatch();
+        verify(stockMovementRepo, times(1)).deleteAllInBatch();
+        verify(businessLetterRepo, times(1)).deleteAllInBatch();
     }
 }

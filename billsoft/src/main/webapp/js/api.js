@@ -31,7 +31,11 @@ const API = {
     return q ? `${url}?${q}` : url;
   },
 
+  sessionRequestsCount: 0,
+
   async _request(url, options = {}) {
+    this.sessionRequestsCount = (this.sessionRequestsCount || 0) + 1;
+    window.dispatchEvent(new CustomEvent('billsoft:request', { detail: { count: this.sessionRequestsCount, url } }));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
     
@@ -431,6 +435,8 @@ const API = {
       method: 'POST',
       body: { enabled }
     }),
-    exportDevLogsUrl: () => `${API.BASE_URL}/api/system/dev-logs/export`
+    exportDevLogsUrl: () => `${API.BASE_URL}/api/system/dev-logs/export`,
+    metrics: () => API._json('/api/health/metrics'),
+    health: () => API._json('/api/health')
   }
 };

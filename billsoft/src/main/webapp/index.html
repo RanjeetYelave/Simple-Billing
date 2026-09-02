@@ -305,11 +305,64 @@
             React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, isDarkBg: true })
           ),
           onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
-            React.createElement('button', {
-              className: 'btn btn-primary w-full',
-              onClick: () => { onQuickCreate(); setMobileOpen(false); },
-              style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 16px', borderRadius: 'var(--radius)', fontSize: '0.95rem', fontWeight: 600 }
-            }, Icons.plus, 'Quick Invoice')
+            React.createElement('div', {
+              style: {
+                display: 'flex',
+                width: '100%',
+                background: 'var(--primary)',
+                borderRadius: 'var(--radius)',
+                overflow: 'hidden',
+                boxShadow: 'var(--shadow)'
+              }
+            },
+              // Left half: + Invoice
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: {
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  padding: '10px 8px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  borderRadius: 0,
+                  border: 'none',
+                  borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: 'none',
+                  cursor: 'pointer'
+                },
+                title: 'Quick Create Invoice',
+                onClick: () => { onQuickCreate('invoice'); setMobileOpen(false); }
+              },
+                Icons.plus,
+                'Invoice'
+              ),
+              // Right half: + Quote
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: {
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  padding: '10px 8px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  borderRadius: 0,
+                  border: 'none',
+                  boxShadow: 'none',
+                  cursor: 'pointer'
+                },
+                title: 'Quick Create Quotation',
+                onClick: () => { onQuickCreate('quotation'); setMobileOpen(false); }
+              },
+                Icons.plus,
+                'Quote'
+              )
+            )
           ),
           React.createElement('nav', { className: 'sidebar-nav' },
             navItems.map(item =>
@@ -2461,6 +2514,168 @@
       );
     }
 
+    // ─── CUSTOMER AUTOCOMPLETE SEARCH INPUT ───
+    function CustomerSearchInput({ customers, value, inputRef, placeholder, onChange, onSelectExisting, onKeyDownNext }) {
+      const [text, setText] = useState(value || '');
+      const [showSuggestions, setShowSuggestions] = useState(false);
+      const [highlightIdx, setHighlightIdx] = useState(-1);
+      const containerRef = useRef(null);
+
+      useEffect(() => {
+        setText(value || '');
+      }, [value]);
+
+      const filtered = useMemo(() => {
+        if (!text || !text.trim()) return [];
+        const q = text.toLowerCase().trim();
+        return (customers || []).filter(c =>
+          (c.name && c.name.toLowerCase().includes(q)) ||
+          (c.phone && c.phone.includes(q)) ||
+          (c.gstin && c.gstin.toLowerCase().includes(q))
+        ).slice(0, 8);
+      }, [customers, text]);
+
+      const selectCustomer = (cust) => {
+        setText(cust.name);
+        setShowSuggestions(false);
+        setHighlightIdx(-1);
+        if (onSelectExisting) {
+          onSelectExisting(cust);
+        }
+      };
+
+      const handleBlur = () => {
+        setTimeout(() => {
+          setShowSuggestions(false);
+          setHighlightIdx(-1);
+        }, 220);
+      };
+
+      const handleKeyDown = (e) => {
+        if (showSuggestions && filtered.length > 0) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            setHighlightIdx(i => Math.min(i + 1, filtered.length - 1));
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopPropagation();
+            setHighlightIdx(i => Math.max(i - 1, 0));
+            return;
+          }
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowSuggestions(false);
+          return;
+        }
+        if (e.key === 'Enter') {
+          if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            selectCustomer(filtered[highlightIdx]);
+            return;
+          }
+          const exactMatch = (customers || []).find(c => c.name && c.name.toLowerCase() === text.trim().toLowerCase());
+          if (exactMatch && showSuggestions) {
+            e.preventDefault();
+            e.stopPropagation();
+            selectCustomer(exactMatch);
+            return;
+          }
+          setShowSuggestions(false);
+          if (onKeyDownNext) onKeyDownNext(e);
+          return;
+        }
+      };
+
+      useEffect(() => {
+        const handler = (e) => {
+          if (containerRef.current && !containerRef.current.contains(e.target)) {
+            setShowSuggestions(false);
+          }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+      }, []);
+
+      return React.createElement('div', { ref: containerRef, style: { position: 'relative', width: '100%' } },
+        React.createElement('input', {
+          ref: inputRef,
+          className: 'input',
+          style: { width: '100%' },
+          placeholder: placeholder || 'Enter Name or search...',
+          value: text,
+          onChange: e => {
+            const val = e.target.value;
+            setText(val);
+            setShowSuggestions(true);
+            setHighlightIdx(0);
+            if (onChange) onChange(val);
+          },
+          onFocus: (e) => {
+            if (text && text.trim()) setShowSuggestions(true);
+            if (e.target && e.target.select) e.target.select();
+          },
+          onBlur: handleBlur,
+          onKeyDown: handleKeyDown
+        }),
+        showSuggestions && filtered.length > 0 && React.createElement('div', {
+          className: 'autocomplete-dropdown',
+          style: {
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            maxHeight: 240,
+            overflowY: 'auto',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+            padding: '4px 0'
+          }
+        },
+          filtered.map((c, idx) =>
+            React.createElement('div', {
+              key: c.id,
+              className: 'autocomplete-item',
+              style: {
+                padding: '8px 12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: idx === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.1))' : 'transparent',
+                borderLeft: idx === highlightIdx ? '3px solid var(--primary)' : '3px solid transparent',
+                transition: 'background 0.1s ease',
+                borderBottom: idx < filtered.length - 1 ? '1px solid var(--border-light)' : undefined
+              },
+              onMouseDown: () => selectCustomer(c),
+              onMouseEnter: () => setHighlightIdx(idx)
+            },
+              React.createElement('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text)' } }, c.name),
+                (c.phone || c.address) && React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  c.phone ? `📞 ${c.phone}` : '',
+                  c.phone && c.address ? ' • ' : '',
+                  c.address ? c.address : ''
+                )
+              ),
+              React.createElement('span', {
+                className: 'badge badge-outline',
+                style: { fontSize: '0.68rem', padding: '2px 6px', flexShrink: 0, marginLeft: 8 }
+              }, 'Existing')
+            )
+          )
+        )
+      );
+    }
+
     // ─── SHARED INVOICE/QUOTATION FORM ───
     function InvoiceForm({ editId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange }) {
       const [customers, setCustomers] = useState([]);
@@ -2702,6 +2917,16 @@
         }
       };
 
+      const focusFirstItem = () => {
+        setTimeout(() => {
+          const el = document.querySelector('.invoice-items-table input');
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
+          }
+        }, 50);
+      };
+
       const handleCustomerSelect = (e) => {
         const id = e.target.value;
         if (!id) {
@@ -2711,7 +2936,22 @@
         const c = customers.find(x => String(x.id) === id);
         if (c) {
           setForm(f => ({ ...f, customerId: id, customerName: c.name, customerPhone: c.phone || '', customerAddress: c.address || '', customerEmail: c.email || '', customerGstin: c.gstin || '' }));
+          focusFirstItem();
         }
+      };
+
+      const handleCustomerAutofill = (c) => {
+        if (!c) return;
+        setForm(f => ({
+          ...f,
+          customerId: String(c.id),
+          customerName: c.name || '',
+          customerPhone: c.phone || '',
+          customerAddress: c.address || '',
+          customerEmail: c.email || '',
+          customerGstin: c.gstin || ''
+        }));
+        focusFirstItem();
       };
 
       const handleKeyDown = (e, nextRef) => {
@@ -2719,8 +2959,7 @@
           e.preventDefault();
           if (nextRef && nextRef.current) nextRef.current.focus();
           else if (nextRef === 'first-item') {
-            const el = document.querySelector('.invoice-items-table input');
-            if (el) el.focus();
+            focusFirstItem();
           }
         }
       };
@@ -2794,6 +3033,34 @@
           )
         ),
 
+        // Conversion Banner (if converting from a quotation)
+        convertedFromQuotationId && React.createElement('div', {
+          style: {
+            padding: '12px 18px',
+            marginBottom: 16,
+            background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08))',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+            React.createElement('span', { style: { fontSize: '1.4rem' } }, '📋'),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' } },
+                `Converting Quotation #${form.estimateNumber || convertedFromQuotationId} → Sales Invoice`
+              ),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                'All quotation line items, discounts, customer information, and rates have been loaded. Saving will finalize this invoice and link back to the quotation.'
+              )
+            )
+          ),
+          React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, padding: '4px 10px' } }, 'Conversion Mode')
+        ),
+
         React.createElement('div', { className: 'invoice-form-header', style: { display: 'flex', gap: 20, alignItems: 'flex-start' } },
 
           React.createElement('div', { className: 'card', style: { flex: 2 } },
@@ -2807,7 +3074,15 @@
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Name *'),
-                React.createElement('input', { ref: refName, className: 'input', value: form.customerName, onChange: e => setForm(f => ({ ...f, customerName: e.target.value, customerId: '' })), onKeyDown: e => handleKeyDown(e, refPhone), placeholder: 'Enter Name' })
+                React.createElement(CustomerSearchInput, {
+                  customers,
+                  value: form.customerName,
+                  inputRef: refName,
+                  placeholder: 'Enter Name or search...',
+                  onChange: (val) => setForm(f => ({ ...f, customerName: val, customerId: '' })),
+                  onSelectExisting: handleCustomerAutofill,
+                  onKeyDownNext: (e) => handleKeyDown(e, refPhone)
+                })
               ),
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Mobile'),
@@ -3289,13 +3564,14 @@
     }
 
     // ─── QUOTATION LIST ───
-    function QuotationList({ onEditQuotation, onConvertToInvoice }) {
+    function QuotationList({ onEditQuotation, onConvertToInvoice, onEditInvoice }) {
       const [quotations, setQuotations] = useState([]);
       const [loading, setLoading] = useState(true);
       const [search, setSearch] = useState('');
       const [sortField, setSortField] = useState('date');
       const [sortDir, setSortDir] = useState('desc');
       const [convertingId, setConvertingId] = useState(null);
+      const [convertModalQuotation, setConvertModalQuotation] = useState(null);
       const [linkedInvoices, setLinkedInvoices] = useState({});
       const [page, setPage] = useState(0);
       const pageSize = 50;
@@ -3360,10 +3636,27 @@
           showToast('Print failed', 'error');
         }
       };
-      const handleConvertToInvoice = async (quotation) => {
-        if (quotation.convertedInvoiceId) { showToast('Already converted', 'warning'); return; }
+      const handleInstantConvert = async (quotation) => {
+        if (!quotation) return;
+        setConvertingId(quotation.id);
+        try {
+          const converted = await API.invoices.convertEstimate(quotation.id);
+          showToast(`Quotation converted to Invoice #${converted.invoiceNumber || converted.id}!`, 'success');
+          setConvertModalQuotation(null);
+          load();
+        } catch (e) {
+          showToast(e.message || 'Conversion failed', 'error');
+        } finally {
+          setConvertingId(null);
+        }
+      };
+
+      const handleReviewAndConvert = (quotation) => {
+        if (!quotation) return;
+        setConvertModalQuotation(null);
         if (onConvertToInvoice) onConvertToInvoice(quotation);
       };
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'manager-header' },
           React.createElement('div', { className: 'manager-search' },
@@ -3399,6 +3692,7 @@
                     filtered.map(q => {
                       const linkedInv = linkedInvoices[q.id];
                       const isConverted = !!(q.convertedInvoiceId || linkedInv);
+                      const targetInvoiceId = q.convertedInvoiceId || (linkedInv && linkedInv.id);
                       return React.createElement('tr', { key: q.id },
                         React.createElement('td', { style: { fontWeight: 500 } }, q.estimateNumber || '—'),
                         React.createElement('td', null, q.customer ? q.customer.name : '—'),
@@ -3413,12 +3707,29 @@
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, 'Edit'),
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(q.id) }, 'Print'),
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, 'PDF'),
-                            !isConverted && React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Convert to Invoice', style: { color: 'var(--primary)' }, onClick: () => handleConvertToInvoice(q), disabled: convertingId === q.id }, convertingId === q.id ? '...' : 'Convert'),
+                            !isConverted && React.createElement('button', {
+                              className: 'btn btn-sm btn-outline',
+                              title: 'Convert to Invoice',
+                              style: { color: 'var(--primary)', fontWeight: 600 },
+                              onClick: () => setConvertModalQuotation(q),
+                              disabled: convertingId === q.id
+                            }, convertingId === q.id ? '...' : '⚡ Convert'),
                             React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(q.id) }, 'Del')
                           ),
-                          isConverted && React.createElement('div', { style: { marginTop: 4, fontSize: '0.75rem', color: 'var(--primary)' } },
-                            `Converted to Invoice ${linkedInv ? linkedInv.invoiceNumber : ''}`,
-                            React.createElement('button', { className: 'btn btn-sm btn-ghost', style: { fontSize: '0.75rem', marginLeft: 4 }, onClick: () => onEditQuotation(q.convertedInvoiceId) }, 'Go to Invoice')
+                          isConverted && targetInvoiceId && React.createElement('div', { style: { marginTop: 4, fontSize: '0.75rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4 } },
+                            `Converted: ${linkedInv ? (linkedInv.invoiceNumber || '#' + linkedInv.id) : '#' + targetInvoiceId}`,
+                            React.createElement('button', {
+                              className: 'btn btn-sm btn-ghost',
+                              style: { fontSize: '0.75rem', padding: '1px 6px', color: 'var(--primary)' },
+                              title: 'Open converted invoice',
+                              onClick: () => {
+                                if (onEditInvoice) {
+                                  onEditInvoice(targetInvoiceId);
+                                } else {
+                                  onEditQuotation(targetInvoiceId);
+                                }
+                              }
+                            }, '🔗 Go to Invoice')
                           )
                         )
                       );
@@ -3427,6 +3738,49 @@
                 )
               )
             ),
+
+        // Convert Quotation Choice Modal
+        convertModalQuotation && React.createElement('div', { className: 'modal-overlay', onClick: () => setConvertModalQuotation(null) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '92%', margin: '70px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, '⚡ Convert Quotation to Invoice'),
+              React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setConvertModalQuotation(null) }, '✕')
+            ),
+            React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
+              `Convert quotation `,
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, convertModalQuotation.estimateNumber || `#${convertModalQuotation.id}`),
+              ` (${BillsoftUtils.formatCurrency(convertModalQuotation.totalAmount)}) into a finalized sales invoice:`
+            ),
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 } },
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: { padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 8 },
+                disabled: convertingId === convertModalQuotation.id,
+                onClick: () => handleInstantConvert(convertModalQuotation)
+              },
+                React.createElement('div', { style: { textAlign: 'left' } },
+                  React.createElement('div', { style: { fontWeight: 700 } }, '⚡ 1-Click Instant Convert'),
+                  React.createElement('div', { style: { fontSize: '0.75rem', opacity: 0.9, marginTop: 2 } }, 'Auto-assigns next invoice #, creates invoice & updates inventory')
+                ),
+                React.createElement('span', { style: { fontSize: '1.2rem' } }, '➔')
+              ),
+              React.createElement('button', {
+                className: 'btn btn-outline',
+                style: { padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 8 },
+                onClick: () => handleReviewAndConvert(convertModalQuotation)
+              },
+                React.createElement('div', { style: { textAlign: 'left' } },
+                  React.createElement('div', { style: { fontWeight: 700 } }, '✏️ Review & Edit in Invoice Tab'),
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } }, 'Pre-fills invoice form allowing you to edit items before saving')
+                ),
+                React.createElement('span', { style: { fontSize: '1.2rem' } }, '➔')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+              React.createElement('button', { className: 'btn btn-ghost', onClick: () => setConvertModalQuotation(null) }, 'Cancel')
+            )
+          )
+        ),
 
         // Delete Quotation Confirmation Modal
         deleteQuotationId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteQuotationId(null) },
@@ -3488,6 +3842,11 @@
 
       // Delete Modal State
       const [deleteProductId, setDeleteProductId] = useState(null);
+
+      // Inline Quick Stock Edit States
+      const [editingStockId, setEditingStockId] = useState(null);
+      const [inlineStockVal, setInlineStockVal] = useState('');
+      const [inlineSavingId, setInlineSavingId] = useState(null);
 
       const load = () => {
         setLoading(true);
@@ -3615,6 +3974,59 @@
           showToast(e.message || 'Stock adjustment failed', 'error');
         } finally {
           setAdjustLoading(false);
+        }
+      };
+
+      // 1-Click Inline Quick Stepper (+1 / -1)
+      const handleQuickStep = async (p, delta) => {
+        if (!p || p.itemType === 'SERVICE') return;
+        const currentStock = Number(p.stockQuantity || 0);
+        if (delta < 0 && currentStock <= 0) {
+          showToast('Stock is already 0', 'error');
+          return;
+        }
+
+        setInlineSavingId(p.id);
+        try {
+          const updated = await API.products.adjustStock(p.id, {
+            quantity: Math.abs(delta),
+            mode: delta > 0 ? 'ADD' : 'DEDUCT',
+            note: delta > 0 ? 'Quick +1 from inventory table' : 'Quick -1 from inventory table'
+          });
+          setProducts(prev => prev.map(item => item.id === p.id ? { ...item, stockQuantity: updated.stockQuantity } : item));
+          showToast(`${p.name}: ${delta > 0 ? '+1' : '-1'} (${updated.stockQuantity} ${p.unit || 'pcs'})`, 'success');
+          API.products.summary().then(s => setSummary(s)).catch(() => {});
+        } catch (e) {
+          showToast(e.message || 'Quick adjust failed', 'error');
+        } finally {
+          setInlineSavingId(null);
+        }
+      };
+
+      // Direct Inline Exact Qty Update
+      const handleSaveInlineStock = async (p) => {
+        if (!p) return;
+        if (inlineStockVal === '' || isNaN(parseFloat(inlineStockVal)) || parseFloat(inlineStockVal) < 0) {
+          showToast('Please enter a valid non-negative quantity', 'error');
+          return;
+        }
+
+        const newCount = parseFloat(inlineStockVal);
+        setInlineSavingId(p.id);
+        try {
+          const updated = await API.products.adjustStock(p.id, {
+            quantity: newCount,
+            mode: 'SET',
+            note: 'Quick inline qty update in table'
+          });
+          setProducts(prev => prev.map(item => item.id === p.id ? { ...item, stockQuantity: updated.stockQuantity } : item));
+          setEditingStockId(null);
+          showToast(`${p.name}: Qty set to ${newCount} ${p.unit || 'pcs'}`, 'success');
+          API.products.summary().then(s => setSummary(s)).catch(() => {});
+        } catch (e) {
+          showToast(e.message || 'Inline update failed', 'error');
+        } finally {
+          setInlineSavingId(null);
         }
       };
 
@@ -3866,8 +4278,8 @@
                   React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Cost Price'),
                   React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Selling Price'),
                   React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Margin %'),
-                  React.createElement('th', { style: { width: '14%', textAlign: 'center' } }, 'Stock on Hand'),
-                  React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Actions')
+                  React.createElement('th', { style: { width: '16%', textAlign: 'center' } }, 'Stock on Hand (Quick Update)'),
+                  React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredProducts.length === 0 ? React.createElement('tr', null,
@@ -3893,10 +4305,10 @@
                         stockLabel = 'Service';
                       } else if (stock <= 0) {
                         stockBadgeStyle = { background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' };
-                        stockLabel = `0 ${p.unit || 'pcs'} (Out)`;
+                        stockLabel = `0 ${p.unit || 'pcs'}`;
                       } else if (stock <= minStock) {
                         stockBadgeStyle = { background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' };
-                        stockLabel = `⚠️ ${stock} ${p.unit || 'pcs'} (Low)`;
+                        stockLabel = `${stock} ${p.unit || 'pcs'}`;
                       }
 
                       return React.createElement('tr', { key: p.id },
@@ -3942,27 +4354,102 @@
                           }, `${marginPct}%`) : '—'
                         ),
 
-                        // Column 6: Stock on Hand
+                        // Column 6: Stock on Hand (Direct Inline Quick Steppers & One-Click Edit)
                         React.createElement('td', { style: { textAlign: 'center' } },
-                          React.createElement('span', {
-                            className: 'badge',
-                            style: {
-                              ...stockBadgeStyle,
-                              padding: '4px 10px',
-                              borderRadius: 6,
-                              fontWeight: 600,
-                              fontSize: '0.8rem'
-                            }
-                          }, stockLabel)
+                          isService ? (
+                            React.createElement('span', {
+                              className: 'badge',
+                              style: { ...stockBadgeStyle, padding: '4px 10px', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem' }
+                            }, 'Service')
+                          ) : (
+                            editingStockId === p.id ? (
+                              React.createElement('div', {
+                                style: { display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--bg-card)', padding: '2px 4px', borderRadius: 6, border: '1px solid var(--primary)', boxShadow: '0 0 0 2px rgba(59,130,246,0.2)' },
+                                onClick: e => e.stopPropagation()
+                              },
+                                React.createElement('input', {
+                                  type: 'number',
+                                  step: 'any',
+                                  className: 'input input-sm',
+                                  style: { width: 72, textAlign: 'center', padding: '2px 4px', height: 26, fontSize: '0.85rem', fontWeight: 700 },
+                                  value: inlineStockVal,
+                                  autoFocus: true,
+                                  onChange: e => setInlineStockVal(e.target.value),
+                                  onKeyDown: e => {
+                                    if (e.key === 'Enter') handleSaveInlineStock(p);
+                                    if (e.key === 'Escape') setEditingStockId(null);
+                                  }
+                                }),
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-primary',
+                                  style: { padding: '2px 6px', height: 26, fontSize: '0.75rem' },
+                                  title: 'Save (Enter)',
+                                  disabled: inlineSavingId === p.id,
+                                  onClick: () => handleSaveInlineStock(p)
+                                }, inlineSavingId === p.id ? '…' : '✓'),
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-ghost',
+                                  style: { padding: '2px 6px', height: 26, fontSize: '0.75rem' },
+                                  title: 'Cancel (Esc)',
+                                  onClick: () => setEditingStockId(null)
+                                }, '✕')
+                              )
+                            ) : (
+                              React.createElement('div', {
+                                style: { display: 'inline-flex', alignItems: 'center', gap: 3, background: 'var(--bg-secondary)', padding: '2px 4px', borderRadius: 8, border: '1px solid var(--border)' }
+                              },
+                                // Quick -1 Stepper Button
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-ghost',
+                                  style: { padding: '0 6px', height: 22, minWidth: 22, fontSize: '0.85rem', fontWeight: 700, borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' },
+                                  title: 'Quick −1 unit',
+                                  disabled: inlineSavingId === p.id || stock <= 0,
+                                  onClick: () => handleQuickStep(p, -1)
+                                }, '−'),
+                                // Clickable Stock Badge to trigger inline edit
+                                React.createElement('span', {
+                                  className: 'badge',
+                                  style: {
+                                    ...stockBadgeStyle,
+                                    padding: '3px 8px',
+                                    borderRadius: 6,
+                                    fontWeight: 700,
+                                    fontSize: '0.82rem',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4
+                                  },
+                                  title: 'Click to directly type exact quantity',
+                                  onClick: () => {
+                                    setEditingStockId(p.id);
+                                    setInlineStockVal(String(stock));
+                                  }
+                                },
+                                  stockLabel,
+                                  React.createElement('span', { style: { fontSize: '0.65rem', opacity: 0.6 } }, '✏️')
+                                ),
+                                // Quick +1 Stepper Button
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-ghost',
+                                  style: { padding: '0 6px', height: 22, minWidth: 22, fontSize: '0.85rem', fontWeight: 700, borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' },
+                                  title: 'Quick +1 unit',
+                                  disabled: inlineSavingId === p.id,
+                                  onClick: () => handleQuickStep(p, 1)
+                                }, '+')
+                              )
+                            )
+                          )
                         ),
 
                         // Column 7: Actions
                         React.createElement('td', { style: { textAlign: 'center' } },
                           React.createElement('div', { style: { display: 'flex', gap: 4, justifyContent: 'center' } },
-                            // Quick Stock Adjust button (only for physical goods)
+                            // Quick Stock Adjust Modal button (for bulk Add / Deduct / Set with notes)
                             !isService && React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
-                              title: 'Quick Adjust Stock',
+                              title: 'Quick Adjust Modal (Bulk Add/Deduct with audit note)',
                               style: { color: 'var(--primary)' },
                               onClick: () => openQuickAdjust(p)
                             }, '⚡'),
@@ -3975,7 +4462,7 @@
                             // Edit button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
-                              title: 'Edit Product',
+                              title: 'Edit Full Product Details',
                               onClick: () => openEdit(p)
                             }, Icons.edit),
                             // Delete button
@@ -9524,6 +10011,17 @@
         return saved ? parseInt(saved, 10) : 5;
       });
 
+      // Status bar toggle state
+      const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
+
+      const handleStatusBarToggle = (e) => {
+        const checked = e.target.checked;
+        setShowStatusBar(checked);
+        localStorage.setItem('billsoft_show_status_bar', checked ? 'true' : 'false');
+        window.dispatchEvent(new CustomEvent('billsoft:statusbar-toggle', { detail: { show: checked } }));
+        if (window.showToast) window.showToast(checked ? 'System status bar enabled' : 'System status bar disabled', 'success');
+      };
+
       const handleTimeoutChange = (mins) => {
         setSessionTimeoutMins(mins);
         localStorage.setItem('sessionTimeoutMinutes', String(mins));
@@ -9714,6 +10212,31 @@
               )
             )
           ),
+
+          // Live Bottom Status Bar Setting
+          React.createElement('div', {
+            className: 'settings-item',
+            style: {
+              marginTop: 16,
+              paddingTop: 16,
+              borderTop: '1px dashed var(--border)'
+            }
+          },
+            React.createElement('div', { className: 'settings-item-info' },
+              React.createElement('div', { className: 'settings-item-title', style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                '📊 Live System Metrics & Diagnostics Bar'
+              ),
+              React.createElement('div', { className: 'settings-item-desc' },
+                'Show live bottom status bar with host storage, JVM RAM utilization, server health latency, and session request counts.'
+              )
+            ),
+            React.createElement('div', { className: 'settings-item-action' },
+              React.createElement('label', { className: 'switch' },
+                React.createElement('input', { type: 'checkbox', checked: showStatusBar, onChange: handleStatusBarToggle }),
+                React.createElement('span', { className: 'slider' })
+              )
+            )
+          ),
           licenseInfo && licenseInfo.status === 'trial' && React.createElement('div', { className: 'settings-item', style: { marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 } },
             React.createElement('div', { className: 'settings-item-info' },
               React.createElement('div', { className: 'settings-item-title' }, 'Product Licensing'),
@@ -9858,6 +10381,342 @@
         tab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
         tab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate }),
         tab === 'credits' && React.createElement(CreditsHelpdesk, null)
+      );
+    }
+
+    // ─── LIVE BOTTOM STATUS BAR & SYSTEM DIAGNOSTICS ───
+    function BottomStatusBar() {
+      const [metrics, setMetrics] = useState(null);
+      const [pingMs, setPingMs] = useState(null);
+      const [reqCount, setReqCount] = useState(() => API.sessionRequestsCount || 0);
+      const [sessionSeconds, setSessionSeconds] = useState(0);
+      const [showModal, setShowModal] = useState(false);
+      const [refreshing, setRefreshing] = useState(false);
+
+      const fetchMetrics = useCallback(async () => {
+        const t0 = performance.now();
+        try {
+          const data = await API.system.metrics();
+          const latency = Math.round(performance.now() - t0);
+          setMetrics(data);
+          setPingMs(latency);
+        } catch (e) {
+          setPingMs(null);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchMetrics();
+        const pollInterval = setInterval(() => {
+          if (!document.hidden) fetchMetrics();
+        }, 20000);
+
+        const timerInterval = setInterval(() => {
+          setSessionSeconds(s => s + 1);
+        }, 1000);
+
+        const handleReq = (e) => {
+          if (e && e.detail && e.detail.count) {
+            setReqCount(e.detail.count);
+          } else {
+            setReqCount(c => c + 1);
+          }
+        };
+
+        window.addEventListener('billsoft:request', handleReq);
+        return () => {
+          clearInterval(pollInterval);
+          clearInterval(timerInterval);
+          window.removeEventListener('billsoft:request', handleReq);
+        };
+      }, [fetchMetrics]);
+
+      const formatSessionTime = (totalSec) => {
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        if (h > 0) return `${h}h ${m}m ${s < 10 ? '0' : ''}${s}s`;
+        return `${m}m ${s < 10 ? '0' : ''}${s}s`;
+      };
+
+      const formatUptime = (totalSec) => {
+        if (!totalSec) return '0s';
+        const d = Math.floor(totalSec / 86400);
+        const h = Math.floor((totalSec % 86400) / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        if (d > 0) return `${d}d ${h}h ${m}m`;
+        if (h > 0) return `${h}h ${m}m ${s}s`;
+        return `${m}m ${s}s`;
+      };
+
+      const handleManualRefresh = async () => {
+        setRefreshing(true);
+        await fetchMetrics();
+        setRefreshing(false);
+      };
+
+      const ramUsedMb = metrics ? metrics.ramUsedMb : 0;
+      const ramMaxMb = metrics ? metrics.ramMaxMb : 0;
+      const ramPercent = metrics ? metrics.ramUsedPercent : 0;
+      const diskFreeGb = metrics ? metrics.diskFreeGb : 0;
+
+      const sessionReqs = metrics && metrics.sessionRequestsCount ? Math.max(metrics.sessionRequestsCount, reqCount) : reqCount;
+      const lifetimeReqs = metrics && metrics.lifetimeRequestsCount ? Math.max(metrics.lifetimeRequestsCount, sessionReqs) : sessionReqs;
+
+      return React.createElement(Fragment, null,
+        // The Fixed Slim Bottom Bar
+        React.createElement('footer', { className: 'bottom-status-bar' },
+          // Left: Health & Ping
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' } },
+            React.createElement('div', {
+              className: 'bottom-status-item',
+              title: 'Server health and live latency (Click to inspect runtime metrics)',
+              onClick: () => setShowModal(true)
+            },
+              React.createElement('span', {
+                style: {
+                  width: 7, height: 7, borderRadius: '50%',
+                  backgroundColor: pingMs !== null ? '#10B981' : '#EF4444',
+                  boxShadow: pingMs !== null ? '0 0 6px #10B981' : 'none'
+                }
+              }),
+              React.createElement('span', { style: { fontWeight: 600, color: pingMs !== null ? 'var(--text)' : 'var(--danger)' } },
+                pingMs !== null ? `System Healthy (${pingMs}ms)` : 'Connecting...'
+              )
+            ),
+            React.createElement('div', { className: 'bottom-status-divider' }),
+            // RAM Usage
+            metrics && React.createElement('div', {
+              className: 'bottom-status-item',
+              title: `JVM Heap Memory: ${ramUsedMb} MB used of ${ramMaxMb} MB limit`,
+              onClick: () => setShowModal(true)
+            },
+              React.createElement('span', null, '🧠'),
+              React.createElement('span', null, `RAM: ${ramUsedMb} MB / ${ramMaxMb} MB (${ramPercent}%)`)
+            ),
+            React.createElement('div', { className: 'bottom-status-divider' }),
+            // Disk Storage
+            metrics && React.createElement('div', {
+              className: 'bottom-status-item',
+              title: `Available Host Storage: ${diskFreeGb} GB Free`,
+              onClick: () => setShowModal(true)
+            },
+              React.createElement('span', null, '💾'),
+              React.createElement('span', null, `Disk: ${diskFreeGb} GB Free`)
+            )
+          ),
+
+          // Right: Session Requests, Session Duration & Diagnostics Button
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            // Session Requests
+            React.createElement('div', {
+              className: 'bottom-status-item',
+              title: 'Total API requests processed during this browser session',
+              onClick: () => setShowModal(true)
+            },
+              React.createElement('span', null, '⚡'),
+              React.createElement('span', { style: { fontWeight: 600 } }, `${sessionReqs} reqs this session`)
+            ),
+            React.createElement('div', { className: 'bottom-status-divider' }),
+            // Active Session Timer
+            React.createElement('div', {
+              className: 'bottom-status-item',
+              title: 'Current browser session active duration',
+              onClick: () => setShowModal(true)
+            },
+              React.createElement('span', null, '⏱️'),
+              React.createElement('span', null, formatSessionTime(sessionSeconds))
+            ),
+            React.createElement('div', { className: 'bottom-status-divider' }),
+            // Diagnostics Button
+            React.createElement('div', {
+              className: 'bottom-status-item',
+              style: { color: 'var(--primary)', fontWeight: 600 },
+              title: 'Open full system diagnostics dialog',
+              onClick: () => setShowModal(true)
+            }, 'ℹ️ Diagnostics')
+          )
+        ),
+
+        // System Diagnostics Modal
+        showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
+          React.createElement('div', {
+            className: 'card modal-content',
+            style: { maxWidth: 580, width: '92%', maxHeight: '90vh', overflowY: 'auto', margin: '40px auto', padding: 24, borderRadius: 12 },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+                '📊 System Health & Runtime Diagnostics'
+              ),
+              React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setShowModal(false) }, '✕')
+            ),
+
+            // Section 1: Current Session Metrics
+            React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } },
+              '⚡ Current Session Diagnostics'
+            ),
+            React.createElement('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginBottom: 20
+              }
+            },
+              // RAM Card
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🧠 JVM Memory (Heap)'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, `${ramUsedMb} MB`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Total: ${metrics ? metrics.ramTotalMb : 0} MB | Max: ${ramMaxMb} MB (${ramPercent}%)`)
+              ),
+              // Disk Card
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '💾 Disk Storage'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#10B981' } }, `${diskFreeGb} GB Free`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Total Drive: ${metrics ? metrics.diskTotalGb : 0} GB`)
+              ),
+              // Session Requests
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⚡ Session Requests'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#3B82F6' } }, `${sessionReqs}`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Session Active: ${formatSessionTime(sessionSeconds)}`)
+              ),
+              // Uptime & Latency
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏱️ Session Server Uptime'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, formatUptime(metrics ? metrics.sessionUptimeSeconds || metrics.uptimeSeconds : 0)),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Roundtrip Ping: ${pingMs !== null ? pingMs + 'ms' : 'N/A'}`)
+              )
+            ),
+
+            // Section 2: Lifetime Stats (Persisted to Database)
+            React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } },
+              '🏛️ All-Time Lifetime Statistics (Database Persisted)'
+            ),
+            React.createElement('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginBottom: 20
+              }
+            },
+              // Lifetime Requests
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '📈 Lifetime Requests Handled'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--primary)' } }, `${lifetimeReqs.toLocaleString()}`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `All API calls across all runs`)
+              ),
+              // Lifetime Cumulative Uptime
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏳ Cumulative Lifetime Uptime'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#10B981' } }, formatUptime(metrics ? metrics.lifetimeUptimeSeconds : 0)),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Total running time across restarts`)
+              ),ement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⚡ Session Requests'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#3B82F6' } }, `${reqCount}`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Session Active: ${formatSessionTime(sessionSeconds)}`)
+              ),
+              // Uptime & Latency
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏱️ Session Server Uptime'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, formatUptime(metrics ? metrics.sessionUptimeSeconds || metrics.uptimeSeconds : 0)),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Roundtrip Ping: ${pingMs !== null ? pingMs + 'ms' : 'N/A'}`)
+              )
+            ),
+
+            // Section 2: Lifetime Stats (Persisted to Database)
+            React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } },
+              '🏛️ All-Time Lifetime Statistics (Database Persisted)'
+            ),
+            React.createElement('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginBottom: 20
+              }
+            },
+              // Lifetime Requests
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '📈 Lifetime Requests Handled'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--primary)' } }, `${(metrics && metrics.lifetimeRequestsCount ? metrics.lifetimeRequestsCount : reqCount).toLocaleString()}`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `All API calls across all runs`)
+              ),
+              // Lifetime Cumulative Uptime
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏳ Cumulative Lifetime Uptime'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#10B981' } }, formatUptime(metrics ? metrics.lifetimeUptimeSeconds : 0)),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Total running time across restarts`)
+              ),
+              // Server Starts Count
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🚀 Total Server Launches'),
+                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, `${metrics && metrics.serverStartsCount ? metrics.serverStartsCount : 1} starts`),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Application start cycles`)
+              ),
+              // First Initialized Date
+              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🗓️ Initial System Start Date'),
+                React.createElement('div', { style: { fontSize: '0.95rem', fontWeight: 700, marginTop: 6, color: 'var(--text)' } },
+                  metrics && metrics.firstStartedAt ? new Date(metrics.firstStartedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Today'
+                ),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  metrics && metrics.firstStartedAt ? new Date(metrics.firstStartedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''
+                )
+              )
+            ),
+
+            // Section 3: System Environment Details
+            React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } },
+              '💻 System & Runtime Environment'
+            ),
+            metrics && React.createElement('div', {
+              style: {
+                padding: '12px 14px',
+                background: 'var(--bg-secondary)',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                fontSize: '0.8rem',
+                lineHeight: 1.6,
+                marginBottom: 20
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Operating System:'),
+                React.createElement('span', { style: { fontWeight: 600 } }, metrics.osName || 'Unknown')
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Java Runtime:'),
+                React.createElement('span', { style: { fontWeight: 600 } }, `OpenJDK ${metrics.javaVersion || ''}`)
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Active Threads / CPU Cores:'),
+                React.createElement('span', { style: { fontWeight: 600 } }, `${metrics.activeThreads || 1} threads / ${metrics.availableProcessors || 1} cores`)
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Last Restarted At:'),
+                React.createElement('span', { style: { fontWeight: 600 } },
+                  metrics.lastStartedAt ? new Date(metrics.lastStartedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now'
+                )
+              )
+            ),
+
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('button', {
+                className: 'btn btn-sm btn-outline',
+                disabled: refreshing,
+                onClick: handleManualRefresh
+              }, refreshing ? 'Refreshing...' : '🔄 Refresh Diagnostics'),
+              React.createElement('button', {
+                className: 'btn btn-sm btn-primary',
+                onClick: () => setShowModal(false)
+              }, 'Close')
+            )
+          )
+        )
       );
     }
 
@@ -12018,7 +12877,8 @@
       onEditQuotation,
       onConvertToInvoice,
       onClearEdit,
-      firms
+      firms,
+      quickDocType
     }) {
       useEffect(() => {
         if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
@@ -12038,25 +12898,30 @@
           React.createElement('button', { className: `btn ${subTab === 'create' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => changeSubTab('create') }, 'Create Document')
         ),
         subTab === 'invoices' && React.createElement(InvoiceList, { onEditInvoice }),
-        subTab === 'quotations' && React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice }),
+        subTab === 'quotations' && React.createElement(QuotationList, { onEditQuotation, onConvertToInvoice, onEditInvoice }),
         subTab === 'statuses' && React.createElement(InvoiceStatusesView, { key: API.firmId, onEditInvoice, onEditQuotation }),
         subTab === 'create' && React.createElement(CreateTabView, {
           globalFirms: firms,
           editInvoiceId,
           editQuotationId,
           convertedFromQuotationId,
-          onClearEdit
+          onClearEdit,
+          quickDocType
         })
       );
     }
 
     // ─── CREATE INVOICE / QUOTATION TABS ───
-    function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit }) {
+    function CreateTabView({ globalFirms, editInvoiceId, editQuotationId, convertedFromQuotationId, onClearEdit, quickDocType }) {
+      const lastHandledTsRef = useRef(quickDocType ? quickDocType.ts : 0);
+
       const [tabs, setTabs] = useState(() => {
         if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
           return [];
         }
-        return [{ id: 1, type: 'invoice', label: 'Inv 1', firmId: API.firmId }];
+        const initialType = (quickDocType && quickDocType.type) ? quickDocType.type : 'invoice';
+        const initialLabel = initialType === 'invoice' ? 'Inv 1' : 'Qtn 1';
+        return [{ id: 1, type: initialType, label: initialLabel, firmId: API.firmId }];
       });
       const [activeTab, setActiveTab] = useState(() => {
         if (editInvoiceId || editQuotationId || convertedFromQuotationId) {
@@ -12105,6 +12970,14 @@
         setTabs(prev => [...prev, newTab]);
         setActiveTab(newTab.id);
       };
+
+      // React to Quick Create button from Sidebar
+      useEffect(() => {
+        if (quickDocType && quickDocType.ts && quickDocType.ts !== lastHandledTsRef.current) {
+          lastHandledTsRef.current = quickDocType.ts;
+          addTab(quickDocType.type || 'invoice');
+        }
+      }, [quickDocType]);
 
       const closeTab = (id, e) => {
         e.stopPropagation();
@@ -12745,11 +13618,13 @@
       };
 
       const [invoiceSubTab, setInvoiceSubTab] = useState('invoices');
+      const [quickDocType, setQuickDocType] = useState(null);
 
-      const handleQuickCreate = () => {
+      const handleQuickCreate = (type = 'invoice') => {
         setEditInvoiceId(null);
         setEditQuotationId(null);
         setConvertedFromQuotationId(null);
+        setQuickDocType({ type, ts: Date.now() });
         setInvoiceSubTab('create');
         setPage('invoices');
       };
@@ -12786,7 +13661,8 @@
             onEditQuotation: handleEditQuotation,
             onConvertToInvoice: handleConvertToInvoice,
             onClearEdit: () => { setEditInvoiceId(null); setEditQuotationId(null); setConvertedFromQuotationId(null); },
-            firms
+            firms,
+            quickDocType
           })
         },
         firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation }) },
@@ -12818,6 +13694,20 @@
       };
       const current = pageComponents[page] || pageComponents.dashboard;
 
+      const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
+
+      useEffect(() => {
+        const handler = (e) => {
+          if (e && e.detail && typeof e.detail.show === 'boolean') {
+            setShowStatusBar(e.detail.show);
+          } else {
+            setShowStatusBar(localStorage.getItem('billsoft_show_status_bar') !== 'false');
+          }
+        };
+        window.addEventListener('billsoft:statusbar-toggle', handler);
+        return () => window.removeEventListener('billsoft:statusbar-toggle', handler);
+      }, []);
+
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
       if (licenseStatus === 'expired') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { setLicenseStatus('activated'); } }), React.createElement(Toast, { toasts, removeToast }));
@@ -12827,7 +13717,7 @@
         React.createElement('div', { className: 'sidebar-container' },
           React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null, onQuickCreate: handleQuickCreate })
         ),
-        React.createElement('main', { className: 'main-content' },
+        React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 12 } },
@@ -12850,6 +13740,7 @@
           ),
           React.createElement('div', { className: 'page-content' }, current.comp)
         ),
+        showStatusBar && React.createElement(BottomStatusBar, null),
         React.createElement(Toast, { toasts, removeToast }),
         React.createElement(UpdateProgressOverlay, { progress: updateProgress, isUpdating, onComplete: handleUpdateComplete }),
         updateCompleteBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },

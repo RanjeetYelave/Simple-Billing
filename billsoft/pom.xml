@@ -160,6 +160,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <mainClass>com.billing.simple.billsoft.BillsoftApplication</mainClass>
                     <layout>WAR</layout>
                 </configuration>
             </plugin>

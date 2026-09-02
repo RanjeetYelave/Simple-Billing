@@ -187,10 +187,11 @@ public class InvoiceService {
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
         Invoice saved = invoiceRepo.save(calculated);
 
-        // If this invoice is converted from a quotation/estimate, delete that quotation
+        // If this invoice is converted from a quotation/estimate, link the quotation
         if (request.getConvertedInvoiceId() != null) {
             invoiceRepo.findById(request.getConvertedInvoiceId()).ifPresent(estimate -> {
-                invoiceRepo.delete(estimate);
+                estimate.setConvertedInvoiceId(saved.getId());
+                invoiceRepo.save(estimate);
             });
         }
 
@@ -497,6 +498,9 @@ public class InvoiceService {
             estimate.setConvertedInvoiceId(saved.getId());
             invoiceRepo.save(estimate);
 
+            // Deduct inventory stock for sales invoices
+            deductInventoryStockForInvoice(saved);
+
             return saved;
         }
 
@@ -560,7 +564,29 @@ public class InvoiceService {
         estimate.setConvertedInvoiceId(saved.getId());
         invoiceRepo.save(estimate);
 
+        // Deduct inventory stock for sales invoices
+        deductInventoryStockForInvoice(saved);
+
         return saved;
+    }
+
+    private void deductInventoryStockForInvoice(Invoice invoice) {
+        if (invoice != null && invoice.getStatus() != InvoiceStatus.ESTIMATE && invoice.getItems() != null) {
+            for (InvoiceItem it : invoice.getItems()) {
+                if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null && it.getQty() > 0) {
+                    BigDecimal qty = new BigDecimal(it.getQty());
+                    productService.recordStockMovement(
+                            it.getProduct().getId(),
+                            invoice.getFirmId(),
+                            "INVOICE_SALE",
+                            qty.negate(),
+                            "INVOICE",
+                            invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : String.valueOf(invoice.getId()),
+                            "Invoice sale to " + (invoice.getCustomer() != null ? invoice.getCustomer().getName() : "Customer")
+                    );
+                }
+            }
+        }
     }
 
     // -------------------------

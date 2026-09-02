@@ -49,6 +49,7 @@ public class FirmDetailsService {
             f.setBankName(nullIfBlank(payload.getBankName()));
             f.setBankAccount(nullIfBlank(payload.getBankAccount()));
             f.setBankIfsc(nullIfBlank(payload.getBankIfsc()));
+            f.setUpiId(nullIfBlank(payload.getUpiId()));
             f.setFooterNote(nullIfBlank(payload.getFooterNote()));
             f.setLogoBase64(payload.getLogoBase64());
         } else {
@@ -99,6 +100,7 @@ public class FirmDetailsService {
         payload.setBankName(nullIfBlank(payload.getBankName()));
         payload.setBankAccount(nullIfBlank(payload.getBankAccount()));
         payload.setBankIfsc(nullIfBlank(payload.getBankIfsc()));
+        payload.setUpiId(nullIfBlank(payload.getUpiId()));
         payload.setFooterNote(nullIfBlank(payload.getFooterNote()));
 
         return repo.save(payload);

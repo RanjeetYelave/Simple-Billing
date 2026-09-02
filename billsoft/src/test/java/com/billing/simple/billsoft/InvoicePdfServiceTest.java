@@ -157,12 +157,28 @@ public class InvoicePdfServiceTest {
         byte[] pdfWithUpi = pdfService.generatePdf(invoice, "A4");
         assertThat(pdfWithUpi).isNotEmpty();
         String textWithUpi = extractPdfText(pdfWithUpi);
-        assertThat(textWithUpi).contains("UPI SCAN TO PAY");
+        assertThat(textWithUpi).contains("SCAN TO PAY");
+        assertThat(textWithUpi).contains("Scan with any UPI app");
+        assertThat(textWithUpi).doesNotContain("teststore@okaxis"); // Raw UPI ID suppressed for clean design
 
         // 3. Quotation with UPI ID -> Quotation must NOT have UPI QR code
         invoice.setStatus(InvoiceStatus.ESTIMATE);
         byte[] quotePdf = pdfService.generatePdf(invoice, "A4");
         String quoteText = extractPdfText(quotePdf);
-        assertThat(quoteText).doesNotContain("UPI SCAN TO PAY");
+        assertThat(quoteText).doesNotContain("SCAN TO PAY");
+
+        // 4. Large multi-item invoice with UPI ID (multi-page) -> Generates successfully
+        Invoice largeInv = sampleInvoice();
+        for (int i = 2; i <= 15; i++) {
+            InvoiceItem it = new InvoiceItem();
+            it.setQty(i);
+            it.setUnit("pcs");
+            it.setPricePerUnit(new BigDecimal("50.00"));
+            it.setLineTotal(new BigDecimal(50 * i + ".00"));
+            it.setInvoice(largeInv);
+            largeInv.getItems().add(it);
+        }
+        byte[] largePdf = pdfService.generatePdf(largeInv, "A4");
+        assertThat(largePdf).isNotEmpty();
     }
 }

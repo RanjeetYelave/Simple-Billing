@@ -460,6 +460,51 @@ input:checked + .slider:before { transform: translateX(20px); }
 /* Sidebar container: the left fixed nav */
 .sidebar-container { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; display: flex; flex-direction: row; }
 
+/* Live Bottom Status Bar */
+.bottom-status-bar {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  height: 26px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  z-index: 80;
+  user-select: none;
+  box-shadow: 0 -1px 3px rgba(0,0,0,0.03);
+}
+.bottom-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+}
+.bottom-status-item:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+.bottom-status-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  margin: 0 2px;
+}
+@media (max-width: 768px) {
+  .bottom-status-bar {
+    left: 0;
+  }
+}
+
 /* Sub-tabs bar styling */
 .sub-tabs-bar {
   border-bottom: 1px solid var(--border);

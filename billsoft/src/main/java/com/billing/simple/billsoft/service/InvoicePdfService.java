@@ -6,7 +6,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -15,7 +17,7 @@ import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.EncodeHintType;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.lowagie.text.Document;
@@ -97,23 +99,12 @@ public class InvoicePdfService {
         doc.add(docTitleP);
 
         // ═══════════════════════════════════════════════════════════════════════════════
-        // MAIN ENCLOSING BOX (Unified Outer Frame)
+        // MAIN CONTENT TABLE (With clean borders & multi-page support)
         // ═══════════════════════════════════════════════════════════════════════════════
-        PdfPTable mainFrame = new PdfPTable(1);
-        mainFrame.setWidthPercentage(100);
-        mainFrame.getDefaultCell().setBorder(Rectangle.BOX);
-        mainFrame.getDefaultCell().setBorderWidth(1f);
-        mainFrame.getDefaultCell().setBorderColor(DARK_BORDER);
-        mainFrame.getDefaultCell().setPadding(0);
-
-        PdfPCell innerContainerCell = new PdfPCell();
-        innerContainerCell.setBorder(Rectangle.BOX);
-        innerContainerCell.setBorderWidth(1f);
-        innerContainerCell.setBorderColor(DARK_BORDER);
-        innerContainerCell.setPadding(0);
-
         PdfPTable contentTable = new PdfPTable(1);
         contentTable.setWidthPercentage(100);
+        contentTable.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        contentTable.getDefaultCell().setPadding(0);
 
         // ─────────────────────────────────────────────────────────────────────────────
         // 1. FIRM HEADER BLOCK (Logo on Left, Firm Info on Right)
@@ -208,7 +199,7 @@ public class InvoicePdfService {
         firmBlock.addCell(firmInfoCell);
 
         PdfPCell firmBlockWrap = new PdfPCell(firmBlock);
-        firmBlockWrap.setBorder(Rectangle.BOTTOM);
+        firmBlockWrap.setBorder(Rectangle.BOX);
         firmBlockWrap.setBorderColor(DARK_BORDER);
         firmBlockWrap.setBorderWidth(1f);
         firmBlockWrap.setPadding(0);
@@ -291,7 +282,7 @@ public class InvoicePdfService {
         billToMetaTable.addCell(rightMeta);
 
         PdfPCell billToMetaWrap = new PdfPCell(billToMetaTable);
-        billToMetaWrap.setBorder(Rectangle.BOTTOM);
+        billToMetaWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
         billToMetaWrap.setBorderColor(DARK_BORDER);
         billToMetaWrap.setBorderWidth(1f);
         billToMetaWrap.setPadding(0);
@@ -379,7 +370,7 @@ public class InvoicePdfService {
         itemsTable.addCell(makeCell("₹ " + formatAmount(grandTotal), totalBoldFont, Element.ALIGN_RIGHT, 5f)); // Total Amount
 
         PdfPCell itemsTableWrap = new PdfPCell(itemsTable);
-        itemsTableWrap.setBorder(Rectangle.BOTTOM);
+        itemsTableWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
         itemsTableWrap.setBorderColor(DARK_BORDER);
         itemsTableWrap.setBorderWidth(1f);
         itemsTableWrap.setPadding(0);
@@ -449,7 +440,7 @@ public class InvoicePdfService {
         summaryTable.addCell(amountsContent);
 
         PdfPCell summaryWrap = new PdfPCell(summaryTable);
-        summaryWrap.setBorder(Rectangle.BOTTOM);
+        summaryWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
         summaryWrap.setBorderColor(DARK_BORDER);
         summaryWrap.setBorderWidth(1f);
         summaryWrap.setPadding(0);
@@ -461,42 +452,58 @@ public class InvoicePdfService {
         PdfPTable footerTable = new PdfPTable(new float[]{2.2f, 1.8f});
         footerTable.setWidthPercentage(100);
 
-        // Left Half: UPI QR Code & Scan To Pay Badge
+        // Left Half: UPI QR Code / Payment Box
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
-        qrCell.setPadding(8f);
-        qrCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+        qrCell.setPadding(10f);
+        qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
 
         boolean showUpiQr = !isEstimate && firm != null && firm.getUpiId() != null && !firm.getUpiId().trim().isBlank();
         if (showUpiQr) {
             try {
                 String upiId = firm.getUpiId().trim();
-                String upiFirmName = (firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName() : "Business";
-                String upiUri = String.format("upi://pay?pa=%s&pn=%s&am=%s&cu=INR", upiId, upiFirmName.replaceAll(" ", "%20"), formatAmount(grandTotal));
+                String upiFirmName = (firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName().trim() : "Business";
+                String encodedName = java.net.URLEncoder.encode(upiFirmName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                String upiUri = "upi://pay?pa=" + upiId + "&pn=" + encodedName + "&am=" + formatAmount(grandTotal) + "&cu=INR";
 
                 QRCodeWriter qrWriter = new QRCodeWriter();
-                BitMatrix bitMatrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140);
-                ByteArrayOutputStream qrBaos = new ByteArrayOutputStream();
-                MatrixToImageWriter.writeToStream(bitMatrix, "PNG", qrBaos);
+                Map<EncodeHintType, Object> hints = new HashMap<>();
+                hints.put(EncodeHintType.MARGIN, 0);
+                BitMatrix matrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140, hints);
+                int width = matrix.getWidth();
+                int height = matrix.getHeight();
+                byte[] rawData = new byte[width * height * 3];
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        boolean isBlack = matrix.get(x, y);
+                        byte val = (byte) (isBlack ? 0 : 255);
+                        int idx = (y * width + x) * 3;
+                        rawData[idx] = val;
+                        rawData[idx + 1] = val;
+                        rawData[idx + 2] = val;
+                    }
+                }
+                Image qrImage = Image.getInstance(width, height, 3, 8, rawData);
+                float qrSize = isA5 ? 58f : 66f;
+                qrImage.scaleToFit(qrSize, qrSize);
+                qrImage.setAlignment(Image.ALIGN_CENTER);
 
-                Image qrImage = Image.getInstance(qrBaos.toByteArray());
-                qrImage.scaleToFit(isA5 ? 65f : 78f, isA5 ? 65f : 78f);
-                qrImage.setAlignment(Image.LEFT);
+                // Professional Section Header
+                Paragraph pTitle = new Paragraph("SCAN TO PAY", new Font(Font.HELVETICA, isA5 ? 7.5f : 8.5f, Font.BOLD, TEXT_DARK));
+                pTitle.setAlignment(Element.ALIGN_CENTER);
+                pTitle.setSpacingAfter(5f);
+                qrCell.addElement(pTitle);
+
                 qrCell.addElement(qrImage);
 
-                // UPI Scan to Pay Badge
-                Paragraph pUpiBadge = new Paragraph("  UPI SCAN TO PAY  ", new Font(Font.HELVETICA, 7.5f, Font.BOLD, Color.WHITE));
-                PdfPTable badgeTable = new PdfPTable(1);
-                badgeTable.setWidthPercentage(42);
-                badgeTable.setHorizontalAlignment(Element.ALIGN_LEFT);
-                PdfPCell badgeCell = new PdfPCell(pUpiBadge);
-                badgeCell.setBackgroundColor(UPI_GREEN);
-                badgeCell.setBorder(Rectangle.NO_BORDER);
-                badgeCell.setPadding(2f);
-                badgeCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-                badgeTable.addCell(badgeCell);
-                qrCell.addElement(badgeTable);
-            } catch (Exception ignored) {}
+                // Professional Clean Caption (No raw UPI ID)
+                Paragraph pSub = new Paragraph("Scan with any UPI app", new Font(Font.HELVETICA, isA5 ? 6f : 6.5f, Font.NORMAL, TEXT_MUTED));
+                pSub.setAlignment(Element.ALIGN_CENTER);
+                pSub.setSpacingBefore(4f);
+                qrCell.addElement(pSub);
+            } catch (Throwable t) {
+                qrCell.addElement(new Paragraph(" ", normalText));
+            }
         } else {
             // If Quotation or no UPI ID configured, show clean empty space / footer note
             qrCell.addElement(new Paragraph(" ", normalText));
@@ -509,33 +516,34 @@ public class InvoicePdfService {
         signCell.setBorder(Rectangle.LEFT);
         signCell.setBorderColor(DARK_BORDER);
         signCell.setBorderWidth(1f);
-        signCell.setPadding(10f);
+        signCell.setPadding(8f);
         signCell.setHorizontalAlignment(Element.ALIGN_CENTER);
 
         Paragraph pFor = new Paragraph("For, " + fName, boldText);
         pFor.setAlignment(Element.ALIGN_CENTER);
+        pFor.setSpacingAfter(4f);
         signCell.addElement(pFor);
 
         // Realistic Drawn Signature / Ink Path Simulation
-        Paragraph pSigSpace = new Paragraph("\n\n\n", normalText);
+        Paragraph pSigSpace = new Paragraph("\n\n", normalText);
         pSigSpace.setAlignment(Element.ALIGN_CENTER);
         signCell.addElement(pSigSpace);
 
-        Paragraph pAuth = new Paragraph("Authorized Signatory", normalText);
+        Paragraph pAuth = new Paragraph("Authorized Signatory", new Font(Font.HELVETICA, isA5 ? 7.5f : 8f, Font.NORMAL, TEXT_MUTED));
         pAuth.setAlignment(Element.ALIGN_CENTER);
         signCell.addElement(pAuth);
 
         footerTable.addCell(signCell);
 
         PdfPCell footerWrap = new PdfPCell(footerTable);
-        footerWrap.setBorder(Rectangle.NO_BORDER);
+        footerWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
+        footerWrap.setBorderColor(DARK_BORDER);
+        footerWrap.setBorderWidth(1f);
         footerWrap.setPadding(0);
         contentTable.addCell(footerWrap);
 
-        // Add to main document
-        innerContainerCell.addElement(contentTable);
-        mainFrame.addCell(innerContainerCell);
-        doc.add(mainFrame);
+        // Add directly to main document for reliable multi-page flow & rendering
+        doc.add(contentTable);
 
         doc.close();
         return baos.toByteArray();

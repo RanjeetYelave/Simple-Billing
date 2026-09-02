@@ -208,59 +208,63 @@ public class ProductService {
 
 	public Map<String, Object> getInventorySummary(Long firmId) {
 		List<Product> list = repo.findByFirmId(firmId);
+
 		long totalProducts = list.size();
-		BigDecimal totalStockUnits = BigDecimal.ZERO;
-		BigDecimal totalValuationAtCost = BigDecimal.ZERO;
-		BigDecimal totalValuationAtRetail = BigDecimal.ZERO;
+		long goodsCount = 0;
+		long servicesCount = 0;
 		long lowStockCount = 0;
 		long outOfStockCount = 0;
-		long servicesCount = 0;
-		Set<String> categories = new HashSet<>();
+
+		BigDecimal totalRetailValue = BigDecimal.ZERO;
+		BigDecimal totalCostValue = BigDecimal.ZERO;
+
+		BigDecimal totalMarginSum = BigDecimal.ZERO;
+		int marginProductCount = 0;
 
 		for (Product p : list) {
-			if (p.getCategory() != null && !p.getCategory().trim().isEmpty()) {
-				categories.add(p.getCategory().trim());
-			}
-
 			if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
 				servicesCount++;
 				continue;
 			}
+			goodsCount++;
 
 			BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
-			BigDecimal minStock = p.getMinStockLevel() != null ? p.getMinStockLevel() : new BigDecimal("5.000");
+			BigDecimal minLevel = p.getMinStockLevel() != null ? p.getMinStockLevel() : new BigDecimal("5.000");
 			BigDecimal price = p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO;
 			BigDecimal cost = p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO;
 
-			totalStockUnits = totalStockUnits.add(stock);
-			totalValuationAtCost = totalValuationAtCost.add(cost.multiply(stock));
-			totalValuationAtRetail = totalValuationAtRetail.add(price.multiply(stock));
-
 			if (stock.compareTo(BigDecimal.ZERO) <= 0) {
 				outOfStockCount++;
-			} else if (stock.compareTo(minStock) <= 0) {
+			} else if (stock.compareTo(minLevel) <= 0) {
 				lowStockCount++;
+			}
+
+			if (stock.compareTo(BigDecimal.ZERO) > 0) {
+				totalRetailValue = totalRetailValue.add(price.multiply(stock));
+				totalCostValue = totalCostValue.add(cost.multiply(stock));
+			}
+
+			if (price.compareTo(BigDecimal.ZERO) > 0 && cost.compareTo(BigDecimal.ZERO) > 0) {
+				BigDecimal margin = price.subtract(cost).divide(price, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+				totalMarginSum = totalMarginSum.add(margin);
+				marginProductCount++;
 			}
 		}
 
-		BigDecimal estimatedMarginPercent = BigDecimal.ZERO;
-		if (totalValuationAtRetail.compareTo(BigDecimal.ZERO) > 0) {
-			BigDecimal profit = totalValuationAtRetail.subtract(totalValuationAtCost);
-			estimatedMarginPercent = profit.multiply(new BigDecimal("100"))
-					.divide(totalValuationAtRetail, 2, RoundingMode.HALF_UP);
-		}
+		BigDecimal avgGrossMargin = marginProductCount > 0
+				? totalMarginSum.divide(new BigDecimal(marginProductCount), 1, RoundingMode.HALF_UP)
+				: BigDecimal.ZERO;
 
-		Map<String, Object> summary = new LinkedHashMap<>();
+		Map<String, Object> summary = new HashMap<>();
 		summary.put("totalProducts", totalProducts);
-		summary.put("totalStockUnits", totalStockUnits);
-		summary.put("totalValuationAtCost", totalValuationAtCost.setScale(2, RoundingMode.HALF_UP));
-		summary.put("totalValuationAtRetail", totalValuationAtRetail.setScale(2, RoundingMode.HALF_UP));
-		summary.put("estimatedMarginPercent", estimatedMarginPercent);
+		summary.put("goodsCount", goodsCount);
+		summary.put("servicesCount", servicesCount);
 		summary.put("lowStockCount", lowStockCount);
 		summary.put("outOfStockCount", outOfStockCount);
-		summary.put("servicesCount", servicesCount);
-		summary.put("categoriesCount", categories.size());
-		summary.put("categories", new ArrayList<>(categories));
+		summary.put("totalRetailValue", totalRetailValue.setScale(2, RoundingMode.HALF_UP));
+		summary.put("totalCostValue", totalCostValue.setScale(2, RoundingMode.HALF_UP));
+		summary.put("averageGrossMarginPercent", avgGrossMargin);
+
 		return summary;
 	}
 }

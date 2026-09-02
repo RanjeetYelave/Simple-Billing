@@ -10,8 +10,8 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>billsoft</module>
         <module>launcher</module>
+        <module>billsoft</module>
     </modules>
 
     <properties>

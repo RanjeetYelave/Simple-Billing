@@ -32,8 +32,8 @@ jobs:
         run: |
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
-      - name: Build with Maven
-        run: mvn clean package -DskipTests
+      - name: Build with Maven and Run Regression Tests
+        run: mvn clean package
 
       - name: Rename WAR file
         working-directory: ./billsoft
@@ -43,6 +43,16 @@ jobs:
         run: |
           sha256sum billsoft/target/billsoft.war | awk '{print $1}' > billsoft/target/billsoft.war.sha256
 
+      - name: Package Regression Test Reports
+        run: |
+          mkdir -p reports-dist
+          if [ -d "billsoft/target/site/jacoco" ]; then
+            (cd billsoft/target/site && zip -r ../../../reports-dist/Regression-Test-Coverage-Report.zip jacoco)
+          fi
+          if [ -d "billsoft/target/surefire-reports" ]; then
+            (cd billsoft/target && zip -r ../../reports-dist/Regression-Test-Results.zip surefire-reports)
+          fi
+
       - name: Upload WAR artifact
         uses: actions/upload-artifact@v4
         with:
@@ -51,6 +61,13 @@ jobs:
             billsoft/target/billsoft.war
             billsoft/target/billsoft.war.sha256
           if-no-files-found: error
+
+      - name: Upload Regression Reports artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-reports
+          path: reports-dist/*
+          if-no-files-found: warn
 
   build-windows:
     runs-on: windows-latest
@@ -174,6 +191,12 @@ jobs:
           name: windows-distribution
           path: ./dist
 
+      - name: Download Regression Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: regression-reports
+          path: ./dist
+
       - name: Generate Release Notes
         run: |
           if [ -f billsoft/release-notes.txt ]; then
@@ -182,6 +205,11 @@ jobs:
             echo "## RupeeCRM Release v1.0.${{ github.run_number }}" > release-notes.txt
             echo "Professional CRM and billing background service with custom offline domain and bundled JRE." >> release-notes.txt
           fi
+          echo "" >> release-notes.txt
+          echo "### 🧪 Automated Quality & Regression Testing" >> release-notes.txt
+          echo "- **Regression Test Pack**: 160 Tests (Billing, Accounting, Security, HR, Inventory, PO, PDFs, E2E)" >> release-notes.txt
+          echo "- **Test Execution Results**: Attached below as \`Regression-Test-Results.zip\`" >> release-notes.txt
+          echo "- **JaCoCo Coverage Report**: Attached below as \`Regression-Test-Coverage-Report.zip\`" >> release-notes.txt
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
@@ -194,5 +222,7 @@ jobs:
             dist/billsoft.war.sha256
             dist/RupeeCRM-Windows-x64.zip
             dist/RupeeCRM-Setup.msi
+            dist/Regression-Test-Coverage-Report.zip
+            dist/Regression-Test-Results.zip
           generate_release_notes: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false

@@ -2344,8 +2344,12 @@
 
       useEffect(() => {
         if (value) {
-          const p = products.find(x => String(x.id) === String(value));
-          if (p) setText(p.name);
+          const p = (products || []).find(x => String(x.id) === String(value));
+          if (p) {
+            setText(p.name);
+          } else {
+            setText(initialText || value);
+          }
         } else if (initialText !== undefined && initialText !== null) {
           setText(initialText);
         }
@@ -2689,7 +2693,7 @@
       const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
 
       const isEstimate = isQuotationMode;
-      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', hsnCode: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
+      const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', productName: '', hsnCode: '', qty: '', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
 
       const [form, setForm] = useState({
         customerId: '', customerName: '', customerPhone: '', customerAddress: '',
@@ -2720,13 +2724,18 @@
             setProducts(prods);
             if (editId) {
               return API.invoices.get(editId).then(inv => {
-                const items = (inv.items || []).map(it => ({
-                  _id: BillsoftUtils.generateId(),
-                  productId: it.product ? String(it.product.id) : '',
-                  hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
-                  qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
-                  discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
-                }));
+                const items = (inv.items || []).map(it => {
+                  const prodId = it.product ? String(it.product.id) : (it.productId ? String(it.productId) : '');
+                  const prodName = it.productName || (it.product ? (it.product.name || '') : '');
+                  return {
+                    _id: BillsoftUtils.generateId(),
+                    productId: prodId || prodName,
+                    productName: prodName,
+                    hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
+                    qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
+                    discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
+                  };
+                });
                 setForm({
                   customerId: inv.customer ? String(inv.customer.id) : '',
                   customerName: inv.customer ? inv.customer.name : '',
@@ -2748,14 +2757,27 @@
               });
             } else if (convertedFromQuotationId) {
               return API.invoices.get(convertedFromQuotationId).then(async (q) => {
-                const items = (q.items || []).map(it => ({
-                  _id: BillsoftUtils.generateId(),
-                  productId: it.product ? String(it.product.id) : '',
-                  hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
-                  qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
-                  discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
-                }));
-                const nextNum = await API.invoices.nextInvoiceNumber();
+                const items = (q.items || []).map(it => {
+                  const prodId = it.product ? String(it.product.id) : (it.productId ? String(it.productId) : '');
+                  const prodName = it.productName || (it.product ? (it.product.name || '') : '');
+                  return {
+                    _id: BillsoftUtils.generateId(),
+                    productId: prodId || prodName,
+                    productName: prodName,
+                    hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
+                    qty: it.qty || 1, unit: it.unit || '', pricePerUnit: it.pricePerUnit || '',
+                    discountValue: it.discountValue || 0, gstPercent: it.gstPercent || ''
+                  };
+                });
+                let nextNum = '';
+                try {
+                  const nextNumRes = await API.invoices.nextInvoiceNumber();
+                  nextNum = (typeof nextNumRes === 'object' && nextNumRes !== null)
+                    ? (nextNumRes.invoiceNumber || nextNumRes.number || '')
+                    : String(nextNumRes || '');
+                } catch (numErr) {
+                  console.warn('Could not fetch next invoice number:', numErr);
+                }
                 setForm({
                   customerId: q.customer ? String(q.customer.id) : '',
                   customerName: q.customer ? q.customer.name : '',
@@ -2776,11 +2798,23 @@
                 });
               });
             } else {
-              if (isEstimate) { return API.invoices.nextEstimateNumber().then(n => setForm(f => ({ ...f, estimateNumber: n }))).catch(() => { }); }
-              else { return API.invoices.nextInvoiceNumber().then(n => setForm(f => ({ ...f, invoiceNumber: n }))).catch(() => { }); }
+              if (isEstimate) {
+                return API.invoices.nextEstimateNumber().then(n => {
+                  const numStr = (typeof n === 'object' && n !== null) ? (n.estimateNumber || n.number || '') : String(n || '');
+                  setForm(f => ({ ...f, estimateNumber: numStr }));
+                }).catch(() => { });
+              } else {
+                return API.invoices.nextInvoiceNumber().then(n => {
+                  const numStr = (typeof n === 'object' && n !== null) ? (n.invoiceNumber || n.number || '') : String(n || '');
+                  setForm(f => ({ ...f, invoiceNumber: numStr }));
+                }).catch(() => { });
+              }
             }
           })
-          .catch(e => { showToast('Failed to load data', 'error'); })
+          .catch(e => {
+            console.error('InvoiceForm initialization error:', e);
+            showToast('Failed to load data: ' + (e.message || 'Unknown error'), 'error');
+          })
           .finally(() => {
             setLoading(false);
             if (activeFirmId) API.firmId = prevFirmId;
@@ -2793,11 +2827,14 @@
           items[idx] = {
             ...items[idx],
             productId: value,
+            productName: product.name || '',
             hsnCode: product.hsnCode || items[idx].hsnCode || '',
             pricePerUnit: product.price || '',
             unit: product.unit || '',
             gstPercent: product.gstPercentage || ''
           };
+        } else if (field === 'productId') {
+          items[idx] = { ...items[idx], productId: value, productName: value };
         } else {
           items[idx] = { ...items[idx], [field]: value };
         }
@@ -2837,7 +2874,7 @@
       const handleSave = async (andPrint = false, keepOpen = false) => {
         if (submitDisabled) return;
         if (!form.customerName) { showToast('Customer Name is mandatory', 'error'); return; }
-        const validItems = form.items.filter(it => it.productId || it.pricePerUnit > 0);
+        const validItems = form.items.filter(it => it.productId || it.productName || it.pricePerUnit > 0);
         if (validItems.length === 0) { showToast('Please add at least one product item', 'error'); return; }
 
         setSaving(true);
@@ -2855,15 +2892,18 @@
             setForm(f => ({ ...f, customerId: String(created.id) }));
           }
 
-          const reqItems = validItems.map(it => ({
-            productId: it.productId ? parseInt(it.productId) : undefined,
-            productName: !it.productId ? "Custom Item" : undefined,
-            hsnCode: it.hsnCode ? it.hsnCode.trim() : undefined,
-            qty: parseInt(it.qty) || 1, unit: it.unit || undefined,
-            pricePerUnit: parseFloat(it.pricePerUnit) || 0,
-            discountValue: parseFloat(it.discountValue) || 0,
-            gstPercent: parseFloat(it.gstPercent) || undefined,
-          }));
+          const reqItems = validItems.map(it => {
+            const isNumericId = it.productId && !isNaN(parseInt(it.productId, 10)) && String(parseInt(it.productId, 10)) === String(it.productId).trim();
+            return {
+              productId: isNumericId ? parseInt(it.productId, 10) : undefined,
+              productName: it.productName || (!isNumericId ? it.productId : undefined),
+              hsnCode: it.hsnCode ? it.hsnCode.trim() : undefined,
+              qty: parseInt(it.qty) || 1, unit: it.unit || undefined,
+              pricePerUnit: parseFloat(it.pricePerUnit) || 0,
+              discountValue: parseFloat(it.discountValue) || 0,
+              gstPercent: parseFloat(it.gstPercent) || undefined,
+            };
+          });
 
           const req = {
             customerId: parseInt(finalCustId), items: reqItems,
@@ -3184,7 +3224,7 @@
                       React.createElement(ProductSearchInput, {
                         products,
                         value: item.productId,
-                        initialText: item.productName,
+                        initialText: item.productName || (products.find(p => String(p.id) === String(item.productId))?.name) || item.productId,
                         onChange: (prodId, prod, name) => updateItem(idx, 'productId', prodId || name, prod),
                         onProductCreated: (created) => {
                           setProducts(prev => [...prev, created]);
@@ -9367,6 +9407,93 @@
       );
     }
 
+    // ─── IN-PLACE RE-AUTHENTICATION MODAL ───
+    function ReauthModal({ isOpen, onClose, onAuthenticated }) {
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        if (isOpen) {
+          setPassword('');
+          setError('');
+          setTimeout(() => { if (inputRef.current) inputRef.current.focus(); }, 100);
+        }
+      }, [isOpen]);
+
+      if (!isOpen) return null;
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!password) { setError('Please enter your password / Master PIN'); return; }
+        setLoading(true);
+        setError('');
+        try {
+          const res = await API.auth.login(null, password);
+          if (res && res.token) {
+            API.token = res.token;
+            sessionStorage.setItem('isAuthenticated', 'true');
+            if (onAuthenticated) onAuthenticated(res.token);
+            if (window.showToast) window.showToast('Session unlocked! Resuming work.', 'success');
+          } else if (res && res.success) {
+            sessionStorage.setItem('isAuthenticated', 'true');
+            if (onAuthenticated) onAuthenticated(null);
+            if (window.showToast) window.showToast('Session unlocked! Resuming work.', 'success');
+          } else {
+            setError(res.message || 'Incorrect password / PIN.');
+          }
+        } catch (err) {
+          setError(err.message || 'Authentication failed. Please check password.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return React.createElement('div', { className: 'modal-overlay', style: { zIndex: 99999, backdropFilter: 'blur(8px)', background: 'rgba(15, 23, 42, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 440, width: '90%', padding: '32px 28px', textAlign: 'center', borderRadius: 16, boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' } },
+          React.createElement('div', { style: { width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '1.6rem', boxShadow: '0 8px 16px rgba(99, 102, 241, 0.3)' } }, '🔒'),
+          React.createElement('h3', { style: { fontSize: '1.3rem', fontWeight: 700, margin: '0 0 8px', color: 'var(--text)' } }, 'Session Authentication Required'),
+          React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 20px', lineHeight: 1.5 } },
+            'Your session was unauthenticated or timed out. Enter your password or Master PIN below to resume right where you left off without losing your work.'
+          ),
+          error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' } },
+            Icons.alert,
+            React.createElement('span', null, error)
+          ),
+          React.createElement('form', { onSubmit: handleSubmit, style: { textAlign: 'left' } },
+            React.createElement('div', { style: { marginBottom: 20 } },
+              React.createElement('label', { style: { display: 'block', marginBottom: 6, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' } }, 'Master PIN / Password'),
+              React.createElement('input', {
+                ref: inputRef,
+                type: 'password',
+                className: 'input',
+                style: { textAlign: 'center', fontSize: '1.1rem', letterSpacing: '0.15em', padding: '11px', borderRadius: 8 },
+                placeholder: '••••••••',
+                value: password,
+                onChange: e => setPassword(e.target.value),
+                required: true
+              })
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                style: { flex: 1, padding: '11px', borderRadius: 8 },
+                onClick: onClose
+              }, 'Dismiss'),
+              React.createElement('button', {
+                type: 'submit',
+                className: 'btn btn-primary',
+                disabled: loading,
+                style: { flex: 2, padding: '11px', borderRadius: 8, fontWeight: 600 }
+              }, loading ? 'Unlocking...' : 'Unlock & Resume')
+            )
+          )
+        )
+      );
+    }
+
     // ── Wizard layout helpers ─────────────────────────────────────────────────────
     const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
     const RESTORE_STEPS = ['Upload Backup', 'Activation'];
@@ -10607,42 +10734,6 @@
               React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
                 React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '📈 Lifetime Requests Handled'),
                 React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--primary)' } }, `${lifetimeReqs.toLocaleString()}`),
-                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `All API calls across all runs`)
-              ),
-              // Lifetime Cumulative Uptime
-              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏳ Cumulative Lifetime Uptime'),
-                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#10B981' } }, formatUptime(metrics ? metrics.lifetimeUptimeSeconds : 0)),
-                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Total running time across restarts`)
-              ),ement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⚡ Session Requests'),
-                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: '#3B82F6' } }, `${reqCount}`),
-                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Session Active: ${formatSessionTime(sessionSeconds)}`)
-              ),
-              // Uptime & Latency
-              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏱️ Session Server Uptime'),
-                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, formatUptime(metrics ? metrics.sessionUptimeSeconds || metrics.uptimeSeconds : 0)),
-                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Roundtrip Ping: ${pingMs !== null ? pingMs + 'ms' : 'N/A'}`)
-              )
-            ),
-
-            // Section 2: Lifetime Stats (Persisted to Database)
-            React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } },
-              '🏛️ All-Time Lifetime Statistics (Database Persisted)'
-            ),
-            React.createElement('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 12,
-                marginBottom: 20
-              }
-            },
-              // Lifetime Requests
-              React.createElement('div', { style: { padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' } },
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '📈 Lifetime Requests Handled'),
-                React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 700, marginTop: 4, color: 'var(--primary)' } }, `${(metrics && metrics.lifetimeRequestsCount ? metrics.lifetimeRequestsCount : reqCount).toLocaleString()}`),
                 React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } }, `All API calls across all runs`)
               ),
               // Lifetime Cumulative Uptime
@@ -13247,9 +13338,31 @@
         initApp();
       }, [firmLoadKey]);
 
+      const [showReauthModal, setShowReauthModal] = useState(false);
+
+      useEffect(() => {
+        const handleUnauthorized = () => {
+          if (authEnabled) {
+            setShowReauthModal(true);
+          }
+        };
+        window.addEventListener('billsoft:unauthorized', handleUnauthorized);
+        return () => window.removeEventListener('billsoft:unauthorized', handleUnauthorized);
+      }, [authEnabled]);
+
       const handleLogin = (firmId) => { setIsAuthenticated(true); sessionStorage.setItem('isAuthenticated', 'true'); localStorage.removeItem('isAuthenticated'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
       const handleLogout = () => { setIsAuthenticated(false); sessionStorage.removeItem('isAuthenticated'); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
-      window.showToast = (message, type = 'info') => { const id = BillsoftUtils.generateId(); setToasts(t => [...t, { id, message, type }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000); };
+      window.showToast = (message, type = 'info') => {
+        if (type === 'error' && (typeof message === 'string') && (message.includes('401') || message.toLowerCase().includes('unauthorized'))) {
+          if (authEnabled) {
+            setShowReauthModal(true);
+          }
+          return;
+        }
+        const id = BillsoftUtils.generateId();
+        setToasts(t => [...t, { id, message, type }]);
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+      };
       const removeToast = (id) => setToasts(t => t.filter(x => x.id !== id));
       const loadFirms = () => {
         API.firm.list().then(list => {
@@ -13742,6 +13855,15 @@
         ),
         showStatusBar && React.createElement(BottomStatusBar, null),
         React.createElement(Toast, { toasts, removeToast }),
+        authEnabled && React.createElement(ReauthModal, {
+          isOpen: showReauthModal,
+          onClose: () => setShowReauthModal(false),
+          onAuthenticated: (token) => {
+            setShowReauthModal(false);
+            setIsAuthenticated(true);
+            setFirmLoadKey(k => k + 1);
+          }
+        }),
         React.createElement(UpdateProgressOverlay, { progress: updateProgress, isUpdating, onComplete: handleUpdateComplete }),
         updateCompleteBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
           React.createElement('div', { className: 'card', style: { maxWidth: 420, width: '90%', padding: '40px 30px', textAlign: 'center' } },

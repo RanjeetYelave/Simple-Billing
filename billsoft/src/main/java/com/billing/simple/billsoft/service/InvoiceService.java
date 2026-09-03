@@ -27,12 +27,16 @@ import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.engine.InvoiceCalculationEngine;
+import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
+import com.billing.simple.billsoft.entities.InvoicePayment;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.entities.Product;
+import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.CustomerRepository;
+import com.billing.simple.billsoft.repo.InvoicePaymentRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
 
@@ -43,6 +47,8 @@ public class InvoiceService {
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
     private final ProductService productService;
+    private final InvoicePaymentRepository invoicePaymentRepo;
+    private final AppConfigRepository appConfigRepo;
     private final InvoiceCalculationEngine engine;
 
     // scales
@@ -56,27 +62,88 @@ public class InvoiceService {
             InvoiceRepository invoiceRepo,
             CustomerRepository customerRepo,
             ProductRepository productRepo,
-            ProductService productService
+            ProductService productService,
+            InvoicePaymentRepository invoicePaymentRepo,
+            AppConfigRepository appConfigRepo
     ) {
         this.invoiceRepo = invoiceRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.productService = productService;
+        this.invoicePaymentRepo = invoicePaymentRepo;
+        this.appConfigRepo = appConfigRepo;
         this.engine = new InvoiceCalculationEngine();
     }
 
     // -------------------------
-    // Number generators (atomic with retry)
+    // Number generators (atomic monotonic max sequence)
     // -------------------------
-    public String generateInvoiceNumber(Long firmId) {
-        // Use synchronized block to prevent duplicates under concurrent access
-        long count = invoiceRepo.countByFirmId(firmId);
-        return String.format("INV-%04d", count + 1);
+    public synchronized String generateInvoiceNumber(Long firmId) {
+        String configKey = "LAST_INVOICE_SEQ_" + (firmId != null ? firmId : 0);
+        long lastSeq = appConfigRepo.findById(configKey)
+                .map(AppConfig::getConfigValue)
+                .map(v -> {
+                    try { return Long.parseLong(v); } catch (Exception e) { return 0L; }
+                })
+                .orElse(0L);
+
+        long dbMax = 0;
+        if (firmId != null) {
+            List<String> numbers = invoiceRepo.findInvoiceNumbersByFirmId(firmId);
+            if (numbers != null) {
+                for (String num : numbers) {
+                    if (num != null && num.trim().startsWith("INV-")) {
+                        try {
+                            long seq = Long.parseLong(num.trim().substring(4).trim());
+                            if (seq > dbMax) dbMax = seq;
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+        }
+
+        long nextVal = Math.max(lastSeq, dbMax) + 1;
+
+        AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+        cfg.setConfigKey(configKey);
+        cfg.setConfigValue(String.valueOf(nextVal));
+        appConfigRepo.save(cfg);
+
+        return String.format("INV-%04d", nextVal);
     }
 
-    public String generateEstimateNumber(Long firmId) {
-        long count = invoiceRepo.countByFirmIdAndStatus(firmId, InvoiceStatus.ESTIMATE);
-        return String.format("EST-%04d", count + 1);
+    public synchronized String generateEstimateNumber(Long firmId) {
+        String configKey = "LAST_ESTIMATE_SEQ_" + (firmId != null ? firmId : 0);
+        long lastSeq = appConfigRepo.findById(configKey)
+                .map(AppConfig::getConfigValue)
+                .map(v -> {
+                    try { return Long.parseLong(v); } catch (Exception e) { return 0L; }
+                })
+                .orElse(0L);
+
+        long dbMax = 0;
+        if (firmId != null) {
+            List<String> numbers = invoiceRepo.findEstimateNumbersByFirmId(firmId);
+            if (numbers != null) {
+                for (String num : numbers) {
+                    if (num != null && num.trim().startsWith("EST-")) {
+                        try {
+                            long seq = Long.parseLong(num.trim().substring(4).trim());
+                            if (seq > dbMax) dbMax = seq;
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+        }
+
+        long nextVal = Math.max(lastSeq, dbMax) + 1;
+
+        AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+        cfg.setConfigKey(configKey);
+        cfg.setConfigValue(String.valueOf(nextVal));
+        appConfigRepo.save(cfg);
+
+        return String.format("EST-%04d", nextVal);
     }
 
     // -------------------------
@@ -135,8 +202,9 @@ public class InvoiceService {
             request.setItems(Collections.emptyList());
         }
 
-        // Basic validation: invoice-level discount
+        // Basic validation: invoice-level discount & items
         validateInvoiceDiscount(request.getInvoiceDiscount());
+        validateInvoiceItems(request.getItems());
 
         // Load customer if provided
         Customer customer = null;
@@ -233,8 +301,9 @@ public class InvoiceService {
     public Invoice previewInvoice(InvoiceRequest request) {
         if (request.getItems() == null) request.setItems(Collections.emptyList());
 
-        // Validation for invoice-level discount
+        // Validation for invoice-level discount & items
         validateInvoiceDiscount(request.getInvoiceDiscount());
+        validateInvoiceItems(request.getItems());
 
         Customer customer = null;
         if (request.getCustomerId() != null) {
@@ -912,5 +981,63 @@ public class InvoiceService {
         if (value.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("invoiceDiscount.value cannot be negative");
         }
+    }
+
+    private void validateInvoiceItems(List<InvoiceRequestItem> items) {
+        if (items == null) return;
+        for (InvoiceRequestItem it : items) {
+            if (it.getQty() != null && it.getQty() <= 0) {
+                throw new IllegalArgumentException("Item quantity must be greater than 0");
+            }
+            if (it.getPricePerUnit() != null && it.getPricePerUnit().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Item price per unit cannot be negative");
+            }
+            if (it.getDiscountValue() != null && it.getDiscountValue().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Item discount cannot be negative");
+            }
+        }
+    }
+
+    // -------------------------
+    // PARTIAL PAYMENTS
+    // -------------------------
+    @Transactional(rollbackFor = Exception.class)
+    public InvoicePayment recordPayment(Long invoiceId, BigDecimal amount, LocalDate paymentDate, String paymentMode, String referenceNumber, String notes) {
+        Invoice invoice = invoiceRepo.findById(invoiceId)
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + invoiceId));
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than 0");
+        }
+
+        InvoicePayment payment = InvoicePayment.builder()
+                .firmId(invoice.getFirmId())
+                .invoiceId(invoice.getId())
+                .customerId(invoice.getCustomer() != null ? invoice.getCustomer().getId() : null)
+                .amount(amount.setScale(2, RoundingMode.HALF_UP))
+                .paymentDate(paymentDate != null ? paymentDate : LocalDate.now())
+                .paymentMode(paymentMode != null ? paymentMode : "Cash")
+                .referenceNumber(referenceNumber)
+                .notes(notes)
+                .build();
+
+        InvoicePayment saved = invoicePaymentRepo.save(payment);
+
+        // Check if invoice is fully settled
+        List<InvoicePayment> allPayments = invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
+        BigDecimal totalPaid = allPayments.stream()
+                .map(InvoicePayment::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal invoiceTotal = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
+        invoice.setPaid(totalPaid.compareTo(invoiceTotal) >= 0);
+        invoiceRepo.save(invoice);
+
+        return saved;
+    }
+
+    public List<InvoicePayment> getPayments(Long invoiceId) {
+        return invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
     }
 }

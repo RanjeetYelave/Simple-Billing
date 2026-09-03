@@ -15,6 +15,7 @@ public class InvoiceRequestItem {
      * For custom/manual items, UI must create a temporary Product first.
      */
     private Long productId;
+    private String productName;
 
     /* -------------------------------------------------------------
        QUANTITY & UNIT

@@ -4,12 +4,15 @@ import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.util.PasswordUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -19,9 +22,22 @@ public class AuthController {
     private final AppConfigRepository appConfigRepo;
     private final FirmDetailsRepository firmDetailsRepo;
 
+    private static final Map<String, LocalDateTime> ACTIVE_SESSIONS = new ConcurrentHashMap<>();
+
     public AuthController(AppConfigRepository appConfigRepo, FirmDetailsRepository firmDetailsRepo) {
         this.appConfigRepo = appConfigRepo;
         this.firmDetailsRepo = firmDetailsRepo;
+    }
+
+    public static boolean isValidSessionToken(String token) {
+        if (token == null || token.isBlank()) return false;
+        LocalDateTime expiry = ACTIVE_SESSIONS.get(token);
+        if (expiry == null) return false;
+        if (expiry.isBefore(LocalDateTime.now())) {
+            ACTIVE_SESSIONS.remove(token);
+            return false;
+        }
+        return true;
     }
 
     private boolean isAuthEnabled() {
@@ -37,6 +53,20 @@ public class AuthController {
                 .orElse("");
     }
 
+    private boolean checkPassword(String inputPassword, String storedPassword) {
+        boolean valid = PasswordUtil.checkPassword(inputPassword, storedPassword);
+        if (valid && storedPassword != null && !storedPassword.contains(":") && !storedPassword.isEmpty()) {
+            // Auto-upgrade stored legacy plain text password to hashed
+            try {
+                AppConfig pwConfig = appConfigRepo.findById("global_password").orElse(new AppConfig());
+                pwConfig.setConfigKey("global_password");
+                pwConfig.setConfigValue(PasswordUtil.hashPassword(inputPassword));
+                appConfigRepo.save(pwConfig);
+            } catch (Exception ignored) {}
+        }
+        return valid;
+    }
+
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> status() {
         Map<String, Object> response = new HashMap<>();
@@ -46,26 +76,30 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> request) {
-        String password = request.get("password");
+        String password = request != null ? request.get("password") : null;
         Map<String, Object> response = new HashMap<>();
 
         if (isAuthEnabled()) {
             String globalPassword = getGlobalPassword();
-            if (password == null || !password.equals(globalPassword)) {
+            if (!checkPassword(password, globalPassword)) {
                 response.put("success", false);
                 response.put("message", "Invalid password");
                 return ResponseEntity.badRequest().body(response);
             }
         }
 
+        String token = UUID.randomUUID().toString();
+        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+
         response.put("success", true);
+        response.put("token", token);
         response.put("message", "Login successful");
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/enable")
     public ResponseEntity<Map<String, Object>> enableAuth(@RequestBody Map<String, String> request) {
-        String newPassword = request.get("password");
+        String newPassword = request != null ? request.get("password") : null;
         Map<String, Object> response = new HashMap<>();
 
         if (newPassword == null || newPassword.isBlank()) {
@@ -76,7 +110,7 @@ public class AuthController {
 
         AppConfig pwConfig = appConfigRepo.findById("global_password").orElse(new AppConfig());
         pwConfig.setConfigKey("global_password");
-        pwConfig.setConfigValue(newPassword);
+        pwConfig.setConfigValue(PasswordUtil.hashPassword(newPassword));
         appConfigRepo.save(pwConfig);
 
         AppConfig authConfig = appConfigRepo.findById("auth_enabled").orElse(new AppConfig());
@@ -84,18 +118,22 @@ public class AuthController {
         authConfig.setConfigValue("true");
         appConfigRepo.save(authConfig);
 
+        String token = UUID.randomUUID().toString();
+        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+
         response.put("success", true);
+        response.put("token", token);
         response.put("message", "Authentication enabled successfully");
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/disable")
     public ResponseEntity<Map<String, Object>> disableAuth(@RequestBody Map<String, String> request) {
-        String password = request.get("password");
+        String password = request != null ? request.get("password") : null;
         Map<String, Object> response = new HashMap<>();
 
         String globalPassword = getGlobalPassword();
-        if (!globalPassword.equals(password)) {
+        if (!checkPassword(password, globalPassword)) {
             response.put("success", false);
             response.put("message", "Incorrect password");
             return ResponseEntity.badRequest().body(response);
@@ -106,6 +144,8 @@ public class AuthController {
         authConfig.setConfigValue("false");
         appConfigRepo.save(authConfig);
 
+        ACTIVE_SESSIONS.clear();
+
         response.put("success", true);
         response.put("message", "Authentication disabled successfully");
         return ResponseEntity.ok(response);
@@ -113,24 +153,34 @@ public class AuthController {
 
     @PostMapping("/change-password")
     public ResponseEntity<Map<String, Object>> changePassword(@RequestBody Map<String, String> request) {
-        String oldPassword = request.get("oldPassword");
-        String newPassword = request.get("newPassword");
+        String oldPassword = request != null ? request.get("oldPassword") : null;
+        String newPassword = request != null ? request.get("newPassword") : null;
 
         String globalPassword = getGlobalPassword();
         Map<String, Object> response = new HashMap<>();
 
-        if (!globalPassword.equals(oldPassword)) {
+        if (!checkPassword(oldPassword, globalPassword)) {
             response.put("success", false);
             response.put("message", "Incorrect old password");
             return ResponseEntity.badRequest().body(response);
         }
 
+        if (newPassword == null || newPassword.isBlank()) {
+            response.put("success", false);
+            response.put("message", "New password cannot be empty");
+            return ResponseEntity.badRequest().body(response);
+        }
+
         AppConfig config = appConfigRepo.findById("global_password").orElse(new AppConfig());
         config.setConfigKey("global_password");
-        config.setConfigValue(newPassword);
+        config.setConfigValue(PasswordUtil.hashPassword(newPassword));
         appConfigRepo.save(config);
 
+        String token = UUID.randomUUID().toString();
+        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+
         response.put("success", true);
+        response.put("token", token);
         response.put("message", "Password changed successfully");
         return ResponseEntity.ok(response);
     }

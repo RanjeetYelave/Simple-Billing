@@ -198,7 +198,7 @@ public class BackupIntegrationTest {
         Expense expense = Expense.builder()
                 .firmId(firmId)
                 .title("Office Internet")
-                .amount(1200.0)
+                .amount(BigDecimal.valueOf(1200.0))
                 .category("Utilities")
                 .expenseDate(LocalDate.now())
                 .build();

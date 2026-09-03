@@ -81,10 +81,10 @@ public class Product {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
-        if (this.stockQuantity == null) {
+        if (this.stockQuantity == null || this.stockQuantity.compareTo(BigDecimal.ZERO) < 0) {
             this.stockQuantity = BigDecimal.ZERO;
         }
-        if (this.minStockLevel == null) {
+        if (this.minStockLevel == null || this.minStockLevel.compareTo(BigDecimal.ZERO) < 0) {
             this.minStockLevel = new BigDecimal("5.000");
         }
         if (this.itemType == null || this.itemType.trim().isEmpty()) {
@@ -98,5 +98,11 @@ public class Product {
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();
+        if (this.stockQuantity == null || this.stockQuantity.compareTo(BigDecimal.ZERO) < 0) {
+            this.stockQuantity = BigDecimal.ZERO;
+        }
+        if (this.minStockLevel != null && this.minStockLevel.compareTo(BigDecimal.ZERO) < 0) {
+            this.minStockLevel = BigDecimal.ZERO;
+        }
     }
 }

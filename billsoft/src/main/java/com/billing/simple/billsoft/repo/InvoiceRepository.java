@@ -67,4 +67,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @Query("SELECT COALESCE(SUM(i.totalAmount), 0) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
     double sumTotalAmountByFirmIdAndStatusIn(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
+
+    @Query("SELECT i.invoiceNumber FROM Invoice i WHERE i.firmId = :firmId AND i.invoiceNumber IS NOT NULL")
+    List<String> findInvoiceNumbersByFirmId(@Param("firmId") Long firmId);
+
+    @Query("SELECT i.estimateNumber FROM Invoice i WHERE i.firmId = :firmId AND i.estimateNumber IS NOT NULL")
+    List<String> findEstimateNumbersByFirmId(@Param("firmId") Long firmId);
 }

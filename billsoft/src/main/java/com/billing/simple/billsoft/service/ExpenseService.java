@@ -5,6 +5,8 @@ import com.billing.simple.billsoft.repo.ExpenseRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 import java.util.*;
@@ -26,6 +28,9 @@ public class ExpenseService {
         if (expense.getExpenseDate() == null) {
             expense.setExpenseDate(LocalDate.now());
         }
+        if (expense.getAmount() != null) {
+            expense.setAmount(expense.getAmount().setScale(2, RoundingMode.HALF_UP));
+        }
         return repository.save(expense);
     }
 
@@ -34,7 +39,9 @@ public class ExpenseService {
         Expense existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Expense not found"));
         existing.setTitle(updated.getTitle());
-        existing.setAmount(updated.getAmount());
+        if (updated.getAmount() != null) {
+            existing.setAmount(updated.getAmount().setScale(2, RoundingMode.HALF_UP));
+        }
         existing.setCategory(updated.getCategory());
         existing.setExpenseDate(updated.getExpenseDate());
         existing.setPaymentMode(updated.getPaymentMode());
@@ -58,19 +65,27 @@ public class ExpenseService {
         int currentMonth = now.getMonthValue();
         int currentYear = now.getYear();
 
-        double totalAmount = expenses.stream().mapToDouble(Expense::getAmount).sum();
-        double currentMonthAmount = expenses.stream()
+        BigDecimal totalAmount = expenses.stream()
+                .map(e -> e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal currentMonthAmount = expenses.stream()
                 .filter(e -> e.getExpenseDate() != null &&
                         e.getExpenseDate().getMonthValue() == currentMonth &&
                         e.getExpenseDate().getYear() == currentYear)
-                .mapToDouble(Expense::getAmount).sum();
+                .map(e -> e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
 
-        Map<String, Double> categoryTotals = expenses.stream()
-                .filter(e -> e.getCategory() != null && !e.getCategory().isEmpty())
-                .collect(Collectors.groupingBy(
-                        Expense::getCategory,
-                        Collectors.summingDouble(Expense::getAmount)
-                ));
+        Map<String, BigDecimal> categoryTotals = new HashMap<>();
+        for (Expense e : expenses) {
+            if (e.getCategory() != null && !e.getCategory().trim().isEmpty()) {
+                String cat = e.getCategory().trim();
+                BigDecimal amt = e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO;
+                categoryTotals.put(cat, categoryTotals.getOrDefault(cat, BigDecimal.ZERO).add(amt).setScale(2, RoundingMode.HALF_UP));
+            }
+        }
 
         String topCategory = categoryTotals.entrySet().stream()
                 .max(Map.Entry.comparingByValue())

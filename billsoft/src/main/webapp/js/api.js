@@ -19,6 +19,24 @@ const API = {
     else localStorage.removeItem('currentFirmId');
   },
 
+  get token() {
+    return sessionStorage.getItem('billsoft_auth_token') || '';
+  },
+
+  set token(t) {
+    if (t) sessionStorage.setItem('billsoft_auth_token', t);
+    else sessionStorage.removeItem('billsoft_auth_token');
+  },
+
+  get employeePin() {
+    return sessionStorage.getItem('employeePin') || '';
+  },
+
+  set employeePin(p) {
+    if (p) sessionStorage.setItem('employeePin', p);
+    else sessionStorage.removeItem('employeePin');
+  },
+
   // helper to inject firmId into query strings
   _qs(url, extraParams = {}) {
     const params = new URLSearchParams();
@@ -39,9 +57,12 @@ const API = {
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
     
+    const authHeader = this.token ? { 'X-Auth-Token': this.token } : {};
+    const pinHeader = (this.employeePin && url.includes('/api/employees')) ? { 'X-Employee-Pin': this.employeePin } : {};
+
     const config = {
       ...options,
-      headers: { ...defaultHeaders, ...options.headers },
+      headers: { ...defaultHeaders, ...authHeader, ...pinHeader, ...options.headers },
     };
     
     if (config.body && typeof config.body === 'object' && !isFormData && !(config.body instanceof Blob)) {
@@ -49,6 +70,9 @@ const API = {
     }
     const response = await fetch(`${this.BASE_URL}${url}`, config);
     if (!response.ok) {
+      if ((response.status === 401 || response.status === 403) && !url.includes('/api/auth/')) {
+        window.dispatchEvent(new CustomEvent('billsoft:unauthorized', { detail: { url, status: response.status } }));
+      }
       const text = await response.text().catch(() => '');
       const err = new Error(`HTTP ${response.status}: ${text}`);
       err.status = response.status;
@@ -62,7 +86,11 @@ const API = {
     if (res.status === 204) return null;
     const text = await res.text();
     if (!text || !text.trim()) return null;
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      return text;
+    }
   },
 
   // -- Ensure there is a firm selected before operations that need it
@@ -315,11 +343,31 @@ const API = {
   // ── Authentication ──
   auth: {
     status: () => API._json('/api/auth/status'),
-    enable: (password) => API._json('/api/auth/enable', { method: 'POST', body: { password } }),
-    disable: (password) => API._json('/api/auth/disable', { method: 'POST', body: { password } }),
-    changePassword: (oldPassword, newPassword) => API._json('/api/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),
-    login: (firmId, password) => API._json('/api/auth/login', { method: 'POST', body: { firmId, password } }),
-    resetPasswordMaster: (masterPassword, newPassword) => API._json('/api/auth/reset-password-master', { method: 'POST', body: { masterPassword, newPassword } })
+    enable: async (password) => {
+      const res = await API._json('/api/auth/enable', { method: 'POST', body: { password } });
+      if (res && res.token) API.token = res.token;
+      return res;
+    },
+    disable: async (password) => {
+      const res = await API._json('/api/auth/disable', { method: 'POST', body: { password } });
+      API.token = null;
+      return res;
+    },
+    changePassword: async (oldPassword, newPassword) => {
+      const res = await API._json('/api/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } });
+      if (res && res.token) API.token = res.token;
+      return res;
+    },
+    login: async (firmId, password) => {
+      const res = await API._json('/api/auth/login', { method: 'POST', body: { firmId, password } });
+      if (res && res.token) API.token = res.token;
+      return res;
+    },
+    resetPasswordMaster: async (masterPassword, newPassword) => {
+      const res = await API._json('/api/auth/reset-password-master', { method: 'POST', body: { masterPassword, newPassword } });
+      if (res && res.token) API.token = res.token;
+      return res;
+    }
   },
 
   // ── Licensing ──
@@ -339,13 +387,25 @@ const API = {
       formData.append('mode', mode || 'merge');
       return API._json('/api/backup/import', { method: 'POST', body: formData });
     },
-    factoryReset: () => API._json('/api/backup/factory-reset', { method: 'POST' })
+    factoryReset: (password) => API._json('/api/backup/factory-reset', { method: 'POST', body: { confirm: 'RESET', password } })
   },
 
   // ─── Employees ───
   employees: {
-    verifyPin: (pin) => API._json('/api/employees/verify-pin', { method: 'POST', body: { pin } }),
-    changePin: (oldPin, newPin) => API._json('/api/employees/change-pin', { method: 'POST', body: { oldPin, newPin } }),
+    verifyPin: async (pin) => {
+      const res = await API._json('/api/employees/verify-pin', { method: 'POST', body: { pin } });
+      if (res && res.valid) {
+        API.employeePin = pin;
+      }
+      return res;
+    },
+    changePin: async (oldPin, newPin) => {
+      const res = await API._json('/api/employees/change-pin', { method: 'POST', body: { oldPin, newPin } });
+      if (res && res.status === 'success') {
+        API.employeePin = newPin;
+      }
+      return res;
+    },
     getAll: () => API._json(API._qs('/api/employees')),
     create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),

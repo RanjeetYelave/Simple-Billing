@@ -1,0 +1,64 @@
+name: Java Regression Tests
+
+on:
+  push:
+    branches:
+      - main
+      - OTA_update
+      - Release-branch
+      - overhaul
+  pull_request:
+    branches:
+      - main
+      - OTA_update
+      - Release-branch
+      - overhaul
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  regression-tests:
+    name: Java Regression Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and Run All Tests (Unit, Integration, Regression, E2E)
+        run: |
+          mvn clean test --batch-mode
+
+      - name: Generate JaCoCo Coverage Report
+        if: always()
+        run: |
+          mvn jacoco:report --batch-mode -pl billsoft
+
+      - name: Upload Surefire Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: |
+            billsoft/target/surefire-reports/
+            launcher/target/surefire-reports/
+          if-no-files-found: ignore
+
+      - name: Upload JaCoCo Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: billsoft/target/site/jacoco/
+          if-no-files-found: ignore

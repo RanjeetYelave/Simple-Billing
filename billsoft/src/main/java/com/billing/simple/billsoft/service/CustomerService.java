@@ -38,6 +38,9 @@ public class CustomerService {
         existing.setPhone(request.getPhone());
         existing.setEmail(request.getEmail());
         existing.setAddress(request.getAddress());
+        if (request.getGstin() != null) {
+            existing.setGstin(request.getGstin().trim());
+        }
 
         return repo.save(existing);
     }

@@ -65,6 +65,13 @@ public class EmployeeControllerTest {
     }
 
     @Test
+    void accessEmployees_invalidPin_returnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/employees").param("firmId", "1")
+                .header("X-Employee-Pin", "9999"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void createEmployee_missingName_returnsBadRequest() throws Exception {
         EmployeeDTO dto = new EmployeeDTO();
         dto.setFirmId(1L);
@@ -73,6 +80,7 @@ public class EmployeeControllerTest {
         dto.setDateOfJoining(LocalDate.now());
         String json = objectMapper.writeValueAsString(dto);
         mockMvc.perform(post("/api/employees")
+                .header("X-Employee-Pin", "0000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isBadRequest());
@@ -90,6 +98,7 @@ public class EmployeeControllerTest {
         dto.setDateOfJoining(LocalDate.now());
         String json = objectMapper.writeValueAsString(dto);
         MvcResult result = mockMvc.perform(post("/api/employees")
+                .header("X-Employee-Pin", "0000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -112,6 +121,7 @@ public class EmployeeControllerTest {
         dto.setDateOfJoining(LocalDate.now().minusMonths(6));
         String json = objectMapper.writeValueAsString(dto);
         MvcResult createResult = mockMvc.perform(post("/api/employees")
+                .header("X-Employee-Pin", "0000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -130,7 +140,9 @@ public class EmployeeControllerTest {
         promotionRepo.save(record);
 
         // Apply pending promotions.
-        mockMvc.perform(post("/api/employees/apply-promotions").param("firmId", "1"))
+        mockMvc.perform(post("/api/employees/apply-promotions")
+                .header("X-Employee-Pin", "0000")
+                .param("firmId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.appliedCount").value(1));
     }
@@ -146,6 +158,7 @@ public class EmployeeControllerTest {
         String json = objectMapper.writeValueAsString(dto);
 
         MvcResult createResult = mockMvc.perform(post("/api/employees")
+                .header("X-Employee-Pin", "0000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -155,6 +168,7 @@ public class EmployeeControllerTest {
         String promoJson = "{\"effectiveDate\":\"" + LocalDate.now() + "\",\"newRole\":\"Lead Dev\",\"newSalary\":25000.0,\"reason\":\"Outstanding performance\"}";
 
         mockMvc.perform(post("/api/employees/" + saved.getId() + "/promotions")
+                .header("X-Employee-Pin", "0000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(promoJson))
                 .andExpect(status().isOk())

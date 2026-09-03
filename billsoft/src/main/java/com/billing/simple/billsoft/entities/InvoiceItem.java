@@ -33,6 +33,9 @@ public class InvoiceItem {
     @JoinColumn(name = "product_id")
     private Product product;
 
+    @Column(length = 255)
+    private String productName;
+
     // ITEM BASIC FIELDS
     private Integer qty;
     private String unit;

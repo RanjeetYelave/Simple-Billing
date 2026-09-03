@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.controllers;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -190,5 +191,36 @@ public class InvoiceController {
             ex.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @PostMapping("/{id}/payments")
+    public ResponseEntity<com.billing.simple.billsoft.entities.InvoicePayment> recordPayment(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        try {
+            java.math.BigDecimal amount = body.get("amount") != null
+                    ? new java.math.BigDecimal(body.get("amount").toString())
+                    : null;
+            java.time.LocalDate paymentDate = body.get("paymentDate") != null
+                    ? java.time.LocalDate.parse(body.get("paymentDate").toString())
+                    : java.time.LocalDate.now();
+            String paymentMode = body.get("paymentMode") != null ? body.get("paymentMode").toString() : "Cash";
+            String referenceNumber = body.get("referenceNumber") != null ? body.get("referenceNumber").toString() : null;
+            String notes = body.get("notes") != null ? body.get("notes").toString() : null;
+
+            com.billing.simple.billsoft.entities.InvoicePayment payment =
+                    service.recordPayment(id, amount, paymentDate, paymentMode, referenceNumber, notes);
+            return ResponseEntity.ok(payment);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{id}/payments")
+    public ResponseEntity<List<com.billing.simple.billsoft.entities.InvoicePayment>> getPayments(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getPayments(id));
     }
 }

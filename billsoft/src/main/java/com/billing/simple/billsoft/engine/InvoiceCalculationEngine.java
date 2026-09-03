@@ -251,7 +251,10 @@ public class InvoiceCalculationEngine {
         InvoiceItem item = new InvoiceItem();
 
         item.setProduct(product);
-        int qty = req.getQty() != null ? req.getQty() : 0;
+        item.setProductName(req.getProductName() != null && !req.getProductName().isBlank()
+                ? req.getProductName()
+                : (product != null ? product.getName() : null));
+        int qty = req.getQty() != null ? Math.max(0, req.getQty()) : 0;
         item.setQty(qty);
 
         item.setUnit(req.getUnit() != null ? req.getUnit()
@@ -263,6 +266,10 @@ public class InvoiceCalculationEngine {
         BigDecimal price = req.getPricePerUnit() != null
                 ? req.getPricePerUnit()
                 : (product != null ? nz(product.getPrice()) : ZERO);
+
+        if (price.compareTo(ZERO) < 0) {
+            price = ZERO;
+        }
 
         price = price.setScale(SCALE, RoundingMode.HALF_UP);
         item.setPricePerUnit(price);

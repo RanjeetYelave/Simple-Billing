@@ -12,8 +12,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "expenses")
-public class Expense {
+@Table(name = "invoice_payments")
+public class InvoicePayment {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -21,19 +22,22 @@ public class Expense {
     @Column(nullable = false)
     private Long firmId;
 
-    @Column(nullable = false, length = 200)
-    private String title;
+    @Column(nullable = false)
+    private Long invoiceId;
+
+    private Long customerId;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
-    @Column(length = 100)
-    private String category; // e.g. Office Supplies, Rent & Facilities, Utilities, Salaries & Wages, Travel, Software & Tools, Marketing, Miscellaneous
-
-    private LocalDate expenseDate;
+    @Column(nullable = false)
+    private LocalDate paymentDate;
 
     @Column(length = 50)
-    private String paymentMode; // Cash, UPI, Bank Transfer, Card
+    private String paymentMode; // Cash, UPI, Bank Transfer, Card, Cheque
+
+    @Column(length = 100)
+    private String referenceNumber;
 
     @Column(length = 1000)
     private String notes;
@@ -45,8 +49,8 @@ public class Expense {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
         }
-        if (expenseDate == null) {
-            expenseDate = LocalDate.now();
+        if (paymentDate == null) {
+            paymentDate = LocalDate.now();
         }
     }
 }

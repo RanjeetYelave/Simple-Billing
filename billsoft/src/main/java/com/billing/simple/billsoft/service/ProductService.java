@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +25,26 @@ public class ProductService {
 		this.stockMovementRepo = stockMovementRepo;
 	}
 
+	@PostConstruct
+	public void sanitizeNegativeStock() {
+		try {
+			List<Product> all = repo.findAll();
+			for (Product p : all) {
+				if (p.getStockQuantity() != null && p.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
+					p.setStockQuantity(BigDecimal.ZERO);
+					repo.save(p);
+				}
+			}
+		} catch (Exception ignored) {
+		}
+	}
+
 	@Transactional
 	public Product create(Product product) {
-		if (product.getStockQuantity() == null) {
+		if (product.getStockQuantity() == null || product.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
 			product.setStockQuantity(BigDecimal.ZERO);
 		}
-		if (product.getMinStockLevel() == null) {
+		if (product.getMinStockLevel() == null || product.getMinStockLevel().compareTo(BigDecimal.ZERO) < 0) {
 			product.setMinStockLevel(new BigDecimal("5.000"));
 		}
 		if (product.getItemType() == null || product.getItemType().trim().isEmpty()) {
@@ -86,8 +101,11 @@ public class ProductService {
 		existing.setBarcode(updated.getBarcode());
 		existing.setCategory(updated.getCategory());
 		existing.setItemType(updated.getItemType() != null ? updated.getItemType() : "GOODS");
-		existing.setMinStockLevel(updated.getMinStockLevel() != null ? updated.getMinStockLevel() : new BigDecimal("5.000"));
+		existing.setMinStockLevel(updated.getMinStockLevel() != null && updated.getMinStockLevel().compareTo(BigDecimal.ZERO) >= 0 ? updated.getMinStockLevel() : new BigDecimal("5.000"));
 		existing.setDescription(updated.getDescription());
+		if (updated.getStockQuantity() != null) {
+			existing.setStockQuantity(updated.getStockQuantity().compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : updated.getStockQuantity());
+		}
 		return repo.save(existing);
 	}
 
@@ -110,10 +128,13 @@ public class ProductService {
 
 		Product product = opt.get();
 		BigDecimal prevStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
+		if (prevStock.compareTo(BigDecimal.ZERO) < 0) {
+			prevStock = BigDecimal.ZERO;
+		}
 		BigDecimal change = BigDecimal.ZERO;
 		BigDecimal newStock = prevStock;
 
-		if (quantity == null) {
+		if (quantity == null || quantity.compareTo(BigDecimal.ZERO) < 0) {
 			quantity = BigDecimal.ZERO;
 		}
 
@@ -122,10 +143,13 @@ public class ProductService {
 			change = quantity;
 			newStock = prevStock.add(quantity);
 		} else if ("SUBTRACT".equalsIgnoreCase(mode) || "DEDUCT".equalsIgnoreCase(mode)) {
-			change = quantity.negate();
 			newStock = prevStock.subtract(quantity);
+			if (newStock.compareTo(BigDecimal.ZERO) < 0) {
+				newStock = BigDecimal.ZERO;
+			}
+			change = newStock.subtract(prevStock);
 		} else { // "SET"
-			newStock = quantity;
+			newStock = quantity.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : quantity;
 			change = newStock.subtract(prevStock);
 		}
 
@@ -171,7 +195,13 @@ public class ProductService {
 		}
 
 		BigDecimal prevStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
+		if (prevStock.compareTo(BigDecimal.ZERO) < 0) {
+			prevStock = BigDecimal.ZERO;
+		}
 		BigDecimal newStock = prevStock.add(quantityChange);
+		if (newStock.compareTo(BigDecimal.ZERO) < 0) {
+			newStock = BigDecimal.ZERO;
+		}
 		product.setStockQuantity(newStock);
 		repo.save(product);
 

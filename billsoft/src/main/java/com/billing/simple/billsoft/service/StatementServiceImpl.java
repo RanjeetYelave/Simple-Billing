@@ -24,6 +24,7 @@ import com.billing.simple.billsoft.entities.InvoiceItem;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.repo.InvoicePaymentRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
@@ -58,6 +59,7 @@ public class StatementServiceImpl implements StatementService {
     private final PartyRepository partyRepo;
     private final PartyPaymentRepository partyPaymentRepo;
     private final PurchaseOrderRepository purchaseOrderRepo;
+    private final InvoicePaymentRepository invoicePaymentRepo;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final DecimalFormat CURRENCY_FMT = new DecimalFormat("#,##,##0.00");
@@ -68,7 +70,8 @@ public class StatementServiceImpl implements StatementService {
             FirmDetailsRepository firmRepo,
             PartyRepository partyRepo,
             PartyPaymentRepository partyPaymentRepo,
-            PurchaseOrderRepository purchaseOrderRepo
+            PurchaseOrderRepository purchaseOrderRepo,
+            InvoicePaymentRepository invoicePaymentRepo
     ) {
         this.invoiceRepo = invoiceRepo;
         this.customerRepo = customerRepo;
@@ -76,6 +79,7 @@ public class StatementServiceImpl implements StatementService {
         this.partyRepo = partyRepo;
         this.partyPaymentRepo = partyPaymentRepo;
         this.purchaseOrderRepo = purchaseOrderRepo;
+        this.invoicePaymentRepo = invoicePaymentRepo;
     }
 
     /* ============================================================================
@@ -356,11 +360,11 @@ public class StatementServiceImpl implements StatementService {
                             .build()
             );
             cas.setTransactionCount(cas.getTransactionCount() + 1);
-            cas.setTotalAmount(cas.getTotalAmount() + invTotal.doubleValue());
+            cas.setTotalAmount(round2(cas.getTotalAmount() + invTotal.doubleValue()));
             if (isPaid) {
-                cas.setTotalPaid(cas.getTotalPaid() + invTotal.doubleValue());
+                cas.setTotalPaid(round2(cas.getTotalPaid() + invTotal.doubleValue()));
             } else {
-                cas.setBalanceDue(cas.getBalanceDue() + invTotal.doubleValue());
+                cas.setBalanceDue(round2(cas.getBalanceDue() + invTotal.doubleValue()));
             }
 
             // GST aggregation from line items
@@ -377,8 +381,8 @@ public class StatementServiceImpl implements StatementService {
                         item.setGstAmount(0.0);
                         return item;
                     });
-                    gs.setTaxableValue(gs.getTaxableValue() + taxable.doubleValue());
-                    gs.setGstAmount(gs.getGstAmount() + gstAmt.doubleValue());
+                    gs.setTaxableValue(round2(gs.getTaxableValue() + taxable.doubleValue()));
+                    gs.setGstAmount(round2(gs.getGstAmount() + gstAmt.doubleValue()));
                 }
             }
 
@@ -390,7 +394,7 @@ public class StatementServiceImpl implements StatementService {
                     .entityName(custName)
                     .entityType("CUSTOMER")
                     .paymentMethod(inv.getPaymentMethod())
-                    .inflow(invTotal.doubleValue())
+                    .inflow(round2(invTotal))
                     .outflow(0.0)
                     .status(isPaid ? "PAID" : "UNPAID")
                     .notes(isPaid ? "Payment received" : "Outstanding balance")
@@ -439,9 +443,9 @@ public class StatementServiceImpl implements StatementService {
             BigDecimal poTot = nz(po.getTotalAmount());
             BigDecimal poPaid = nz(po.getPaidAmount());
             fas.setTransactionCount(fas.getTransactionCount() + 1);
-            fas.setTotalAmount(fas.getTotalAmount() + poTot.doubleValue());
-            fas.setTotalPaid(fas.getTotalPaid() + poPaid.doubleValue());
-            fas.setBalanceDue(fas.getBalanceDue() + poTot.subtract(poPaid).doubleValue());
+            fas.setTotalAmount(round2(fas.getTotalAmount() + poTot.doubleValue()));
+            fas.setTotalPaid(round2(fas.getTotalPaid() + poPaid.doubleValue()));
+            fas.setBalanceDue(round2(fas.getBalanceDue() + poTot.subtract(poPaid).doubleValue()));
 
             journalEntries.add(FirmStatementResponse.FirmJournalEntry.builder()
                     .date(po.getPoDate().atStartOfDay())
@@ -451,7 +455,7 @@ public class StatementServiceImpl implements StatementService {
                     .entityType("VENDOR")
                     .paymentMethod(po.getPaymentMethod())
                     .inflow(0.0)
-                    .outflow(poTot.doubleValue())
+                    .outflow(round2(poTot))
                     .status(po.getPaymentStatus() != null ? po.getPaymentStatus() : "ISSUED")
                     .notes(poPaid.compareTo(BigDecimal.ZERO) > 0 ? "Paid: " + CURRENCY_FMT.format(poPaid) : "Yet to pay")
                     .build()
@@ -483,7 +487,7 @@ public class StatementServiceImpl implements StatementService {
                         .entityType("VENDOR")
                         .paymentMethod(pp.getPaymentMode())
                         .inflow(0.0)
-                        .outflow(amt.doubleValue())
+                        .outflow(round2(amt))
                         .status("PAID")
                         .notes(pp.getNotes() != null ? pp.getNotes() : "Direct vendor payment")
                         .build()
@@ -526,21 +530,21 @@ public class StatementServiceImpl implements StatementService {
                 .firmPhone(firm != null ? firm.getPhone() : null)
                 .firmEmail(firm != null ? firm.getEmail() : null)
                 .firmAddress(firmAddr)
-                .totalBilled(totalBilled.doubleValue())
-                .taxableAmount(taxableAmount.doubleValue())
-                .totalTax(totalTax.doubleValue())
-                .totalDiscount(totalDiscount.doubleValue())
+                .totalBilled(round2(totalBilled))
+                .taxableAmount(round2(taxableAmount))
+                .totalTax(round2(totalTax))
+                .totalDiscount(round2(totalDiscount))
                 .invoiceCount(invoiceList.size())
                 .paidInvoicesCount(paidCount)
                 .unpaidInvoicesCount(unpaidCount)
-                .totalPaid(totalCollections.doubleValue())
-                .outstanding(outstandingReceivables.doubleValue())
-                .totalPurchases(totalPurchases.doubleValue())
+                .totalPaid(round2(totalCollections))
+                .outstanding(round2(outstandingReceivables))
+                .totalPurchases(round2(totalPurchases))
                 .purchaseOrderCount(poList.size())
-                .totalPaidToVendors(totalPaidToVendors.doubleValue())
-                .outstandingPayables(outstandingPayables.doubleValue())
-                .netCashflow(netCashflow.doubleValue())
-                .netBusinessVolume(netBusinessVolume.doubleValue())
+                .totalPaidToVendors(round2(totalPaidToVendors))
+                .outstandingPayables(round2(outstandingPayables))
+                .netCashflow(round2(netCashflow))
+                .netBusinessVolume(round2(netBusinessVolume))
                 .gstSummary(new ArrayList<>(gstMap.values()))
                 .paymentModeSummary(new ArrayList<>(modeMap.values()))
                 .topCustomers(topCustList.stream().limit(10).collect(Collectors.toList()))
@@ -1045,6 +1049,15 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private static double round2(BigDecimal v) {
+        if (v == null) return 0.0;
+        return v.setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static double round2(double v) {
+        return BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     private String fmt(Double v) {

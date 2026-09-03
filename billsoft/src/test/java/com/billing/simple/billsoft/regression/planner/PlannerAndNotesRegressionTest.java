@@ -36,7 +36,23 @@ class PlannerAndNotesRegressionTest {
     @Autowired
     private ExpenseService expenseService;
 
+    @Autowired
+    private com.billing.simple.billsoft.repo.ExpenseRepository expenseRepo;
+
+    @Autowired
+    private com.billing.simple.billsoft.repo.NoteRepository noteRepo;
+
+    @Autowired
+    private com.billing.simple.billsoft.repo.ReminderRepository reminderRepo;
+
     private final Long testFirmId = 1L;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        expenseRepo.deleteAll();
+        noteRepo.deleteAll();
+        reminderRepo.deleteAll();
+    }
 
     @Test
     @DisplayName("Should create reminder, query upcoming reminders, and toggle completion")

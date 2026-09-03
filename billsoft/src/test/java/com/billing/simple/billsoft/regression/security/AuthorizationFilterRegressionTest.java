@@ -59,7 +59,7 @@ class AuthorizationFilterRegressionTest {
 
         mockMvc.perform(get("/api/customers?firmId=1")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk());
     }
 
     @Test

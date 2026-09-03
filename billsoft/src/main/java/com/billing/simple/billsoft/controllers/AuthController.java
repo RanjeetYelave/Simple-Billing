@@ -29,15 +29,60 @@ public class AuthController {
         this.firmDetailsRepo = firmDetailsRepo;
     }
 
-    public static boolean isValidSessionToken(String token) {
+    public boolean isValidSessionToken(String token) {
         if (token == null || token.isBlank()) return false;
         LocalDateTime expiry = ACTIVE_SESSIONS.get(token);
-        if (expiry == null) return false;
-        if (expiry.isBefore(LocalDateTime.now())) {
-            ACTIVE_SESSIONS.remove(token);
+        if (expiry != null) {
+            if (expiry.isBefore(LocalDateTime.now())) {
+                ACTIVE_SESSIONS.remove(token);
+                try { appConfigRepo.deleteById("session_" + token); } catch (Exception ignored) {}
+                return false;
+            }
+            return true;
+        }
+        // Check database persistence (survives system/application restarts)
+        try {
+            return appConfigRepo.findById("session_" + token)
+                    .map(AppConfig::getConfigValue)
+                    .map(expStr -> {
+                        try {
+                            LocalDateTime exp = LocalDateTime.parse(expStr);
+                            if (exp.isBefore(LocalDateTime.now())) {
+                                appConfigRepo.deleteById("session_" + token);
+                                return false;
+                            }
+                            ACTIVE_SESSIONS.put(token, exp);
+                            return true;
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .orElse(false);
+        } catch (Exception e) {
             return false;
         }
-        return true;
+    }
+
+    private String createSessionToken() {
+        String token = UUID.randomUUID().toString();
+        LocalDateTime expiry = LocalDateTime.now().plusDays(30);
+        ACTIVE_SESSIONS.put(token, expiry);
+        try {
+            AppConfig sessionConfig = appConfigRepo.findById("session_" + token).orElse(new AppConfig());
+            sessionConfig.setConfigKey("session_" + token);
+            sessionConfig.setConfigValue(expiry.toString());
+            appConfigRepo.save(sessionConfig);
+        } catch (Exception ignored) {}
+        return token;
+    }
+
+    private void invalidateAllSessions() {
+        ACTIVE_SESSIONS.clear();
+        try {
+            appConfigRepo.findAll().stream()
+                    .filter(c -> c.getConfigKey() != null && c.getConfigKey().startsWith("session_"))
+                    .forEach(appConfigRepo::delete);
+        } catch (Exception ignored) {}
     }
 
     private boolean isAuthEnabled() {
@@ -88,8 +133,7 @@ public class AuthController {
             }
         }
 
-        String token = UUID.randomUUID().toString();
-        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+        String token = createSessionToken();
 
         response.put("success", true);
         response.put("token", token);
@@ -118,8 +162,7 @@ public class AuthController {
         authConfig.setConfigValue("true");
         appConfigRepo.save(authConfig);
 
-        String token = UUID.randomUUID().toString();
-        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+        String token = createSessionToken();
 
         response.put("success", true);
         response.put("token", token);
@@ -144,7 +187,7 @@ public class AuthController {
         authConfig.setConfigValue("false");
         appConfigRepo.save(authConfig);
 
-        ACTIVE_SESSIONS.clear();
+        invalidateAllSessions();
 
         response.put("success", true);
         response.put("message", "Authentication disabled successfully");
@@ -176,8 +219,7 @@ public class AuthController {
         config.setConfigValue(PasswordUtil.hashPassword(newPassword));
         appConfigRepo.save(config);
 
-        String token = UUID.randomUUID().toString();
-        ACTIVE_SESSIONS.put(token, LocalDateTime.now().plusDays(30));
+        String token = createSessionToken();
 
         response.put("success", true);
         response.put("token", token);
@@ -208,7 +250,7 @@ public class AuthController {
 
         AppConfig pwConfig = appConfigRepo.findById("global_password").orElse(new AppConfig());
         pwConfig.setConfigKey("global_password");
-        pwConfig.setConfigValue(newPassword);
+        pwConfig.setConfigValue(PasswordUtil.hashPassword(newPassword));
         appConfigRepo.save(pwConfig);
 
         AppConfig authConfig = appConfigRepo.findById("auth_enabled").orElse(new AppConfig());
@@ -216,7 +258,10 @@ public class AuthController {
         authConfig.setConfigValue("true");
         appConfigRepo.save(authConfig);
 
+        String token = createSessionToken();
+
         response.put("success", true);
+        response.put("token", token);
         response.put("message", "Global password reset successfully");
         return ResponseEntity.ok(response);
     }

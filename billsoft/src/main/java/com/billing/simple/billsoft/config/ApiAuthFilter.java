@@ -16,9 +16,11 @@ import java.io.IOException;
 public class ApiAuthFilter implements Filter {
 
     private final AppConfigRepository appConfigRepo;
+    private final AuthController authController;
 
-    public ApiAuthFilter(AppConfigRepository appConfigRepo) {
+    public ApiAuthFilter(AppConfigRepository appConfigRepo, AuthController authController) {
         this.appConfigRepo = appConfigRepo;
+        this.authController = authController;
     }
 
     @Override
@@ -58,7 +60,7 @@ public class ApiAuthFilter implements Filter {
             }
         }
 
-        if (token != null && AuthController.isValidSessionToken(token)) {
+        if (token != null && authController.isValidSessionToken(token)) {
             chain.doFilter(req, res);
             return;
         }

@@ -284,8 +284,7 @@
     };
 
     // ─── SIDEBAR ───
-    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate }) {
-      const [mobileOpen, setMobileOpen] = useState(false);
+    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen }) {
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
         { id: 'invoices', label: 'Invoices & Quotes', icon: Icons.invoice },
@@ -296,13 +295,18 @@
         { id: 'paperwork', label: 'Paperwork', icon: Icons.paperwork },
         { id: 'settings', label: 'Settings', icon: Icons.settings },
       ];
-      const handleNav = (id) => { onNavigate(id); setMobileOpen(false); };
+      const handleNav = (id) => { onNavigate(id); if (setMobileOpen) setMobileOpen(false); };
       return React.createElement(Fragment, null,
-        mobileOpen && React.createElement('div', { className: 'sidebar-overlay', onClick: () => setMobileOpen(false) }),
-        React.createElement('button', { className: 'mobile-toggle', onClick: () => setMobileOpen(true), style: { position: 'fixed', top: 12, left: 12, zIndex: 101 } }, Icons.menu),
+        mobileOpen && React.createElement('div', { className: 'sidebar-overlay active', onClick: () => setMobileOpen && setMobileOpen(false) }),
         React.createElement('aside', { className: `sidebar${mobileOpen ? ' open' : ''}` },
-          React.createElement('div', { className: 'sidebar-logo', style: { padding: '20px 16px', display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)' } },
-            React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, isDarkBg: true })
+          React.createElement('div', { className: 'sidebar-logo', style: { padding: '20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' } },
+            React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, isDarkBg: true }),
+            React.createElement('button', {
+              className: 'mobile-close-btn',
+              onClick: () => setMobileOpen && setMobileOpen(false),
+              style: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+              title: 'Close menu'
+            }, Icons.x || '✕')
           ),
           onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
             React.createElement('div', {
@@ -334,7 +338,7 @@
                   cursor: 'pointer'
                 },
                 title: 'Quick Create Invoice',
-                onClick: () => { onQuickCreate('invoice'); setMobileOpen(false); }
+                onClick: () => { onQuickCreate('invoice'); if (setMobileOpen) setMobileOpen(false); }
               },
                 Icons.plus,
                 'Invoice'
@@ -357,7 +361,7 @@
                   cursor: 'pointer'
                 },
                 title: 'Quick Create Quotation',
-                onClick: () => { onQuickCreate('quotation'); setMobileOpen(false); }
+                onClick: () => { onQuickCreate('quotation'); if (setMobileOpen) setMobileOpen(false); }
               },
                 Icons.plus,
                 'Quote'
@@ -535,7 +539,7 @@
     function FirmPage({ onFirmChanged }) {
       const [tab, setTab] = useState('inventory');
       return React.createElement('div', null,
-        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+        React.createElement('div', { className: 'sub-tabs-bar' },
           React.createElement('button', { className: `btn ${tab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, 'Inventory'),
           React.createElement('button', { className: `btn ${tab === 'customers' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('customers') }, 'All Customers'),
           React.createElement('button', { className: `btn ${tab === 'parties' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('parties') }, 'Parties (Vendors)'),
@@ -1713,7 +1717,7 @@
         );
       };
 
-      return React.createElement('div', { className: 'inbox-container', style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, height: 'calc(100vh - 160px)' } },
+      return React.createElement('div', { className: `inbox-container ${selectedMessage ? 'has-selection' : ''}` },
         React.createElement('div', { className: 'card inbox-list-pane', style: { display: 'flex', flexDirection: 'column', padding: 0 } },
           React.createElement('div', { style: { padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
             React.createElement('h3', { style: { margin: 0 } }, 'Inbox'),
@@ -1744,10 +1748,15 @@
             ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No messages')
           )
         ),
-        React.createElement('div', { className: 'card inbox-detail-pane', style: { padding: 24, display: 'flex', flexDirection: 'column' } },
+        React.createElement('div', { className: 'card inbox-detail-pane', style: { padding: 20, display: 'flex', flexDirection: 'column' } },
           selectedMessage ? React.createElement(Fragment, null,
+            React.createElement('button', {
+              className: 'btn btn-ghost btn-sm inbox-mobile-back-btn',
+              onClick: () => setSelectedMessage(null),
+              style: { marginBottom: 12, display: 'none', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }
+            }, '← Back to Messages'),
             React.createElement('div', { style: { borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 } },
-              React.createElement('h2', { style: { margin: '0 0 8px 0' } }, selectedMessage.subject),
+              React.createElement('h2', { style: { margin: '0 0 8px 0', fontSize: '1.2rem' } }, selectedMessage.subject),
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
                 React.createElement('span', null, `From: ${selectedMessage.sender || 'System'}`),
                 React.createElement('span', null, selectedMessage.createdAt ? selectedMessage.createdAt.replace('T', ' ').substring(0, 19) : '')
@@ -1755,7 +1764,7 @@
             ),
             React.createElement('div', { style: { flex: 1, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: '1.6' } }, selectedMessage.body),
             renderDetailActions(selectedMessage)
-          ) : React.createElement('div', { style: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } }, 'Select a message to view details')
+          ) : React.createElement('div', { style: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: 40 } }, 'Select a message to view details')
         ),
         React.createElement(ComposeMessageModal, { isOpen: composeOpen, onClose: () => setComposeOpen(false), onSend: onSendMessage })
       );
@@ -2029,8 +2038,8 @@
             border: '1px solid var(--border)'
           }
         },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 } },
-            React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { className: 'reminder-banner-inner', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 } },
+            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
               // Header
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
                 React.createElement('span', { style: { fontWeight: 700, fontSize: '0.95rem', color: latestUnread.reminderId ? 'var(--warning, #d97706)' : 'var(--primary)' } },
@@ -2064,7 +2073,7 @@
               })()
             ),
             // Quick Actions
-            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 260 } },
+            React.createElement('div', { className: 'reminder-banner-actions', style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' } },
               React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleDismiss(latestUnread.id) }, '✕ Dismiss'),
               latestUnread.reminderId && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(latestUnread, 1) }, '⏰ +1h'),
               latestUnread.reminderId && React.createElement('button', { className: 'btn btn-sm', style: { fontSize: '0.75rem' }, onClick: () => handleSnooze(latestUnread, 24) }, '📅 +1d'),
@@ -2106,12 +2115,12 @@
           ),
 
         // Clean & Standardized Quick Controls Bar
-        React.createElement('div', { className: 'card', style: { marginBottom: 24, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        React.createElement('div', { className: 'card quick-actions-card', style: { marginBottom: 20 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 } },
             React.createElement('span', { style: { fontSize: '1.1rem', color: 'var(--primary)' } }, '⚡'),
             React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, 'Quick Actions')
           ),
-          React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          React.createElement('div', { className: 'quick-actions-grid' },
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               style: { color: '#7c3aed', borderColor: '#ddd6fe' },
@@ -3101,17 +3110,17 @@
           React.createElement('span', { className: 'badge badge-final', style: { backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, padding: '4px 10px' } }, 'Conversion Mode')
         ),
 
-        React.createElement('div', { className: 'invoice-form-header', style: { display: 'flex', gap: 20, alignItems: 'flex-start' } },
+        React.createElement('div', { className: 'invoice-form-header' },
 
-          React.createElement('div', { className: 'card', style: { flex: 2 } },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+          React.createElement('div', { className: 'card invoice-customer-card' },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 } },
               React.createElement('div', { className: 'card-title' }, 'Customer Details'),
-              React.createElement('select', { className: 'select', value: form.customerId, onChange: handleCustomerSelect, style: { width: 180, fontSize: '0.85rem' } },
+              React.createElement('select', { className: 'select', value: form.customerId, onChange: handleCustomerSelect, style: { maxWidth: 200, fontSize: '0.85rem' } },
                 React.createElement('option', { value: '' }, 'Or select existing...'),
                 customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
               )
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+            React.createElement('div', { className: 'invoice-customer-grid' },
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Name *'),
                 React.createElement(CustomerSearchInput, {
@@ -3136,7 +3145,7 @@
             React.createElement('div', { style: { marginTop: 12 } },
               React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setShowExtraCustomer(!showExtraCustomer) }, showExtraCustomer ? '− Hide Extra Details' : '+ Add More Details')
             ),
-            showExtraCustomer && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' } },
+            showExtraCustomer && React.createElement('div', { className: 'invoice-customer-extra-grid' },
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Email'),
                 React.createElement('input', { className: 'input', value: form.customerEmail, onChange: e => setForm(f => ({ ...f, customerEmail: e.target.value, customerId: '' })) })
@@ -3148,10 +3157,10 @@
             )
           ),
 
-          React.createElement('div', { className: 'card', style: { flex: 1, minWidth: 300 } },
+          React.createElement('div', { className: 'card invoice-details-card' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Invoice Details'),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr', gap: 12 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Billing Firm'),
                 React.createElement('div', { style: { display: 'flex', gap: 8 } },
                   onTypeChange && !editId && React.createElement('select', { className: 'select', style: { padding: '4px 8px', height: 32 }, value: isQuotationMode ? 'quotation' : 'invoice', onChange: e => { setForm(f => ({ ...f, status: e.target.value === 'quotation' ? 'ESTIMATE' : 'FINAL' })); onTypeChange(e.target.value); } },
@@ -3163,12 +3172,12 @@
                   )
                 )
               ),
-              React.createElement('div', { style: { display: 'flex', gap: 12 } },
-                React.createElement('div', { style: { flex: 1 } },
+              React.createElement('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap' } },
+                React.createElement('div', { style: { flex: '1 1 120px' } },
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
                   React.createElement('input', { className: 'input', type: 'date', value: form.invoiceDate, onChange: e => setForm(f => ({ ...f, invoiceDate: e.target.value })) })
                 ),
-                React.createElement('div', { style: { flex: 1 } },
+                React.createElement('div', { style: { flex: '1 1 120px' } },
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
                   React.createElement('input', { className: 'input', type: 'date', value: form.dueDate, onChange: e => setForm(f => ({ ...f, dueDate: e.target.value })) })
                 )
@@ -3330,7 +3339,7 @@
           )
         ),
 
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24, marginBottom: 24 } },
+        React.createElement('div', { className: 'invoice-notes-summary-grid' },
           React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 16 } }, 'Notes & Terms'),
             React.createElement('textarea', { className: 'textarea', placeholder: 'Customer Note...', value: form.customerNote, onChange: e => setForm(f => ({ ...f, customerNote: e.target.value })), style: { marginBottom: 12 } }),
@@ -3366,7 +3375,7 @@
             )
           )
         ),
-        React.createElement('div', { className: 'form-actions', style: { position: 'fixed', bottom: 0, right: 0, left: 240, padding: '12px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)', zIndex: 100, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        React.createElement('div', { className: 'form-actions invoice-form-bottom-actions' },
           React.createElement('div', { style: { fontSize: '0.9rem', color: 'var(--text-secondary)' } }, 'Press TAB on last item row to finish'),
           React.createElement('div', { style: { display: 'flex', gap: 12 } },
             React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowCompletionPopup(true) }, 'Options...'),
@@ -6375,25 +6384,25 @@
           ),
 
           // Header Bar
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+          React.createElement('div', { className: 'page-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
               React.createElement('button', { className: 'btn btn-ghost', onClick: () => setView('list') }, '← Back'),
               React.createElement('h2', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } }, editingPoId ? `Edit Purchase Order (${form.poNumber})` : 'New Purchase Order')
             ),
-            React.createElement('div', { style: { display: 'flex', gap: 10 } },
+            React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
               React.createElement('button', { className: 'btn btn-outline', onClick: () => handleSavePo('DRAFT', false) }, 'Save as Draft'),
               React.createElement('button', { className: 'btn btn-primary', onClick: () => handleSavePo('ISSUED', false) }, '⚡ Issue Purchase Order')
             )
           ),
 
           // Main 2-Column Responsive Layout (Prevents horizontal bleeding)
-          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 330px', gap: 16, width: '100%', boxSizing: 'border-box' } },
+          React.createElement('div', { className: 'po-form-grid' },
             // Left Main Column
             React.createElement('div', { style: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 } },
 
               // ── CARD 1: VENDOR & ORDER METADATA ──
               React.createElement('div', { className: 'card', style: { padding: 18 } },
-                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 } },
                   React.createElement('h3', { style: { margin: 0, fontSize: '0.98rem', fontWeight: 700 } }, '🏢 Vendor & Order Info'),
                   React.createElement('button', {
                     type: 'button',
@@ -6403,7 +6412,7 @@
                   }, '+ Quick Add Vendor')
                 ),
 
-                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12, marginBottom: 12 } },
+                React.createElement('div', { className: 'po-vendor-info-grid' },
                   // Vendor Selector
                   React.createElement('div', null,
                     React.createElement('label', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'Vendor / Party *'),
@@ -8193,7 +8202,7 @@
 
       return React.createElement('div', null,
         // Main Paperwork Sub-tabs Bar
-        React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+        React.createElement('div', { className: 'sub-tabs-bar' },
           React.createElement('button', { className: `btn ${tab === 'orders' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('orders') }, '📦 Purchase Orders'),
           React.createElement('button', { className: `btn ${tab === 'letters' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('letters') }, '✉️ Letter Pad (Letters)'),
           React.createElement('button', { className: `btn ${tab === 'statements' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('statements') }, '📜 Statements & Ledgers')
@@ -8225,16 +8234,16 @@
           ),
 
           React.createElement('div', { className: 'statement-filters', style: { marginBottom: 20, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' } },
-            statementMode === 'party' && React.createElement('div', null,
+            statementMode === 'party' && React.createElement('div', { style: { flex: '1 1 200px' } },
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'Vendor / Party *'),
-              React.createElement('select', { className: 'select', style: { minWidth: 220 }, value: partyId, onChange: e => setPartyId(e.target.value) },
+              React.createElement('select', { className: 'select w-full', value: partyId, onChange: e => setPartyId(e.target.value) },
                 React.createElement('option', { value: '' }, '— Select Party —'),
                 parties.map(p => React.createElement('option', { key: p.id, value: p.id }, p.name))
               )
             ),
-            statementMode === 'customer' && React.createElement('div', null,
+            statementMode === 'customer' && React.createElement('div', { style: { flex: '1 1 200px' } },
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'Customer *'),
-              React.createElement('select', { className: 'select', style: { minWidth: 220 }, value: customerId, onChange: e => setCustomerId(e.target.value) },
+              React.createElement('select', { className: 'select w-full', value: customerId, onChange: e => setCustomerId(e.target.value) },
                 React.createElement('option', { value: '' }, '— Select Customer —'),
                 customers.map(c => React.createElement('option', { key: c.id, value: c.id }, c.name))
               )
@@ -10077,6 +10086,7 @@
           if (res.success) {
             window.showToast('Authentication enabled', 'success');
             setAuthEnabled(true);
+            window.dispatchEvent(new CustomEvent('billsoft:auth-changed', { detail: { enabled: true } }));
             closeAction();
           } else {
             window.showToast(res.message || 'Failed', 'error');
@@ -10096,6 +10106,7 @@
           if (res.success) {
             window.showToast('Authentication disabled', 'success');
             setAuthEnabled(false);
+            window.dispatchEvent(new CustomEvent('billsoft:auth-changed', { detail: { enabled: false } }));
             closeAction();
           } else {
             window.showToast(res.message || 'Failed', 'error');
@@ -10135,7 +10146,7 @@
       // Session timeout state (in minutes)
       const [sessionTimeoutMins, setSessionTimeoutMins] = useState(() => {
         const saved = localStorage.getItem('sessionTimeoutMinutes');
-        return saved ? parseInt(saved, 10) : 5;
+        return saved !== null ? parseInt(saved, 10) : 30;
       });
 
       // Status bar toggle state
@@ -10153,7 +10164,10 @@
         setSessionTimeoutMins(mins);
         localStorage.setItem('sessionTimeoutMinutes', String(mins));
         window.dispatchEvent(new CustomEvent('sessionTimeoutChanged', { detail: { minutes: mins } }));
-        if (window.showToast) window.showToast(`Auto-lock timer set to ${mins} minute${mins > 1 ? 's' : ''}`, 'success');
+        if (window.showToast) {
+          if (mins <= 0) window.showToast('Auto-lock timeout disabled', 'info');
+          else window.showToast(`Auto-lock timer set to ${mins} minute${mins > 1 ? 's' : ''}`, 'success');
+        }
       };
 
       useEffect(() => {
@@ -10323,19 +10337,18 @@
             React.createElement('div', { className: 'settings-item-action' },
               React.createElement('select', {
                 className: 'select',
-                style: { width: 170, fontSize: '0.85rem' },
+                style: { width: 180, fontSize: '0.85rem' },
                 disabled: !authEnabled,
                 value: sessionTimeoutMins,
                 onChange: (e) => handleTimeoutChange(parseInt(e.target.value, 10))
               },
-                React.createElement('option', { value: 1 }, '1 Minute'),
-                React.createElement('option', { value: 2 }, '2 Minutes'),
-                React.createElement('option', { value: 3 }, '3 Minutes'),
-                React.createElement('option', { value: 5 }, '5 Minutes (Default)'),
-                React.createElement('option', { value: 10 }, '10 Minutes'),
+                React.createElement('option', { value: 0 }, '🚫 Never (Disabled)'),
+                React.createElement('option', { value: 5 }, '5 Minutes'),
                 React.createElement('option', { value: 15 }, '15 Minutes'),
-                React.createElement('option', { value: 30 }, '30 Minutes'),
-                React.createElement('option', { value: 60 }, '1 Hour')
+                React.createElement('option', { value: 30 }, '30 Minutes (Recommended)'),
+                React.createElement('option', { value: 60 }, '1 Hour'),
+                React.createElement('option', { value: 240 }, '4 Hours'),
+                React.createElement('option', { value: 480 }, '8 Hours (Full Day)')
               )
             )
           ),
@@ -13164,8 +13177,11 @@
     function SessionTimerBadge({ authEnabled, isAuthenticated, onExpire }) {
       const getDuration = () => {
         const saved = localStorage.getItem('sessionTimeoutMinutes');
-        const mins = saved ? parseInt(saved, 10) : 5;
-        return (isNaN(mins) || mins <= 0 ? 5 : mins) * 60;
+        if (saved !== null) {
+          const mins = parseInt(saved, 10);
+          return isNaN(mins) ? 1800 : mins * 60;
+        }
+        return 1800; // 30 minutes default
       };
 
       const [sessionDuration, setSessionDuration] = useState(getDuration);
@@ -13177,7 +13193,7 @@
 
       useEffect(() => {
         const handleDurationChange = (e) => {
-          const mins = (e && e.detail && e.detail.minutes) ? parseInt(e.detail.minutes, 10) : 5;
+          const mins = (e && e.detail && e.detail.minutes !== undefined) ? parseInt(e.detail.minutes, 10) : 30;
           const secs = mins * 60;
           setSessionDuration(secs);
           setTimeLeft(secs);
@@ -13187,7 +13203,7 @@
       }, []);
 
       useEffect(() => {
-        if (!authEnabled || !isAuthenticated) return;
+        if (!authEnabled || !isAuthenticated || sessionDuration <= 0) return;
 
         let lastActivity = Date.now();
         const resetTimer = () => {
@@ -13203,8 +13219,10 @@
           }
         };
 
-        const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
-        activityEvents.forEach(evt => window.addEventListener(evt, handleActivity, { passive: true }));
+        const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'input', 'wheel', 'pointerdown'];
+        activityEvents.forEach(evt => window.addEventListener(evt, handleActivity, { capture: true, passive: true }));
+        window.addEventListener('billsoft:activity', resetTimer);
+        window.addEventListener('billsoft:request', resetTimer);
 
         const interval = setInterval(() => {
           setTimeLeft(prev => {
@@ -13219,11 +13237,27 @@
 
         return () => {
           clearInterval(interval);
-          activityEvents.forEach(evt => window.removeEventListener(evt, handleActivity));
+          activityEvents.forEach(evt => window.removeEventListener(evt, handleActivity, { capture: true }));
+          window.removeEventListener('billsoft:activity', resetTimer);
+          window.removeEventListener('billsoft:request', resetTimer);
         };
       }, [authEnabled, isAuthenticated, sessionDuration]);
 
       if (!authEnabled || !isAuthenticated) return null;
+
+      if (sessionDuration <= 0) {
+        return React.createElement('button', {
+          className: 'session-timer-badge',
+          onClick: () => {
+            if (window.showToast) window.showToast('Session auto-lock is currently disabled in Settings.', 'info');
+          },
+          title: 'Session active. Auto-lock timeout is disabled.'
+        },
+          React.createElement('span', null, '🟢'),
+          React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginRight: 2, fontWeight: 500 } }, 'Session:'),
+          React.createElement('span', { style: { fontWeight: 700 } }, 'Active')
+        );
+      }
 
       const minutes = Math.floor(timeLeft / 60);
       const seconds = timeLeft % 60;
@@ -13246,9 +13280,11 @@
 
     // ─── MAIN APP ───
     function App() {
-      // Clear legacy persistent auth from localStorage so restarts require fresh authentication
-      localStorage.removeItem('isAuthenticated');
-      const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('isAuthenticated') === 'true');
+      const [isAuthenticated, setIsAuthenticated] = useState(() => {
+        const hasToken = !!(localStorage.getItem('billsoft_auth_token') || sessionStorage.getItem('billsoft_auth_token'));
+        const isAuth = (localStorage.getItem('isAuthenticated') === 'true' || sessionStorage.getItem('isAuthenticated') === 'true');
+        return hasToken && isAuth;
+      });
       const [reminders, setReminders] = useState([]);
       const [notes, setNotes] = useState([]);
       const [expenses, setExpenses] = useState([]);
@@ -13268,23 +13304,40 @@
       const [licenseStatus, setLicenseStatus] = useState('trial');
       const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
+      const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+      const lastReauthPromptTime = useRef(0);
 
       const initApp = async (retryCount = 0) => {
         try {
-          // 1. Fetch firms list, license status, and auth status concurrently
-          const [list, lic, authRes] = await Promise.all([
+          // 1. First fetch auth status to know if auth is required
+          const authRes = await API.auth.status().catch(() => null);
+          const isEnabled = authRes && authRes.authEnabled === true;
+          setAuthEnabled(isEnabled);
+
+          if (isEnabled) {
+            const hasValidSession = !!API.token && (sessionStorage.getItem('isAuthenticated') === 'true' || localStorage.getItem('isAuthenticated') === 'true');
+            if (!hasValidSession) {
+              setIsAuthenticated(false);
+              setShowReauthModal(false);
+              setAppLoaded(true);
+              return;
+            }
+          }
+
+          // User is authenticated (or auth is disabled), now fetch firms and license
+          const [list, lic] = await Promise.all([
             API.firm.list().catch(err => {
               console.warn("Firm list fetch initial attempt:", err);
-              return null; // Return null so we distinguish connection error from empty array []
+              return null;
             }),
             API.license.status().catch(err => {
               console.warn("License status fetch initial attempt:", err);
               return null;
-            }),
-            API.auth.status().catch(() => null)
+            })
           ]);
 
-          // If backend didn't respond yet (e.g., system just restarted and Spring Boot is still booting up)
+          // If backend didn't respond at all (network connection error)
           if (list === null && lic === null && retryCount < 6) {
             console.log(`Backend warming up... retrying initApp (${retryCount + 1}/6)`);
             setTimeout(() => initApp(retryCount + 1), 800);
@@ -13316,16 +13369,8 @@
             setFirms(validList);
           }
 
-          if (authRes && typeof authRes.authEnabled === 'boolean') {
-            setAuthEnabled(authRes.authEnabled);
-            if (authRes.authEnabled) {
-              setIsAuthenticated(sessionStorage.getItem('isAuthenticated') === 'true');
-            } else {
-              setIsAuthenticated(true);
-            }
-          } else {
-            setIsAuthenticated(true);
-          }
+          setIsAuthenticated(true);
+          setShowReauthModal(false);
         } catch (err) {
           console.error("Initialization error:", err);
           setIsAuthenticated(true);
@@ -13342,23 +13387,52 @@
 
       useEffect(() => {
         const handleUnauthorized = () => {
-          if (authEnabled) {
-            setShowReauthModal(true);
+          if (authEnabled && isAuthenticated) {
+            const now = Date.now();
+            if (now - lastReauthPromptTime.current > 3000) {
+              lastReauthPromptTime.current = now;
+              setShowReauthModal(true);
+            }
+          }
+        };
+        const handleAuthChanged = (e) => {
+          const enabled = e && e.detail && e.detail.enabled;
+          setAuthEnabled(!!enabled);
+          if (!enabled) {
+            setIsAuthenticated(true);
+            setShowReauthModal(false);
           }
         };
         window.addEventListener('billsoft:unauthorized', handleUnauthorized);
-        return () => window.removeEventListener('billsoft:unauthorized', handleUnauthorized);
-      }, [authEnabled]);
+        window.addEventListener('billsoft:auth-changed', handleAuthChanged);
+        return () => {
+          window.removeEventListener('billsoft:unauthorized', handleUnauthorized);
+          window.removeEventListener('billsoft:auth-changed', handleAuthChanged);
+        };
+      }, [authEnabled, isAuthenticated]);
 
-      const handleLogin = (firmId) => { setIsAuthenticated(true); sessionStorage.setItem('isAuthenticated', 'true'); localStorage.removeItem('isAuthenticated'); if (firmId) API.firmId = firmId; setFirmLoadKey(k => k + 1); };
-      const handleLogout = () => { setIsAuthenticated(false); sessionStorage.removeItem('isAuthenticated'); localStorage.removeItem('isAuthenticated'); API.firmId = null; setFirmName(''); setFirms([]); window.showToast('Logged out successfully', 'success'); };
+      const handleLogin = (firmId) => {
+        setIsAuthenticated(true);
+        setShowReauthModal(false);
+        sessionStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('isAuthenticated', 'true');
+        if (firmId) API.firmId = firmId;
+        setFirmLoadKey(k => k + 1);
+      };
+      const handleLogout = (reason) => {
+        setIsAuthenticated(false);
+        setShowReauthModal(false);
+        sessionStorage.removeItem('isAuthenticated');
+        sessionStorage.removeItem('billsoft_auth_token');
+        localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('billsoft_auth_token');
+        API.token = null;
+        API.firmId = null;
+        setFirmName('');
+        setFirms([]);
+        window.showToast(reason || 'Logged out successfully', 'info');
+      };
       window.showToast = (message, type = 'info') => {
-        if (type === 'error' && (typeof message === 'string') && (message.includes('401') || message.toLowerCase().includes('unauthorized'))) {
-          if (authEnabled) {
-            setShowReauthModal(true);
-          }
-          return;
-        }
         const id = BillsoftUtils.generateId();
         setToasts(t => [...t, { id, message, type }]);
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
@@ -13586,7 +13660,7 @@
         setConvertedFromQuotationId(null);
         setPage('invoices');
       };
-      const handleFirmChanged = () => { refreshFirm(); setFirmLoadKey(k => k + 1); };
+      const handleFirmChanged = () => { refreshFirm(); };
       const handleSendMessage = (data) => {
         API.messages.create(data).then(newMsg => {
           setMessages(prev => [newMsg, ...prev]);
@@ -13828,14 +13902,21 @@
 
       return React.createElement('div', { className: 'app-layout' },
         React.createElement('div', { className: 'sidebar-container' },
-          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null, onQuickCreate: handleQuickCreate })
+          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null, onQuickCreate: handleQuickCreate, mobileOpen: mobileSidebarOpen, setMobileOpen: setMobileSidebarOpen })
         ),
         React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
           React.createElement('header', { className: 'topbar' },
-            React.createElement('div', { className: 'topbar-left' }, React.createElement('h1', { className: 'topbar-title' }, current.title)),
-            React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 12 } },
-              licenseStatus === 'trial' ? React.createElement('div', { style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 } }, `⏳ Trial: ${trialDaysRemaining}d remaining`) :
-                licenseStatus === 'activated' ? React.createElement('div', { style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '6px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, letterSpacing: '0.04em' } }, '👑 PREMIUM') : null,
+            React.createElement('div', { className: 'topbar-left', style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('button', {
+                className: 'mobile-toggle-btn',
+                onClick: () => setMobileSidebarOpen(true),
+                title: 'Open navigation menu'
+              }, Icons.menu),
+              React.createElement('h1', { className: 'topbar-title' }, current.title)
+            ),
+            React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              licenseStatus === 'trial' ? React.createElement('div', { className: 'topbar-trial-badge', style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '4px 8px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 } }, `⏳ ${trialDaysRemaining}d`) :
+                licenseStatus === 'activated' ? React.createElement('div', { className: 'topbar-premium-badge', style: { background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#8b5cf6', padding: '4px 8px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 } }, '👑') : null,
               (!editInvoiceId && !editQuotationId && !convertedFromQuotationId) && React.createElement('div', { className: 'firm-switch' },
                 React.createElement('select', { className: 'firm-switch-select', value: API.firmId || '', onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)) },
                   firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))

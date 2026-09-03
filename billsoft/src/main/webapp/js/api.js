@@ -20,12 +20,17 @@ const API = {
   },
 
   get token() {
-    return sessionStorage.getItem('billsoft_auth_token') || '';
+    return localStorage.getItem('billsoft_auth_token') || sessionStorage.getItem('billsoft_auth_token') || '';
   },
 
   set token(t) {
-    if (t) sessionStorage.setItem('billsoft_auth_token', t);
-    else sessionStorage.removeItem('billsoft_auth_token');
+    if (t) {
+      localStorage.setItem('billsoft_auth_token', t);
+      sessionStorage.setItem('billsoft_auth_token', t);
+    } else {
+      localStorage.removeItem('billsoft_auth_token');
+      sessionStorage.removeItem('billsoft_auth_token');
+    }
   },
 
   get employeePin() {
@@ -54,6 +59,7 @@ const API = {
   async _request(url, options = {}) {
     this.sessionRequestsCount = (this.sessionRequestsCount || 0) + 1;
     window.dispatchEvent(new CustomEvent('billsoft:request', { detail: { count: this.sessionRequestsCount, url } }));
+    window.dispatchEvent(new CustomEvent('billsoft:activity'));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
     

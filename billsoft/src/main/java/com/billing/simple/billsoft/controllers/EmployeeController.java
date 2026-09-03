@@ -772,6 +772,29 @@ public class EmployeeController {
         return ResponseEntity.ok(documentRepo.save(doc));
     }
 
+    // New multipart file upload endpoint for richer UI handling
+    @PostMapping(value = "/{id}/documents/upload", consumes = {"multipart/form-data"})
+    public ResponseEntity<?> uploadDocumentFile(@PathVariable Long id,
+                                                @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                                @RequestParam(value = "type", required = false) String type) {
+        Optional<Employee> emp = employeeRepo.findById(id);
+        if (emp.isEmpty()) return ResponseEntity.notFound().build();
+        try {
+            com.billing.simple.billsoft.entities.EmployeeDocument doc = new com.billing.simple.billsoft.entities.EmployeeDocument();
+            doc.setEmployee(emp.get());
+            doc.setFileName(file.getOriginalFilename());
+            doc.setType(type != null ? type : "OTHER");
+            // Encode file bytes to Base64 and prepend data URI with mime type
+            String mime = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+            String base64 = java.util.Base64.getEncoder().encodeToString(file.getBytes());
+            doc.setDataBase64("data:" + mime + ";base64," + base64);
+            doc.setUploadedAt(java.time.LocalDateTime.now());
+            return ResponseEntity.ok(documentRepo.save(doc));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(java.util.Collections.singletonMap("error", e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/documents/{docId}")
     public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
         documentRepo.deleteById(docId);
@@ -818,8 +841,10 @@ public class EmployeeController {
         
         String filename = (doc.getFileName() != null && !doc.getFileName().isBlank()) ? doc.getFileName() : "document.bin";
         String disposition = asAttachment ? ("attachment; filename=\"" + filename + "\"") : ("inline; filename=\"" + filename + "\"");
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, disposition);
-        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
+        // Set Content-Disposition header to enforce view vs download behavior
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, disposition);
+        
+        return ResponseEntity.ok().headers(headers).body(bytes);
     }
 
     // ─── Leave Endpoints ───

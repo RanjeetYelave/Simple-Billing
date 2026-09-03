@@ -26,6 +26,15 @@ public class BackupDTO {
     private List<PromotionRecord> promotions;
     private List<BusinessLetter> businessLetters;
     private List<InboxMessage> inboxMessages;
+    private List<InvoicePayment> invoicePayments;
+
+    public List<InvoicePayment> getInvoicePayments() {
+        return invoicePayments;
+    }
+
+    public void setInvoicePayments(List<InvoicePayment> invoicePayments) {
+        this.invoicePayments = invoicePayments;
+    }
 
     public Map<String, Object> getMetadata() {
         return metadata;

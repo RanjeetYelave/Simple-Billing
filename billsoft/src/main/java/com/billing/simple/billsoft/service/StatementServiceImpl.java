@@ -107,27 +107,93 @@ public class StatementServiceImpl implements StatementService {
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
                 .collect(Collectors.toList());
 
-        // Opening balance = Billed - Paid before period
-        BigDecimal billedBefore = invoices.stream()
-                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
-                .map(i -> nz(i.getTotalAmount()))
+        // Fetch all payments for customer
+        List<InvoicePayment> paymentList = (firmId != null)
+                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customerId)
+                : invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+
+        Map<Long, Invoice> invoiceById = invoices.stream().collect(Collectors.toMap(Invoice::getId, i -> i, (a, b) -> a));
+        Set<Long> invoicesWithPayments = paymentList.stream()
+                .map(InvoicePayment::getInvoiceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // Build unified list of ledger events
+        class LedgerEvent {
+            LocalDate date;
+            String type;
+            String ref;
+            String description;
+            BigDecimal debit;
+            BigDecimal credit;
+            int order; // 0 for invoice, 1 for payment
+        }
+
+        List<LedgerEvent> allEvents = new ArrayList<>();
+
+        // Add invoice debits
+        for (Invoice inv : invoices) {
+            LedgerEvent e = new LedgerEvent();
+            e.date = inv.getInvoiceDate().toLocalDate();
+            e.type = "INVOICE";
+            e.ref = inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : "INV-" + inv.getId();
+            e.description = "Invoice";
+            e.debit = nz(inv.getTotalAmount());
+            e.credit = BigDecimal.ZERO;
+            e.order = 0;
+            allEvents.add(e);
+
+            // Legacy fallback: if invoice was marked paid without InvoicePayment records
+            if (Boolean.TRUE.equals(inv.getPaid()) && !invoicesWithPayments.contains(inv.getId())) {
+                LedgerEvent pe = new LedgerEvent();
+                pe.date = inv.getInvoiceDate().toLocalDate();
+                pe.type = "PAYMENT";
+                pe.ref = inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : "INV-" + inv.getId();
+                pe.description = "Invoice Paid (Direct)";
+                pe.debit = BigDecimal.ZERO;
+                pe.credit = nz(inv.getTotalAmount());
+                pe.order = 1;
+                allEvents.add(pe);
+            }
+        }
+
+        // Add real payment credits
+        for (InvoicePayment p : paymentList) {
+            LedgerEvent pe = new LedgerEvent();
+            pe.date = p.getPaymentDate() != null ? p.getPaymentDate() : LocalDate.now();
+            pe.type = "PAYMENT";
+            String invNo = (p.getInvoiceId() != null && invoiceById.containsKey(p.getInvoiceId()))
+                    ? invoiceById.get(p.getInvoiceId()).getInvoiceNumber() : null;
+            pe.ref = (p.getReferenceNumber() != null && !p.getReferenceNumber().isBlank())
+                    ? p.getReferenceNumber() : (invNo != null ? invNo : "PMT-" + p.getId());
+
+            String modeStr = (p.getPaymentMode() != null && !p.getPaymentMode().isBlank()) ? p.getPaymentMode() : "Cash";
+            String noteStr = (p.getNotes() != null && !p.getNotes().isBlank()) ? " (" + p.getNotes() + ")" : "";
+            pe.description = "Payment via " + modeStr + noteStr;
+            pe.debit = BigDecimal.ZERO;
+            pe.credit = nz(p.getAmount());
+            pe.order = 1;
+            allEvents.add(pe);
+        }
+
+        // Compute opening balance before fromDate
+        BigDecimal billedBefore = allEvents.stream()
+                .filter(e -> e.date.isBefore(fromDate))
+                .map(e -> e.debit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal paidBefore = invoices.stream()
-                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
-                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
-                .map(i -> nz(i.getTotalAmount()))
+        BigDecimal paidBefore = allEvents.stream()
+                .filter(e -> e.date.isBefore(fromDate))
+                .map(e -> e.credit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal openingBalance = billedBefore.subtract(paidBefore);
 
-        // Invoices inside range
-        List<Invoice> inRange = invoices.stream()
-                .filter(i -> {
-                    LocalDate d = i.getInvoiceDate().toLocalDate();
-                    return (!d.isBefore(fromDate) && !d.isAfter(toDate));
-                })
-                .sorted(Comparator.comparing(i -> i.getInvoiceDate().toLocalDate()))
+        // Filter inside range and sort chronologically
+        List<LedgerEvent> inRangeEvents = allEvents.stream()
+                .filter(e -> !e.date.isBefore(fromDate) && !e.date.isAfter(toDate))
+                .sorted(Comparator.comparing((LedgerEvent e) -> e.date)
+                        .thenComparingInt(e -> e.order))
                 .collect(Collectors.toList());
 
         List<StatementEntry> entries = new ArrayList<>();
@@ -135,39 +201,20 @@ public class StatementServiceImpl implements StatementService {
         BigDecimal totalBilled = BigDecimal.ZERO;
         BigDecimal totalPaid = BigDecimal.ZERO;
 
-        for (Invoice inv : inRange) {
-            LocalDate invDate = inv.getInvoiceDate().toLocalDate();
-            BigDecimal amt = nz(inv.getTotalAmount());
+        for (LedgerEvent e : inRangeEvents) {
+            balance = balance.add(e.debit).subtract(e.credit);
+            totalBilled = totalBilled.add(e.debit);
+            totalPaid = totalPaid.add(e.credit);
 
-            // Invoice row
-            StatementEntry invoiceEntry = new StatementEntry();
-            invoiceEntry.setDate(invDate);
-            invoiceEntry.setType("INVOICE");
-            invoiceEntry.setRef(inv.getInvoiceNumber());
-            invoiceEntry.setDescription("Invoice");
-            invoiceEntry.setDebit(amt.doubleValue());
-            invoiceEntry.setCredit(0.0);
-
-            balance = balance.add(amt);
-            invoiceEntry.setBalance(balance.doubleValue());
-            entries.add(invoiceEntry);
-            totalBilled = totalBilled.add(amt);
-
-            // If invoice is paid → add payment row
-            if (Boolean.TRUE.equals(inv.getPaid())) {
-                StatementEntry pay = new StatementEntry();
-                pay.setDate(invDate);
-                pay.setType("PAYMENT");
-                pay.setRef(inv.getInvoiceNumber());
-                pay.setDescription("Invoice Paid");
-                pay.setDebit(0.0);
-                pay.setCredit(amt.doubleValue());
-
-                balance = balance.subtract(amt);
-                pay.setBalance(balance.doubleValue());
-                entries.add(pay);
-                totalPaid = totalPaid.add(amt);
-            }
+            StatementEntry entry = new StatementEntry();
+            entry.setDate(e.date);
+            entry.setType(e.type);
+            entry.setRef(e.ref);
+            entry.setDescription(e.description);
+            entry.setDebit(e.debit.doubleValue());
+            entry.setCredit(e.credit.doubleValue());
+            entry.setBalance(balance.doubleValue());
+            entries.add(entry);
         }
 
         CustomerStatementResponse resp = new CustomerStatementResponse();

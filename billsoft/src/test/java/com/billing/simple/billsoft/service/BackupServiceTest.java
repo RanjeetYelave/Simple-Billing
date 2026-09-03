@@ -65,6 +65,8 @@ class BackupServiceTest {
     private InboxMessageRepository inboxMessageRepo;
     @Mock
     private AppConfigRepository appConfigRepo;
+    @Mock
+    private InvoicePaymentRepository invoicePaymentRepo;
 
     @InjectMocks
     private BackupService service;

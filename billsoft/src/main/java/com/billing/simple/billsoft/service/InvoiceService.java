@@ -683,9 +683,26 @@ public class InvoiceService {
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
 
+        List<InvoicePayment> allCustPayments = invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+        Map<Long, BigDecimal> custInvoicePaymentMap = new HashMap<>();
+        for (InvoicePayment ip : allCustPayments) {
+            if (ip.getInvoiceId() != null && ip.getAmount() != null) {
+                custInvoicePaymentMap.merge(ip.getInvoiceId(), ip.getAmount(), BigDecimal::add);
+            }
+        }
+
         for (Invoice inv : invoices) {
-            totalBusiness = totalBusiness.add(nz(inv.getTotalAmount()));
-            if (Boolean.TRUE.equals(inv.getPaid())) totalPaid = totalPaid.add(nz(inv.getTotalAmount()));
+            BigDecimal invAmt = nz(inv.getTotalAmount());
+            totalBusiness = totalBusiness.add(invAmt);
+
+            BigDecimal paidForInv = custInvoicePaymentMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
+                paidForInv = invAmt;
+            }
+            if (paidForInv.compareTo(invAmt) > 0) {
+                paidForInv = invAmt;
+            }
+            totalPaid = totalPaid.add(paidForInv);
         }
 
         List<CustomerInvoiceSummary> list = invoices.stream()
@@ -701,7 +718,9 @@ public class InvoiceService {
 
         resp.setTotalBusiness(totalBusiness.doubleValue());
         resp.setTotalPaid(totalPaid.doubleValue());
-        resp.setTotalPending(totalBusiness.subtract(totalPaid).doubleValue());
+        BigDecimal totalPending = totalBusiness.subtract(totalPaid);
+        if (totalPending.compareTo(BigDecimal.ZERO) < 0) totalPending = BigDecimal.ZERO;
+        resp.setTotalPending(totalPending.doubleValue());
         resp.setInvoiceCount((long) invoices.size());
         resp.setInvoices(list);
 
@@ -758,15 +777,37 @@ public class InvoiceService {
 
         LocalDate weekStart = today.minusDays(6);
 
+        List<InvoicePayment> allFirmPayments = (firmId != null)
+                ? invoicePaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId)
+                : invoicePaymentRepo.findAll();
+        Map<Long, BigDecimal> invoicePaymentMap = new HashMap<>();
+        for (InvoicePayment ip : allFirmPayments) {
+            if (ip.getInvoiceId() != null && ip.getAmount() != null) {
+                invoicePaymentMap.merge(ip.getInvoiceId(), ip.getAmount(), BigDecimal::add);
+            }
+        }
+
         for (Invoice inv : all) {
             normalizeStatus(inv);
 
             BigDecimal amt = nz(inv.getTotalAmount());
             totalBusiness = totalBusiness.add(amt);
 
-            boolean paid = Boolean.TRUE.equals(inv.getPaid());
-            if (paid) totalPaid = totalPaid.add(amt);
-            else totalPending = totalPending.add(amt);
+            BigDecimal paidForInv = invoicePaymentMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
+                paidForInv = amt;
+            }
+            if (paidForInv.compareTo(amt) > 0) {
+                paidForInv = amt;
+            }
+
+            BigDecimal pendingForInv = amt.subtract(paidForInv);
+            if (pendingForInv.compareTo(BigDecimal.ZERO) < 0) {
+                pendingForInv = BigDecimal.ZERO;
+            }
+
+            totalPaid = totalPaid.add(paidForInv);
+            totalPending = totalPending.add(pendingForInv);
 
             LocalDate invDate = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate() : null;
 
@@ -790,7 +831,7 @@ public class InvoiceService {
                 });
 
                 agg.setTotalAmount(agg.getTotalAmount() + amt.doubleValue());
-                if (!paid) agg.setPendingAmount(agg.getPendingAmount() + amt.doubleValue());
+                agg.setPendingAmount(agg.getPendingAmount() + pendingForInv.doubleValue());
                 agg.setInvoiceCount(agg.getInvoiceCount() + 1);
             }
 
@@ -862,11 +903,32 @@ public class InvoiceService {
         BigDecimal monthBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal yearBusiness = BigDecimal.ZERO.setScale(SCALE);
 
+        List<InvoicePayment> allPayments = invoicePaymentRepo.findAll();
+        Map<Long, BigDecimal> invoicePaymentMap = new HashMap<>();
+        for (InvoicePayment ip : allPayments) {
+            if (ip.getInvoiceId() != null && ip.getAmount() != null) {
+                invoicePaymentMap.merge(ip.getInvoiceId(), ip.getAmount(), BigDecimal::add);
+            }
+        }
+
         for (Invoice i : all) {
             BigDecimal amt = nz(i.getTotalAmount());
             totalBusiness = totalBusiness.add(amt);
-            if (Boolean.TRUE.equals(i.getPaid())) totalPaid = totalPaid.add(amt);
-            else totalPending = totalPending.add(amt);
+
+            BigDecimal paidForInv = invoicePaymentMap.getOrDefault(i.getId(), BigDecimal.ZERO);
+            if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(i.getPaid())) {
+                paidForInv = amt;
+            }
+            if (paidForInv.compareTo(amt) > 0) {
+                paidForInv = amt;
+            }
+            BigDecimal pendingForInv = amt.subtract(paidForInv);
+            if (pendingForInv.compareTo(BigDecimal.ZERO) < 0) {
+                pendingForInv = BigDecimal.ZERO;
+            }
+
+            totalPaid = totalPaid.add(paidForInv);
+            totalPending = totalPending.add(pendingForInv);
 
             if (i.getInvoiceDate() != null) {
                 LocalDate d = i.getInvoiceDate().toLocalDate();

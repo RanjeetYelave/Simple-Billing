@@ -39,6 +39,8 @@ class StatementServiceTest {
     private com.billing.simple.billsoft.repositories.PartyPaymentRepository partyPaymentRepo;
     @Mock
     private com.billing.simple.billsoft.repositories.PurchaseOrderRepository purchaseOrderRepo;
+    @Mock
+    private com.billing.simple.billsoft.repo.InvoicePaymentRepository invoicePaymentRepo;
 
     @InjectMocks
     private StatementServiceImpl service;

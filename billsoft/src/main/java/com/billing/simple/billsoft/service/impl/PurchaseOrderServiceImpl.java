@@ -235,6 +235,25 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 }
             }
         }
+
+        // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT), reverse inventory stock
+        if (oldStatus == PurchaseOrderStatus.RECEIVED && status != PurchaseOrderStatus.RECEIVED) {
+            if (saved.getItems() != null) {
+                for (PurchaseOrderItem item : saved.getItems()) {
+                    if (item.getProductId() != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                        productService.recordStockMovement(
+                                item.getProductId(),
+                                saved.getFirmId(),
+                                "PURCHASE_CANCELLED",
+                                item.getQuantity().negate(),
+                                "PURCHASE_ORDER",
+                                saved.getPoNumber(),
+                                "PO " + saved.getPoNumber() + " changed from RECEIVED to " + status + " - stock reversed"
+                        );
+                    }
+                }
+            }
+        }
         return saved;
     }
 
@@ -242,6 +261,24 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     public void deletePurchaseOrder(Long id, Long firmId) {
         PurchaseOrder po = (firmId != null ? poRepository.findByIdAndFirmId(id, firmId) : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
+
+        // If PO was RECEIVED, reverse stock upon deletion
+        if (po.getStatus() == PurchaseOrderStatus.RECEIVED && po.getItems() != null) {
+            for (PurchaseOrderItem item : po.getItems()) {
+                if (item.getProductId() != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                    productService.recordStockMovement(
+                            item.getProductId(),
+                            po.getFirmId(),
+                            "PURCHASE_DELETED",
+                            item.getQuantity().negate(),
+                            "PURCHASE_ORDER",
+                            po.getPoNumber(),
+                            "PO " + po.getPoNumber() + " deleted - stock reversed"
+                    );
+                }
+            }
+        }
+
         partyPaymentRepository.deleteByPurchaseOrderId(po.getId());
         poRepository.delete(po);
     }

@@ -36,6 +36,7 @@ public class BackupService {
     private final BusinessLetterRepository businessLetterRepo;
     private final InboxMessageRepository inboxMessageRepo;
     private final AppConfigRepository appConfigRepo;
+    private final InvoicePaymentRepository invoicePaymentRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -59,7 +60,8 @@ public class BackupService {
                          EmployeeDocumentRepository employeeDocumentRepo,
                          BusinessLetterRepository businessLetterRepo,
                          InboxMessageRepository inboxMessageRepo,
-                         AppConfigRepository appConfigRepo) {
+                         AppConfigRepository appConfigRepo,
+                         InvoicePaymentRepository invoicePaymentRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -83,6 +85,7 @@ public class BackupService {
         this.businessLetterRepo = businessLetterRepo;
         this.inboxMessageRepo = inboxMessageRepo;
         this.appConfigRepo = appConfigRepo;
+        this.invoicePaymentRepo = invoicePaymentRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -104,6 +107,7 @@ public class BackupService {
         backup.setProducts(productRepo.findByFirmId(firmId));
         backup.setStockMovements(stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(firmId));
         backup.setInvoices(invoiceRepo.findAllByFirmId(firmId));
+        backup.setInvoicePayments(invoicePaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId));
         backup.setParties(partyRepo.findByFirmIdOrderByNameAsc(firmId));
         backup.setPartyPayments(partyPaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId));
         backup.setPurchaseOrders(purchaseOrderRepo.findByFirmIdOrderByPoDateDescIdDesc(firmId));
@@ -243,6 +247,7 @@ public class BackupService {
         }
 
         // 4. Import Invoices & Items
+        Map<Long, Invoice> oldToNewInvoiceMap = new HashMap<>();
         if (backup.getInvoices() != null) {
             for (Invoice inv : backup.getInvoices()) {
                 Invoice newInv = new Invoice();
@@ -297,7 +302,35 @@ public class BackupService {
                     }
                 }
 
-                invoiceRepo.save(newInv);
+                Invoice savedInv = invoiceRepo.save(newInv);
+                if (inv.getId() != null) {
+                    oldToNewInvoiceMap.put(inv.getId(), savedInv);
+                }
+            }
+        }
+
+        // 4.1 Import Invoice Payments
+        if (backup.getInvoicePayments() != null) {
+            for (InvoicePayment ip : backup.getInvoicePayments()) {
+                Long newInvoiceId = ip.getInvoiceId();
+                if (ip.getInvoiceId() != null && oldToNewInvoiceMap.containsKey(ip.getInvoiceId())) {
+                    newInvoiceId = oldToNewInvoiceMap.get(ip.getInvoiceId()).getId();
+                }
+                Long newCustId = ip.getCustomerId();
+                if (ip.getCustomerId() != null && oldToNewCustomerMap.containsKey(ip.getCustomerId())) {
+                    newCustId = oldToNewCustomerMap.get(ip.getCustomerId()).getId();
+                }
+                InvoicePayment newIp = InvoicePayment.builder()
+                        .firmId(targetFirmId)
+                        .invoiceId(newInvoiceId)
+                        .customerId(newCustId)
+                        .amount(ip.getAmount())
+                        .paymentDate(ip.getPaymentDate())
+                        .paymentMode(ip.getPaymentMode())
+                        .referenceNumber(ip.getReferenceNumber())
+                        .notes(ip.getNotes())
+                        .build();
+                invoicePaymentRepo.save(newIp);
             }
         }
 
@@ -665,6 +698,7 @@ public class BackupService {
     @Transactional
     public void factoryReset() {
         // Child tables referencing invoices
+        invoicePaymentRepo.deleteAllInBatch();
         invoiceItemRepo.deleteAllInBatch();
         invoiceRepo.deleteAllInBatch();
 

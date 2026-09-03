@@ -99,7 +99,7 @@ public class PlannerNotificationScheduler {
         LocalDate today = LocalDate.now();
         List<Invoice> invoices = invoiceRepository.findAll();
         for (Invoice inv : invoices) {
-            if (inv.getStatus() != InvoiceStatus.CANCELLED && Boolean.FALSE.equals(inv.getPaid()) && inv.getDueDate() != null) {
+            if (inv.getStatus() != InvoiceStatus.CANCELLED && inv.getStatus() != InvoiceStatus.ESTIMATE && inv.getStatus() != InvoiceStatus.DRAFT && Boolean.FALSE.equals(inv.getPaid()) && inv.getDueDate() != null) {
                 if (inv.getDueDate().isBefore(today)) {
                     String custName = inv.getCustomer() != null ? inv.getCustomer().getName() : "Customer";
                     String prefix = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber();

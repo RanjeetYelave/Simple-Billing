@@ -111,8 +111,9 @@ public class EmployeeController {
     // ─── Employee CRUD ───
 
     @GetMapping
-    public List<EmployeeDTO> getEmployees(@RequestParam("firmId") Long firmId) {
-        return employeeRepo.findByFirmId(firmId).stream()
+    public List<EmployeeDTO> getEmployees(@RequestParam(value = "firmId", required = false) Long firmId) {
+        List<Employee> list = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
+        return list.stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
@@ -120,8 +121,8 @@ public class EmployeeController {
     // ─── Dashboard Analytics ───
 
     @GetMapping("/analytics")
-    public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(@RequestParam("firmId") Long firmId) {
-        List<Employee> employees = employeeRepo.findByFirmId(firmId);
+    public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(@RequestParam(value = "firmId", required = false) Long firmId) {
+        List<Employee> employees = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
         int activeCount = 0;
         double totalPayroll = 0;
         double totalAdvances = 0;
@@ -629,8 +630,8 @@ public class EmployeeController {
     // ─── CSV Export Endpoints (F5) ───
 
     @GetMapping("/export/csv")
-    public ResponseEntity<byte[]> exportEmployeesCsv(@RequestParam("firmId") Long firmId) {
-        List<Employee> employees = employeeRepo.findByFirmId(firmId);
+    public ResponseEntity<byte[]> exportEmployeesCsv(@RequestParam(value = "firmId", required = false) Long firmId) {
+        List<Employee> employees = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
         StringBuilder csv = new StringBuilder();
         csv.append("ID,Name,Phone,Role,DateOfJoining,IDProof,IsActive,BaseSalary,AllowedLeaves,AdvanceBalance\n");
         for (Employee e : employees) {
@@ -765,8 +766,9 @@ public class EmployeeController {
     @PostMapping("/{id}/documents")
     public ResponseEntity<?> uploadDocument(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.EmployeeDocument doc) {
         Optional<Employee> emp = employeeRepo.findById(id);
-        if(emp.isEmpty()) return ResponseEntity.notFound().build();
+        if (emp.isEmpty()) return ResponseEntity.notFound().build();
         doc.setEmployee(emp.get());
+        doc.setUploadedAt(java.time.LocalDateTime.now());
         return ResponseEntity.ok(documentRepo.save(doc));
     }
 
@@ -776,8 +778,17 @@ public class EmployeeController {
         return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
+    @GetMapping("/documents/{docId}/view")
+    public ResponseEntity<byte[]> viewDocumentFile(@PathVariable Long docId) {
+        return serveDocumentBytes(docId, false);
+    }
+
     @GetMapping("/documents/{docId}/download")
     public ResponseEntity<byte[]> downloadDocumentFile(@PathVariable Long docId) {
+        return serveDocumentBytes(docId, true);
+    }
+
+    private ResponseEntity<byte[]> serveDocumentBytes(Long docId, boolean asAttachment) {
         Optional<com.billing.simple.billsoft.entities.EmployeeDocument> docOpt = documentRepo.findById(docId);
         if (docOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.EmployeeDocument doc = docOpt.get();
@@ -799,8 +810,15 @@ public class EmployeeController {
         byte[] bytes = java.util.Base64.getDecoder().decode(b64.trim());
         
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType(mimeType));
-        headers.setContentDispositionFormData("inline", doc.getFileName() != null ? doc.getFileName() : "document.bin");
+        try {
+            headers.setContentType(MediaType.parseMediaType(mimeType));
+        } catch (Exception e) {
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        }
+        
+        String filename = (doc.getFileName() != null && !doc.getFileName().isBlank()) ? doc.getFileName() : "document.bin";
+        String disposition = asAttachment ? ("attachment; filename=\"" + filename + "\"") : ("inline; filename=\"" + filename + "\"");
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, disposition);
         return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
     }
 

@@ -62,23 +62,18 @@ const API = {
     window.dispatchEvent(new CustomEvent('billsoft:activity'));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
-    
-    const authHeader = this.token ? { 'X-Auth-Token': this.token } : {};
     const pinHeader = (this.employeePin && url.includes('/api/employees')) ? { 'X-Employee-Pin': this.employeePin } : {};
 
     const config = {
       ...options,
-      headers: { ...defaultHeaders, ...authHeader, ...pinHeader, ...options.headers },
+      headers: { ...defaultHeaders, ...pinHeader, ...options.headers },
     };
-    
+
     if (config.body && typeof config.body === 'object' && !isFormData && !(config.body instanceof Blob)) {
       config.body = JSON.stringify(config.body);
     }
     const response = await fetch(`${this.BASE_URL}${url}`, config);
     if (!response.ok) {
-      if ((response.status === 401 || response.status === 403) && !url.includes('/api/auth/')) {
-        window.dispatchEvent(new CustomEvent('billsoft:unauthorized', { detail: { url, status: response.status } }));
-      }
       const text = await response.text().catch(() => '');
       const err = new Error(`HTTP ${response.status}: ${text}`);
       err.status = response.status;
@@ -290,7 +285,7 @@ const API = {
     markRead: (id) => API._ensureFirmReady().then(() => API._json(`/api/messages/${id}/read`, { method: 'PUT' })),
     delete: (id) => API._ensureFirmReady().then(() => API._request(`/api/messages/${id}`, { method: 'DELETE' })),
   },
-// ── Firm (multi-row) ──
+  // ── Firm (multi-row) ──
   firm: {
     list: () => API._json('/api/firm'),
     get: (id) => {
@@ -454,7 +449,7 @@ const API = {
     // F3: Documents
     documents: {
       list: (id) => API._json(`/api/employees/${id}/documents`),
-      upload: async (id, typeOrData, file) => {
+      upload: async (id, typeOrData, file, customName) => {
         if (typeof typeOrData === 'object' && typeOrData.dataBase64) {
           return API._json(`/api/employees/${id}/documents`, {
             method: 'POST',
@@ -465,9 +460,10 @@ const API = {
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = reader.result;
+            const finalName = customName || (file && file.name) || 'document';
             API._json(`/api/employees/${id}/documents`, {
               method: 'POST',
-              body: { type: typeOrData, fileName: file.name, dataBase64: base64 }
+              body: { type: typeOrData || 'Other Document', fileName: finalName, dataBase64: base64 }
             }).then(resolve).catch(reject);
           };
           reader.onerror = () => reject(new Error('Failed to read file'));
@@ -475,6 +471,7 @@ const API = {
         });
       },
       delete: (docId) => API._request(`/api/employees/documents/${docId}`, { method: 'DELETE' }),
+      viewUrl: (docId) => `${API.BASE_URL}/api/employees/documents/${docId}/view`,
       downloadUrl: (docId) => `${API.BASE_URL}/api/employees/documents/${docId}/download`
     },
     // F4: Leave Management

@@ -301,12 +301,12 @@
         React.createElement('aside', { className: `sidebar${mobileOpen ? ' open' : ''}` },
           React.createElement('div', { className: 'sidebar-logo', style: { padding: '20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' } },
             React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, isDarkBg: true }),
-            React.createElement('button', {
+            (mobileOpen === true) ? React.createElement('button', {
               className: 'mobile-close-btn',
               onClick: () => setMobileOpen && setMobileOpen(false),
-              style: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+              style: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 6 },
               title: 'Close menu'
-            }, Icons.x || '✕')
+            }, '✕') : null
           ),
           onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
             React.createElement('div', {
@@ -377,7 +377,7 @@
           ),
           React.createElement('div', { className: 'sidebar-footer', style: { display: 'flex', flexDirection: 'column', gap: 12 } },
             React.createElement('div', null, firmName || 'Simple Billing Software'),
-            onLogout && React.createElement('button', { className: 'btn btn-ghost w-full', onClick: onLogout, style: { justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' } }, Icons.logOut, ' Logout')
+            onLogout && React.createElement('button', { className: 'btn btn-ghost w-full', onClick: () => onLogout(), style: { justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' } }, Icons.logOut, ' Logout')
           )
         )
       );
@@ -4044,7 +4044,7 @@
           });
           setProducts(prev => prev.map(item => item.id === p.id ? { ...item, stockQuantity: updated.stockQuantity } : item));
           showToast(`${p.name}: ${delta > 0 ? '+1' : '-1'} (${updated.stockQuantity} ${p.unit || 'pcs'})`, 'success');
-          API.products.summary().then(s => setSummary(s)).catch(() => {});
+          API.products.summary().then(s => setSummary(s)).catch(() => { });
         } catch (e) {
           showToast(e.message || 'Quick adjust failed', 'error');
         } finally {
@@ -4071,7 +4071,7 @@
           setProducts(prev => prev.map(item => item.id === p.id ? { ...item, stockQuantity: updated.stockQuantity } : item));
           setEditingStockId(null);
           showToast(`${p.name}: Qty set to ${newCount} ${p.unit || 'pcs'}`, 'success');
-          API.products.summary().then(s => setSummary(s)).catch(() => {});
+          API.products.summary().then(s => setSummary(s)).catch(() => { });
         } catch (e) {
           showToast(e.message || 'Inline update failed', 'error');
         } finally {
@@ -5155,7 +5155,7 @@
             const pos = (list || []).filter(p => p.status !== 'CANCELLED');
             setPartyPos(pos);
           })
-          .catch(() => {})
+          .catch(() => { })
           .finally(() => setLoadingPos(false));
       };
 
@@ -8309,323 +8309,323 @@
               )
             ) :
 
-            // ── OPTION B: CUSTOMER STATEMENT ──
-            statementMode === 'customer' ? React.createElement(Fragment, null,
-              React.createElement('div', { className: 'statement-summary' },
-                React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Opening Balance'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(statementData.openingBalance || 0))),
-                React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(statementData.totalBilled || 0))),
-                React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value', style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(statementData.totalPaid || 0))),
-                React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Closing Balance'), React.createElement('div', { className: 'value', style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(statementData.closingBalance || 0)))
-              ),
-              React.createElement('div', { className: 'card' },
-                React.createElement('div', { className: 'card-header' },
-                  React.createElement('div', { className: 'card-title' }, 'Customer Statement Entries'),
-                  React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF')
+              // ── OPTION B: CUSTOMER STATEMENT ──
+              statementMode === 'customer' ? React.createElement(Fragment, null,
+                React.createElement('div', { className: 'statement-summary' },
+                  React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Opening Balance'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(statementData.openingBalance || 0))),
+                  React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Billed'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(statementData.totalBilled || 0))),
+                  React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Total Paid'), React.createElement('div', { className: 'value', style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(statementData.totalPaid || 0))),
+                  React.createElement('div', { className: 'statement-summary-item' }, React.createElement('div', { className: 'label' }, 'Closing Balance'), React.createElement('div', { className: 'value', style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(statementData.closingBalance || 0)))
                 ),
-                React.createElement('div', { className: 'table-container' },
-                  React.createElement('table', null,
-                    React.createElement('thead', null, React.createElement('tr', null,
-                      React.createElement('th', null, 'Date'),
-                      React.createElement('th', null, 'Type'),
-                      React.createElement('th', null, 'Ref'),
-                      React.createElement('th', null, 'Description'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Debit (₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Credit (₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Balance (₹)')
-                    )),
-                    React.createElement('tbody', null,
-                      entries.length === 0 ?
-                        React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 40 } }, 'No entries found')) :
-                        entries.map((e, i) => React.createElement('tr', { key: i },
-                          React.createElement('td', null, BillsoftUtils.formatDate(e.date)),
-                          React.createElement('td', null, e.type),
-                          React.createElement('td', null, e.ref || '—'),
-                          React.createElement('td', null, e.description || '—'),
-                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--text)' } }, e.debit > 0 ? BillsoftUtils.formatCurrency(e.debit) : '-'),
-                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--success)' } }, e.credit > 0 ? BillsoftUtils.formatCurrency(e.credit) : '-'),
-                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(e.balance || 0))
-                        ))
-                    )
-                  )
-                )
-              )
-            ) :
-
-            // ── OPTION C: RICH FIRM SUMMARY STATEMENT ──
-            React.createElement(Fragment, null,
-              // Top Banner with Title & PDF Actions
-              React.createElement('div', {
-                className: 'card',
-                style: {
-                  marginBottom: 20,
-                  padding: '16px 20px',
-                  background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 12
-                }
-              },
-                React.createElement('div', null,
-                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                    React.createElement('h2', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } }, `🏛️ ${statementData.firmName || 'Firm Summary Statement'}`),
-                    React.createElement('span', { className: 'badge badge-primary' }, `${statementData.invoiceCount || 0} Invoices`),
-                    React.createElement('span', { className: 'badge badge-outline' }, `${statementData.purchaseOrderCount || 0} POs`)
-                  ),
-                  React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 } },
-                    `Statement Period: ${statementData.from ? BillsoftUtils.formatDate(statementData.from) : 'Beginning'} to ${statementData.to ? BillsoftUtils.formatDate(statementData.to) : 'Today'}` +
-                    (statementData.firmGstin ? ` | GSTIN: ${statementData.firmGstin}` : '')
-                  )
-                ),
-                React.createElement('div', { style: { display: 'flex', gap: 8 } },
-                  React.createElement('button', { className: 'btn btn-primary', onClick: handleDownloadStatementPdf }, '📥 Download PDF Statement'),
-                  React.createElement('button', { className: 'btn btn-outline', onClick: () => window.print() }, '🖨️ Print')
-                )
-              ),
-
-              // 6 Executive Financial KPI Cards
-              React.createElement('div', {
-                style: {
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: 14,
-                  marginBottom: 24
-                }
-              },
-                // Card 1: Total Sales
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #3b82f6' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Total Sales / Invoiced'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#1e293b' } }, BillsoftUtils.formatCurrency(statementData.totalBilled || 0)),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                    `Taxable: ${BillsoftUtils.formatCurrency(statementData.taxableAmount || 0)} | Tax: ${BillsoftUtils.formatCurrency(statementData.totalTax || 0)}`
-                  )
-                ),
-
-                // Card 2: Collections Received
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid var(--success)' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Collections Received (In)'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(statementData.totalPaid || 0)),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                    `${statementData.paidInvoicesCount || 0} Invoices Settled`
-                  )
-                ),
-
-                // Card 3: Receivables Due
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid var(--danger)' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Customer Receivables Due'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(statementData.outstanding || 0)),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                    `${statementData.unpaidInvoicesCount || 0} Invoices Unpaid`
-                  )
-                ),
-
-                // Card 4: Total Purchases (PO)
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #f59e0b' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Purchases (Orders Placed)'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#b45309' } }, BillsoftUtils.formatCurrency(statementData.totalPurchases || 0)),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                    `${statementData.purchaseOrderCount || 0} Purchase Orders`
-                  )
-                ),
-
-                // Card 5: Vendor Disbursements
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #64748b' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Paid to Vendors (Out)'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#475569' } }, BillsoftUtils.formatCurrency(statementData.totalPaidToVendors || 0)),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                    `Vendor Debt Due: ${BillsoftUtils.formatCurrency(statementData.outstandingPayables || 0)}`
-                  )
-                ),
-
-                // Card 6: Net Cashflow Surplus
-                React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #6366f1', background: '#f5f3ff' } },
-                  React.createElement('div', { style: { fontSize: '0.78rem', color: '#4338ca', fontWeight: 600, textTransform: 'uppercase' } }, 'Net Operating Cashflow'),
-                  React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: (statementData.netCashflow || 0) >= 0 ? '#4338ca' : 'var(--danger)' } },
-                    BillsoftUtils.formatCurrency(statementData.netCashflow || 0)
-                  ),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: '#6366f1' } },
-                    `Collections minus Vendor Outflows`
-                  )
-                )
-              ),
-
-              // Side-by-side Breakdowns (GST & Payment Modes)
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 24 } },
-                // 1. GST Slabs Table
                 React.createElement('div', { className: 'card' },
                   React.createElement('div', { className: 'card-header' },
-                    React.createElement('div', { className: 'card-title' }, '📊 GST Tax Slabs Distribution')
+                    React.createElement('div', { className: 'card-title' }, 'Customer Statement Entries'),
+                    React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF')
                   ),
                   React.createElement('div', { className: 'table-container' },
                     React.createElement('table', null,
                       React.createElement('thead', null, React.createElement('tr', null,
-                        React.createElement('th', null, 'GST %'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Taxable Value (₹)'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'GST Amount (₹)')
+                        React.createElement('th', null, 'Date'),
+                        React.createElement('th', null, 'Type'),
+                        React.createElement('th', null, 'Ref'),
+                        React.createElement('th', null, 'Description'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Debit (₹)'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Credit (₹)'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Balance (₹)')
                       )),
                       React.createElement('tbody', null,
-                        (!statementData.gstSummary || statementData.gstSummary.length === 0) ?
-                          React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No GST data found')) :
-                          statementData.gstSummary.map((g, i) => React.createElement('tr', { key: i },
-                            React.createElement('td', { style: { fontWeight: 600 } }, `${g.gstPercent}%`),
-                            React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(g.taxableValue || 0)),
-                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--info)' } }, BillsoftUtils.formatCurrency(g.gstAmount || 0))
-                          ))
-                      )
-                    )
-                  )
-                ),
-
-                // 2. Payment Modes Table
-                React.createElement('div', { className: 'card' },
-                  React.createElement('div', { className: 'card-header' },
-                    React.createElement('div', { className: 'card-title' }, '💳 Collections by Payment Mode')
-                  ),
-                  React.createElement('div', { className: 'table-container' },
-                    React.createElement('table', null,
-                      React.createElement('thead', null, React.createElement('tr', null,
-                        React.createElement('th', null, 'Payment Mode'),
-                        React.createElement('th', { style: { textAlign: 'center' } }, 'Count'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Total Amount (₹)')
-                      )),
-                      React.createElement('tbody', null,
-                        (!statementData.paymentModeSummary || statementData.paymentModeSummary.length === 0) ?
-                          React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No payment mode data')) :
-                          statementData.paymentModeSummary.map((pm, i) => React.createElement('tr', { key: i },
-                            React.createElement('td', { style: { fontWeight: 500 } }, pm.mode),
-                            React.createElement('td', { style: { textAlign: 'center' } }, pm.count),
-                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--success)' } }, BillsoftUtils.formatCurrency(pm.totalAmount || 0))
+                        entries.length === 0 ?
+                          React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 40 } }, 'No entries found')) :
+                          entries.map((e, i) => React.createElement('tr', { key: i },
+                            React.createElement('td', null, BillsoftUtils.formatDate(e.date)),
+                            React.createElement('td', null, e.type),
+                            React.createElement('td', null, e.ref || '—'),
+                            React.createElement('td', null, e.description || '—'),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--text)' } }, e.debit > 0 ? BillsoftUtils.formatCurrency(e.debit) : '-'),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 500, color: 'var(--success)' } }, e.credit > 0 ? BillsoftUtils.formatCurrency(e.credit) : '-'),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(e.balance || 0))
                           ))
                       )
                     )
                   )
                 )
-              ),
+              ) :
 
-              // Side-by-side Top Accounts (Top Customers & Top Vendors)
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 24 } },
-                // Top Customers
-                React.createElement('div', { className: 'card' },
-                  React.createElement('div', { className: 'card-header' },
-                    React.createElement('div', { className: 'card-title' }, '👥 Top Customer Accounts')
+                // ── OPTION C: RICH FIRM SUMMARY STATEMENT ──
+                React.createElement(Fragment, null,
+                  // Top Banner with Title & PDF Actions
+                  React.createElement('div', {
+                    className: 'card',
+                    style: {
+                      marginBottom: 20,
+                      padding: '16px 20px',
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)',
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 12
+                    }
+                  },
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                        React.createElement('h2', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } }, `🏛️ ${statementData.firmName || 'Firm Summary Statement'}`),
+                        React.createElement('span', { className: 'badge badge-primary' }, `${statementData.invoiceCount || 0} Invoices`),
+                        React.createElement('span', { className: 'badge badge-outline' }, `${statementData.purchaseOrderCount || 0} POs`)
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                        `Statement Period: ${statementData.from ? BillsoftUtils.formatDate(statementData.from) : 'Beginning'} to ${statementData.to ? BillsoftUtils.formatDate(statementData.to) : 'Today'}` +
+                        (statementData.firmGstin ? ` | GSTIN: ${statementData.firmGstin}` : '')
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('button', { className: 'btn btn-primary', onClick: handleDownloadStatementPdf }, '📥 Download PDF Statement'),
+                      React.createElement('button', { className: 'btn btn-outline', onClick: () => window.print() }, '🖨️ Print')
+                    )
                   ),
-                  React.createElement('div', { className: 'table-container' },
-                    React.createElement('table', null,
-                      React.createElement('thead', null, React.createElement('tr', null,
-                        React.createElement('th', null, 'Customer'),
-                        React.createElement('th', { style: { textAlign: 'center' } }, 'Inv'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Billed (₹)'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Paid (₹)'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Due (₹)')
-                      )),
-                      React.createElement('tbody', null,
-                        (!statementData.topCustomers || statementData.topCustomers.length === 0) ?
-                          React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No customer activity')) :
-                          statementData.topCustomers.map((c, i) => React.createElement('tr', { key: i },
-                            React.createElement('td', { style: { fontWeight: 500 } }, c.name),
-                            React.createElement('td', { style: { textAlign: 'center' } }, c.transactionCount),
-                            React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(c.totalAmount || 0)),
-                            React.createElement('td', { style: { textAlign: 'right', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(c.totalPaid || 0)),
-                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: c.balanceDue > 0 ? 'var(--danger)' : 'var(--text)' } }, BillsoftUtils.formatCurrency(c.balanceDue || 0))
-                          ))
+
+                  // 6 Executive Financial KPI Cards
+                  React.createElement('div', {
+                    style: {
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: 14,
+                      marginBottom: 24
+                    }
+                  },
+                    // Card 1: Total Sales
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #3b82f6' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Total Sales / Invoiced'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#1e293b' } }, BillsoftUtils.formatCurrency(statementData.totalBilled || 0)),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                        `Taxable: ${BillsoftUtils.formatCurrency(statementData.taxableAmount || 0)} | Tax: ${BillsoftUtils.formatCurrency(statementData.totalTax || 0)}`
+                      )
+                    ),
+
+                    // Card 2: Collections Received
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid var(--success)' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Collections Received (In)'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(statementData.totalPaid || 0)),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                        `${statementData.paidInvoicesCount || 0} Invoices Settled`
+                      )
+                    ),
+
+                    // Card 3: Receivables Due
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid var(--danger)' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Customer Receivables Due'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(statementData.outstanding || 0)),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                        `${statementData.unpaidInvoicesCount || 0} Invoices Unpaid`
+                      )
+                    ),
+
+                    // Card 4: Total Purchases (PO)
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #f59e0b' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Purchases (Orders Placed)'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#b45309' } }, BillsoftUtils.formatCurrency(statementData.totalPurchases || 0)),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                        `${statementData.purchaseOrderCount || 0} Purchase Orders`
+                      )
+                    ),
+
+                    // Card 5: Vendor Disbursements
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #64748b' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Paid to Vendors (Out)'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: '#475569' } }, BillsoftUtils.formatCurrency(statementData.totalPaidToVendors || 0)),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                        `Vendor Debt Due: ${BillsoftUtils.formatCurrency(statementData.outstandingPayables || 0)}`
+                      )
+                    ),
+
+                    // Card 6: Net Cashflow Surplus
+                    React.createElement('div', { className: 'card', style: { padding: 16, borderLeft: '4px solid #6366f1', background: '#f5f3ff' } },
+                      React.createElement('div', { style: { fontSize: '0.78rem', color: '#4338ca', fontWeight: 600, textTransform: 'uppercase' } }, 'Net Operating Cashflow'),
+                      React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 700, margin: '4px 0', color: (statementData.netCashflow || 0) >= 0 ? '#4338ca' : 'var(--danger)' } },
+                        BillsoftUtils.formatCurrency(statementData.netCashflow || 0)
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: '#6366f1' } },
+                        `Collections minus Vendor Outflows`
                       )
                     )
-                  )
-                ),
-
-                // Top Vendors
-                React.createElement('div', { className: 'card' },
-                  React.createElement('div', { className: 'card-header' },
-                    React.createElement('div', { className: 'card-title' }, '🏭 Top Vendor Accounts')
                   ),
-                  React.createElement('div', { className: 'table-container' },
-                    React.createElement('table', null,
-                      React.createElement('thead', null, React.createElement('tr', null,
-                        React.createElement('th', null, 'Vendor / Party'),
-                        React.createElement('th', { style: { textAlign: 'center' } }, 'POs'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Ordered (₹)'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Paid (₹)'),
-                        React.createElement('th', { style: { textAlign: 'right' } }, 'Due (₹)')
-                      )),
-                      React.createElement('tbody', null,
-                        (!statementData.topVendors || statementData.topVendors.length === 0) ?
-                          React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No vendor activity')) :
-                          statementData.topVendors.map((v, i) => React.createElement('tr', { key: i },
-                            React.createElement('td', { style: { fontWeight: 500 } }, v.name),
-                            React.createElement('td', { style: { textAlign: 'center' } }, v.transactionCount),
-                            React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(v.totalAmount || 0)),
-                            React.createElement('td', { style: { textAlign: 'right', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(v.totalPaid || 0)),
-                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: v.balanceDue > 0 ? 'var(--danger)' : 'var(--text)' } }, BillsoftUtils.formatCurrency(v.balanceDue || 0))
-                          ))
-                      )
-                    )
-                  )
-                )
-              ),
 
-              // Comprehensive Chronological Journal / Transactions Timeline
-              React.createElement('div', { className: 'card' },
-                React.createElement('div', { className: 'card-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
-                  React.createElement('div', { className: 'card-title' }, '📖 Chronological Transaction Journal'),
-                  React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-                    React.createElement('input', {
-                      className: 'input input-sm',
-                      style: { width: 200 },
-                      placeholder: 'Search journal...',
-                      value: journalSearch,
-                      onChange: e => setJournalSearch(e.target.value)
-                    }),
-                    React.createElement('div', { className: 'btn-group' },
-                      React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'ALL' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('ALL') }, 'All'),
-                      React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'SALE_INVOICE' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('SALE_INVOICE') }, '🧾 Sales'),
-                      React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'PURCHASE_ORDER' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('PURCHASE_ORDER') }, '📦 POs'),
-                      React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'VENDOR_PAYMENT' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('VENDOR_PAYMENT') }, '💳 Vendor Pay')
-                    )
-                  )
-                ),
-                React.createElement('div', { className: 'table-container' },
-                  React.createElement('table', null,
-                    React.createElement('thead', null, React.createElement('tr', null,
-                      React.createElement('th', null, 'Date'),
-                      React.createElement('th', null, 'Type'),
-                      React.createElement('th', null, 'Party / Customer'),
-                      React.createElement('th', null, 'Ref #'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Inflow (+₹)'),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Outflow (-₹)'),
-                      React.createElement('th', { style: { textAlign: 'center' } }, 'Status')
-                    )),
-                    React.createElement('tbody', null,
-                      filteredJournalEntries.length === 0 ?
-                        React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } }, 'No journal transactions found for this filter')) :
-                        filteredJournalEntries.map((e, i) => React.createElement('tr', { key: i },
-                          React.createElement('td', null, BillsoftUtils.formatDate(e.date)),
-                          React.createElement('td', null,
-                            React.createElement('span', { className: `badge ${e.type === 'SALE_INVOICE' ? 'badge-primary' : e.type === 'PURCHASE_ORDER' ? 'badge-outline' : 'badge-paid'}` },
-                              e.type === 'SALE_INVOICE' ? '🧾 Sale' : e.type === 'PURCHASE_ORDER' ? '📦 PO' : '💳 Vendor Pay'
-                            )
-                          ),
-                          React.createElement('td', null,
-                            React.createElement('div', { style: { fontWeight: 500 } }, e.entityName || '—'),
-                            e.notes && React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, e.notes)
-                          ),
-                          React.createElement('td', { style: { fontFamily: 'monospace', fontSize: '0.82rem' } }, e.reference || '—'),
-                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--success)' } },
-                            e.inflow > 0 ? `+ ${BillsoftUtils.formatCurrency(e.inflow)}` : '-'
-                          ),
-                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--danger)' } },
-                            e.outflow > 0 ? `- ${BillsoftUtils.formatCurrency(e.outflow)}` : '-'
-                          ),
-                          React.createElement('td', { style: { textAlign: 'center' } },
-                            React.createElement('span', { className: `badge ${e.status === 'PAID' ? 'badge-paid' : 'badge-final'}` }, e.status)
+                  // Side-by-side Breakdowns (GST & Payment Modes)
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 24 } },
+                    // 1. GST Slabs Table
+                    React.createElement('div', { className: 'card' },
+                      React.createElement('div', { className: 'card-header' },
+                        React.createElement('div', { className: 'card-title' }, '📊 GST Tax Slabs Distribution')
+                      ),
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', null,
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', null, 'GST %'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Taxable Value (₹)'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'GST Amount (₹)')
+                          )),
+                          React.createElement('tbody', null,
+                            (!statementData.gstSummary || statementData.gstSummary.length === 0) ?
+                              React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No GST data found')) :
+                              statementData.gstSummary.map((g, i) => React.createElement('tr', { key: i },
+                                React.createElement('td', { style: { fontWeight: 600 } }, `${g.gstPercent}%`),
+                                React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(g.taxableValue || 0)),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--info)' } }, BillsoftUtils.formatCurrency(g.gstAmount || 0))
+                              ))
                           )
-                        ))
+                        )
+                      )
+                    ),
+
+                    // 2. Payment Modes Table
+                    React.createElement('div', { className: 'card' },
+                      React.createElement('div', { className: 'card-header' },
+                        React.createElement('div', { className: 'card-title' }, '💳 Collections by Payment Mode')
+                      ),
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', null,
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', null, 'Payment Mode'),
+                            React.createElement('th', { style: { textAlign: 'center' } }, 'Count'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Total Amount (₹)')
+                          )),
+                          React.createElement('tbody', null,
+                            (!statementData.paymentModeSummary || statementData.paymentModeSummary.length === 0) ?
+                              React.createElement('tr', null, React.createElement('td', { colSpan: 3, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No payment mode data')) :
+                              statementData.paymentModeSummary.map((pm, i) => React.createElement('tr', { key: i },
+                                React.createElement('td', { style: { fontWeight: 500 } }, pm.mode),
+                                React.createElement('td', { style: { textAlign: 'center' } }, pm.count),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--success)' } }, BillsoftUtils.formatCurrency(pm.totalAmount || 0))
+                              ))
+                          )
+                        )
+                      )
+                    )
+                  ),
+
+                  // Side-by-side Top Accounts (Top Customers & Top Vendors)
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 24 } },
+                    // Top Customers
+                    React.createElement('div', { className: 'card' },
+                      React.createElement('div', { className: 'card-header' },
+                        React.createElement('div', { className: 'card-title' }, '👥 Top Customer Accounts')
+                      ),
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', null,
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', null, 'Customer'),
+                            React.createElement('th', { style: { textAlign: 'center' } }, 'Inv'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Billed (₹)'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Paid (₹)'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Due (₹)')
+                          )),
+                          React.createElement('tbody', null,
+                            (!statementData.topCustomers || statementData.topCustomers.length === 0) ?
+                              React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No customer activity')) :
+                              statementData.topCustomers.map((c, i) => React.createElement('tr', { key: i },
+                                React.createElement('td', { style: { fontWeight: 500 } }, c.name),
+                                React.createElement('td', { style: { textAlign: 'center' } }, c.transactionCount),
+                                React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(c.totalAmount || 0)),
+                                React.createElement('td', { style: { textAlign: 'right', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(c.totalPaid || 0)),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: c.balanceDue > 0 ? 'var(--danger)' : 'var(--text)' } }, BillsoftUtils.formatCurrency(c.balanceDue || 0))
+                              ))
+                          )
+                        )
+                      )
+                    ),
+
+                    // Top Vendors
+                    React.createElement('div', { className: 'card' },
+                      React.createElement('div', { className: 'card-header' },
+                        React.createElement('div', { className: 'card-title' }, '🏭 Top Vendor Accounts')
+                      ),
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', null,
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', null, 'Vendor / Party'),
+                            React.createElement('th', { style: { textAlign: 'center' } }, 'POs'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Ordered (₹)'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Paid (₹)'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Due (₹)')
+                          )),
+                          React.createElement('tbody', null,
+                            (!statementData.topVendors || statementData.topVendors.length === 0) ?
+                              React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No vendor activity')) :
+                              statementData.topVendors.map((v, i) => React.createElement('tr', { key: i },
+                                React.createElement('td', { style: { fontWeight: 500 } }, v.name),
+                                React.createElement('td', { style: { textAlign: 'center' } }, v.transactionCount),
+                                React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(v.totalAmount || 0)),
+                                React.createElement('td', { style: { textAlign: 'right', color: 'var(--success)' } }, BillsoftUtils.formatCurrency(v.totalPaid || 0)),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: v.balanceDue > 0 ? 'var(--danger)' : 'var(--text)' } }, BillsoftUtils.formatCurrency(v.balanceDue || 0))
+                              ))
+                          )
+                        )
+                      )
+                    )
+                  ),
+
+                  // Comprehensive Chronological Journal / Transactions Timeline
+                  React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+                      React.createElement('div', { className: 'card-title' }, '📖 Chronological Transaction Journal'),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                        React.createElement('input', {
+                          className: 'input input-sm',
+                          style: { width: 200 },
+                          placeholder: 'Search journal...',
+                          value: journalSearch,
+                          onChange: e => setJournalSearch(e.target.value)
+                        }),
+                        React.createElement('div', { className: 'btn-group' },
+                          React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'ALL' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('ALL') }, 'All'),
+                          React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'SALE_INVOICE' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('SALE_INVOICE') }, '🧾 Sales'),
+                          React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'PURCHASE_ORDER' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('PURCHASE_ORDER') }, '📦 POs'),
+                          React.createElement('button', { className: `btn btn-xs ${journalTypeFilter === 'VENDOR_PAYMENT' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setJournalTypeFilter('VENDOR_PAYMENT') }, '💳 Vendor Pay')
+                        )
+                      )
+                    ),
+                    React.createElement('div', { className: 'table-container' },
+                      React.createElement('table', null,
+                        React.createElement('thead', null, React.createElement('tr', null,
+                          React.createElement('th', null, 'Date'),
+                          React.createElement('th', null, 'Type'),
+                          React.createElement('th', null, 'Party / Customer'),
+                          React.createElement('th', null, 'Ref #'),
+                          React.createElement('th', { style: { textAlign: 'right' } }, 'Inflow (+₹)'),
+                          React.createElement('th', { style: { textAlign: 'right' } }, 'Outflow (-₹)'),
+                          React.createElement('th', { style: { textAlign: 'center' } }, 'Status')
+                        )),
+                        React.createElement('tbody', null,
+                          filteredJournalEntries.length === 0 ?
+                            React.createElement('tr', null, React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } }, 'No journal transactions found for this filter')) :
+                            filteredJournalEntries.map((e, i) => React.createElement('tr', { key: i },
+                              React.createElement('td', null, BillsoftUtils.formatDate(e.date)),
+                              React.createElement('td', null,
+                                React.createElement('span', { className: `badge ${e.type === 'SALE_INVOICE' ? 'badge-primary' : e.type === 'PURCHASE_ORDER' ? 'badge-outline' : 'badge-paid'}` },
+                                  e.type === 'SALE_INVOICE' ? '🧾 Sale' : e.type === 'PURCHASE_ORDER' ? '📦 PO' : '💳 Vendor Pay'
+                                )
+                              ),
+                              React.createElement('td', null,
+                                React.createElement('div', { style: { fontWeight: 500 } }, e.entityName || '—'),
+                                e.notes && React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, e.notes)
+                              ),
+                              React.createElement('td', { style: { fontFamily: 'monospace', fontSize: '0.82rem' } }, e.reference || '—'),
+                              React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--success)' } },
+                                e.inflow > 0 ? `+ ${BillsoftUtils.formatCurrency(e.inflow)}` : '-'
+                              ),
+                              React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--danger)' } },
+                                e.outflow > 0 ? `- ${BillsoftUtils.formatCurrency(e.outflow)}` : '-'
+                              ),
+                              React.createElement('td', { style: { textAlign: 'center' } },
+                                React.createElement('span', { className: `badge ${e.status === 'PAID' ? 'badge-paid' : 'badge-final'}` }, e.status)
+                              )
+                            ))
+                        )
+                      )
                     )
                   )
                 )
-              )
-            )
           )
         )
       );
@@ -11458,25 +11458,23 @@
       const handleUploadDocumentSubmit = async (e) => {
         e.preventDefault();
         if (!selectedEmployee) return;
-        if (!selectedFile && !docData.documentName.trim()) {
-          showToast('Please provide a document name or file', 'error');
+        if (!selectedFile) {
+          showToast('Please select a file to upload', 'error');
           return;
         }
         try {
-          const newDoc = {
-            id: Date.now(),
-            documentType: docData.documentType,
-            documentName: docData.documentName.trim() || (selectedFile ? selectedFile.name : 'Document'),
-            uploadDate: BillsoftUtils.todayStr(),
-            notes: docData.notes
-          };
-          setDocuments(prev => [...prev, newDoc]);
+          const docType = docData.documentType || 'Other Document';
+          const docTitle = (docData.documentName && docData.documentName.trim()) ? docData.documentName.trim() : selectedFile.name;
+          await API.employees.documents.upload(selectedEmployee.id, docType, selectedFile, docTitle);
+          showToast('Document uploaded to staff vault!', 'success');
           setShowDocModal(false);
           setSelectedFile(null);
           setDocData({ documentType: 'Aadhar Card', documentName: '', notes: '' });
-          showToast('Document added to staff vault', 'success');
+
+          const updatedDocs = await API.employees.documents.list(selectedEmployee.id).catch(() => []);
+          setDocuments(updatedDocs || []);
         } catch (err) {
-          showToast('Failed to upload document', 'error');
+          showToast(err.message || 'Failed to upload document', 'error');
         }
       };
 
@@ -12581,10 +12579,16 @@
                     React.createElement('a', {
                       className: 'btn btn-outline btn-sm',
                       style: { padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 },
-                      href: doc.dataBase64 || API.employees.documents.downloadUrl(doc.id),
+                      href: API.employees.documents.viewUrl(doc.id),
                       target: '_blank',
+                      rel: 'noopener noreferrer'
+                    }, '👁️ View'),
+                    React.createElement('a', {
+                      className: 'btn btn-outline btn-sm',
+                      style: { padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 },
+                      href: API.employees.documents.downloadUrl(doc.id),
                       download: doc.fileName || 'document'
-                    }, '👁️ View / Download'),
+                    }, '⬇️ Download'),
                     React.createElement('button', {
                       className: 'btn btn-ghost btn-sm',
                       style: { color: '#dc2626', padding: '4px 8px' },
@@ -13212,11 +13216,8 @@
         };
 
         const handleActivity = () => {
-          const now = Date.now();
-          if (now - lastActivity > 1000) {
-            lastActivity = now;
-            setTimeLeft(durationRef.current);
-          }
+          lastActivity = Date.now();
+          setTimeLeft(durationRef.current);
         };
 
         const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'input', 'wheel', 'pointerdown'];
@@ -13225,14 +13226,13 @@
         window.addEventListener('billsoft:request', resetTimer);
 
         const interval = setInterval(() => {
-          setTimeLeft(prev => {
-            if (prev <= 1) {
-              clearInterval(interval);
-              if (onExpireRef.current) onExpireRef.current();
-              return 0;
-            }
-            return prev - 1;
-          });
+          const elapsed = Math.floor((Date.now() - lastActivity) / 1000);
+          const remaining = Math.max(0, durationRef.current - elapsed);
+          setTimeLeft(remaining);
+          if (remaining <= 0) {
+            clearInterval(interval);
+            if (onExpireRef.current) onExpireRef.current();
+          }
         }, 1000);
 
         return () => {
@@ -13428,9 +13428,8 @@
         localStorage.removeItem('billsoft_auth_token');
         API.token = null;
         API.firmId = null;
-        setFirmName('');
-        setFirms([]);
-        window.showToast(reason || 'Logged out successfully', 'info');
+        const msg = typeof reason === 'string' ? reason : 'Logged out successfully';
+        if (window.showToast) window.showToast(msg, 'info');
       };
       window.showToast = (message, type = 'info') => {
         const id = BillsoftUtils.generateId();
@@ -13737,18 +13736,18 @@
               latestVersion: latestVer || (prev ? prev.latestVersion : '')
             }));
             if (attempts >= maxAttempts) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
-                setUpdateProgress({
-                    status: 'error',
-                    percent: 0,
-                    elapsedSeconds: elapsedSec,
-                    message: 'Restart is taking longer than expected. Initiating rollback.',
-                    latestVersion: latestVer || ''
-                });
-                // Trigger automatic rollback request to backend
-                fetch(API.BASE_URL + '/api/system/rollbackNow', { method: 'POST' }).catch(() => {});
+              clearInterval(restartPollingRef.current);
+              restartPollingRef.current = null;
+              window.onbeforeunload = null;
+              setUpdateProgress({
+                status: 'error',
+                percent: 0,
+                elapsedSeconds: elapsedSec,
+                message: 'Restart is taking longer than expected. Initiating rollback.',
+                latestVersion: latestVer || ''
+              });
+              // Trigger automatic rollback request to backend
+              fetch(API.BASE_URL + '/api/system/rollbackNow', { method: 'POST' }).catch(() => { });
             }
           }
         }, 1500);

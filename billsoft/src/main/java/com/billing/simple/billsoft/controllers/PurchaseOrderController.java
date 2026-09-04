@@ -8,6 +8,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -86,17 +88,26 @@ public class PurchaseOrderController {
         }
     }
 
-    @PatchMapping("/{id}/status")
+    @RequestMapping(value = "/{id}/status", method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<PurchaseOrder> updateStatus(@PathVariable Long id,
-                                                      @RequestBody Map<String, String> body,
+                                                      @RequestBody(required = false) Map<String, String> body,
+                                                      @RequestParam(value = "status", required = false) String statusParam,
                                                       @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                                       @RequestParam(value = "firmId", required = false) Long firmIdParam) {
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null || !body.containsKey("status")) {
+        String statusStr = null;
+        if (body != null && body.containsKey("status")) {
+            statusStr = body.get("status");
+        } else if (statusParam != null) {
+            statusStr = statusParam;
+        }
+
+        if (statusStr == null || statusStr.trim().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
+
         try {
-            PurchaseOrderStatus status = PurchaseOrderStatus.valueOf(body.get("status").toUpperCase());
+            PurchaseOrderStatus status = PurchaseOrderStatus.valueOf(statusStr.trim().toUpperCase());
             return ResponseEntity.ok(poService.updateStatus(id, firmId, status));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -108,14 +119,43 @@ public class PurchaseOrderController {
                                        @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                        @RequestParam(value = "firmId", required = false) Long firmIdParam) {
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
         try {
             poService.deletePurchaseOrder(id, firmId);
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PostMapping("/{id}/payments")
+    public ResponseEntity<PurchaseOrder> recordPayment(@PathVariable Long id,
+                                                      @RequestBody Map<String, Object> body,
+                                                      @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                      @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        if (body == null || !body.containsKey("amount")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            BigDecimal amount = new BigDecimal(body.get("amount").toString());
+            LocalDate paymentDate = body.containsKey("paymentDate") && body.get("paymentDate") != null
+                    ? LocalDate.parse(body.get("paymentDate").toString())
+                    : LocalDate.now();
+            String paymentMode = body.containsKey("paymentMode") && body.get("paymentMode") != null
+                    ? body.get("paymentMode").toString()
+                    : "Bank Transfer";
+            String referenceNumber = body.containsKey("referenceNumber") && body.get("referenceNumber") != null
+                    ? body.get("referenceNumber").toString()
+                    : null;
+            String notes = body.containsKey("notes") && body.get("notes") != null
+                    ? body.get("notes").toString()
+                    : null;
+
+            PurchaseOrder updated = poService.recordPoPayment(id, firmId, amount, paymentDate, paymentMode, referenceNumber, notes);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
         }
     }
 

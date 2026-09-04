@@ -40,6 +40,35 @@ class BackupControllerTest {
     }
 
     @Test
+    void testExportAll() throws Exception {
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(new HashMap<>());
+        when(service.exportAllData()).thenReturn(backup);
+
+        mockMvc.perform(get("/api/backup/export/all"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("Content-Disposition"));
+    }
+
+    @Test
+    void testAutoBackupStatus() throws Exception {
+        mockMvc.perform(get("/api/backup/auto/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.backupDir").exists());
+    }
+
+    @Test
+    void testRunAutoBackupNow() throws Exception {
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(new HashMap<>());
+        when(service.exportAllData()).thenReturn(backup);
+
+        mockMvc.perform(post("/api/backup/auto/run-now"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+    }
+
+    @Test
     void testImport() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "test.json", "application/json", "{\"metadata\":{}}".getBytes());
         doNothing().when(service).importData(any(), any(), anyBoolean());

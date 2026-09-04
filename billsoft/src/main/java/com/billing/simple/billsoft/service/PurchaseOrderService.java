@@ -25,4 +25,6 @@ public interface PurchaseOrderService {
     String generateNextPoNumber(Long firmId);
 
     byte[] generatePoPdf(Long id, Long firmId) throws Exception;
+
+    PurchaseOrder recordPoPayment(Long id, Long firmId, java.math.BigDecimal amount, java.time.LocalDate paymentDate, String paymentMode, String referenceNumber, String notes);
 }

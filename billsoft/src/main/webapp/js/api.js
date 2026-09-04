@@ -62,11 +62,12 @@ const API = {
     window.dispatchEvent(new CustomEvent('billsoft:activity'));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
+    const firmHeader = this.firmId ? { 'X-Firm-Id': String(this.firmId) } : {};
     const pinHeader = (this.employeePin && url.includes('/api/employees')) ? { 'X-Employee-Pin': this.employeePin } : {};
 
     const config = {
       ...options,
-      headers: { ...defaultHeaders, ...pinHeader, ...options.headers },
+      headers: { ...defaultHeaders, ...firmHeader, ...pinHeader, ...options.headers },
     };
 
     if (config.body && typeof config.body === 'object' && !isFormData && !(config.body instanceof Blob)) {
@@ -75,7 +76,19 @@ const API = {
     const response = await fetch(`${this.BASE_URL}${url}`, config);
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      const err = new Error(`HTTP ${response.status}: ${text}`);
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json && json.error) errorMsg = json.error;
+        else if (json && json.message) errorMsg = json.message;
+      } catch (e) {
+        if (text && text.trim()) {
+          errorMsg = text.length > 200 ? `HTTP ${response.status}` : `HTTP ${response.status}: ${text}`;
+        } else if (response.status === 413) {
+          errorMsg = 'File size is too large (exceeds 100MB limit).';
+        }
+      }
+      const err = new Error(errorMsg);
       err.status = response.status;
       throw err;
     }
@@ -155,9 +168,13 @@ const API = {
       method: 'PUT',
       body: { ...data, firmId: API.firmId || data.firmId }
     })),
-    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(`/api/purchase-orders/${id}/status`, {
+    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/status`), {
       method: 'PATCH',
       body: { status }
+    })),
+    recordPayment: (id, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/payments`), {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId }
     })),
     delete: (id) => API._request(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
     pdfUrl: (id) => API._qs(API.BASE_URL + `/api/purchase-orders/${id}/pdf`),
@@ -181,7 +198,7 @@ const API = {
       method: 'PUT',
       body: { ...data, firmId: API.firmId || data.firmId }
     })),
-    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(`/api/letters/${id}/status`, {
+    updateStatus: (id, status) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/letters/${id}/status`), {
       method: 'PATCH',
       body: { status }
     })),
@@ -381,6 +398,22 @@ const API = {
   // ─── Backup & Restore ───
   backup: {
     exportUrl: () => `${API.BASE_URL}/api/backup/export?firmId=${API.firmId}`,
+    exportAllUrl: () => `${API.BASE_URL}/api/backup/export/all`,
+    inspect: async (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return API._json('/api/backup/inspect', { method: 'POST', body: formData });
+    },
+    importSelective: async (file, firmIds, mode, targetFirmId) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (firmIds && Array.isArray(firmIds)) {
+        firmIds.forEach(id => formData.append('firmIds', id));
+      }
+      formData.append('mode', mode || 'clone');
+      if (targetFirmId) formData.append('targetFirmId', targetFirmId);
+      return API._json('/api/backup/import/selective', { method: 'POST', body: formData });
+    },
     import: async (file, mode) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -388,7 +421,13 @@ const API = {
       formData.append('mode', mode || 'merge');
       return API._json('/api/backup/import', { method: 'POST', body: formData });
     },
-    factoryReset: (password) => API._json('/api/backup/factory-reset', { method: 'POST', body: { confirm: 'RESET', password } })
+    autoStatus: () => API._json('/api/backup/auto/status'),
+    runAutoBackupNow: () => API._json('/api/backup/auto/run-now', { method: 'POST' }),
+    downloadAutoBackupUrl: () => `${API.BASE_URL}/api/backup/auto/download`,
+    factoryReset: (password) => API._json('/api/backup/factory-reset', {
+      method: 'POST',
+      body: { confirm: 'RESET SOFTWARE', password: password || '', masterPassword: password || '' }
+    })
   },
 
   // ─── Employees ───

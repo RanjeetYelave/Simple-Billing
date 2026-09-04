@@ -27,6 +27,33 @@ public class BackupDTO {
     private List<BusinessLetter> businessLetters;
     private List<InboxMessage> inboxMessages;
     private List<InvoicePayment> invoicePayments;
+    private List<AppConfig> appConfigs;
+    private List<EmployeeDocument> employeeDocuments;
+    private List<FirmDetails> allFirms;
+
+    public List<AppConfig> getAppConfigs() {
+        return appConfigs;
+    }
+
+    public void setAppConfigs(List<AppConfig> appConfigs) {
+        this.appConfigs = appConfigs;
+    }
+
+    public List<EmployeeDocument> getEmployeeDocuments() {
+        return employeeDocuments;
+    }
+
+    public void setEmployeeDocuments(List<EmployeeDocument> employeeDocuments) {
+        this.employeeDocuments = employeeDocuments;
+    }
+
+    public List<FirmDetails> getAllFirms() {
+        return allFirms;
+    }
+
+    public void setAllFirms(List<FirmDetails> allFirms) {
+        this.allFirms = allFirms;
+    }
 
     public List<InvoicePayment> getInvoicePayments() {
         return invoicePayments;

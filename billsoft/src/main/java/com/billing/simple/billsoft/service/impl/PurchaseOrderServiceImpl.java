@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.billing.simple.billsoft.repo.ProductRepository;
+import com.billing.simple.billsoft.entities.Product;
+
 @Service
 @Transactional
 public class PurchaseOrderServiceImpl implements PurchaseOrderService {
@@ -31,19 +34,22 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PartyPaymentRepository partyPaymentRepository;
     private final PurchaseOrderPdfService pdfService;
     private final com.billing.simple.billsoft.service.ProductService productService;
+    private final ProductRepository productRepository;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository poRepository,
                                     PurchaseOrderItemRepository poItemRepository,
                                     PartyRepository partyRepository,
                                     PartyPaymentRepository partyPaymentRepository,
                                     PurchaseOrderPdfService pdfService,
-                                    com.billing.simple.billsoft.service.ProductService productService) {
+                                    com.billing.simple.billsoft.service.ProductService productService,
+                                    ProductRepository productRepository) {
         this.poRepository = poRepository;
         this.poItemRepository = poItemRepository;
         this.partyRepository = partyRepository;
         this.partyPaymentRepository = partyPaymentRepository;
         this.pdfService = pdfService;
         this.productService = productService;
+        this.productRepository = productRepository;
     }
 
     @Override
@@ -93,16 +99,26 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         // Sync with party payments if paid amount > 0
         syncPartyPayment(savedPo);
 
+        // If created directly in RECEIVED status, adjust inventory stock
+        if (savedPo.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            handleStockAdjustment(savedPo, null, PurchaseOrderStatus.RECEIVED);
+        }
+
         return savedPo;
     }
 
     @Override
     public PurchaseOrder updatePurchaseOrder(Long id, PurchaseOrder updated) {
-        PurchaseOrder existing = poRepository.findByIdAndFirmId(id, updated.getFirmId())
+        PurchaseOrder existing = (updated.getFirmId() != null
+                ? poRepository.findByIdAndFirmId(id, updated.getFirmId())
+                : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
 
+        PurchaseOrderStatus oldStatus = existing.getStatus();
+
         if (updated.getParty() != null && updated.getParty().getId() != null) {
-            Party party = partyRepository.findByIdAndFirmId(updated.getParty().getId(), updated.getFirmId())
+            Long firmIdForParty = updated.getFirmId() != null ? updated.getFirmId() : existing.getFirmId();
+            Party party = partyRepository.findByIdAndFirmId(updated.getParty().getId(), firmIdForParty)
                     .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + updated.getParty().getId()));
             existing.setParty(party);
             existing.setPartyName(party.getName());
@@ -161,6 +177,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         PurchaseOrder savedPo = poRepository.save(existing);
         syncPartyPayment(savedPo);
+        handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
         return savedPo;
     }
 
@@ -217,43 +234,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setStatus(status);
         PurchaseOrder saved = poRepository.save(po);
 
-        // If transitioning to RECEIVED from another status, increase inventory stock
-        if (status == PurchaseOrderStatus.RECEIVED && oldStatus != PurchaseOrderStatus.RECEIVED) {
-            if (saved.getItems() != null) {
-                for (PurchaseOrderItem item : saved.getItems()) {
-                    if (item.getProductId() != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                        productService.recordStockMovement(
-                                item.getProductId(),
-                                saved.getFirmId(),
-                                "PURCHASE_RECEIPT",
-                                item.getQuantity(),
-                                "PURCHASE_ORDER",
-                                saved.getPoNumber(),
-                                "Vendor goods received from PO " + saved.getPoNumber() + " (" + (saved.getParty() != null ? saved.getParty().getName() : "Vendor") + ")"
-                        );
-                    }
-                }
-            }
-        }
-
-        // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT), reverse inventory stock
-        if (oldStatus == PurchaseOrderStatus.RECEIVED && status != PurchaseOrderStatus.RECEIVED) {
-            if (saved.getItems() != null) {
-                for (PurchaseOrderItem item : saved.getItems()) {
-                    if (item.getProductId() != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                        productService.recordStockMovement(
-                                item.getProductId(),
-                                saved.getFirmId(),
-                                "PURCHASE_CANCELLED",
-                                item.getQuantity().negate(),
-                                "PURCHASE_ORDER",
-                                saved.getPoNumber(),
-                                "PO " + saved.getPoNumber() + " changed from RECEIVED to " + status + " - stock reversed"
-                        );
-                    }
-                }
-            }
-        }
+        handleStockAdjustment(saved, oldStatus, status);
         return saved;
     }
 
@@ -263,24 +244,139 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
 
         // If PO was RECEIVED, reverse stock upon deletion
-        if (po.getStatus() == PurchaseOrderStatus.RECEIVED && po.getItems() != null) {
-            for (PurchaseOrderItem item : po.getItems()) {
-                if (item.getProductId() != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                    productService.recordStockMovement(
-                            item.getProductId(),
-                            po.getFirmId(),
-                            "PURCHASE_DELETED",
-                            item.getQuantity().negate(),
-                            "PURCHASE_ORDER",
-                            po.getPoNumber(),
-                            "PO " + po.getPoNumber() + " deleted - stock reversed"
-                    );
-                }
-            }
+        if (po.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            handleStockAdjustment(po, PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.CANCELLED);
         }
 
         partyPaymentRepository.deleteByPurchaseOrderId(po.getId());
         poRepository.delete(po);
+    }
+
+    private void handleStockAdjustment(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {
+        if (po == null || po.getItems() == null) return;
+
+        // If transitioning to RECEIVED from another status (or on initial creation as RECEIVED), increase inventory stock
+        if (newStatus == PurchaseOrderStatus.RECEIVED && oldStatus != PurchaseOrderStatus.RECEIVED) {
+            for (PurchaseOrderItem item : po.getItems()) {
+                Long prodId = resolveOrCreateProduct(item, po.getFirmId(), true);
+
+                if (prodId != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                    productService.recordStockMovement(
+                            prodId,
+                            po.getFirmId(),
+                            "PURCHASE_RECEIPT",
+                            item.getQuantity(),
+                            "PURCHASE_ORDER",
+                            po.getPoNumber(),
+                            "Vendor goods received from PO " + po.getPoNumber() + " (" + (po.getParty() != null ? po.getParty().getName() : "Vendor") + ")"
+                    );
+                    if (item.getId() != null) {
+                        poItemRepository.save(item);
+                    }
+                }
+            }
+        }
+        // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT) or upon deletion, reverse stock
+        else if (oldStatus == PurchaseOrderStatus.RECEIVED && newStatus != PurchaseOrderStatus.RECEIVED) {
+            for (PurchaseOrderItem item : po.getItems()) {
+                Long prodId = resolveOrCreateProduct(item, po.getFirmId(), false);
+
+                if (prodId != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                    productService.recordStockMovement(
+                            prodId,
+                            po.getFirmId(),
+                            "PURCHASE_CANCELLED",
+                            item.getQuantity().negate(),
+                            "PURCHASE_ORDER",
+                            po.getPoNumber(),
+                            "PO " + po.getPoNumber() + " changed from RECEIVED to " + newStatus + " - stock reversed"
+                    );
+                }
+            }
+        }
+    }
+
+    private Long resolveOrCreateProduct(PurchaseOrderItem item, Long firmId, boolean autoCreate) {
+        if (item.getProductId() != null) {
+            return item.getProductId();
+        }
+        if (item.getProductName() == null || item.getProductName().trim().isEmpty()) {
+            return null;
+        }
+
+        String name = item.getProductName().trim();
+        List<Product> prods = productRepository.findByFirmId(firmId);
+        for (Product p : prods) {
+            if (p.getName() != null && p.getName().trim().equalsIgnoreCase(name)) {
+                item.setProductId(p.getId());
+                return p.getId();
+            }
+        }
+
+        if (autoCreate) {
+            Product newProd = Product.builder()
+                    .firmId(firmId)
+                    .name(name)
+                    .description(item.getDescription())
+                    .hsnCode(item.getHsnCode())
+                    .unit(item.getUnit() != null && !item.getUnit().trim().isEmpty() ? item.getUnit() : "pcs")
+                    .itemType("GOODS")
+                    .price(item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO)
+                    .costPrice(item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO)
+                    .gstPercentage(item.getGstPercent() != null ? item.getGstPercent() : BigDecimal.ZERO)
+                    .stockQuantity(BigDecimal.ZERO)
+                    .minStockLevel(new BigDecimal("5.000"))
+                    .build();
+            Product created = productService.create(newProd);
+            item.setProductId(created.getId());
+            return created.getId();
+        }
+
+        return null;
+    }
+
+    @Override
+    public PurchaseOrder recordPoPayment(Long id, Long firmId, BigDecimal amount, LocalDate paymentDate, String paymentMode, String referenceNumber, String notes) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than zero");
+        }
+
+        PurchaseOrder po = (firmId != null
+                ? poRepository.findByIdAndFirmId(id, firmId)
+                : poRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
+
+        BigDecimal currentPaid = po.getPaidAmount() != null ? po.getPaidAmount() : BigDecimal.ZERO;
+        BigDecimal newPaid = currentPaid.add(amount);
+        po.setPaidAmount(newPaid);
+
+        if (po.getTotalAmount() != null && newPaid.compareTo(po.getTotalAmount()) >= 0) {
+            po.setPaymentStatus("PAID");
+        } else {
+            po.setPaymentStatus("PARTIAL");
+        }
+
+        if (paymentMode != null && !paymentMode.trim().isEmpty()) {
+            po.setPaymentMethod(paymentMode.trim());
+        }
+
+        PurchaseOrder savedPo = poRepository.save(po);
+
+        // Record linked party payment entry
+        if (savedPo.getParty() != null) {
+            PartyPayment payment = new PartyPayment();
+            payment.setPartyId(savedPo.getParty().getId());
+            payment.setFirmId(savedPo.getFirmId());
+            payment.setPurchaseOrderId(savedPo.getId());
+            payment.setAmount(amount);
+            payment.setPaymentDate(paymentDate != null ? paymentDate : LocalDate.now());
+            payment.setPaymentMode(paymentMode != null ? paymentMode : "Bank Transfer");
+            payment.setReferenceNumber(referenceNumber != null ? referenceNumber : savedPo.getPoNumber());
+            payment.setNotes(notes != null ? notes : "Payment for Purchase Order " + savedPo.getPoNumber());
+            partyPaymentRepository.save(payment);
+        }
+
+        return savedPo;
     }
 
     @Override

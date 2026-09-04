@@ -530,6 +530,52 @@ input[type=number] {
   font-weight: 600;
 }
 
+/* ─── Quick Actions Grid ─────────────────────────────────────── */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.quick-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 90px;
+  padding: 16px 12px;
+  background: var(--tile-bg, var(--bg-card));
+  border: 1px solid var(--tile-border, var(--border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--tile-color, var(--text));
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.quick-action-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  background: var(--tile-bg, var(--bg-hover, rgba(255,255,255,0.06)));
+}
+
+.quick-action-tile-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.quick-action-tile-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--tile-color, var(--text));
+  letter-spacing: 0.01em;
+}
+
 /* KPI Grid */
 .kpi-grid {
   display: grid;
@@ -1326,6 +1372,32 @@ input:checked+.slider:before {
   justify-content: center;
   font-weight: 600;
   font-size: 0.85rem;
+}
+
+.topbar-lock-btn {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--danger, #dc2626);
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.topbar-lock-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
+.topbar-lock-btn:active {
+  transform: translateY(0);
 }
 
 /* Sidebar container: the left fixed nav */
@@ -2537,19 +2609,24 @@ th.sortable svg {
     justify-content: center !important;
   }
 
-  /* Quick Actions 2x2 Grid */
+  /* Quick Actions – 2×2 grid on mobile */
   .quick-actions-grid {
-    display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-    width: 100% !important;
+    gap: 10px !important;
   }
 
-  .quick-actions-grid .btn {
-    width: 100% !important;
-    justify-content: center !important;
-    min-height: 38px !important;
-    font-size: 0.8rem !important;
+  .quick-action-tile {
+    min-height: 70px !important;
+    padding: 12px 8px !important;
+    gap: 5px !important;
+  }
+
+  .quick-action-tile-icon {
+    font-size: 1.25rem !important;
+  }
+
+  .quick-action-tile-label {
+    font-size: 0.78rem !important;
   }
 
   /* Cards & Containers */
@@ -2946,5 +3023,163 @@ th.sortable svg {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* ─── REIMAGINED FIRM PROFILE & BUSINESS IDENTITY ─── */
+.firm-profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.firm-profile-hero {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.firm-profile-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary), #8b5cf6, #3b82f6);
+}
+
+.firm-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.firm-hero-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary-light), rgba(99, 102, 241, 0.15));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.firm-deck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.firm-deck-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.firm-deck-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.firm-deck-card.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.firm-logo-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 20px;
+  text-align: center;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+}
+
+.firm-logo-dropzone:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.firm-invoice-preview-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  position: sticky;
+  top: 80px;
+}
+
+.firm-invoice-preview-paper {
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 0.8rem;
+}
+
+[data-theme='dark'] .firm-invoice-preview-paper {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.firm-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+[data-theme='dark'] .firm-preview-header {
+  border-bottom-color: #334155;
+}
+
+@media (max-width: 960px) {
+  .firm-profile-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .firm-invoice-preview-card {
+    position: static !important;
   }
 }

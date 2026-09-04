@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -103,6 +104,114 @@ class PurchaseOrderRegressionTest {
         // Product stock should increase from 20 -> 70
         Product prodAfter = productService.getById(testProduct.getId());
         assertThat(prodAfter.getStockQuantity()).isEqualByComparingTo("70.000");
+
+        // 3. Mark as CANCELLED -> triggers automatic stock reversal (70 -> 20)
+        PurchaseOrder cancelledPo = poService.updateStatus(createdPo.getId(), testFirmId, PurchaseOrderStatus.CANCELLED);
+        assertThat(cancelledPo.getStatus()).isEqualTo(PurchaseOrderStatus.CANCELLED);
+        Product prodReversed = productService.getById(testProduct.getId());
+        assertThat(prodReversed.getStockQuantity()).isEqualByComparingTo("20.000");
+
+        // 4. Mark as RECEIVED again -> triggers stock intake (20 -> 70)
+        poService.updateStatus(createdPo.getId(), testFirmId, PurchaseOrderStatus.RECEIVED);
+        Product prodReReceived = productService.getById(testProduct.getId());
+        assertThat(prodReReceived.getStockQuantity()).isEqualByComparingTo("70.000");
+
+        // 5. Delete RECEIVED PO -> triggers stock reversal (70 -> 20)
+        poService.deletePurchaseOrder(createdPo.getId(), testFirmId);
+        Product prodDeleted = productService.getById(testProduct.getId());
+        assertThat(prodDeleted.getStockQuantity()).isEqualByComparingTo("20.000");
+    }
+
+    @Test
+    @DisplayName("Should intake stock immediately when PO is created directly in RECEIVED status")
+    void shouldIntakeStockWhenCreatedDirectlyAsReceived() {
+        PurchaseOrder po = PurchaseOrder.builder()
+                .party(testSupplier)
+                .poDate(LocalDate.now())
+                .firmId(testFirmId)
+                .status(PurchaseOrderStatus.RECEIVED)
+                .build();
+
+        PurchaseOrderItem item = PurchaseOrderItem.builder()
+                .productId(testProduct.getId())
+                .productName(testProduct.getName())
+                .quantity(BigDecimal.valueOf(30.0))
+                .unitPrice(BigDecimal.valueOf(900.00))
+                .build();
+
+        po.setItems(List.of(item));
+        poService.createPurchaseOrder(po);
+
+        // Initial 20 + 30 received = 50
+        Product prod = productService.getById(testProduct.getId());
+        assertThat(prod.getStockQuantity()).isEqualByComparingTo("50.000");
+    }
+
+    @Test
+    @DisplayName("Should auto-create completely new product in inventory and sync vendor ledger when PO is received and paid")
+    void shouldAutoCreateNewProductInInventoryAndSyncVendorLedgerWhenReceivedAndPaid() {
+        // 1. Create PO with a brand new product that does NOT exist in catalog
+        String newProductName = "High Grade Titanium Bolt M12";
+        PurchaseOrder po = PurchaseOrder.builder()
+                .party(testSupplier)
+                .poDate(LocalDate.now())
+                .firmId(testFirmId)
+                .status(PurchaseOrderStatus.ISSUED)
+                .build();
+
+        PurchaseOrderItem item = PurchaseOrderItem.builder()
+                .productId(null) // No existing product ID
+                .productName(newProductName)
+                .description("Specialized titanium fasteners")
+                .hsnCode("7318")
+                .unit("pcs")
+                .quantity(BigDecimal.valueOf(100.0))
+                .unitPrice(BigDecimal.valueOf(45.00))
+                .gstPercent(BigDecimal.valueOf(18.0))
+                .build();
+
+        po.setItems(List.of(item));
+        PurchaseOrder created = poService.createPurchaseOrder(po);
+        assertThat(created.getId()).isNotNull();
+
+        // 2. Receive the PO -> triggers auto-creation in inventory + stock intake
+        PurchaseOrder received = poService.updateStatus(created.getId(), testFirmId, PurchaseOrderStatus.RECEIVED);
+        assertThat(received.getStatus()).isEqualTo(PurchaseOrderStatus.RECEIVED);
+
+        // Product should now exist in product catalog
+        List<Product> products = productService.getAll(testFirmId);
+        Optional<Product> found = products.stream()
+                .filter(p -> newProductName.equalsIgnoreCase(p.getName()))
+                .findFirst();
+
+        assertThat(found).isPresent();
+        Product newProd = found.get();
+        assertThat(newProd.getStockQuantity()).isEqualByComparingTo("100.000");
+        assertThat(newProd.getHsnCode()).isEqualTo("7318");
+        assertThat(newProd.getCostPrice()).isEqualByComparingTo("45.00");
+
+        // 3. Record Quick Pay on the PO
+        BigDecimal poTotal = created.getTotalAmount(); // 100 * 45 = 4500 + 18% (810) = 5310
+        assertThat(poTotal).isEqualByComparingTo("5310.00");
+
+        PurchaseOrder paidPo = poService.recordPoPayment(
+                created.getId(),
+                testFirmId,
+                poTotal,
+                LocalDate.now(),
+                "UPI",
+                "UPI-TITANIUM-001",
+                "Paid full balance for titanium fasteners"
+        );
+        assertThat(paidPo.getPaymentStatus()).isEqualTo("PAID");
+        assertThat(paidPo.getPaidAmount()).isEqualByComparingTo("5310.00");
+
+        // 4. Verify Vendor Financial Summary / Ledger
+        var summary = partyService.getFinancialSummary(testSupplier.getId(), testFirmId);
+        assertThat(summary.getTotalPurchases()).isEqualByComparingTo("5310.00");
+        assertThat(summary.getTotalPaid()).isEqualByComparingTo("5310.00");
+        assertThat(summary.getNetBalance()).isEqualByComparingTo("0.00");
+        assertThat(summary.getBalanceStatus()).isEqualTo("SETTLED");
     }
 
     @Test

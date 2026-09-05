@@ -915,8 +915,10 @@ public class StatementServiceImpl implements StatementService {
             StatementEntry entry = new StatementEntry();
             entry.setDate(payment.getPaymentDate());
             entry.setType("PAYMENT");
-            entry.setRef(payment.getReferenceNumber() != null ? payment.getReferenceNumber() : "PAY-" + payment.getId());
-            entry.setDescription("Payment via " + payment.getPaymentMode() + (payment.getNotes() != null && !payment.getNotes().isEmpty() ? " - " + payment.getNotes() : ""));
+            entry.setRef("PAY-" + payment.getId() + (payment.getPurchaseOrderId() != null ? "-PO-" + payment.getPurchaseOrderId() : "-ADV"));
+            String targetLabel = payment.getPurchaseOrderId() != null ? "PO #" + payment.getPurchaseOrderId() : "Advance Payment";
+            String refPart = payment.getReferenceNumber() != null && !payment.getReferenceNumber().isBlank() ? " [Ref: " + payment.getReferenceNumber() + "]" : "";
+            entry.setDescription(targetLabel + " via " + payment.getPaymentMode() + refPart + (payment.getNotes() != null && !payment.getNotes().isEmpty() ? " • " + payment.getNotes() : ""));
             entry.setDebit(0.0);
             entry.setCredit(payment.getAmount() != null ? payment.getAmount().doubleValue() : 0.0);
             entries.add(entry);

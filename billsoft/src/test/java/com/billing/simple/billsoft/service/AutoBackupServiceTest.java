@@ -66,7 +66,8 @@ class AutoBackupServiceTest {
 
         Map<String, Object> result = autoBackupService.runAutoBackup();
         assertNotNull(result);
-        assertEquals("SUCCESS", result.get("status"));
+        assertEquals("HEALTHY", result.get("status"));
+        assertTrue((Boolean) result.get("isTodayBackup"));
 
         File latestFile = new File(backupDir, "autobackup_latest.json");
         assertTrue(latestFile.exists());
@@ -79,16 +80,31 @@ class AutoBackupServiceTest {
         Map<String, Object> status = autoBackupService.getStatus();
         assertNotNull(status);
         assertTrue((Boolean) status.get("fileExists"));
+        assertTrue((Boolean) status.get("isTodayBackup"));
+        assertEquals("HEALTHY", status.get("status"));
         assertEquals(latestFile.getAbsolutePath(), status.get("filePath"));
     }
 
     @Test
-    void testCheckAndRunStartupAutoBackup() {
+    void testEnsureTodayBackupWhenMissingAndWhenPresent() {
         BackupDTO mockBackup = new BackupDTO();
         mockBackup.setMetadata(new HashMap<>());
         when(backupService.exportAllData()).thenReturn(mockBackup);
 
-        autoBackupService.checkAndRunStartupAutoBackup();
-        verify(backupService, atLeastOnce()).exportAllData();
+        assertFalse(autoBackupService.isTodayBackupPresent());
+
+        // 1. When missing, ensureTodayBackup generates one
+        Map<String, Object> res1 = autoBackupService.ensureTodayBackup();
+        assertNotNull(res1);
+        assertEquals("HEALTHY", res1.get("status"));
+        assertTrue(autoBackupService.isTodayBackupPresent());
+        verify(backupService, times(1)).exportAllData();
+
+        // 2. When already present, ensureTodayBackup returns status without re-exporting
+        Map<String, Object> res2 = autoBackupService.ensureTodayBackup();
+        assertNotNull(res2);
+        assertEquals("HEALTHY", res2.get("status"));
+        assertTrue((Boolean) res2.get("isTodayBackup"));
+        verify(backupService, times(1)).exportAllData(); // Still 1 call
     }
 }

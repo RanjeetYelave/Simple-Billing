@@ -78,47 +78,60 @@ public class AutoBackupService {
         File backupDir = getBackupDirectory();
         File latest = new File(backupDir, LATEST_BACKUP_NAME);
         if (latest.exists() && latest.isFile()) {
-            lastBackupStatus.put("status", "READY");
+            boolean today = isTodayBackupPresent();
+            lastBackupStatus.put("status", today ? "HEALTHY" : "READY");
             lastBackupStatus.put("lastBackupTime", latest.lastModified());
             lastBackupStatus.put("lastBackupFormatted", formatTimestamp(latest.lastModified()));
             lastBackupStatus.put("fileSizeBytes", latest.length());
             lastBackupStatus.put("filePath", latest.getAbsolutePath());
             lastBackupStatus.put("backupDir", backupDir.getAbsolutePath());
+            lastBackupStatus.put("isTodayBackup", today);
         } else {
             lastBackupStatus.put("status", "INITIALIZING");
             lastBackupStatus.put("backupDir", backupDir.getAbsolutePath());
+            lastBackupStatus.put("isTodayBackup", false);
         }
 
-        // Check if startup auto-backup is needed (if no backup or >24h since last)
+        // Check if startup auto-backup is needed for today
         new Thread(() -> {
             try {
-                Thread.sleep(3000); // Allow server startup to complete
-                checkAndRunStartupAutoBackup();
+                Thread.sleep(2000); // Allow server startup to complete
+                ensureTodayBackup();
             } catch (Exception e) {
                 log.warn("Startup auto-backup check encountered a non-critical error: {}", e.getMessage());
             }
         }, "AutoBackup-StartupCheck").start();
     }
 
-    public synchronized void checkAndRunStartupAutoBackup() {
+    /**
+     * Checks if a valid, non-empty automated backup file exists and was created today.
+     */
+    public boolean isTodayBackupPresent() {
         File backupDir = getBackupDirectory();
         File latest = new File(backupDir, LATEST_BACKUP_NAME);
-        long now = System.currentTimeMillis();
-        long twentyFourHours = 24L * 60 * 60 * 1000;
-
-        if (!latest.exists() || (now - latest.lastModified() > twentyFourHours)) {
-            log.info("Running automatic backup on startup (last backup was >24h ago or non-existent)...");
-            runAutoBackup();
+        if (!latest.exists() || !latest.isFile() || latest.length() == 0) {
+            return false;
         }
+        java.time.LocalDate backupDate = Instant.ofEpochMilli(latest.lastModified())
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate();
+        return backupDate.equals(java.time.LocalDate.now());
     }
 
     /**
-     * Executes daily automated backup (runs daily at 2:00 AM).
+     * Ensures an automated backup dated today exists. If not, generates one immediately.
      */
-    @Scheduled(cron = "0 0 2 * * *")
-    public void scheduledDailyBackup() {
-        log.info("Triggering scheduled daily auto-backup...");
-        runAutoBackup();
+    public synchronized Map<String, Object> ensureTodayBackup() {
+        if (isTodayBackupPresent()) {
+            log.debug("Automated daily backup for today is already present and verified.");
+            return getStatus();
+        }
+        log.info("No verified backup found for today ({}). Generating auto-backup now...", java.time.LocalDate.now());
+        return runAutoBackup();
+    }
+
+    public synchronized void checkAndRunStartupAutoBackup() {
+        ensureTodayBackup();
     }
 
     /**
@@ -153,14 +166,15 @@ public class AutoBackupService {
             log.info("Auto-backup successfully completed in {}ms. File size: {} bytes at {}",
                     elapsed, targetFile.length(), targetFile.getAbsolutePath());
 
-            lastBackupStatus.put("status", "SUCCESS");
+            lastBackupStatus.put("status", "HEALTHY");
             lastBackupStatus.put("lastBackupTime", targetFile.lastModified());
             lastBackupStatus.put("lastBackupFormatted", formatTimestamp(targetFile.lastModified()));
             lastBackupStatus.put("fileSizeBytes", targetFile.length());
             lastBackupStatus.put("filePath", targetFile.getAbsolutePath());
             lastBackupStatus.put("backupDir", backupDir.getAbsolutePath());
             lastBackupStatus.put("durationMs", elapsed);
-            lastBackupStatus.put("message", "Auto-backup verified and saved successfully.");
+            lastBackupStatus.put("isTodayBackup", true);
+            lastBackupStatus.put("message", "Auto-backup verified and saved successfully for today.");
 
             return new HashMap<>(lastBackupStatus);
         } catch (Exception e) {
@@ -196,16 +210,22 @@ public class AutoBackupService {
     public synchronized Map<String, Object> getStatus() {
         File backupDir = getBackupDirectory();
         File latest = new File(backupDir, LATEST_BACKUP_NAME);
+        boolean fileExists = latest.exists() && latest.isFile() && latest.length() > 0;
+        boolean isToday = isTodayBackupPresent();
 
         Map<String, Object> status = new HashMap<>(lastBackupStatus);
         status.put("backupDir", backupDir.getAbsolutePath());
-        status.put("fileExists", latest.exists() && latest.isFile());
-        if (latest.exists()) {
+        status.put("fileExists", fileExists);
+        status.put("isTodayBackup", isToday);
+        status.put("status", isToday ? "HEALTHY" : (fileExists ? "READY" : "INITIALIZING"));
+        if (fileExists) {
             status.put("fileSizeBytes", latest.length());
             status.put("lastModified", latest.lastModified());
             status.put("lastModifiedFormatted", formatTimestamp(latest.lastModified()));
+            status.put("filePath", latest.getAbsolutePath());
         }
-        status.put("scheduleCron", "Daily at 02:00 AM (0 0 2 * * *)");
+        status.put("strategy", "Launch & Diagnostic Verification (Daily)");
+        status.put("scheduleCron", "Verified on App Launch & Diagnostics (Daily)");
         status.put("retentionPolicy", "Keep latest verified backup (Old pruned automatically)");
         return status;
     }

@@ -24,6 +24,10 @@ public interface PartyPaymentRepository extends JpaRepository<PartyPayment, Long
 
     List<PartyPayment> findByPurchaseOrderId(Long purchaseOrderId);
 
+    List<PartyPayment> findByFirmIdAndPartyIdAndPurchaseOrderIdIsNullOrderByPaymentDateDescIdDesc(Long firmId, Long partyId);
+
+    List<PartyPayment> findByFirmIdAndPurchaseOrderIdIsNullOrderByPaymentDateDescIdDesc(Long firmId);
+
     void deleteByPurchaseOrderId(Long purchaseOrderId);
 
     void deleteByPartyId(Long partyId);

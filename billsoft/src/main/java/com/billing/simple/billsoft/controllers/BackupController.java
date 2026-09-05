@@ -101,6 +101,56 @@ public class BackupController {
         }
     }
 
+    @GetMapping("/auto/inspect")
+    public ResponseEntity<?> inspectAutoBackup() {
+        try {
+            java.io.File file = new java.io.File(autoBackupService.getBackupDirectory(), "autobackup_latest.json");
+            if (!file.exists() || !file.isFile() || file.length() == 0) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "No automated backup file found in the storage directory.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+            BackupDTO backup = objectMapper.readValue(file, BackupDTO.class);
+            com.billing.simple.billsoft.dto.BackupInspectionDTO inspection = backupService.inspectBackup(backup);
+            return ResponseEntity.ok(inspection);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Failed to inspect auto-backup: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    @PostMapping("/auto/restore")
+    public ResponseEntity<Map<String, Object>> restoreAutoBackup(
+            @RequestParam(value = "firmIds", required = false) java.util.List<Long> firmIds,
+            @RequestParam(value = "mode", defaultValue = "clone") String mode,
+            @RequestParam(value = "targetFirmId", required = false) Long targetFirmId) {
+        try {
+            java.io.File file = new java.io.File(autoBackupService.getBackupDirectory(), "autobackup_latest.json");
+            if (!file.exists() || !file.isFile() || file.length() == 0) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "No automated backup file found in the storage directory.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+            BackupDTO backup = objectMapper.readValue(file, BackupDTO.class);
+            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty()) ? new java.util.HashSet<>(firmIds) : null;
+            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms =
+                    backupService.importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "Successfully restored " + restoredFirms.size() + " firm(s) from auto-backup.");
+            response.put("restoredFirms", restoredFirms);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Restore from auto-backup failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
     @PostMapping("/inspect")
     public ResponseEntity<?> inspectBackup(@RequestParam("file") MultipartFile file) {
         try {

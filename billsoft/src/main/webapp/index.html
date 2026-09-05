@@ -9,8 +9,8 @@
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
 
-  <script src="js/api.js?v=20260904_16"></script>
-  <script src="js/utils.js?v=20260904_16"></script>
+  <script src="js/api.js?v=20260905_02"></script>
+  <script src="js/utils.js?v=20260905_01"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
   <script src="js/themeToggle.js"></script>
@@ -5687,6 +5687,14 @@
       const [ledgerData, setLedgerData] = useState(null);
       const [ledgerLoading, setLedgerLoading] = useState(false);
 
+      // Advance Adjustment Modal state (from Ledger)
+      const [adjustModalPayment, setAdjustModalPayment] = useState(null);
+      const [partyPendingPos, setPartyPendingPos] = useState([]);
+      const [loadingPendingPos, setLoadingPendingPos] = useState(false);
+      const [selectedTargetPoId, setSelectedTargetPoId] = useState('');
+      const [targetAdjustAmount, setTargetAdjustAmount] = useState('');
+      const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
+
       // Delete confirmation
       const [deletePartyId, setDeletePartyId] = useState(null);
       const [deletePaymentConfirmId, setDeletePaymentConfirmId] = useState(null);
@@ -5845,6 +5853,71 @@
             showToast('Failed to load party ledger', 'error');
             setLedgerLoading(false);
           });
+      };
+
+      const openAdjustAdvanceModal = (paymentId, amount) => {
+        if (!ledgerParty) return;
+        setAdjustModalPayment({ id: paymentId, amount });
+        setTargetAdjustAmount(String(amount || ''));
+        setSelectedTargetPoId('');
+        setLoadingPendingPos(true);
+        API.purchaseOrders.list(ledgerParty.id)
+          .then(list => {
+            const pending = (list || []).filter(po => po.status !== 'CANCELLED' && po.paymentStatus !== 'PAID');
+            setPartyPendingPos(pending);
+            if (pending.length > 0) {
+              setSelectedTargetPoId(String(pending[0].id));
+              const poDue = Math.max(0, (pending[0].totalAmount || 0) - (pending[0].paidAmount || 0));
+              setTargetAdjustAmount(String(Math.min(amount, poDue)));
+            }
+          })
+          .catch(() => {
+            showToast('Failed to load pending purchase orders', 'error');
+          })
+          .finally(() => setLoadingPendingPos(false));
+      };
+
+      const handleSaveAdvanceAdjustment = async () => {
+        if (!adjustModalPayment || !selectedTargetPoId) {
+          showToast('Please select a Purchase Order', 'error');
+          return;
+        }
+        const amt = parseFloat(targetAdjustAmount);
+        if (!amt || amt <= 0) {
+          showToast('Enter a valid adjustment amount', 'error');
+          return;
+        }
+        if (amt > adjustModalPayment.amount) {
+          showToast(`Adjustment amount cannot exceed available advance of ₹${adjustModalPayment.amount}`, 'error');
+          return;
+        }
+        setSubmittingAdjustment(true);
+        try {
+          await API.purchaseOrders.adjustAdvance(parseInt(selectedTargetPoId, 10), {
+            paymentId: adjustModalPayment.id,
+            amount: amt,
+            notes: `Adjusted from Advance Payment #${adjustModalPayment.id}`
+          });
+          showToast(`Successfully adjusted ₹${amt} against Purchase Order`, 'success');
+          setAdjustModalPayment(null);
+          load();
+          if (ledgerParty) openLedger(ledgerParty);
+        } catch (e) {
+          showToast('Failed to adjust advance payment against PO', 'error');
+        } finally {
+          setSubmittingAdjustment(false);
+        }
+      };
+
+      const handleUnadjustPayment = async (paymentId) => {
+        try {
+          await API.purchaseOrders.unadjustPayment(paymentId);
+          showToast('Payment unlinked from Purchase Order and returned to advance', 'success');
+          load();
+          if (ledgerParty) openLedger(ledgerParty);
+        } catch (e) {
+          showToast('Failed to unlink payment', 'error');
+        }
       };
 
       const handleDeletePayment = (paymentId) => {
@@ -6385,6 +6458,73 @@
                   )
                 )
               )
+          )
+        ),
+
+        // Advance Allocation to PO Modal (From Ledger)
+        adjustModalPayment && React.createElement('div', { className: 'modal-overlay', onClick: () => setAdjustModalPayment(null) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 500, width: '92%', margin: '70px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, '⚡ Adjust Advance Against Purchase Order'),
+              React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => setAdjustModalPayment(null) }, '✕')
+            ),
+            React.createElement('div', { style: { background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: 8, padding: 12, marginBottom: 14 } },
+              React.createElement('div', { style: { fontSize: '0.82rem', color: '#a16207', fontWeight: 600 } }, 'Available Advance Payment:'),
+              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, color: '#ca8a04', marginTop: 2 } }, BillsoftUtils.formatCurrency(adjustModalPayment.amount || 0)),
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Vendor: ${ledgerParty ? ledgerParty.name : ''}`)
+            ),
+            loadingPendingPos ? React.createElement('div', { className: 'loading-screen', style: { minHeight: 100 } }, React.createElement('div', { className: 'spinner' })) :
+              partyPendingPos.length === 0 ? React.createElement('div', { style: { padding: 20, textAlign: 'center', color: 'var(--text-secondary)' } },
+                React.createElement('p', null, 'There are no pending/unpaid Purchase Orders for this vendor.')
+              ) :
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { fontWeight: 600, fontSize: '0.82rem', display: 'block', marginBottom: 4 } }, 'Select Target Purchase Order *'),
+                    React.createElement('select', {
+                      className: 'select w-full',
+                      value: selectedTargetPoId,
+                      onChange: e => {
+                        const val = e.target.value;
+                        setSelectedTargetPoId(val);
+                        const picked = partyPendingPos.find(p => p.id == val);
+                        if (picked) {
+                          const due = Math.max(0, (picked.totalAmount || 0) - (picked.paidAmount || 0));
+                          setTargetAdjustAmount(String(Math.min(adjustModalPayment.amount, due)));
+                        }
+                      }
+                    },
+                      partyPendingPos.map(po => {
+                        const due = Math.max(0, (po.totalAmount || 0) - (po.paidAmount || 0));
+                        return React.createElement('option', { key: po.id, value: po.id },
+                          `${po.poNumber} — Due: ${BillsoftUtils.formatCurrency(due)} (Total: ${BillsoftUtils.formatCurrency(po.totalAmount || 0)})`
+                        );
+                      })
+                    )
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { fontWeight: 600, fontSize: '0.82rem', display: 'block', marginBottom: 4 } }, 'Amount to Adjust (₹) *'),
+                    React.createElement('input', {
+                      type: 'number',
+                      className: 'input w-full',
+                      style: { fontSize: '1.05rem', fontWeight: 700 },
+                      value: targetAdjustAmount,
+                      onChange: e => setTargetAdjustAmount(e.target.value)
+                    }),
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                      parseFloat(targetAdjustAmount) < adjustModalPayment.amount ?
+                        `Remaining advance of ${BillsoftUtils.formatCurrency(adjustModalPayment.amount - (parseFloat(targetAdjustAmount) || 0))} will stay available for future orders.` :
+                        'Full advance amount will be allocated to this order.'
+                    )
+                  ),
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 } },
+                    React.createElement('button', { className: 'btn btn-outline', onClick: () => setAdjustModalPayment(null), disabled: submittingAdjustment }, 'Cancel'),
+                    React.createElement('button', {
+                      className: 'btn btn-primary',
+                      onClick: handleSaveAdvanceAdjustment,
+                      disabled: submittingAdjustment || !selectedTargetPoId || !targetAdjustAmount || parseFloat(targetAdjustAmount) <= 0
+                    }, submittingAdjustment ? 'Adjusting...' : '⚡ Apply Advance to PO')
+                  )
+                )
           )
         ),
 
@@ -7062,8 +7202,15 @@
       const [deletePoId, setDeletePoId] = useState(null);
       const [showCompletionPopup, setShowCompletionPopup] = useState(false);
 
-      // Quick Payment Modal
+      // Quick Payment & Advance Adjustment Modal
       const [quickPayPo, setQuickPayPo] = useState(null);
+      const [quickPayTab, setQuickPayTab] = useState('direct'); // 'direct' | 'advance'
+      const [vendorAdvances, setVendorAdvances] = useState([]);
+      const [loadingAdvances, setLoadingAdvances] = useState(false);
+      const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
+      const [adjustAdvanceAmount, setAdjustAdvanceAmount] = useState('');
+      const [adjustAdvanceNotes, setAdjustAdvanceNotes] = useState('');
+      const [recordingAdvanceAdjust, setRecordingAdvanceAdjust] = useState(false);
       const [quickPayForm, setQuickPayForm] = useState({
         amount: '',
         paymentDate: BillsoftUtils.todayStr(),
@@ -7399,6 +7546,80 @@
           referenceNumber: '',
           notes: `Payment for PO ${po.poNumber || ''}`
         });
+        setAdjustAdvanceNotes(`Adjusted against PO ${po.poNumber || ''}`);
+
+        const partyId = po.party ? po.party.id : (po.partyId || null);
+        if (partyId) {
+          setLoadingAdvances(true);
+          API.parties.unallocatedPayments(partyId).then(advances => {
+            const list = advances || [];
+            setVendorAdvances(list);
+            if (list.length > 0) {
+              const first = list[0];
+              setSelectedAdvanceId(String(first.id));
+              const fillAmt = Math.min(balance, first.amount || 0);
+              setAdjustAdvanceAmount(fillAmt > 0 ? String(fillAmt) : String(first.amount || ''));
+              setQuickPayTab('advance');
+            } else {
+              setSelectedAdvanceId('');
+              setAdjustAdvanceAmount('');
+              setQuickPayTab('direct');
+            }
+          }).catch(() => {
+            setVendorAdvances([]);
+            setQuickPayTab('direct');
+          }).finally(() => {
+            setLoadingAdvances(false);
+          });
+        } else {
+          setVendorAdvances([]);
+          setQuickPayTab('direct');
+        }
+      };
+
+      const handleSelectAdvance = (advId) => {
+        setSelectedAdvanceId(advId);
+        const adv = vendorAdvances.find(a => String(a.id) === String(advId));
+        if (adv && quickPayPo) {
+          const balance = Math.max(0, (quickPayPo.totalAmount || 0) - (quickPayPo.paidAmount || 0));
+          const fillAmt = Math.min(balance, adv.amount || 0);
+          setAdjustAdvanceAmount(fillAmt > 0 ? String(fillAmt) : String(adv.amount || ''));
+        }
+      };
+
+      const handleAdjustAdvance = async () => {
+        if (!quickPayPo || !selectedAdvanceId) return;
+        const amt = parseFloat(adjustAdvanceAmount);
+        if (!amt || amt <= 0) {
+          showToast('Please enter a valid adjustment amount', 'error');
+          return;
+        }
+        const selectedAdv = vendorAdvances.find(a => String(a.id) === String(selectedAdvanceId));
+        if (selectedAdv && amt > selectedAdv.amount) {
+          showToast(`Amount cannot exceed available advance of ₹${selectedAdv.amount}`, 'error');
+          return;
+        }
+        const balance = Math.max(0, (quickPayPo.totalAmount || 0) - (quickPayPo.paidAmount || 0));
+        if (amt > balance) {
+          showToast(`Amount cannot exceed remaining PO balance of ₹${balance}`, 'error');
+          return;
+        }
+
+        setRecordingAdvanceAdjust(true);
+        try {
+          await API.purchaseOrders.adjustAdvance(quickPayPo.id, {
+            paymentId: parseInt(selectedAdvanceId, 10),
+            amount: amt,
+            notes: adjustAdvanceNotes || `Adjusted from Advance payment #${selectedAdvanceId}`
+          });
+          showToast(`₹${amt} from advance successfully adjusted against ${quickPayPo.poNumber || 'PO'}!`, 'success');
+          setQuickPayPo(null);
+          load();
+        } catch (e) {
+          showToast(e.message || 'Failed to adjust advance payment', 'error');
+        } finally {
+          setRecordingAdvanceAdjust(false);
+        }
       };
 
       const handleSaveQuickPay = async () => {
@@ -8393,16 +8614,16 @@
           )
         ),
 
-        // Quick Pay Modal
+        // Quick Pay / Advance Adjustment Modal
         quickPayPo && React.createElement('div', { className: 'modal-overlay', onClick: () => setQuickPayPo(null) },
           React.createElement('div', {
             className: 'card modal-content',
-            style: { maxWidth: 480, width: '92%', margin: '60px auto', padding: 24, borderRadius: 16, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' },
+            style: { maxWidth: 520, width: '94%', margin: '50px auto', padding: 24, borderRadius: 16, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' },
             onClick: e => e.stopPropagation()
           },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 } },
               React.createElement('div', null,
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)' } }, '⚡ Quick Pay Purchase Order'),
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)' } }, '⚡ Settle Purchase Order Payment'),
                 React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 } }, `${quickPayPo.poNumber} • ${quickPayPo.partyName || (quickPayPo.party ? quickPayPo.party.name : 'Vendor')}`)
               ),
               React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => setQuickPayPo(null) }, '✕')
@@ -8426,8 +8647,147 @@
               )
             ),
 
-            // Form Fields
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            // Tab Selector: Direct vs Advance
+            React.createElement('div', { style: { display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, gap: 4 } },
+              React.createElement('button', {
+                type: 'button',
+                className: `btn btn-sm ${quickPayTab === 'advance' ? 'btn-primary' : 'btn-ghost'}`,
+                style: { flex: 1, borderRadius: '8px 8px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '0.82rem' },
+                onClick: () => setQuickPayTab('advance')
+              },
+                React.createElement('span', null, '⚡ Adjust from Advance'),
+                vendorAdvances.length > 0 && React.createElement('span', { className: 'badge badge-success', style: { fontSize: '0.7rem', padding: '1px 6px' } }, `₹${vendorAdvances.reduce((s, a) => s + (a.amount || 0), 0)}`)
+              ),
+              React.createElement('button', {
+                type: 'button',
+                className: `btn btn-sm ${quickPayTab === 'direct' ? 'btn-primary' : 'btn-ghost'}`,
+                style: { flex: 1, borderRadius: '8px 8px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '0.82rem' },
+                onClick: () => setQuickPayTab('direct')
+              }, '💳 Direct Payment')
+            ),
+
+            // TAB 1: ADJUST FROM ADVANCE
+            quickPayTab === 'advance' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+              loadingAdvances ?
+                React.createElement('div', { style: { textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: '0.88rem' } }, 'Checking available vendor advances...') :
+                (vendorAdvances.length === 0 ?
+                  React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: 18, borderRadius: 10, textAlign: 'center', border: '1px dashed var(--border)' } },
+                    React.createElement('div', { style: { fontSize: '1.4rem', marginBottom: 6 } }, 'ℹ️'),
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' } }, 'No Advance Payment Found'),
+                    React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 } }, 'There are currently no unallocated advance payments on record for this vendor.'),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-outline btn-sm',
+                      style: { marginTop: 12 },
+                      onClick: () => setQuickPayTab('direct')
+                    }, 'Switch to Direct Payment 💳')
+                  ) :
+                  React.createElement(React.Fragment, null,
+                    // Advance selection list
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontWeight: 700, fontSize: '0.84rem', display: 'block', marginBottom: 6 } }, 'Select Available Advance Payment *'),
+                      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 180, overflowY: 'auto', paddingRight: 4 } },
+                        vendorAdvances.map(adv => {
+                          const isSelected = String(adv.id) === String(selectedAdvanceId);
+                          return React.createElement('div', {
+                            key: adv.id,
+                            onClick: () => handleSelectAdvance(adv.id),
+                            style: {
+                              padding: '10px 14px',
+                              borderRadius: 8,
+                              border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(79, 70, 229, 0.05)' : 'var(--surface, #fff)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              transition: 'all 0.15s ease'
+                            }
+                          },
+                            React.createElement('div', null,
+                              React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem', color: isSelected ? 'var(--primary)' : 'inherit' } },
+                                `${BillsoftUtils.formatCurrency(adv.amount || 0)} Available`
+                              ),
+                              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 } },
+                                `${adv.paymentDate ? adv.paymentDate.substring(0, 10) : ''} • ${adv.paymentMode || 'Payment'}${adv.referenceNumber ? ` • Ref: ${adv.referenceNumber}` : ''}`
+                              )
+                            ),
+                            React.createElement('input', {
+                              type: 'radio',
+                              name: 'selectedAdvance',
+                              checked: isSelected,
+                              onChange: () => handleSelectAdvance(adv.id),
+                              style: { cursor: 'pointer' }
+                            })
+                          );
+                        })
+                      )
+                    ),
+
+                    // Amount to allocate
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                        React.createElement('label', { style: { fontWeight: 700, fontSize: '0.84rem' } }, 'Amount to Adjust (₹) *'),
+                        selectedAdvanceId && React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-outline',
+                            style: { fontSize: '0.72rem', padding: '2px 8px' },
+                            onClick: () => {
+                              const adv = vendorAdvances.find(a => String(a.id) === String(selectedAdvanceId));
+                              if (adv) setAdjustAdvanceAmount(String(adv.amount));
+                            }
+                          }, 'Max Advance'),
+                          Math.max(0, (quickPayPo.totalAmount || 0) - (quickPayPo.paidAmount || 0)) > 0 && React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-outline',
+                            style: { fontSize: '0.72rem', padding: '2px 8px' },
+                            onClick: () => {
+                              const bal = Math.max(0, (quickPayPo.totalAmount || 0) - (quickPayPo.paidAmount || 0));
+                              const adv = vendorAdvances.find(a => String(a.id) === String(selectedAdvanceId));
+                              setAdjustAdvanceAmount(String(adv ? Math.min(bal, adv.amount) : bal));
+                            }
+                          }, 'PO Balance')
+                        )
+                      ),
+                      React.createElement('input', {
+                        type: 'number',
+                        className: 'input',
+                        style: { width: '100%', fontSize: '1.05rem', fontWeight: 700 },
+                        placeholder: 'Enter amount to adjust',
+                        value: adjustAdvanceAmount,
+                        onChange: e => setAdjustAdvanceAmount(e.target.value)
+                      })
+                    ),
+
+                    // Notes
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontWeight: 700, fontSize: '0.82rem', display: 'block', marginBottom: 4 } }, 'Notes / Memo'),
+                      React.createElement('input', {
+                        type: 'text',
+                        className: 'input',
+                        style: { width: '100%' },
+                        placeholder: 'e.g. Adjusted against PO #102',
+                        value: adjustAdvanceNotes,
+                        onChange: e => setAdjustAdvanceNotes(e.target.value)
+                      })
+                    ),
+
+                    // Advance Adjust Actions
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10, paddingTop: 14, borderTop: '1px solid var(--border)' } },
+                      React.createElement('button', { className: 'btn btn-outline', onClick: () => setQuickPayPo(null), disabled: recordingAdvanceAdjust }, 'Cancel'),
+                      React.createElement('button', {
+                        className: 'btn btn-primary',
+                        onClick: handleAdjustAdvance,
+                        disabled: recordingAdvanceAdjust || !selectedAdvanceId || !adjustAdvanceAmount || parseFloat(adjustAdvanceAmount) <= 0
+                      }, recordingAdvanceAdjust ? 'Adjusting...' : `⚡ Apply Advance (₹${adjustAdvanceAmount || 0})`)
+                    )
+                  )
+                )
+            ),
+
+            // TAB 2: DIRECT PAYMENT
+            quickPayTab === 'direct' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
               React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
                   React.createElement('label', { style: { fontWeight: 700, fontSize: '0.85rem' } }, 'Payment Amount (₹) *'),
@@ -8499,17 +8859,17 @@
                   value: quickPayForm.notes,
                   onChange: e => setQuickPayForm(f => ({ ...f, notes: e.target.value }))
                 })
-              )
-            ),
+              ),
 
-            // Actions
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--border)' } },
-              React.createElement('button', { className: 'btn btn-outline', onClick: () => setQuickPayPo(null), disabled: recordingQuickPay }, 'Cancel'),
-              React.createElement('button', {
-                className: 'btn btn-primary',
-                onClick: handleSaveQuickPay,
-                disabled: recordingQuickPay || !quickPayForm.amount || parseFloat(quickPayForm.amount) <= 0
-              }, recordingQuickPay ? 'Recording...' : '💳 Save Payment')
+              // Direct Payment Actions
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--border)' } },
+                React.createElement('button', { className: 'btn btn-outline', onClick: () => setQuickPayPo(null), disabled: recordingQuickPay }, 'Cancel'),
+                React.createElement('button', {
+                  className: 'btn btn-primary',
+                  onClick: handleSaveQuickPay,
+                  disabled: recordingQuickPay || !quickPayForm.amount || parseFloat(quickPayForm.amount) <= 0
+                }, recordingQuickPay ? 'Recording...' : '💳 Save Payment')
+              )
             )
           )
         ),
@@ -9998,6 +10358,7 @@
     function BackupRestore() {
       const [loading, setLoading] = useState(false);
       const [importFile, setImportFile] = useState(null);
+      const [isAutoRestore, setIsAutoRestore] = useState(false);
       const [showResetModal, setShowResetModal] = useState(false);
       const [resetStep, setResetStep] = useState(0); // 0: initial confirm, 1: countdown, 2: type confirm
       const [countdown, setCountdown] = useState(10);
@@ -10052,7 +10413,7 @@
         showToast('Running automated safety backup...', 'info');
         try {
           const res = await API.backup.runAutoBackupNow();
-          if (res && res.status === 'SUCCESS') {
+          if (res && res.status === 'HEALTHY') {
             showToast('Auto-backup completed and safely stored in external folder!', 'success');
             setAutoStatus(res);
           } else {
@@ -10066,6 +10427,29 @@
         }
       };
 
+      const handleAutoRestoreClick = async () => {
+        setIsAutoRestore(true);
+        setImportFile(null);
+        setInspecting(true);
+        showToast('Inspecting system auto-backup contents...', 'info');
+        try {
+          const insp = await API.backup.inspectAuto();
+          if (insp && insp.error) {
+            showToast(insp.error, 'error');
+            return;
+          }
+          setInspection(insp);
+          const initialSet = new Set((insp.firms || []).map(f => f.firmId));
+          setSelectedFirms(initialSet);
+          setRestoreMode('clone');
+          setShowRestoreModal(true);
+        } catch (err) {
+          showToast('Failed to inspect system auto-backup: ' + (err.message || 'Error'), 'error');
+        } finally {
+          setInspecting(false);
+        }
+      };
+
       const handleExport = () => { window.location.href = API.backup.exportUrl(); showToast('Exporting current firm backup...', 'info'); };
       const handleExportAll = () => { window.location.href = API.backup.exportAllUrl(); showToast('Exporting full system multi-firm backup...', 'info'); };
       const handleImportClick = () => { fileInputRef.current.click(); };
@@ -10073,6 +10457,7 @@
       const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        setIsAutoRestore(false);
         setImportFile(file);
         e.target.value = '';
         setInspecting(true);
@@ -10130,12 +10515,18 @@
         }
         setLoading(true);
         try {
-          const res = await API.backup.importSelective(
-            importFile,
-            Array.from(selectedFirms),
-            restoreMode,
-            API.firmId
-          );
+          const res = isAutoRestore
+            ? await API.backup.restoreAuto(
+              Array.from(selectedFirms),
+              restoreMode,
+              API.firmId
+            )
+            : await API.backup.importSelective(
+              importFile,
+              Array.from(selectedFirms),
+              restoreMode,
+              API.firmId
+            );
           if (res && res.error) {
             showToast(res.error, 'error');
             setLoading(false);
@@ -10241,7 +10632,7 @@
                 React.createElement('div', null,
                   React.createElement('h3', { style: { fontSize: '1.05rem', margin: 0, fontWeight: 700, color: 'var(--text)' } }, 'Automated Daily Safety Backup'),
                   React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0', lineHeight: 1.4 } },
-                    'Runs automatically every day at 02:00 AM (or on app startup). Backups are stored in a dedicated persistent application directory outside the software installation folder so software deletion/updates will never affect backups.'
+                    'Runs automatically every day on app launch and diagnostics sweeps. Backups are stored in a dedicated persistent application directory outside the software installation folder so software deletion/updates will never affect backups.'
                   )
                 )
               )
@@ -10280,16 +10671,24 @@
               )
             ),
 
-            React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' } },
+            React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end', flexWrap: 'wrap' } },
+              (autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS')) && React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline btn-sm',
+                onClick: handleAutoRestoreClick,
+                disabled: inspecting || loading,
+                style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', borderColor: '#10B981', color: '#059669', background: 'rgba(16, 185, 129, 0.05)' }
+              }, inspecting && isAutoRestore ? '🔍 Inspecting Auto-Backup...' : '⚡ Restore from Auto-Backup'),
+
               React.createElement('button', {
                 type: 'button',
                 className: 'btn btn-outline btn-sm',
                 onClick: handleRunAutoBackup,
                 disabled: autoRunning,
                 style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }
-              }, autoRunning ? '⏳ Backing up...' : '⚡ Backup Now (Safety Trigger)'),
+              }, autoRunning ? '⏳ Backing up...' : '🔄 Backup Now'),
 
-              (autoStatus && (autoStatus.fileExists || autoStatus.status === 'SUCCESS')) && React.createElement('a', {
+              (autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS')) && React.createElement('a', {
                 href: API.backup.downloadAutoBackupUrl(),
                 className: 'btn btn-primary btn-sm',
                 style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', textDecoration: 'none' },
@@ -10314,11 +10713,17 @@
             React.createElement('div', { style: { padding: '16px 18px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', null,
                 React.createElement('h3', { style: { fontSize: '1rem', marginBottom: 4 } }, 'Restore Data'),
-                React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 } }, 'Inspect, select specific firms, and restore with clone or merge options.')
+                React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 } }, 'Inspect, select specific firms, and restore with clone, merge, or clean wipe.')
               ),
-              React.createElement('div', null,
+              React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                (autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS')) && React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  onClick: handleAutoRestoreClick,
+                  disabled: inspecting || loading,
+                  style: { borderColor: '#10B981', color: '#059669', display: 'inline-flex', alignItems: 'center', gap: 5 }
+                }, '⚡ Restore Auto-Backup'),
                 React.createElement('input', { type: 'file', ref: fileInputRef, style: { display: 'none' }, accept: '.json', onChange: handleFileChange }),
-                React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: handleImportClick, disabled: inspecting || loading }, inspecting ? '🔍 Inspecting...' : loading ? 'Restoring...' : 'Import Backup JSON')
+                React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: handleImportClick, disabled: inspecting || loading }, inspecting && !isAutoRestore ? '🔍 Inspecting...' : loading ? 'Restoring...' : '📁 Import Backup JSON')
               )
             ),
 
@@ -10339,9 +10744,9 @@
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
                 React.createElement('span', { style: { fontSize: '1.2rem' } }, '📦'),
                 React.createElement('div', null,
-                  React.createElement('div', { className: 'modal-title', style: { fontSize: '1.1rem' } }, 'Selective Backup Restore'),
+                  React.createElement('div', { className: 'modal-title', style: { fontSize: '1.1rem' } }, isAutoRestore ? '⚡ System Auto-Backup Restore' : 'Selective Backup Restore'),
                   React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } },
-                    importFile ? importFile.name : 'Backup JSON',
+                    isAutoRestore ? 'System Auto-Backup (autobackup_latest.json)' : (importFile ? importFile.name : 'Backup JSON'),
                     inspection.exportDate ? ` • Created: ${new Date(inspection.exportDate).toLocaleString()}` : ''
                   )
                 )
@@ -11571,7 +11976,7 @@
                   },
                   {
                     title: 'Automated Daily Backup & Storage',
-                    status: `${diagData?.autoBackup?.schedule || 'Daily at 02:00 AM'} • Dir: ${diagData?.autoBackup?.directory || 'External Storage'} • Last: ${diagData?.autoBackup?.lastBackupFormatted || 'Active'}`,
+                    status: `${diagData?.autoBackup?.schedule || 'Verified on App Launch & Diagnostics (Daily)'} • Dir: ${diagData?.autoBackup?.directory || 'External Storage'} • Last: ${diagData?.autoBackup?.lastBackupFormatted || 'Dated Today'}`,
                     ok: diagData?.autoBackup?.healthy !== false,
                     icon: '💽'
                   }
@@ -11810,10 +12215,27 @@
       const [showRecovery, setShowRecovery] = useState(false);
       if (showRecovery) { return React.createElement(RecoveryTool, { onRecovered: () => { setShowRecovery(false); onLogin(null); }, onCancel: () => setShowRecovery(false) }); }
       const handleSubmit = async (e) => {
-        e.preventDefault(); setLoading(true); setError('');
-        try { const res = await API.auth.login(null, password); if (res.success) { onLogin(null); } else { setError(res.message || 'Login failed'); } }
-        catch (err) { setError('Login failed. Server error.'); }
-        finally { setLoading(false); }
+        e.preventDefault();
+        if (!password) { setError('Please enter your password / Master PIN.'); return; }
+        setLoading(true);
+        setError('');
+        try {
+          const res = await API.auth.login(null, password);
+          if (res && res.success) {
+            onLogin(null);
+          } else {
+            setError(res && res.message ? res.message : 'Incorrect password / PIN.');
+          }
+        } catch (err) {
+          const msg = (err && err.message) ? err.message : '';
+          if (!msg || msg.toLowerCase().includes('password') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('incorrect') || err.status === 400) {
+            setError('Incorrect password / PIN. Please try again.');
+          } else {
+            setError(msg);
+          }
+        } finally {
+          setLoading(false);
+        }
       };
       return React.createElement('div', { className: 'login-container' },
         React.createElement('div', { className: 'login-card', style: { maxWidth: 420, padding: '36px 32px' } },
@@ -12089,6 +12511,8 @@
 
       // Restore parameters
       const [backupFile, setBackupFile] = useState(null);
+      const [isAutoRestore, setIsAutoRestore] = useState(false);
+      const [autoStatus, setAutoStatus] = useState(null);
       const [restoreInspection, setRestoreInspection] = useState(null);
       const [restoreInspecting, setRestoreInspecting] = useState(false);
       const [restoreSelectedFirms, setRestoreSelectedFirms] = useState(new Set());
@@ -12096,13 +12520,40 @@
       const [restoreError, setRestoreError] = useState('');
       const [restoreLoading, setRestoreLoading] = useState(false);
 
+      useEffect(() => {
+        API.backup.autoStatus().then(res => {
+          if (res) setAutoStatus(res);
+        }).catch(() => { });
+      }, []);
+
+      const handleQuickAutoRestoreSelect = async () => {
+        setIsAutoRestore(true);
+        setBackupFile(null);
+        setRestoreError('');
+        setRestoreInspecting(true);
+        try {
+          const insp = await API.backup.inspectAuto();
+          if (insp && insp.error) throw new Error(insp.error);
+          setRestoreInspection(insp);
+          const allIds = new Set((insp.firms || []).map(f => f.firmId));
+          setRestoreSelectedFirms(allIds);
+        } catch (err) {
+          setRestoreError(err.message || 'Failed to inspect system auto-backup.');
+          setRestoreInspection(null);
+        } finally {
+          setRestoreInspecting(false);
+        }
+      };
+
       const handleRestoreFileSelect = async (file) => {
         if (!file) return;
+        setIsAutoRestore(false);
         setBackupFile(file);
         setRestoreError('');
         setRestoreInspecting(true);
         try {
           const insp = await API.backup.inspect(file);
+          if (insp && insp.error) throw new Error(insp.error);
           setRestoreInspection(insp);
           const allIds = new Set((insp.firms || []).map(f => f.firmId));
           setRestoreSelectedFirms(allIds);
@@ -12139,6 +12590,7 @@
         setStep(1);
         setAnimDir('forward');
         setBackupFile(null);
+        setIsAutoRestore(false);
         setRestoreInspection(null);
         setRestoreSelectedFirms(new Set());
         setRestoreError('');
@@ -12208,7 +12660,7 @@
               }, '📂'),
               React.createElement('div', null,
                 React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Restore from Backup'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Inspect and import firms selectively from backup')
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Restore from auto-backup or upload custom backup file')
               )
             )
           )
@@ -12253,13 +12705,11 @@
 
           // Step 2 – Address & Banking
           step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
-              React.createElement(FieldGroup, { label: 'Address Line 1' },
-                React.createElement(WizardInput, { type: 'text', placeholder: '123 Business Park', value: address1, onChange: e => setAddress1(e.target.value) })
-              ),
-              React.createElement(FieldGroup, { label: 'Address Line 2' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'Near Town Hall', value: address2, onChange: e => setAddress2(e.target.value) })
-              )
+            React.createElement(FieldGroup, { label: 'Address Line 1' },
+              React.createElement(WizardInput, { type: 'text', placeholder: 'Shop No, Building Name', value: address1, onChange: e => setAddress1(e.target.value) })
+            ),
+            React.createElement(FieldGroup, { label: 'Address Line 2' },
+              React.createElement(WizardInput, { type: 'text', placeholder: 'Street, Area', value: address2, onChange: e => setAddress2(e.target.value) })
             ),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
               React.createElement(FieldGroup, { label: 'City' },
@@ -12272,20 +12722,15 @@
                 React.createElement(WizardInput, { type: 'text', placeholder: '400001', value: pincode, onChange: e => setPincode(e.target.value) })
               )
             ),
-            React.createElement('div', {
-              style: { borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 16, marginTop: 4 }
-            },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 } }, '🏦 Bank Details (optional)'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
-                React.createElement(FieldGroup, { label: 'Bank Name' },
-                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBI', value: bankName, onChange: e => setBankName(e.target.value) })
-                ),
-                React.createElement(FieldGroup, { label: 'Account Number' },
-                  React.createElement(WizardInput, { type: 'text', placeholder: '0000000000000', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
-                ),
-                React.createElement(FieldGroup, { label: 'IFSC Code' },
-                  React.createElement(WizardInput, { type: 'text', placeholder: 'SBIN0000001', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
-                )
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+              React.createElement(FieldGroup, { label: 'Bank Name' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'State Bank of India', value: bankName, onChange: e => setBankName(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'Account Number' },
+                React.createElement(WizardInput, { type: 'text', placeholder: '12345678901', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'IFSC Code' },
+                React.createElement(WizardInput, { type: 'text', placeholder: 'SBIN0001234', value: bankIfsc, onChange: e => setBankIfsc(e.target.value), style: { textTransform: 'uppercase' } })
               )
             ),
             React.createElement(NavRow, { onBack: goBack, onNext: goNext, nextLabel: 'Next: Security →' })
@@ -12395,28 +12840,78 @@
         React.createElement(StepIndicator, { steps: RESTORE_STEPS, current: step }),
         React.createElement(ErrorBox, { msg: restoreError }),
 
-        // Step 1: Upload & Pre-Flight Inspect
-        step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+        // Step 1: Option Selection (Auto-Backup Quick Select or Browse File)
+        step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+          // Option A: Quick Auto-Backup Card
+          autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS') && React.createElement('div', {
+            onClick: handleQuickAutoRestoreSelect,
+            style: {
+              padding: '16px 18px',
+              borderRadius: 14,
+              border: isAutoRestore ? '2px solid #10B981' : '1px solid rgba(16, 185, 129, 0.4)',
+              background: isAutoRestore ? 'rgba(16, 185, 129, 0.18)' : 'rgba(16, 185, 129, 0.08)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', {
+                style: {
+                  width: 42, height: 42, borderRadius: 10,
+                  background: 'rgba(16, 185, 129, 0.25)', color: '#10b981',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem'
+                }
+              }, '⚡'),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 } },
+                  'Restore Latest System Auto-Backup',
+                  React.createElement('span', { style: { fontSize: '0.7rem', background: '#059669', color: '#fff', padding: '1px 6px', borderRadius: 4 } }, 'RECOMMENDED')
+                ),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 3 } },
+                  `Found: ${autoStatus.lastModifiedFormatted || autoStatus.lastBackupFormatted || 'Dated Today'} • External AppData Storage`
+                )
+              )
+            ),
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-sm',
+              style: {
+                background: isAutoRestore ? '#10b981' : 'rgba(16,185,129,0.3)',
+                color: '#fff', border: '1px solid #10b981', fontWeight: 600, fontSize: '0.8rem'
+              }
+            }, restoreInspecting && isAutoRestore ? '🔍 Inspecting...' : isAutoRestore ? '✓ Selected' : 'Use Auto-Backup')
+          ),
+
+          autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS') && React.createElement('div', {
+            style: { textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em' }
+          }, '── OR UPLOAD CUSTOM BACKUP FILE ──'),
+
+          // Option B: Custom File Upload
           React.createElement('div', {
             style: {
-              border: '2px dashed rgba(99,102,241,0.4)', borderRadius: 14,
-              padding: '24px 20px', textAlign: 'center',
-              background: backupFile ? 'rgba(34,197,94,0.08)' : 'rgba(99,102,241,0.05)',
+              border: backupFile && !isAutoRestore ? '2px solid #6366f1' : '2px dashed rgba(99,102,241,0.4)',
+              borderRadius: 14,
+              padding: '20px', textAlign: 'center',
+              background: backupFile && !isAutoRestore ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.05)',
               transition: 'all 0.2s', cursor: 'pointer'
             }
           },
-            React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, restoreInspecting ? '🔍' : backupFile ? '✅' : '📂'),
-            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 12px', fontSize: '0.9rem' } },
-              restoreInspecting ? 'Inspecting backup contents...' : backupFile ? `Selected: ${backupFile.name}` : 'Click to select your backup JSON file'
+            React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, restoreInspecting && !isAutoRestore ? '🔍' : backupFile && !isAutoRestore ? '✅' : '📂'),
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 10px', fontSize: '0.88rem' } },
+              restoreInspecting && !isAutoRestore ? 'Inspecting backup contents...' : backupFile && !isAutoRestore ? `Selected: ${backupFile.name}` : 'Click to select custom backup JSON file'
             ),
             React.createElement('label', {
               style: {
-                display: 'inline-block', padding: '8px 20px', borderRadius: 8,
+                display: 'inline-block', padding: '7px 18px', borderRadius: 8,
                 background: 'rgba(99,102,241,0.3)', color: '#fff', cursor: 'pointer',
-                fontSize: '0.85rem', fontWeight: 600, border: '1px solid rgba(99,102,241,0.5)'
+                fontSize: '0.82rem', fontWeight: 600, border: '1px solid rgba(99,102,241,0.5)'
               }
             },
-              backupFile ? '📁 Change File' : '📁 Browse File',
+              backupFile && !isAutoRestore ? '📁 Change File' : '📁 Browse File',
               React.createElement('input', {
                 type: 'file', accept: '.json',
                 style: { display: 'none' },
@@ -12434,7 +12929,7 @@
           },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('span', { style: { fontWeight: 700, fontSize: '0.88rem', color: restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? '#a5b4fc' : '#86efac' } },
-                restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? '🌐 Multi-Firm Backup' : '🏢 Single Firm Backup'
+                isAutoRestore ? '⚡ System Auto-Backup' : (restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? '🌐 Multi-Firm Backup' : '🏢 Single Firm Backup')
               ),
               React.createElement('span', { style: { fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' } },
                 `${restoreInspection.firms ? restoreInspection.firms.length : 0} Firm(s) Available`
@@ -12448,12 +12943,12 @@
           React.createElement(NavRow, {
             onBack: () => { setWizardMode(null); setStep(1); },
             onNext: () => {
-              if (!backupFile) { setRestoreError('Please select a backup file to continue.'); return; }
+              if (!isAutoRestore && !backupFile) { setRestoreError('Please select a backup file or choose auto-backup to continue.'); return; }
               if (!restoreInspection) { setRestoreError('Please wait for inspection to complete.'); return; }
               setRestoreError(''); goNext();
             },
             nextLabel: 'Next: Select Firms →',
-            nextDisabled: !backupFile || restoreInspecting || !restoreInspection
+            nextDisabled: (!isAutoRestore && !backupFile) || restoreInspecting || !restoreInspection
           })
         ),
 
@@ -12527,7 +13022,7 @@
           },
             React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
               'Ready to restore ', React.createElement('strong', { style: { color: '#a5b4fc' } }, `${restoreSelectedFirms.size} firm(s)`),
-              ' from ', React.createElement('strong', { style: { color: '#fff' } }, backupFile && backupFile.name)
+              ' from ', React.createElement('strong', { style: { color: '#fff' } }, isAutoRestore ? 'System Auto-Backup (autobackup_latest.json)' : (backupFile && backupFile.name))
             )
           ),
           React.createElement(FieldGroup, { label: 'Product Key (leave blank for 30-day trial)' },
@@ -12540,7 +13035,9 @@
               setRestoreLoading(true);
               try {
                 const selectedIdsArr = Array.from(restoreSelectedFirms);
-                const importRes = await API.backup.importSelective(backupFile, selectedIdsArr, 'clean_wipe');
+                const importRes = isAutoRestore
+                  ? await API.backup.restoreAuto(selectedIdsArr, 'clean_wipe')
+                  : await API.backup.importSelective(backupFile, selectedIdsArr, 'clean_wipe');
                 if (importRes.error) throw new Error(importRes.error);
                 const list = await API.firm.list();
                 if (list && list.length) {
@@ -13118,7 +13615,7 @@
             React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 12 } },
               React.createElement('span', { style: { fontSize: '1.3rem', lineHeight: 1 } }, 'ℹ️'),
               React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-                'Simple Billing operates with a zero-cloud SHA-256 cryptographic master recovery protocol. If you ever forget your application PIN, you can enter the master recovery key during software startup or factory reset to regain immediate access.'
+                'RupeeCRM operates with a zero-cloud SHA-256 cryptographic master recovery protocol. If you ever forget your application PIN, you can connect to support to regain immediate access.'
               )
             )
           )
@@ -13655,20 +14152,23 @@
                   React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981' } }),
                   React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' } }, 'Automated Multi-Firm Daily Backup Engine')
                 ),
-                React.createElement('span', { className: 'badge badge-success', style: { fontSize: '0.72rem', backgroundColor: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: 4 } }, '✓ ACTIVE')
+                React.createElement('span', { className: 'badge badge-success', style: { fontSize: '0.72rem', backgroundColor: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: 4 } }, backupInfo && backupInfo.isTodayBackup ? '✓ HEALTHY (Dated Today)' : '✓ HEALTHY')
               ),
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.78rem', marginTop: 10 } },
                 React.createElement('div', null,
-                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Backup Schedule: '),
-                  React.createElement('span', { style: { fontWeight: 600 } }, backupInfo ? backupInfo.scheduleCron || 'Daily at 02:00 AM' : 'Daily at 02:00 AM')
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Backup Strategy: '),
+                  React.createElement('span', { style: { fontWeight: 600 } }, backupInfo ? backupInfo.scheduleCron || 'Verified on App Launch & Diagnostics (Daily)' : 'Verified on App Launch & Diagnostics (Daily)')
                 ),
                 React.createElement('div', null,
-                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Last Backup: '),
-                  React.createElement('span', { style: { fontWeight: 600 } }, backupInfo && backupInfo.lastModifiedFormatted ? backupInfo.lastModifiedFormatted : 'Verified & Synced')
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Last Verified Backup: '),
+                  React.createElement('span', { style: { fontWeight: 600 } }, backupInfo && backupInfo.lastModifiedFormatted ? backupInfo.lastModifiedFormatted : 'Dated Today')
                 ),
                 React.createElement('div', { style: { gridColumn: 'span 2', wordBreak: 'break-all', fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
                   React.createElement('span', { style: { fontWeight: 600 } }, 'External AppData Storage: '),
                   backupInfo && backupInfo.backupDir ? backupInfo.backupDir : 'System External Storage Folder'
+                ),
+                React.createElement('div', { style: { gridColumn: 'span 2', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 4, fontStyle: 'italic' } },
+                  'ℹ️ Seamlessly verified on application launch & diagnostics. If today\'s backup is missing, it is automatically created and safely verified.'
                 )
               )
             ),
@@ -16146,12 +16646,14 @@
       onExpireRef.current = onExpire;
       const durationRef = useRef(sessionDuration);
       durationRef.current = sessionDuration;
+      const lastActivityRef = useRef(Date.now());
 
       useEffect(() => {
         const handleDurationChange = (e) => {
           const mins = (e && e.detail && e.detail.minutes !== undefined) ? parseInt(e.detail.minutes, 10) : 30;
           const secs = mins * 60;
           setSessionDuration(secs);
+          lastActivityRef.current = Date.now();
           setTimeLeft(secs);
         };
         window.addEventListener('sessionTimeoutChanged', handleDurationChange);
@@ -16161,24 +16663,30 @@
       useEffect(() => {
         if (!authEnabled || !isAuthenticated || sessionDuration <= 0) return;
 
-        let lastActivity = Date.now();
-        const resetTimer = () => {
-          lastActivity = Date.now();
-          setTimeLeft(durationRef.current);
+        lastActivityRef.current = Date.now();
+
+        // Direct user interaction events (typing, clicking, scrolling, touch)
+        const recordActivity = () => {
+          lastActivityRef.current = Date.now();
         };
 
-        const handleActivity = () => {
-          lastActivity = Date.now();
-          setTimeLeft(durationRef.current);
+        // Throttle mousemove to avoid continuous timer resets and high-frequency event flooding
+        let lastMouseMove = 0;
+        const handleMouseMove = () => {
+          const now = Date.now();
+          if (now - lastMouseMove > 2000) {
+            lastMouseMove = now;
+            lastActivityRef.current = now;
+          }
         };
 
-        const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'input', 'wheel', 'pointerdown'];
-        activityEvents.forEach(evt => window.addEventListener(evt, handleActivity, { capture: true, passive: true }));
-        window.addEventListener('billsoft:activity', resetTimer);
-        window.addEventListener('billsoft:request', resetTimer);
+        const directEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'input', 'wheel', 'pointerdown'];
+        directEvents.forEach(evt => window.addEventListener(evt, recordActivity, { capture: true, passive: true }));
+        window.addEventListener('mousemove', handleMouseMove, { capture: true, passive: true });
 
+        // Accurate 1-second countdown tick based on actual user activity timestamp
         const interval = setInterval(() => {
-          const elapsed = Math.floor((Date.now() - lastActivity) / 1000);
+          const elapsed = Math.floor((Date.now() - lastActivityRef.current) / 1000);
           const remaining = Math.max(0, durationRef.current - elapsed);
           setTimeLeft(remaining);
           if (remaining <= 0) {
@@ -16189,9 +16697,8 @@
 
         return () => {
           clearInterval(interval);
-          activityEvents.forEach(evt => window.removeEventListener(evt, handleActivity, { capture: true }));
-          window.removeEventListener('billsoft:activity', resetTimer);
-          window.removeEventListener('billsoft:request', resetTimer);
+          directEvents.forEach(evt => window.removeEventListener(evt, recordActivity, { capture: true }));
+          window.removeEventListener('mousemove', handleMouseMove, { capture: true });
         };
       }, [authEnabled, isAuthenticated, sessionDuration]);
 
@@ -16219,6 +16726,7 @@
       return React.createElement('button', {
         className: `session-timer-badge ${isUrgent ? 'urgent' : ''}`,
         onClick: () => {
+          lastActivityRef.current = Date.now();
           setTimeLeft(sessionDuration);
           if (window.showToast) window.showToast(`Session timer reset to ${Math.round(sessionDuration / 60)} minutes`, 'info');
         },

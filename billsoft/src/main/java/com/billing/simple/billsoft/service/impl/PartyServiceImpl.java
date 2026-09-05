@@ -227,6 +227,133 @@ public class PartyServiceImpl implements PartyService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<PartyPayment> getUnallocatedPayments(Long partyId, Long firmId) {
+        if (partyId != null) {
+            return partyPaymentRepository.findByFirmIdAndPartyIdAndPurchaseOrderIdIsNullOrderByPaymentDateDescIdDesc(firmId, partyId);
+        }
+        return partyPaymentRepository.findByFirmIdAndPurchaseOrderIdIsNullOrderByPaymentDateDescIdDesc(firmId);
+    }
+
+    @Override
+    public PurchaseOrder adjustAdvancePayment(Long poId, Long paymentId, BigDecimal amount, String notes, Long firmId) {
+        if (poId == null || paymentId == null || firmId == null) {
+            throw new IllegalArgumentException("Purchase Order ID, Payment ID, and Firm ID are required");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Adjustment amount must be greater than zero");
+        }
+
+        PurchaseOrder po = purchaseOrderRepository.findByIdAndFirmId(poId, firmId)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + poId));
+
+        PartyPayment payment = partyPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("Party payment not found with id: " + paymentId));
+
+        if (!payment.getFirmId().equals(firmId)) {
+            throw new IllegalArgumentException("Unauthorized: Payment firm mismatch");
+        }
+
+        if (po.getParty() == null || !po.getParty().getId().equals(payment.getPartyId())) {
+            throw new IllegalArgumentException("Payment does not belong to the vendor of this Purchase Order");
+        }
+
+        if (payment.getPurchaseOrderId() != null) {
+            throw new IllegalArgumentException("Payment is already linked to Purchase Order #" + payment.getPurchaseOrderId());
+        }
+
+        if (amount.compareTo(payment.getAmount()) > 0) {
+            throw new IllegalArgumentException("Adjustment amount (" + amount + ") cannot exceed available advance (" + payment.getAmount() + ")");
+        }
+
+        if (amount.compareTo(payment.getAmount()) == 0) {
+            // Full allocation of this advance payment
+            payment.setPurchaseOrderId(po.getId());
+            if (notes != null && !notes.isBlank()) {
+                payment.setNotes(notes.trim());
+            } else if (payment.getNotes() == null || payment.getNotes().isBlank()) {
+                payment.setNotes("Adjusted from advance for PO " + po.getPoNumber());
+            }
+            partyPaymentRepository.save(payment);
+        } else {
+            // Partial allocation: reduce advance payment amount and create allocated split entry
+            BigDecimal remainingAdvance = payment.getAmount().subtract(amount);
+            payment.setAmount(remainingAdvance);
+            partyPaymentRepository.save(payment);
+
+            PartyPayment allocated = PartyPayment.builder()
+                    .firmId(firmId)
+                    .partyId(po.getParty().getId())
+                    .purchaseOrderId(po.getId())
+                    .amount(amount)
+                    .paymentDate(payment.getPaymentDate() != null ? payment.getPaymentDate() : java.time.LocalDate.now())
+                    .paymentMode(payment.getPaymentMode() != null ? payment.getPaymentMode() : "BANK_TRANSFER")
+                    .referenceNumber(payment.getReferenceNumber() != null ? payment.getReferenceNumber() : ("ADV-ADJ-" + payment.getId()))
+                    .notes(notes != null && !notes.isBlank() ? notes.trim() : ("Adjusted from Advance Payment #" + payment.getId() + " for PO " + po.getPoNumber()))
+                    .build();
+            partyPaymentRepository.save(allocated);
+        }
+
+        // Recalculate PO paidAmount and status
+        List<PartyPayment> poPayments = partyPaymentRepository.findByPurchaseOrderId(po.getId());
+        BigDecimal totalPaid = poPayments.stream()
+                .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        po.setPaidAmount(totalPaid);
+        BigDecimal poTotal = po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO;
+        if (poTotal.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(poTotal) >= 0) {
+            po.setPaymentStatus("PAID");
+        } else if (totalPaid.compareTo(BigDecimal.ZERO) > 0) {
+            po.setPaymentStatus("PARTIAL");
+        } else {
+            po.setPaymentStatus("YET_TO_PAY");
+        }
+
+        return purchaseOrderRepository.save(po);
+    }
+
+    @Override
+    public PurchaseOrder unadjustPayment(Long paymentId, Long firmId) {
+        if (paymentId == null || firmId == null) {
+            throw new IllegalArgumentException("Payment ID and Firm ID are required");
+        }
+
+        PartyPayment payment = partyPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("Payment not found with id: " + paymentId));
+
+        if (!payment.getFirmId().equals(firmId)) {
+            throw new IllegalArgumentException("Unauthorized: Payment firm mismatch");
+        }
+
+        if (payment.getPurchaseOrderId() == null) {
+            throw new IllegalArgumentException("Payment is already unallocated (advance)");
+        }
+
+        Long poId = payment.getPurchaseOrderId();
+        payment.setPurchaseOrderId(null);
+        partyPaymentRepository.save(payment);
+
+        PurchaseOrder po = purchaseOrderRepository.findByIdAndFirmId(poId, firmId)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + poId));
+
+        List<PartyPayment> poPayments = partyPaymentRepository.findByPurchaseOrderId(po.getId());
+        BigDecimal totalPaid = poPayments.stream()
+                .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        po.setPaidAmount(totalPaid);
+        BigDecimal poTotal = po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO;
+        if (poTotal.compareTo(BigDecimal.ZERO) > 0 && totalPaid.compareTo(poTotal) >= 0) {
+            po.setPaymentStatus("PAID");
+        } else if (totalPaid.compareTo(BigDecimal.ZERO) > 0) {
+            po.setPaymentStatus("PARTIAL");
+        } else {
+            po.setPaymentStatus("YET_TO_PAY");
+        }
+
+        return purchaseOrderRepository.save(po);
+    }
+
+    @Override
     public void deletePayment(Long paymentId, Long firmId) {
         PartyPayment payment = partyPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("Payment not found with id: " + paymentId));

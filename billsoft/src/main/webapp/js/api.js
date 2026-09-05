@@ -59,7 +59,6 @@ const API = {
   async _request(url, options = {}) {
     this.sessionRequestsCount = (this.sessionRequestsCount || 0) + 1;
     window.dispatchEvent(new CustomEvent('billsoft:request', { detail: { count: this.sessionRequestsCount, url } }));
-    window.dispatchEvent(new CustomEvent('billsoft:activity'));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
     const firmHeader = this.firmId ? { 'X-Firm-Id': String(this.firmId) } : {};
@@ -148,6 +147,7 @@ const API = {
     })),
     delete: (id) => API._request(`/api/parties/${id}`, { method: 'DELETE' }),
     payments: (partyId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/parties/${partyId}/payments`))),
+    unallocatedPayments: (partyId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/parties/${partyId}/unallocated-payments`))),
     recordPayment: (partyId, data) => API._ensureFirmReady().then(() => API._json(`/api/parties/${partyId}/payments`, {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }
@@ -175,6 +175,14 @@ const API = {
     recordPayment: (id, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/payments`), {
       method: 'POST',
       body: { ...data, firmId: API.firmId }
+    })),
+    adjustAdvance: (id, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/adjust-advance`), {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId }
+    })),
+    unadjustPayment: (paymentId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/payments/${paymentId}/unadjust`), {
+      method: 'POST',
+      body: { firmId: API.firmId }
     })),
     delete: (id) => API._request(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
     pdfUrl: (id) => API._qs(API.BASE_URL + `/api/purchase-orders/${id}/pdf`),
@@ -424,6 +432,16 @@ const API = {
     autoStatus: () => API._json('/api/backup/auto/status'),
     runAutoBackupNow: () => API._json('/api/backup/auto/run-now', { method: 'POST' }),
     downloadAutoBackupUrl: () => `${API.BASE_URL}/api/backup/auto/download`,
+    inspectAuto: () => API._json('/api/backup/auto/inspect'),
+    restoreAuto: async (firmIds, mode, targetFirmId) => {
+      const formData = new FormData();
+      if (firmIds && Array.isArray(firmIds)) {
+        firmIds.forEach(id => formData.append('firmIds', id));
+      }
+      formData.append('mode', mode || 'clone');
+      if (targetFirmId) formData.append('targetFirmId', targetFirmId);
+      return API._json('/api/backup/auto/restore', { method: 'POST', body: formData });
+    },
     factoryReset: (password) => API._json('/api/backup/factory-reset', {
       method: 'POST',
       body: { confirm: 'RESET SOFTWARE', password: password || '', masterPassword: password || '' }

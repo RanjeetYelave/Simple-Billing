@@ -119,6 +119,17 @@ public class PartyController {
         return ResponseEntity.ok(partyService.getPaymentsByParty(id, firmId));
     }
 
+    @GetMapping("/{id}/unallocated-payments")
+    public ResponseEntity<List<PartyPayment>> getUnallocatedPayments(@PathVariable Long id,
+                                                                    @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                                    @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        if (firmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(partyService.getUnallocatedPayments(id, firmId));
+    }
+
     @PostMapping("/{id}/payments")
     public ResponseEntity<PartyPayment> recordPayment(@PathVariable Long id,
                                                       @RequestBody PartyPayment payment,

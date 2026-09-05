@@ -65,7 +65,39 @@ class BackupControllerTest {
 
         mockMvc.perform(post("/api/backup/auto/run-now"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("SUCCESS"));
+                .andExpect(jsonPath("$.status").value("HEALTHY"));
+    }
+
+    @Test
+    void testAutoInspectAndRestore() throws Exception {
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(new HashMap<>());
+        com.billing.simple.billsoft.entities.FirmDetails firm = new com.billing.simple.billsoft.entities.FirmDetails();
+        firm.setId(1L);
+        firm.setFirmName("Auto Firm");
+        backup.setFirmDetails(firm);
+        when(service.exportAllData()).thenReturn(backup);
+
+        // Ensure auto backup exists
+        mockMvc.perform(post("/api/backup/auto/run-now"))
+                .andExpect(status().isOk());
+
+        com.billing.simple.billsoft.dto.BackupInspectionDTO mockInspection = new com.billing.simple.billsoft.dto.BackupInspectionDTO();
+        mockInspection.setBackupType("SINGLE_FIRM");
+        when(service.inspectBackup(any())).thenReturn(mockInspection);
+        when(service.importSelectiveData(any(), any(), any(), any())).thenReturn(java.util.Collections.singletonList(firm));
+
+        // Test auto inspect
+        mockMvc.perform(get("/api/backup/auto/inspect"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.backupType").value("SINGLE_FIRM"));
+
+        // Test auto restore
+        mockMvc.perform(post("/api/backup/auto/restore")
+                .param("mode", "clone")
+                .param("firmIds", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"));
     }
 
     @Test

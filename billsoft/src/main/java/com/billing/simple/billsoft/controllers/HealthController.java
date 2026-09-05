@@ -53,10 +53,10 @@ public class HealthController {
         long freeMem = runtime.freeMemory() / (1024 * 1024);
         long usedMem = totalMem - freeMem;
 
-        Map<String, Object> backupStatus = autoBackupService != null ? autoBackupService.getStatus() : Map.of();
+        Map<String, Object> backupStatus = autoBackupService != null ? autoBackupService.ensureTodayBackup() : Map.of();
         boolean hasBackup = Boolean.TRUE.equals(backupStatus.get("fileExists"));
-        String backupStatusStr = (String) backupStatus.getOrDefault("status", "READY");
-        boolean autoBackupHealthy = "SUCCESS".equalsIgnoreCase(backupStatusStr) || "READY".equalsIgnoreCase(backupStatusStr) || hasBackup;
+        boolean isToday = Boolean.TRUE.equals(backupStatus.get("isTodayBackup"));
+        boolean autoBackupHealthy = isToday || hasBackup;
 
         Map<String, Object> result = new HashMap<>();
         result.put("status", dbHealthy ? "UP" : "DEGRADED");
@@ -83,12 +83,14 @@ public class HealthController {
                 "multiFirmIsolation", "Active"
         ));
         result.put("autoBackup", Map.of(
-                "status", autoBackupHealthy ? "ACTIVE" : "STANDBY",
-                "schedule", backupStatus.getOrDefault("scheduleCron", "Daily at 02:00 AM (0 0 2 * * *)"),
+                "status", autoBackupHealthy ? "HEALTHY" : "STANDBY",
+                "strategy", backupStatus.getOrDefault("strategy", "Launch & Diagnostic Verification (Daily)"),
+                "schedule", backupStatus.getOrDefault("scheduleCron", "Verified on App Launch & Diagnostics (Daily)"),
                 "directory", backupStatus.getOrDefault("backupDir", "External AppData Storage"),
-                "lastBackupFormatted", backupStatus.getOrDefault("lastModifiedFormatted", backupStatus.getOrDefault("lastBackupFormatted", "Ready / On Schedule")),
+                "lastBackupFormatted", backupStatus.getOrDefault("lastModifiedFormatted", backupStatus.getOrDefault("lastBackupFormatted", "Today")),
                 "fileSizeBytes", backupStatus.getOrDefault("fileSizeBytes", 0L),
                 "fileExists", hasBackup,
+                "isToday", isToday,
                 "healthy", autoBackupHealthy
         ));
         result.put("system", Map.of(

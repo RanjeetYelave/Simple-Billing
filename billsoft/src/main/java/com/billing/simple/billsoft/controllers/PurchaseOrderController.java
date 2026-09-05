@@ -18,9 +18,12 @@ import java.util.Map;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService poService;
+    private final com.billing.simple.billsoft.service.PartyService partyService;
 
-    public PurchaseOrderController(PurchaseOrderService poService) {
+    public PurchaseOrderController(PurchaseOrderService poService,
+                                   com.billing.simple.billsoft.service.PartyService partyService) {
         this.poService = poService;
+        this.partyService = partyService;
     }
 
     @GetMapping
@@ -156,6 +159,49 @@ public class PurchaseOrderController {
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/{id}/adjust-advance")
+    public ResponseEntity<PurchaseOrder> adjustAdvance(@PathVariable Long id,
+                                                       @RequestBody Map<String, Object> body,
+                                                       @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                       @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        if (firmId == null || body == null || !body.containsKey("paymentId") || !body.containsKey("amount")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            Long paymentId = Long.parseLong(body.get("paymentId").toString());
+            BigDecimal amount = new BigDecimal(body.get("amount").toString());
+            String notes = body.containsKey("notes") && body.get("notes") != null ? body.get("notes").toString() : null;
+
+            PurchaseOrder updated = partyService.adjustAdvancePayment(id, paymentId, amount, notes, firmId);
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/payments/{paymentId}/unadjust")
+    public ResponseEntity<PurchaseOrder> unadjustPayment(@PathVariable Long paymentId,
+                                                         @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                         @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        if (firmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            PurchaseOrder updated = partyService.unadjustPayment(paymentId, firmId);
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 

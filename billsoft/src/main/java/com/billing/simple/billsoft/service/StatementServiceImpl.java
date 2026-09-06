@@ -100,11 +100,12 @@ public class StatementServiceImpl implements StatementService {
             all = invoiceRepo.findByCustomer_Id(customerId);
         }
 
-        // Only Invoices (skip estimates/drafts)
+        // Only Invoices (skip estimates/drafts/cancelled)
         List<Invoice> invoices = all.stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         // Fetch all payments for customer
@@ -341,6 +342,7 @@ public class StatementServiceImpl implements StatementService {
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         BigDecimal totalBilled = invoiceList.stream()

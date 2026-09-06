@@ -133,7 +133,7 @@ class InvoiceServiceTest {
         assertNotNull(inv.getId());
         assertNotNull(inv.getInvoiceNumber());
         assertNull(inv.getEstimateNumber());
-        assertEquals(InvoiceStatus.FINAL, inv.getStatus());
+        assertEquals(InvoiceStatus.UNPAID, inv.getStatus());
 
         // subtotal=100, gst=18, total=118
         assertEquals(bd("100.00"), inv.getSubtotalWithoutTax());
@@ -254,7 +254,7 @@ class InvoiceServiceTest {
         Invoice created = invoiceService.createInvoice(req);
 
         assertFalse(Boolean.TRUE.equals(created.getPaid()));
-        assertEquals(InvoiceStatus.FINAL, created.getStatus());
+        assertEquals(InvoiceStatus.UNPAID, created.getStatus());
 
         Invoice paid = invoiceService.updatePaidFlag(created.getId(), true);
         assertTrue(paid.getPaid());
@@ -487,4 +487,82 @@ class InvoiceServiceTest {
         assertEquals(bd("0.00"), inv.getTotalTax());
         assertEquals(bd("0.00"), inv.getTotalAmount());
     }
+
+    @Test
+    void testCreateAndSaveInvoiceWithManyItems() {
+        Customer c = createCustomer("ManyItemsCustomer");
+        Product p = createProduct("BulkItem", "100.00", "18.00");
+
+        List<InvoiceRequestItem> items = new ArrayList<>();
+        for (int i = 1; i <= 150; i++) {
+            InvoiceRequestItem it = new InvoiceRequestItem();
+            it.setProductId(p.getId());
+            it.setProductName("Bulk Item #" + i);
+            it.setQty(i % 5 + 1);
+            it.setUnit("pcs");
+            it.setPricePerUnit(bd("50.00"));
+            it.setDiscountValue(bd("5.00"));
+            it.setGstPercent(bd("18.00"));
+            items.add(it);
+        }
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(c.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setItems(items);
+
+        Invoice created = invoiceService.createInvoice(req);
+        assertNotNull(created.getId());
+        assertEquals(150, created.getItems().size());
+        assertTrue(created.getTotalAmount().compareTo(BigDecimal.ZERO) > 0);
+
+        // Update full with 150 items
+        InvoiceUpdateRequest updateReq = new InvoiceUpdateRequest();
+        updateReq.setCustomerId(c.getId());
+        updateReq.setItems(items);
+        Invoice updated = invoiceService.updateFullInvoice(created.getId(), updateReq);
+        assertEquals(150, updated.getItems().size());
+    }
+
+    @Test
+    void testCreateInvoiceAndQuotationWithLargeGstPercentAndManyItems() {
+        Customer c = createCustomer("LargeGstCustomer");
+        Product p = createProduct("SpecialItem", "500.00", "18.00");
+
+        List<InvoiceRequestItem> items = new ArrayList<>();
+        for (int i = 1; i <= 80; i++) {
+            InvoiceRequestItem it = new InvoiceRequestItem();
+            it.setProductId(p.getId());
+            it.setProductName("High GST Item #" + i);
+            it.setQty(2);
+            it.setUnit("pcs");
+            it.setPricePerUnit(bd("1000.00"));
+            it.setDiscountValue(bd("50.00"));
+            // Custom GST value that previously overflowed NUMERIC(5,2)
+            it.setGstPercent(bd("3423.00"));
+            items.add(it);
+        }
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(c.getId());
+        req.setStatus(InvoiceStatus.DRAFT);
+        req.setItems(items);
+
+        Invoice created = invoiceService.createInvoice(req);
+        assertNotNull(created.getId());
+        assertEquals(80, created.getItems().size());
+        assertEquals(bd("3423.00"), created.getItems().get(0).getGstPercent());
+
+        // Convert / duplicate / update
+        InvoiceUpdateRequest updateReq = new InvoiceUpdateRequest();
+        updateReq.setCustomerId(c.getId());
+        updateReq.setStatus(InvoiceStatus.FINAL);
+        updateReq.setItems(items);
+        Invoice updated = invoiceService.updateFullInvoice(created.getId(), updateReq);
+        assertEquals(80, updated.getItems().size());
+        assertEquals(InvoiceStatus.FINAL, updated.getStatus());
+    }
 }
+

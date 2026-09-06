@@ -50,6 +50,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     List<Invoice> findAllByFirmIdAndStatusIn(Long firmId, List<InvoiceStatus> statuses);
 
+    List<Invoice> findAllByFirmIdAndStatusInOrderByInvoiceDateDesc(Long firmId, List<InvoiceStatus> statuses);
+
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items")
     List<Invoice> findAllWithItems();
     

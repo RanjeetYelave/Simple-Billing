@@ -169,7 +169,7 @@ public class InvoicePdfServiceTest {
 
         // 4. Large multi-item invoice with UPI ID (multi-page) -> Generates successfully
         Invoice largeInv = sampleInvoice();
-        for (int i = 2; i <= 15; i++) {
+        for (int i = 2; i <= 60; i++) {
             InvoiceItem it = new InvoiceItem();
             it.setQty(i);
             it.setUnit("pcs");
@@ -180,5 +180,35 @@ public class InvoicePdfServiceTest {
         }
         byte[] largePdf = pdfService.generatePdf(largeInv, "A4");
         assertThat(largePdf).isNotEmpty();
+        PdfReader reader = new PdfReader(largePdf);
+        int pageCount = reader.getNumberOfPages();
+        reader.close();
+        assertThat(pageCount).isGreaterThan(1);
+        String largeText = extractPdfText(largePdf);
+        assertThat(largeText).contains("Item name");
+        System.out.println("Generated " + pageCount + " pages for 60 items");
+
+        // 5. Massive 200-item invoice in A4 and A5
+        Invoice massiveInv = sampleInvoice();
+        for (int i = 2; i <= 200; i++) {
+            InvoiceItem it = new InvoiceItem();
+            it.setQty(i);
+            it.setUnit("pcs");
+            it.setPricePerUnit(new BigDecimal("10.00"));
+            it.setLineTotal(new BigDecimal(10 * i + ".00"));
+            it.setInvoice(massiveInv);
+            massiveInv.getItems().add(it);
+        }
+        byte[] massiveA4 = pdfService.generatePdf(massiveInv, "A4");
+        assertThat(massiveA4).isNotEmpty();
+        PdfReader massiveA4Reader = new PdfReader(massiveA4);
+        assertThat(massiveA4Reader.getNumberOfPages()).isGreaterThan(3);
+        massiveA4Reader.close();
+
+        byte[] massiveA5 = pdfService.generatePdf(massiveInv, "A5");
+        assertThat(massiveA5).isNotEmpty();
+        PdfReader massiveA5Reader = new PdfReader(massiveA5);
+        assertThat(massiveA5Reader.getNumberOfPages()).isGreaterThan(massiveA4Reader.getNumberOfPages());
+        massiveA5Reader.close();
     }
 }

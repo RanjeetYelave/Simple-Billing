@@ -1318,18 +1318,22 @@ input:checked+.slider:before {
   font-size: 0.78rem;
 }
 
-/* Main */
 .main-content {
   margin-left: var(--sidebar-width);
   flex: 1;
   min-height: 100vh;
+  min-width: 0;
+  max-width: calc(100vw - var(--sidebar-width));
   display: flex;
   flex-direction: column;
 }
 
 .page-content {
-  padding: 28px 32px;
+  padding: 24px 28px;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar {
@@ -1608,24 +1612,68 @@ input:checked+.slider:before {
   flex-wrap: wrap;
 }
 
-/* Kanban Board Layout */
+/* Kanban Board Layout (3 Active Columns: Reminders, Tasks, Notes) */
 .planner-kanban-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(270px, 1fr));
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
   gap: 18px;
   align-items: start;
 }
 
-@media (max-width: 1200px) {
-  .planner-kanban-board {
-    grid-template-columns: repeat(2, minmax(270px, 1fr));
-  }
-}
-
-@media (max-width: 640px) {
+@media (max-width: 992px) {
   .planner-kanban-board {
     grid-template-columns: 1fr;
   }
+}
+
+/* Completed History Section */
+.planner-history-section {
+  margin-top: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.planner-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.planner-history-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.planner-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light, #f1f5f9);
+  background: var(--surface-sunken, #f8fafc);
+  transition: all 0.15s ease;
+}
+
+[data-theme='dark'] .planner-history-row {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.planner-history-row:hover {
+  border-color: var(--border);
+  background: var(--bg-hover);
+  transform: translateX(2px);
 }
 
 .planner-kanban-col {

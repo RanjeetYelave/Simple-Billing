@@ -53,7 +53,7 @@ public class PurchaseOrderItem {
     private BigDecimal discountValue = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(precision = 6, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal gstPercent = BigDecimal.ZERO;
 
     @Column(precision = 15, scale = 2)

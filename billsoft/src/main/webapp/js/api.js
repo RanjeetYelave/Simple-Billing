@@ -265,6 +265,7 @@ const API = {
     getLinkedInvoice: (id) => API._json(`/api/invoices/${id}/linked-invoice`),
     nextInvoiceNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
     nextEstimateNumber: () => API._json(API._qs('/api/invoices/next-estimate-number')),
+    nextNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
     downloadPdf: async (id, size = 'A4') => {
       const res = await API._request(`/api/invoices/${id}/pdf?size=${size}`);
       const blob = await res.blob();
@@ -272,6 +273,20 @@ const API = {
     },
     analyticsByCustomer: (id) => API._json(`/api/invoices/analytics/customer/${id}`),
     analyticsSearch: (name) => API._json(`/api/invoices/analytics/search?name=${encodeURIComponent(name)}`),
+  },
+
+  // ── Sales Returns (Credit Notes) ──
+  returns: {
+    create: (invoiceId, data) => API._ensureFirmReady().then(() => API._json(`/api/invoices/${invoiceId}/returns`, { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
+    listByInvoice: (invoiceId) => API._json(`/api/invoices/${invoiceId}/returns`),
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/returns'))),
+    get: (id) => API._json(`/api/returns/${id}`),
+    downloadPdf: async (id, size = 'A4') => {
+      const res = await API._request(`/api/returns/${id}/pdf?size=${size}`);
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
+    nextNumber: () => API._json(API._qs('/api/invoices/next-return-number')),
   },
 
   // ── Reminders ──
@@ -557,6 +572,8 @@ const API = {
     }),
     exportDevLogsUrl: () => `${API.BASE_URL}/api/system/dev-logs/export`,
     metrics: () => API._json('/api/health/metrics'),
-    health: () => API._json('/api/health')
+    health: () => API._json('/api/health'),
+    diagnostics: () => API._json('/api/health/diagnostics'),
+    heartbeat: (firmId) => API._json(API._qs('/api/system/heartbeat', { firmId }))
   }
 };

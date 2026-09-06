@@ -40,7 +40,7 @@ public class Invoice {
     // STATUS
     // ------------------------
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
     @Builder.Default
     private InvoiceStatus status = InvoiceStatus.FINAL;
 

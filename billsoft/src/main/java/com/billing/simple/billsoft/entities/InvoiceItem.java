@@ -56,14 +56,14 @@ public class InvoiceItem {
     @Column(precision = 15, scale = 2)
     private BigDecimal discountValue;
 
-    @Column(precision = 5, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal discountPercent;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal taxableAmount;
 
     // GST
-    @Column(precision = 5, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal gstPercent;
 
     @Column(precision = 15, scale = 2)

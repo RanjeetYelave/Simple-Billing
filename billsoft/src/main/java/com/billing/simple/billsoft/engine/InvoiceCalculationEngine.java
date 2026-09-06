@@ -195,8 +195,10 @@ public class InvoiceCalculationEngine {
             BigDecimal taxable = nz(it.getTaxableAmount());
 
             BigDecimal gstPercent = nz(it.getGstPercent());
+            if (gstPercent.compareTo(ZERO) < 0) gstPercent = ZERO;
             if (gstPercent.compareTo(ZERO) == 0 && it.getProduct() != null && it.getProduct().getGstPercentage() != null) {
                 gstPercent = nz(it.getProduct().getGstPercentage());
+                if (gstPercent.compareTo(ZERO) < 0) gstPercent = ZERO;
                 it.setGstPercent(gstPercent);
             }
 
@@ -301,6 +303,10 @@ public class InvoiceCalculationEngine {
         BigDecimal gstPct = req.getGstPercent() != null
                 ? req.getGstPercent()
                 : (product != null ? nz(product.getGstPercentage()) : ZERO);
+
+        if (gstPct.compareTo(ZERO) < 0) {
+            gstPct = ZERO;
+        }
 
         gstPct = gstPct.setScale(SCALE, RoundingMode.HALF_UP);
         item.setGstPercent(gstPct);

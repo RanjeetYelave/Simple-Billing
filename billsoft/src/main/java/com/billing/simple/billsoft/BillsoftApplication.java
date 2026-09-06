@@ -35,4 +35,19 @@ public class BillsoftApplication {
 	public RestTemplate restTemplate() {
 		return new RestTemplate();
 	}
+
+	@Bean
+	public org.springframework.boot.CommandLineRunner databaseSchemaMigration(javax.sql.DataSource dataSource) {
+		return args -> {
+			try (java.sql.Connection conn = dataSource.getConnection();
+				 java.sql.Statement stmt = conn.createStatement()) {
+				try {
+					stmt.execute("ALTER TABLE invoices ALTER COLUMN status VARCHAR(50)");
+				} catch (Exception ignored) {
+				}
+			} catch (Exception e) {
+				System.err.println("Database migration note: " + e.getMessage());
+			}
+		};
+	}
 }

@@ -68,7 +68,7 @@ public class Product {
     private String hsnCode; // HSN or SAC code
 
     // GST percentage as BigDecimal (e.g., 18.00)
-    @Column(precision = 5, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal gstPercentage;
 
     @Column(nullable = false)

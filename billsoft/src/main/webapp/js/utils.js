@@ -26,16 +26,28 @@ const BillsoftUtils = {
 
   getStatusClass(status) {
     const map = {
-      DRAFT: 'badge-draft', ESTIMATE: 'badge-estimate', FINAL: 'badge-final',
-      SENT: 'badge-sent', PAID: 'badge-paid', OVERDUE: 'badge-overdue', CANCELLED: 'badge-cancelled',
+      DRAFT: 'badge-draft',
+      UNPAID: 'badge-warning',
+      FINAL: 'badge-warning',
+      PAID: 'badge-paid',
+      CANCELLED: 'badge-cancelled',
+      ESTIMATE: 'badge-estimate',
+      SENT: 'badge-sent',
+      OVERDUE: 'badge-overdue',
     };
     return map[status] || 'badge-draft';
   },
 
   getStatusLabel(status) {
     const map = {
-      DRAFT: 'Draft', ESTIMATE: 'Estimate', FINAL: 'Final',
-      SENT: 'Sent', PAID: 'Paid', OVERDUE: 'Overdue', CANCELLED: 'Cancelled',
+      DRAFT: 'Draft',
+      UNPAID: 'Unpaid',
+      FINAL: 'Unpaid',
+      PAID: 'Paid',
+      CANCELLED: 'Cancelled',
+      ESTIMATE: 'Quotation',
+      SENT: 'Sent',
+      OVERDUE: 'Overdue',
     };
     return map[status] || status;
   },
@@ -181,21 +193,35 @@ const BillsoftUtils = {
       printStyle = document.createElement('style');
       printStyle.id = 'print-pdf-style';
       printStyle.innerHTML = `
+        @page {
+          size: auto;
+          margin: 0mm;
+        }
         @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
           body > *:not(.print-modal-overlay) { display: none !important; }
           .print-modal-overlay { 
-            position: absolute !important; top: 0 !important; left: 0 !important; 
+            position: static !important; 
             width: 100% !important; height: auto !important; 
             background: transparent !important; display: block !important; 
+            overflow: visible !important;
           }
           .print-modal-overlay > div:first-child { display: none !important; }
           #pdf-render-container { 
-            padding: 0 !important; overflow: visible !important; 
+            padding: 0 !important; margin: 0 !important;
+            overflow: visible !important; 
             display: block !important; height: auto !important;
           }
           #pdf-render-container img { 
             max-width: 100% !important; width: 100% !important;
-            page-break-after: always; margin: 0 !important;
+            display: block !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            margin: 0 !important;
             box-shadow: none !important;
           }
         }

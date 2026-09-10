@@ -50,7 +50,7 @@ class StatementAndDevLogEdgeCoverageTest {
     private Customer testCustomer;
     private Party testParty;
     private FirmDetails testFirm;
-    private final Long testFirmId = 1L;
+    private Long testFirmId;
 
     @BeforeEach
     void setUp() {
@@ -63,6 +63,7 @@ class StatementAndDevLogEdgeCoverageTest {
         testFirm.setPhone("9811002233");
         testFirm.setEmail("contact@apexquantum.com");
         testFirm = firmService.create(testFirm);
+        testFirmId = testFirm.getId();
 
         testCustomer = customerService.create(Customer.builder()
                 .name("Alpha Retailers")

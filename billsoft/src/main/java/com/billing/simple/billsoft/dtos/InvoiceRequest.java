@@ -6,86 +6,95 @@ import java.util.List;
 
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 
-import lombok.Getter;
-import lombok.Setter;
-
-@Getter
-@Setter
 public class InvoiceRequest {
 
-    /* ============================
-       BASIC FIELDS
-       ============================ */
     private Long firmId;
     private Long customerId;
     private String notes;
-
     private List<InvoiceRequestItem> items;
-
-    /**
-     * Paid flag – if null, service defaults to false.
-     */
     private Boolean paid;
-
-    /* ============================
-       DISCOUNT HANDLING
-       ============================ */
     private Discount invoiceDiscount;
-
-    /* ============================
-       INVOICE / ESTIMATE NUMBERS
-       ============================ */
-
-    /**
-     * Only used for FINAL invoices.
-     * UI can send null → backend will auto-generate.
-     */
     private String invoiceNumber;
-
-    /**
-     * Only used for ESTIMATES.
-     * UI can send null → backend will auto-generate.
-     */
     private String estimateNumber;
-
-    /* ============================
-       STATUS CONTROL
-       ============================ */
-
-    /**
-     * DRAFT, ESTIMATE, FINAL, SENT, PAID, OVERDUE, CANCELLED
-     */
     private InvoiceStatus status;
-
-    /**
-     * Used only when estimate converts to invoice.
-     */
     private Long convertedInvoiceId;
-
     private LocalDate dueDate;
-
-    /* ============================
-       PROFESSIONAL FIELDS
-       ============================ */
     private String customerNote;
     private String termsAndConditions;
     private String paymentMethod;
     private String currency = "INR";
     private Boolean roundOff;
     private String tags;
+    private String invoiceDate;
 
-    /* ============================
-       DATE — FROM UI (OPTIONAL)
-       ============================ */
-    private String invoiceDate; // format: yyyy-MM-dd or yyyy-MM-ddTHH:mm
+    public Long getFirmId() { return firmId; }
+    public void setFirmId(Long firmId) { this.firmId = firmId; }
 
-    /* ============================
-       INNER CLASS – Discount
-       ============================ */
-    @Getter
-    @Setter
+    public Long getCustomerId() { return customerId; }
+    public void setCustomerId(Long customerId) { this.customerId = customerId; }
+
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+
+    public List<InvoiceRequestItem> getItems() { return items; }
+    public void setItems(List<InvoiceRequestItem> items) { this.items = items; }
+
+    public Boolean getPaid() { return paid; }
+    public void setPaid(Boolean paid) { this.paid = paid; }
+
+    public Discount getInvoiceDiscount() { return invoiceDiscount; }
+    public void setInvoiceDiscount(Discount invoiceDiscount) { this.invoiceDiscount = invoiceDiscount; }
+
+    public String getInvoiceNumber() { return invoiceNumber; }
+    public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
+
+    public String getEstimateNumber() { return estimateNumber; }
+    public void setEstimateNumber(String estimateNumber) { this.estimateNumber = estimateNumber; }
+
+    public InvoiceStatus getStatus() { return status; }
+    public void setStatus(InvoiceStatus status) { this.status = status; }
+
+    public Long getConvertedInvoiceId() { return convertedInvoiceId; }
+    public void setConvertedInvoiceId(Long convertedInvoiceId) { this.convertedInvoiceId = convertedInvoiceId; }
+
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+
+    public String getCustomerNote() { return customerNote; }
+    public void setCustomerNote(String customerNote) { this.customerNote = customerNote; }
+
+    public String getTermsAndConditions() { return termsAndConditions; }
+    public void setTermsAndConditions(String termsAndConditions) { this.termsAndConditions = termsAndConditions; }
+
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+
+    public Boolean getRoundOff() { return roundOff; }
+    public void setRoundOff(Boolean roundOff) { this.roundOff = roundOff; }
+
+    public String getTags() { return tags; }
+    public void setTags(String tags) { this.tags = tags; }
+
+    public String getInvoiceDate() { return invoiceDate; }
+    public void setInvoiceDate(String invoiceDate) { this.invoiceDate = invoiceDate; }
+
     public static class Discount {
         private String type;      // "PERCENT" or "VALUE"
         private BigDecimal value; // percent or amount (as per type)
+
+        public Discount() {}
+        public Discount(String type, BigDecimal value) {
+            this.type = type;
+            this.value = value;
+        }
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+
+        public BigDecimal getValue() { return value; }
+        public void setValue(BigDecimal value) { this.value = value; }
     }
 }

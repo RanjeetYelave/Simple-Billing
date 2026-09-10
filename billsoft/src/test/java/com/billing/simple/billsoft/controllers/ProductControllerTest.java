@@ -57,6 +57,46 @@ class ProductControllerTest {
     }
 
     @Test
+    void testGetAllPaginated() throws Exception {
+        Product p = new Product();
+        p.setId(1L);
+        p.setName("Widget A");
+        com.billing.simple.billsoft.dtos.PageResponse<Product> pageResponse = com.billing.simple.billsoft.dtos.PageResponse.<Product>builder()
+                .content(List.of(p))
+                .page(0)
+                .size(25)
+                .totalElements(1)
+                .totalPages(1)
+                .build();
+
+        when(service.getPaginatedProducts(any(), any(), any())).thenReturn(pageResponse);
+
+        mockMvc.perform(get("/api/products?page=0&size=25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].name").value("Widget A"))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void testGetMovementsPaginated() throws Exception {
+        StockMovement m = StockMovement.builder().id(10L).movementType("INVOICE_SALE").build();
+        com.billing.simple.billsoft.dtos.PageResponse<StockMovement> pageResponse = com.billing.simple.billsoft.dtos.PageResponse.<StockMovement>builder()
+                .content(List.of(m))
+                .page(0)
+                .size(25)
+                .totalElements(1)
+                .totalPages(1)
+                .build();
+
+        when(service.getPaginatedMovements(any(), any(), any())).thenReturn(pageResponse);
+
+        mockMvc.perform(get("/api/products/movements?page=0&size=25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
     void testGetSummary() throws Exception {
         Map<String, Object> summary = new HashMap<>();
         summary.put("totalProducts", 5L);

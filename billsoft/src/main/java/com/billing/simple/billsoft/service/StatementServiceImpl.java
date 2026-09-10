@@ -60,6 +60,7 @@ public class StatementServiceImpl implements StatementService {
     private final PartyPaymentRepository partyPaymentRepo;
     private final PurchaseOrderRepository purchaseOrderRepo;
     private final InvoicePaymentRepository invoicePaymentRepo;
+    private final com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final DecimalFormat CURRENCY_FMT = new DecimalFormat("#,##,##0.00");
@@ -71,7 +72,8 @@ public class StatementServiceImpl implements StatementService {
             PartyRepository partyRepo,
             PartyPaymentRepository partyPaymentRepo,
             PurchaseOrderRepository purchaseOrderRepo,
-            InvoicePaymentRepository invoicePaymentRepo
+            InvoicePaymentRepository invoicePaymentRepo,
+            com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo
     ) {
         this.invoiceRepo = invoiceRepo;
         this.customerRepo = customerRepo;
@@ -80,6 +82,7 @@ public class StatementServiceImpl implements StatementService {
         this.partyPaymentRepo = partyPaymentRepo;
         this.purchaseOrderRepo = purchaseOrderRepo;
         this.invoicePaymentRepo = invoicePaymentRepo;
+        this.salesReturnRepo = salesReturnRepo;
     }
 
     /* ============================================================================
@@ -87,15 +90,25 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public CustomerStatementResponse getCustomerStatement(Long firmId, Long customerId, LocalDate from, LocalDate to) {
-        Customer customer = customerRepo.findById(customerId).orElse(null);
-        if (customer == null) throw new RuntimeException("Customer not found: " + customerId);
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+
+        Customer customer;
+        if (authoritativeFirmId != null) {
+            customer = customerRepo.findByIdAndFirmId(customerId, authoritativeFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Customer not found or unauthorized"));
+        } else {
+            customer = customerRepo.findById(customerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + customerId));
+        }
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
         List<Invoice> all;
-        if (firmId != null) {
-            all = invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customerId);
+        if (authoritativeFirmId != null) {
+            all = invoiceRepo.findByFirmIdAndCustomer_Id(authoritativeFirmId, customerId);
         } else {
             all = invoiceRepo.findByCustomer_Id(customerId);
         }
@@ -109,9 +122,14 @@ public class StatementServiceImpl implements StatementService {
                 .collect(Collectors.toList());
 
         // Fetch all payments for customer
-        List<InvoicePayment> paymentList = (firmId != null)
-                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customerId)
+        List<InvoicePayment> paymentList = (authoritativeFirmId != null)
+                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(authoritativeFirmId, customerId)
                 : invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+
+        // Fetch all sales returns / credit notes for customer
+        List<SalesReturn> returnList = (authoritativeFirmId != null)
+                ? salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(authoritativeFirmId, customerId)
+                : salesReturnRepo.findByCustomerIdOrderByReturnDateAscIdAsc(customerId);
 
         Map<Long, Invoice> invoiceById = invoices.stream().collect(Collectors.toMap(Invoice::getId, i -> i, (a, b) -> a));
         Set<Long> invoicesWithPayments = paymentList.stream()
@@ -127,7 +145,7 @@ public class StatementServiceImpl implements StatementService {
             String description;
             BigDecimal debit;
             BigDecimal credit;
-            int order; // 0 for invoice, 1 for payment
+            int order; // 0 for invoice, 1 for credit note, 2 for payment
         }
 
         List<LedgerEvent> allEvents = new ArrayList<>();
@@ -153,8 +171,26 @@ public class StatementServiceImpl implements StatementService {
                 pe.description = "Invoice Paid (Direct)";
                 pe.debit = BigDecimal.ZERO;
                 pe.credit = nz(inv.getTotalAmount());
-                pe.order = 1;
+                pe.order = 2;
                 allEvents.add(pe);
+            }
+        }
+
+        // Add sales return / credit note credits
+        if (returnList != null) {
+            for (SalesReturn sr : returnList) {
+                LedgerEvent re = new LedgerEvent();
+                re.date = sr.getReturnDate() != null ? sr.getReturnDate() : (sr.getCreatedAt() != null ? sr.getCreatedAt().toLocalDate() : LocalDate.now());
+                re.type = "CREDIT_NOTE";
+                re.ref = sr.getReturnNumber() != null ? sr.getReturnNumber() : "CN-" + sr.getId();
+                String invNo = (sr.getInvoice() != null && sr.getInvoice().getInvoiceNumber() != null)
+                        ? " (Inv #" + sr.getInvoice().getInvoiceNumber() + ")" : "";
+                String reasonStr = (sr.getReason() != null && !sr.getReason().isBlank()) ? " - " + sr.getReason() : "";
+                re.description = "Sales Return / Credit Note" + invNo + reasonStr;
+                re.debit = BigDecimal.ZERO;
+                re.credit = nz(sr.getTotalRefundAmount());
+                re.order = 1;
+                allEvents.add(re);
             }
         }
 
@@ -173,7 +209,7 @@ public class StatementServiceImpl implements StatementService {
             pe.description = "Payment via " + modeStr + noteStr;
             pe.debit = BigDecimal.ZERO;
             pe.credit = nz(p.getAmount());
-            pe.order = 1;
+            pe.order = 2;
             allEvents.add(pe);
         }
 
@@ -238,7 +274,10 @@ public class StatementServiceImpl implements StatementService {
     @Override
     public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception {
         CustomerStatementResponse data = getCustomerStatement(firmId, customerId, from, to);
-        FirmDetails firm = firmRepo.findById(firmId).orElse(null);
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -311,33 +350,25 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for firm statement");
+        }
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : null;
-        if (firm == null) {
-            List<FirmDetails> allFirms = firmRepo.findAll();
-            if (!allFirms.isEmpty()) firm = allFirms.get(0);
-        }
-        if (firm != null && firmId == null) {
-            firmId = firm.getId();
-        }
+        FirmDetails firm = firmRepo.findById(authoritativeFirmId)
+                .orElseThrow(() -> new IllegalArgumentException("Firm not found: " + authoritativeFirmId));
 
         // 1. Invoices
-        List<Invoice> invoiceList;
-        if (firmId != null) {
-            invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
-                    firmId,
-                    fromDate.atStartOfDay(),
-                    toDate.plusDays(1).atStartOfDay()
-            );
-        } else {
-            invoiceList = invoiceRepo.findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(
-                    fromDate.atStartOfDay(),
-                    toDate.plusDays(1).atStartOfDay()
-            );
-        }
+        List<Invoice> invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
+                authoritativeFirmId,
+                fromDate.atStartOfDay(),
+                toDate.plusDays(1).atStartOfDay()
+        );
         invoiceList = invoiceList.stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
@@ -544,6 +575,30 @@ public class StatementServiceImpl implements StatementService {
             }
         }
 
+        // 4. Sales Returns / Credit Notes
+        List<SalesReturn> firmReturns = new ArrayList<>();
+        if (firmId != null) {
+            firmReturns = salesReturnRepo.findByFirmIdAndReturnDateBetween(firmId, fromDate, toDate);
+        }
+        for (SalesReturn sr : firmReturns) {
+            BigDecimal refAmt = nz(sr.getTotalRefundAmount());
+            String cName = (sr.getCustomer() != null && sr.getCustomer().getName() != null)
+                    ? sr.getCustomer().getName() : "Customer";
+            journalEntries.add(FirmStatementResponse.FirmJournalEntry.builder()
+                    .date(sr.getReturnDate() != null ? sr.getReturnDate().atStartOfDay() : (sr.getCreatedAt() != null ? sr.getCreatedAt() : java.time.LocalDateTime.now()))
+                    .type("CREDIT_NOTE")
+                    .reference(sr.getReturnNumber() != null ? sr.getReturnNumber() : "CN-" + sr.getId())
+                    .entityName(cName)
+                    .entityType("CUSTOMER")
+                    .paymentMethod(sr.getRefundMode() != null ? sr.getRefundMode() : "CREDIT")
+                    .inflow(0.0)
+                    .outflow(round2(refAmt))
+                    .status("ISSUED")
+                    .notes(sr.getReason() != null ? sr.getReason() : "Sales Return")
+                    .build()
+            );
+        }
+
         BigDecimal totalPaidToVendors = totalPaidToVendorsFromPO.add(directPayments);
         BigDecimal outstandingPayables = totalPurchases.subtract(totalPaidToVendorsFromPO);
         if (outstandingPayables.compareTo(BigDecimal.ZERO) < 0) outstandingPayables = BigDecimal.ZERO;
@@ -609,11 +664,10 @@ public class StatementServiceImpl implements StatementService {
     public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
 
         FirmStatementResponse data = getFirmStatement(firmId, from, to);
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : null;
-        if (firm == null) {
-            List<FirmDetails> all = firmRepo.findAll();
-            if (!all.isEmpty()) firm = all.get(0);
-        }
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         Document doc = new Document(PageSize.A4, 28, 28, 32, 32);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -864,8 +918,15 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public PartyStatementResponse getPartyStatement(Long firmId, Long partyId, LocalDate from, LocalDate to) {
-        Party party = partyRepo.findByIdAndFirmId(partyId, firmId)
-                .orElseThrow(() -> new IllegalArgumentException("Party not found: " + partyId));
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for party statement");
+        }
+
+        Party party = partyRepo.findByIdAndFirmId(partyId, authoritativeFirmId)
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
@@ -876,14 +937,14 @@ public class StatementServiceImpl implements StatementService {
         BigDecimal netOpeningLiability = "ADVANCE".equals(balType) ? initialOpening.negate() : initialOpening;
 
         // Purchases before fromDate
-        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(firmId, partyId, fromDate);
+        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(authoritativeFirmId, partyId, fromDate);
         BigDecimal purchasesBefore = posBefore.stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .map(po -> nz(po.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Payments before fromDate
-        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(firmId, partyId, fromDate);
+        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(authoritativeFirmId, partyId, fromDate);
         BigDecimal paidBefore = paymentsBefore.stream()
                 .map(p -> nz(p.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -892,12 +953,12 @@ public class StatementServiceImpl implements StatementService {
 
         // In range items
         List<PurchaseOrder> posInRange = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBetweenOrderByPoDateAscIdAsc(
-                firmId, partyId, fromDate, toDate).stream()
+                authoritativeFirmId, partyId, fromDate, toDate).stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         List<PartyPayment> paymentsInRange = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
-                firmId, partyId, fromDate, toDate);
+                authoritativeFirmId, partyId, fromDate, toDate);
 
         // Merge entries
         List<StatementEntry> entries = new ArrayList<>();
@@ -967,7 +1028,10 @@ public class StatementServiceImpl implements StatementService {
     @Override
     public byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception {
         PartyStatementResponse data = getPartyStatement(firmId, partyId, from, to);
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 28, 28, 28, 28);

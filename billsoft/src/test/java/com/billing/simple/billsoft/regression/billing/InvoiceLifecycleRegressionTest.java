@@ -110,7 +110,7 @@ class InvoiceLifecycleRegressionTest {
 
         // 2. Convert Estimate to Invoice
         Invoice convertedInvoice = invoiceService.convertEstimateToInvoice(estimate.getId(), null);
-        assertThat(convertedInvoice.getStatus()).isEqualTo(InvoiceStatus.FINAL);
+        assertThat(convertedInvoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
         assertThat(convertedInvoice.getInvoiceNumber()).isNotNull();
 
         // Check quotation link
@@ -120,6 +120,106 @@ class InvoiceLifecycleRegressionTest {
         // Product stock must now be deducted by 10
         Product prodAfterConvert = productService.getById(testProduct.getId());
         assertThat(prodAfterConvert.getStockQuantity()).isEqualByComparingTo("40.000");
+    }
+
+    @Test
+    @DisplayName("Should convert Quotation to Invoice via Review & Edit flow (with convertedInvoiceId)")
+    void shouldConvertQuotationToInvoiceViaReviewAndEditFlow() {
+        // 1. Create Quotation
+        InvoiceRequest estReq = new InvoiceRequest();
+        estReq.setFirmId(testFirmId);
+        estReq.setCustomerId(testCustomer.getId());
+        estReq.setStatus(InvoiceStatus.ESTIMATE);
+        estReq.setCustomerNote("Original quote note");
+        estReq.setItems(List.of(createItem(testProduct.getId(), 5, 250.0)));
+
+        Invoice estimate = invoiceService.createEstimate(estReq);
+        assertThat(estimate.getId()).isNotNull();
+        assertThat(estimate.getStatus()).isEqualTo(InvoiceStatus.ESTIMATE);
+
+        // 2. Simulate Review & Edit: User creates invoice referencing convertedInvoiceId with adjustments
+        InvoiceRequest invReq = new InvoiceRequest();
+        invReq.setFirmId(testFirmId);
+        invReq.setCustomerId(testCustomer.getId());
+        invReq.setStatus(InvoiceStatus.FINAL);
+        invReq.setConvertedInvoiceId(estimate.getId());
+        invReq.setCustomerNote("Converted from quotation with updated note");
+        invReq.setItems(List.of(createItem(testProduct.getId(), 8, 240.0))); // edited qty & price
+
+        Invoice finalInv = invoiceService.createInvoice(invReq);
+        assertThat(finalInv.getId()).isNotNull();
+        assertThat(finalInv.getStatus()).isIn(InvoiceStatus.FINAL, InvoiceStatus.UNPAID);
+
+        // 3. Verify bidirectional quotation-invoice link
+        Invoice reloadedEstimate = invoiceRepo.findById(estimate.getId()).orElseThrow();
+        assertThat(reloadedEstimate.getConvertedInvoiceId()).isEqualTo(finalInv.getId());
+    }
+
+    @Test
+    @DisplayName("Should convert Quotation with custom/manual items and preserve item details")
+    void shouldConvertQuotationWithCustomItems() {
+        InvoiceRequest estReq = new InvoiceRequest();
+        estReq.setFirmId(testFirmId);
+        estReq.setCustomerId(testCustomer.getId());
+        estReq.setStatus(InvoiceStatus.ESTIMATE);
+        
+        InvoiceRequestItem customItem = new InvoiceRequestItem();
+        customItem.setProductName("Custom Architectural Consultation");
+        customItem.setHsnCode("998311");
+        customItem.setUnit("hours");
+        customItem.setQty(10);
+        customItem.setPricePerUnit(BigDecimal.valueOf(1500.00));
+        customItem.setGstPercent(BigDecimal.valueOf(18.0));
+        customItem.setDiscountValue(BigDecimal.ZERO);
+        estReq.setItems(List.of(customItem));
+
+        Invoice estimate = invoiceService.createEstimate(estReq);
+        assertThat(estimate.getItems()).hasSize(1);
+        assertThat(estimate.getItems().get(0).getProductName()).isEqualTo("Custom Architectural Consultation");
+        assertThat(estimate.getItems().get(0).getHsnCode()).isEqualTo("998311");
+
+        // Convert via 1-click
+        Invoice converted = invoiceService.convertEstimateToInvoice(estimate.getId(), null);
+        assertThat(converted.getId()).isNotNull();
+        assertThat(converted.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        assertThat(converted.getItems()).hasSize(1);
+        assertThat(converted.getItems().get(0).getProductName()).isEqualTo("Custom Architectural Consultation");
+        assertThat(converted.getItems().get(0).getHsnCode()).isEqualTo("998311");
+        assertThat(converted.getItems().get(0).getLineTotal()).isEqualByComparingTo("17700.00");
+    }
+
+    @Test
+    @DisplayName("Should prevent double conversion of quotation and exclude converted quotations from pipeline")
+    void shouldPreventDoubleConversionOfQuotation() {
+        InvoiceRequest estReq = new InvoiceRequest();
+        estReq.setFirmId(testFirmId);
+        estReq.setCustomerId(testCustomer.getId());
+        estReq.setStatus(InvoiceStatus.ESTIMATE);
+        estReq.setItems(List.of(createItem(testProduct.getId(), 5, 200.0))); // 1000 + 18% GST = 1180.00
+
+        Invoice estimate = invoiceService.createEstimate(estReq);
+        assertThat(estimate.getConvertedInvoiceId()).isNull();
+
+        // 1st conversion succeeds
+        Invoice converted = invoiceService.convertEstimateToInvoice(estimate.getId(), null);
+        assertThat(converted.getId()).isNotNull();
+
+        // 2nd conversion attempt throws exception
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () -> {
+            invoiceService.convertEstimateToInvoice(estimate.getId(), null);
+        });
+
+        // 2nd conversion attempt via createInvoice referencing same estimate also throws exception
+        InvoiceRequest secondReq = new InvoiceRequest();
+        secondReq.setFirmId(testFirmId);
+        secondReq.setCustomerId(testCustomer.getId());
+        secondReq.setStatus(InvoiceStatus.FINAL);
+        secondReq.setConvertedInvoiceId(estimate.getId());
+        secondReq.setItems(List.of(createItem(testProduct.getId(), 5, 200.0)));
+
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () -> {
+            invoiceService.createInvoice(secondReq);
+        });
     }
 
     @Test

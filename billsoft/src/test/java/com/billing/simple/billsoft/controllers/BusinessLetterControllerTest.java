@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -98,6 +99,24 @@ class BusinessLetterControllerTest {
         mockMvc.perform(get("/api/letters").header("X-Firm-Id", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void testListLettersPaginated() throws Exception {
+        com.billing.simple.billsoft.dtos.PageResponse<BusinessLetter> pageResponse = com.billing.simple.billsoft.dtos.PageResponse.<BusinessLetter>builder()
+                .content(List.of(BusinessLetter.builder().id(1L).letterNumber("LTR-001").firmId(1L).build()))
+                .page(0)
+                .size(25)
+                .totalElements(1)
+                .totalPages(1)
+                .build();
+
+        when(service.getPaginatedLetters(eq(1L), any())).thenReturn(pageResponse);
+
+        mockMvc.perform(get("/api/letters?page=0&size=25").header("X-Firm-Id", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].letterNumber").value("LTR-001"))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test

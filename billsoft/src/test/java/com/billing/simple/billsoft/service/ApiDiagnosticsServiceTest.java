@@ -72,9 +72,12 @@ class ApiDiagnosticsServiceTest {
         when(invoiceService.getAll(null)).thenReturn(Collections.emptyList());
         when(invoiceService.getAllFinalInvoices(any(), any(Pageable.class))).thenReturn(Collections.emptyList());
         when(invoiceService.getAllEstimates(any())).thenReturn(Collections.emptyList());
+        when(invoiceService.peekNextInvoiceNumber(any())).thenReturn("INV-001");
+        when(invoiceService.peekNextEstimateNumber(any())).thenReturn("EST-001");
         when(invoiceService.generateInvoiceNumber(any())).thenReturn("INV-001");
         when(invoiceService.generateEstimateNumber(any())).thenReturn("EST-001");
         when(invoiceService.getAllSalesReturns(any())).thenReturn(Collections.emptyList());
+        when(invoiceService.peekNextReturnNumber(any())).thenReturn("RET-001");
         when(invoiceService.generateReturnNumber(any())).thenReturn("RET-001");
         when(invoiceService.getFirmAnalytics(any())).thenReturn(null);
 

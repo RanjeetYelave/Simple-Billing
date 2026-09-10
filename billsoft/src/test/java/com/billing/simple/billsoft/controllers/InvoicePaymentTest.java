@@ -77,4 +77,60 @@ public class InvoicePaymentTest {
         List<InvoicePayment> allPayments = invoiceService.getPayments(invoice.getId());
         assertThat(allPayments).hasSize(2);
     }
+
+    @Test
+    void testDefaultInvoiceStatusIsUnpaid() {
+        Customer cust = new Customer();
+        cust.setName("Unpaid Default Customer");
+        cust.setFirmId(1L);
+        cust = customerRepo.save(cust);
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(cust.getId());
+        // Do not set status explicitly
+
+        InvoiceRequestItem item = new InvoiceRequestItem();
+        item.setQty(1);
+        item.setPricePerUnit(BigDecimal.valueOf(250));
+        req.setItems(List.of(item));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+        assertThat(invoice.getId()).isNotNull();
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        assertThat(invoice.getPaid()).isFalse();
+    }
+
+    @Test
+    void testQuotationConversionDefaultsToUnpaid() {
+        Customer cust = new Customer();
+        cust.setName("Quote Conversion Customer");
+        cust.setFirmId(1L);
+        cust = customerRepo.save(cust);
+
+        InvoiceRequest quoteReq = new InvoiceRequest();
+        quoteReq.setFirmId(1L);
+        quoteReq.setCustomerId(cust.getId());
+        quoteReq.setStatus(InvoiceStatus.ESTIMATE);
+
+        InvoiceRequestItem item = new InvoiceRequestItem();
+        item.setQty(3);
+        item.setPricePerUnit(BigDecimal.valueOf(100));
+        quoteReq.setItems(List.of(item));
+
+        Invoice quote = invoiceService.createInvoice(quoteReq);
+        assertThat(quote.getId()).isNotNull();
+        assertThat(quote.getStatus()).isEqualTo(InvoiceStatus.ESTIMATE);
+
+        // Convert quotation to invoice
+        Invoice convertedInvoice = invoiceService.convertEstimateToInvoice(quote.getId(), null);
+        assertThat(convertedInvoice.getId()).isNotNull();
+        assertThat(convertedInvoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        assertThat(convertedInvoice.getPaid()).isFalse();
+        assertThat(convertedInvoice.getInvoiceNumber()).isNotNull();
+
+        // Refresh quote to verify it has convertedInvoiceId linked
+        Invoice refreshedQuote = invoiceRepo.findById(quote.getId()).orElseThrow();
+        assertThat(refreshedQuote.getConvertedInvoiceId()).isEqualTo(convertedInvoice.getId());
+    }
 }

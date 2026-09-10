@@ -33,16 +33,20 @@ public class HealthController {
     private final InboxMessageService inboxMessageService;
     private final DataSource dataSource;
 
+    private final com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService;
+
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
                             ApiDiagnosticsService apiDiagnosticsService,
                             InboxMessageService inboxMessageService,
-                            DataSource dataSource) {
+                            DataSource dataSource,
+                            com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService) {
         this.systemMetricsService = systemMetricsService;
         this.autoBackupService = autoBackupService;
         this.apiDiagnosticsService = apiDiagnosticsService;
         this.inboxMessageService = inboxMessageService;
         this.dataSource = dataSource;
+        this.tenantDataIntegrityAuditService = tenantDataIntegrityAuditService;
     }
 
     @GetMapping("/api/health")
@@ -56,6 +60,11 @@ public class HealthController {
     @GetMapping("/api/diagnostics/api-suite")
     public ResponseEntity<ApiDiagnosticsResponse> runApiSuite(@RequestParam(required = false) Long firmId) {
         return ResponseEntity.ok(apiDiagnosticsService.runFullApiSuite(firmId));
+    }
+
+    @GetMapping("/api/diagnostics/tenant-integrity-audit")
+    public ResponseEntity<Map<String, Object>> runTenantIntegrityAudit() {
+        return ResponseEntity.ok(tenantDataIntegrityAuditService.performFullAudit());
     }
 
     @GetMapping("/api/health/diagnostics")

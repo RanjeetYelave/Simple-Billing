@@ -17,7 +17,11 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "invoices")
+@Table(name = "invoices", indexes = {
+    @Index(name = "idx_invoices_firm_date_id", columnList = "firmId, invoiceDate DESC, id DESC"),
+    @Index(name = "idx_invoices_firm_status", columnList = "firmId, status"),
+    @Index(name = "idx_invoices_firm_customer", columnList = "firmId, customer_id")
+})
 public class Invoice {
 
     // ------------------------
@@ -42,7 +46,7 @@ public class Invoice {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
     @Builder.Default
-    private InvoiceStatus status = InvoiceStatus.FINAL;
+    private InvoiceStatus status = InvoiceStatus.UNPAID;
 
     // ------------------------
     // RELATIONS
@@ -169,4 +173,55 @@ public class Invoice {
     private BigDecimal safe(BigDecimal val) {
         return val == null ? null : val.setScale(2, RoundingMode.HALF_UP);
     }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getInvoiceNumber() { return invoiceNumber; }
+    public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
+    public String getEstimateNumber() { return estimateNumber; }
+    public void setEstimateNumber(String estimateNumber) { this.estimateNumber = estimateNumber; }
+    public InvoiceStatus getStatus() { return status; }
+    public void setStatus(InvoiceStatus status) { this.status = status; }
+    public Customer getCustomer() { return customer; }
+    public void setCustomer(Customer customer) { this.customer = customer; }
+    public List<InvoiceItem> getItems() { return items; }
+    public void setItems(List<InvoiceItem> items) { this.items = items; }
+    public BigDecimal getSubtotalWithoutTax() { return subtotalWithoutTax; }
+    public void setSubtotalWithoutTax(BigDecimal subtotalWithoutTax) { this.subtotalWithoutTax = subtotalWithoutTax; }
+    public BigDecimal getTotalTax() { return totalTax; }
+    public void setTotalTax(BigDecimal totalTax) { this.totalTax = totalTax; }
+    public BigDecimal getTotalDiscount() { return totalDiscount; }
+    public void setTotalDiscount(BigDecimal totalDiscount) { this.totalDiscount = totalDiscount; }
+    public BigDecimal getTotalAmount() { return totalAmount; }
+    public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public String getInvoiceDiscountType() { return invoiceDiscountType; }
+    public void setInvoiceDiscountType(String invoiceDiscountType) { this.invoiceDiscountType = invoiceDiscountType; }
+    public BigDecimal getInvoiceDiscountValue() { return invoiceDiscountValue; }
+    public void setInvoiceDiscountValue(BigDecimal invoiceDiscountValue) { this.invoiceDiscountValue = invoiceDiscountValue; }
+    public LocalDateTime getInvoiceDate() { return invoiceDate; }
+    public void setInvoiceDate(LocalDateTime invoiceDate) { this.invoiceDate = invoiceDate; }
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+    public Long getConvertedInvoiceId() { return convertedInvoiceId; }
+    public void setConvertedInvoiceId(Long convertedInvoiceId) { this.convertedInvoiceId = convertedInvoiceId; }
+    public Boolean getPaid() { return paid; }
+    public void setPaid(Boolean paid) { this.paid = paid; }
+    public Long getFirmId() { return firmId; }
+    public void setFirmId(Long firmId) { this.firmId = firmId; }
+    public String getCustomerNote() { return customerNote; }
+    public void setCustomerNote(String customerNote) { this.customerNote = customerNote; }
+    public String getTermsAndConditions() { return termsAndConditions; }
+    public void setTermsAndConditions(String termsAndConditions) { this.termsAndConditions = termsAndConditions; }
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public BigDecimal getRoundOff() { return roundOff; }
+    public void setRoundOff(BigDecimal roundOff) { this.roundOff = roundOff; }
+    public String getTags() { return tags; }
+    public void setTags(String tags) { this.tags = tags; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

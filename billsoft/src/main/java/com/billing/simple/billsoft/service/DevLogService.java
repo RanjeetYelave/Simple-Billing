@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.FileAppender;
+import ch.qos.logback.core.rolling.RollingFileAppender;
+import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
+import ch.qos.logback.core.util.FileSize;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,12 +14,14 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,14 +69,7 @@ public class DevLogService {
             status.put("exists", true);
             status.put("sizeBytes", f.length());
             status.put("sizeFormatted", String.format("%.2f KB", f.length() / 1024.0));
-            try {
-                List<String> allLines = Files.readAllLines(logFilePath, StandardCharsets.UTF_8);
-                int count = allLines.size();
-                int from = Math.max(0, count - 100);
-                status.put("recentLines", allLines.subList(from, count));
-            } catch (Exception e) {
-                status.put("recentLines", List.of("Error reading log file: " + e.getMessage()));
-            }
+            status.put("recentLines", readRecentLines(logFilePath, 100));
         } else {
             status.put("exists", false);
             status.put("sizeBytes", 0);
@@ -81,6 +78,36 @@ public class DevLogService {
         }
 
         return status;
+    }
+
+    private List<String> readRecentLines(Path path, int maxLines) {
+        File file = path.toFile();
+        if (!file.exists() || file.length() == 0) return List.of();
+
+        List<String> lines = new ArrayList<>();
+        long fileLength = file.length();
+        long readLength = Math.min(fileLength, 64 * 1024); // read at most 64KB from tail
+        long startPos = fileLength - readLength;
+
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            raf.seek(startPos);
+            byte[] bytes = new byte[(int) readLength];
+            raf.readFully(bytes);
+            String text = new String(bytes, StandardCharsets.UTF_8);
+            String[] split = text.split("\\r?\\n");
+            int startIdx = (startPos > 0) ? 1 : 0; // skip partial line if read from middle
+            for (int i = startIdx; i < split.length; i++) {
+                if (!split[i].isEmpty()) {
+                    lines.add(split[i]);
+                }
+            }
+            if (lines.size() > maxLines) {
+                return lines.subList(lines.size() - maxLines, lines.size());
+            }
+            return lines;
+        } catch (Exception e) {
+            return List.of("Error reading log tail: " + e.getMessage());
+        }
     }
 
     public synchronized Map<String, Object> setEnabled(boolean enable) {
@@ -111,19 +138,31 @@ public class DevLogService {
                     hibernateLogger.setLevel(Level.DEBUG);
                     springLogger.setLevel(Level.DEBUG);
 
-                    // Add file appender if not already attached
+                    // Add rolling file appender if not already attached
                     if (rootLogger.getAppender(APPENDER_NAME) == null) {
-                        FileAppender<ILoggingEvent> fileAppender = new FileAppender<>();
+                        RollingFileAppender<ILoggingEvent> fileAppender = new RollingFileAppender<>();
                         fileAppender.setName(APPENDER_NAME);
                         fileAppender.setContext(context);
                         fileAppender.setFile(logFilePath.toAbsolutePath().toString());
                         fileAppender.setAppend(true);
+
+                        SizeAndTimeBasedRollingPolicy<ILoggingEvent> rollingPolicy = new SizeAndTimeBasedRollingPolicy<>();
+                        rollingPolicy.setContext(context);
+                        rollingPolicy.setParent(fileAppender);
+                        Path parentDir = logFilePath.getParent() != null ? logFilePath.getParent() : Paths.get(".");
+                        String pattern = parentDir.resolve("developer-debug-%d{yyyy-MM-dd}.%i.log").toAbsolutePath().toString();
+                        rollingPolicy.setFileNamePattern(pattern);
+                        rollingPolicy.setMaxFileSize(FileSize.valueOf("10MB"));
+                        rollingPolicy.setTotalSizeCap(FileSize.valueOf("50MB"));
+                        rollingPolicy.setMaxHistory(5);
+                        rollingPolicy.start();
 
                         PatternLayoutEncoder encoder = new PatternLayoutEncoder();
                         encoder.setContext(context);
                         encoder.setPattern("%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n");
                         encoder.start();
 
+                        fileAppender.setRollingPolicy(rollingPolicy);
                         fileAppender.setEncoder(encoder);
                         fileAppender.start();
 
@@ -135,7 +174,7 @@ public class DevLogService {
                     springLogger.setLevel(Level.INFO);
 
                     // Stop and remove file appender
-                    FileAppender<ILoggingEvent> appender = (FileAppender<ILoggingEvent>) rootLogger.getAppender(APPENDER_NAME);
+                    ch.qos.logback.core.Appender<ILoggingEvent> appender = rootLogger.getAppender(APPENDER_NAME);
                     if (appender != null) {
                         appender.stop();
                         rootLogger.detachAppender(APPENDER_NAME);

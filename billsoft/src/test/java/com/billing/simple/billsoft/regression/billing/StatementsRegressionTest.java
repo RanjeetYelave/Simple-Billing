@@ -51,7 +51,7 @@ class StatementsRegressionTest {
     private BackupService backupService;
 
     private Customer testCustomer;
-    private final Long testFirmId = 1L;
+    private Long testFirmId;
 
     @BeforeEach
     void setUp() {
@@ -61,7 +61,8 @@ class StatementsRegressionTest {
         firm.setFirmName("Pinnacle Instruments");
         firm.setGstin("27AAACP9988Z1Z2");
         firm.setAddressLine1("Industrial Estate, Pune");
-        firmService.create(firm);
+        FirmDetails savedFirm = firmService.create(firm);
+        testFirmId = savedFirm.getId();
 
         testCustomer = customerService.create(Customer.builder()
                 .name("Apex Systems")

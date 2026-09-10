@@ -105,6 +105,7 @@ class SalesReturnControllerTest {
 
     @Test
     void testNextNumberEndpoints() throws Exception {
+        when(invoiceService.peekNextReturnNumber(1L)).thenReturn("CN-0005");
         when(invoiceService.generateReturnNumber(1L)).thenReturn("CN-0005");
 
         mockMvc.perform(get("/api/invoices/next-return-number?firmId=1"))

@@ -143,7 +143,7 @@ class EndToEndBusinessWorkflowRegressionTest {
 
         // Step 5: Convert Quotation to Tax Invoice -> stock should decrease from 50 to 35
         Invoice invoice = invoiceService.convertEstimateToInvoice(quotation.getId(), null);
-        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.FINAL);
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
         assertThat(invoice.getInvoiceNumber()).isNotNull();
 
         Product stockAfterInvoice = productService.getById(product.getId());

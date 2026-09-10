@@ -9,10 +9,13 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.StockMovementRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class ProductService {
@@ -41,6 +44,10 @@ public class ProductService {
 
 	@Transactional
 	public Product create(Product product) {
+		Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (currentFirmId != null) {
+			product.setFirmId(currentFirmId);
+		}
 		if (product.getStockQuantity() == null || product.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
 			product.setStockQuantity(BigDecimal.ZERO);
 		}
@@ -78,16 +85,41 @@ public class ProductService {
 	}
 
 	public List<Product> getAll(Long firmId) {
-		return repo.findByFirmId(firmId);
+		Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (targetFirmId == null) {
+			return Collections.emptyList();
+		}
+		return repo.findByFirmId(targetFirmId);
+	}
+
+	public PageResponse<Product> getPaginatedProducts(Long firmId, String search, Pageable pageable) {
+		Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (targetFirmId == null) {
+			return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+		}
+		Page<Product> page;
+		if (search != null && !search.trim().isEmpty()) {
+			page = repo.findByFirmIdAndNameContainingIgnoreCase(targetFirmId, search.trim(), pageable);
+		} else {
+			page = repo.findByFirmId(targetFirmId, pageable);
+		}
+		return PageResponse.of(page);
 	}
 
 	public Product getById(Long id) {
-		return repo.findById(id).orElse(null);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+	}
+
+	public Product getById(Long id, Long firmId) {
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
 	}
 
 	@Transactional
 	public Product update(Long id, Product updated) {
-		Optional<Product> opt = repo.findById(id);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt = fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty())
 			return null;
 		Product existing = opt.get();
@@ -111,18 +143,36 @@ public class ProductService {
 
 	@Transactional
 	public boolean delete(Long id) {
-		if (!repo.existsById(id))
-			return false;
-		repo.deleteById(id);
-		return true;
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid != null) {
+			if (!repo.existsByIdAndFirmId(id, fid))
+				return false;
+			repo.deleteByIdAndFirmId(id, fid);
+			return true;
+		} else {
+			if (!repo.existsById(id))
+				return false;
+			repo.deleteById(id);
+			return true;
+		}
 	}
+
 
 	/**
 	 * Adjusts stock directly from inventory manager (Add / Deduct / Set).
 	 */
 	@Transactional
 	public Product adjustStock(Long id, BigDecimal quantity, String mode, String note) {
-		Optional<Product> opt = repo.findById(id);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt;
+		if (fid != null) {
+			opt = repo.findByIdAndFirmId(id, fid);
+			if (opt.isEmpty()) {
+				throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized for firm: " + fid);
+			}
+		} else {
+			opt = repo.findById(id);
+		}
 		if (opt.isEmpty())
 			return null;
 
@@ -183,7 +233,7 @@ public class ProductService {
 			return;
 		}
 
-		Optional<Product> opt = repo.findById(productId);
+		Optional<Product> opt = (firmId != null) ? repo.findByIdAndFirmId(productId, firmId) : repo.findById(productId);
 		if (opt.isEmpty()) {
 			return;
 		}
@@ -222,22 +272,50 @@ public class ProductService {
 	}
 
 	public List<StockMovement> getStockMovements(Long productId, Long firmId) {
-		if (productId != null && firmId != null) {
-			return stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, firmId);
-		} else if (productId != null) {
-			return stockMovementRepo.findByProductIdOrderByCreatedAtDesc(productId);
-		} else if (firmId != null) {
-			return stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid != null && productId != null) {
+			return stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, fid);
+		} else if (fid != null) {
+			return stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(fid);
 		}
 		return Collections.emptyList();
 	}
 
+	public PageResponse<StockMovement> getPaginatedMovements(Long productId, Long firmId, Pageable pageable) {
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid == null) {
+			return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+		}
+		Page<StockMovement> page;
+		if (productId != null) {
+			page = stockMovementRepo.findByProductIdAndFirmId(productId, fid, pageable);
+		} else {
+			page = stockMovementRepo.findByFirmId(fid, pageable);
+		}
+		return PageResponse.of(page);
+	}
+
+
 	public List<String> getCategories(Long firmId) {
-		return repo.findDistinctCategoriesByFirmId(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findDistinctCategoriesByFirmId(fid) : Collections.emptyList();
 	}
 
 	public Map<String, Object> getInventorySummary(Long firmId) {
-		List<Product> list = repo.findByFirmId(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid == null) {
+			Map<String, Object> emptySummary = new HashMap<>();
+			emptySummary.put("totalProducts", 0L);
+			emptySummary.put("goodsCount", 0L);
+			emptySummary.put("servicesCount", 0L);
+			emptySummary.put("lowStockCount", 0L);
+			emptySummary.put("outOfStockCount", 0L);
+			emptySummary.put("totalRetailValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			emptySummary.put("totalCostValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			emptySummary.put("averageGrossMarginPercent", BigDecimal.ZERO);
+			return emptySummary;
+		}
+		List<Product> list = repo.findByFirmId(fid);
 
 		long totalProducts = list.size();
 		long goodsCount = 0;

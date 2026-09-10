@@ -26,6 +26,10 @@ public class FirmDetailsService {
         return repo.findById(id).orElse(null);
     }
 
+    public FirmDetails getFirmDetails(Long id) {
+        return get(id);
+    }
+
     /** Get the first available firm (fallback) */
     public FirmDetails getFirst() {
         List<FirmDetails> all = repo.findAll();

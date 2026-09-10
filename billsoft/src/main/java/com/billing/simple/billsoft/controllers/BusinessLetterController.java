@@ -25,7 +25,7 @@ public class BusinessLetterController {
     }
 
     @GetMapping
-    public ResponseEntity<List<BusinessLetter>> list(
+    public ResponseEntity<?> list(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(value = "recipientType", required = false) LetterRecipientType recipientType,
@@ -33,11 +33,18 @@ public class BusinessLetterController {
             @RequestParam(value = "customerId", required = false) Long customerId,
             @RequestParam(value = "status", required = false) LetterStatus status,
             @RequestParam(value = "start", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
-            @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end) {
+            @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size) {
 
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
         if (firmId == null) {
             return ResponseEntity.badRequest().build();
+        }
+        if (page != null || size != null) {
+            org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+                    page != null ? page : 0, size != null ? size : 25, "letterDate");
+            return ResponseEntity.ok(letterService.getPaginatedLetters(firmId, pageable));
         }
         return ResponseEntity.ok(letterService.getLettersByFirm(firmId, recipientType, partyId, customerId, status, start, end));
     }
@@ -157,6 +164,8 @@ public class BusinessLetterController {
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Letter-" + id + ".pdf\"");
             return ResponseEntity.ok().headers(headers).body(pdfBytes);
+        } catch (IllegalArgumentException | com.billing.simple.billsoft.security.TenantSecurityException e) {
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

@@ -121,12 +121,22 @@ const API = {
 
   // ── Customers ──
   customers: {
-    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/customers'))),
+    list: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const url = fid ? `/api/customers?firmId=${fid}` : '/api/customers';
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(url, { headers });
+    },
     get: (id) => API._json(`/api/customers/${id}`),
-    create: (data) => API._ensureFirmReady().then(() => API._json('/api/customers', {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    })),
+    create: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json('/api/customers', {
+        method: 'POST',
+        headers,
+        body: { ...data, firmId: fid }
+      });
+    },
     update: (id, data) => API._json(`/api/customers/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/customers/${id}`, { method: 'DELETE' }),
   },
@@ -134,7 +144,10 @@ const API = {
   // ── Parties (Vendors / Suppliers) ──
   parties: {
     list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/parties'))),
-    listSummaries: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/parties/summaries'))),
+    listSummaries: (page, size) => API._ensureFirmReady().then(() => API._json(API._qs('/api/parties/summaries', {
+      ...(page !== undefined ? { page } : {}),
+      ...(size !== undefined ? { size } : {})
+    }))),
     get: (id) => API._json(`/api/parties/${id}`),
     financialSummary: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/parties/${id}/financial-summary`))),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/parties', {
@@ -157,7 +170,11 @@ const API = {
 
   // ── Purchase Orders ──
   purchaseOrders: {
-    list: (partyId) => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders', partyId ? { partyId } : {}))),
+    list: (partyId, page, size) => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders', {
+      ...(partyId ? { partyId } : {}),
+      ...(page !== undefined ? { page } : {}),
+      ...(size !== undefined ? { size } : {})
+    }))),
     get: (id) => API._json(`/api/purchase-orders/${id}`),
     nextNumber: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders/next-number'))),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/purchase-orders', {
@@ -221,7 +238,15 @@ const API = {
 
   // ── Products & Inventory ──
   products: {
-    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products'))),
+    list: (params = {}, firmIdOverride) => {
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const q = typeof params === 'object' && params !== null ? { ...params } : {};
+      if (fid) q.firmId = fid;
+      const qs = new URLSearchParams(q).toString();
+      const url = qs ? `/api/products?${qs}` : '/api/products';
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(url, { headers });
+    },
     get: (id) => API._json(`/api/products/${id}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/products', {
       method: 'POST',
@@ -232,8 +257,8 @@ const API = {
     summary: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/summary'))),
     categories: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/categories'))),
     adjustStock: (id, data) => API._json(`/api/products/${id}/adjust-stock`, { method: 'POST', body: data }),
-    movements: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/movements`))),
-    allMovements: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/movements'))),
+    movements: (id, params = {}) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/movements`, params))),
+    allMovements: (params = {}) => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/movements', params))),
   },
 
   // ── Invoices ──
@@ -242,30 +267,82 @@ const API = {
     listEstimates: (page = 0, size = 50) => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/estimates', { page, size }))),
     listFinal: (page = 0, size = 50) => API._ensureFirmReady().then(() => API._json(API._qs('/api/invoices/final', { page, size }))),
     get: (id) => API._json(`/api/invoices/${id}`),
-    create: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices', {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    })),
-    createEstimate: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices/estimate', {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    })),
-    preview: (data) => API._ensureFirmReady().then(() => API._json('/api/invoices/preview', {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    })),
-    update: (id, data) => API._json(`/api/invoices/${id}`, { method: 'PUT', body: data }),
+    create: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json('/api/invoices', {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
+    createEstimate: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json('/api/invoices/estimate', {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
+    preview: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json('/api/invoices/preview', {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
+    update: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/invoices/${id}`, {
+        method: 'PUT',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
     delete: (id) => API._request(`/api/invoices/${id}`, { method: 'DELETE' }),
     markPaid: (id, paid) => API._json(`/api/invoices/${id}/paid?paid=${paid}`, { method: 'PUT' }),
     updateStatus: (id, status) => API._json(`/api/invoices/${id}/status?status=${status}`, { method: 'PUT' }),
-    convertEstimate: (id, data) => API._ensureFirmReady().then(() => API._json(`/api/invoices/convert/${id}`, {
-      method: 'POST',
-      body: { ...data, firmId: API.firmId || data.firmId }
-    })),
+    recordPayment: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/invoices/${id}/payments`, {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
+    getPayments: (id, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/invoices/${id}/payments`, { headers });
+    },
+    convertEstimate: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/invoices/convert/${id}`, {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      });
+    },
     getLinkedInvoice: (id) => API._json(`/api/invoices/${id}/linked-invoice`),
-    nextInvoiceNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
-    nextEstimateNumber: () => API._json(API._qs('/api/invoices/next-estimate-number')),
-    nextNumber: () => API._json(API._qs('/api/invoices/next-invoice-number')),
+    nextInvoiceNumber: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const url = fid ? `/api/invoices/next-invoice-number?firmId=${fid}` : '/api/invoices/next-invoice-number';
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(url, { headers });
+    },
+    nextEstimateNumber: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const url = fid ? `/api/invoices/next-estimate-number?firmId=${fid}` : '/api/invoices/next-estimate-number';
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(url, { headers });
+    },
+    nextNumber: (firmIdOverride) => API.invoices.nextInvoiceNumber(firmIdOverride),
     downloadPdf: async (id, size = 'A4') => {
       const res = await API._request(`/api/invoices/${id}/pdf?size=${size}`);
       const blob = await res.blob();
@@ -310,7 +387,10 @@ const API = {
 
   // ── Expenses ──
   expenses: {
-    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses'))),
+    list: (params = {}) => API._ensureFirmReady().then(() => {
+      const q = typeof params === 'object' && params !== null ? params : {};
+      return API._json(API._qs('/api/expenses', q));
+    }),
     listByFirm: (firmId) => API._json(`/api/expenses/firm/${firmId}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/expenses', { method: 'POST', body: { ...data, firmId: API.firmId || data.firmId } })),
     update: (id, data) => API._json(`/api/expenses/${id}`, { method: 'PUT', body: data }),

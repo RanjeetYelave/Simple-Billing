@@ -105,4 +105,104 @@ public class Product {
             this.minStockLevel = BigDecimal.ZERO;
         }
     }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+    public BigDecimal getCostPrice() { return costPrice; }
+    public void setCostPrice(BigDecimal costPrice) { this.costPrice = costPrice; }
+    public BigDecimal getStockQuantity() { return stockQuantity; }
+    public void setStockQuantity(BigDecimal stockQuantity) { this.stockQuantity = stockQuantity; }
+    public BigDecimal getMinStockLevel() { return minStockLevel; }
+    public void setMinStockLevel(BigDecimal minStockLevel) { this.minStockLevel = minStockLevel; }
+    public String getSku() { return sku; }
+    public void setSku(String sku) { this.sku = sku; }
+    public String getBarcode() { return barcode; }
+    public void setBarcode(String barcode) { this.barcode = barcode; }
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+    public String getItemType() { return itemType; }
+    public void setItemType(String itemType) { this.itemType = itemType; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getUnit() { return unit; }
+    public void setUnit(String unit) { this.unit = unit; }
+    public String getHsnCode() { return hsnCode; }
+    public void setHsnCode(String hsnCode) { this.hsnCode = hsnCode; }
+    public BigDecimal getGstPercentage() { return gstPercentage; }
+    public void setGstPercentage(BigDecimal gstPercentage) { this.gstPercentage = gstPercentage; }
+    public Long getFirmId() { return firmId; }
+    public void setFirmId(Long firmId) { this.firmId = firmId; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public static ProductBuilder builder() {
+        return new ProductBuilder();
+    }
+
+    public static class ProductBuilder {
+        private Long id;
+        private String name;
+        private BigDecimal price;
+        private BigDecimal costPrice;
+        private BigDecimal stockQuantity = BigDecimal.ZERO;
+        private BigDecimal minStockLevel = new BigDecimal("5.000");
+        private String sku;
+        private String barcode;
+        private String category;
+        private String itemType = "GOODS";
+        private String description;
+        private String unit = "pcs";
+        private String hsnCode;
+        private BigDecimal gstPercentage;
+        private Long firmId;
+        private LocalDateTime createdAt;
+        private LocalDateTime updatedAt;
+
+        public ProductBuilder id(Long id) { this.id = id; return this; }
+        public ProductBuilder name(String name) { this.name = name; return this; }
+        public ProductBuilder price(BigDecimal price) { this.price = price; return this; }
+        public ProductBuilder costPrice(BigDecimal costPrice) { this.costPrice = costPrice; return this; }
+        public ProductBuilder stockQuantity(BigDecimal stockQuantity) { this.stockQuantity = stockQuantity; return this; }
+        public ProductBuilder minStockLevel(BigDecimal minStockLevel) { this.minStockLevel = minStockLevel; return this; }
+        public ProductBuilder sku(String sku) { this.sku = sku; return this; }
+        public ProductBuilder barcode(String barcode) { this.barcode = barcode; return this; }
+        public ProductBuilder category(String category) { this.category = category; return this; }
+        public ProductBuilder itemType(String itemType) { this.itemType = itemType; return this; }
+        public ProductBuilder description(String description) { this.description = description; return this; }
+        public ProductBuilder unit(String unit) { this.unit = unit; return this; }
+        public ProductBuilder hsnCode(String hsnCode) { this.hsnCode = hsnCode; return this; }
+        public ProductBuilder gstPercentage(BigDecimal gstPercentage) { this.gstPercentage = gstPercentage; return this; }
+        public ProductBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
+        public ProductBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public ProductBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
+
+        public Product build() {
+            Product p = new Product();
+            p.id = this.id;
+            p.name = this.name;
+            p.price = this.price;
+            p.costPrice = this.costPrice;
+            p.stockQuantity = this.stockQuantity;
+            p.minStockLevel = this.minStockLevel;
+            p.sku = this.sku;
+            p.barcode = this.barcode;
+            p.category = this.category;
+            p.itemType = this.itemType;
+            p.description = this.description;
+            p.unit = this.unit;
+            p.hsnCode = this.hsnCode;
+            p.gstPercentage = this.gstPercentage;
+            p.firmId = this.firmId;
+            p.createdAt = this.createdAt;
+            p.updatedAt = this.updatedAt;
+            return p;
+        }
+    }
 }
+

@@ -54,6 +54,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     public PurchaseOrder createPurchaseOrder(PurchaseOrder po) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            po.setFirmId(authoritativeFirmId);
+        }
         if (po.getFirmId() == null) {
             throw new IllegalArgumentException("Firm ID is required");
         }
@@ -62,7 +66,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
 
         Party party = partyRepository.findByIdAndFirmId(po.getParty().getId(), po.getFirmId())
-                .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + po.getParty().getId()));
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found with id: " + po.getParty().getId()));
 
         po.setParty(party);
         // Save party snapshot
@@ -80,6 +84,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (po.getItems() != null) {
             for (PurchaseOrderItem item : po.getItems()) {
+                if (item.getProductId() != null) {
+                    if (!productRepository.existsByIdAndFirmId(item.getProductId(), po.getFirmId())) {
+                        throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced product does not belong to the current firm: " + item.getProductId());
+                    }
+                }
                 item.setPurchaseOrder(po);
             }
         }
@@ -109,17 +118,19 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     public PurchaseOrder updatePurchaseOrder(Long id, PurchaseOrder updated) {
-        PurchaseOrder existing = (updated.getFirmId() != null
-                ? poRepository.findByIdAndFirmId(id, updated.getFirmId())
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = updated.getFirmId();
+
+        PurchaseOrder existing = (authoritativeFirmId != null
+                ? poRepository.findByIdAndFirmId(id, authoritativeFirmId)
                 : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
 
         PurchaseOrderStatus oldStatus = existing.getStatus();
 
         if (updated.getParty() != null && updated.getParty().getId() != null) {
-            Long firmIdForParty = updated.getFirmId() != null ? updated.getFirmId() : existing.getFirmId();
-            Party party = partyRepository.findByIdAndFirmId(updated.getParty().getId(), firmIdForParty)
-                    .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + updated.getParty().getId()));
+            Party party = partyRepository.findByIdAndFirmId(updated.getParty().getId(), existing.getFirmId())
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found with id: " + updated.getParty().getId()));
             existing.setParty(party);
             existing.setPartyName(party.getName());
             existing.setPartyContactPerson(party.getContactPerson());
@@ -164,6 +175,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (updated.getItems() != null) {
             for (PurchaseOrderItem item : updated.getItems()) {
+                if (item.getProductId() != null) {
+                    if (!productRepository.existsByIdAndFirmId(item.getProductId(), existing.getFirmId())) {
+                        throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced product does not belong to the current firm: " + item.getProductId());
+                    }
+                }
                 item.setPurchaseOrder(existing);
                 existing.getItems().add(item);
             }
@@ -209,6 +225,13 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional(readOnly = true)
     public List<PurchaseOrder> getPurchaseOrdersByFirm(Long firmId) {
         return poRepository.findByFirmIdOrderByPoDateDescIdDesc(firmId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.billing.simple.billsoft.dtos.PageResponse<PurchaseOrder> getPaginatedPurchaseOrders(Long firmId, org.springframework.data.domain.Pageable pageable) {
+        org.springframework.data.domain.Page<PurchaseOrder> page = poRepository.findByFirmId(firmId, pageable);
+        return com.billing.simple.billsoft.dtos.PageResponse.of(page);
     }
 
     @Override

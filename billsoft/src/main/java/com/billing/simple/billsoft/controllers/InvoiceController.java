@@ -35,18 +35,20 @@ public class InvoiceController {
     // ---------------- NUMBER GENERATORS ----------------
     @GetMapping("/next-invoice-number")
     public ResponseEntity<String> nextInvoiceNumber(@RequestParam(required = false) Long firmId) {
-        return ResponseEntity.ok(service.generateInvoiceNumber(firmId));
+        return ResponseEntity.ok(service.peekNextInvoiceNumber(firmId));
     }
 
     @GetMapping("/next-estimate-number")
     public ResponseEntity<String> nextEstimateNumber(@RequestParam(required = false) Long firmId) {
-        return ResponseEntity.ok(service.generateEstimateNumber(firmId));
+        return ResponseEntity.ok(service.peekNextEstimateNumber(firmId));
     }
 
     // ---------------- CREATE ----------------
     @PostMapping
     public ResponseEntity<Invoice> create(@RequestBody InvoiceRequest request) {
-        request.setStatus(InvoiceStatus.FINAL);
+        if (request.getStatus() == null || request.getStatus() == InvoiceStatus.FINAL) {
+            request.setStatus(Boolean.TRUE.equals(request.getPaid()) ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
+        }
         return ResponseEntity.ok(service.createInvoice(request));
     }
 
@@ -83,36 +85,39 @@ public class InvoiceController {
 
     // ---------------- LIST (with pagination) ----------------
     @GetMapping
-    public ResponseEntity<List<Invoice>> getAll(
+    public ResponseEntity<com.billing.simple.billsoft.dtos.PageResponse<Invoice>> getAll(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(required = false) Long firmId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        if (page >= 0) {
-            return ResponseEntity.ok(service.getAll(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
-        }
-        return ResponseEntity.ok(service.getAll(firmId));
+            @RequestParam(defaultValue = "25") int size) {
+        Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        Page<Invoice> p = service.getPaginated(targetFirmId, pageable);
+        return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
 
     @GetMapping("/estimates")
-    public ResponseEntity<List<Invoice>> getAllEstimates(
+    public ResponseEntity<com.billing.simple.billsoft.dtos.PageResponse<Invoice>> getAllEstimates(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(required = false) Long firmId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        if (page >= 0) {
-            return ResponseEntity.ok(service.getAllEstimates(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
-        }
-        return ResponseEntity.ok(service.getAllEstimates(firmId));
+            @RequestParam(defaultValue = "25") int size) {
+        Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        Page<Invoice> p = service.getPaginatedEstimates(targetFirmId, pageable);
+        return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
 
     @GetMapping("/final")
-    public ResponseEntity<List<Invoice>> getAllFinalInvoices(
+    public ResponseEntity<com.billing.simple.billsoft.dtos.PageResponse<Invoice>> getAllFinalInvoices(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(required = false) Long firmId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        if (page >= 0) {
-            return ResponseEntity.ok(service.getAllFinalInvoices(firmId, PageRequest.of(page, Math.min(size, 200), Sort.by(Sort.Direction.DESC, "invoiceDate"))));
-        }
-        return ResponseEntity.ok(service.getAllFinalInvoices(firmId));
+            @RequestParam(defaultValue = "25") int size) {
+        Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        Page<Invoice> p = service.getPaginatedFinalInvoices(targetFirmId, pageable);
+        return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
 
     // ---------------- GET BY ID ----------------
@@ -211,7 +216,7 @@ public class InvoiceController {
             com.billing.simple.billsoft.entities.InvoicePayment payment =
                     service.recordPayment(id, amount, paymentDate, paymentMode, referenceNumber, notes);
             return ResponseEntity.ok(payment);
-        } catch (IllegalArgumentException e) {
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             e.printStackTrace();

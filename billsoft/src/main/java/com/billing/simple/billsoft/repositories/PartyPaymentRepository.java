@@ -12,6 +12,13 @@ public interface PartyPaymentRepository extends JpaRepository<PartyPayment, Long
 
     List<PartyPayment> findByFirmIdAndPartyIdOrderByPaymentDateDescIdDesc(Long firmId, Long partyId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT pay.partyId, SUM(COALESCE(pay.amount, 0)) " +
+            "FROM PartyPayment pay " +
+            "WHERE pay.firmId = :firmId AND pay.partyId IN (:partyIds) " +
+            "GROUP BY pay.partyId")
+    List<Object[]> sumPaidByPartyIds(@org.springframework.data.repository.query.Param("firmId") Long firmId,
+                                     @org.springframework.data.repository.query.Param("partyIds") List<Long> partyIds);
+
     List<PartyPayment> findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
             Long firmId, Long partyId, LocalDate startDate, LocalDate endDate);
 

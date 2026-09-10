@@ -19,4 +19,10 @@ public interface SalesReturnItemRepository extends JpaRepository<SalesReturnItem
     @Modifying
     @Query("UPDATE SalesReturnItem sri SET sri.invoiceItem = null WHERE sri.salesReturn.invoice.id = :invoiceId")
     void nullifyInvoiceItemReferencesByInvoiceId(@Param("invoiceId") Long invoiceId);
+
+    @Query("SELECT sri.invoiceItem.id, SUM(COALESCE(sri.returnQty, 0)) FROM SalesReturnItem sri WHERE sri.salesReturn.invoice.id = :invoiceId AND sri.invoiceItem IS NOT NULL GROUP BY sri.invoiceItem.id")
+    List<Object[]> sumReturnedQtyByInvoiceItemIdForInvoice(@Param("invoiceId") Long invoiceId);
+
+    @Query("SELECT sri.product.id, SUM(COALESCE(sri.returnQty, 0)) FROM SalesReturnItem sri WHERE sri.salesReturn.invoice.id = :invoiceId AND sri.product IS NOT NULL GROUP BY sri.product.id")
+    List<Object[]> sumReturnedQtyByProductIdForInvoice(@Param("invoiceId") Long invoiceId);
 }

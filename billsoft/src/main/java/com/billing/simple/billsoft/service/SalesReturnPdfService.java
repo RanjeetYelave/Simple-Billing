@@ -180,17 +180,33 @@ public class SalesReturnPdfService {
 
         // 4. Summary Table
         PdfPTable summaryTable = new PdfPTable(2);
-        summaryTable.setWidthPercentage(40);
+        summaryTable.setWidthPercentage(48);
         summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
         summaryTable.setKeepTogether(true);
         summaryTable.setSpacingBefore(10);
 
         Font sumLabel = new Font(Font.HELVETICA, 9, Font.NORMAL, TEXT_DARK);
+        Font sumDeduct = new Font(Font.HELVETICA, 9, Font.NORMAL, HEADER_RED);
         Font sumBold = new Font(Font.HELVETICA, 9.5f, Font.BOLD, HEADER_RED);
 
-        addSummaryRow(summaryTable, "Taxable Return Amount:", salesReturn.getSubtotal(), sumLabel);
-        addSummaryRow(summaryTable, "GST Refund Total:", salesReturn.getTaxAmount(), sumLabel);
-        addSummaryRow(summaryTable, "Total Refund / Credit:", salesReturn.getTotalRefundAmount(), sumBold);
+        if (salesReturn.getExcludedTaxAmount() != null && salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal grossValue = salesReturn.getSubtotal().add(salesReturn.getExcludedTaxAmount());
+            addSummaryRow(summaryTable, "Gross Return Value (Incl. GST):", grossValue, sumLabel, false);
+            addSummaryRow(summaryTable, "Less: GST / Tax Deduction:", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
+        } else {
+            addSummaryRow(summaryTable, "Taxable Return Amount:", salesReturn.getSubtotal(), sumLabel, false);
+            if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(summaryTable, "GST Refund Total:", salesReturn.getTaxAmount(), sumLabel, false);
+            }
+        }
+
+        if (salesReturn.getPenaltyAmount() != null && salesReturn.getPenaltyAmount().compareTo(BigDecimal.ZERO) > 0) {
+            String pReason = (salesReturn.getPenaltyReason() != null && !salesReturn.getPenaltyReason().isBlank())
+                    ? " (" + salesReturn.getPenaltyReason() + ")" : "";
+            addSummaryRow(summaryTable, "Less Deduction" + pReason + ":", salesReturn.getPenaltyAmount(), sumDeduct, true);
+        }
+
+        addSummaryRow(summaryTable, "Total Refund / Credit:", salesReturn.getTotalRefundAmount(), sumBold, false);
 
         doc.add(summaryTable);
 
@@ -224,13 +240,14 @@ public class SalesReturnPdfService {
         return cell;
     }
 
-    private void addSummaryRow(PdfPTable table, String label, BigDecimal amt, Font font) {
+    private void addSummaryRow(PdfPTable table, String label, BigDecimal amt, Font font, boolean isDeduction) {
         PdfPCell c1 = new PdfPCell(new Phrase(label, font));
         c1.setBorder(Rectangle.NO_BORDER);
         c1.setPadding(3);
         table.addCell(c1);
 
-        PdfPCell c2 = new PdfPCell(new Phrase(amt != null ? "₹ " + String.format("%.2f", amt) : "₹ 0.00", font));
+        String prefix = isDeduction ? "-₹ " : "₹ ";
+        PdfPCell c2 = new PdfPCell(new Phrase(amt != null ? prefix + String.format("%.2f", amt) : "₹ 0.00", font));
         c2.setBorder(Rectangle.NO_BORDER);
         c2.setHorizontalAlignment(Element.ALIGN_RIGHT);
         c2.setPadding(3);

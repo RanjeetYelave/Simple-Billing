@@ -6,90 +6,70 @@ import java.util.List;
 
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 
-import lombok.Getter;
-import lombok.Setter;
-
-@Getter
-@Setter
 public class InvoiceUpdateRequest {
 
-    /* ============================
-       BASIC EXISTING FIELDS
-       ============================ */
     private Long customerId;
-
-    /**
-     * Optional ISO local date-time string
-     * Example: "2025-11-21T16:30" or "2025-11-21T16:30:00"
-     */
     private String invoiceDate;
-
     private String notes;
-
-    /**
-     * Optional invoice-level discount (PERCENT or VALUE)
-     * Uses the same BigDecimal-based inner class from InvoiceRequest.
-     */
     private InvoiceRequest.Discount invoiceDiscount;
-
-    /**
-     * Paid flag – if null, keep existing stored value.
-     */
     private Boolean paid;
-
-    /**
-     * Full replacement of invoice items.
-     * Backend recalculates totals automatically.
-     */
     private List<InvoiceRequestItem> items;
-
-    /* ============================
-       ADVANCED INVOICE LIFECYCLE
-       ============================ */
-
-    /**
-     * Invoice status:
-     * DRAFT, ESTIMATE, FINAL, SENT, PAID, OVERDUE, CANCELLED
-     */
     private InvoiceStatus status;
-
-    /**
-     * Used only when updating an estimate.
-     */
     private String estimateNumber;
-
-    /**
-     * Used internally when converting Estimate → Invoice.
-     */
     private Long convertedInvoiceId;
-
-    /**
-     * Optional due date
-     */
     private LocalDate dueDate;
-
-    /* ============================
-       PROFESSIONAL FIELDS
-       ============================ */
-
     private String customerNote;
     private String termsAndConditions;
-
-    /* ============================
-       METADATA
-       ============================ */
-
     private String paymentMethod;
-    private String currency;   // if null, backend keeps existing
-
-    /**
-     * Optional round-off request.
-     * If present → backend applies final rounding.
-     */
+    private String currency;
     private Boolean roundOff;
-
-    /**
-     * Optional comma-separated tags
-     */
     private String tags;
+
+    public Long getCustomerId() { return customerId; }
+    public void setCustomerId(Long customerId) { this.customerId = customerId; }
+
+    public String getInvoiceDate() { return invoiceDate; }
+    public void setInvoiceDate(String invoiceDate) { this.invoiceDate = invoiceDate; }
+
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+
+    public InvoiceRequest.Discount getInvoiceDiscount() { return invoiceDiscount; }
+    public void setInvoiceDiscount(InvoiceRequest.Discount invoiceDiscount) { this.invoiceDiscount = invoiceDiscount; }
+
+    public Boolean getPaid() { return paid; }
+    public void setPaid(Boolean paid) { this.paid = paid; }
+
+    public List<InvoiceRequestItem> getItems() { return items; }
+    public void setItems(List<InvoiceRequestItem> items) { this.items = items; }
+
+    public InvoiceStatus getStatus() { return status; }
+    public void setStatus(InvoiceStatus status) { this.status = status; }
+
+    public String getEstimateNumber() { return estimateNumber; }
+    public void setEstimateNumber(String estimateNumber) { this.estimateNumber = estimateNumber; }
+
+    public Long getConvertedInvoiceId() { return convertedInvoiceId; }
+    public void setConvertedInvoiceId(Long convertedInvoiceId) { this.convertedInvoiceId = convertedInvoiceId; }
+
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+
+    public String getCustomerNote() { return customerNote; }
+    public void setCustomerNote(String customerNote) { this.customerNote = customerNote; }
+
+    public String getTermsAndConditions() { return termsAndConditions; }
+    public void setTermsAndConditions(String termsAndConditions) { this.termsAndConditions = termsAndConditions; }
+
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+
+    public Boolean getRoundOff() { return roundOff; }
+    public void setRoundOff(Boolean roundOff) { this.roundOff = roundOff; }
+
+    public String getTags() { return tags; }
+    public void setTags(String tags) { this.tags = tags; }
 }

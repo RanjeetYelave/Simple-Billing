@@ -25,6 +25,8 @@ public interface PartyService {
 
     List<PartyFinancialSummary> getAllPartiesWithFinancialSummaries(Long firmId);
 
+    com.billing.simple.billsoft.dtos.PageResponse<PartyFinancialSummary> getPaginatedPartiesWithFinancialSummaries(Long firmId, org.springframework.data.domain.Pageable pageable);
+
     PartyPayment recordPayment(PartyPayment payment);
 
     List<PartyPayment> getPaymentsByParty(Long partyId, Long firmId);

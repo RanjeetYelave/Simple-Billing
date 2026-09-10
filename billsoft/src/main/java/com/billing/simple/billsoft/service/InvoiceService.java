@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,7 @@ import com.billing.simple.billsoft.entities.SalesReturnItem;
 import com.billing.simple.billsoft.dtos.SalesReturnRequest;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.CustomerRepository;
+import com.billing.simple.billsoft.repo.InvoiceItemRepository;
 import com.billing.simple.billsoft.repo.InvoicePaymentRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
@@ -49,6 +52,7 @@ import com.billing.simple.billsoft.repo.SalesReturnRepository;
 public class InvoiceService {
 
     private final InvoiceRepository invoiceRepo;
+    private final InvoiceItemRepository invoiceItemRepo;
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
     private final ProductService productService;
@@ -67,6 +71,7 @@ public class InvoiceService {
 
     public InvoiceService(
             InvoiceRepository invoiceRepo,
+            InvoiceItemRepository invoiceItemRepo,
             CustomerRepository customerRepo,
             ProductRepository productRepo,
             ProductService productService,
@@ -75,6 +80,7 @@ public class InvoiceService {
             SalesReturnRepository salesReturnRepo,
             SalesReturnItemRepository salesReturnItemRepo) {
         this.invoiceRepo = invoiceRepo;
+        this.invoiceItemRepo = invoiceItemRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.productService = productService;
@@ -86,9 +92,9 @@ public class InvoiceService {
     }
 
     // -------------------------
-    // Number generators (atomic monotonic max sequence)
+    // Number generators (atomic monotonic max sequence & read-only peek)
     // -------------------------
-    public synchronized String generateInvoiceNumber(Long firmId) {
+    public String peekNextInvoiceNumber(Long firmId) {
         String configKey = "LAST_INVOICE_SEQ_" + (firmId != null ? firmId : 0);
         long lastSeq = appConfigRepo.findById(configKey)
                 .map(AppConfig::getConfigValue)
@@ -101,8 +107,8 @@ public class InvoiceService {
                 })
                 .orElse(0L);
 
-        long dbMax = 0;
-        if (firmId != null) {
+        if (lastSeq == 0 && firmId != null) {
+            long dbMax = 0;
             List<String> numbers = invoiceRepo.findInvoiceNumbersByFirmId(firmId);
             if (numbers != null) {
                 for (String num : numbers) {
@@ -116,19 +122,37 @@ public class InvoiceService {
                     }
                 }
             }
+            lastSeq = dbMax;
+            if (lastSeq > 0) {
+                try {
+                    AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+                    cfg.setConfigKey(configKey);
+                    cfg.setConfigValue(String.valueOf(lastSeq));
+                    appConfigRepo.save(cfg);
+                } catch (Exception ignored) {
+                }
+            }
         }
 
-        long nextVal = Math.max(lastSeq, dbMax) + 1;
-
-        AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
-        cfg.setConfigKey(configKey);
-        cfg.setConfigValue(String.valueOf(nextVal));
-        appConfigRepo.save(cfg);
-
+        long nextVal = lastSeq + 1;
         return String.format("INV-%04d", nextVal);
     }
 
-    public synchronized String generateEstimateNumber(Long firmId) {
+    public synchronized String generateInvoiceNumber(Long firmId) {
+        String nextNo = peekNextInvoiceNumber(firmId);
+        try {
+            long nextVal = Long.parseLong(nextNo.substring(4));
+            String configKey = "LAST_INVOICE_SEQ_" + (firmId != null ? firmId : 0);
+            AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+            cfg.setConfigKey(configKey);
+            cfg.setConfigValue(String.valueOf(nextVal));
+            appConfigRepo.save(cfg);
+        } catch (Exception ignored) {
+        }
+        return nextNo;
+    }
+
+    public String peekNextEstimateNumber(Long firmId) {
         String configKey = "LAST_ESTIMATE_SEQ_" + (firmId != null ? firmId : 0);
         long lastSeq = appConfigRepo.findById(configKey)
                 .map(AppConfig::getConfigValue)
@@ -141,8 +165,8 @@ public class InvoiceService {
                 })
                 .orElse(0L);
 
-        long dbMax = 0;
-        if (firmId != null) {
+        if (lastSeq == 0 && firmId != null) {
+            long dbMax = 0;
             List<String> numbers = invoiceRepo.findEstimateNumbersByFirmId(firmId);
             if (numbers != null) {
                 for (String num : numbers) {
@@ -156,16 +180,55 @@ public class InvoiceService {
                     }
                 }
             }
+            lastSeq = dbMax;
+            if (lastSeq > 0) {
+                try {
+                    AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+                    cfg.setConfigKey(configKey);
+                    cfg.setConfigValue(String.valueOf(lastSeq));
+                    appConfigRepo.save(cfg);
+                } catch (Exception ignored) {
+                }
+            }
         }
 
-        long nextVal = Math.max(lastSeq, dbMax) + 1;
-
-        AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
-        cfg.setConfigKey(configKey);
-        cfg.setConfigValue(String.valueOf(nextVal));
-        appConfigRepo.save(cfg);
-
+        long nextVal = lastSeq + 1;
         return String.format("EST-%04d", nextVal);
+    }
+
+    public synchronized String generateEstimateNumber(Long firmId) {
+        String nextNo = peekNextEstimateNumber(firmId);
+        try {
+            long nextVal = Long.parseLong(nextNo.substring(4));
+            String configKey = "LAST_ESTIMATE_SEQ_" + (firmId != null ? firmId : 0);
+            AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+            cfg.setConfigKey(configKey);
+            cfg.setConfigValue(String.valueOf(nextVal));
+            appConfigRepo.save(cfg);
+        } catch (Exception ignored) {
+        }
+        return nextNo;
+    }
+
+    public void syncSequenceIfApplicable(Long firmId, String number, String prefix, String configKeyPrefix) {
+        if (number != null && number.trim().startsWith(prefix)) {
+            try {
+                long seq = Long.parseLong(number.trim().substring(prefix.length()).trim());
+                String configKey = configKeyPrefix + (firmId != null ? firmId : 0);
+                long currentSeq = appConfigRepo.findById(configKey)
+                        .map(AppConfig::getConfigValue)
+                        .map(v -> {
+                            try { return Long.parseLong(v); } catch (Exception e) { return 0L; }
+                        }).orElse(0L);
+                if (seq > currentSeq) {
+                    AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
+                    cfg.setConfigKey(configKey);
+                    cfg.setConfigValue(String.valueOf(seq));
+                    appConfigRepo.save(cfg);
+                }
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     // -------------------------
@@ -180,7 +243,12 @@ public class InvoiceService {
             try {
                 return LocalDateTime.parse(s + ":00");
             } catch (Exception e2) {
-                return null;
+                try {
+                    LocalDate ld = LocalDate.parse(s);
+                    return ld.atStartOfDay();
+                } catch (Exception e3) {
+                    return null;
+                }
             }
         }
     }
@@ -188,8 +256,195 @@ public class InvoiceService {
     // -------------------------
     // Helpers
     // -------------------------
-    private static BigDecimal nz(BigDecimal v) {
-        return v == null ? BigDecimal.ZERO.setScale(SCALE) : v.setScale(SCALE, RoundingMode.HALF_UP);
+    private void normalizeStatus(Invoice inv) {
+        if (inv.getStatus() == null) {
+            inv.setStatus(Boolean.TRUE.equals(inv.getPaid()) ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
+        }
+        if (Boolean.TRUE.equals(inv.getPaid()) && (inv.getStatus() == InvoiceStatus.UNPAID || inv.getStatus() == InvoiceStatus.OVERDUE || inv.getStatus() == InvoiceStatus.SENT)) {
+            inv.setStatus(InvoiceStatus.PAID);
+        }
+    }
+
+    private BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    @Transactional(readOnly = true)
+    public FirmAnalyticsResponse getFirmAnalytics() {
+        return getFirmAnalytics(com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId());
+    }
+
+    @Transactional(readOnly = true)
+    public FirmAnalyticsResponse getFirmAnalytics(Long firmId) {
+        Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm ID is required to generate firm analytics.");
+        }
+        List<InvoiceStatus> activeStatuses = List.of(InvoiceStatus.FINAL, InvoiceStatus.UNPAID,
+                InvoiceStatus.PAID, InvoiceStatus.OVERDUE, InvoiceStatus.SENT);
+        List<Invoice> all = invoiceRepo.findInvoicesWithCustomerForAnalytics(targetFirmId, activeStatuses);
+        List<Invoice> estimates = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(targetFirmId,
+                InvoiceStatus.ESTIMATE);
+        if (estimates != null) {
+            all.addAll(estimates);
+        }
+        LocalDate today = LocalDate.now();
+
+        BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
+        BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
+        BigDecimal totalPending = BigDecimal.ZERO.setScale(SCALE);
+
+        BigDecimal todayBusiness = BigDecimal.ZERO.setScale(SCALE);
+        BigDecimal weekBusiness = BigDecimal.ZERO.setScale(SCALE);
+        BigDecimal monthBusiness = BigDecimal.ZERO.setScale(SCALE);
+        BigDecimal yearBusiness = BigDecimal.ZERO.setScale(SCALE);
+
+        Map<Long, FirmAnalyticsResponse.TopCustomer> customerMap = new HashMap<>();
+
+        LocalDate weekStart = today.minusDays(6);
+
+        List<InvoicePayment> allFirmPayments = invoicePaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(targetFirmId);
+        Map<Long, BigDecimal> invoicePaymentMap = new HashMap<>();
+        for (InvoicePayment ip : allFirmPayments) {
+            if (ip.getInvoiceId() != null && ip.getAmount() != null) {
+                invoicePaymentMap.merge(ip.getInvoiceId(), ip.getAmount(), BigDecimal::add);
+            }
+        }
+
+        List<Object[]> returnAggs = salesReturnRepo.sumRefundTotalsByInvoiceForFirm(targetFirmId);
+        Map<Long, BigDecimal> invoiceReturnMap = new HashMap<>();
+        if (returnAggs != null) {
+            for (Object[] row : returnAggs) {
+                if (row[0] != null && row[1] != null) {
+                    invoiceReturnMap.put(((Number) row[0]).longValue(), (BigDecimal) row[1]);
+                }
+            }
+        }
+
+
+        long unpaidCount = 0;
+        long overdueCount = 0;
+        double quotePipelineVal = 0.0;
+        long quoteCnt = 0;
+
+        for (Invoice inv : all) {
+            normalizeStatus(inv);
+
+            BigDecimal rawAmt = nz(inv.getTotalAmount());
+            if (inv.getStatus() == InvoiceStatus.ESTIMATE) {
+                if (inv.getConvertedInvoiceId() == null) {
+                    quoteCnt++;
+                    quotePipelineVal += rawAmt.doubleValue();
+                }
+                continue;
+            }
+
+            BigDecimal returnedAmt = invoiceReturnMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            BigDecimal effectiveAmt = rawAmt.subtract(returnedAmt);
+            if (effectiveAmt.compareTo(BigDecimal.ZERO) < 0) effectiveAmt = BigDecimal.ZERO;
+
+            totalBusiness = totalBusiness.add(effectiveAmt);
+
+            BigDecimal paidForInv = invoicePaymentMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
+                paidForInv = effectiveAmt;
+            }
+            if (paidForInv.compareTo(effectiveAmt) > 0) {
+                paidForInv = effectiveAmt;
+            }
+
+            BigDecimal pendingForInv = effectiveAmt.subtract(paidForInv);
+            if (pendingForInv.compareTo(BigDecimal.ZERO) < 0) {
+                pendingForInv = BigDecimal.ZERO;
+            }
+
+            totalPaid = totalPaid.add(paidForInv);
+            totalPending = totalPending.add(pendingForInv);
+
+            InvoiceStatus st = inv.getStatus();
+            if (st == InvoiceStatus.UNPAID || st == InvoiceStatus.OVERDUE || st == InvoiceStatus.SENT || st == InvoiceStatus.DRAFT) {
+                unpaidCount++;
+            }
+            if (st == InvoiceStatus.OVERDUE || (inv.getDueDate() != null && inv.getDueDate().isBefore(today) && !Boolean.TRUE.equals(inv.getPaid()) && st != InvoiceStatus.CANCELLED)) {
+                overdueCount++;
+            }
+
+            LocalDate invDate = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate() : null;
+
+            if (invDate != null) {
+                if (invDate.isEqual(today))
+                    todayBusiness = todayBusiness.add(effectiveAmt);
+                if (!invDate.isBefore(weekStart))
+                    weekBusiness = weekBusiness.add(effectiveAmt);
+                if (invDate.getMonth() == today.getMonth() && invDate.getYear() == today.getYear())
+                    monthBusiness = monthBusiness.add(effectiveAmt);
+                if (invDate.getYear() == today.getYear())
+                    yearBusiness = yearBusiness.add(effectiveAmt);
+            }
+
+            Customer c = inv.getCustomer();
+            if (c != null) {
+                FirmAnalyticsResponse.TopCustomer agg = customerMap.computeIfAbsent(c.getId(), id -> {
+                    FirmAnalyticsResponse.TopCustomer t = new FirmAnalyticsResponse.TopCustomer();
+                    t.setCustomerId(c.getId());
+                    t.setCustomerName(c.getName());
+                    t.setTotalAmount(0.0);
+                    t.setPendingAmount(0.0);
+                    t.setInvoiceCount(0L);
+                    return t;
+                });
+
+                agg.setTotalAmount(agg.getTotalAmount() + effectiveAmt.doubleValue());
+                agg.setPendingAmount(agg.getPendingAmount() + pendingForInv.doubleValue());
+                agg.setInvoiceCount(agg.getInvoiceCount() + 1);
+            }
+        }
+
+        List<FirmAnalyticsResponse.TopCustomer> topCustomers = new ArrayList<>(customerMap.values());
+        topCustomers.sort((a, b) -> Double.compare(
+                b.getTotalAmount() != null ? b.getTotalAmount() : 0.0,
+                a.getTotalAmount() != null ? a.getTotalAmount() : 0.0));
+        if (topCustomers.size() > 5)
+            topCustomers = topCustomers.subList(0, 5);
+
+        // Fetch top products directly via aggregate SQL query
+        List<Object[]> productAggs = (firmId != null)
+                ? invoiceItemRepo.findTopProductsByFirmId(firmId, activeStatuses, PageRequest.of(0, 5))
+                : invoiceItemRepo.findTopProductsAll(activeStatuses, PageRequest.of(0, 5));
+
+        List<FirmAnalyticsResponse.TopProduct> topProducts = new ArrayList<>();
+        if (productAggs != null) {
+            for (Object[] row : productAggs) {
+                if (row != null && row.length >= 4 && row[0] != null) {
+                    FirmAnalyticsResponse.TopProduct p = new FirmAnalyticsResponse.TopProduct();
+                    p.setProductId(((Number) row[0]).longValue());
+                    p.setProductName(row[1] != null ? row[1].toString() : "Product");
+                    p.setTotalQty(row[2] != null ? ((Number) row[2]).longValue() : 0L);
+                    p.setTotalAmount(row[3] != null ? ((Number) row[3]).doubleValue() : 0.0);
+                    topProducts.add(p);
+                }
+            }
+        }
+
+        FirmAnalyticsResponse resp = new FirmAnalyticsResponse();
+        resp.setTotalBusiness(totalBusiness.doubleValue());
+        resp.setTotalPaid(totalPaid.doubleValue());
+        resp.setTotalPending(totalPending.doubleValue());
+
+        resp.setUnpaidInvoiceCount(unpaidCount);
+        resp.setOverdueInvoiceCount(overdueCount);
+        resp.setQuotePipelineValue(quotePipelineVal);
+        resp.setQuoteCount(quoteCnt);
+
+        resp.setBusinessToday(todayBusiness.doubleValue());
+        resp.setBusinessThisWeek(weekBusiness.doubleValue());
+        resp.setBusinessThisMonth(monthBusiness.doubleValue());
+        resp.setBusinessThisYear(yearBusiness.doubleValue());
+
+        resp.setTopCustomers(topCustomers);
+        resp.setTopProducts(topProducts);
+
+        return resp;
     }
 
     private List<Product> fetchProductsReferencedBy(InvoiceRequest req, InvoiceUpdateRequest uReq) {
@@ -214,14 +469,31 @@ public class InvoiceService {
         return list;
     }
 
+    private Customer resolveCustomerForFirm(Long requestedCustomerId, Long effectiveFirmId) {
+        if (requestedCustomerId == null) {
+            return null;
+        }
+        Customer customer = (effectiveFirmId != null)
+                ? customerRepo.findByIdAndFirmId(requestedCustomerId, effectiveFirmId).orElse(null)
+                : customerRepo.findById(requestedCustomerId).orElse(null);
+        if (customer != null) {
+            return customer;
+        }
+        throw new com.billing.simple.billsoft.security.TenantSecurityException("Customer not found or does not belong to firm: " + requestedCustomerId);
+    }
+
     // -------------------------
     // CREATE (persist)
     // -------------------------
     @Transactional(rollbackFor = Exception.class)
     public Invoice createInvoice(InvoiceRequest request) {
-        if (request.getFirmId() == null) {
-            throw new RuntimeException("firmId is required to create an invoice");
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long effectiveFirmId = currentFirmId != null ? currentFirmId : request.getFirmId();
+        if (effectiveFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("firmId is required to create an invoice");
         }
+        request.setFirmId(effectiveFirmId);
+
         if (request.getItems() == null) {
             request.setItems(Collections.emptyList());
         }
@@ -230,11 +502,10 @@ public class InvoiceService {
         validateInvoiceDiscount(request.getInvoiceDiscount());
         validateInvoiceItems(request.getItems());
 
-        // Load customer if provided
-        Customer customer = null;
-        if (request.getCustomerId() != null) {
-            customer = customerRepo.findById(request.getCustomerId())
-                    .orElseThrow(() -> new RuntimeException("Customer not found: " + request.getCustomerId()));
+        // Load customer if provided (resolve or replicate into target firm if switching firms)
+        Customer customer = resolveCustomerForFirm(request.getCustomerId(), effectiveFirmId);
+        if (customer != null) {
+            request.setCustomerId(customer.getId());
         }
 
         // Determine effective status
@@ -253,7 +524,7 @@ public class InvoiceService {
         }
 
         Invoice invoice = new Invoice();
-        invoice.setFirmId(request.getFirmId());
+        invoice.setFirmId(effectiveFirmId);
         invoice.setPaid(status == InvoiceStatus.PAID);
 
         // identifiers (Option B behaviour)
@@ -262,7 +533,7 @@ public class InvoiceService {
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 invoice.setEstimateNumber(request.getEstimateNumber());
             } else {
-                invoice.setEstimateNumber(generateEstimateNumber(request.getFirmId()));
+                invoice.setEstimateNumber(generateEstimateNumber(effectiveFirmId));
                 request.setEstimateNumber(invoice.getEstimateNumber()); // keep dto consistent
             }
             invoice.setInvoiceNumber(null);
@@ -270,7 +541,7 @@ public class InvoiceService {
             // Final/invoice: MUST have invoiceNumber, estimateNumber optional
             String invNo = request.getInvoiceNumber();
             if (invNo == null || invNo.isBlank()) {
-                invNo = generateInvoiceNumber(request.getFirmId());
+                invNo = generateInvoiceNumber(effectiveFirmId);
                 request.setInvoiceNumber(invNo);
             }
             invoice.setInvoiceNumber(invNo);
@@ -284,6 +555,11 @@ public class InvoiceService {
 
         // fetch product data once
         List<Product> products = fetchProductsReferencedBy(request, null);
+        for (Product p : products) {
+            if (p.getFirmId() != null && !p.getFirmId().equals(effectiveFirmId)) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Product " + p.getName() + " (ID " + p.getId() + ") belongs to a different firm.");
+            }
+        }
 
         // delegate calculations to engine (isUpdateMode=false)
         Invoice calculated = engine.calculate(invoice, customer, products, request, false);
@@ -296,12 +572,22 @@ public class InvoiceService {
         }
         Invoice saved = invoiceRepo.save(calculated);
 
+        if (saved.getInvoiceNumber() != null) {
+            syncSequenceIfApplicable(saved.getFirmId(), saved.getInvoiceNumber(), "INV-", "LAST_INVOICE_SEQ_");
+        }
+        if (saved.getEstimateNumber() != null) {
+            syncSequenceIfApplicable(saved.getFirmId(), saved.getEstimateNumber(), "EST-", "LAST_ESTIMATE_SEQ_");
+        }
+
         // If this invoice is converted from a quotation/estimate, link the quotation
         if (request.getConvertedInvoiceId() != null) {
-            invoiceRepo.findById(request.getConvertedInvoiceId()).ifPresent(estimate -> {
-                estimate.setConvertedInvoiceId(saved.getId());
-                invoiceRepo.save(estimate);
-            });
+            Invoice linkedEstimate = invoiceRepo.findByIdAndFirmId(request.getConvertedInvoiceId(), effectiveFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Converted quotation not found for firm: " + request.getConvertedInvoiceId()));
+            if (linkedEstimate.getConvertedInvoiceId() != null && !linkedEstimate.getConvertedInvoiceId().equals(saved.getId())) {
+                throw new RuntimeException("This quotation has already been converted to invoice #" + linkedEstimate.getConvertedInvoiceId());
+            }
+            linkedEstimate.setConvertedInvoiceId(saved.getId());
+            invoiceRepo.save(linkedEstimate);
         }
 
         // Deduct inventory stock for finalized sales invoices (skip for DRAFT,
@@ -327,6 +613,7 @@ public class InvoiceService {
 
         return saved;
     }
+
 
     // convenience: create estimate
     @Transactional(rollbackFor = Exception.class)
@@ -368,7 +655,7 @@ public class InvoiceService {
         if (status == InvoiceStatus.ESTIMATE) {
             String estNo = request.getEstimateNumber();
             if (estNo == null || estNo.isBlank()) {
-                estNo = generateEstimateNumber(firmId);
+                estNo = peekNextEstimateNumber(firmId);
                 request.setEstimateNumber(estNo);
             }
             invoice.setEstimateNumber(estNo);
@@ -376,7 +663,7 @@ public class InvoiceService {
         } else {
             String invNo = request.getInvoiceNumber();
             if (invNo == null || invNo.isBlank()) {
-                invNo = generateInvoiceNumber(firmId);
+                invNo = peekNextInvoiceNumber(firmId);
                 request.setInvoiceNumber(invNo);
             }
             invoice.setInvoiceNumber(invNo);
@@ -404,13 +691,17 @@ public class InvoiceService {
     }
 
     public List<Invoice> getAll() {
-        List<Invoice> all = invoiceRepo.findAll();
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        List<Invoice> all = (currentFirmId != null)
+                ? invoiceRepo.findByFirmId(currentFirmId)
+                : invoiceRepo.findAll();
         all.forEach(this::normalizeStatus);
         return all;
     }
 
     public Invoice getById(Long id) {
-        Invoice inv = invoiceRepo.findById(id).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice inv = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id)).orElse(null);
         if (inv == null)
             return null;
         normalizeStatus(inv);
@@ -419,7 +710,8 @@ public class InvoiceService {
 
     @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
-        Invoice inv = invoiceRepo.findById(id).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice inv = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id)).orElse(null);
         if (inv == null)
             return false;
         // Prevent deleting an estimate that has already been converted to an invoice
@@ -428,20 +720,33 @@ public class InvoiceService {
                     + inv.getConvertedInvoiceId());
         }
 
-        // Restore inventory stock if an invoice is deleted
-        if (inv.getStatus() != InvoiceStatus.ESTIMATE && inv.getItems() != null) {
+        // Restore inventory stock if an invoice is deleted (subtracting any quantities already returned)
+        if (inv.getStatus() != InvoiceStatus.ESTIMATE && inv.getStatus() != InvoiceStatus.CANCELLED && inv.getItems() != null) {
+            Map<Long, Integer> returnedQtyByItemId = new HashMap<>();
+            List<Object[]> returnQtyAggs = salesReturnItemRepo.sumReturnedQtyByInvoiceItemIdForInvoice(id);
+            if (returnQtyAggs != null) {
+                for (Object[] row : returnQtyAggs) {
+                    if (row[0] != null && row[1] != null) {
+                        returnedQtyByItemId.put(((Number) row[0]).longValue(), ((Number) row[1]).intValue());
+                    }
+                }
+            }
             for (InvoiceItem it : inv.getItems()) {
                 if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null
                         && it.getQty() > 0) {
-                    BigDecimal qty = new BigDecimal(it.getQty());
-                    productService.recordStockMovement(
-                            it.getProduct().getId(),
-                            inv.getFirmId(),
-                            "INVOICE_CANCELLED",
-                            qty,
-                            "INVOICE",
-                            inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : String.valueOf(inv.getId()),
-                            "Invoice deleted / cancelled - stock restored");
+                    int alreadyReturned = returnedQtyByItemId.getOrDefault(it.getId(), 0);
+                    int restorableQty = Math.max(0, it.getQty() - alreadyReturned);
+                    if (restorableQty > 0) {
+                        BigDecimal qty = new BigDecimal(restorableQty);
+                        productService.recordStockMovement(
+                                it.getProduct().getId(),
+                                inv.getFirmId(),
+                                "INVOICE_CANCELLED",
+                                qty,
+                                "INVOICE",
+                                inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : String.valueOf(inv.getId()),
+                                "Invoice deleted - stock restored (" + restorableQty + " of " + it.getQty() + " unreturned items)");
+                    }
                 }
             }
         }
@@ -456,7 +761,9 @@ public class InvoiceService {
     // -------------------------
     @Transactional(rollbackFor = Exception.class)
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
-        Invoice existing = invoiceRepo.findById(id).orElseThrow(() -> new RuntimeException("Invoice not found"));
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice existing = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id))
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Invoice not found in firm: " + id));
 
         // Nullify foreign key references in sales_return_items before items are
         // replaced or deleted
@@ -470,6 +777,7 @@ public class InvoiceService {
         engineReq.setCustomerId(req.getCustomerId());
         engineReq.setInvoiceDate(req.getInvoiceDate());
         engineReq.setCustomerNote(req.getCustomerNote() != null ? req.getCustomerNote() : req.getNotes());
+
         engineReq.setTermsAndConditions(req.getTermsAndConditions());
         engineReq.setPaymentMethod(req.getPaymentMethod());
         engineReq.setCurrency(req.getCurrency());
@@ -484,7 +792,7 @@ public class InvoiceService {
 
         // Resolve customer
         Customer cust = (req.getCustomerId() != null)
-                ? customerRepo.findById(req.getCustomerId()).orElse(existing.getCustomer())
+                ? resolveCustomerForFirm(req.getCustomerId(), existing.getFirmId())
                 : existing.getCustomer();
 
         // Parse and set date if provided
@@ -530,6 +838,8 @@ public class InvoiceService {
             List<InvoiceRequestItem> items = existing.getItems().stream().map(it -> {
                 InvoiceRequestItem ri = new InvoiceRequestItem();
                 ri.setProductId(it.getProduct() != null ? it.getProduct().getId() : null);
+                ri.setProductName(it.getProductName());
+                ri.setHsnCode(it.getHsnCode());
                 ri.setQty(it.getQty());
                 ri.setUnit(it.getUnit());
                 ri.setPricePerUnit(it.getPricePerUnit());
@@ -548,9 +858,10 @@ public class InvoiceService {
     // -------------------------
     // Update paid flag
     // -------------------------
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice updatePaidFlag(Long id, boolean paid) {
-        Invoice i = invoiceRepo.findById(id).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice i = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id)).orElse(null);
         if (i == null)
             return null;
         i.setPaid(paid);
@@ -565,32 +876,48 @@ public class InvoiceService {
         return invoiceRepo.save(i);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice updateStatus(Long id, InvoiceStatus newStatus) {
-        Invoice i = invoiceRepo.findById(id).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice i = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id)).orElse(null);
         if (i == null)
             return null;
         InvoiceStatus oldStatus = i.getStatus();
         if (oldStatus == newStatus)
             return i;
 
-        // If cancelling an active invoice, restore stock to inventory
+
+        // If cancelling an active invoice, restore stock to inventory (subtracting any quantities already returned)
         if (newStatus == InvoiceStatus.CANCELLED) {
             if (oldStatus != InvoiceStatus.CANCELLED && oldStatus != InvoiceStatus.DRAFT
                     && oldStatus != InvoiceStatus.ESTIMATE && i.getItems() != null) {
+                Map<Long, Integer> returnedQtyByItemId = new HashMap<>();
+                List<Object[]> returnQtyAggs = salesReturnItemRepo.sumReturnedQtyByInvoiceItemIdForInvoice(i.getId());
+                if (returnQtyAggs != null) {
+                    for (Object[] row : returnQtyAggs) {
+                        if (row[0] != null && row[1] != null) {
+                            returnedQtyByItemId.put(((Number) row[0]).longValue(), ((Number) row[1]).intValue());
+                        }
+                    }
+                }
                 for (InvoiceItem it : i.getItems()) {
                     if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null
                             && it.getQty() > 0) {
-                        BigDecimal qty = new BigDecimal(it.getQty());
-                        productService.recordStockMovement(
-                                it.getProduct().getId(),
-                                i.getFirmId(),
-                                "INVOICE_CANCELLED",
-                                qty,
-                                "INVOICE",
-                                i.getInvoiceNumber() != null ? i.getInvoiceNumber() : String.valueOf(i.getId()),
-                                "Invoice cancelled - stock restored for "
-                                        + (i.getCustomer() != null ? i.getCustomer().getName() : "Customer"));
+                        int alreadyReturned = returnedQtyByItemId.getOrDefault(it.getId(), 0);
+                        int restorableQty = Math.max(0, it.getQty() - alreadyReturned);
+                        if (restorableQty > 0) {
+                            BigDecimal qty = new BigDecimal(restorableQty);
+                            productService.recordStockMovement(
+                                    it.getProduct().getId(),
+                                    i.getFirmId(),
+                                    "INVOICE_CANCELLED",
+                                    qty,
+                                    "INVOICE",
+                                    i.getInvoiceNumber() != null ? i.getInvoiceNumber() : String.valueOf(i.getId()),
+                                    "Invoice cancelled - stock restored for "
+                                            + (i.getCustomer() != null ? i.getCustomer().getName() : "Customer")
+                                            + " (" + restorableQty + " of " + it.getQty() + " unreturned items)");
+                        }
                     }
                 }
             }
@@ -626,18 +953,46 @@ public class InvoiceService {
         return invoiceRepo.save(i);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice convertEstimateToInvoice(Long estimateId, InvoiceRequest overrideRequest) {
-        Invoice estimate = invoiceRepo.findById(estimateId).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice estimate = (currentFirmId != null)
+                ? invoiceRepo.findByIdAndFirmId(estimateId, currentFirmId).orElse(null)
+                : invoiceRepo.findById(estimateId).orElse(null);
+
         if (estimate == null)
-            throw new RuntimeException("Estimate not found: " + estimateId);
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Estimate not found: " + estimateId);
+
+        if (currentFirmId != null && !currentFirmId.equals(estimate.getFirmId())) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm quotation conversion is strictly prohibited.");
+        }
 
         if (estimate.getStatus() != InvoiceStatus.ESTIMATE && estimate.getStatus() != InvoiceStatus.DRAFT)
             throw new RuntimeException("Only estimates/drafts can be converted");
 
+        if (estimate.getConvertedInvoiceId() != null) {
+            throw new RuntimeException("This quotation has already been converted to invoice #" + estimate.getConvertedInvoiceId());
+        }
+
+        // Validate that customer and items belong to the authorized firm
+        Long firmId = estimate.getFirmId();
+        if (estimate.getCustomer() != null && estimate.getCustomer().getFirmId() != null) {
+            if (!estimate.getCustomer().getFirmId().equals(firmId)) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Quotation customer belongs to a different firm.");
+            }
+        }
+        if (estimate.getItems() != null) {
+            for (InvoiceItem it : estimate.getItems()) {
+                if (it.getProduct() != null && it.getProduct().getFirmId() != null && !it.getProduct().getFirmId().equals(firmId)) {
+                    throw new com.billing.simple.billsoft.security.TenantSecurityException("Quotation product (ID " + it.getProduct().getId() + ") belongs to a different firm.");
+                }
+            }
+        }
+
         // Validate invoice-level discount on override request (if present)
         if (overrideRequest != null) {
             validateInvoiceDiscount(overrideRequest.getInvoiceDiscount());
+            overrideRequest.setFirmId(firmId);
         }
 
         // Base clone of estimate → new invoice
@@ -649,11 +1004,12 @@ public class InvoiceService {
         newInv.setCurrency(estimate.getCurrency());
         newInv.setTags(estimate.getTags());
 
-        newInv.setFirmId(estimate.getFirmId());
-        newInv.setInvoiceNumber(generateInvoiceNumber(estimate.getFirmId()));
-        newInv.setStatus(InvoiceStatus.FINAL);
+        boolean isPaid = overrideRequest != null && Boolean.TRUE.equals(overrideRequest.getPaid());
+        newInv.setFirmId(firmId);
+        newInv.setInvoiceNumber(generateInvoiceNumber(firmId));
+        newInv.setStatus(isPaid ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
         newInv.setInvoiceDate(LocalDateTime.now());
-        newInv.setPaid(false);
+        newInv.setPaid(isPaid);
 
         if (estimate.getDueDate() != null) {
             newInv.setDueDate(estimate.getDueDate());
@@ -663,12 +1019,22 @@ public class InvoiceService {
 
         // Case 1: overrideRequest has items -> use override completely
         if (overrideRequest != null && overrideRequest.getItems() != null && !overrideRequest.getItems().isEmpty()) {
-            overrideRequest.setStatus(InvoiceStatus.FINAL);
+            overrideRequest.setStatus(isPaid ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
+            overrideRequest.setPaid(isPaid);
             overrideRequest.setInvoiceNumber(newInv.getInvoiceNumber());
             overrideRequest.setEstimateNumber(null);
+            overrideRequest.setFirmId(firmId);
 
             List<Product> products = fetchProductsReferencedBy(overrideRequest, null);
+            for (Product p : products) {
+                if (p.getFirmId() != null && !p.getFirmId().equals(firmId)) {
+                    throw new com.billing.simple.billsoft.security.TenantSecurityException("Override product " + p.getName() + " belongs to a different firm.");
+                }
+            }
+
             Invoice calculated = engine.calculate(newInv, newInv.getCustomer(), products, overrideRequest, false);
+            calculated.setStatus(isPaid ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
+            calculated.setPaid(isPaid);
 
             Invoice saved = invoiceRepo.save(calculated);
             estimate.setConvertedInvoiceId(saved.getId());
@@ -709,6 +1075,7 @@ public class InvoiceService {
             for (InvoiceItem it : estimate.getItems()) {
                 InvoiceItem ni = new InvoiceItem();
                 ni.setProduct(it.getProduct());
+                ni.setProductName(it.getProductName());
                 ni.setQty(it.getQty());
                 ni.setUnit(it.getUnit());
                 ni.setHsnCode(it.getHsnCode());
@@ -729,11 +1096,19 @@ public class InvoiceService {
 
         // Build a request from the (now overridden) newInv
         InvoiceRequest req = buildInvoiceRequestFromExistingInvoice(newInv);
-        req.setStatus(InvoiceStatus.FINAL);
+        req.setStatus(isPaid ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
+        req.setPaid(isPaid);
         req.setInvoiceNumber(newInv.getInvoiceNumber());
         req.setEstimateNumber(null);
+        req.setFirmId(firmId);
 
         List<Product> products = fetchProductsReferencedBy(req, null);
+        for (Product p : products) {
+            if (p.getFirmId() != null && !p.getFirmId().equals(firmId)) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Product " + p.getName() + " belongs to a different firm.");
+            }
+        }
+
         Invoice calculated = engine.calculate(newInv, newInv.getCustomer(), products, req, true);
 
         Invoice saved = invoiceRepo.save(calculated);
@@ -745,6 +1120,7 @@ public class InvoiceService {
 
         return saved;
     }
+
 
     private void deductInventoryStockForInvoice(Invoice invoice) {
         if (invoice != null && invoice.getStatus() != InvoiceStatus.ESTIMATE && invoice.getItems() != null) {
@@ -792,6 +1168,14 @@ public class InvoiceService {
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
 
+        List<SalesReturn> custReturns = salesReturnRepo.findByCustomerIdOrderByReturnDateDesc(customerId);
+        Map<Long, BigDecimal> custInvoiceReturnMap = new HashMap<>();
+        for (SalesReturn sr : custReturns) {
+            if (sr.getInvoice() != null && sr.getTotalRefundAmount() != null) {
+                custInvoiceReturnMap.merge(sr.getInvoice().getId(), sr.getTotalRefundAmount(), BigDecimal::add);
+            }
+        }
+
         List<InvoicePayment> allCustPayments = invoicePaymentRepo
                 .findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
         Map<Long, BigDecimal> custInvoicePaymentMap = new HashMap<>();
@@ -802,15 +1186,19 @@ public class InvoiceService {
         }
 
         for (Invoice inv : invoices) {
-            BigDecimal invAmt = nz(inv.getTotalAmount());
-            totalBusiness = totalBusiness.add(invAmt);
+            BigDecimal rawAmt = nz(inv.getTotalAmount());
+            BigDecimal retAmt = custInvoiceReturnMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            BigDecimal effectiveAmt = rawAmt.subtract(retAmt);
+            if (effectiveAmt.compareTo(BigDecimal.ZERO) < 0) effectiveAmt = BigDecimal.ZERO;
+
+            totalBusiness = totalBusiness.add(effectiveAmt);
 
             BigDecimal paidForInv = custInvoicePaymentMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
             if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
-                paidForInv = invAmt;
+                paidForInv = effectiveAmt;
             }
-            if (paidForInv.compareTo(invAmt) > 0) {
-                paidForInv = invAmt;
+            if (paidForInv.compareTo(effectiveAmt) > 0) {
+                paidForInv = effectiveAmt;
             }
             totalPaid = totalPaid.add(paidForInv);
         }
@@ -859,160 +1247,6 @@ public class InvoiceService {
         return list;
     }
 
-    @Transactional(readOnly = true)
-    public FirmAnalyticsResponse getFirmAnalytics() {
-        return getFirmAnalytics(null);
-    }
-
-    @Transactional(readOnly = true)
-    public FirmAnalyticsResponse getFirmAnalytics(Long firmId) {
-        List<Invoice> all;
-        if (firmId != null) {
-            all = invoiceRepo.findAllByFirmIdAndStatusIn(firmId, List.of(InvoiceStatus.FINAL, InvoiceStatus.UNPAID,
-                    InvoiceStatus.PAID, InvoiceStatus.OVERDUE, InvoiceStatus.SENT));
-            // Also include estimates that may have become invoices
-            List<Invoice> estimates = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId,
-                    InvoiceStatus.ESTIMATE);
-            if (estimates != null)
-                all.addAll(estimates);
-        } else {
-            all = invoiceRepo.findAll();
-        }
-        LocalDate today = LocalDate.now();
-
-        BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
-        BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
-        BigDecimal totalPending = BigDecimal.ZERO.setScale(SCALE);
-
-        BigDecimal todayBusiness = BigDecimal.ZERO.setScale(SCALE);
-        BigDecimal weekBusiness = BigDecimal.ZERO.setScale(SCALE);
-        BigDecimal monthBusiness = BigDecimal.ZERO.setScale(SCALE);
-        BigDecimal yearBusiness = BigDecimal.ZERO.setScale(SCALE);
-
-        Map<Long, FirmAnalyticsResponse.TopCustomer> customerMap = new HashMap<>();
-        Map<Long, FirmAnalyticsResponse.TopProduct> productMap = new HashMap<>();
-
-        LocalDate weekStart = today.minusDays(6);
-
-        List<InvoicePayment> allFirmPayments = (firmId != null)
-                ? invoicePaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId)
-                : invoicePaymentRepo.findAll();
-        Map<Long, BigDecimal> invoicePaymentMap = new HashMap<>();
-        for (InvoicePayment ip : allFirmPayments) {
-            if (ip.getInvoiceId() != null && ip.getAmount() != null) {
-                invoicePaymentMap.merge(ip.getInvoiceId(), ip.getAmount(), BigDecimal::add);
-            }
-        }
-
-        for (Invoice inv : all) {
-            normalizeStatus(inv);
-
-            BigDecimal amt = nz(inv.getTotalAmount());
-            totalBusiness = totalBusiness.add(amt);
-
-            BigDecimal paidForInv = invoicePaymentMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
-            if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
-                paidForInv = amt;
-            }
-            if (paidForInv.compareTo(amt) > 0) {
-                paidForInv = amt;
-            }
-
-            BigDecimal pendingForInv = amt.subtract(paidForInv);
-            if (pendingForInv.compareTo(BigDecimal.ZERO) < 0) {
-                pendingForInv = BigDecimal.ZERO;
-            }
-
-            totalPaid = totalPaid.add(paidForInv);
-            totalPending = totalPending.add(pendingForInv);
-
-            LocalDate invDate = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate() : null;
-
-            if (invDate != null) {
-                if (invDate.isEqual(today))
-                    todayBusiness = todayBusiness.add(amt);
-                if (!invDate.isBefore(weekStart))
-                    weekBusiness = weekBusiness.add(amt);
-                if (invDate.getMonth() == today.getMonth() && invDate.getYear() == today.getYear())
-                    monthBusiness = monthBusiness.add(amt);
-                if (invDate.getYear() == today.getYear())
-                    yearBusiness = yearBusiness.add(amt);
-            }
-
-            Customer c = inv.getCustomer();
-            if (c != null) {
-                FirmAnalyticsResponse.TopCustomer agg = customerMap.computeIfAbsent(c.getId(), id -> {
-                    FirmAnalyticsResponse.TopCustomer t = new FirmAnalyticsResponse.TopCustomer();
-                    t.setCustomerId(c.getId());
-                    t.setCustomerName(c.getName());
-                    t.setTotalAmount(0.0);
-                    t.setPendingAmount(0.0);
-                    t.setInvoiceCount(0L);
-                    return t;
-                });
-
-                agg.setTotalAmount(agg.getTotalAmount() + amt.doubleValue());
-                agg.setPendingAmount(agg.getPendingAmount() + pendingForInv.doubleValue());
-                agg.setInvoiceCount(agg.getInvoiceCount() + 1);
-            }
-
-            if (inv.getItems() != null) {
-                for (InvoiceItem item : inv.getItems()) {
-                    Product p = item.getProduct();
-                    if (p == null)
-                        continue;
-                    Long pid = p.getId();
-                    if (pid == null)
-                        continue;
-
-                    FirmAnalyticsResponse.TopProduct pAgg = productMap.computeIfAbsent(pid, id -> {
-                        FirmAnalyticsResponse.TopProduct t = new FirmAnalyticsResponse.TopProduct();
-                        t.setProductId(p.getId());
-                        t.setProductName(p.getName());
-                        t.setTotalQty(0L);
-                        t.setTotalAmount(0.0);
-                        return t;
-                    });
-
-                    long qty = item.getQty() != null ? item.getQty() : 0;
-                    double lineAmt = item.getLineTotal() != null ? item.getLineTotal().doubleValue() : 0.0;
-
-                    pAgg.setTotalQty(pAgg.getTotalQty() + qty);
-                    pAgg.setTotalAmount(pAgg.getTotalAmount() + lineAmt);
-                }
-            }
-        }
-
-        List<FirmAnalyticsResponse.TopCustomer> topCustomers = new ArrayList<>(customerMap.values());
-        topCustomers.sort((a, b) -> Double.compare(
-                b.getTotalAmount() != null ? b.getTotalAmount() : 0.0,
-                a.getTotalAmount() != null ? a.getTotalAmount() : 0.0));
-        if (topCustomers.size() > 5)
-            topCustomers = topCustomers.subList(0, 5);
-
-        List<FirmAnalyticsResponse.TopProduct> topProducts = new ArrayList<>(productMap.values());
-        topProducts.sort((a, b) -> Long.compare(
-                b.getTotalQty() != null ? b.getTotalQty() : 0L,
-                a.getTotalQty() != null ? a.getTotalQty() : 0L));
-        if (topProducts.size() > 5)
-            topProducts = topProducts.subList(0, 5);
-
-        FirmAnalyticsResponse resp = new FirmAnalyticsResponse();
-        resp.setTotalBusiness(totalBusiness.doubleValue());
-        resp.setTotalPaid(totalPaid.doubleValue());
-        resp.setTotalPending(totalPending.doubleValue());
-
-        resp.setBusinessToday(todayBusiness.doubleValue());
-        resp.setBusinessThisWeek(weekBusiness.doubleValue());
-        resp.setBusinessThisMonth(monthBusiness.doubleValue());
-        resp.setBusinessThisYear(yearBusiness.doubleValue());
-
-        resp.setTopCustomers(topCustomers);
-        resp.setTopProducts(topProducts);
-
-        return resp;
-    }
-
     public Map<String, Double> getFirmStats() {
         List<Invoice> all = invoiceRepo.findAll();
         LocalDate today = LocalDate.now();
@@ -1034,18 +1268,35 @@ public class InvoiceService {
             }
         }
 
+        List<Object[]> returnAggs = salesReturnRepo.sumRefundTotalsByInvoice();
+        Map<Long, BigDecimal> invoiceReturnMap = new HashMap<>();
+        if (returnAggs != null) {
+            for (Object[] row : returnAggs) {
+                if (row[0] != null && row[1] != null) {
+                    invoiceReturnMap.put(((Number) row[0]).longValue(), (BigDecimal) row[1]);
+                }
+            }
+        }
+
         for (Invoice i : all) {
-            BigDecimal amt = nz(i.getTotalAmount());
-            totalBusiness = totalBusiness.add(amt);
+            BigDecimal rawAmt = nz(i.getTotalAmount());
+            if (i.getStatus() == InvoiceStatus.ESTIMATE || i.getStatus() == InvoiceStatus.CANCELLED) {
+                continue;
+            }
+            BigDecimal returnedAmt = invoiceReturnMap.getOrDefault(i.getId(), BigDecimal.ZERO);
+            BigDecimal effectiveAmt = rawAmt.subtract(returnedAmt);
+            if (effectiveAmt.compareTo(BigDecimal.ZERO) < 0) effectiveAmt = BigDecimal.ZERO;
+
+            totalBusiness = totalBusiness.add(effectiveAmt);
 
             BigDecimal paidForInv = invoicePaymentMap.getOrDefault(i.getId(), BigDecimal.ZERO);
             if (paidForInv.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(i.getPaid())) {
-                paidForInv = amt;
+                paidForInv = effectiveAmt;
             }
-            if (paidForInv.compareTo(amt) > 0) {
-                paidForInv = amt;
+            if (paidForInv.compareTo(effectiveAmt) > 0) {
+                paidForInv = effectiveAmt;
             }
-            BigDecimal pendingForInv = amt.subtract(paidForInv);
+            BigDecimal pendingForInv = effectiveAmt.subtract(paidForInv);
             if (pendingForInv.compareTo(BigDecimal.ZERO) < 0) {
                 pendingForInv = BigDecimal.ZERO;
             }
@@ -1056,13 +1307,13 @@ public class InvoiceService {
             if (i.getInvoiceDate() != null) {
                 LocalDate d = i.getInvoiceDate().toLocalDate();
                 if (d.isEqual(today))
-                    todayBusiness = todayBusiness.add(amt);
+                    todayBusiness = todayBusiness.add(effectiveAmt);
                 if (!d.isBefore(today.minusDays(6)))
-                    weekBusiness = weekBusiness.add(amt);
+                    weekBusiness = weekBusiness.add(effectiveAmt);
                 if (d.getMonth() == today.getMonth() && d.getYear() == today.getYear())
-                    monthBusiness = monthBusiness.add(amt);
+                    monthBusiness = monthBusiness.add(effectiveAmt);
                 if (d.getYear() == today.getYear())
-                    yearBusiness = yearBusiness.add(amt);
+                    yearBusiness = yearBusiness.add(effectiveAmt);
             }
         }
 
@@ -1079,88 +1330,72 @@ public class InvoiceService {
     }
 
     // -------------------------
-    // Normalize status helper
-    // -------------------------
-    private void normalizeStatus(Invoice inv) {
-        if (inv == null)
-            return;
-
-        if (inv.getStatus() == InvoiceStatus.CANCELLED || inv.getStatus() == InvoiceStatus.DRAFT
-                || inv.getStatus() == InvoiceStatus.ESTIMATE) {
-            return;
-        }
-
-        if (Boolean.TRUE.equals(inv.getPaid())) {
-            inv.setStatus(InvoiceStatus.PAID);
-            return;
-        }
-
-        if (inv.getDueDate() != null && !Boolean.TRUE.equals(inv.getPaid())) {
-            if (inv.getDueDate().isBefore(LocalDate.now())) {
-                inv.setStatus(InvoiceStatus.OVERDUE);
-                return;
-            }
-        }
-
-        if (inv.getStatus() == null || inv.getStatus() == InvoiceStatus.FINAL) {
-            inv.setStatus(InvoiceStatus.UNPAID);
-        }
-    }
-
-    // -------------------------
     // Paginated lists
     // -------------------------
-    public List<Invoice> getAll(Long firmId, Pageable pageable) {
-        if (firmId != null) {
-            return invoiceRepo.findByFirmId(firmId, pageable).getContent();
+    public Page<Invoice> getPaginated(Long firmId, Pageable pageable) {
+        Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId != null) {
+            return invoiceRepo.findByFirmId(targetFirmId, pageable);
         }
-        return invoiceRepo.findAll(pageable).getContent();
+        return Page.empty(pageable);
+    }
+
+    public Page<Invoice> getPaginatedEstimates(Long firmId, Pageable pageable) {
+        Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId != null) {
+            return invoiceRepo.findByFirmIdAndStatus(targetFirmId, InvoiceStatus.ESTIMATE, pageable);
+        }
+        return Page.empty(pageable);
+    }
+
+    public Page<Invoice> getPaginatedFinalInvoices(Long firmId, Pageable pageable) {
+        Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId != null) {
+            return invoiceRepo
+                    .findByFirmIdAndStatusIn(targetFirmId,
+                            List.of(InvoiceStatus.FINAL, InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.DRAFT,
+                                    InvoiceStatus.CANCELLED, InvoiceStatus.OVERDUE, InvoiceStatus.SENT),
+                            pageable);
+        }
+        return Page.empty(pageable);
+    }
+
+    public List<Invoice> getAll(Long firmId, Pageable pageable) {
+        return getPaginated(firmId, pageable).getContent();
     }
 
     public List<Invoice> getAllEstimates(Long firmId, Pageable pageable) {
-        if (firmId != null) {
-            return invoiceRepo.findByFirmIdAndStatus(firmId, InvoiceStatus.ESTIMATE, pageable).getContent();
-        }
-        return invoiceRepo.findAll(pageable).getContent();
+        return getPaginatedEstimates(firmId, pageable).getContent();
     }
 
     public List<Invoice> getAllFinalInvoices(Long firmId, Pageable pageable) {
-        if (firmId != null) {
-            return invoiceRepo
-                    .findByFirmIdAndStatusIn(firmId,
-                            List.of(InvoiceStatus.FINAL, InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.DRAFT,
-                                    InvoiceStatus.CANCELLED, InvoiceStatus.OVERDUE, InvoiceStatus.SENT),
-                            pageable)
-                    .getContent();
-        }
-        return invoiceRepo.findAll(pageable).getContent();
+        return getPaginatedFinalInvoices(firmId, pageable).getContent();
     }
 
     // -------------------------
     // Convenience lists
     // -------------------------
     public List<Invoice> getAllEstimates(Long firmId) {
+        Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         List<Invoice> list;
-        if (firmId != null) {
-            list = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateAsc(firmId, InvoiceStatus.ESTIMATE);
+        if (targetFirmId != null) {
+            list = invoiceRepo.findAllByFirmIdAndStatusOrderByInvoiceDateDesc(targetFirmId, InvoiceStatus.ESTIMATE);
         } else {
-            list = invoiceRepo.findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus.ESTIMATE);
+            list = java.util.Collections.emptyList();
         }
         list.forEach(this::normalizeStatus);
         return list;
     }
 
     public List<Invoice> getAllFinalInvoices(Long firmId) {
+        Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         List<Invoice> list;
-        if (firmId != null) {
-            list = invoiceRepo.findAllByFirmIdAndStatusInOrderByInvoiceDateDesc(firmId,
+        if (targetFirmId != null) {
+            list = invoiceRepo.findAllByFirmIdAndStatusInOrderByInvoiceDateDesc(targetFirmId,
                     List.of(InvoiceStatus.FINAL, InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.DRAFT,
                             InvoiceStatus.CANCELLED, InvoiceStatus.OVERDUE, InvoiceStatus.SENT));
         } else {
-            // Fallback: filter from all invoices with items
-            list = invoiceRepo.findAllWithItems().stream()
-                    .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
-                    .collect(java.util.stream.Collectors.toList());
+            list = java.util.Collections.emptyList();
         }
         list.forEach(this::normalizeStatus);
         return list;
@@ -1211,8 +1446,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public InvoicePayment recordPayment(Long invoiceId, BigDecimal amount, LocalDate paymentDate, String paymentMode,
             String referenceNumber, String notes) {
-        Invoice invoice = invoiceRepo.findById(invoiceId)
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + invoiceId));
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice invoice = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId) : invoiceRepo.findById(invoiceId))
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Invoice not found in firm: " + invoiceId));
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment amount must be greater than 0");
@@ -1231,15 +1467,30 @@ public class InvoiceService {
 
         InvoicePayment saved = invoicePaymentRepo.save(payment);
 
-        // Check if invoice is fully settled
-        List<InvoicePayment> allPayments = invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
+        // Check if invoice is fully settled (factoring in sales returns / credit notes)
+        List<InvoicePayment> allPayments = (currentFirmId != null)
+                ? invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(invoiceId, currentFirmId)
+                : invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
         BigDecimal totalPaid = allPayments.stream()
                 .map(InvoicePayment::getAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        List<SalesReturn> returns = (currentFirmId != null)
+                ? salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(invoiceId, currentFirmId)
+                : salesReturnRepo.findByInvoiceIdOrderByCreatedAtDesc(invoiceId);
+        BigDecimal totalReturned = returns.stream()
+                .map(SalesReturn::getTotalRefundAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         BigDecimal invoiceTotal = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
-        invoice.setPaid(totalPaid.compareTo(invoiceTotal) >= 0);
+        BigDecimal effectiveReceivable = invoiceTotal.subtract(totalReturned);
+        if (effectiveReceivable.compareTo(BigDecimal.ZERO) < 0) {
+            effectiveReceivable = BigDecimal.ZERO;
+        }
+
+        invoice.setPaid(totalPaid.compareTo(effectiveReceivable) >= 0);
         if (Boolean.TRUE.equals(invoice.getPaid())) {
             invoice.setStatus(InvoiceStatus.PAID);
         }
@@ -1249,6 +1500,10 @@ public class InvoiceService {
     }
 
     public List<InvoicePayment> getPayments(Long invoiceId) {
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (currentFirmId != null) {
+            return invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(invoiceId, currentFirmId);
+        }
         return invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
     }
 
@@ -1257,8 +1512,9 @@ public class InvoiceService {
     // -------------------------
     @Transactional(rollbackFor = Exception.class)
     public SalesReturn createSalesReturn(Long invoiceId, SalesReturnRequest request) {
-        Invoice invoice = invoiceRepo.findById(invoiceId)
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + invoiceId));
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Invoice invoice = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId) : invoiceRepo.findById(invoiceId))
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Invoice not found in firm: " + invoiceId));
 
         if (invoice.getStatus() == InvoiceStatus.CANCELLED || invoice.getStatus() == InvoiceStatus.DRAFT
                 || invoice.getStatus() == InvoiceStatus.ESTIMATE) {
@@ -1269,14 +1525,16 @@ public class InvoiceService {
             throw new IllegalArgumentException("At least one item must be returned");
         }
 
-        Long firmId = invoice.getFirmId() != null ? invoice.getFirmId()
-                : (request.getFirmId() != null ? request.getFirmId() : 1L);
+        Long firmId = invoice.getFirmId() != null
+                ? invoice.getFirmId()
+                : (request.getFirmId() != null ? request.getFirmId() : (currentFirmId != null ? currentFirmId : 1L));
         String returnNumber = (request.getReturnNumber() != null && !request.getReturnNumber().trim().isEmpty())
                 ? request.getReturnNumber().trim()
                 : generateReturnNumber(firmId);
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal taxTotal = BigDecimal.ZERO;
+        BigDecimal excludedTaxTotal = BigDecimal.ZERO;
         BigDecimal grandTotal = BigDecimal.ZERO;
 
         SalesReturn salesReturn = SalesReturn.builder()
@@ -1290,6 +1548,14 @@ public class InvoiceService {
                 .notes(request.getNotes())
                 .items(new ArrayList<>())
                 .build();
+
+        boolean excludeTax = Boolean.TRUE.equals(request.getExcludeTax());
+        BigDecimal penaltyAmount = (request.getPenaltyAmount() != null && request.getPenaltyAmount().compareTo(BigDecimal.ZERO) > 0)
+                ? request.getPenaltyAmount().setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        String penaltyReason = (request.getPenaltyReason() != null && !request.getPenaltyReason().trim().isEmpty())
+                ? request.getPenaltyReason().trim()
+                : null;
 
         for (SalesReturnRequest.SalesReturnItemRequest reqItem : request.getItems()) {
             int retQty = reqItem.getReturnQty() != null ? reqItem.getReturnQty() : 0;
@@ -1308,10 +1574,18 @@ public class InvoiceService {
             BigDecimal unitPrice = reqItem.getUnitPrice() != null ? reqItem.getUnitPrice()
                     : (invItem != null && invItem.getPricePerUnit() != null ? invItem.getPricePerUnit()
                             : BigDecimal.ZERO);
-            BigDecimal gstPct = reqItem.getGstPercent() != null ? reqItem.getGstPercent()
-                    : (invItem != null && invItem.getGstPercent() != null ? invItem.getGstPercent() : BigDecimal.ZERO);
-            if (gstPct == null)
-                gstPct = BigDecimal.ZERO;
+            
+            Product prod = invItem != null ? invItem.getProduct() : null;
+            if (prod == null && reqItem.getProductId() != null) {
+                prod = productRepo.findByIdAndFirmId(reqItem.getProductId(), firmId).orElse(null);
+            }
+
+            BigDecimal originalGstPct = (reqItem.getGstPercent() != null && reqItem.getGstPercent().compareTo(BigDecimal.ZERO) >= 0)
+                    ? reqItem.getGstPercent()
+                    : (invItem != null && invItem.getGstPercent() != null ? invItem.getGstPercent()
+                    : (prod != null && prod.getGstPercentage() != null ? prod.getGstPercentage() : BigDecimal.ZERO));
+
+            BigDecimal gstPct = excludeTax ? BigDecimal.ZERO : originalGstPct;
 
             BigDecimal itemLineSubtotal = unitPrice.multiply(BigDecimal.valueOf(retQty)).setScale(2,
                     RoundingMode.HALF_UP);
@@ -1319,14 +1593,15 @@ public class InvoiceService {
                     RoundingMode.HALF_UP);
             BigDecimal itemTotal = itemLineSubtotal.add(itemTax);
 
+            if (excludeTax && originalGstPct.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal itemExcludedTax = itemLineSubtotal.multiply(originalGstPct).divide(BigDecimal.valueOf(100), 2,
+                        RoundingMode.HALF_UP);
+                excludedTaxTotal = excludedTaxTotal.add(itemExcludedTax);
+            }
+
             subtotal = subtotal.add(itemLineSubtotal);
             taxTotal = taxTotal.add(itemTax);
             grandTotal = grandTotal.add(itemTotal);
-
-            Product prod = invItem != null ? invItem.getProduct() : null;
-            if (prod == null && reqItem.getProductId() != null) {
-                prod = productRepo.findById(reqItem.getProductId()).orElse(null);
-            }
 
             SalesReturnItem returnItem = SalesReturnItem.builder()
                     .salesReturn(salesReturn)
@@ -1340,7 +1615,7 @@ public class InvoiceService {
                     .returnQty(retQty)
                     .unitPrice(unitPrice)
                     .discountValue(BigDecimal.ZERO)
-                    .gstPercent(gstPct)
+                    .gstPercent(originalGstPct)
                     .gstAmount(itemTax)
                     .refundTotal(itemTotal)
                     .build();
@@ -1366,15 +1641,28 @@ public class InvoiceService {
             throw new IllegalArgumentException("At least one item must have return quantity > 0");
         }
 
+        BigDecimal netRefund = grandTotal.subtract(penaltyAmount);
+        if (netRefund.compareTo(BigDecimal.ZERO) < 0) {
+            netRefund = BigDecimal.ZERO;
+        }
+
         salesReturn.setSubtotal(subtotal);
         salesReturn.setTaxAmount(taxTotal);
-        salesReturn.setTotalRefundAmount(grandTotal);
+        salesReturn.setExcludedTaxAmount(excludedTaxTotal);
+        salesReturn.setPenaltyAmount(penaltyAmount);
+        salesReturn.setPenaltyReason(penaltyReason);
+        salesReturn.setTotalRefundAmount(netRefund);
 
-        return salesReturnRepo.save(salesReturn);
+        SalesReturn saved = salesReturnRepo.save(salesReturn);
+        if (saved.getReturnNumber() != null) {
+            syncSequenceIfApplicable(saved.getFirmId(), saved.getReturnNumber(), "CN-", "LAST_RETURN_SEQ_");
+        }
+        return saved;
     }
 
-    public synchronized String generateReturnNumber(Long firmId) {
-        Long safeFirmId = (firmId != null && firmId > 0) ? firmId : 1L;
+    public String peekNextReturnNumber(Long firmId) {
+        Long safeFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (safeFirmId == null) safeFirmId = 1L;
         String configKey = "LAST_RETURN_SEQ_" + safeFirmId;
         long lastSeq = appConfigRepo.findById(configKey)
                 .map(AppConfig::getConfigValue)
@@ -1387,19 +1675,45 @@ public class InvoiceService {
                 }).orElse(0L);
 
         long nextSeq = Math.max(lastSeq + 1, salesReturnRepo.countByFirmId(safeFirmId) + 1);
-        appConfigRepo.save(new AppConfig(configKey, String.valueOf(nextSeq)));
         return String.format("CN-%04d", nextSeq);
     }
 
+    public synchronized String generateReturnNumber(Long firmId) {
+        Long safeFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (safeFirmId == null) safeFirmId = 1L;
+        String nextNo = peekNextReturnNumber(safeFirmId);
+        try {
+            long nextSeq = Long.parseLong(nextNo.substring(3));
+            String configKey = "LAST_RETURN_SEQ_" + safeFirmId;
+            appConfigRepo.save(new AppConfig(configKey, String.valueOf(nextSeq)));
+        } catch (Exception ignored) {
+        }
+        return nextNo;
+    }
+
     public List<SalesReturn> getSalesReturnsForInvoice(Long invoiceId) {
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (currentFirmId != null) {
+            return salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(invoiceId, currentFirmId);
+        }
         return salesReturnRepo.findByInvoiceIdOrderByCreatedAtDesc(invoiceId);
     }
 
     public List<SalesReturn> getAllSalesReturns(Long firmId) {
-        return salesReturnRepo.findByFirmIdOrderByReturnDateDescCreatedAtDesc(firmId != null ? firmId : 1L);
+        Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId == null) return Collections.emptyList();
+        return salesReturnRepo.findByFirmIdOrderByReturnDateDescCreatedAtDesc(targetFirmId);
+    }
+
+    public com.billing.simple.billsoft.dtos.PageResponse<SalesReturn> getPaginatedSalesReturns(Long firmId, org.springframework.data.domain.Pageable pageable) {
+        Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (targetFirmId == null) return com.billing.simple.billsoft.dtos.PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+        org.springframework.data.domain.Page<SalesReturn> p = salesReturnRepo.findByFirmIdOrderByReturnDateDescCreatedAtDesc(targetFirmId, pageable);
+        return com.billing.simple.billsoft.dtos.PageResponse.of(p);
     }
 
     public SalesReturn getSalesReturnById(Long id) {
-        return salesReturnRepo.findById(id).orElse(null);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        return (currentFirmId != null ? salesReturnRepo.findByIdAndFirmId(id, currentFirmId) : salesReturnRepo.findById(id)).orElse(null);
     }
 }

@@ -48,33 +48,28 @@ public class PlannerNotificationScheduler {
     @Transactional
     public void checkDuePlannerItems() {
         LocalDateTime now = LocalDateTime.now();
-        List<Reminder> allReminders = reminderRepository.findAll();
-        for (Reminder item : allReminders) {
-            // Only check items that are not completed, not already notified, and have a due date
-            if (!item.isCompleted() && !item.isInboxNotified() && item.getDueDate() != null) {
-                if (item.getDueDate().isBefore(now) || item.getDueDate().isEqual(now)) {
-                    String typeStr = "task".equalsIgnoreCase(item.getType()) ? "Task" : "Reminder";
-                    String subject = typeStr + " Due: " + item.getTitle();
-                    String body = "The following " + typeStr.toLowerCase() + " is now due:\n\n" +
-                            "Title: " + item.getTitle() + "\n" +
-                            "Due Date: " + item.getDueDate().toString().replace("T", " ") + "\n\n" +
-                            "Notes:\n" + (item.getNote() != null ? item.getNote() : "No notes provided.");
+        List<Reminder> dueReminders = reminderRepository.findDueReminders(now);
+        for (Reminder item : dueReminders) {
+            String typeStr = "task".equalsIgnoreCase(item.getType()) ? "Task" : "Reminder";
+            String subject = typeStr + " Due: " + item.getTitle();
+            String body = "The following " + typeStr.toLowerCase() + " is now due:\n\n" +
+                    "Title: " + item.getTitle() + "\n" +
+                    "Due Date: " + item.getDueDate().toString().replace("T", " ") + "\n\n" +
+                    "Notes:\n" + (item.getNote() != null ? item.getNote() : "No notes provided.");
 
-                    InboxMessage msg = new InboxMessage();
-                    msg.setFirmId(item.getFirmId() != null ? item.getFirmId() : 1L);
-                    msg.setSubject(subject);
-                    msg.setBody(body);
-                    msg.setSender("System (Planner)");
-                    msg.setRead(false);
-                    msg.setReminderId(item.getId());
-                    msg.setCreatedAt(LocalDateTime.now());
+            InboxMessage msg = new InboxMessage();
+            msg.setFirmId(item.getFirmId() != null ? item.getFirmId() : 1L);
+            msg.setSubject(subject);
+            msg.setBody(body);
+            msg.setSender("System (Planner)");
+            msg.setRead(false);
+            msg.setReminderId(item.getId());
+            msg.setCreatedAt(LocalDateTime.now());
 
-                    inboxMessageRepository.save(msg);
+            inboxMessageRepository.save(msg);
 
-                    item.setInboxNotified(true);
-                    reminderRepository.save(item);
-                }
-            }
+            item.setInboxNotified(true);
+            reminderRepository.save(item);
         }
     }
 
@@ -97,31 +92,27 @@ public class PlannerNotificationScheduler {
     @Transactional
     public void checkOverdueInvoices() {
         LocalDate today = LocalDate.now();
-        List<Invoice> invoices = invoiceRepository.findAll();
+        List<Invoice> invoices = invoiceRepository.findOverdueInvoices(today);
         for (Invoice inv : invoices) {
-            if (inv.getStatus() != InvoiceStatus.CANCELLED && inv.getStatus() != InvoiceStatus.ESTIMATE && inv.getStatus() != InvoiceStatus.DRAFT && Boolean.FALSE.equals(inv.getPaid()) && inv.getDueDate() != null) {
-                if (inv.getDueDate().isBefore(today)) {
-                    String custName = inv.getCustomer() != null ? inv.getCustomer().getName() : "Customer";
-                    String prefix = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber();
-                    String subject = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber() + " (" + custName + ")";
-                    String invDateStr = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate().toString() : "N/A";
-                    String body = "An issued invoice has passed its payment due date and remains unpaid!\n\n" +
-                            "• Invoice Number: " + inv.getInvoiceNumber() + "\n" +
-                            "• Customer: " + custName + "\n" +
-                            "• Invoice Date: " + invDateStr + "\n" +
-                            "• Due Date: " + inv.getDueDate() + "\n" +
-                            "• Total Outstanding: ₹" + (inv.getTotalAmount() != null ? inv.getTotalAmount() : "0.00") + "\n\n" +
-                            "Action Required: Please follow up with the customer or issue a payment reminder notice.";
+            String custName = inv.getCustomer() != null ? inv.getCustomer().getName() : "Customer";
+            String prefix = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber();
+            String subject = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber() + " (" + custName + ")";
+            String invDateStr = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate().toString() : "N/A";
+            String body = "An issued invoice has passed its payment due date and remains unpaid!\n\n" +
+                    "• Invoice Number: " + inv.getInvoiceNumber() + "\n" +
+                    "• Customer: " + custName + "\n" +
+                    "• Invoice Date: " + invDateStr + "\n" +
+                    "• Due Date: " + inv.getDueDate() + "\n" +
+                    "• Total Outstanding: ₹" + (inv.getTotalAmount() != null ? inv.getTotalAmount() : "0.00") + "\n\n" +
+                    "Action Required: Please follow up with the customer or issue a payment reminder notice.";
 
-                    inboxMessageService.sendNotificationIfAbsent(
-                            inv.getFirmId() != null ? inv.getFirmId() : 1L,
-                            prefix,
-                            subject,
-                            body,
-                            "Billing System"
-                    );
-                }
-            }
+            inboxMessageService.sendNotificationIfAbsent(
+                    inv.getFirmId() != null ? inv.getFirmId() : 1L,
+                    prefix,
+                    subject,
+                    body,
+                    "Billing System"
+            );
         }
     }
 
@@ -129,30 +120,26 @@ public class PlannerNotificationScheduler {
     @Transactional
     public void checkPendingPurchaseOrderDeliveries() {
         LocalDate today = LocalDate.now();
-        List<PurchaseOrder> pos = purchaseOrderRepository.findAll();
+        List<PurchaseOrder> pos = purchaseOrderRepository.findPendingDeliveries(today);
         for (PurchaseOrder po : pos) {
-            if (po.getStatus() == PurchaseOrderStatus.ISSUED && po.getExpectedDeliveryDate() != null) {
-                if (po.getExpectedDeliveryDate().isBefore(today) || po.getExpectedDeliveryDate().isEqual(today)) {
-                    String partyName = po.getPartyName() != null ? po.getPartyName() : (po.getParty() != null ? po.getParty().getName() : "Vendor");
-                    String prefix = "📦 Expected Delivery: PO #" + po.getPoNumber();
-                    String subject = "📦 Expected Delivery: PO #" + po.getPoNumber() + " (" + partyName + ")";
-                    String body = "A vendor purchase order is due for delivery today or overdue!\n\n" +
-                            "• PO Number: " + po.getPoNumber() + "\n" +
-                            "• Supplier / Vendor: " + partyName + "\n" +
-                            "• PO Date: " + po.getPoDate() + "\n" +
-                            "• Expected Delivery: " + po.getExpectedDeliveryDate() + "\n" +
-                            "• Total Amount: ₹" + (po.getTotalAmount() != null ? po.getTotalAmount() : "0.00") + "\n\n" +
-                            "Action Required: Check with vendor and mark PO as 'RECEIVED' upon goods arrival to update stock counts.";
+            String partyName = po.getPartyName() != null ? po.getPartyName() : (po.getParty() != null ? po.getParty().getName() : "Vendor");
+            String prefix = "📦 Expected Delivery: PO #" + po.getPoNumber();
+            String subject = "📦 Expected Delivery: PO #" + po.getPoNumber() + " (" + partyName + ")";
+            String body = "A vendor purchase order is due for delivery today or overdue!\n\n" +
+                    "• PO Number: " + po.getPoNumber() + "\n" +
+                    "• Supplier / Vendor: " + partyName + "\n" +
+                    "• PO Date: " + po.getPoDate() + "\n" +
+                    "• Expected Delivery: " + po.getExpectedDeliveryDate() + "\n" +
+                    "• Total Amount: ₹" + (po.getTotalAmount() != null ? po.getTotalAmount() : "0.00") + "\n\n" +
+                    "Action Required: Check with vendor and mark PO as 'RECEIVED' upon goods arrival to update stock counts.";
 
-                    inboxMessageService.sendNotificationIfAbsent(
-                            po.getFirmId() != null ? po.getFirmId() : 1L,
-                            prefix,
-                            subject,
-                            body,
-                            "Purchase System"
-                    );
-                }
-            }
+            inboxMessageService.sendNotificationIfAbsent(
+                    po.getFirmId() != null ? po.getFirmId() : 1L,
+                    prefix,
+                    subject,
+                    body,
+                    "Purchase System"
+            );
         }
     }
 

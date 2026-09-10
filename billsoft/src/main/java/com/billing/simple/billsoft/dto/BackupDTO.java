@@ -30,6 +30,15 @@ public class BackupDTO {
     private List<AppConfig> appConfigs;
     private List<EmployeeDocument> employeeDocuments;
     private List<FirmDetails> allFirms;
+    private List<SalesReturn> salesReturns;
+
+    public List<SalesReturn> getSalesReturns() {
+        return salesReturns;
+    }
+
+    public void setSalesReturns(List<SalesReturn> salesReturns) {
+        this.salesReturns = salesReturns;
+    }
 
     public List<AppConfig> getAppConfigs() {
         return appConfigs;

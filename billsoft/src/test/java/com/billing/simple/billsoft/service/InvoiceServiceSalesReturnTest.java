@@ -206,6 +206,8 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(new java.util.ArrayList<>(Collections.singletonList(item)));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(customerRepo.findById(10L)).thenReturn(Optional.of(customer));
+        when(customerRepo.findByIdAndFirmId(10L, 1L)).thenReturn(Optional.of(customer));
         when(invoiceRepo.save(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         com.billing.simple.billsoft.dtos.InvoiceUpdateRequest updateReq = new com.billing.simple.billsoft.dtos.InvoiceUpdateRequest();
@@ -215,5 +217,116 @@ class InvoiceServiceSalesReturnTest {
 
         assertNotNull(updated);
         verify(salesReturnItemRepo, times(1)).nullifyInvoiceItemReferencesByInvoiceId(invoiceId);
+    }
+
+    @Test
+    void testCreateSalesReturnWithExcludeTax() {
+        Long invoiceId = 203L;
+        Invoice invoice = new Invoice();
+        invoice.setId(invoiceId);
+        invoice.setStatus(InvoiceStatus.FINAL);
+        invoice.setFirmId(1L);
+
+        InvoiceItem item = new InvoiceItem();
+        item.setId(31L);
+        item.setQty(10);
+        item.setPricePerUnit(BigDecimal.valueOf(100));
+        item.setGstPercent(BigDecimal.valueOf(18));
+        invoice.setItems(Collections.singletonList(item));
+
+        when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SalesReturnRequest request = SalesReturnRequest.builder()
+                .excludeTax(true)
+                .items(Collections.singletonList(
+                        SalesReturnRequest.SalesReturnItemRequest.builder()
+                                .invoiceItemId(31L)
+                                .returnQty(2)
+                                .unitPrice(BigDecimal.valueOf(100))
+                                .gstPercent(BigDecimal.valueOf(18))
+                                .build()))
+                .build();
+
+        SalesReturn salesReturn = invoiceService.createSalesReturn(invoiceId, request);
+        assertNotNull(salesReturn);
+        assertEquals(0, salesReturn.getSubtotal().compareTo(BigDecimal.valueOf(200)));
+        assertEquals(0, salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO)); // Tax excluded
+        assertEquals(0, salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.valueOf(36))); // 18% of 200 = 36 excluded
+        assertEquals(0, salesReturn.getTotalRefundAmount().compareTo(BigDecimal.valueOf(200))); // Only base price refunded
+    }
+
+    @Test
+    void testCreateSalesReturnWithPenalty() {
+        Long invoiceId = 204L;
+        Invoice invoice = new Invoice();
+        invoice.setId(invoiceId);
+        invoice.setStatus(InvoiceStatus.FINAL);
+        invoice.setFirmId(1L);
+
+        InvoiceItem item = new InvoiceItem();
+        item.setId(32L);
+        item.setQty(5);
+        item.setPricePerUnit(BigDecimal.valueOf(200));
+        item.setGstPercent(BigDecimal.valueOf(18));
+        invoice.setItems(Collections.singletonList(item));
+
+        when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SalesReturnRequest request = SalesReturnRequest.builder()
+                .penaltyAmount(BigDecimal.valueOf(50))
+                .penaltyReason("Restocking Fee")
+                .items(Collections.singletonList(
+                        SalesReturnRequest.SalesReturnItemRequest.builder()
+                                .invoiceItemId(32L)
+                                .returnQty(2)
+                                .unitPrice(BigDecimal.valueOf(200))
+                                .gstPercent(BigDecimal.valueOf(18))
+                                .build()))
+                .build();
+
+        // subtotal = 400, tax = 72, gross = 472, penalty = 50 -> net = 422
+        SalesReturn salesReturn = invoiceService.createSalesReturn(invoiceId, request);
+        assertNotNull(salesReturn);
+        assertEquals(0, salesReturn.getSubtotal().compareTo(BigDecimal.valueOf(400)));
+        assertEquals(0, salesReturn.getTaxAmount().compareTo(BigDecimal.valueOf(72)));
+        assertEquals(0, salesReturn.getPenaltyAmount().compareTo(BigDecimal.valueOf(50)));
+        assertEquals("Restocking Fee", salesReturn.getPenaltyReason());
+        assertEquals(0, salesReturn.getTotalRefundAmount().compareTo(BigDecimal.valueOf(422)));
+    }
+
+    @Test
+    void testCreateSalesReturnWithExcessPenaltyBoundsToZero() {
+        Long invoiceId = 205L;
+        Invoice invoice = new Invoice();
+        invoice.setId(invoiceId);
+        invoice.setStatus(InvoiceStatus.FINAL);
+        invoice.setFirmId(1L);
+
+        InvoiceItem item = new InvoiceItem();
+        item.setId(33L);
+        item.setQty(1);
+        item.setPricePerUnit(BigDecimal.valueOf(100));
+        item.setGstPercent(BigDecimal.ZERO);
+        invoice.setItems(Collections.singletonList(item));
+
+        when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SalesReturnRequest request = SalesReturnRequest.builder()
+                .penaltyAmount(BigDecimal.valueOf(500)) // exceeds gross total of 100
+                .penaltyReason("Severe Damage Fee")
+                .items(Collections.singletonList(
+                        SalesReturnRequest.SalesReturnItemRequest.builder()
+                                .invoiceItemId(33L)
+                                .returnQty(1)
+                                .unitPrice(BigDecimal.valueOf(100))
+                                .build()))
+                .build();
+
+        SalesReturn salesReturn = invoiceService.createSalesReturn(invoiceId, request);
+        assertNotNull(salesReturn);
+        assertEquals(0, salesReturn.getTotalRefundAmount().compareTo(BigDecimal.ZERO));
     }
 }

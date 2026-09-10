@@ -112,73 +112,104 @@ public class PartyServiceImpl implements PartyService {
     @Transactional(readOnly = true)
     public List<PartyFinancialSummary> getAllPartiesWithFinancialSummaries(Long firmId) {
         List<Party> parties = partyRepository.findByFirmIdOrderByNameAsc(firmId);
-        List<PartyFinancialSummary> summaries = new ArrayList<>();
-        for (Party p : parties) {
-            summaries.add(computeSummary(p, firmId));
+        return computeSummariesBatch(parties, firmId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.billing.simple.billsoft.dtos.PageResponse<PartyFinancialSummary> getPaginatedPartiesWithFinancialSummaries(Long firmId, org.springframework.data.domain.Pageable pageable) {
+        org.springframework.data.domain.Page<Party> partyPage = partyRepository.findByFirmId(firmId, pageable);
+        List<PartyFinancialSummary> summaries = computeSummariesBatch(partyPage.getContent(), firmId);
+        return com.billing.simple.billsoft.dtos.PageResponse.of(partyPage, summaries);
+    }
+
+    private List<PartyFinancialSummary> computeSummariesBatch(List<Party> parties, Long firmId) {
+        if (parties == null || parties.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        List<Long> partyIds = parties.stream().map(Party::getId).filter(java.util.Objects::nonNull).toList();
+        if (partyIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        // 1. Batch PO totals: [partyId, totalPurchases, totalPOCount]
+        java.util.Map<Long, BigDecimal> poTotals = new java.util.HashMap<>();
+        java.util.Map<Long, Long> poCounts = new java.util.HashMap<>();
+        List<Object[]> poAggs = purchaseOrderRepository.sumTotalsByPartyIds(firmId, partyIds);
+        if (poAggs != null) {
+            for (Object[] row : poAggs) {
+                Long pId = ((Number) row[0]).longValue();
+                BigDecimal sum = row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO;
+                Long count = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+                poTotals.put(pId, sum);
+                poCounts.put(pId, count);
+            }
+        }
+
+        // 2. Batch Pending PO counts: [partyId, pendingPOCount]
+        java.util.Map<Long, Long> pendingCounts = new java.util.HashMap<>();
+        List<Object[]> pendingAggs = purchaseOrderRepository.countPendingByPartyIds(firmId, partyIds);
+        if (pendingAggs != null) {
+            for (Object[] row : pendingAggs) {
+                Long pId = ((Number) row[0]).longValue();
+                Long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+                pendingCounts.put(pId, count);
+            }
+        }
+
+        // 3. Batch Payment totals: [partyId, totalPaid]
+        java.util.Map<Long, BigDecimal> paymentTotals = new java.util.HashMap<>();
+        List<Object[]> payAggs = partyPaymentRepository.sumPaidByPartyIds(firmId, partyIds);
+        if (payAggs != null) {
+            for (Object[] row : payAggs) {
+                Long pId = ((Number) row[0]).longValue();
+                BigDecimal sum = row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO;
+                paymentTotals.put(pId, sum);
+            }
+        }
+
+        // Build summaries in O(N) memory
+        List<PartyFinancialSummary> summaries = new java.util.ArrayList<>(parties.size());
+        for (Party party : parties) {
+            BigDecimal opening = party.getOpeningBalance() != null ? party.getOpeningBalance() : BigDecimal.ZERO;
+            String type = party.getOpeningBalanceType() != null ? party.getOpeningBalanceType().toUpperCase() : "PAYABLE";
+            BigDecimal net = "ADVANCE".equals(type) ? opening.negate() : opening;
+
+            BigDecimal totalPurchases = poTotals.getOrDefault(party.getId(), BigDecimal.ZERO);
+            long totalPOCount = poCounts.getOrDefault(party.getId(), 0L);
+            long pendingPOCount = pendingCounts.getOrDefault(party.getId(), 0L);
+            BigDecimal totalPaid = paymentTotals.getOrDefault(party.getId(), BigDecimal.ZERO);
+
+            BigDecimal finalNet = net.add(totalPurchases).subtract(totalPaid);
+            String status;
+            if (finalNet.compareTo(BigDecimal.ZERO) > 0) {
+                status = "PAYABLE";
+            } else if (finalNet.compareTo(BigDecimal.ZERO) < 0) {
+                status = "ADVANCE";
+            } else {
+                status = "SETTLED";
+            }
+
+            summaries.add(PartyFinancialSummary.builder()
+                    .partyId(party.getId())
+                    .partyName(party.getName())
+                    .phone(party.getPhone())
+                    .gstin(party.getGstin())
+                    .openingBalance(opening)
+                    .openingBalanceType(type)
+                    .totalPurchases(totalPurchases)
+                    .totalPaid(totalPaid)
+                    .netBalance(finalNet)
+                    .balanceStatus(status)
+                    .totalPurchaseOrders(totalPOCount)
+                    .pendingPurchaseOrders(pendingPOCount)
+                    .build());
         }
         return summaries;
     }
 
     private PartyFinancialSummary computeSummary(Party party, Long firmId) {
-        // Initial Opening Balance
-        BigDecimal opening = party.getOpeningBalance() != null ? party.getOpeningBalance() : BigDecimal.ZERO;
-        String type = party.getOpeningBalanceType() != null ? party.getOpeningBalanceType().toUpperCase() : "PAYABLE";
-
-        // Initial net liability: if PAYABLE, we start with +opening. If ADVANCE, we start with -opening.
-        BigDecimal net = "ADVANCE".equals(type) ? opening.negate() : opening;
-
-        // Sum non-cancelled Purchase Orders
-        List<PurchaseOrder> pos = purchaseOrderRepository.findByFirmIdAndPartyIdOrderByPoDateDescIdDesc(firmId, party.getId());
-        BigDecimal totalPurchases = BigDecimal.ZERO;
-        long totalPOCount = 0;
-        long pendingPOCount = 0;
-
-        for (PurchaseOrder po : pos) {
-            if (po.getStatus() != PurchaseOrderStatus.CANCELLED) {
-                totalPOCount++;
-                BigDecimal amount = po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO;
-                totalPurchases = totalPurchases.add(amount);
-
-                if (po.getStatus() == PurchaseOrderStatus.DRAFT || po.getStatus() == PurchaseOrderStatus.ISSUED) {
-                    pendingPOCount++;
-                }
-            }
-        }
-
-        // Sum Payments made to party
-        List<PartyPayment> payments = partyPaymentRepository.findByFirmIdAndPartyIdOrderByPaymentDateDescIdDesc(firmId, party.getId());
-        BigDecimal totalPaid = BigDecimal.ZERO;
-        for (PartyPayment pay : payments) {
-            BigDecimal amt = pay.getAmount() != null ? pay.getAmount() : BigDecimal.ZERO;
-            totalPaid = totalPaid.add(amt);
-        }
-
-        // Net Balance = (Initial Net + Total Purchases) - Total Paid
-        BigDecimal finalNet = net.add(totalPurchases).subtract(totalPaid);
-
-        String status;
-        if (finalNet.compareTo(BigDecimal.ZERO) > 0) {
-            status = "PAYABLE"; // We owe them money (Debt)
-        } else if (finalNet.compareTo(BigDecimal.ZERO) < 0) {
-            status = "ADVANCE"; // We have credit / advance with them
-        } else {
-            status = "SETTLED";
-        }
-
-        return PartyFinancialSummary.builder()
-                .partyId(party.getId())
-                .partyName(party.getName())
-                .phone(party.getPhone())
-                .gstin(party.getGstin())
-                .openingBalance(opening)
-                .openingBalanceType(type)
-                .totalPurchases(totalPurchases)
-                .totalPaid(totalPaid)
-                .netBalance(finalNet)
-                .balanceStatus(status)
-                .totalPurchaseOrders(totalPOCount)
-                .pendingPurchaseOrders(pendingPOCount)
-                .build();
+        return computeSummariesBatch(java.util.Collections.singletonList(party), firmId).stream().findFirst().orElse(null);
     }
 
     @Override

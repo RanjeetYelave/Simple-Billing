@@ -54,8 +54,18 @@ public class SalesReturnController {
     }
 
     @GetMapping("/returns")
-    public ResponseEntity<List<SalesReturn>> getAllReturns(@RequestParam(required = false) Long firmId) {
-        return ResponseEntity.ok(invoiceService.getAllSalesReturns(firmId));
+    public ResponseEntity<?> getAllReturns(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size) {
+        Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        if (page != null || size != null) {
+            org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+                    page != null ? page : 0, size != null ? size : 25, "returnDate");
+            return ResponseEntity.ok(invoiceService.getPaginatedSalesReturns(targetFirmId, pageable));
+        }
+        return ResponseEntity.ok(invoiceService.getAllSalesReturns(targetFirmId));
     }
 
     @GetMapping("/returns/{id}")
@@ -88,7 +98,7 @@ public class SalesReturnController {
 
     @GetMapping({"/invoices/next-return-number", "/returns/next-number"})
     public ResponseEntity<Map<String, String>> getNextReturnNumber(@RequestParam(required = false) Long firmId) {
-        String nextNo = invoiceService.generateReturnNumber(firmId);
+        String nextNo = invoiceService.peekNextReturnNumber(firmId);
         return ResponseEntity.ok(Map.of("returnNumber", nextNo, "nextNumber", nextNo));
     }
 }

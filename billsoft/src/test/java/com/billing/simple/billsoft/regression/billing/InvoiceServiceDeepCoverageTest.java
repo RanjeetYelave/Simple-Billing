@@ -120,7 +120,7 @@ class InvoiceServiceDeepCoverageTest {
 
         // 2. Convert Estimate to FINAL Invoice
         Invoice finalInv = invoiceService.convertEstimateToInvoice(estimate.getId(), null);
-        assertThat(finalInv.getStatus()).isEqualTo(InvoiceStatus.FINAL);
+        assertThat(finalInv.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
 
         refreshedA = productService.getById(testProductA.getId());
         assertThat(refreshedA.getStockQuantity()).isEqualByComparingTo("90.0");

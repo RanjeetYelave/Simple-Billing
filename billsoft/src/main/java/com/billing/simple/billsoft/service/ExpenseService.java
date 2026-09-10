@@ -1,7 +1,10 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.Expense;
 import com.billing.simple.billsoft.repo.ExpenseRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,7 +27,31 @@ public class ExpenseService {
         return repository.findByFirmIdOrderByExpenseDateDescIdDesc(firmId);
     }
 
+    public PageResponse<Expense> getPaginatedExpenses(Long firmId, LocalDate from, LocalDate to, Pageable pageable) {
+        if (firmId == null) {
+            return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+        }
+        Page<Expense> page;
+        if (from != null && to != null) {
+            page = repository.findByFirmIdAndExpenseDateBetween(firmId, from, to, pageable);
+        } else {
+            page = repository.findByFirmId(firmId, pageable);
+        }
+        return PageResponse.of(page);
+    }
+
+    public Expense getExpenseById(Long id, Long firmId) {
+        if (firmId != null) {
+            return repository.findByIdAndFirmId(id, firmId).orElse(null);
+        }
+        return repository.findById(id).orElse(null);
+    }
+
     public Expense createExpense(Expense expense) {
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (firmId != null) {
+            expense.setFirmId(firmId);
+        }
         if (expense.getExpenseDate() == null) {
             expense.setExpenseDate(LocalDate.now());
         }
@@ -36,8 +63,10 @@ public class ExpenseService {
 
     @Transactional
     public Expense updateExpense(Long id, Expense updated) {
-        Expense existing = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Expense not found"));
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Expense existing = (firmId != null)
+                ? repository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Expense not found"))
+                : repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Expense not found"));
         existing.setTitle(updated.getTitle());
         if (updated.getAmount() != null) {
             existing.setAmount(updated.getAmount().setScale(2, RoundingMode.HALF_UP));
@@ -46,14 +75,18 @@ public class ExpenseService {
         existing.setExpenseDate(updated.getExpenseDate());
         existing.setPaymentMode(updated.getPaymentMode());
         existing.setNotes(updated.getNotes());
-        if (updated.getFirmId() != null) {
-            existing.setFirmId(updated.getFirmId());
-        }
+        // Do NOT allow changing firmId on update
         return repository.save(existing);
     }
 
     @Transactional
     public boolean deleteExpense(Long id) {
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (firmId != null) {
+            if (!repository.existsByIdAndFirmId(id, firmId)) return false;
+            repository.deleteByIdAndFirmId(id, firmId);
+            return true;
+        }
         if (!repository.existsById(id)) return false;
         repository.deleteById(id);
         return true;

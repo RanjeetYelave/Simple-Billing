@@ -85,6 +85,26 @@ public class AuthController {
         } catch (Exception ignored) {}
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 3 * * ?")
+    public void purgeExpiredSessions() {
+        LocalDateTime now = LocalDateTime.now();
+        ACTIVE_SESSIONS.entrySet().removeIf(entry -> entry.getValue().isBefore(now));
+        try {
+            appConfigRepo.findAll().stream()
+                    .filter(c -> c.getConfigKey() != null && c.getConfigKey().startsWith("session_"))
+                    .forEach(c -> {
+                        try {
+                            LocalDateTime exp = LocalDateTime.parse(c.getConfigValue());
+                            if (exp.isBefore(now)) {
+                                appConfigRepo.delete(c);
+                            }
+                        } catch (Exception e) {
+                            appConfigRepo.delete(c);
+                        }
+                    });
+        } catch (Exception ignored) {}
+    }
+
     private boolean isAuthEnabled() {
         return appConfigRepo.findById("auth_enabled")
                 .map(AppConfig::getConfigValue)

@@ -41,6 +41,8 @@ class StatementServiceTest {
     private com.billing.simple.billsoft.repositories.PurchaseOrderRepository purchaseOrderRepo;
     @Mock
     private com.billing.simple.billsoft.repo.InvoicePaymentRepository invoicePaymentRepo;
+    @Mock
+    private com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo;
 
     @InjectMocks
     private StatementServiceImpl service;
@@ -57,6 +59,7 @@ class StatementServiceTest {
         Customer customer = new Customer();
         customer.setName("Test Customer");
         when(customerRepo.findById(customerId)).thenReturn(Optional.of(customer));
+        when(customerRepo.findByIdAndFirmId(customerId, firmId)).thenReturn(Optional.of(customer));
 
         Invoice inv = new Invoice();
         inv.setInvoiceNumber("INV-001");
@@ -78,10 +81,60 @@ class StatementServiceTest {
     }
 
     @Test
+    void testGetCustomerStatementWithSalesReturn() {
+        Long firmId = 1L;
+        Long customerId = 1L;
+        Customer customer = new Customer();
+        customer.setName("Test Customer");
+        when(customerRepo.findById(customerId)).thenReturn(Optional.of(customer));
+        when(customerRepo.findByIdAndFirmId(customerId, firmId)).thenReturn(Optional.of(customer));
+
+        // 1200 Rs invoice
+        Invoice inv = new Invoice();
+        inv.setId(10L);
+        inv.setInvoiceNumber("INV-100");
+        inv.setInvoiceDate(LocalDateTime.now());
+        inv.setTotalAmount(new BigDecimal("1200.00"));
+        inv.setStatus(InvoiceStatus.UNPAID);
+        inv.setPaid(false);
+
+        // 200 Rs return
+        com.billing.simple.billsoft.entities.SalesReturn ret = new com.billing.simple.billsoft.entities.SalesReturn();
+        ret.setId(1L);
+        ret.setInvoice(inv);
+        ret.setReturnNumber("CN-001");
+        ret.setReturnDate(LocalDate.now());
+        ret.setTotalRefundAmount(new BigDecimal("200.00"));
+
+        // 1000 Rs payment
+        com.billing.simple.billsoft.entities.InvoicePayment pmt = new com.billing.simple.billsoft.entities.InvoicePayment();
+        pmt.setId(1L);
+        pmt.setInvoiceId(10L);
+        pmt.setAmount(new BigDecimal("1000.00"));
+        pmt.setPaymentDate(LocalDate.now());
+
+        when(invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customerId)).thenReturn(Arrays.asList(inv));
+        when(salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(firmId, customerId)).thenReturn(Arrays.asList(ret));
+        when(invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customerId)).thenReturn(Arrays.asList(pmt));
+
+        CustomerStatementResponse result = service.getCustomerStatement(firmId, customerId, null, null);
+
+        assertNotNull(result);
+        assertEquals(1200.0, result.getTotalBilled());
+        assertEquals(1200.0, result.getTotalPaid()); // 200 return + 1000 payment = 1200 credit
+        assertEquals(0.0, result.getClosingBalance());
+        assertEquals(3, result.getEntries().size()); // 1 invoice + 1 credit note + 1 payment
+    }
+
+    @Test
     void testGetFirmStatement() {
         Long firmId = 1L;
         LocalDate from = LocalDate.now().minusMonths(1);
         LocalDate to = LocalDate.now();
+
+        FirmDetails firm = new FirmDetails();
+        firm.setFirmName("Test Firm");
+        when(firmRepo.findById(firmId)).thenReturn(Optional.of(firm));
 
         Invoice inv = new Invoice();
         inv.setInvoiceNumber("INV-001");
@@ -110,6 +163,7 @@ class StatementServiceTest {
         Customer customer = new Customer();
         customer.setName("Test Customer");
         when(customerRepo.findById(customerId)).thenReturn(Optional.of(customer));
+        when(customerRepo.findByIdAndFirmId(customerId, firmId)).thenReturn(Optional.of(customer));
         when(firmRepo.findById(firmId)).thenReturn(Optional.of(new FirmDetails()));
         
         Invoice inv = new Invoice();

@@ -126,12 +126,12 @@ public class ApiDiagnosticsService {
         });
 
         testEndpoint(results, "Billing & Invoices", "Next Invoice Number Generator", "GET", "/api/invoices/next-invoice-number", () -> {
-            String nextNo = invoiceService.generateInvoiceNumber(fId);
+            String nextNo = invoiceService.peekNextInvoiceNumber(fId);
             return "Next invoice sequence: " + nextNo;
         });
 
         testEndpoint(results, "Billing & Invoices", "Next Estimate Number Generator", "GET", "/api/invoices/next-estimate-number", () -> {
-            String nextNo = invoiceService.generateEstimateNumber(fId);
+            String nextNo = invoiceService.peekNextEstimateNumber(fId);
             return "Next estimate sequence: " + nextNo;
         });
 
@@ -142,7 +142,7 @@ public class ApiDiagnosticsService {
         });
 
         testEndpoint(results, "Sales Returns & Credit Notes", "Next Credit Note Number Generator", "GET", "/api/invoices/next-return-number", () -> {
-            String nextNo = invoiceService.generateReturnNumber(fId);
+            String nextNo = invoiceService.peekNextReturnNumber(fId);
             return "Next credit note sequence: " + nextNo;
         });
 

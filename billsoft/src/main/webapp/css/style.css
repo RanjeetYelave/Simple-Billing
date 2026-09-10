@@ -68,27 +68,583 @@
   --sidebar-text: #94A3B8;
 }
 
-:root.light-2 {
-  --bg: #FAFAFA;
-  --bg-card: #F9F9F9;
-  --bg-secondary: #F3F4F6;
-  --bg-card-header: #F3F4F6;
-  --bg-subtle: #EDE9FE;
-  --text: #2D3748;
-  --text-secondary: #718096;
-  --text-muted: #A0AEC0;
-  --primary: #5B21B6;
-  --primary-dark: #4C1D9F;
-  --primary-light: #EDE9FE;
+/* ---------- Classic Retro Theme (Windows 95/98 Light Variant) ---------- */
+:root.classic {
+  --bg: #008080;
+  --bg-card: #C0C0C0;
+  --bg-secondary: #FFFFFF;
+  --bg-card-header: #000080;
+  --bg-subtle: #D4D0C8;
+  --text: #000000;
+  --text-secondary: #222222;
+  --text-muted: #444444;
+  --primary: #000080;
+  --primary-dark: #000050;
+  --primary-light: #D4D0C8;
+  --success: #008000;
   --success-light: #D1FAE5;
+  --warning: #808000;
   --warning-light: #FEF3C7;
+  --danger: #B91C1C;
   --danger-light: #FEE2E2;
+  --info: #008080;
   --info-light: #E0F2FE;
+  --purple: #800080;
   --purple-light: #EDE9FE;
-  --border: #D1D5DB;
-  --border-light: #F3F4F6;
-  --sidebar-bg: #2D3748;
-  --sidebar-text: #CBD5E0;
+  --border: #808080;
+  --border-light: #DFDFDF;
+  --shadow: 1px 1px 0px #000000;
+  --shadow-md: 2px 2px 0px #000000;
+  --shadow-lg: 3px 3px 0px #000000;
+  --radius: 0px !important;
+  --radius-sm: 0px !important;
+  --radius-lg: 0px !important;
+  --sidebar-bg: #C0C0C0;
+  --sidebar-text: #000000;
+}
+
+/* Enforce 0px border radius and retro font everywhere in classic mode */
+:root.classic,
+:root.classic * {
+  border-radius: 0px !important;
+  font-family: 'Segoe UI', Tahoma, 'MS Sans Serif', Arial, sans-serif !important;
+}
+
+/* Classic Retro Component Overrides */
+:root.classic body {
+  background-color: var(--bg);
+}
+
+:root.classic .card,
+:root.classic .modal-content,
+:root.classic .dropdown-menu,
+:root.classic .kpi-card,
+:root.classic .dash-card,
+:root.classic .stat-card {
+  background-color: #C0C0C0 !important;
+  border: 2px solid #FFFFFF !important;
+  border-right-color: #000000 !important;
+  border-bottom-color: #000000 !important;
+  box-shadow: inset 1px 1px 0px #DFDFDF, inset -1px -1px 0px #808080, 2px 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+:root.classic .sidebar {
+  background-color: #C0C0C0 !important;
+  border-right: 2px solid #FFFFFF !important;
+  box-shadow: inset -1px 0px 0px #808080 !important;
+}
+
+:root.classic .sidebar-nav-item {
+  color: #000000 !important;
+  margin: 2px 6px !important;
+}
+
+:root.classic .sidebar-nav-item:hover {
+  background-color: #DFDFDF !important;
+  border: 1px solid #FFFFFF !important;
+  border-right-color: #808080 !important;
+  border-bottom-color: #808080 !important;
+}
+
+:root.classic .sidebar-nav-item.active {
+  background: #000080 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #000000 !important;
+}
+
+:root.classic .topbar {
+  background-color: #C0C0C0 !important;
+  border-bottom: 2px solid #808080 !important;
+  box-shadow: 0 1px 0 #FFFFFF !important;
+}
+
+:root.classic .btn {
+  font-family: inherit;
+  font-weight: 600;
+  padding: 5px 12px !important;
+  background: #C0C0C0 !important;
+  color: #000000 !important;
+  border: 2px solid #FFFFFF !important;
+  border-right-color: #000000 !important;
+  border-bottom-color: #000000 !important;
+  box-shadow: inset 1px 1px 0px #DFDFDF, inset -1px -1px 0px #808080 !important;
+}
+
+:root.classic .btn:active {
+  border: 2px solid #000000 !important;
+  border-right-color: #FFFFFF !important;
+  border-bottom-color: #FFFFFF !important;
+  box-shadow: inset 1px 1px 0px #808080 !important;
+  transform: translate(1px, 1px);
+}
+
+:root.classic .btn-primary {
+  background: #C0C0C0 !important;
+  color: #000080 !important;
+  font-weight: bold !important;
+}
+
+:root.classic .btn-outline,
+:root.classic .btn-ghost {
+  background: #C0C0C0 !important;
+  color: #000000 !important;
+}
+
+/* Inputs, Selects, Textareas - Authentic Sunken 3D Box */
+:root.classic input:not([type="checkbox"]):not([type="radio"]),
+:root.classic select,
+:root.classic textarea {
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+  border: 2px solid #808080 !important;
+  border-right-color: #FFFFFF !important;
+  border-bottom-color: #FFFFFF !important;
+  box-shadow: inset 1px 1px 0px #000000 !important;
+  padding: 4px 8px !important;
+}
+
+/* Tables */
+:root.classic .table-container,
+:root.classic .data-table {
+  border: 2px solid #808080 !important;
+  border-right-color: #FFFFFF !important;
+  border-bottom-color: #FFFFFF !important;
+  background: #FFFFFF !important;
+}
+
+:root.classic .data-table th {
+  background-color: #C0C0C0 !important;
+  color: #000000 !important;
+  border-top: 1px solid #FFFFFF !important;
+  border-left: 1px solid #FFFFFF !important;
+  border-right: 1px solid #808080 !important;
+  border-bottom: 1px solid #808080 !important;
+  box-shadow: inset 1px 1px 0px #DFDFDF !important;
+  font-weight: bold;
+}
+
+:root.classic .data-table td {
+  border-bottom: 1px solid #DFDFDF !important;
+  border-right: 1px solid #F0F0F0 !important;
+  color: #000000 !important;
+}
+
+:root.classic .data-table tr:hover td {
+  background-color: #000080 !important;
+  color: #FFFFFF !important;
+}
+
+/* Sub-tabs / Property Sheet Tabs */
+:root.classic .sub-tabs-bar,
+:root.classic .quick-filters-bar {
+  border-bottom: 2px solid #808080 !important;
+  background: transparent !important;
+  gap: 3px !important;
+}
+
+:root.classic .sub-tabs-bar button,
+:root.classic .quick-filters-bar button {
+  background: #C0C0C0 !important;
+  color: #000000 !important;
+  border: 2px solid #FFFFFF !important;
+  border-right-color: #808080 !important;
+  border-bottom: none !important;
+  padding: 5px 14px !important;
+  font-weight: normal !important;
+}
+
+:root.classic .sub-tabs-bar button.active,
+:root.classic .quick-filters-bar button.active {
+  background: #D4D0C8 !important;
+  color: #000080 !important;
+  font-weight: bold !important;
+  border-bottom: 2px solid #D4D0C8 !important;
+  margin-bottom: -2px !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* Badges and Pills - Sunken Retro Indicators */
+:root.classic .badge,
+:root.classic .kpi-badge,
+:root.classic .pill,
+:root.classic .tag,
+:root.classic .status-tag {
+  border: 1px solid #808080 !important;
+  border-right-color: #FFFFFF !important;
+  border-bottom-color: #FFFFFF !important;
+  box-shadow: inset 1px 1px 0px #000000 !important;
+  background: #DFDFDF !important;
+  color: #000000 !important;
+  font-weight: bold !important;
+  padding: 2px 6px !important;
+}
+
+:root.classic .badge.badge-success {
+  background: #008000 !important;
+  color: #FFFFFF !important;
+}
+
+:root.classic .badge.badge-danger {
+  background: #B91C1C !important;
+  color: #FFFFFF !important;
+}
+
+:root.classic .badge.badge-warning {
+  background: #808000 !important;
+  color: #FFFFFF !important;
+}
+
+:root.classic .badge.badge-info {
+  background: #008080 !important;
+  color: #FFFFFF !important;
+}
+
+/* Bottom Status Bar */
+:root.classic .bottom-status-bar {
+  background-color: #C0C0C0 !important;
+  border-top: 2px solid #FFFFFF !important;
+  box-shadow: inset 0 1px 0 #DFDFDF !important;
+  color: #000000 !important;
+}
+
+:root.classic .bottom-status-item {
+  background: #C0C0C0 !important;
+  border: 1px solid #808080 !important;
+  border-right-color: #FFFFFF !important;
+  border-bottom-color: #FFFFFF !important;
+  padding: 2px 8px !important;
+}
+
+/* Dialog / Modal Header - 90s Navy Blue Title Bar */
+:root.classic .modal-header {
+  background: linear-gradient(90deg, #000080, #1084D0) !important;
+  color: #FFFFFF !important;
+  padding: 4px 8px !important;
+  border-bottom: 2px solid #000000 !important;
+}
+
+:root.classic .modal-header h3,
+:root.classic .modal-header h2,
+:root.classic .modal-header .modal-title {
+  color: #FFFFFF !important;
+  font-size: 13px !important;
+  font-weight: bold !important;
+  letter-spacing: 0.5px;
+}
+
+:root.classic .modal-header .btn-close,
+:root.classic .modal-header button:has(svg) {
+  background: #C0C0C0 !important;
+  color: #000000 !important;
+  border: 2px solid #FFFFFF !important;
+  border-right-color: #000000 !important;
+  border-bottom-color: #000000 !important;
+  box-shadow: inset 1px 1px 0px #DFDFDF, inset -1px -1px 0px #808080 !important;
+  width: 18px !important;
+  height: 18px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  font-weight: bold !important;
+}
+
+/* Retro theme card badge */
+:root.classic .theme-card,
+:root.classic-dark .theme-card {
+  border: 2px solid #FFFFFF !important;
+  border-right-color: #000000 !important;
+  border-bottom-color: #000000 !important;
+  box-shadow: inset 1px 1px 0px #DFDFDF, inset -1px -1px 0px #808080 !important;
+}
+
+/* ---------- Classic Noir / 90s Retro Dark Theme Variant ---------- */
+:root.classic-dark {
+  --bg: #0C282C;                     /* Dark Petrol Teal 90s Desktop */
+  --bg-card: #343940;                /* Gunmetal Metallic 90s Window Chrome */
+  --bg-secondary: #252930;           /* Sunken Inset Panel Well */
+  --bg-card-header: #000080;         /* Classic Deep Navy Active Window Header */
+  --bg-subtle: #2A2E35;
+  --text: #FFFFFF;                   /* Crisp White Primary Text */
+  --text-secondary: #CBD5E1;         /* Silver-Gray Secondary Text */
+  --text-muted: #94A3B8;
+  --primary: #38BDF8;                /* Crisp Retro Sky Blue Accent */
+  --primary-dark: #0284C7;
+  --primary-light: #252930;
+  --success: #34D399;
+  --success-light: rgba(52, 211, 153, 0.15);
+  --warning: #FBBF24;
+  --warning-light: rgba(251, 191, 36, 0.15);
+  --danger: #F87171;
+  --danger-light: rgba(248, 113, 113, 0.15);
+  --info: #38BDF8;
+  --info-light: rgba(56, 189, 248, 0.15);
+  --purple: #C084FC;
+  --purple-light: rgba(192, 132, 252, 0.15);
+  --border: #5A606A;
+  --border-light: #414750;
+  --shadow: 1px 1px 0px #000000;
+  --shadow-md: 2px 2px 0px #000000;
+  --shadow-lg: 3px 3px 0px #000000;
+  --radius: 0px !important;
+  --radius-sm: 0px !important;
+  --radius-lg: 0px !important;
+  --sidebar-bg: #2B3037;
+  --sidebar-text: #FFFFFF;
+}
+
+/* Enforce 0px border radius and retro font everywhere in classic-dark mode */
+:root.classic-dark,
+:root.classic-dark * {
+  border-radius: 0px !important;
+  font-family: 'Segoe UI', Tahoma, 'MS Sans Serif', Arial, sans-serif !important;
+}
+
+:root.classic-dark body {
+  background-color: var(--bg);
+}
+
+:root.classic-dark .card,
+:root.classic-dark .modal-content,
+:root.classic-dark .dropdown-menu,
+:root.classic-dark .kpi-card,
+:root.classic-dark .dash-card,
+:root.classic-dark .stat-card {
+  background-color: #343940 !important;
+  border: 2px solid #5A606A !important;
+  border-right-color: #16181B !important;
+  border-bottom-color: #16181B !important;
+  box-shadow: inset 1px 1px 0px #4B525B, inset -1px -1px 0px #202428, 2px 2px 6px rgba(0, 0, 0, 0.6) !important;
+}
+
+:root.classic-dark .sidebar {
+  background-color: #2B3037 !important;
+  border-right: 2px solid #5A606A !important;
+  box-shadow: inset -1px 0px 0px #16181B !important;
+}
+
+:root.classic-dark .sidebar-nav-item {
+  color: #E2E8F0 !important;
+  margin: 2px 6px !important;
+}
+
+:root.classic-dark .sidebar-nav-item:hover {
+  background-color: #414750 !important;
+  border: 1px solid #5A606A !important;
+  border-right-color: #1E2126 !important;
+  border-bottom-color: #1E2126 !important;
+  color: #FFFFFF !important;
+}
+
+:root.classic-dark .sidebar-nav-item.active {
+  background: #000080 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #16181B !important;
+  box-shadow: inset 1px 1px 0px #2A489E, inset -1px -1px 0px #000040 !important;
+}
+
+:root.classic-dark .topbar {
+  background-color: #2B3037 !important;
+  border-bottom: 2px solid #5A606A !important;
+  box-shadow: 0 1px 0 #16181B !important;
+}
+
+:root.classic-dark .btn {
+  font-family: inherit;
+  font-weight: 600;
+  padding: 5px 12px !important;
+  background: #3B414A !important;
+  color: #FFFFFF !important;
+  border: 2px solid #636A75 !important;
+  border-right-color: #16181B !important;
+  border-bottom-color: #16181B !important;
+  box-shadow: inset 1px 1px 0px #4F5661, inset -1px -1px 0px #252930 !important;
+}
+
+:root.classic-dark .btn:active {
+  border: 2px solid #16181B !important;
+  border-right-color: #636A75 !important;
+  border-bottom-color: #636A75 !important;
+  box-shadow: inset 1px 1px 0px #16181B !important;
+  transform: translate(1px, 1px);
+}
+
+:root.classic-dark .btn-primary {
+  background: #3B414A !important;
+  color: #38BDF8 !important;
+  font-weight: bold !important;
+  border: 2px solid #38BDF8 !important;
+  border-right-color: #0284C7 !important;
+  border-bottom-color: #0284C7 !important;
+}
+
+:root.classic-dark .btn-outline,
+:root.classic-dark .btn-ghost {
+  background: #343940 !important;
+  color: #E2E8F0 !important;
+}
+
+/* Inputs, Selects, Textareas - Sunken Charcoal Box */
+:root.classic-dark input:not([type="checkbox"]):not([type="radio"]),
+:root.classic-dark select,
+:root.classic-dark textarea {
+  background-color: #1E2228 !important;
+  color: #FFFFFF !important;
+  border: 2px solid #5A606A !important;
+  border-right-color: #7D8592 !important;
+  border-bottom-color: #7D8592 !important;
+  box-shadow: inset 1px 1px 0px #101215 !important;
+  padding: 4px 8px !important;
+}
+
+/* Tables */
+:root.classic-dark .table-container,
+:root.classic-dark .data-table {
+  border: 2px solid #5A606A !important;
+  border-right-color: #7D8592 !important;
+  border-bottom-color: #7D8592 !important;
+  background: #1E2228 !important;
+}
+
+:root.classic-dark .data-table th {
+  background-color: #343940 !important;
+  color: #FFFFFF !important;
+  border-top: 1px solid #5A606A !important;
+  border-left: 1px solid #5A606A !important;
+  border-right: 1px solid #16181B !important;
+  border-bottom: 1px solid #16181B !important;
+  box-shadow: inset 1px 1px 0px #4B525B !important;
+  font-weight: bold;
+}
+
+:root.classic-dark .data-table td {
+  border-bottom: 1px solid #2B3037 !important;
+  border-right: 1px solid #252930 !important;
+  color: #F1F5F9 !important;
+}
+
+:root.classic-dark .data-table tr:hover td {
+  background-color: #000080 !important;
+  color: #FFFFFF !important;
+}
+
+/* Sub-tabs / Property Sheet Tabs */
+:root.classic-dark .sub-tabs-bar,
+:root.classic-dark .quick-filters-bar {
+  border-bottom: 2px solid #5A606A !important;
+  background: transparent !important;
+  gap: 3px !important;
+}
+
+:root.classic-dark .sub-tabs-bar button,
+:root.classic-dark .quick-filters-bar button {
+  background: #2B3037 !important;
+  color: #CBD5E1 !important;
+  border: 2px solid #5A606A !important;
+  border-right-color: #16181B !important;
+  border-bottom: none !important;
+  padding: 5px 14px !important;
+  font-weight: normal !important;
+}
+
+:root.classic-dark .sub-tabs-bar button.active,
+:root.classic-dark .quick-filters-bar button.active {
+  background: #3B414A !important;
+  color: #38BDF8 !important;
+  font-weight: bold !important;
+  border-bottom: 2px solid #3B414A !important;
+  margin-bottom: -2px !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* Badges and Pills */
+:root.classic-dark .badge,
+:root.classic-dark .kpi-badge,
+:root.classic-dark .pill,
+:root.classic-dark .tag,
+:root.classic-dark .status-tag {
+  border: 1px solid #5A606A !important;
+  border-right-color: #7D8592 !important;
+  border-bottom-color: #7D8592 !important;
+  box-shadow: inset 1px 1px 0px #16181B !important;
+  background: #252930 !important;
+  color: #38BDF8 !important;
+  font-weight: bold !important;
+  padding: 2px 6px !important;
+}
+
+:root.classic-dark .badge.badge-success {
+  background: #065F46 !important;
+  color: #6EE7B7 !important;
+}
+
+:root.classic-dark .badge.badge-danger {
+  background: #991B1B !important;
+  color: #FCA5A5 !important;
+}
+
+:root.classic-dark .badge.badge-warning {
+  background: #854D0E !important;
+  color: #FDE047 !important;
+}
+
+:root.classic-dark .badge.badge-info {
+  background: #075985 !important;
+  color: #7DD3FC !important;
+}
+
+/* Bottom Status Bar */
+:root.classic-dark .bottom-status-bar {
+  background-color: #2B3037 !important;
+  border-top: 2px solid #5A606A !important;
+  box-shadow: inset 0 1px 0 #16181B !important;
+  color: #CBD5E1 !important;
+}
+
+:root.classic-dark .bottom-status-item {
+  background: #2B3037 !important;
+  border: 1px solid #16181B !important;
+  border-right-color: #5A606A !important;
+  border-bottom-color: #5A606A !important;
+  padding: 2px 8px !important;
+}
+
+/* Dialog / Modal Header - 90s Navy Blue Title Bar */
+:root.classic-dark .modal-header {
+  background: linear-gradient(90deg, #000080, #1084D0) !important;
+  color: #FFFFFF !important;
+  padding: 4px 8px !important;
+  border-bottom: 2px solid #16181B !important;
+}
+
+:root.classic-dark .modal-header h3,
+:root.classic-dark .modal-header h2,
+:root.classic-dark .modal-header .modal-title {
+  color: #FFFFFF !important;
+  font-size: 13px !important;
+  font-weight: bold !important;
+  letter-spacing: 0.5px;
+}
+
+:root.classic-dark .modal-header .btn-close,
+:root.classic-dark .modal-header button:has(svg) {
+  background: #3B414A !important;
+  color: #FFFFFF !important;
+  border: 2px solid #636A75 !important;
+  border-right-color: #16181B !important;
+  border-bottom-color: #16181B !important;
+  box-shadow: inset 1px 1px 0px #4F5661, inset -1px -1px 0px #252930 !important;
+  width: 18px !important;
+  height: 18px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  font-weight: bold !important;
 }
 
 /* ---------- Dark Theme Variants ---------- */
@@ -118,34 +674,6 @@
   --border-light: #253346;
   --sidebar-bg: #0B1120;
   --sidebar-text: #94A3B8;
-}
-
-:root.dark-2 {
-  --bg: #111827;
-  --bg-card: #1F2937;
-  --bg-secondary: #192231;
-  --bg-card-header: #151D2A;
-  --bg-subtle: #0B0F17;
-  --text: #E5E7EB;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
-  --primary: #818CF8;
-  --primary-dark: #6366F1;
-  --primary-light: rgba(129, 140, 248, 0.15);
-  --success: #10B981;
-  --success-light: rgba(16, 185, 129, 0.15);
-  --warning: #F59E0B;
-  --warning-light: rgba(245, 158, 11, 0.15);
-  --danger: #EF4444;
-  --danger-light: rgba(239, 68, 68, 0.15);
-  --info: #38BDF8;
-  --info-light: rgba(56, 189, 248, 0.15);
-  --purple: #A855F7;
-  --purple-light: rgba(168, 85, 247, 0.15);
-  --border: #374151;
-  --border-light: #2D3748;
-  --sidebar-bg: #0E131F;
-  --sidebar-text: #9CA3AF;
 }
 
 /* Theme Toggle Button (Inline Topbar Quick Switch) */
@@ -560,7 +1088,7 @@ input[type=number] {
 .quick-action-tile:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
-  background: var(--tile-bg, var(--bg-hover, rgba(255,255,255,0.06)));
+  background: var(--tile-bg, var(--bg-hover, rgba(255, 255, 255, 0.06)));
 }
 
 .quick-action-tile-icon {

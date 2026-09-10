@@ -20,22 +20,39 @@ public class InboxMessageService {
     }
 
     public List<InboxMessage> getMessagesByFirm(Long firmId) {
-        return repository.findByFirmIdOrderByCreatedAtDesc(firmId);
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        return repository.findByFirmIdOrderByCreatedAtDesc(authoritativeFirmId != null ? authoritativeFirmId : firmId);
     }
 
     public InboxMessage createMessage(InboxMessage msg) {
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (firmId != null) {
+            msg.setFirmId(firmId);
+        }
         return repository.save(msg);
     }
 
     @Transactional
     public InboxMessage markAsRead(Long id) {
-        InboxMessage msg = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Message not found"));
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        InboxMessage msg = (firmId != null)
+                ? repository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Message not found"))
+                : repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Message not found"));
         msg.setRead(true);
         return msg;
     }
 
     @Transactional
     public boolean deleteMessage(Long id) {
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (firmId != null) {
+            if (!repository.existsByIdAndFirmId(id, firmId)) return false;
+            repository.deleteByIdAndFirmId(id, firmId);
+            return true;
+        }
         if (!repository.existsById(id)) return false;
         repository.deleteById(id);
         return true;
@@ -44,10 +61,13 @@ public class InboxMessageService {
     @Transactional
     public boolean sendNotificationIfAbsent(Long firmId, String subjectPrefix, String fullSubject, String body, String sender) {
         if (firmId == null) {
-            firmId = 1L;
+            firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         }
-        List<InboxMessage> unread = repository.findByFirmIdAndIsReadFalse(firmId);
-        boolean exists = unread.stream().anyMatch(m -> m.getSubject() != null && m.getSubject().startsWith(subjectPrefix));
+        if (firmId == null) {
+            return false;
+        }
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        boolean exists = repository.existsByFirmIdAndSubjectStartingWithAndCreatedAtAfter(firmId, subjectPrefix, cutoff);
         if (exists) {
             return false;
         }

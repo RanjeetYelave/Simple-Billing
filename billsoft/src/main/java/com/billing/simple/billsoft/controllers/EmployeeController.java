@@ -80,6 +80,16 @@ public class EmployeeController {
                 .orElse("0000");
     }
 
+    private Employee getAuthorizedEmployee(Long id) {
+        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (firmId != null) {
+            return employeeRepo.findByIdAndFirmId(id, firmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found or unauthorized"));
+        }
+        return employeeRepo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+    }
+
     // ─── PIN Endpoints ───
 
     @PostMapping("/verify-pin")
@@ -112,7 +122,12 @@ public class EmployeeController {
 
     @GetMapping
     public List<EmployeeDTO> getEmployees(@RequestParam(value = "firmId", required = false) Long firmId) {
-        List<Employee> list = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId == null) {
+            return java.util.Collections.emptyList();
+        }
+        List<Employee> list = employeeRepo.findByFirmId(authoritativeFirmId);
         return list.stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
@@ -122,7 +137,12 @@ public class EmployeeController {
 
     @GetMapping("/analytics")
     public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(@RequestParam(value = "firmId", required = false) Long firmId) {
-        List<Employee> employees = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<Employee> employees = employeeRepo.findByFirmId(authoritativeFirmId);
         int activeCount = 0;
         double totalPayroll = 0;
         double totalAdvances = 0;
@@ -167,13 +187,15 @@ public class EmployeeController {
     @PostMapping("/apply-promotions")
     @Transactional
     public ResponseEntity<Map<String, Integer>> applyPendingPromotions(@RequestParam(value = "firmId", required = false) Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
         List<PromotionRecord> unapplied = promotionRepo.findByIsAppliedFalse();
         LocalDate today = LocalDate.now();
         int count = 0;
         for (PromotionRecord p : unapplied) {
             Employee emp = p.getEmployee();
             if (emp == null) continue;
-            if (firmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(firmId)) continue;
+            if (authoritativeFirmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(authoritativeFirmId)) continue;
             if (!p.getEffectiveDate().isAfter(today)) {
                 if (p.getNewRole() != null && !p.getNewRole().isEmpty()) {
                     emp.setRole(p.getNewRole());
@@ -191,13 +213,22 @@ public class EmployeeController {
         return ResponseEntity.ok(Map.of("appliedCount", count));
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<EmployeeDTO> getEmployeeById(@PathVariable Long id) {
+        Employee emp = getAuthorizedEmployee(id);
+        return ResponseEntity.ok(toDTO(emp));
+    }
+
     @PostMapping
     public ResponseEntity<EmployeeDTO> createEmployee(@Valid @RequestBody EmployeeDTO dto) {
         if (dto.getName() == null || dto.getName().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = dto.getFirmId();
+
         Employee emp = new Employee();
-        emp.setFirmId(dto.getFirmId());
+        emp.setFirmId(authoritativeFirmId);
         emp.setName(dto.getName().trim());
         emp.setPhone(dto.getPhone());
         emp.setRole(dto.getRole());
@@ -213,17 +244,17 @@ public class EmployeeController {
 
     @PutMapping("/{id}")
     public ResponseEntity<EmployeeDTO> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO dto) {
-        return employeeRepo.findById(id).map(emp -> {
-            if (dto.getName() != null && !dto.getName().isBlank()) emp.setName(dto.getName().trim());
-            if (dto.getPhone() != null) emp.setPhone(dto.getPhone());
-            if (dto.getRole() != null) emp.setRole(dto.getRole());
-            if (dto.getIdProofNumber() != null) emp.setIdProofNumber(dto.getIdProofNumber());
-            if (dto.getIsActive() != null) emp.setIsActive(dto.getIsActive());
-            if (dto.getMonthlyBaseSalary() != null) emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary());
-            if (dto.getAllowedPaidLeavesPerMonth() != null) emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth());
-            if (dto.getDateOfJoining() != null) emp.setDateOfJoining(dto.getDateOfJoining());
-            return ResponseEntity.ok(toDTO(employeeRepo.save(emp)));
-        }).orElse(ResponseEntity.notFound().build());
+        Employee emp = getAuthorizedEmployee(id);
+        if (dto.getName() != null && !dto.getName().isBlank()) emp.setName(dto.getName().trim());
+        if (dto.getPhone() != null) emp.setPhone(dto.getPhone());
+        if (dto.getRole() != null) emp.setRole(dto.getRole());
+        if (dto.getIdProofNumber() != null) emp.setIdProofNumber(dto.getIdProofNumber());
+        if (dto.getIsActive() != null) emp.setIsActive(dto.getIsActive());
+        if (dto.getMonthlyBaseSalary() != null) emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary());
+        if (dto.getAllowedPaidLeavesPerMonth() != null) emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth());
+        if (dto.getDateOfJoining() != null) emp.setDateOfJoining(dto.getDateOfJoining());
+        // Do NOT allow changing firmId
+        return ResponseEntity.ok(toDTO(employeeRepo.save(emp)));
     }
 
     /**
@@ -232,38 +263,37 @@ public class EmployeeController {
     @PutMapping("/{id}/status")
     @Transactional
     public ResponseEntity<EmployeeDTO> changeEmployeeStatus(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        return employeeRepo.findById(id).map(emp -> {
-            Boolean isActive = body.get("isActive") instanceof Boolean ? (Boolean) body.get("isActive") : null;
-            String reason = body.get("reason") instanceof String ? (String) body.get("reason") : "";
-            Double newSalary = body.get("newSalary") instanceof Number ? ((Number) body.get("newSalary")).doubleValue() : null;
-            String newRole = body.get("newRole") instanceof String ? (String) body.get("newRole") : null;
+        Employee emp = getAuthorizedEmployee(id);
+        Boolean isActive = body.get("isActive") instanceof Boolean ? (Boolean) body.get("isActive") : null;
+        String reason = body.get("reason") instanceof String ? (String) body.get("reason") : "";
+        Double newSalary = body.get("newSalary") instanceof Number ? ((Number) body.get("newSalary")).doubleValue() : null;
+        String newRole = body.get("newRole") instanceof String ? (String) body.get("newRole") : null;
 
-            if (isActive != null) {
-                Double previousSalary = emp.getMonthlyBaseSalary();
-                String previousRole = emp.getRole();
+        if (isActive != null) {
+            Double previousSalary = emp.getMonthlyBaseSalary();
+            String previousRole = emp.getRole();
 
-                emp.setIsActive(isActive);
-                if (isActive) {
-                    if (newSalary != null) emp.setMonthlyBaseSalary(newSalary);
-                    if (newRole != null && !newRole.isBlank()) emp.setRole(newRole);
-                }
-                employeeRepo.save(emp);
-
-                PromotionRecord timelineEntry = new PromotionRecord();
-                timelineEntry.setEmployee(emp);
-                timelineEntry.setEffectiveDate(LocalDate.now());
-                timelineEntry.setType(isActive ? "REJOIN" : "RETIREMENT");
-                timelineEntry.setPreviousRole(previousRole);
-                timelineEntry.setNewRole(emp.getRole());
-                timelineEntry.setPreviousSalary(previousSalary);
-                timelineEntry.setNewSalary(emp.getMonthlyBaseSalary());
-                timelineEntry.setReason((reason != null && !reason.isBlank()) ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
-                timelineEntry.setIsApplied(true);
-                promotionRepo.save(timelineEntry);
+            emp.setIsActive(isActive);
+            if (isActive) {
+                if (newSalary != null) emp.setMonthlyBaseSalary(newSalary);
+                if (newRole != null && !newRole.isBlank()) emp.setRole(newRole);
             }
+            employeeRepo.save(emp);
 
-            return ResponseEntity.ok(toDTO(emp));
-        }).orElse(ResponseEntity.notFound().build());
+            PromotionRecord timelineEntry = new PromotionRecord();
+            timelineEntry.setEmployee(emp);
+            timelineEntry.setEffectiveDate(LocalDate.now());
+            timelineEntry.setType(isActive ? "REJOIN" : "RETIREMENT");
+            timelineEntry.setPreviousRole(previousRole);
+            timelineEntry.setNewRole(emp.getRole());
+            timelineEntry.setPreviousSalary(previousSalary);
+            timelineEntry.setNewSalary(emp.getMonthlyBaseSalary());
+            timelineEntry.setReason((reason != null && !reason.isBlank()) ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
+            timelineEntry.setIsApplied(true);
+            promotionRepo.save(timelineEntry);
+        }
+
+        return ResponseEntity.ok(toDTO(emp));
     }
 
     /**
@@ -272,16 +302,14 @@ public class EmployeeController {
     @DeleteMapping("/{id}")
     @Transactional
     public ResponseEntity<Map<String, String>> deleteEmployee(@PathVariable Long id) {
-        if (!employeeRepo.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        promotionRepo.deleteByEmployeeId(id);
-        advanceRepo.deleteByEmployeeId(id);
-        salaryRepo.deleteByEmployeeId(id);
-        attendanceRepo.deleteByEmployeeId(id);
-        documentRepo.deleteByEmployeeId(id);
-        leaveRepo.deleteByEmployeeId(id);
-        employeeRepo.deleteById(id);
+        Employee emp = getAuthorizedEmployee(id);
+        promotionRepo.deleteByEmployeeId(emp.getId());
+        advanceRepo.deleteByEmployeeId(emp.getId());
+        salaryRepo.deleteByEmployeeId(emp.getId());
+        attendanceRepo.deleteByEmployeeId(emp.getId());
+        documentRepo.deleteByEmployeeId(emp.getId());
+        leaveRepo.deleteByEmployeeId(emp.getId());
+        employeeRepo.deleteById(emp.getId());
         return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
@@ -289,15 +317,14 @@ public class EmployeeController {
 
     @GetMapping("/{id}/advances")
     public List<EmployeeAdvance> getAdvances(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         return advanceRepo.findByEmployeeIdOrderByDateDesc(id);
     }
 
     @PostMapping("/{id}/advances")
     @Transactional
     public ResponseEntity<?> addAdvance(@PathVariable Long id, @RequestBody EmployeeAdvance advance) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
-        Employee emp = empOpt.get();
+        Employee emp = getAuthorizedEmployee(id);
 
         advance.setEmployee(emp);
         if (advance.getDate() == null) advance.setDate(LocalDate.now());
@@ -328,15 +355,14 @@ public class EmployeeController {
 
     @GetMapping("/{id}/salaries")
     public List<SalaryRecord> getSalaries(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         return salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
     }
 
     @PostMapping("/{id}/salaries")
     @Transactional
     public ResponseEntity<?> processSalary(@PathVariable Long id, @RequestBody SalaryRecord record) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
-        Employee emp = empOpt.get();
+        Employee emp = getAuthorizedEmployee(id);
 
         record.setEmployee(emp);
         if (record.getPaymentDate() == null) record.setPaymentDate(LocalDate.now());
@@ -408,15 +434,15 @@ public class EmployeeController {
 
         int processed = 0;
         int skipped = 0;
-        List<String> errors = new java.util.ArrayList<>();
 
         for (Integer empId : employeeIds) {
-            Optional<Employee> empOpt = employeeRepo.findById(empId.longValue());
-            if (empOpt.isEmpty()) {
+            Employee emp;
+            try {
+                emp = getAuthorizedEmployee(empId.longValue());
+            } catch (Exception e) {
                 skipped++;
                 continue;
             }
-            Employee emp = empOpt.get();
 
             // Skip if already processed for this month
             Optional<SalaryRecord> existing = salaryRepo.findByEmployeeIdAndMonthYear(emp.getId(), monthYear);
@@ -485,15 +511,14 @@ public class EmployeeController {
 
     @GetMapping("/{id}/promotions")
     public List<PromotionRecord> getPromotions(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         return promotionRepo.findByEmployeeIdOrderByEffectiveDateDesc(id);
     }
 
     @PostMapping("/{id}/promotions")
     @Transactional
     public ResponseEntity<PromotionRecord> addPromotion(@PathVariable Long id, @RequestBody PromotionRecord record) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
-        Employee emp = empOpt.get();
+        Employee emp = getAuthorizedEmployee(id);
 
         record.setEmployee(emp);
         if (record.getEffectiveDate() == null) record.setEffectiveDate(LocalDate.now());
@@ -535,8 +560,7 @@ public class EmployeeController {
 
     @GetMapping("/{id}/ytd")
     public ResponseEntity<Map<String, Object>> getYearToDate(@PathVariable Long id) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
+        getAuthorizedEmployee(id);
 
         List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
         int currentYear = LocalDate.now().getYear();
@@ -581,8 +605,7 @@ public class EmployeeController {
 
     @GetMapping("/{id}/salaries/{salaryId}/payslip")
     public ResponseEntity<byte[]> downloadPayslip(@PathVariable Long id, @PathVariable Long salaryId) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
+        Employee emp = getAuthorizedEmployee(id);
 
         Optional<SalaryRecord> salOpt = salaryRepo.findById(salaryId);
         if (salOpt.isEmpty() || !salOpt.get().getEmployee().getId().equals(id)) {
@@ -590,9 +613,9 @@ public class EmployeeController {
         }
 
         try {
-            FirmDetails firm = firmService.getFirst();
+            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
             List<SalaryRecord> allSalaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
-            byte[] pdf = pdfService.generatePayslip(empOpt.get(), salOpt.get(), firm, allSalaries);
+            byte[] pdf = pdfService.generatePayslip(emp, salOpt.get(), firm, allSalaries);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "payslip-" + id + "-" + salaryId + ".pdf");
@@ -607,8 +630,7 @@ public class EmployeeController {
             @PathVariable Long id,
             @RequestParam(value = "from", required = false) String fromStr,
             @RequestParam(value = "to", required = false) String toStr) {
-        Optional<Employee> empOpt = employeeRepo.findById(id);
-        if (empOpt.isEmpty()) return ResponseEntity.notFound().build();
+        Employee emp = getAuthorizedEmployee(id);
 
         LocalDate from = fromStr != null ? LocalDate.parse(fromStr) : null;
         LocalDate to = toStr != null ? LocalDate.parse(toStr) : null;
@@ -616,8 +638,8 @@ public class EmployeeController {
         try {
             List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
             List<EmployeeAdvance> advances = advanceRepo.findByEmployeeIdOrderByDateDesc(id);
-            FirmDetails firm = firmService.getFirst();
-            byte[] pdf = pdfService.generateEmployeeStatement(empOpt.get(), salaries, advances, from, to, firm);
+            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
+            byte[] pdf = pdfService.generateEmployeeStatement(emp, salaries, advances, from, to, firm);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "employee-statement-" + id + ".pdf");
@@ -631,7 +653,12 @@ public class EmployeeController {
 
     @GetMapping("/export/csv")
     public ResponseEntity<byte[]> exportEmployeesCsv(@RequestParam(value = "firmId", required = false) Long firmId) {
-        List<Employee> employees = (firmId != null) ? employeeRepo.findByFirmId(firmId) : employeeRepo.findAll();
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<Employee> employees = employeeRepo.findByFirmId(authoritativeFirmId);
         StringBuilder csv = new StringBuilder();
         csv.append("ID,Name,Phone,Role,DateOfJoining,IDProof,IsActive,BaseSalary,AllowedLeaves,AdvanceBalance\n");
         for (Employee e : employees) {
@@ -655,6 +682,7 @@ public class EmployeeController {
 
     @GetMapping("/{id}/salaries/export/csv")
     public ResponseEntity<byte[]> exportSalariesCsv(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
         StringBuilder csv = new StringBuilder();
         csv.append("MonthYear,BaseSalary,DaysAbsent,PaidLeaves,UnpaidLeaves,LeaveDeduction,Bonus,AdvanceDeducted,NetPaid,PaymentDate\n");
@@ -679,6 +707,7 @@ public class EmployeeController {
 
     @GetMapping("/{id}/advances/export/csv")
     public ResponseEntity<byte[]> exportAdvancesCsv(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         List<EmployeeAdvance> advances = advanceRepo.findByEmployeeIdOrderByDateDesc(id);
         StringBuilder csv = new StringBuilder();
         csv.append("Date,Description,Amount,Type\n");
@@ -725,14 +754,14 @@ public class EmployeeController {
     // ─── Attendance Endpoints ───
     @GetMapping("/{id}/attendance")
     public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendance(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         return attendanceRepo.findByEmployeeIdOrderByDateDesc(id);
     }
 
     @PostMapping("/{id}/attendance")
     public ResponseEntity<?> setAttendance(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.AttendanceRecord record) {
-        Optional<Employee> emp = employeeRepo.findById(id);
-        if(emp.isEmpty()) return ResponseEntity.notFound().build();
-        record.setEmployee(emp.get());
+        Employee emp = getAuthorizedEmployee(id);
+        record.setEmployee(emp);
         Optional<com.billing.simple.billsoft.entities.AttendanceRecord> existing = attendanceRepo.findByEmployeeIdAndDate(id, record.getDate());
         if(existing.isPresent()) {
             com.billing.simple.billsoft.entities.AttendanceRecord ext = existing.get();
@@ -747,11 +776,13 @@ public class EmployeeController {
 
     @GetMapping("/{id}/attendance/range")
     public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceRange(@PathVariable Long id, @RequestParam("from") String from, @RequestParam("to") String to) {
+        getAuthorizedEmployee(id);
         return attendanceRepo.findByEmployeeIdAndDateBetween(id, LocalDate.parse(from), LocalDate.parse(to));
     }
 
     @GetMapping("/{id}/attendance/month/{year}/{month}")
     public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceMonth(@PathVariable Long id, @PathVariable int year, @PathVariable int month) {
+        getAuthorizedEmployee(id);
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
         return attendanceRepo.findByEmployeeIdAndDateBetween(id, start, end);
@@ -759,15 +790,17 @@ public class EmployeeController {
 
     // ─── Document Endpoints ───
     @GetMapping("/{id}/documents")
-    public List<com.billing.simple.billsoft.entities.EmployeeDocument> getDocuments(@PathVariable Long id) {
-        return documentRepo.findByEmployeeIdOrderByUploadedAtDesc(id);
+    public List<com.billing.simple.billsoft.dtos.EmployeeDocumentSummaryDTO> getDocuments(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
+        return documentRepo.findByEmployeeIdOrderByUploadedAtDesc(id).stream()
+                .map(com.billing.simple.billsoft.dtos.EmployeeDocumentSummaryDTO::fromEntity)
+                .toList();
     }
 
     @PostMapping("/{id}/documents")
     public ResponseEntity<?> uploadDocument(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.EmployeeDocument doc) {
-        Optional<Employee> emp = employeeRepo.findById(id);
-        if (emp.isEmpty()) return ResponseEntity.notFound().build();
-        doc.setEmployee(emp.get());
+        Employee emp = getAuthorizedEmployee(id);
+        doc.setEmployee(emp);
         doc.setUploadedAt(java.time.LocalDateTime.now());
         return ResponseEntity.ok(documentRepo.save(doc));
     }
@@ -777,11 +810,10 @@ public class EmployeeController {
     public ResponseEntity<?> uploadDocumentFile(@PathVariable Long id,
                                                 @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
                                                 @RequestParam(value = "type", required = false) String type) {
-        Optional<Employee> emp = employeeRepo.findById(id);
-        if (emp.isEmpty()) return ResponseEntity.notFound().build();
+        Employee emp = getAuthorizedEmployee(id);
         try {
             com.billing.simple.billsoft.entities.EmployeeDocument doc = new com.billing.simple.billsoft.entities.EmployeeDocument();
-            doc.setEmployee(emp.get());
+            doc.setEmployee(emp);
             doc.setFileName(file.getOriginalFilename());
             doc.setType(type != null ? type : "OTHER");
             // Encode file bytes to Base64 and prepend data URI with mime type
@@ -797,6 +829,9 @@ public class EmployeeController {
 
     @DeleteMapping("/documents/{docId}")
     public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
+        com.billing.simple.billsoft.entities.EmployeeDocument doc = documentRepo.findById(docId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+        getAuthorizedEmployee(doc.getEmployee().getId());
         documentRepo.deleteById(docId);
         return ResponseEntity.ok(Map.of("status", "deleted"));
     }
@@ -815,6 +850,9 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.EmployeeDocument> docOpt = documentRepo.findById(docId);
         if (docOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.EmployeeDocument doc = docOpt.get();
+        if (doc.getEmployee() != null) {
+            getAuthorizedEmployee(doc.getEmployee().getId());
+        }
         
         String b64 = doc.getDataBase64();
         if (b64 == null || b64.isBlank()) return ResponseEntity.notFound().build();
@@ -850,14 +888,14 @@ public class EmployeeController {
     // ─── Leave Endpoints ───
     @GetMapping("/{id}/leaves")
     public List<com.billing.simple.billsoft.entities.LeaveRecord> getLeaves(@PathVariable Long id) {
+        getAuthorizedEmployee(id);
         return leaveRepo.findByEmployeeIdOrderByStartDateDesc(id);
     }
 
     @PostMapping("/{id}/leaves")
     public ResponseEntity<?> requestLeave(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.LeaveRecord record) {
-        Optional<Employee> emp = employeeRepo.findById(id);
-        if(emp.isEmpty()) return ResponseEntity.notFound().build();
-        record.setEmployee(emp.get());
+        Employee emp = getAuthorizedEmployee(id);
+        record.setEmployee(emp);
         record.setStatus("PENDING");
         return ResponseEntity.ok(leaveRepo.save(record));
     }
@@ -867,6 +905,9 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
         if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
+        if (l.getEmployee() != null) {
+            getAuthorizedEmployee(l.getEmployee().getId());
+        }
         l.setStatus("APPROVED");
         return ResponseEntity.ok(leaveRepo.save(l));
     }
@@ -876,6 +917,9 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
         if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
+        if (l.getEmployee() != null) {
+            getAuthorizedEmployee(l.getEmployee().getId());
+        }
         l.setStatus("REJECTED");
         l.setReason(body.get("reason"));
         return ResponseEntity.ok(leaveRepo.save(l));

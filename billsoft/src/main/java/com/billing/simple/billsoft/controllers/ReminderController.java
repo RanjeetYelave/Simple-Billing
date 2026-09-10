@@ -16,8 +16,14 @@ public class ReminderController {
     }
 
     @GetMapping
-    public List<Reminder> listAll() {
-        return reminderService.getAll();
+    public List<Reminder> listAll(@RequestParam(value = "firmId", required = false) Long firmId,
+                                  @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId != null ? firmId : firmIdHeader;
+        if (authoritativeFirmId != null) {
+            return reminderService.getByFirm(authoritativeFirmId);
+        }
+        return java.util.Collections.emptyList();
     }
 
     @GetMapping("/firm/{firmId}")
@@ -46,7 +52,7 @@ public class ReminderController {
         return deleted ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
     }
 
-    @RequestMapping(value = "/{id}/done", method = {RequestMethod.PUT, RequestMethod.PATCH})
+    @RequestMapping(value = "/{id}/done", method = {RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.POST})
     public Reminder markDone(@PathVariable Long id) {
         return reminderService.markDone(id);
     }

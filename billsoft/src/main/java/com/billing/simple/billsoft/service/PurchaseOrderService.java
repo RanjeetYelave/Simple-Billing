@@ -14,6 +14,8 @@ public interface PurchaseOrderService {
 
     List<PurchaseOrder> getPurchaseOrdersByFirm(Long firmId);
 
+    com.billing.simple.billsoft.dtos.PageResponse<PurchaseOrder> getPaginatedPurchaseOrders(Long firmId, org.springframework.data.domain.Pageable pageable);
+
     List<PurchaseOrder> getPurchaseOrdersByParty(Long firmId, Long partyId);
 
     Optional<PurchaseOrder> getPurchaseOrderById(Long id, Long firmId);

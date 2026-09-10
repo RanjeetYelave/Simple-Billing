@@ -13,6 +13,8 @@ import org.springframework.stereotype.Repository;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 
+import java.util.Optional;
+
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
@@ -20,6 +22,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     // Used by BackupService
     List<Invoice> findAllByFirmId(Long firmId);
+    
+    Optional<Invoice> findByIdAndFirmId(Long id, Long firmId);
+
+    boolean existsByIdAndFirmId(Long id, Long firmId);
+
+    void deleteByIdAndFirmId(Long id, Long firmId);
     
     long countByFirmId(Long firmId);
     
@@ -47,6 +55,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findByCustomer_NameContainingIgnoreCase(String name);
     
     List<Invoice> findAllByFirmIdAndStatusOrderByInvoiceDateAsc(Long firmId, InvoiceStatus status);
+    List<Invoice> findAllByFirmIdAndStatusOrderByInvoiceDateDesc(Long firmId, InvoiceStatus status);
     
     List<Invoice> findAllByFirmIdAndStatusIn(Long firmId, List<InvoiceStatus> statuses);
 
@@ -56,9 +65,15 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findAllWithItems();
     
     List<Invoice> findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus status);
+    List<Invoice> findAllByStatusOrderByInvoiceDateDesc(InvoiceStatus status);
     
     // For quotation conversion lookup
     Invoice findByConvertedInvoiceId(Long convertedInvoiceId);
+
+    Optional<Invoice> findByConvertedInvoiceIdAndFirmId(Long convertedInvoiceId, Long firmId);
+    Optional<Invoice> findByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
+    Optional<Invoice> findByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
+
 
     // ── Aggregation queries for analytics ──
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
@@ -75,4 +90,13 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @Query("SELECT i.estimateNumber FROM Invoice i WHERE i.firmId = :firmId AND i.estimateNumber IS NOT NULL")
     List<String> findEstimateNumbersByFirmId(@Param("firmId") Long firmId);
+
+    @Query("SELECT i FROM Invoice i WHERE i.status NOT IN (com.billing.simple.billsoft.entities.InvoiceStatus.CANCELLED, com.billing.simple.billsoft.entities.InvoiceStatus.ESTIMATE, com.billing.simple.billsoft.entities.InvoiceStatus.DRAFT) AND (i.paid IS NULL OR i.paid = false) AND i.dueDate IS NOT NULL AND i.dueDate < :today")
+    List<Invoice> findOverdueInvoices(@Param("today") java.time.LocalDate today);
+
+    @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.firmId = :firmId AND i.status IN :statuses")
+    List<Invoice> findInvoicesWithCustomerForAnalytics(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
+
+    @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.status IN :statuses")
+    List<Invoice> findInvoicesWithCustomerForAnalyticsAll(@Param("statuses") List<InvoiceStatus> statuses);
 }

@@ -38,6 +38,8 @@ public class BackupService {
     private final InboxMessageRepository inboxMessageRepo;
     private final AppConfigRepository appConfigRepo;
     private final InvoicePaymentRepository invoicePaymentRepo;
+    private final SalesReturnRepository salesReturnRepo;
+    private final SalesReturnItemRepository salesReturnItemRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -62,7 +64,9 @@ public class BackupService {
                          BusinessLetterRepository businessLetterRepo,
                          InboxMessageRepository inboxMessageRepo,
                          AppConfigRepository appConfigRepo,
-                         InvoicePaymentRepository invoicePaymentRepo) {
+                         InvoicePaymentRepository invoicePaymentRepo,
+                         SalesReturnRepository salesReturnRepo,
+                         SalesReturnItemRepository salesReturnItemRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -87,6 +91,8 @@ public class BackupService {
         this.inboxMessageRepo = inboxMessageRepo;
         this.appConfigRepo = appConfigRepo;
         this.invoicePaymentRepo = invoicePaymentRepo;
+        this.salesReturnRepo = salesReturnRepo;
+        this.salesReturnItemRepo = salesReturnItemRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -149,6 +155,7 @@ public class BackupService {
         backup.setBusinessLetters(businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId));
         backup.setInboxMessages(inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId));
         backup.setAppConfigs(appConfigRepo.findAll());
+        backup.setSalesReturns(salesReturnRepo.findByFirmIdOrderByReturnDateDescIdDesc(firmId));
 
         return backup;
     }
@@ -193,6 +200,7 @@ public class BackupService {
         backup.setBusinessLetters(businessLetterRepo.findAll());
         backup.setInboxMessages(inboxMessageRepo.findAll());
         backup.setAppConfigs(appConfigRepo.findAll());
+        backup.setSalesReturns(salesReturnRepo.findAll());
 
         return backup;
     }
@@ -576,6 +584,77 @@ public class BackupService {
                             .notes(ip.getNotes())
                             .build();
                     invoicePaymentRepo.save(newIp);
+                }
+            }
+        }
+
+        // 4.2 Sales Returns
+        if (backup.getSalesReturns() != null) {
+            for (SalesReturn sr : backup.getSalesReturns()) {
+                Long oldFid = sr.getFirmId() != null ? sr.getFirmId() : -1L;
+                boolean shouldImport = !isFullSystem
+                        || oldToNewFirmIdMap.containsKey(oldFid)
+                        || (sr.getInvoice() != null && oldToNewInvoiceMap.containsKey(sr.getInvoice().getId()));
+                if (shouldImport) {
+                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Invoice mappedInvoice = null;
+                    if (sr.getInvoice() != null && oldToNewInvoiceMap.containsKey(sr.getInvoice().getId())) {
+                        mappedInvoice = oldToNewInvoiceMap.get(sr.getInvoice().getId());
+                    }
+                    if (mappedInvoice == null && sr.getInvoice() != null && sr.getInvoice().getId() != null) {
+                        mappedInvoice = invoiceRepo.findById(sr.getInvoice().getId()).orElse(null);
+                    }
+                    if (mappedInvoice == null) {
+                        continue; // Cannot restore sales return without parent invoice
+                    }
+                    Customer mappedCustomer = null;
+                    if (sr.getCustomer() != null && oldToNewCustomerMap.containsKey(sr.getCustomer().getId())) {
+                        mappedCustomer = oldToNewCustomerMap.get(sr.getCustomer().getId());
+                    } else if (mappedInvoice.getCustomer() != null) {
+                        mappedCustomer = mappedInvoice.getCustomer();
+                    }
+
+                    SalesReturn newSr = SalesReturn.builder()
+                            .firmId(mappedFirmId)
+                            .returnNumber(sr.getReturnNumber())
+                            .returnDate(sr.getReturnDate())
+                            .invoice(mappedInvoice)
+                            .customer(mappedCustomer)
+                            .reason(sr.getReason())
+                            .refundMode(sr.getRefundMode())
+                            .subtotal(sr.getSubtotal())
+                            .taxAmount(sr.getTaxAmount())
+                            .excludedTaxAmount(sr.getExcludedTaxAmount())
+                            .penaltyAmount(sr.getPenaltyAmount())
+                            .penaltyReason(sr.getPenaltyReason())
+                            .totalRefundAmount(sr.getTotalRefundAmount())
+                            .notes(sr.getNotes())
+                            .items(new ArrayList<>())
+                            .build();
+
+                    if (sr.getItems() != null) {
+                        for (SalesReturnItem item : sr.getItems()) {
+                            Product mappedProd = null;
+                            if (item.getProduct() != null && oldToNewProductMap.containsKey(item.getProduct().getId())) {
+                                mappedProd = oldToNewProductMap.get(item.getProduct().getId());
+                            }
+                            SalesReturnItem newItem = SalesReturnItem.builder()
+                                    .salesReturn(newSr)
+                                    .product(mappedProd)
+                                    .productName(item.getProductName())
+                                    .hsnCode(item.getHsnCode())
+                                    .unit(item.getUnit())
+                                    .returnQty(item.getReturnQty())
+                                    .unitPrice(item.getUnitPrice())
+                                    .discountValue(item.getDiscountValue())
+                                    .gstPercent(item.getGstPercent())
+                                    .gstAmount(item.getGstAmount())
+                                    .refundTotal(item.getRefundTotal())
+                                    .build();
+                            newSr.getItems().add(newItem);
+                        }
+                    }
+                    salesReturnRepo.save(newSr);
                 }
             }
         }
@@ -1029,7 +1108,9 @@ public class BackupService {
 
     @Transactional
     public void factoryReset() {
-        // Child tables referencing invoices
+        // Child tables referencing returns & invoices
+        salesReturnItemRepo.deleteAllInBatch();
+        salesReturnRepo.deleteAllInBatch();
         invoicePaymentRepo.deleteAllInBatch();
         invoiceItemRepo.deleteAllInBatch();
         invoiceRepo.deleteAllInBatch();

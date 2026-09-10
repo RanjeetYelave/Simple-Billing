@@ -24,6 +24,88 @@ const BillsoftUtils = {
     return d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   },
 
+  getDocTimestamp(doc) {
+    if (!doc) return 0;
+    // 1. Extract calendar day (YYYY-MM-DD)
+    const rawDate = doc.invoiceDate || doc.estimateDate || doc.createdAt || doc.updatedAt;
+    let dateStr = '';
+    if (rawDate) {
+      if (typeof rawDate === 'string') {
+        dateStr = rawDate.split('T')[0];
+      } else if (rawDate instanceof Date) {
+        dateStr = rawDate.toISOString().split('T')[0];
+      }
+    }
+
+    let dayMs = 0;
+    if (dateStr) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        dayMs = new Date(y, m, d).getTime();
+      }
+    }
+    if (isNaN(dayMs) || dayMs === 0) {
+      dayMs = rawDate ? new Date(rawDate).getTime() : 0;
+    }
+    if (isNaN(dayMs)) dayMs = 0;
+
+    // 2. Intra-day time precision (from createdAt, updatedAt, or time portion of rawDate)
+    let timeMs = 0;
+    const timeSource = doc.createdAt || doc.updatedAt || (typeof rawDate === 'string' && rawDate.includes('T') ? rawDate : null);
+    if (timeSource) {
+      const tDate = new Date(timeSource);
+      if (!isNaN(tDate.getTime())) {
+        timeMs = tDate.getHours() * 3600000 + tDate.getMinutes() * 60000 + tDate.getSeconds() * 1000 + tDate.getMilliseconds();
+      }
+    }
+
+    return dayMs + timeMs;
+  },
+
+  compareDocuments(a, b, sortField = 'date', sortDir = 'desc') {
+    let cmp = 0;
+    if (sortField === 'date') {
+      const da = BillsoftUtils.getDocTimestamp(a);
+      const db = BillsoftUtils.getDocTimestamp(b);
+      cmp = db - da; // default desc (newest first)
+      if (cmp === 0) {
+        cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+      }
+      return sortDir === 'asc' ? -cmp : cmp;
+    } else if (sortField === 'amount') {
+      const aa = Number(a.totalAmount) || 0;
+      const ab = Number(b.totalAmount) || 0;
+      cmp = ab - aa;
+      if (cmp === 0) cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+      return sortDir === 'asc' ? -cmp : cmp;
+    } else if (sortField === 'status') {
+      const sa = (a.status || '').toString().trim().toUpperCase();
+      const sb = (b.status || '').toString().trim().toUpperCase();
+      cmp = sa.localeCompare(sb);
+      if (cmp === 0) cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+      return sortDir === 'desc' ? -cmp : cmp;
+    } else if (sortField === 'number') {
+      const na = (a.docNumber || a.invoiceNumber || a.estimateNumber || ('#' + a.id)).toString().trim();
+      const nb = (b.docNumber || b.invoiceNumber || b.estimateNumber || ('#' + b.id)).toString().trim();
+      cmp = na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' });
+      if (cmp === 0) cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+      return sortDir === 'desc' ? -cmp : cmp;
+    } else if (sortField === 'customer') {
+      const ca = ((a.customer && a.customer.name) || a.customerName || '').toString().trim();
+      const cb = ((b.customer && b.customer.name) || b.customerName || '').toString().trim();
+      cmp = ca.localeCompare(cb, undefined, { numeric: true, sensitivity: 'base' });
+      if (cmp === 0) cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+      return sortDir === 'desc' ? -cmp : cmp;
+    }
+    
+    // Default fallback by ID
+    cmp = (Number(b.id) || 0) - (Number(a.id) || 0);
+    return sortDir === 'asc' ? -cmp : cmp;
+  },
+
   getStatusClass(status) {
     const map = {
       DRAFT: 'badge-draft',
@@ -35,7 +117,7 @@ const BillsoftUtils = {
       SENT: 'badge-sent',
       OVERDUE: 'badge-overdue',
     };
-    return map[status] || 'badge-draft';
+    return map[status] || 'badge-warning';
   },
 
   getStatusLabel(status) {
@@ -49,7 +131,7 @@ const BillsoftUtils = {
       SENT: 'Sent',
       OVERDUE: 'Overdue',
     };
-    return map[status] || status;
+    return map[status] || status || 'Unpaid';
   },
 
   debounce(fn, ms = 300) {

@@ -27,15 +27,22 @@ public class PurchaseOrderController {
     }
 
     @GetMapping
-    public ResponseEntity<List<PurchaseOrder>> list(@RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
-                                                    @RequestParam(value = "firmId", required = false) Long firmIdParam,
-                                                    @RequestParam(value = "partyId", required = false) Long partyId) {
+    public ResponseEntity<?> list(@RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                  @RequestParam(value = "firmId", required = false) Long firmIdParam,
+                                  @RequestParam(value = "partyId", required = false) Long partyId,
+                                  @RequestParam(value = "page", required = false) Integer page,
+                                  @RequestParam(value = "size", required = false) Integer size) {
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
         if (firmId == null) {
             return ResponseEntity.badRequest().build();
         }
         if (partyId != null) {
             return ResponseEntity.ok(poService.getPurchaseOrdersByParty(firmId, partyId));
+        }
+        if (page != null || size != null) {
+            org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+                    page != null ? page : 0, size != null ? size : 25, "poDate");
+            return ResponseEntity.ok(poService.getPaginatedPurchaseOrders(firmId, pageable));
         }
         return ResponseEntity.ok(poService.getPurchaseOrdersByFirm(firmId));
     }
@@ -216,6 +223,8 @@ public class PurchaseOrderController {
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"PO-" + id + ".pdf\"");
             return ResponseEntity.ok().headers(headers).body(pdfBytes);
+        } catch (IllegalArgumentException | com.billing.simple.billsoft.security.TenantSecurityException e) {
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

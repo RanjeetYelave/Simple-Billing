@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RupeeCRM - Business Billing & Management</title>
-  <link rel="stylesheet" href="css/style.css?v=20260906_theme_unified_v2" />
+  <link rel="stylesheet" href="css/style.css?v=20260910_theme_sync_v10" />
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
 
@@ -338,6 +338,13 @@
         React.createElement('polyline', { points: '23 4 23 10 17 10' }),
         React.createElement('path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' })
       ),
+      whatsapp: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 17, height: 17, viewBox: '0 0 24 24', fill: 'currentColor' },
+        React.createElement('path', { d: 'M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-.301-.15-1.272-.469-2.423-1.496-.896-.799-1.501-1.785-1.677-2.086-.176-.301-.019-.464.132-.614.136-.135.301-.351.452-.527.15-.175.2-.301.301-.502.1-.2.05-.376-.025-.526-.075-.15-.678-1.635-.929-2.24-.244-.588-.492-.508-.677-.517l-.578-.01c-.2 0-.527.075-.803.376-.276.301-1.054 1.03-1.054 2.512 0 1.482 1.079 2.912 1.23 3.113.15.201 2.124 3.243 5.145 4.549.719.311 1.28.497 1.718.636.722.23 1.378.197 1.898.12.58-.087 1.78-.727 2.031-1.43.251-.703.251-1.305.176-1.43-.075-.125-.276-.2-.577-.35zM12.004 2C6.48 2 2 6.48 2 12.004c0 1.996.586 3.858 1.6 5.432L2.054 22l4.71-1.518A9.957 9.957 0 0 0 12.004 22C17.525 22 22 17.522 22 12.004 22 6.48 17.525 2 12.004 2zm0 18.188a8.163 8.163 0 0 1-4.168-1.144l-.299-.178-3.097.998.995-3.018-.195-.311A8.154 8.154 0 0 1 3.816 12C3.816 7.487 7.491 3.812 12.004 3.812c4.512 0 8.188 3.675 8.188 8.188 0 4.512-3.676 8.188-8.188 8.188z' })
+      ),
+      whatsappColor: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 22, height: 22, viewBox: '0 0 24 24' },
+        React.createElement('path', { fill: '#25D366', d: 'M12.004 2C6.48 2 2 6.48 2 12.004c0 1.996.586 3.858 1.6 5.432L2.054 22l4.71-1.518A9.957 9.957 0 0 0 12.004 22C17.525 22 22 17.522 22 12.004 22 6.48 17.525 2 12.004 2z' }),
+        React.createElement('path', { fill: '#FFF', d: 'M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-.301-.15-1.272-.469-2.423-1.496-.896-.799-1.501-1.785-1.677-2.086-.176-.301-.019-.464.132-.614.136-.135.301-.351.452-.527.15-.175.2-.301.301-.502.1-.2.05-.376-.025-.526-.075-.15-.678-1.635-.929-2.24-.244-.588-.492-.508-.677-.517l-.578-.01c-.2 0-.527.075-.803.376-.276.301-1.054 1.03-1.054 2.512 0 1.482 1.079 2.912 1.23 3.113.15.201 2.124 3.243 5.145 4.549.719.311 1.28.497 1.718.636.722.23 1.378.197 1.898.12.58-.087 1.78-.727 2.031-1.43.251-.703.251-1.305.176-1.43-.075-.125-.276-.2-.577-.35z' })
+      ),
       rupee: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
         React.createElement('path', { d: 'M6 3h12M6 8h12M9 3l7 17' })
       ),
@@ -405,6 +412,1330 @@
         React.createElement('path', { d: 'M9 16h6' })
       ),
     };
+
+    // ─── WHATSAPP SHARE MODAL (SIMPLIFIED & AUTHENTIC WHATSAPP UI) ───
+    function WhatsAppShareModal({
+      isOpen,
+      onClose,
+      title,
+      recipientPhone,
+      recipientName,
+      availableRecipients = [],
+      initialMessage,
+      documentRef,
+      pdfFetcher,
+      pdfBlob,
+      pdfFileName,
+      pdfUrl
+    }) {
+      if (!isOpen) return null;
+
+      // Extract document-specific recipients (excluding store/firm)
+      const validRecipients = useMemo(() => {
+        if (Array.isArray(availableRecipients) && availableRecipients.length > 0) {
+          const filtered = availableRecipients.filter(r => r && r.id !== 'firm' && r.id !== 'custom');
+          if (filtered.length > 0) return filtered;
+        }
+        return [
+          {
+            id: 'primary',
+            label: recipientName || 'Recipient',
+            name: recipientName || 'Recipient',
+            phone: recipientPhone || '',
+            icon: '👤'
+          }
+        ];
+      }, [availableRecipients, recipientPhone, recipientName]);
+
+      const [selectedRecipientId, setSelectedRecipientId] = useState(() => {
+        const firstWithPhone = validRecipients.find(r => r.phone);
+        if (firstWithPhone) return firstWithPhone.id;
+        return validRecipients.length > 0 ? validRecipients[0].id : 'other';
+      });
+
+      const [phone, setPhone] = useState(() => {
+        const firstWithPhone = validRecipients.find(r => r.phone);
+        if (firstWithPhone) return firstWithPhone.phone;
+        return (validRecipients[0] && validRecipients[0].phone) || recipientPhone || '';
+      });
+
+      const hasPdf = !!(pdfFetcher || pdfBlob || pdfUrl || pdfFileName);
+      const [attachPdf, setAttachPdf] = useState(hasPdf);
+      const [message, setMessage] = useState(initialMessage || '');
+      const [isEditing, setIsEditing] = useState(false);
+      const [copied, setCopied] = useState(false);
+      const [isPdfLoading, setIsPdfLoading] = useState(false);
+      const [cachedPdfBlob, setCachedPdfBlob] = useState(pdfBlob || null);
+
+      useEffect(() => {
+        const firstWithPhone = validRecipients.find(r => r.phone);
+        const initialRecId = firstWithPhone ? firstWithPhone.id : (validRecipients.length > 0 ? validRecipients[0].id : 'other');
+        const initialPhone = firstWithPhone ? firstWithPhone.phone : ((validRecipients[0] && validRecipients[0].phone) || recipientPhone || '');
+
+        setSelectedRecipientId(initialRecId);
+        setPhone(initialPhone);
+        setMessage(initialMessage || '');
+        setIsEditing(false);
+        setCopied(false);
+        setCachedPdfBlob(pdfBlob || null);
+        setAttachPdf(hasPdf);
+      }, [isOpen, validRecipients, recipientPhone, initialMessage, pdfBlob, hasPdf]);
+
+      const resolvedFileName = useMemo(() => {
+        if (pdfFileName) return BillsoftWhatsApp.sanitizeFileName(pdfFileName);
+        if (documentRef) return BillsoftWhatsApp.sanitizeFileName(`${documentRef}.pdf`);
+        return BillsoftWhatsApp.sanitizeFileName('Document.pdf');
+      }, [pdfFileName, documentRef]);
+
+      const getPdfBlob = async () => {
+        if (cachedPdfBlob) return cachedPdfBlob;
+        if (pdfBlob) {
+          setCachedPdfBlob(pdfBlob);
+          return pdfBlob;
+        }
+        if (typeof pdfFetcher === 'function') {
+          setIsPdfLoading(true);
+          try {
+            const blob = await pdfFetcher();
+            setCachedPdfBlob(blob);
+            return blob;
+          } finally {
+            setIsPdfLoading(false);
+          }
+        }
+        if (pdfUrl) {
+          setIsPdfLoading(true);
+          try {
+            const res = await fetch(pdfUrl, {
+              headers: API && API.token ? { 'Authorization': `Bearer ${API.token}` } : {}
+            });
+            const blob = await res.blob();
+            setCachedPdfBlob(blob);
+            return blob;
+          } finally {
+            setIsPdfLoading(false);
+          }
+        }
+        return null;
+      };
+
+      const handlePreviewPdf = async () => {
+        try {
+          const blob = await getPdfBlob();
+          if (blob) {
+            BillsoftWhatsApp.previewBlob(blob);
+          } else if (pdfUrl) {
+            window.open(pdfUrl, '_blank');
+          } else {
+            showToast('PDF not available for preview', 'info');
+          }
+        } catch (e) {
+          showToast('Failed to open PDF preview', 'error');
+        }
+      };
+
+      const handleSelectTarget = (recId) => {
+        setSelectedRecipientId(recId);
+        if (recId === 'other') {
+          setPhone('');
+          setTimeout(() => {
+            const inp = document.getElementById('wa-phone-input');
+            if (inp) inp.focus();
+          }, 60);
+        } else {
+          const rec = validRecipients.find(r => r.id === recId);
+          setPhone((rec && rec.phone) || '');
+        }
+      };
+
+      const handlePhoneChange = (val) => {
+        setPhone(val);
+        const matchingRec = validRecipients.find(r => r.phone === val);
+        if (matchingRec) {
+          setSelectedRecipientId(matchingRec.id);
+        } else {
+          setSelectedRecipientId('other');
+        }
+      };
+
+      const handleSend = async (target = 'web') => {
+        const clean = BillsoftWhatsApp.cleanPhone(phone);
+
+        // If Attach PDF toggle is checked, download the PDF and notify user to send it in WhatsApp
+        if (attachPdf && hasPdf) {
+          try {
+            const blob = await getPdfBlob();
+            if (blob) {
+              BillsoftWhatsApp.downloadBlob(blob, resolvedFileName);
+              showToast(`📄 PDF downloaded ('${resolvedFileName}'). Please attach the downloaded PDF in your WhatsApp chat!`, 'success');
+            }
+          } catch (err) {
+            console.warn("Could not download PDF for attachment:", err);
+          }
+        }
+
+        if (target === 'app') {
+          // Launch WhatsApp native desktop or mobile application
+          const encoded = encodeURIComponent(message || '');
+          const appUrl = clean ? `whatsapp://send?phone=${clean}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
+          
+          let appOpened = false;
+          const onBlur = () => { appOpened = true; };
+          window.addEventListener('blur', onBlur);
+          
+          window.location.href = appUrl;
+
+          setTimeout(() => {
+            window.removeEventListener('blur', onBlur);
+            if (!appOpened && !document.hidden) {
+              showToast('WhatsApp App not detected. Please install WhatsApp Desktop / Mobile app, or use "Send via WhatsApp Web".', 'warning');
+            }
+          }, 2200);
+        } else {
+          // Send via WhatsApp Web in browser tab
+          BillsoftWhatsApp.openDirect(clean, message);
+        }
+
+        if (onClose) onClose();
+      };
+
+      const handleCopy = () => {
+        const textToCopy = message || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            showToast('WhatsApp message copied to clipboard!', 'success');
+          }).catch(() => showToast('Failed to copy', 'error'));
+        } else {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = textToCopy;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            showToast('WhatsApp message copied to clipboard!', 'success');
+          } catch (e) {
+            showToast('Failed to copy', 'error');
+          }
+        }
+      };
+
+      // Helper to format WhatsApp markdown (*bold*, _italic_, ~strike~) for preview
+      const renderFormattedWhatsAppText = (text) => {
+        if (!text) return null;
+        const lines = text.split('\n');
+        return lines.map((line, lIdx) => {
+          if (!line) {
+            return React.createElement('div', { key: lIdx, style: { height: '0.6em' } });
+          }
+          const parts = [];
+          const regex = /(\*[^*]+\*|_[^_]+_|~[^~]+~)/g;
+          let match;
+          let lastIndex = 0;
+          while ((match = regex.exec(line)) !== null) {
+            if (match.index > lastIndex) {
+              parts.push(line.substring(lastIndex, match.index));
+            }
+            const token = match[0];
+            if (token.startsWith('*') && token.endsWith('*')) {
+              parts.push(React.createElement('strong', { key: `b-${lIdx}-${match.index}` }, token.slice(1, -1)));
+            } else if (token.startsWith('_') && token.endsWith('_')) {
+              parts.push(React.createElement('em', { key: `i-${lIdx}-${match.index}` }, token.slice(1, -1)));
+            } else if (token.startsWith('~') && token.endsWith('~')) {
+              parts.push(React.createElement('del', { key: `s-${lIdx}-${match.index}` }, token.slice(1, -1)));
+            }
+            lastIndex = regex.lastIndex;
+          }
+          if (lastIndex < line.length) {
+            parts.push(line.substring(lastIndex));
+          }
+          return React.createElement('div', { key: lIdx }, parts.length > 0 ? parts : line);
+        });
+      };
+
+      return ReactDOM.createPortal(
+        React.createElement('div', {
+          className: 'modal-overlay',
+          onClick: onClose,
+          style: {
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 16
+          }
+        },
+          React.createElement('div', {
+            className: 'modal-content card',
+            style: {
+              width: '100%',
+              maxWidth: 560,
+              maxHeight: '94vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: 0,
+              borderRadius: 14,
+              overflow: 'hidden',
+              boxShadow: '0 20px 45px rgba(0, 0, 0, 0.3)',
+              border: '1px solid var(--border)'
+            },
+            onClick: (e) => e.stopPropagation()
+          },
+            // Header
+            React.createElement('div', {
+              className: 'modal-header',
+              style: {
+                background: 'linear-gradient(135deg, #075E54 0%, #128C7E 100%)',
+                color: '#FFFFFF',
+                padding: '14px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                Icons.whatsappColor || Icons.whatsapp,
+                React.createElement('div', null,
+                  React.createElement('h3', { className: 'modal-title', style: { margin: 0, color: '#FFFFFF', fontSize: '1.05rem', fontWeight: 700, letterSpacing: '0.2px' } },
+                    title || 'Send via WhatsApp'
+                  ),
+                  documentRef && React.createElement('div', { style: { fontSize: '0.72rem', opacity: 0.9, marginTop: 1 } }, `Ref: ${documentRef}`)
+                )
+              ),
+              React.createElement('button', {
+                className: 'modal-close',
+                style: { color: '#FFFFFF', background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer', padding: 4 },
+                onClick: onClose,
+                title: 'Close'
+              }, '✕')
+            ),
+
+            // Body
+            React.createElement('div', { className: 'modal-body', style: { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' } },
+              
+              // 1. SIMPLIFIED RECIPIENT & PHONE NUMBER BOX
+              React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                  React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' } },
+                    '📱 WhatsApp Mobile Number:'
+                  ),
+                  React.createElement('a', {
+                    href: 'https://web.whatsapp.com',
+                    target: '_blank',
+                    rel: 'noreferrer',
+                    style: { fontSize: '0.74rem', color: '#128C7E', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 },
+                    title: 'Open WhatsApp Web in a new tab'
+                  }, '🔗 Open WhatsApp Web')
+                ),
+
+                // Segmented Selector: Document-Specific Contact Chips vs Other / Custom
+                React.createElement('div', { className: 'wa-target-selector' },
+                  validRecipients.map(rec => {
+                    const isSelected = selectedRecipientId === rec.id;
+                    const label = rec.label && rec.name && rec.label !== rec.name
+                      ? `${rec.label}: ${rec.name}`
+                      : (rec.name || rec.label || 'Recipient');
+                    const phoneText = rec.phone ? ` (${rec.phone})` : ' (No phone)';
+                    return React.createElement('button', {
+                      key: rec.id,
+                      type: 'button',
+                      className: `wa-target-btn${isSelected ? ' active' : ''}`,
+                      onClick: () => handleSelectTarget(rec.id)
+                    },
+                      React.createElement('span', null, rec.icon || '👤'),
+                      React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                        `${label}${phoneText}`
+                      )
+                    );
+                  }),
+                  React.createElement('button', {
+                    type: 'button',
+                    className: `wa-target-btn${selectedRecipientId === 'other' ? ' active' : ''}`,
+                    onClick: () => handleSelectTarget('other')
+                  },
+                    React.createElement('span', null, '✏️'),
+                    React.createElement('span', null, 'Other / Custom')
+                  )
+                ),
+
+                // Single Phone Input Box
+                React.createElement('input', {
+                  id: 'wa-phone-input',
+                  type: 'tel',
+                  className: 'input',
+                  style: { width: '100%', fontWeight: 700, fontSize: '0.92rem', letterSpacing: '0.5px' },
+                  placeholder: selectedRecipientId === 'other' ? 'Enter 10-digit mobile number (e.g. 9876543210)' : 'No phone number attached (type here)',
+                  value: phone,
+                  onChange: (e) => handlePhoneChange(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSend('web');
+                    }
+                  },
+                  autoFocus: selectedRecipientId === 'other' || !phone
+                }),
+                React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-muted, #777)', marginTop: 4 } },
+                  phone ? '💡 Auto-normalizes 10 digits to +91 country code.' : '💡 Select "Other" above to manually enter any customer number, or leave blank to choose inside WhatsApp.'
+                )
+              ),
+
+              // 2. SINGLE TOGGLE TO ATTACH PDF
+              hasPdf && React.createElement('label', {
+                className: 'wa-pdf-toggle-bar',
+                style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }
+              },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 } },
+                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '📄'),
+                  React.createElement('div', { style: { minWidth: 0 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('span', { style: { fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-all' } },
+                        `Attach PDF (${resolvedFileName})`
+                      ),
+                      React.createElement('button', {
+                        type: 'button',
+                        style: { background: 'none', border: 'none', color: '#128C7E', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' },
+                        onClick: (e) => { e.preventDefault(); e.stopPropagation(); handlePreviewPdf(); }
+                      }, '👁️ View')
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                      attachPdf ? '✓ PDF will be downloaded so you can drag & send in chat' : 'Toggle on to download PDF document upon sending'
+                    )
+                  )
+                ),
+                React.createElement('div', { className: 'wa-switch' },
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    checked: attachPdf,
+                    onChange: (e) => setAttachPdf(e.target.checked)
+                  }),
+                  React.createElement('span', { className: 'wa-slider' })
+                )
+              ),
+
+              // 3. AUTHENTIC WHATSAPP MESSAGE PREVIEW
+              React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                  React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 } },
+                    Icons.whatsapp,
+                    'Message Preview'
+                  ),
+                  React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-xs btn-outline',
+                    style: { fontSize: '0.72rem', padding: '2px 8px' },
+                    onClick: () => setIsEditing(!isEditing)
+                  }, isEditing ? '✓ Done Editing' : '✏️ Edit Text')
+                ),
+
+                isEditing ? React.createElement('textarea', {
+                  className: 'textarea',
+                  style: { width: '100%', height: 180, fontFamily: 'monospace', fontSize: '0.82rem', lineHeight: 1.4 },
+                  value: message,
+                  onChange: (e) => setMessage(e.target.value),
+                  placeholder: 'Type your WhatsApp message...'
+                }) : React.createElement('div', { className: 'wa-preview-box' },
+                  React.createElement('div', { className: 'wa-bubble' },
+                    renderFormattedWhatsAppText(message),
+                    React.createElement('div', { className: 'wa-bubble-time' },
+                      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      React.createElement('span', { className: 'wa-double-check' }, '✓✓')
+                    )
+                  )
+                )
+              )
+            ),
+
+            // Footer: ONLY TWO SEND OPTIONS
+            React.createElement('div', {
+              className: 'modal-footer',
+              style: {
+                padding: '12px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-secondary, #f8fafc)',
+                borderTop: '1px solid var(--border)',
+                flexWrap: 'wrap',
+                gap: 10
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline',
+                  onClick: onClose
+                }, 'Cancel'),
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline',
+                  onClick: handleCopy,
+                  title: 'Copy formatted text to clipboard'
+                }, copied ? '✓ Copied!' : '📋 Copy Text')
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+                // Option 1: Send via WhatsApp App
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-whatsapp-outline',
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 },
+                  onClick: () => handleSend('app'),
+                  title: 'Open in WhatsApp Desktop or Mobile App'
+                },
+                  Icons.whatsapp,
+                  'Send via WhatsApp App'
+                ),
+                // Option 2: Send via WhatsApp Web
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-whatsapp',
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 },
+                  onClick: () => handleSend('web'),
+                  title: 'Open in WhatsApp Web browser tab'
+                },
+                  Icons.whatsapp,
+                  'Send via WhatsApp Web'
+                )
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    }
+
+    // ─── GLOBAL COMMAND PALETTE & OMNIBAR MODAL ───
+    function GlobalSearchModal({
+      isOpen,
+      onClose,
+      onNavigate,
+      onQuickCreate,
+      firm,
+      firms = [],
+      onSwitchFirm,
+      onOpenWhatsAppDoc,
+      onRefresh
+    }) {
+      if (!isOpen) return null;
+
+      const [query, setQuery] = useState('');
+      const [filter, setFilter] = useState('all'); // 'all' | 'smart' | 'actions' | 'customers' | 'invoices' | 'products' | 'parties' | 'staff' | 'utilities'
+      const [showGuide, setShowGuide] = useState(false);
+      const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+      // In-Place Quick Payment Modal State
+      const [quickPayInvoice, setQuickPayInvoice] = useState(null);
+      const [quickPayAmount, setQuickPayAmount] = useState('');
+      const [quickPayMode, setQuickPayMode] = useState('CASH');
+      const [quickPayNotes, setQuickPayNotes] = useState('');
+      const [isSavingPay, setIsSavingPay] = useState(false);
+
+      // In-Place WhatsApp Modal State
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
+      // Cached Data Stores for instant search
+      const [customers, setCustomers] = useState([]);
+      const [invoices, setInvoices] = useState([]);
+      const [products, setProducts] = useState([]);
+      const [parties, setParties] = useState([]);
+      const [staff, setStaff] = useState([]);
+      const [recents, setRecents] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('billsoft_omni_recents') || '[]');
+        } catch (e) { return []; }
+      });
+
+      // Load data on open with safe array normalization
+      useEffect(() => {
+        if (!isOpen) return;
+        const norm = res => (res && (res.content || res.data || res.items || res.invoices || res.customers || res.products || res.parties || res.employees)) || (Array.isArray(res) ? res : []);
+        if (API.customers && API.customers.list) API.customers.list().then(res => setCustomers(norm(res))).catch(() => {});
+        if (API.invoices && API.invoices.list) API.invoices.list(0, 100).then(res => setInvoices(norm(res))).catch(() => {});
+        if (API.products && API.products.list) API.products.list().then(res => setProducts(norm(res))).catch(() => {});
+        if (API.parties && API.parties.list) API.parties.list().then(res => setParties(norm(res))).catch(() => {});
+        if (API.employees && API.employees.list) API.employees.list().then(res => setStaff(norm(res))).catch(() => {});
+      }, [isOpen]);
+
+      // Save a recent action or item
+      const addRecent = (item) => {
+        if (!item || !item.title) return;
+        setRecents(prev => {
+          const filtered = prev.filter(r => r.title !== item.title);
+          const updated = [{ title: item.title, icon: item.icon || '⚡', type: item.type || 'action', ts: Date.now() }, ...filtered].slice(0, 5);
+          try { localStorage.setItem('billsoft_omni_recents', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
+      };
+
+      // Perform real-time search
+      const searchResults = useMemo(() => {
+        if (!window.BillsoftSearchEngine) return { smartTasks: [], utilities: [], actions: [], customers: [], invoices: [], products: [], parties: [], staff: [], suggestions: [] };
+        return BillsoftSearchEngine.search(query, {
+          firm: firm || {},
+          customers,
+          invoices,
+          products,
+          parties,
+          staff,
+          navigate: onNavigate,
+          onQuickCreate,
+          onRefresh
+        });
+      }, [query, firm, customers, invoices, products, parties, staff, onNavigate, onQuickCreate, onRefresh]);
+
+      // Flatten items according to the active category filter
+      const flattenedItems = useMemo(() => {
+        const list = [];
+        const res = searchResults || {};
+
+        // 1. Smart In-Place Tasks (Highest Priority)
+        if (filter === 'all' || filter === 'smart' || filter === 'actions') {
+          (res.smartTasks || []).forEach(st => list.push({ ...st, itemType: 'smart_task' }));
+        }
+
+        // 2. Interactive Utilities & Calculators
+        if (filter === 'all' || filter === 'utilities') {
+          (res.utilities || []).forEach(u => list.push({ ...u, itemType: 'utility' }));
+        }
+
+        // 3. Navigation Actions
+        if (filter === 'all' || filter === 'actions') {
+          (res.actions || []).forEach(a => list.push({ ...a, itemType: 'action' }));
+        }
+
+        // 4. Customers
+        if (filter === 'all' || filter === 'customers') {
+          (res.customers || []).forEach(c => list.push({
+            id: c.id,
+            title: c.name || 'Customer',
+            subtitle: `📞 ${c.phone || 'No phone'} • ${c.gstin ? 'GST: ' + c.gstin : (c.city || 'Customer')} • Bal: ${BillsoftUtils.formatCurrency(c.balance || c.openingBalance || 0)}`,
+            icon: '👤',
+            raw: c,
+            itemType: 'customer'
+          }));
+        }
+
+        // 5. Invoices & Quotations
+        if (filter === 'all' || filter === 'invoices') {
+          (res.invoices || []).forEach(inv => list.push({
+            id: inv.id,
+            title: `${inv.invoiceNumber || inv.estimateNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
+            subtitle: `📅 ${BillsoftUtils.formatDate(inv.invoiceDate || inv.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(inv.netTotal || inv.totalAmount || 0)} • Status: ${inv.status || 'FINAL'}`,
+            icon: inv.estimateNumber ? '📝' : '📄',
+            raw: inv,
+            itemType: inv.estimateNumber ? 'quotation' : 'invoice'
+          }));
+        }
+
+        // 6. Products / Inventory
+        if (filter === 'all' || filter === 'products') {
+          (res.products || []).forEach(p => list.push({
+            id: p.id,
+            title: p.name || 'Product',
+            subtitle: `SKU: ${p.sku || 'N/A'} • Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
+            icon: '📦',
+            raw: p,
+            itemType: 'product'
+          }));
+        }
+
+        // 7. Vendors / Suppliers
+        if (filter === 'all' || filter === 'parties') {
+          (res.parties || []).forEach(p => list.push({
+            id: p.id,
+            title: p.name || 'Vendor',
+            subtitle: `Contact: ${p.contactPerson || 'N/A'} • 📞 ${p.phone || 'No phone'} • Bal: ${BillsoftUtils.formatCurrency(p.netBalance || p.openingBalance || 0)}`,
+            icon: '🏭',
+            raw: p,
+            itemType: 'party'
+          }));
+        }
+
+        // 8. Staff / HR
+        if (filter === 'all' || filter === 'staff') {
+          (res.staff || []).forEach(emp => list.push({
+            id: emp.id,
+            title: emp.name || 'Staff',
+            subtitle: `Role: ${emp.role || emp.designation || 'Employee'} • Dept: ${emp.department || 'General'} • 📞 ${emp.phone || 'N/A'}`,
+            icon: '🧑‍💼',
+            raw: emp,
+            itemType: 'staff'
+          }));
+        }
+        return list;
+      }, [searchResults, filter]);
+
+      // Reset highlight when list changes
+      useEffect(() => {
+        setHighlightedIndex(0);
+      }, [flattenedItems.length, filter]);
+
+      // Execute action for an item
+      const handleExecuteItem = (item) => {
+        if (!item) return;
+        addRecent(item);
+
+        if (item.action) {
+          item.action({ navigate: onNavigate, onQuickCreate, onRefresh, firm });
+          if (item.itemType === 'smart_task') {
+            // keep omnibar open or close after short delay
+            setTimeout(onClose, 500);
+          } else if (item.itemType !== 'utility') {
+            onClose();
+          }
+          return;
+        }
+
+        if (item.target) {
+          BillsoftSearchEngine.dispatchNavigate(item.target);
+          onClose();
+          return;
+        }
+
+        if (item.itemType === 'customer') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true
+          });
+          onClose();
+        } else if (item.itemType === 'invoice') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'invoices', subTab: 'invoices'
+          });
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('billsoft:focus-invoice', { detail: { id: item.id } }));
+          }, 60);
+          onClose();
+        } else if (item.itemType === 'quotation') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'invoices', subTab: 'quotations'
+          });
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('billsoft:focus-quotation', { detail: { id: item.id } }));
+          }, 60);
+          onClose();
+        } else if (item.itemType === 'product') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'firm', tab: 'inventory'
+          });
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('billsoft:focus-product', { detail: { id: item.id } }));
+          }, 60);
+          onClose();
+        } else if (item.itemType === 'party') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true
+          });
+          onClose();
+        } else if (item.itemType === 'staff') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'hr', hrTab: 'staff'
+          });
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('billsoft:focus-employee', { detail: { id: item.id } }));
+          }, 60);
+          onClose();
+        }
+      };
+
+      // Handle in-place payment submission
+      const handleSubmitQuickPayment = async () => {
+        if (!quickPayInvoice || !quickPayAmount || parseFloat(quickPayAmount) <= 0) {
+          if (window.showToast) window.showToast('Please enter a valid payment amount', 'error');
+          return;
+        }
+        setIsSavingPay(true);
+        try {
+          if (API.invoices && API.invoices.recordPayment) {
+            await API.invoices.recordPayment(quickPayInvoice.id, {
+              amount: parseFloat(quickPayAmount),
+              paymentMode: quickPayMode,
+              paymentDate: new Date().toISOString().slice(0, 10),
+              notes: quickPayNotes || 'Settled via Quick Omnibar'
+            });
+            if (window.showToast) window.showToast(`✓ Payment of ₹${quickPayAmount} recorded for ${quickPayInvoice.invoiceNumber || 'invoice'}!`, 'success');
+            setQuickPayInvoice(null);
+            setQuickPayAmount('');
+            setQuickPayNotes('');
+            window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+          }
+        } catch (e) {
+          if (window.showToast) window.showToast('Failed to record payment: ' + (e.message || 'Error'), 'error');
+        } finally {
+          setIsSavingPay(false);
+        }
+      };
+
+      // Keyboard navigation handler
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (quickPayInvoice) {
+            setQuickPayInvoice(null);
+          } else {
+            onClose();
+          }
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setHighlightedIndex(prev => (prev + 1) % (flattenedItems.length || 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setHighlightedIndex(prev => (prev - 1 + (flattenedItems.length || 1)) % (flattenedItems.length || 1));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (flattenedItems[highlightedIndex]) {
+            handleExecuteItem(flattenedItems[highlightedIndex]);
+          }
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          const filters = ['all', 'actions', 'customers', 'invoices', 'products', 'parties', 'staff', 'utilities'];
+          const currIdx = filters.indexOf(filter);
+          const nextIdx = e.shiftKey ? (currIdx - 1 + filters.length) % filters.length : (currIdx + 1) % filters.length;
+          setFilter(filters[nextIdx]);
+        } else if (e.key === '?' && !query) {
+          e.preventDefault();
+          setShowGuide(prev => !prev);
+        }
+      };
+
+      return ReactDOM.createPortal(
+        React.createElement('div', {
+          className: 'omni-modal-overlay',
+          onClick: onClose
+        },
+          React.createElement('div', {
+            className: 'omni-container',
+            onClick: e => e.stopPropagation()
+          },
+            // 1. Search Header Input Bar
+            React.createElement('div', { className: 'omni-search-header' },
+              React.createElement('span', { style: { fontSize: '1.25rem', opacity: 0.8 } }, '🔍'),
+              React.createElement('input', {
+                className: 'omni-search-input',
+                placeholder: 'Search features, customers, kharcha 150, remind rahul, math...',
+                value: query,
+                onChange: e => setQuery(e.target.value),
+                onKeyDown: handleKeyDown,
+                autoFocus: true
+              }),
+              query && React.createElement('button', {
+                type: 'button',
+                style: { background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem', padding: 4 },
+                onClick: () => setQuery(''),
+                title: 'Clear search'
+              }, '✕'),
+              React.createElement('button', {
+                type: 'button',
+                className: `btn btn-xs ${showGuide ? 'btn-primary' : 'btn-outline'}`,
+                style: { fontSize: '0.74rem', padding: '3px 8px', fontWeight: 700, borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 },
+                onClick: () => setShowGuide(!showGuide),
+                title: 'Toggle Capabilities & Cheat Sheet Guide (?)'
+              }, 'ℹ️ Guide'),
+              React.createElement('button', {
+                type: 'button',
+                style: { background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 2, marginLeft: 2 },
+                onClick: onClose,
+                title: 'Close (Esc)'
+              }, '✕')
+            ),
+
+            // 2. Filter Pills Strip
+            React.createElement('div', { className: 'omni-filter-strip' },
+              [
+                { id: 'all', label: 'All', icon: '✨' },
+                { id: 'actions', label: 'Actions', icon: '⚡' },
+                { id: 'customers', label: 'Customers', icon: '👤' },
+                { id: 'invoices', label: 'Invoices & Quotes', icon: '📄' },
+                { id: 'products', label: 'Products', icon: '📦' },
+                { id: 'parties', label: 'Vendors', icon: '🏭' },
+                { id: 'staff', label: 'HR / Staff', icon: '🧑‍💼' },
+                { id: 'utilities', label: 'Tools & Math', icon: '🧮' }
+              ].map(f => React.createElement('button', {
+                key: f.id,
+                type: 'button',
+                className: `omni-filter-pill${filter === f.id ? ' active' : ''}`,
+                onClick: () => setFilter(f.id)
+              },
+                React.createElement('span', null, f.icon),
+                React.createElement('span', null, f.label)
+              ))
+            ),
+
+            // 3. "Did You Mean?" Suggestions Banner
+            searchResults.suggestions && searchResults.suggestions.length > 0 && React.createElement('div', { className: 'omni-suggestion-banner' },
+              React.createElement('span', null, '💡 Did you mean:'),
+              searchResults.suggestions.map(s => React.createElement('button', {
+                key: s.id,
+                type: 'button',
+                className: 'omni-suggestion-chip',
+                onClick: () => {
+                  setQuery(s.suggestedKeyword);
+                  if (s.action && s.action.action) handleExecuteItem(s.action);
+                }
+              }, `${s.icon || '⚡'} ${s.title}`))
+            ),
+
+            // 4. Interactive (i) Capabilities & Cheat Sheet Drawer
+            showGuide && React.createElement('div', { className: 'omni-guide-drawer' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('h4', { style: { margin: 0, fontSize: '0.90rem', color: 'var(--text-primary)', fontWeight: 800 } }, '✨ Omnibar Capabilities & Multilingual Guide'),
+                React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-muted)' } }, 'Click any chip to run immediately')
+              ),
+              // Section A: Actions & Smart Tasks
+              React.createElement('div', null,
+                React.createElement('div', { className: 'omni-guide-section-title' }, '⚡ Smart In-Place Tasks (No Page Switch Needed)'),
+                React.createElement('div', { className: 'omni-guide-chip-grid' },
+                  ['kharcha 150 chai nashta', 'todo call Sharma ji 4pm', 'customer Ramesh 9822334455 Kolhapur', 'today sales', 'total udhari', 'low stock', 'change for 2000 bill 1435', 'split 4500 by 4'].map(ex => React.createElement('button', {
+                    key: ex,
+                    type: 'button',
+                    className: 'omni-guide-chip',
+                    onClick: () => { setQuery(ex); setShowGuide(false); }
+                  }, ex))
+                )
+              ),
+              // Section B: Vernacular Deep Navigation
+              React.createElement('div', null,
+                React.createElement('div', { className: 'omni-guide-section-title' }, '🎯 Multilingual Navigation & Deep Routing'),
+                React.createElement('div', { className: 'omni-guide-chip-grid' },
+                  ['bill banao', 'hisab kitab', 'grahak hishob', 'send payslip', 'pagar slip', 'hazari', 'salary advance', 'kharedi order', 'letterhead', 'backup', 'dark mode'].map(ex => React.createElement('button', {
+                    key: ex,
+                    type: 'button',
+                    className: 'omni-guide-chip',
+                    onClick: () => { setQuery(ex); setShowGuide(false); }
+                  }, ex))
+                )
+              ),
+              // Section C: Calculators & Tools
+              React.createElement('div', null,
+                React.createElement('div', { className: 'omni-guide-section-title' }, '🧮 Math, GST & Financial Utilities'),
+                React.createElement('div', { className: 'omni-guide-chip-grid' },
+                  ['1500 * 18 / 100', 'gst 18% on 5000', 'reverse gst 18% on 1180', 'margin cost 800 price 1200', 'upi 2500', 'words 45250', 'gstin 27AABCB1518P1ZM', 'bank details'].map(ex => React.createElement('button', {
+                    key: ex,
+                    type: 'button',
+                    className: 'omni-guide-chip',
+                    onClick: () => { setQuery(ex); setShowGuide(false); }
+                  }, ex))
+                )
+              )
+            ),
+
+            // 5. Results List or Empty State
+            React.createElement('div', { className: 'omni-results-body' },
+              // If query is empty, show Zero-State Recents & Quick Launch
+              !query.trim() && React.createElement(Fragment, null,
+                recents.length > 0 && React.createElement('div', null,
+                  React.createElement('div', { className: 'omni-group-header' }, '🕒 Recent Searches & Items'),
+                  recents.map((r, idx) => React.createElement('div', {
+                    key: idx,
+                    className: 'omni-item-card',
+                    onClick: () => setQuery(r.title)
+                  },
+                    React.createElement('div', { className: 'omni-item-left' },
+                      React.createElement('span', { className: 'omni-item-icon' }, r.icon || '🕒'),
+                      React.createElement('div', { className: 'omni-item-info' },
+                        React.createElement('span', { className: 'omni-item-title' }, r.title),
+                        React.createElement('span', { className: 'omni-item-subtitle' }, 'Recently accessed')
+                      )
+                    )
+                  ))
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { className: 'omni-group-header' }, '⚡ Quick Launch'),
+                  [
+                    { title: 'Create Tax Invoice', icon: '📄', cmd: 'bill banao' },
+                    { title: 'Customer Statements & Khata', icon: '📊', cmd: 'hisab kitab' },
+                    { title: 'Monthly Staff Payroll & Payslips', icon: '🧑‍💼', cmd: 'send payslip' },
+                    { title: 'Record Daily Expense (Inline)', icon: '💸', cmd: 'kharcha 120 chai' },
+                    { title: 'Today\'s Sales & Business Snapshot', icon: '📊', cmd: 'today sales' },
+                    { title: 'Instant UPI Payment QR', icon: '📱', cmd: 'upi 1000' }
+                  ].map((act, idx) => React.createElement('div', {
+                    key: idx,
+                    className: 'omni-item-card',
+                    onClick: () => setQuery(act.cmd)
+                  },
+                    React.createElement('div', { className: 'omni-item-left' },
+                      React.createElement('span', { className: 'omni-item-icon' }, act.icon),
+                      React.createElement('div', { className: 'omni-item-info' },
+                        React.createElement('span', { className: 'omni-item-title' }, act.title),
+                        React.createElement('span', { className: 'omni-item-subtitle' }, `Query: "${act.cmd}"`)
+                      )
+                    ),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'omni-action-btn',
+                      onClick: (e) => { e.stopPropagation(); setQuery(act.cmd); }
+                    }, 'Run →')
+                  ))
+                )
+              ),
+
+              // Populated Results
+              query.trim() && flattenedItems.length > 0 && flattenedItems.map((item, idx) => {
+                const isHighlighted = idx === highlightedIndex;
+
+                // Special Card for UPI QR code
+                if (item.type === 'upi_qr' && item.qrUrl) {
+                  return React.createElement('div', {
+                    key: idx,
+                    className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                    onClick: () => handleExecuteItem(item)
+                  },
+                    React.createElement('div', { className: 'omni-upi-qr-card', style: { width: '100%' } },
+                      React.createElement('img', { src: item.qrUrl, alt: 'UPI QR Code' }),
+                      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                        React.createElement('div', { style: { fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' } }, item.title),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, item.subtitle),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: '#16a34a', fontWeight: 600, marginTop: 4 } }, '✓ Scan with GPay, PhonePe, Paytm or BHIM to pay instantly!'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { width: 'fit-content', marginTop: 6 },
+                          onClick: (e) => { e.stopPropagation(); item.action(); }
+                        }, '📋 Copy Payment Link')
+                      )
+                    )
+                  );
+                }
+
+                // Dedicated Card for Smart In-Place Tasks
+                if (item.itemType === 'smart_task') {
+                  return React.createElement('div', {
+                    key: idx,
+                    className: `omni-item-card highlighted`,
+                    style: { background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)' },
+                    onClick: () => handleExecuteItem(item)
+                  },
+                    React.createElement('div', { className: 'omni-item-left' },
+                      React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.4rem' } }, item.icon || '⚡'),
+                      React.createElement('div', { className: 'omni-item-info' },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('span', { className: 'omni-item-title', style: { color: 'var(--primary-color, #2563eb)', fontWeight: 800 } }, item.title),
+                          React.createElement('span', { style: { fontSize: '0.65rem', background: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || '⚡ Smart Action')
+                        ),
+                        React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                      )
+                    ),
+                    React.createElement('div', { className: 'omni-action-btn-group' },
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        style: { background: 'var(--primary-color, #2563eb)', color: '#fff', fontWeight: 700 },
+                        onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
+                      }, 'Execute ↵')
+                    )
+                  );
+                }
+
+                return React.createElement('div', {
+                  key: idx,
+                  className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                  onClick: () => handleExecuteItem(item)
+                },
+                  React.createElement('div', { className: 'omni-item-left' },
+                    React.createElement('span', { className: 'omni-item-icon' }, item.icon || '⚡'),
+                    React.createElement('div', { className: 'omni-item-info' },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                        React.createElement('span', { className: 'omni-item-title' }, item.title),
+                        item.badge && React.createElement('span', { style: { fontSize: '0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 4, fontWeight: 700, color: 'var(--text-muted)' } }, item.badge)
+                      ),
+                      React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                    )
+                  ),
+                  // Contextual 1-Click Action Buttons
+                  React.createElement('div', { className: 'omni-action-btn-group' },
+                    // Customer Actions
+                    item.itemType === 'customer' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Create invoice for customer',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          if (onQuickCreate) onQuickCreate('invoice');
+                          window.dispatchEvent(new CustomEvent('billsoft:create-invoice-for-customer', { detail: { customer: item.raw } }));
+                        }
+                      }, '📄 + Invoice'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'View Ledger Statement with dues',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                            detail: { page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true }
+                          }));
+                        }
+                      }, '📊 Statement'),
+                      item.raw && item.raw.phone && React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Send WhatsApp Dues Reminder',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          const bal = parseFloat(item.raw.balance || item.raw.openingBalance || 0);
+                          const f = firm || {};
+                          const msg = `Dear ${item.raw.name},\nThis is a friendly reminder that your outstanding balance with *${f.firmName || 'our store'}* is *₹${BillsoftUtils.formatCurrency(bal)}*.\nKindly clear the pending dues at your earliest convenience. Thank you!`;
+                          const cleanPhone = String(item.raw.phone).replace(/\D/g, '');
+                          window.open(`https://wa.me/${cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                        }
+                      }, '💬 WhatsApp')
+                    ),
+                    // Invoice Actions
+                    item.itemType === 'invoice' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        style: { background: '#16a34a', color: '#fff' },
+                        title: 'Record Cash/UPI Payment for Invoice',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setQuickPayInvoice(item.raw);
+                          setQuickPayAmount(String(item.raw.netTotal || item.raw.totalAmount || ''));
+                        }
+                      }, '💳 Settle / Pay'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Download PDF',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          if (API.invoices && API.invoices.downloadPdf) {
+                            API.invoices.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Invoice_${item.raw.invoiceNumber || item.id}.pdf`));
+                          }
+                        }
+                      }, '📄 PDF'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Edit Invoice',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'invoices', subTab: 'invoices' } }));
+                          window.dispatchEvent(new CustomEvent('billsoft:focus-invoice', { detail: { id: item.id } }));
+                        }
+                      }, '✏️ Edit')
+                    ),
+                    // Quotation Actions
+                    item.itemType === 'quotation' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Convert Estimate to Tax Invoice',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:convert-quotation', { detail: { id: item.id } }));
+                        }
+                      }, '➡️ Convert to Bill'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Download Estimate PDF',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          if (API.quotations && API.quotations.downloadPdf) {
+                            API.quotations.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Estimate_${item.raw.estimateNumber || item.id}.pdf`));
+                          }
+                        }
+                      }, '📄 PDF')
+                    ),
+                    // Vendor Actions
+                    item.itemType === 'party' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Create Purchase Order for Vendor',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'paperwork', tab: 'orders' } }));
+                        }
+                      }, '📋 + PO'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'View Vendor Statement',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                            detail: { page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true }
+                          }));
+                        }
+                      }, '📊 Statement')
+                    ),
+                    // Staff Actions
+                    item.itemType === 'staff' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Send Monthly Payslip via WhatsApp',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'payroll' } }));
+                        }
+                      }, '💰 Send Payslip'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'View Employee Profile',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'staff' } }));
+                          window.dispatchEvent(new CustomEvent('billsoft:focus-employee', { detail: { id: item.id } }));
+                        }
+                      }, '👤 Profile')
+                    ),
+                    // Product Actions
+                    item.itemType === 'product' && React.createElement(Fragment, null,
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'omni-action-btn',
+                        title: 'Add to new invoice',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onClose();
+                          if (onQuickCreate) onQuickCreate('invoice');
+                        }
+                      }, '📄 + Invoice')
+                    ),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'omni-action-btn',
+                      onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
+                    }, 'Open ↵')
+                  )
+                );
+              }),
+
+              // No matches found
+              query.trim() && flattenedItems.length === 0 && React.createElement('div', {
+                style: { textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)' }
+              },
+                React.createElement('div', { style: { fontSize: '2.2rem', marginBottom: 8 } }, '🔍'),
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' } }, `No matches found for "${query}"`),
+                React.createElement('div', { style: { fontSize: '0.78rem', marginTop: 4 } }, 'Try typing "kharcha 120 chai", "hisab kitab", "payslip", or arithmetic like "1500 * 18%".')
+              )
+            ),
+
+            // 6. Modal Footer & Keybinding hints
+            React.createElement('div', { className: 'omni-modal-footer' },
+              React.createElement('div', { className: 'omni-footer-hints' },
+                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '↑↓'), ' Navigate'),
+                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '↵ Enter'), ' Select'),
+                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, 'Tab'), ' Filter'),
+                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '?'), ' Guide')
+              ),
+              React.createElement('div', null,
+                React.createElement('span', { className: 'omni-footer-hint-badge' }, 'ESC'), ' to close'
+              )
+            ),
+
+            // In-Place Quick Payment Mini-Dialog
+            quickPayInvoice && React.createElement('div', {
+              style: {
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0,0,0,0.65)',
+                backdropFilter: 'blur(4px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+                zIndex: 100,
+                borderRadius: 'inherit'
+              },
+              onClick: () => setQuickPayInvoice(null)
+            },
+              React.createElement('div', {
+                style: {
+                  background: 'var(--card-bg, #1e293b)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  padding: 24,
+                  width: '100%',
+                  maxWidth: 420,
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
+                },
+                onClick: e => e.stopPropagation()
+              },
+                React.createElement('h3', { style: { margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--text-primary)' } }, `💳 Record Payment — ${quickPayInvoice.invoiceNumber || 'Invoice'}`),
+                React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 } },
+                  `Customer: ${quickPayInvoice.customerName || 'Customer'} • Total: ₹${BillsoftUtils.formatCurrency(quickPayInvoice.netTotal || quickPayInvoice.totalAmount || 0)}`
+                ),
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Payment Amount (₹)'),
+                    React.createElement('input', {
+                      type: 'number',
+                      className: 'form-input',
+                      style: { width: '100%', padding: '8px 12px', fontSize: '1.05rem', fontWeight: 700 },
+                      value: quickPayAmount,
+                      onChange: e => setQuickPayAmount(e.target.value),
+                      autoFocus: true
+                    })
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Payment Method'),
+                    React.createElement('select', {
+                      className: 'form-input',
+                      style: { width: '100%', padding: '8px 12px' },
+                      value: quickPayMode,
+                      onChange: e => setQuickPayMode(e.target.value)
+                    },
+                      React.createElement('option', { value: 'CASH' }, '💵 Cash'),
+                      React.createElement('option', { value: 'UPI' }, '📱 UPI / QR (GPay / PhonePe)'),
+                      React.createElement('option', { value: 'BANK_TRANSFER' }, '🏛️ Bank Transfer / NEFT'),
+                      React.createElement('option', { value: 'CHEQUE' }, '📜 Cheque')
+                    )
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Notes / Remarks (Optional)'),
+                    React.createElement('input', {
+                      type: 'text',
+                      className: 'form-input',
+                      placeholder: 'e.g. Received by counter desk',
+                      style: { width: '100%', padding: '6px 12px' },
+                      value: quickPayNotes,
+                      onChange: e => setQuickPayNotes(e.target.value)
+                    })
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 8, justifyContent: 'flex-end' } },
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-outline',
+                      onClick: () => setQuickPayInvoice(null)
+                    }, 'Cancel'),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-primary',
+                      style: { background: '#16a34a', borderColor: '#16a34a' },
+                      disabled: isSavingPay,
+                      onClick: handleSubmitQuickPayment
+                    }, isSavingPay ? 'Recording...' : '✓ Settle & Record')
+                  )
+                )
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    }
+
+
 
     // ─── SIDEBAR ───
     function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen }) {
@@ -576,6 +1907,8 @@
 
       useEffect(() => {
         loadData();
+        window.addEventListener('billsoft:app-refresh', loadData);
+        return () => window.removeEventListener('billsoft:app-refresh', loadData);
       }, [loadData]);
 
       const formatLocalDate = (d) => {
@@ -648,6 +1981,8 @@
         }
       };
 
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
       const handlePrintPdf = async (id) => {
         try {
           const blob = await API.invoices.downloadPdf(id);
@@ -664,6 +1999,64 @@
         } catch (e) {
           showToast('PDF download failed', 'error');
         }
+      };
+
+      const handleWhatsAppShare = async (doc) => {
+        let fullDoc = doc;
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+        try {
+          if (doc && doc.id) {
+            const fetched = await API.invoices.get(doc.id);
+            if (fetched) fullDoc = fetched;
+          }
+        } catch (e) {}
+
+        const isEst = (fullDoc && (fullDoc.isEstimate || fullDoc.estimateNumber)) || (doc && (doc.isEstimate || doc.estimateNumber));
+        const docNum = (fullDoc && (fullDoc.docNumber || fullDoc.invoiceNumber || fullDoc.estimateNumber || fullDoc.id)) || (doc && (doc.docNumber || doc.invoiceNumber || doc.estimateNumber || doc.id)) || '';
+
+        const msg = isEst
+          ? BillsoftWhatsApp.formatEstimate({ estimate: fullDoc || doc || {}, firm: firmObj })
+          : BillsoftWhatsApp.formatInvoice({ invoice: fullDoc || doc || {}, firm: firmObj });
+
+        const custPhone = (fullDoc && (fullDoc.customerPhone || fullDoc.phone)) || (doc && doc.customer && doc.customer.phone) || '';
+        const custName = (fullDoc && (fullDoc.customerName || (fullDoc.customer && fullDoc.customer.name))) || (doc && doc.customer && doc.customer.name) || 'Customer';
+        const firmPhone = firmObj.phone || '';
+        const firmName = firmObj.firmName || 'Store / Firm';
+
+        const availableRecipients = [
+          {
+            id: 'customer',
+            label: 'Customer',
+            name: custName,
+            phone: custPhone,
+            icon: '👤'
+          }
+        ];
+        if (fullDoc && (fullDoc.salespersonPhone || fullDoc.employeePhone)) {
+          availableRecipients.push({
+            id: 'employee',
+            label: 'Sales Staff',
+            name: fullDoc.salespersonName || fullDoc.employeeName || 'Staff',
+            phone: fullDoc.salespersonPhone || fullDoc.employeePhone,
+            icon: '🧑‍💼'
+          });
+        }
+
+        const pdfFileName = isEst ? `Quotation_${docNum}.pdf` : `Invoice_${docNum}.pdf`;
+        setWhatsAppModalDoc({
+          title: isEst ? `Share Quotation (${docNum})` : `Share Tax Invoice (${docNum})`,
+          phone: custPhone,
+          name: custName,
+          recipients: availableRecipients,
+          message: msg,
+          ref: docNum,
+          pdfFileName: pdfFileName,
+          pdfFetcher: () => API.invoices.downloadPdf(doc.id, 'A4'),
+          pdfUrl: `/api/invoices/${doc.id}/pdf?size=A4`
+        });
       };
 
       const confirmDelete = () => {
@@ -1121,6 +2514,11 @@
                               onClick: () => setReturnInvoiceId(doc.id)
                             }, hasReturn ? '↩️ Return More' : '↩️ Return'),
                             React.createElement('button', {
+                              className: 'btn btn-sm btn-whatsapp-outline',
+                              title: doc.isEstimate ? 'Share Quotation on WhatsApp' : 'Share Invoice on WhatsApp',
+                              onClick: () => handleWhatsAppShare(doc)
+                            }, Icons.whatsapp, 'Share'),
+                            React.createElement('button', {
                               className: 'btn btn-sm btn-outline',
                               title: 'Print PDF',
                               onClick: () => handlePrintPdf(doc.id)
@@ -1230,13 +2628,51 @@
               React.createElement('button', { className: 'btn btn-ghost', onClick: () => setConvertModalDoc(null) }, 'Cancel')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
     // ─── FIRM PAGE ───
     function FirmPage({ onFirmChanged }) {
-      const [tab, setTab] = useState('inventory');
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && p.page === 'firm' && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
+      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'inventory');
+
+      useEffect(() => {
+        const handleNav = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'firm') return;
+          if (e.detail.tab) setTab(e.detail.tab);
+        };
+        if (initialNav && initialNav.tab) {
+          setTab(initialNav.tab);
+        }
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+      }, []);
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'sub-tabs-bar' },
           React.createElement('button', { className: `btn ${tab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, '📦 Inventory'),
@@ -1269,7 +2705,30 @@
       onUpdateExpense,
       onDeleteExpense
     }) {
-      const [plannerTab, setPlannerTab] = useState('board'); // 'board' | 'expenses'
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && p.page === 'planner' && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
+      const [plannerTab, setPlannerTab] = useState(() => (initialNav && (initialNav.plannerTab || (initialNav.tab === 'expenses' ? 'expenses' : 'board'))) || 'board'); // 'board' | 'expenses'
+
+      useEffect(() => {
+        const handleNav = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'planner') return;
+          if (e.detail.plannerTab) setPlannerTab(e.detail.plannerTab);
+          else if (e.detail.tab === 'expenses') setPlannerTab('expenses');
+          else if (e.detail.tab === 'board') setPlannerTab('board');
+        };
+        if (initialNav) {
+          handleNav({ detail: initialNav });
+        }
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+      }, []);
       const [customers, setCustomers] = useState([]);
       const [searchQuery, setSearchQuery] = useState('');
       const [activeTag, setActiveTag] = useState(null);
@@ -2885,12 +4344,18 @@
 
       const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Credit/Debit Card'];
 
-      useEffect(() => {
+      const loadDashboardData = useCallback(() => {
         API.analytics.firm().then(d => { setData(d); setLoading(false); }).catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
         API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => { });
         API.employees.analytics().then(setEmpAnalytics).catch(() => { });
         API.customers.list().then(setCustomers).catch(() => []);
       }, []);
+
+      useEffect(() => {
+        loadDashboardData();
+        window.addEventListener('billsoft:app-refresh', loadDashboardData);
+        return () => window.removeEventListener('billsoft:app-refresh', loadDashboardData);
+      }, [loadDashboardData]);
 
       const handleSearch = useCallback(BillsoftUtils.debounce((name) => {
         if (!name || name.trim().length < 2) { setSearchResults(null); return; }
@@ -3944,6 +5409,25 @@
           setSelectedFirmId(String(activeFirmId));
         }
       }, [activeFirmId]);
+
+      useEffect(() => {
+        const handleBackgroundRefresh = async () => {
+          const targetFid = selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId || null));
+          if (!targetFid) return;
+          try {
+            const [custs, prods] = await Promise.all([
+              API.customers.list(targetFid),
+              API.products.list({}, targetFid)
+            ]);
+            setCustomers(custs || []);
+            setProducts(prods || []);
+          } catch (e) {
+            console.warn('InvoiceForm background refresh failed:', e);
+          }
+        };
+        window.addEventListener('billsoft:app-refresh', handleBackgroundRefresh);
+        return () => window.removeEventListener('billsoft:app-refresh', handleBackgroundRefresh);
+      }, [selectedFirmId, activeFirmId]);
 
       useEffect(() => {
         const targetFid = selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId || null));
@@ -6338,6 +7822,8 @@
 
       useEffect(() => {
         load();
+        window.addEventListener('billsoft:app-refresh', load);
+        return () => window.removeEventListener('billsoft:app-refresh', load);
       }, [load]);
 
       const handlePresetChange = (preset) => {
@@ -6865,6 +8351,7 @@
       }, [filtered]);
 
       const [deleteInvoiceId, setDeleteInvoiceId] = useState(null);
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
       const handleDelete = (id) => setDeleteInvoiceId(id);
       const confirmDeleteInvoice = () => {
         if (!deleteInvoiceId) return;
@@ -6878,6 +8365,61 @@
         } catch (e) {
           showToast('Print failed', 'error');
         }
+      };
+      const handleWhatsAppShare = async (inv) => {
+        let fullInv = inv;
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+        try {
+          if (inv && inv.id) {
+            const fetched = await API.invoices.get(inv.id);
+            if (fetched) fullInv = fetched;
+          }
+        } catch (e) {}
+
+        const invNum = (fullInv && (fullInv.invoiceNumber || fullInv.docNumber || fullInv.id)) || (inv && (inv.invoiceNumber || inv.docNumber || inv.id)) || '';
+        const msg = BillsoftWhatsApp.formatInvoice({ invoice: fullInv || inv || {}, firm: firmObj });
+
+        const custPhone = (fullInv && (fullInv.customerPhone || fullInv.phone)) || (inv && inv.customer && inv.customer.phone) || '';
+        const custName = (fullInv && (fullInv.customerName || (fullInv.customer && fullInv.customer.name))) || (inv && inv.customer && inv.customer.name) || 'Customer';
+        const firmPhone = firmObj.phone || '';
+        const firmName = firmObj.firmName || 'Store / Firm';
+
+        const availableRecipients = [
+          {
+            id: 'customer',
+            label: 'Customer',
+            name: custName,
+            phone: custPhone,
+            icon: '👤'
+          }
+        ];
+        if (fullInv && (fullInv.salespersonPhone || fullInv.employeePhone)) {
+          availableRecipients.push({
+            id: 'employee',
+            label: 'Sales Staff',
+            name: fullInv.salespersonName || fullInv.employeeName || 'Staff',
+            phone: fullInv.salespersonPhone || fullInv.employeePhone,
+            icon: '🧑‍💼'
+          });
+        }
+
+        const isEst = (fullInv && (fullInv.isEstimate || fullInv.estimateNumber)) || (inv && (inv.isEstimate || inv.estimateNumber));
+        const pdfFileName = isEst ? `Quotation_${invNum}.pdf` : `Invoice_${invNum}.pdf`;
+
+        setWhatsAppModalDoc({
+          title: isEst ? `Share Quotation (${invNum})` : `Share Tax Invoice (${invNum})`,
+          phone: custPhone,
+          name: custName,
+          recipients: availableRecipients,
+          message: msg,
+          ref: invNum,
+          pdfFileName: pdfFileName,
+          pdfFetcher: () => API.invoices.downloadPdf(inv.id, 'A4'),
+          pdfUrl: `/api/invoices/${inv.id}/pdf?size=A4`
+        });
       };
       const sortOptions = [
         { value: 'date|desc', label: '📅 Date: Newest First' },
@@ -7082,6 +8624,11 @@
                                 title: 'File Sales Return / Credit Note',
                                 onClick: () => setReturnInvoiceId(inv.id)
                               }, '↩️ Return'),
+                              React.createElement('button', {
+                                className: 'btn btn-sm btn-whatsapp-outline',
+                                title: 'Share Invoice on WhatsApp',
+                                onClick: () => handleWhatsAppShare(inv)
+                              }, Icons.whatsapp, 'Share'),
                               React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(inv.id) }, 'Print'),
                               React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(inv.id) }, 'PDF'),
                               React.createElement('button', { className: 'btn btn-sm btn-outline', style: { color: 'var(--danger)' }, title: 'Delete', onClick: () => handleDelete(inv.id) }, 'Del')
@@ -7123,7 +8670,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteInvoice }, '🗑️ Delete Invoice')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -7284,6 +8847,7 @@
         setQuotations(quotations.map(q => q.id === id ? { ...q, status: newStatus } : q));
       };
       const [deleteQuotationId, setDeleteQuotationId] = useState(null);
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
       const handleDelete = (id) => setDeleteQuotationId(id);
       const confirmDeleteQuotation = () => {
         if (!deleteQuotationId) return;
@@ -7297,6 +8861,58 @@
         } catch (e) {
           showToast('Print failed', 'error');
         }
+      };
+      const handleWhatsAppShare = async (q) => {
+        let fullEst = q;
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+        try {
+          if (q && q.id) {
+            const fetched = await API.invoices.get(q.id);
+            if (fetched) fullEst = fetched;
+          }
+        } catch (e) {}
+
+        const estNum = (fullEst && (fullEst.estimateNumber || fullEst.docNumber || fullEst.id)) || (q && (q.estimateNumber || q.docNumber || q.id)) || '';
+        const msg = BillsoftWhatsApp.formatEstimate({ estimate: fullEst || q || {}, firm: firmObj });
+
+        const custPhone = (fullEst && (fullEst.customerPhone || fullEst.phone)) || (q && q.customer && q.customer.phone) || '';
+        const custName = (fullEst && (fullEst.customerName || (fullEst.customer && fullEst.customer.name))) || (q && q.customer && q.customer.name) || 'Client';
+        const firmPhone = firmObj.phone || '';
+        const firmName = firmObj.firmName || 'Store / Firm';
+
+        const availableRecipients = [
+          {
+            id: 'customer',
+            label: 'Customer / Client',
+            name: custName,
+            phone: custPhone,
+            icon: '👤'
+          }
+        ];
+        if (fullEst && (fullEst.salespersonPhone || fullEst.employeePhone)) {
+          availableRecipients.push({
+            id: 'employee',
+            label: 'Sales Staff',
+            name: fullEst.salespersonName || fullEst.employeeName || 'Staff',
+            phone: fullEst.salespersonPhone || fullEst.employeePhone,
+            icon: '🧑‍💼'
+          });
+        }
+
+        setWhatsAppModalDoc({
+          title: `Share Quotation (${estNum})`,
+          phone: custPhone,
+          name: custName,
+          recipients: availableRecipients,
+          message: msg,
+          ref: estNum,
+          pdfFileName: `Quotation_${estNum}.pdf`,
+          pdfFetcher: () => API.invoices.downloadPdf(q.id, 'A4'),
+          pdfUrl: `/api/invoices/${q.id}/pdf?size=A4`
+        });
       };
       const handleInstantConvert = async (quotation) => {
         if (!quotation) return;
@@ -7459,6 +9075,11 @@
                         React.createElement('td', null,
                           React.createElement('div', { className: 'action-buttons' },
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'View/Edit', onClick: () => onEditQuotation(q.id) }, 'Edit'),
+                            React.createElement('button', {
+                              className: 'btn btn-sm btn-whatsapp-outline',
+                              title: 'Share Quotation on WhatsApp',
+                              onClick: () => handleWhatsAppShare(q)
+                            }, Icons.whatsapp, 'Share'),
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Print', onClick: () => handlePrintPdf(q.id) }, 'Print'),
                             React.createElement('button', { className: 'btn btn-sm btn-outline', title: 'Download PDF', onClick: () => handleDownloadPdf(q.id) }, 'PDF'),
                             !isConverted && React.createElement('button', {
@@ -7548,7 +9169,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteQuotation }, '🗑️ Delete Quotation')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -7608,7 +9245,7 @@
       const [movementPage, setMovementPage] = useState(1);
       const [movementPageSize, setMovementPageSize] = useState(15);
 
-      const load = () => {
+      const load = useCallback(() => {
         setLoading(true);
         Promise.all([
           API.products.list(),
@@ -7624,9 +9261,13 @@
           showToast('Failed to load inventory', 'error');
           setLoading(false);
         });
-      };
+      }, []);
 
-      useEffect(() => { load(); }, []);
+      useEffect(() => {
+        load();
+        window.addEventListener('billsoft:app-refresh', load);
+        return () => window.removeEventListener('billsoft:app-refresh', load);
+      }, [load]);
 
       const openCreate = () => {
         setEditItem(null);
@@ -8652,9 +10293,14 @@
       const [showModal, setShowModal] = useState(false);
       const [editItem, setEditItem] = useState(null);
       const [analytics, setAnalytics] = useState(null);
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
       const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', gstin: '' });
-      const load = () => { setLoading(true); API.customers.list().then(d => { setCustomers(d); setLoading(false); }).catch(() => { showToast('Failed to load', 'error'); setLoading(false); }); };
-      useEffect(() => { load(); }, []);
+      const load = useCallback(() => { setLoading(true); API.customers.list().then(d => { setCustomers(d); setLoading(false); }).catch(() => { showToast('Failed to load', 'error'); setLoading(false); }); }, []);
+      useEffect(() => {
+        load();
+        window.addEventListener('billsoft:app-refresh', load);
+        return () => window.removeEventListener('billsoft:app-refresh', load);
+      }, [load]);
       const openCreate = () => { setEditItem(null); setForm({ name: '', phone: '', email: '', address: '', gstin: '' }); setShowModal(true); };
       const openEdit = (c) => { setEditItem(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', address: c.address || '', gstin: c.gstin || '' }); setShowModal(true); };
       const handleSave = async () => {
@@ -8791,17 +10437,99 @@
                       analytics && analytics.customerId === c.id && React.createElement('tr', null,
                         React.createElement('td', { colSpan: 5 },
                           React.createElement('div', { className: 'customer-analytics' },
-                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 } },
                               React.createElement('strong', null, `${c.name} - Analytics`),
-                              React.createElement('button', {
-                                className: 'btn btn-sm btn-outline',
-                                onClick: (e) => {
-                                  e.stopPropagation();
-                                  API.statements.customerPdf(c.id)
-                                    .then(blob => BillsoftUtils.downloadBlob(blob, `Cust_${(c.name || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_')}_All_Time.pdf`))
-                                    .catch(() => showToast('Failed to download statement', 'error'));
-                                }
-                              }, 'Download PDF Statement')
+                              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                                Number(analytics.totalPending || 0) > 0 && React.createElement('button', {
+                                  className: 'btn btn-sm btn-whatsapp',
+                                  title: 'Send friendly payment reminder on WhatsApp',
+                                  onClick: async (e) => {
+                                    e.stopPropagation();
+                                    let firmObj = { firmName: 'Our Business' };
+                                    try {
+                                      firmObj = await API.firm.getCurrent();
+                                    } catch (err) {}
+
+                                    const msg = BillsoftWhatsApp.formatPaymentReminder({
+                                      customer: c || {},
+                                      balance: (analytics && analytics.totalPending) || 0,
+                                      firm: firmObj
+                                    });
+                                    const custPhone = (c && c.phone) || '';
+                                    const custName = (c && c.name) || 'Customer';
+                                    const recipients = [
+                                      { id: 'customer', label: 'Customer', name: custName, phone: custPhone, icon: '👤' }
+                                    ];
+                                    const safeCustName = (custName || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+                                    setWhatsAppModalDoc({
+                                      title: `Payment Reminder — ${custName}`,
+                                      phone: custPhone,
+                                      name: custName,
+                                      recipients: recipients,
+                                      message: msg,
+                                      ref: `REM-${c ? c.id : ''}`,
+                                      pdfFileName: `Customer_Statement_${safeCustName}.pdf`,
+                                      pdfFetcher: () => API.statements.customerPdf(c.id),
+                                      pdfUrl: API.statements.customerPdfUrl(c.id)
+                                    });
+                                  }
+                                }, Icons.whatsapp, 'Payment Reminder'),
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-whatsapp-outline',
+                                  title: 'Share statement on WhatsApp',
+                                  onClick: async (e) => {
+                                    e.stopPropagation();
+                                    let firmObj = { firmName: 'Our Business' };
+                                    let stmt = null;
+                                    try {
+                                      firmObj = await API.firm.getCurrent();
+                                    } catch (err) {}
+                                    try {
+                                      if (c && c.id) {
+                                        stmt = await API.statements.customer(c.id);
+                                      }
+                                    } catch (err) {}
+
+                                    const statementData = stmt || {
+                                      totalInvoiced: (analytics && analytics.totalBusiness) || 0,
+                                      totalPaid: (analytics && analytics.totalPaid) || 0,
+                                      closingBalance: (analytics && analytics.totalPending) || 0
+                                    };
+
+                                    const msg = BillsoftWhatsApp.formatCustomerStatement({
+                                      customer: c || {},
+                                      statement: statementData,
+                                      firm: firmObj
+                                    });
+                                    const custPhone = (c && c.phone) || '';
+                                    const custName = (c && c.name) || 'Customer';
+                                    const recipients = [
+                                      { id: 'customer', label: 'Customer', name: custName, phone: custPhone, icon: '👤' }
+                                    ];
+                                    const safeCustName = (custName || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+                                    setWhatsAppModalDoc({
+                                      title: `Customer Statement — ${custName}`,
+                                      phone: custPhone,
+                                      name: custName,
+                                      recipients: recipients,
+                                      message: msg,
+                                      ref: `STMT-${c ? c.id : ''}`,
+                                      pdfFileName: `Customer_Statement_${safeCustName}.pdf`,
+                                      pdfFetcher: () => API.statements.customerPdf(c.id),
+                                      pdfUrl: API.statements.customerPdfUrl(c.id)
+                                    });
+                                  }
+                                }, Icons.whatsapp, 'Share Statement'),
+                                React.createElement('button', {
+                                  className: 'btn btn-sm btn-outline',
+                                  onClick: (e) => {
+                                    e.stopPropagation();
+                                    API.statements.customerPdf(c.id)
+                                      .then(blob => BillsoftUtils.downloadBlob(blob, `Cust_${(c.name || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_')}_All_Time.pdf`))
+                                      .catch(() => showToast('Failed to download statement', 'error'));
+                                  }
+                                }, 'Download PDF')
+                              )
                             ),
                             React.createElement('div', { className: 'customer-analytics-grid' },
                               React.createElement('div', { className: 'customer-analytics-item' }, React.createElement('div', { className: 'label' }, 'Total Business'), React.createElement('div', { className: 'value' }, BillsoftUtils.formatCurrency(analytics.totalBusiness))),
@@ -8848,7 +10576,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteCustomer }, '🗑️ Delete Customer')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -9132,10 +10876,61 @@
         }
       };
 
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
       // Quick download party statement PDF
       const handleDownloadStatement = (party) => {
         BillsoftUtils.downloadPdfUrl(API.statements.partyPdfUrl(party.id));
         showToast(`Downloading statement for ${party.name}...`, 'success');
+      };
+
+      const handleWhatsAppStatement = async (party) => {
+        let firmObj = { firmName: 'Our Business' };
+        let stmt = null;
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+        try {
+          if (party && party.id) {
+            stmt = await API.statements.party(party.id);
+          }
+        } catch (e) {}
+
+        const s = party && summaryMap[party.id];
+        const statementData = stmt || {
+          openingBalance: (s && s.openingBalance) || (party && party.openingBalance) || 0,
+          totalPurchases: (s && s.totalPurchases) || 0,
+          totalPaid: (s && s.totalPaid) || 0,
+          closingBalance: (s && s.netBalance) || 0
+        };
+
+        const msg = BillsoftWhatsApp.formatPartyStatement({
+          party: party || {},
+          statement: statementData,
+          firm: firmObj
+        });
+        const partyPhone = (party && (party.phone || party.contactNumber)) || '';
+        const contactPersonPhone = (party && party.contactPersonPhone) || '';
+        const firmPhone = firmObj.phone || '';
+        const recipients = [
+          { id: 'party', label: 'Vendor / Party', name: (party && party.name) || 'Vendor', phone: partyPhone, icon: '🏭' }
+        ];
+        if (contactPersonPhone && contactPersonPhone !== partyPhone) {
+          recipients.push({ id: 'contactPerson', label: 'Contact Person', name: (party && party.contactPerson) || 'Representative', phone: contactPersonPhone, icon: '👤' });
+        }
+
+        const safePartyName = ((party && party.name) || 'Vendor').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        setWhatsAppModalDoc({
+          title: `Vendor Statement — ${(party && party.name) || 'Vendor'}`,
+          phone: partyPhone,
+          name: (party && party.name) || '',
+          recipients: recipients,
+          message: msg,
+          ref: `PARTY-STMT-${party ? party.id : ''}`,
+          pdfFileName: `Vendor_Statement_${safePartyName}.pdf`,
+          pdfFetcher: () => API.statements.partyPdf(party.id),
+          pdfUrl: API.statements.partyPdfUrl(party.id)
+        });
       };
 
       // Map summaries for quick lookup
@@ -9318,6 +11113,12 @@
                               onClick: () => openLedger(p),
                               title: 'View Ledger & Transactions'
                             }, 'Ledger'),
+                            React.createElement('button', {
+                              className: 'btn btn-sm btn-whatsapp-outline',
+                              style: { fontSize: '0.78rem', padding: '4px 8px' },
+                              onClick: () => handleWhatsAppStatement(p),
+                              title: 'Share Vendor Statement on WhatsApp'
+                            }, Icons.whatsapp, 'Share'),
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               onClick: () => handleDownloadStatement(p),
@@ -9575,7 +11376,11 @@
                   ledgerParty.gstin ? ` • GSTIN: ${ledgerParty.gstin}` : ''
                 )
               ),
-              React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                React.createElement('button', {
+                  className: 'btn btn-sm btn-whatsapp',
+                  onClick: () => handleWhatsAppStatement(ledgerParty)
+                }, Icons.whatsapp, 'Share on WhatsApp'),
                 React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => handleDownloadStatement(ledgerParty) }, 'Download PDF Statement'),
                 React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => setShowLedgerModal(false) }, '✕')
               )
@@ -9749,7 +11554,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeletePayment }, '🗑️ Delete Payment')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -10011,6 +11832,7 @@
                 { id: 'identity', label: '🏢 Identity & Logo', icon: '🏢' },
                 { id: 'contact', label: '📍 Address & Contact', icon: '📍' },
                 { id: 'banking', label: '🏦 Banking & UPI QR', icon: '🏦' },
+                { id: 'whatsapp', label: '📱 WhatsApp Business', icon: '📱' },
                 { id: 'footer', label: '📝 Invoice Terms & Note', icon: '📝' }
               ].map(t => React.createElement('button', {
                 key: t.id,
@@ -10226,7 +12048,62 @@
               )
             ),
 
-            // Tab 4: Invoice Footer & Terms
+            // Tab 4: WhatsApp Business Identity & Dispatch
+            activeTab === 'whatsapp' && React.createElement('div', { className: 'card', style: { padding: 22 } },
+              React.createElement('h3', { style: { margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+                '📱 WhatsApp Business Identity & Store Dispatch'
+              ),
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Store / Business Official WhatsApp Number'),
+                  React.createElement('input', {
+                    className: 'input',
+                    placeholder: 'e.g. 9876543210 (or +91...)',
+                    value: data.whatsappPhone || data.phone || '',
+                    onChange: e => update('whatsappPhone', e.target.value),
+                    style: { fontWeight: 600, fontSize: '0.95rem' }
+                  }),
+                  React.createElement('small', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginTop: 3 } },
+                    'This number is available as a quick-recipient chip when sending invoices, statements, or POs.'
+                  )
+                ),
+                React.createElement('div', { style: { background: 'rgba(37, 211, 102, 0.08)', border: '1px solid rgba(37, 211, 102, 0.3)', borderRadius: 10, padding: 14 } },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 } },
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem', color: '#128C7E', display: 'flex', alignItems: 'center', gap: 6 } },
+                      Icons.whatsapp,
+                      'Pair Store WhatsApp Web'
+                    ),
+                    React.createElement('a', {
+                      href: 'https://web.whatsapp.com',
+                      target: '_blank',
+                      rel: 'noreferrer',
+                      className: 'btn btn-sm btn-whatsapp',
+                      style: { textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }
+                    }, '🔗 Open WhatsApp Web')
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text)', lineHeight: 1.5 } },
+                    'Log into WhatsApp Web in this browser. Whenever you or your cashiers click "Share on WhatsApp" on any tax invoice, quotation, customer ledger, or PO, the message is dispatched directly through your store account with zero per-message charges or third-party gateways.'
+                  )
+                ),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--bg-secondary)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' } },
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    id: 'auto-share-toggle',
+                    checked: !!data.autoShareWhatsApp,
+                    onChange: e => update('autoShareWhatsApp', e.target.checked),
+                    style: { marginTop: 3, cursor: 'pointer' }
+                  }),
+                  React.createElement('label', { htmlFor: 'auto-share-toggle', style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', cursor: 'pointer' } },
+                    '⚡ Prompt WhatsApp Share Modal upon saving an Invoice / Estimate',
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 400, marginTop: 2 } },
+                      'Automatically opens the sharing popup after successfully saving new invoices for faster counter billing flow.'
+                    )
+                  )
+                )
+              )
+            ),
+
+            // Tab 5: Invoice Footer & Terms
             activeTab === 'footer' && React.createElement('div', { className: 'card', style: { padding: 22 } },
               React.createElement('h3', { style: { margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
                 '📝 Invoice Terms, Footer & Disclaimers'
@@ -10872,6 +12749,50 @@
           })
           .catch(() => showToast('Failed to delete purchase order', 'error'))
           .finally(() => setDeletePoId(null));
+      };
+
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
+      const handleWhatsAppSharePo = async (po) => {
+        let fullPo = po;
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+        try {
+          if (po && po.id) {
+            const fetched = await API.purchaseOrders.get(po.id);
+            if (fetched) fullPo = fetched;
+          }
+        } catch (e) {}
+
+        const partyId = (po && (po.partyId || (po.party && po.party.id)));
+        const partyObj = (parties && parties.find(p => p.id === partyId)) || (po && po.party) || { name: (po && po.partyName) || 'Vendor', phone: '' };
+
+        const msg = BillsoftWhatsApp.formatPurchaseOrder({ po: fullPo || po || {}, party: partyObj, firm: firmObj });
+
+        const partyPhone = (partyObj && (partyObj.phone || partyObj.contactNumber)) || '';
+        const contactPersonPhone = (partyObj && partyObj.contactPersonPhone) || '';
+        const firmPhone = firmObj.phone || '';
+        const recipients = [
+          { id: 'party', label: 'Vendor / Supplier', name: partyObj.name || (po && po.partyName) || 'Vendor', phone: partyPhone, icon: '🏭' }
+        ];
+        if (contactPersonPhone && contactPersonPhone !== partyPhone) {
+          recipients.push({ id: 'contactPerson', label: 'Contact Person', name: partyObj.contactPerson || 'Representative', phone: contactPersonPhone, icon: '👤' });
+        }
+
+        const poNum = (po && (po.poNumber || po.id)) || '';
+        setWhatsAppModalDoc({
+          title: `Send Purchase Order (${poNum})`,
+          phone: partyPhone,
+          name: partyObj.name || (po && po.partyName) || '',
+          recipients: recipients,
+          message: msg,
+          ref: poNum,
+          pdfFileName: `PO_${poNum}.pdf`,
+          pdfFetcher: () => API.purchaseOrders.downloadPdf(po.id),
+          pdfUrl: `/api/purchase-orders/${po.id}/pdf`
+        });
       };
 
       const handleDownloadPdf = async (po) => {
@@ -11710,6 +13631,12 @@
                               title: 'Preview & Print'
                             }, '👁️ View'),
                             React.createElement('button', {
+                              className: 'btn btn-sm btn-whatsapp-outline',
+                              style: { padding: '4px 8px', fontSize: '0.78rem' },
+                              onClick: () => handleWhatsAppSharePo(po),
+                              title: 'Share Purchase Order on WhatsApp'
+                            }, Icons.whatsapp, 'Share'),
+                            React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               onClick: () => handleDownloadPdf(po),
                               title: 'Download PDF'
@@ -11752,7 +13679,11 @@
                 React.createElement('span', { style: { fontSize: '1.25rem', fontWeight: 800 } }, 'Purchase Order Preview'),
                 React.createElement('span', { className: 'badge badge-primary' }, previewPo.poNumber)
               ),
-              React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+                React.createElement('button', {
+                  className: 'btn btn-whatsapp',
+                  onClick: () => handleWhatsAppSharePo(previewPo)
+                }, Icons.whatsapp, 'Share on WhatsApp'),
                 React.createElement('button', { className: 'btn btn-primary', onClick: () => window.print() }, '🖨️ Print'),
                 React.createElement('button', { className: 'btn btn-outline', onClick: () => handleDownloadPdf(previewPo) }, '📥 Download PDF'),
                 React.createElement('button', { className: 'btn btn-ghost', onClick: () => setPreviewPo(null) }, '✕')
@@ -12106,7 +14037,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeletePo }, '🗑️ Delete')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -12502,6 +14449,40 @@
             showToast('Failed to download PDF', 'error');
           }
         }
+      };
+
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
+      const handleWhatsAppShareLetter = async (l) => {
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (err) {}
+
+        const msg = BillsoftWhatsApp.formatLetter({
+          letter: l || {},
+          firm: firmObj
+        });
+
+        const recipientPhone = l.recipientPhone || l.phone || '';
+        const recipientName = l.recipientName || l.recipientCompany || 'Recipient';
+        const recipients = [
+          { id: 'recipient', label: 'Letter Recipient', name: recipientName, phone: recipientPhone, icon: '👤' }
+        ];
+
+        const safeNum = (l.letterNumber || `Letter_${l.id}`).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        setWhatsAppModalDoc({
+          title: `Business Letter — ${l.letterNumber || 'Official'}`,
+          phone: recipientPhone,
+          name: recipientName,
+          recipients: recipients,
+          message: msg,
+          ref: l.letterNumber || `LETTER-${l.id}`,
+          pdfFileName: `${safeNum}.pdf`,
+          pdfFetcher: () => API.letters.downloadPdf(l.id),
+          pdfUrl: API.letters.pdfUrl(l.id)
+        });
       };
 
       // Filtered letters list
@@ -12912,6 +14893,15 @@
                               title: 'Preview Letterhead & Print'
                             }, '👁️ View'),
                             React.createElement('button', {
+                              className: 'btn btn-sm btn-whatsapp-outline',
+                              style: { padding: '4px 8px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: 4 },
+                              onClick: () => handleWhatsAppShareLetter(l),
+                              title: 'Share Letter via WhatsApp'
+                            },
+                              Icons.whatsapp,
+                              'Share'
+                            ),
+                            React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               onClick: () => handleDownloadPdf(l),
                               title: 'Download PDF'
@@ -12954,8 +14944,17 @@
                 React.createElement('span', { style: { fontSize: '1.25rem', fontWeight: 800 } }, 'Official Letter Preview'),
                 React.createElement('span', { className: 'badge badge-primary' }, previewLetter.letterNumber)
               ),
-              React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
                 React.createElement('button', { className: 'btn btn-primary', onClick: () => window.print() }, '🖨️ Print'),
+                React.createElement('button', {
+                  className: 'btn btn-whatsapp',
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+                  onClick: () => handleWhatsAppShareLetter(previewLetter),
+                  title: 'Share Letter via WhatsApp'
+                },
+                  Icons.whatsapp,
+                  'Share WhatsApp'
+                ),
                 React.createElement('button', { className: 'btn btn-outline', onClick: () => handleDownloadPdf(previewLetter) }, '📥 Download PDF'),
                 React.createElement('button', { className: 'btn btn-ghost', onClick: () => setPreviewLetter(null) }, '✕')
               )
@@ -13048,7 +15047,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteLetter }, '🗑️ Delete')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal for Letters
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -13318,19 +15333,29 @@
 
     // ─── PAPERWORK HUB (PURCHASE ORDERS, LETTERS & STATEMENTS) ───
     function PaperworkHub({ globalFirms = [] }) {
-      const [tab, setTab] = useState('orders'); // 'orders' | 'letters' | 'statements'
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && (p.page === 'paperwork' || p.page === 'statements') && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
+
+      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'orders'); // 'orders' | 'letters' | 'statements'
 
       // Statements Sub-Tab State
-      const [statementMode, setStatementMode] = useState('party'); // 'party' | 'customer' | 'firm'
+      const [statementMode, setStatementMode] = useState(() => (initialNav && initialNav.statementMode) || 'party'); // 'party' | 'customer' | 'firm'
       const [parties, setParties] = useState([]);
       const [customers, setCustomers] = useState([]);
-      const [partyId, setPartyId] = useState('');
-      const [customerId, setCustomerId] = useState('');
+      const [partyId, setPartyId] = useState(() => (initialNav && initialNav.partyId) || '');
+      const [customerId, setCustomerId] = useState(() => (initialNav && initialNav.customerId) || '');
       const [from, setFrom] = useState('');
       const [to, setTo] = useState('');
       const [activePreset, setActivePreset] = useState('all');
       const [statementData, setStatementData] = useState(null);
       const [statementLoading, setStatementLoading] = useState(false);
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
 
       // Journal Filters in Firm Statement
       const [journalSearch, setJournalSearch] = useState('');
@@ -13349,9 +15374,56 @@
           setCustomerId('');
           setStatementData(null);
         };
+        const onAppRefresh = () => {
+          loadEntityData();
+        };
         window.addEventListener('billsoft:firm-changed', onFirmChange);
-        return () => window.removeEventListener('billsoft:firm-changed', onFirmChange);
+        window.addEventListener('billsoft:app-refresh', onAppRefresh);
+        return () => {
+          window.removeEventListener('billsoft:firm-changed', onFirmChange);
+          window.removeEventListener('billsoft:app-refresh', onAppRefresh);
+        };
       }, [loadEntityData]);
+
+      useEffect(() => {
+        const handleNav = async (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'paperwork' && e.detail.page !== 'statements') return;
+          const { tab: targetTab, statementMode: targetMode, customerId: targetCustId, partyId: targetPartyId, autoGenerate } = e.detail;
+          if (targetTab) setTab(targetTab);
+          if (targetMode) setStatementMode(targetMode);
+          if (targetCustId) setCustomerId(targetCustId);
+          if (targetPartyId) setPartyId(targetPartyId);
+
+          if (autoGenerate && (targetCustId || targetPartyId || targetMode === 'firm')) {
+            const effMode = targetMode || (targetCustId ? 'customer' : (targetPartyId ? 'party' : 'firm'));
+            const effCustId = targetCustId || customerId;
+            const effPartyId = targetPartyId || partyId;
+            setStatementLoading(true);
+            try {
+              let result = null;
+              if (effMode === 'party' && effPartyId) {
+                result = await API.statements.party(effPartyId, from || undefined, to || undefined);
+              } else if (effMode === 'customer' && effCustId) {
+                result = await API.statements.customer(effCustId, from || undefined, to || undefined);
+              } else if (effMode === 'firm') {
+                result = await API.statements.firm(from || undefined, to || undefined);
+              }
+              if (result) setStatementData(result);
+            } catch (err) {
+            } finally {
+              setStatementLoading(false);
+            }
+          }
+        };
+
+        if (initialNav) {
+          handleNav({ detail: initialNav });
+        }
+
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+      }, [customerId, partyId, from, to]);
 
       const setDatePreset = (preset) => {
         setActivePreset(preset);
@@ -13424,6 +15496,121 @@
           BillsoftUtils.downloadPdfUrl(API.statements.firmPdfUrl(from || undefined, to || undefined));
         }
         showToast('Downloading PDF Statement...', 'success');
+      };
+
+      const handleWhatsAppShareStatement = async () => {
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (e) {}
+
+        let currData = statementData;
+        if (!currData) {
+          try {
+            if (statementMode === 'party' && partyId) {
+              currData = await API.statements.party(partyId, from || undefined, to || undefined);
+            } else if (statementMode === 'customer' && customerId) {
+              currData = await API.statements.customer(customerId, from || undefined, to || undefined);
+            } else if (statementMode === 'firm') {
+              currData = await API.statements.firm(from || undefined, to || undefined);
+            }
+          } catch (e) {}
+        }
+
+        let msg = '';
+        let recipientPhone = '';
+        let recipientName = '';
+        let ref = '';
+        const recipients = [];
+
+        if (statementMode === 'party') {
+          const party = (parties && parties.find(p => p.id === Number(partyId))) || { name: 'Vendor', phone: '' };
+          msg = BillsoftWhatsApp.formatPartyStatement({
+            party: party,
+            statement: currData || {},
+            from: from,
+            to: to,
+            firm: firmObj
+          });
+          recipientPhone = party.phone || party.contactNumber || '';
+          recipientName = party.name || 'Vendor';
+          ref = `PARTY-STMT-${partyId || ''}`;
+          recipients.push({
+            id: 'party',
+            label: 'Vendor / Party',
+            name: recipientName,
+            phone: recipientPhone,
+            icon: '🏭'
+          });
+        } else if (statementMode === 'customer') {
+          const customer = (customers && customers.find(c => c.id === Number(customerId))) || { name: 'Customer', phone: '' };
+          msg = BillsoftWhatsApp.formatCustomerStatement({
+            customer: customer,
+            statement: currData || {},
+            from: from,
+            to: to,
+            firm: firmObj
+          });
+          recipientPhone = customer.phone || '';
+          recipientName = customer.name || 'Customer';
+          ref = `CUST-STMT-${customerId || ''}`;
+          recipients.push({
+            id: 'customer',
+            label: 'Customer',
+            name: recipientName,
+            phone: recipientPhone,
+            icon: '👤'
+          });
+        } else {
+          msg = `📊 *${firmObj.firmName || 'Business'} Statement Summary*\n\n` +
+            `📅 Period: ${from || 'Beginning'} to ${to || 'Today'}\n` +
+            `💰 Total Invoiced: ₹${BillsoftUtils.formatCurrency((currData && (currData.totalBilled || currData.totalSales || currData.totalRevenue)) || 0)}\n` +
+            `💳 Total Paid: ₹${BillsoftUtils.formatCurrency((currData && (currData.totalPaid || currData.totalCollections)) || 0)}\n` +
+            `⏳ Outstanding: ₹${BillsoftUtils.formatCurrency((currData && (currData.closingBalance || currData.netBalance)) || 0)}\n\n` +
+            `Generated via ${firmObj.firmName || 'BillSoft'}`;
+          recipientPhone = firmObj.phone || '';
+          recipientName = firmObj.firmName || 'Business Summary';
+          ref = 'FIRM-STMT';
+          recipients.push({
+            id: 'firm',
+            label: 'Store / Firm',
+            name: firmObj.firmName || 'Store',
+            phone: recipientPhone,
+            icon: '🏛️'
+          });
+        }
+
+        let pdfFileName = 'Statement.pdf';
+        let pdfFetcher = null;
+        let pdfUrl = null;
+
+        if (statementMode === 'party' && partyId) {
+          const safePartyName = (recipientName || 'Vendor').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+          pdfFileName = `Vendor_Statement_${safePartyName}.pdf`;
+          pdfFetcher = () => API.statements.partyPdf(partyId, from || undefined, to || undefined);
+          pdfUrl = API.statements.partyPdfUrl(partyId, from || undefined, to || undefined);
+        } else if (statementMode === 'customer' && customerId) {
+          const safeCustName = (recipientName || 'Customer').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+          pdfFileName = `Customer_Statement_${safeCustName}.pdf`;
+          pdfFetcher = () => API.statements.customerPdf(customerId, from || undefined, to || undefined);
+          pdfUrl = API.statements.customerPdfUrl(customerId, from || undefined, to || undefined);
+        } else if (statementMode === 'firm') {
+          pdfFileName = `Business_Statement.pdf`;
+          pdfFetcher = () => API.statements.firmPdf(from || undefined, to || undefined);
+          pdfUrl = API.statements.firmPdfUrl(from || undefined, to || undefined);
+        }
+
+        setWhatsAppModalDoc({
+          title: `Share Statement via WhatsApp`,
+          phone: recipientPhone,
+          name: recipientName,
+          recipients: recipients,
+          message: msg,
+          ref: ref,
+          pdfFileName: pdfFileName,
+          pdfFetcher: pdfFetcher,
+          pdfUrl: pdfUrl
+        });
       };
 
       const entries = useMemo(() => {
@@ -13732,7 +15919,13 @@
               React.createElement('div', { className: 'card' },
                 React.createElement('div', { className: 'card-header' },
                   React.createElement('div', { className: 'card-title' }, `Vendor Statement: ${statementData.partyName || ''}`),
-                  React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF Statement')
+                  React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                    React.createElement('button', {
+                      className: 'btn btn-sm btn-whatsapp',
+                      onClick: handleWhatsAppShareStatement
+                    }, Icons.whatsapp, 'Share on WhatsApp'),
+                    React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF Statement')
+                  )
                 ),
                 React.createElement('div', { className: 'table-container' },
                   React.createElement('table', null,
@@ -13779,7 +15972,13 @@
                 React.createElement('div', { className: 'card' },
                   React.createElement('div', { className: 'card-header' },
                     React.createElement('div', { className: 'card-title' }, 'Customer Statement Entries'),
-                    React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF')
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                      React.createElement('button', {
+                        className: 'btn btn-sm btn-whatsapp',
+                        onClick: handleWhatsAppShareStatement
+                      }, Icons.whatsapp, 'Share on WhatsApp'),
+                      React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: handleDownloadStatementPdf }, '📥 Download PDF')
+                    )
                   ),
                   React.createElement('div', { className: 'table-container' },
                     React.createElement('table', null,
@@ -13838,7 +16037,11 @@
                         (statementData.firmGstin ? ` | GSTIN: ${statementData.firmGstin}` : '')
                       )
                     ),
-                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                      React.createElement('button', {
+                        className: 'btn btn-whatsapp',
+                        onClick: handleWhatsAppShareStatement
+                      }, Icons.whatsapp, 'Share Summary'),
                       React.createElement('button', { className: 'btn btn-primary', onClick: handleDownloadStatementPdf }, '📥 Download PDF Statement'),
                       React.createElement('button', { className: 'btn btn-outline', onClick: () => window.print() }, '🖨️ Print')
                     )
@@ -14085,8 +16288,24 @@
                     )
                   )
                 )
-          )
-        )
+            )
+          ),
+
+        // WhatsApp Share Modal
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -16113,19 +18332,19 @@
         setError('');
         try {
           const res = await API.auth.login(null, password);
-          if (res && res.token) {
-            API.token = res.token;
+          if (res && (res.token || res.success)) {
+            if (res.token) API.token = res.token;
             sessionStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('isAuthenticated', 'true');
-            if (onAuthenticated) onAuthenticated(res.token);
-            if (window.showToast) window.showToast('Session unlocked! Resuming work.', 'success');
-          } else if (res && res.success) {
-            sessionStorage.setItem('isAuthenticated', 'true');
-            localStorage.setItem('isAuthenticated', 'true');
-            if (onAuthenticated) onAuthenticated(null);
+            sessionStorage.removeItem('isSessionLocked');
+            localStorage.removeItem('isSessionLocked');
+            const now = Date.now();
+            sessionStorage.setItem('billsoft_last_activity', String(now));
+            localStorage.setItem('billsoft_last_activity', String(now));
+            if (onAuthenticated) onAuthenticated(res.token || null);
             if (window.showToast) window.showToast('Session unlocked! Resuming work.', 'success');
           } else {
-            setError(res.message || 'Incorrect password / PIN.');
+            setError((res && res.message) || 'Incorrect password / PIN.');
           }
         } catch (err) {
           setError(err.message || 'Authentication failed. Please check password.');
@@ -17949,7 +20168,29 @@
     }
 
     function SettingsHub({ onFirmChanged, onStartUpdate }) {
-      const [tab, setTab] = useState('general');
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && p.page === 'settings' && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
+      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'general');
+
+      useEffect(() => {
+        const handleNav = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'settings') return;
+          if (e.detail.tab) setTab(e.detail.tab);
+        };
+        if (initialNav && initialNav.tab) {
+          setTab(initialNav.tab);
+        }
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+      }, []);
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 10, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' } },
           React.createElement('button', { className: `btn ${tab === 'general' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('general') }, '⚙️ General'),
@@ -18887,7 +21128,15 @@
     // ─── EMPLOYEE MANAGEMENT (FIXED & ENHANCED) ───
     // ─── HR MANAGEMENT SUITE ───
     function HRManager() {
-      const [hrTab, setHrTab] = useState('staff'); // 'staff' | 'attendance' | 'advances' | 'payroll'
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && (p.page === 'hr' || p.page === 'employees') && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
+      const [hrTab, setHrTab] = useState(() => (initialNav && (initialNav.hrTab || initialNav.tab)) || 'staff'); // 'staff' | 'attendance' | 'advances' | 'payroll'
       const [employees, setEmployees] = useState([]);
       const [loading, setLoading] = useState(false);
       const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -19218,6 +21467,29 @@
 
       useEffect(() => {
         fetchEmployees();
+        const handleNav = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'hr' && e.detail.page !== 'employees') return;
+          if (e.detail.hrTab) setHrTab(e.detail.hrTab);
+          else if (e.detail.tab) setHrTab(e.detail.tab);
+        };
+        const handleFocusEmp = async (e) => {
+          if (!e || !e.detail || !e.detail.id) return;
+          setHrTab('staff');
+          try {
+            const emp = await API.employees.get(e.detail.id);
+            if (emp) openEmployeeProfile(emp);
+          } catch (err) {}
+        };
+
+        window.addEventListener('billsoft:app-refresh', fetchEmployees);
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:focus-employee', handleFocusEmp);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', fetchEmployees);
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:focus-employee', handleFocusEmp);
+        };
       }, []);
 
       const openEmployeeProfile = async (emp) => {
@@ -19516,6 +21788,8 @@
         }
       };
 
+      const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
       const handleDownloadPayslip = async (empId, empName, salaryId) => {
         try {
           const blob = await API.employees.downloadPayslipPdf(empId, salaryId);
@@ -19524,6 +21798,43 @@
         } catch (e) {
           showToast('Failed to download payslip PDF', 'error');
         }
+      };
+
+      const handleWhatsAppSharePayslip = async (emp, salary) => {
+        let firmObj = { firmName: 'Our Business' };
+        try {
+          firmObj = await API.firm.getCurrent();
+        } catch (err) {}
+
+        const empId = (emp && emp.id) || (salary && salary.empId);
+        const empObj = emp || (selectedEmployee && selectedEmployee.id === empId ? selectedEmployee : (employees && employees.find(e => e.id === empId))) || { name: (salary && salary.empName) || 'Employee', phone: '' };
+
+        const msg = BillsoftWhatsApp.formatPayslip({
+          employee: empObj,
+          salary: salary || {},
+          firm: firmObj
+        });
+
+        const empPhone = empObj.phone || '';
+        const empName = empObj.name || (salary && salary.empName) || 'Employee';
+        const recipients = [
+          { id: 'employee', label: 'Employee', name: empName, phone: empPhone, icon: '👤' }
+        ];
+
+        const safeEmpName = empName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safeMonthYear = ((salary && salary.monthYear) || 'Salary').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        setWhatsAppModalDoc({
+          title: `Salary Payslip — ${empName} (${(salary && salary.monthYear) || ''})`,
+          phone: empPhone,
+          name: empName,
+          recipients: recipients,
+          message: msg,
+          ref: `PAYSLIP-${salary ? salary.id : ''}`,
+          pdfFileName: `Payslip_${safeEmpName}_${safeMonthYear}.pdf`,
+          pdfFetcher: () => API.employees.downloadPayslipPdf(empId, salary.id),
+          pdfUrl: `/api/employees/${empId}/salary/${salary.id}/payslip/pdf`
+        });
       };
 
       // Filter employees for Staff Directory
@@ -20044,11 +22355,23 @@
                           )
                         ),
                         React.createElement('td', { style: { textAlign: 'right', verticalAlign: 'middle', padding: '8px 6px' } },
-                          React.createElement('button', {
-                            className: 'btn btn-outline btn-sm',
-                            style: { padding: '3px 6px', fontSize: '0.75rem' },
-                            onClick: () => handleDownloadPayslip(emp.id, emp.name, processedSal.id)
-                          }, '📄 Payslip')
+                          React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                            React.createElement('button', {
+                              className: 'btn btn-outline btn-sm',
+                              style: { padding: '3px 6px', fontSize: '0.75rem' },
+                              onClick: () => handleDownloadPayslip(emp.id, emp.name, processedSal.id),
+                              title: 'Download Payslip PDF'
+                            }, '📄 Payslip'),
+                            React.createElement('button', {
+                              className: 'btn btn-whatsapp-outline btn-sm',
+                              style: { padding: '3px 6px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 4 },
+                              onClick: () => handleWhatsAppSharePayslip(emp, processedSal),
+                              title: 'Share Payslip via WhatsApp'
+                            },
+                              Icons.whatsapp,
+                              'Share'
+                            )
+                          )
                         )
                       ) : React.createElement(Fragment, null,
                         // Clear Advance Owed Column
@@ -20297,10 +22620,22 @@
                       ),
                       React.createElement('td', { style: { fontWeight: 700, color: '#059669', fontSize: '1.05rem' } }, BillsoftUtils.formatCurrency(s.netPaid)),
                       React.createElement('td', { style: { textAlign: 'right' } },
-                        React.createElement('button', {
-                          className: 'btn btn-outline btn-sm',
-                          onClick: () => handleDownloadPayslip(s.empId, s.empName, s.id)
-                        }, '📄 Payslip PDF')
+                        React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                          React.createElement('button', {
+                            className: 'btn btn-outline btn-sm',
+                            onClick: () => handleDownloadPayslip(s.empId, s.empName, s.id),
+                            title: 'Download Payslip PDF'
+                          }, '📄 Payslip PDF'),
+                          React.createElement('button', {
+                            className: 'btn btn-whatsapp-outline btn-sm',
+                            style: { display: 'inline-flex', alignItems: 'center', gap: 4 },
+                            onClick: () => handleWhatsAppSharePayslip(null, s),
+                            title: 'Share Payslip via WhatsApp'
+                          },
+                            Icons.whatsapp,
+                            'Share'
+                          )
+                        )
                       )
                     ));
                   })()
@@ -20432,7 +22767,18 @@
                       ),
                       React.createElement('td', { style: { fontWeight: 700, color: '#059669' } }, BillsoftUtils.formatCurrency(s.netPaid)),
                       React.createElement('td', { style: { textAlign: 'right' } },
-                        React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => handleDownloadPayslip(selectedEmployee.id, selectedEmployee.name, s.id) }, '📄 PDF')
+                        React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                          React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => handleDownloadPayslip(selectedEmployee.id, selectedEmployee.name, s.id), title: 'Download Payslip PDF' }, '📄 PDF'),
+                          React.createElement('button', {
+                            className: 'btn btn-whatsapp-outline btn-sm',
+                            style: { display: 'inline-flex', alignItems: 'center', gap: 4 },
+                            onClick: () => handleWhatsAppSharePayslip(selectedEmployee, s),
+                            title: 'Share Payslip via WhatsApp'
+                          },
+                            Icons.whatsapp,
+                            'Share'
+                          )
+                        )
                       )
                     ))
                   )
@@ -20852,7 +23198,23 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: executeConfirmDelete }, '🗑️ Delete')
             )
           )
-        )
+        ),
+
+        // WhatsApp Share Modal for Payslips
+        whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
+          isOpen: !!whatsAppModalDoc,
+          onClose: () => setWhatsAppModalDoc(null),
+          title: whatsAppModalDoc.title,
+          recipientPhone: whatsAppModalDoc.phone,
+          recipientName: whatsAppModalDoc.name,
+          availableRecipients: whatsAppModalDoc.recipients,
+          initialMessage: whatsAppModalDoc.message,
+          documentRef: whatsAppModalDoc.ref,
+          pdfFetcher: whatsAppModalDoc.pdfFetcher,
+          pdfFileName: whatsAppModalDoc.pdfFileName,
+          pdfUrl: whatsAppModalDoc.pdfUrl,
+          pdfBlob: whatsAppModalDoc.pdfBlob
+        })
       );
     }
 
@@ -20872,9 +23234,17 @@
       firms,
       quickDocType
     }) {
+      const getInitialNav = () => {
+        const p = window.__billsoftPendingNav;
+        if (p && p.page === 'invoices' && (Date.now() - (p.ts || 0) < 15000)) {
+          return p;
+        }
+        return null;
+      };
+      const initialNav = getInitialNav();
       const [openTabs, setOpenTabs] = useState([]); // Array of { id, type, title, editId, cloneId, convertedFromQuotationId }
       const [activeTabId, setActiveTabId] = useState(null);
-      const [activeView, setActiveView] = useState('overview'); // 'overview' | 'editor'
+      const [activeView, setActiveView] = useState(() => ((initialNav && initialNav.subTab === 'create') || subTab === 'create') ? 'editor' : 'overview'); // 'overview' | 'editor'
       const [selectedReturnForDetail, setSelectedReturnForDetail] = useState(null);
       const [kpiStats, setKpiStats] = useState({
         totalInvoiced: 0,
@@ -20924,9 +23294,32 @@
         const onFirmChange = () => {
           loadSummary();
         };
+        const handleNav = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'invoices') return;
+          if (e.detail.subTab) {
+            if (onSubTabChange) onSubTabChange(e.detail.subTab);
+            if (e.detail.subTab === 'create') {
+              setActiveView('editor');
+            } else {
+              setActiveView('overview');
+            }
+          }
+        };
+
+        if (initialNav) {
+          handleNav({ detail: initialNav });
+        }
+
         window.addEventListener('billsoft:firm-changed', onFirmChange);
-        return () => window.removeEventListener('billsoft:firm-changed', onFirmChange);
-      }, [loadSummary]);
+        window.addEventListener('billsoft:app-refresh', loadSummary);
+        window.addEventListener('billsoft:navigate-subtab', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:firm-changed', onFirmChange);
+          window.removeEventListener('billsoft:app-refresh', loadSummary);
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        };
+      }, [loadSummary, onSubTabChange]);
 
       // Helper to open or focus a document tab (up to 10 maximum)
       const openDocTab = useCallback((tabSpec) => {
@@ -21326,7 +23719,17 @@
       };
 
       const [sessionDuration, setSessionDuration] = useState(getDuration);
-      const [timeLeft, setTimeLeft] = useState(getDuration);
+      const [timeLeft, setTimeLeft] = useState(() => {
+        const duration = getDuration();
+        if (duration <= 0) return 0;
+        const lastActStr = sessionStorage.getItem('billsoft_last_activity') || localStorage.getItem('billsoft_last_activity');
+        const lastAct = lastActStr ? parseInt(lastActStr, 10) : 0;
+        if (lastAct > 0) {
+          const elapsed = Math.floor((Date.now() - lastAct) / 1000);
+          return Math.max(0, duration - elapsed);
+        }
+        return duration;
+      });
       const onExpireRef = useRef(onExpire);
       onExpireRef.current = onExpire;
       const durationRef = useRef(sessionDuration);
@@ -21335,7 +23738,12 @@
 
       const resetTimer = useCallback((customSecs) => {
         const secs = (customSecs !== undefined && !isNaN(customSecs)) ? customSecs : durationRef.current;
-        lastActivityRef.current = Date.now();
+        const now = Date.now();
+        lastActivityRef.current = now;
+        sessionStorage.setItem('billsoft_last_activity', String(now));
+        localStorage.setItem('billsoft_last_activity', String(now));
+        sessionStorage.removeItem('isSessionLocked');
+        localStorage.removeItem('isSessionLocked');
         setTimeLeft(secs);
       }, []);
 
@@ -21362,13 +23770,32 @@
       useEffect(() => {
         if (!authEnabled || !isAuthenticated || sessionDuration <= 0) return;
 
-        // Reset baseline on authentication or mount
-        lastActivityRef.current = Date.now();
-        setTimeLeft(sessionDuration);
+        const savedLast = parseInt(sessionStorage.getItem('billsoft_last_activity') || localStorage.getItem('billsoft_last_activity') || '0', 10);
+        if (savedLast > 0) {
+          lastActivityRef.current = savedLast;
+          const elapsed = Math.floor((Date.now() - savedLast) / 1000);
+          const remaining = Math.max(0, sessionDuration - elapsed);
+          setTimeLeft(remaining);
+          if (remaining <= 0 && sessionDuration > 0) {
+            sessionStorage.setItem('isSessionLocked', 'true');
+            localStorage.setItem('isSessionLocked', 'true');
+            if (onExpireRef.current) onExpireRef.current();
+            return;
+          }
+        } else {
+          const now = Date.now();
+          lastActivityRef.current = now;
+          sessionStorage.setItem('billsoft_last_activity', String(now));
+          localStorage.setItem('billsoft_last_activity', String(now));
+          setTimeLeft(sessionDuration);
+        }
 
         // Direct user interaction events (typing, clicking, scrolling, touch)
         const recordActivity = () => {
-          lastActivityRef.current = Date.now();
+          const now = Date.now();
+          lastActivityRef.current = now;
+          sessionStorage.setItem('billsoft_last_activity', String(now));
+          localStorage.setItem('billsoft_last_activity', String(now));
         };
 
         // Throttle mousemove
@@ -21378,6 +23805,8 @@
           if (now - lastMouseMove > 2000) {
             lastMouseMove = now;
             lastActivityRef.current = now;
+            sessionStorage.setItem('billsoft_last_activity', String(now));
+            localStorage.setItem('billsoft_last_activity', String(now));
           }
         };
 
@@ -21388,6 +23817,8 @@
             const remaining = Math.max(0, durationRef.current - elapsed);
             setTimeLeft(remaining);
             if (remaining <= 0 && durationRef.current > 0) {
+              sessionStorage.setItem('isSessionLocked', 'true');
+              localStorage.setItem('isSessionLocked', 'true');
               if (onExpireRef.current) onExpireRef.current();
             }
           }
@@ -21406,6 +23837,8 @@
           setTimeLeft(remaining);
           if (remaining <= 0 && durationRef.current > 0) {
             clearInterval(interval);
+            sessionStorage.setItem('isSessionLocked', 'true');
+            localStorage.setItem('isSessionLocked', 'true');
             if (onExpireRef.current) onExpireRef.current();
           }
         }, 1000);
@@ -21455,6 +23888,122 @@
       );
     }
 
+    // ─── EMBEDDED LIQUID GLASS RELOAD CAPSULE (NON-BLOCKING) ───
+    function RupeeCRMSyncOverlay({ isSyncing, statusText = 'Refreshing workspace...', activeFirmName = '' }) {
+      const [isClosing, setIsClosing] = useState(false);
+      const [visible, setVisible] = useState(false);
+      const [theme, setTheme] = useState(() => (window.getAppTheme ? window.getAppTheme() : 'light-1'));
+
+      useEffect(() => {
+        const handler = (e) => {
+          const t = (e && e.detail && e.detail.theme) || (window.getAppTheme ? window.getAppTheme() : 'light-1');
+          setTheme(t);
+        };
+        window.addEventListener('themeChanged', handler);
+        return () => window.removeEventListener('themeChanged', handler);
+      }, []);
+
+      useEffect(() => {
+        if (isSyncing) {
+          setVisible(true);
+          setIsClosing(false);
+        } else if (visible) {
+          setIsClosing(true);
+          const closeTimer = setTimeout(() => {
+            setVisible(false);
+            setIsClosing(false);
+          }, 320);
+          return () => clearTimeout(closeTimer);
+        }
+      }, [isSyncing, visible]);
+
+      if (!visible || typeof document === 'undefined') return null;
+
+      const isComplete = statusText.includes('✓') || statusText.includes('up-to-date') || statusText.includes('updated');
+      const isRetro = theme === 'classic' || theme === 'classic-dark';
+      const isRetroDark = theme === 'classic-dark';
+      const isLight = theme === 'light-1';
+
+      let content = null;
+
+      if (isRetro) {
+        // ─── RETRO WIN95 / RETRO DARK RELOAD PILL ───
+        content = React.createElement('div', {
+          className: `rcrm-liquid-sync-wrapper theme-retro${isRetroDark ? ' theme-retro-dark' : ''}${isClosing ? ' exiting' : ''}`,
+          role: 'status',
+          'aria-live': 'polite'
+        },
+          React.createElement('div', { className: 'rcrm-retro-reload-pill' },
+            React.createElement('span', { className: `rcrm-retro-spinner-icon${isComplete ? ' done' : ' spinning'}` },
+              isComplete ? '✓' : '⏳'
+            ),
+            React.createElement('span', { className: 'rcrm-retro-reload-text' },
+              isComplete ? `✓ Workspace updated` : `Reloading ${activeFirmName || 'workspace'}...`
+            )
+          )
+        );
+      } else {
+        // ─── MODERN LIQUID GLASS RELOAD CAPSULE ───
+        content = React.createElement('div', {
+          className: `rcrm-liquid-sync-wrapper theme-modern${isLight ? ' theme-light' : ''}${isClosing ? ' exiting' : ''}`,
+          role: 'status',
+          'aria-live': 'polite'
+        },
+          // Soft Workspace Refresh Wave Sheen
+          React.createElement('div', { className: 'rcrm-liquid-sheen-sweep' }),
+
+          // Liquid Glass Reload Capsule
+          React.createElement('div', { className: `rcrm-liquid-reload-capsule${isComplete ? ' completed' : ''}` },
+            // Liquid Spinner / Check
+            React.createElement('div', { className: `rcrm-liquid-reload-icon-wrap${isComplete ? ' done' : ''}` },
+              !isComplete ? (
+                React.createElement('svg', {
+                  className: 'rcrm-liquid-spinner-svg',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.5',
+                  strokeLinecap: 'round'
+                },
+                  React.createElement('circle', {
+                    cx: '12',
+                    cy: '12',
+                    r: '9',
+                    strokeDasharray: '38 18',
+                    className: 'rcrm-spinner-circle'
+                  })
+                )
+              ) : (
+                React.createElement('svg', {
+                  className: 'rcrm-liquid-check-svg',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '3',
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  React.createElement('polyline', { points: '20 6 9 17 4 12' })
+                )
+              )
+            ),
+
+            // Message Text
+            React.createElement('div', { className: 'rcrm-liquid-reload-content' },
+              React.createElement('div', { className: 'rcrm-liquid-reload-label' },
+                isComplete ? 'Workspace Refreshed' : 'Reloading Workspace...'
+              ),
+              React.createElement('div', { className: 'rcrm-liquid-reload-sub' },
+                activeFirmName ? `Firm: ${activeFirmName}` : 'All tables & cache up to date'
+              )
+            )
+          )
+        );
+      }
+
+      return ReactDOM.createPortal(content, document.body);
+    }
+
     // ─── MAIN APP ───
     function App() {
       const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -21483,8 +24032,28 @@
       const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+      const [isSyncing, setIsSyncing] = useState(false);
+      const [syncStatusText, setSyncStatusText] = useState('Syncing records with database...');
+      const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
-      const lastReauthPromptTime = useRef(0);
+      const isInitialLocked = () => {
+        if (sessionStorage.getItem('isSessionLocked') === 'true' || localStorage.getItem('isSessionLocked') === 'true') {
+          return true;
+        }
+        const savedTimeoutMins = parseInt(localStorage.getItem('sessionTimeoutMinutes') || '30', 10);
+        const timeoutSecs = (isNaN(savedTimeoutMins) || savedTimeoutMins <= 0) ? 1800 : savedTimeoutMins * 60;
+        const lastActStr = sessionStorage.getItem('billsoft_last_activity') || localStorage.getItem('billsoft_last_activity');
+        const lastAct = lastActStr ? parseInt(lastActStr, 10) : 0;
+        if (lastAct > 0 && timeoutSecs > 0 && (Date.now() - lastAct) >= timeoutSecs * 1000) {
+          sessionStorage.setItem('isSessionLocked', 'true');
+          localStorage.setItem('isSessionLocked', 'true');
+          return true;
+        }
+        return false;
+      };
+
+      const [showReauthModal, setShowReauthModal] = useState(isInitialLocked);
+      const [isSessionLocked, setIsSessionLocked] = useState(isInitialLocked);
 
       const initApp = async (retryCount = 0) => {
         try {
@@ -21498,8 +24067,19 @@
             if (!hasValidSession) {
               setIsAuthenticated(false);
               setShowReauthModal(false);
+              setIsSessionLocked(false);
+              sessionStorage.removeItem('isSessionLocked');
+              localStorage.removeItem('isSessionLocked');
               setAppLoaded(true);
               return;
+            }
+
+            const locked = isInitialLocked();
+            if (locked) {
+              sessionStorage.setItem('isSessionLocked', 'true');
+              localStorage.setItem('isSessionLocked', 'true');
+              setIsSessionLocked(true);
+              setShowReauthModal(true);
             }
           }
 
@@ -21548,7 +24128,14 @@
           }
 
           setIsAuthenticated(true);
-          setShowReauthModal(false);
+          const currentlyLocked = isInitialLocked();
+          if (currentlyLocked) {
+            setIsSessionLocked(true);
+            setShowReauthModal(true);
+          } else {
+            setIsSessionLocked(false);
+            setShowReauthModal(false);
+          }
         } catch (err) {
           console.error("Initialization error:", err);
           setIsAuthenticated(true);
@@ -21561,15 +24148,15 @@
         initApp();
       }, [firmLoadKey]);
 
-      const [showReauthModal, setShowReauthModal] = useState(false);
-      const [isSessionLocked, setIsSessionLocked] = useState(false);
-
       useEffect(() => {
         const handleUnauthorized = () => {
           if (authEnabled && isAuthenticated) {
             const now = Date.now();
             if (now - lastReauthPromptTime.current > 3000) {
               lastReauthPromptTime.current = now;
+              sessionStorage.setItem('isSessionLocked', 'true');
+              localStorage.setItem('isSessionLocked', 'true');
+              setIsSessionLocked(true);
               setShowReauthModal(true);
             }
           }
@@ -21577,6 +24164,8 @@
         const handleLockSession = () => {
           if (authEnabled && isAuthenticated) {
             lastReauthPromptTime.current = Date.now();
+            sessionStorage.setItem('isSessionLocked', 'true');
+            localStorage.setItem('isSessionLocked', 'true');
             setIsSessionLocked(true);
             setShowReauthModal(true);
           }
@@ -21585,6 +24174,8 @@
           const enabled = e && e.detail && e.detail.enabled;
           setAuthEnabled(!!enabled);
           if (!enabled) {
+            sessionStorage.removeItem('isSessionLocked');
+            localStorage.removeItem('isSessionLocked');
             setIsAuthenticated(true);
             setIsSessionLocked(false);
             setShowReauthModal(false);
@@ -21604,6 +24195,11 @@
         setIsAuthenticated(true);
         setIsSessionLocked(false);
         setShowReauthModal(false);
+        sessionStorage.removeItem('isSessionLocked');
+        localStorage.removeItem('isSessionLocked');
+        const now = Date.now();
+        sessionStorage.setItem('billsoft_last_activity', String(now));
+        localStorage.setItem('billsoft_last_activity', String(now));
         sessionStorage.setItem('isAuthenticated', 'true');
         localStorage.setItem('isAuthenticated', 'true');
         window.dispatchEvent(new CustomEvent('billsoft:reset-session-timer'));
@@ -21616,8 +24212,12 @@
         setShowReauthModal(false);
         sessionStorage.removeItem('isAuthenticated');
         sessionStorage.removeItem('billsoft_auth_token');
+        sessionStorage.removeItem('isSessionLocked');
+        sessionStorage.removeItem('billsoft_last_activity');
         localStorage.removeItem('isAuthenticated');
         localStorage.removeItem('billsoft_auth_token');
+        localStorage.removeItem('isSessionLocked');
+        localStorage.removeItem('billsoft_last_activity');
         API.token = null;
         API.firmId = null;
         setReminders([]);
@@ -21695,6 +24295,58 @@
         const currentId = API.firmId;
         if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => { }); }).catch(() => { }); }
       };
+
+      const handleAppRefresh = useCallback(async () => {
+        if (isSyncing) return;
+        setIsSyncing(true);
+        setSyncStatusText('Reloading workspace...');
+
+        const startTime = Date.now();
+
+        // Dispatch app-wide refresh event for all active views/tabs
+        window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+
+        // Concurrently refresh core app states
+        const refreshTasks = [
+          API.firm.list().then(list => {
+            if (Array.isArray(list) && list.length > 0) {
+              setFirms(list);
+              const currentId = API.firmId;
+              const f = list.find(x => x.id === currentId) || list[0];
+              if (f && f.firmName) setFirmName(f.firmName);
+            }
+          }).catch(() => { }),
+          (API.firmId ? API.firm.get(API.firmId).then(f => {
+            if (f && f.firmName) setFirmName(f.firmName);
+          }).catch(() => { }) : Promise.resolve()),
+          (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(setReminders).catch(() => { }) : Promise.resolve()),
+          (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && API.firmId ? API.notes.listByFirm(API.firmId).then(setNotes).catch(() => { }) : Promise.resolve()),
+          (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && API.firmId ? API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { }) : Promise.resolve()),
+          (API.messages && typeof API.messages.list === 'function' && isAuthenticated && API.firmId ? API.messages.list().then(processMessages).catch(() => { }) : Promise.resolve()),
+          (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
+            if (lic) {
+              setLicenseStatus(lic.status || 'trial');
+              setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+            }
+          }).catch(() => { }) : Promise.resolve())
+        ];
+
+        await Promise.allSettled(refreshTasks);
+
+        // Ensure smooth minimum fluid animation duration
+        const elapsed = Date.now() - startTime;
+        const remainingDelay = Math.max(0, 600 - elapsed);
+        if (remainingDelay > 0) {
+          await new Promise(res => setTimeout(res, remainingDelay));
+        }
+
+        setSyncStatusText('✓ Workspace updated');
+
+        await new Promise(res => setTimeout(res, 280));
+
+        setIsSyncing(false);
+        if (window.showToast) window.showToast('Workspace refreshed & synchronized', 'success');
+      }, [isSyncing, isAuthenticated, processMessages]);
       const handleFirmSwitch = (firmId) => {
         const prevId = API.firmId;
         if (firmId === prevId) return;
@@ -21721,18 +24373,43 @@
         return () => window.removeEventListener('popstate', handlePopState);
       }, []);
 
+      // Keyboard shortcuts: Cmd+K / Ctrl+K / '/' for Omnibar, Escape to go back, Alt+R to in-app refresh
       useEffect(() => {
         const handleKeyDown = (e) => {
+          if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K' || e.code === 'KeyK')) {
+            e.preventDefault();
+            setShowGlobalSearch(prev => !prev);
+            return;
+          }
+          if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement && document.activeElement.tagName) && !(document.activeElement && document.activeElement.isContentEditable)) {
+            e.preventDefault();
+            setShowGlobalSearch(true);
+            return;
+          }
+          if (e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR' || e.key === '®')) {
+            e.preventDefault();
+            handleAppRefresh();
+            return;
+          }
           if (e.key === 'Escape') {
+            if (document.querySelector('.omni-modal-overlay')) {
+              setShowGlobalSearch(false);
+              return;
+            }
             if (document.querySelector('.modal-overlay')) return;
             if (page !== 'dashboard') {
               window.history.back();
             }
           }
         };
+        const handleOpenOmni = () => setShowGlobalSearch(true);
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [page]);
+        window.addEventListener('billsoft:open-global-search', handleOpenOmni);
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          window.removeEventListener('billsoft:open-global-search', handleOpenOmni);
+        };
+      }, [page, handleAppRefresh]);
 
       const navigate = (p) => {
         setPage(p);
@@ -21752,16 +24429,26 @@
       };
       const handleCreateReminder = (data) => {
         return API.reminders.create({ ...data, type: 'reminder', status: 'TODO', progress: 0 }).then(newRem => {
-          setReminders(prev => [...prev, newRem]);
-          showToast('Reminder created successfully', 'success');
+          if (!newRem.firmId || String(newRem.firmId) === String(API.firmId)) {
+            setReminders(prev => [...prev, newRem]);
+            showToast('Reminder created successfully', 'success');
+          } else {
+            const targetFirm = (firms || []).find(f => String(f.id) === String(newRem.firmId));
+            showToast(`Reminder created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newRem.firmId}`, 'success');
+          }
         }).catch(e => {
           showToast('Failed to create reminder', 'error');
         });
       };
       const handleCreateTask = (data) => {
         return API.reminders.create({ ...data, type: 'task' }).then(newTask => {
-          setReminders(prev => [...prev, newTask]);
-          showToast('Task created successfully', 'success');
+          if (!newTask.firmId || String(newTask.firmId) === String(API.firmId)) {
+            setReminders(prev => [...prev, newTask]);
+            showToast('Task created successfully', 'success');
+          } else {
+            const targetFirm = (firms || []).find(f => String(f.id) === String(newTask.firmId));
+            showToast(`Task created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newTask.firmId}`, 'success');
+          }
         }).catch(e => {
           showToast('Failed to create task', 'error');
         });
@@ -21785,8 +24472,13 @@
 
       const handleCreateNote = (data) => {
         return API.notes.create(data).then(newNote => {
-          setNotes(prev => [...prev, newNote]);
-          showToast('Note created successfully', 'success');
+          if (!newNote.firmId || String(newNote.firmId) === String(API.firmId)) {
+            setNotes(prev => [...prev, newNote]);
+            showToast('Note created successfully', 'success');
+          } else {
+            const targetFirm = (firms || []).find(f => String(f.id) === String(newNote.firmId));
+            showToast(`Note created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newNote.firmId}`, 'success');
+          }
         }).catch(e => {
           showToast('Failed to create note', 'error');
         });
@@ -21810,8 +24502,13 @@
 
       const handleCreateExpense = (data) => {
         return API.expenses.create(data).then(newExp => {
-          setExpenses(prev => [newExp, ...prev]);
-          showToast('Expense recorded successfully', 'success');
+          if (!newExp.firmId || String(newExp.firmId) === String(API.firmId)) {
+            setExpenses(prev => [newExp, ...prev]);
+            showToast('Expense recorded successfully', 'success');
+          } else {
+            const targetFirm = (firms || []).find(f => String(f.id) === String(newExp.firmId));
+            showToast(`Expense recorded for ${targetFirm ? targetFirm.firmName : 'Firm #' + newExp.firmId}`, 'success');
+          }
         }).catch(e => {
           showToast('Failed to record expense', 'error');
         });
@@ -22013,6 +24710,37 @@
         setPage('invoices');
       };
 
+      useEffect(() => {
+        const handleNavSubtab = (e) => {
+          if (!e || !e.detail) return;
+          const { page: targetPage, subTab } = e.detail;
+          if (targetPage) {
+            setPage(targetPage);
+            window.history.pushState({ page: targetPage }, '', '');
+          }
+          if (subTab) {
+            setInvoiceSubTab(subTab);
+          }
+        };
+        const handleConvertQuote = (e) => {
+          if (e && e.detail && e.detail.id) {
+            handleConvertToInvoice(e.detail.id);
+          }
+        };
+        const handleCreateCustInvoice = () => {
+          handleQuickCreate('invoice');
+        };
+
+        window.addEventListener('billsoft:navigate-subtab', handleNavSubtab);
+        window.addEventListener('billsoft:convert-quotation', handleConvertQuote);
+        window.addEventListener('billsoft:create-invoice-for-customer', handleCreateCustInvoice);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNavSubtab);
+          window.removeEventListener('billsoft:convert-quotation', handleConvertQuote);
+          window.removeEventListener('billsoft:create-invoice-for-customer', handleCreateCustInvoice);
+        };
+      }, []);
+
       const pageComponents = {
         dashboard: {
           title: 'Dashboard', comp: React.createElement(Dashboard, {
@@ -22104,15 +24832,34 @@
         ),
         React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
           React.createElement('header', { className: 'topbar' },
-            React.createElement('div', { className: 'topbar-left', style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('div', { className: 'topbar-left', style: { display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 } },
               React.createElement('button', {
                 className: 'mobile-toggle-btn',
                 onClick: () => setMobileSidebarOpen(true),
                 title: 'Open navigation menu'
               }, Icons.menu),
-              React.createElement('h1', { className: 'topbar-title' }, current.title)
+              React.createElement('h1', { className: 'topbar-title' }, current.title),
+              // Omnibar Pill Trigger
+              React.createElement('button', {
+                type: 'button',
+                className: 'topbar-omnibar-trigger hide-mobile',
+                onClick: () => setShowGlobalSearch(true),
+                title: 'Global Search & Command Palette (Ctrl+K / ⌘K or /)'
+              },
+                React.createElement('span', { style: { fontSize: '0.95rem', opacity: 0.85 } }, '🔍'),
+                React.createElement('span', { style: { flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, 'Search anything (bills, hisab, payslip, math)...'),
+                React.createElement('span', { className: 'omni-shortcut-badge' }, (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0) ? '⌘K' : 'Ctrl+K')
+              )
             ),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              // Mobile search icon button
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-ghost hide-desktop',
+                style: { padding: '4px 8px', fontSize: '1.1rem' },
+                onClick: () => setShowGlobalSearch(true),
+                title: 'Search anything (Ctrl+K)'
+              }, '🔍'),
               licenseStatus === 'trial' ? React.createElement('div', { className: 'topbar-trial-badge', style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '4px 8px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 } }, `⏳ ${trialDaysRemaining}d`) :
                 licenseStatus === 'activated' ? React.createElement('div', {
                   className: 'topbar-premium-badge',
@@ -22146,6 +24893,29 @@
                   }),
                   React.createElement('span', null, 'PREMIUM')
                 ) : null,
+              React.createElement('button', {
+                className: `topbar-sync-action-btn${isSyncing ? ' is-syncing' : ''}`,
+                onClick: handleAppRefresh,
+                title: 'In-App Data Sync (Alt + R)',
+                'aria-label': 'Sync database data',
+                disabled: isSyncing
+              },
+                React.createElement('svg', {
+                  className: 'sync-svg-icon',
+                  width: 13,
+                  height: 13,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.4',
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  React.createElement('path', { d: 'M21.5 2v6h-6' }),
+                  React.createElement('path', { d: 'M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19' })
+                ),
+                React.createElement('span', { className: 'hide-mobile' }, isSyncing ? 'Syncing...' : 'Sync Data')
+              ),
               authEnabled && React.createElement('button', {
                 className: 'topbar-lock-btn',
                 onClick: () => {
@@ -22187,8 +24957,19 @@
             page !== 'invoices' && current.comp
           )
         ),
+        React.createElement(RupeeCRMSyncOverlay, { isSyncing, statusText: syncStatusText, activeFirmName: firmName }),
         showStatusBar && React.createElement(BottomStatusBar, null),
         React.createElement(Toast, { toasts, removeToast }),
+        React.createElement(GlobalSearchModal, {
+          isOpen: showGlobalSearch,
+          onClose: () => setShowGlobalSearch(false),
+          onNavigate: navigate,
+          onQuickCreate: handleQuickCreate,
+          firm: { firmName },
+          firms: firms,
+          onSwitchFirm: handleFirmSwitch,
+          onRefresh: handleAppRefresh
+        }),
         authEnabled && React.createElement(ReauthModal, {
           isOpen: showReauthModal,
           isDismissible: !isSessionLocked,
@@ -22197,6 +24978,11 @@
           },
           onLogout: () => handleLogout('Logged out from lock screen.'),
           onAuthenticated: (token) => {
+            sessionStorage.removeItem('isSessionLocked');
+            localStorage.removeItem('isSessionLocked');
+            const now = Date.now();
+            sessionStorage.setItem('billsoft_last_activity', String(now));
+            localStorage.setItem('billsoft_last_activity', String(now));
             setShowReauthModal(false);
             setIsSessionLocked(false);
             setIsAuthenticated(true);

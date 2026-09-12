@@ -11,6 +11,7 @@
 
   <script src="js/api.js?v=20260910_markpaid_v4"></script>
   <script src="js/utils.js?v=20260910_markpaid_v4"></script>
+  <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
   <script src="js/themeToggle.js?v=20260906_theme_unified_v2"></script>
@@ -31,6 +32,22 @@
   <script type="text/javascript">
     const { useState, useEffect, useMemo, useCallback, useRef, Fragment } = React;
     const RupeeCRMUtils = (typeof BillsoftUtils !== 'undefined') ? BillsoftUtils : {};
+
+    // One-time cleanup for any previously cached WebLLM models or AI settings in browser storage
+    try {
+      ['webllm/model', 'webllm/wasm', 'tvmjs'].forEach(db => {
+        if (typeof indexedDB !== 'undefined' && indexedDB.deleteDatabase) {
+          try { indexedDB.deleteDatabase(db); } catch (e) {}
+        }
+      });
+      [
+        'billsoft_ai_enabled', 'billsoft_ai_omni_enabled', 'billsoft_ai_show_thought_pills',
+        'billsoft_ai_voice_lang', 'billsoft_ai_active_model', 'billsoft_downloaded_models',
+        'billsoft_active_model', 'billsoft_ai_model', 'billsoft_ai_auto_init', 'billsoft_ai_reasoning_mode'
+      ].forEach(k => {
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
+    } catch (e) {}
 
     // Defensive polyfill for API system heartbeat and backup in case of browser cache
     if (typeof API !== 'undefined') {
@@ -578,11 +595,11 @@
           // Launch WhatsApp native desktop or mobile application
           const encoded = encodeURIComponent(message || '');
           const appUrl = clean ? `whatsapp://send?phone=${clean}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
-          
+
           let appOpened = false;
           const onBlur = () => { appOpened = true; };
           window.addEventListener('blur', onBlur);
-          
+
           window.location.href = appUrl;
 
           setTimeout(() => {
@@ -720,7 +737,7 @@
 
             // Body
             React.createElement('div', { className: 'modal-body', style: { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' } },
-              
+
               // 1. SIMPLIFIED RECIPIENT & PHONE NUMBER BOX
               React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
@@ -912,6 +929,478 @@
       );
     }
 
+    // ─── OMNI ACTION INSPECTOR & DATA EDITING WORKSPACE ───
+    function OmniActionInspector({
+      item,
+      data,
+      setData,
+      onSave,
+      onCancel,
+      isExecuting,
+      actionError = null,
+      staffList = [],
+      firm = {}
+    }) {
+      if (!item) return null;
+      const kind = (item.editableConfig && item.editableConfig.kind) || item.type || item.itemType || 'generic';
+
+      // Live dynamic UPI QR calculation
+      const curAmt = data.amount !== undefined ? data.amount : (item.amount || '');
+      const numAmt = parseFloat(curAmt) || 0;
+      const curVpa = (data.upiId || item.upiId || firm.upiId || 'merchant@upi').trim();
+      const curFirmName = (data.firmName || item.firmName || firm.firmName || 'Store').trim();
+      const curNote = data.note || 'Payment';
+      const liveUpiUrl = `upi://pay?pa=${encodeURIComponent(curVpa)}&pn=${encodeURIComponent(curFirmName)}${numAmt > 0 ? '&am=' + numAmt.toFixed(2) : ''}&tn=${encodeURIComponent(curNote)}&cu=INR`;
+      const liveQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(liveUpiUrl)}`;
+
+      return React.createElement('div', {
+        className: 'omni-action-inspector',
+        style: {
+          padding: '16px 20px',
+          background: 'var(--bg-secondary, #f8fafc)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+          margin: '4px 0'
+        }
+      },
+        // 1. Header Bar
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: 10
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('span', { style: { fontSize: '1.4rem' } }, item.icon || '✏️'),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' } },
+                kind === 'upi' || item.type === 'upi_qr' ? '📱 Live UPI Payment Gateway & QR' :
+                kind === 'expense' ? '💸 Record New Expense' :
+                kind === 'customer' ? '👤 Register New Customer' :
+                kind === 'note' ? '📌 Save Sticky Note to Planner' :
+                kind === 'dues' ? '💬 Send WhatsApp Dues Reminder' :
+                kind === 'attendance' ? '📅 Mark HR Attendance' :
+                kind === 'advance' ? '💰 Record Salary Advance' :
+                '⚡ Customize & Confirm Action'
+              ),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                'Review and customize fields below in real-time before applying.'
+              )
+            )
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'btn btn-xs btn-outline',
+            onClick: onCancel,
+            disabled: isExecuting,
+            style: { fontSize: '0.78rem', padding: '4px 10px', borderRadius: 6 }
+          }, '✕ Cancel / Back')
+        ),
+
+        // 1b. Error Recovery Banner (Preserves User Input)
+        actionError && React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: 8,
+            fontSize: '0.82rem',
+            color: '#dc2626'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('span', { style: { fontSize: '1.1rem' } }, '⚠️'),
+            React.createElement('span', { style: { fontWeight: 600 } }, actionError)
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'btn btn-xs btn-outline',
+            disabled: isExecuting,
+            style: { color: '#dc2626', borderColor: '#dc2626', padding: '3px 10px', fontSize: '0.75rem', fontWeight: 700 },
+            onClick: () => onSave(data)
+          }, isExecuting ? 'Retrying...' : '🔄 Retry Now')
+        ),
+
+        // 2. Body based on kind
+        (kind === 'upi' || item.type === 'upi_qr') ? (
+          React.createElement('div', { style: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' } },
+            // Left Column: Live QR Preview
+            React.createElement('div', {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                background: '#ffffff',
+                padding: 14,
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+              }
+            },
+              React.createElement('img', {
+                src: liveQrUrl,
+                alt: 'UPI Payment QR',
+                style: { width: 170, height: 170, borderRadius: 8, display: 'block' }
+              }),
+              React.createElement('div', { style: { marginTop: 8, fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' } },
+                numAmt > 0 ? `₹${BillsoftUtils.formatCurrency(numAmt)}` : 'Any Amount'
+              ),
+              React.createElement('div', { style: { fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' } }, curVpa)
+            ),
+            // Right Column: Inputs
+            React.createElement('div', { style: { flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 10 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Amount (₹) (Leave blank for open amount)'),
+                React.createElement('input', {
+                  type: 'number',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '8px 12px', fontSize: '1.05rem', fontWeight: 700 },
+                  value: curAmt,
+                  placeholder: 'e.g. 500 or 9000',
+                  onChange: e => setData(prev => ({ ...prev, amount: e.target.value })),
+                  autoFocus: true
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Receiving UPI ID / VPA'),
+                React.createElement('input', {
+                  type: 'text',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '7px 12px', fontFamily: 'monospace', fontSize: '0.88rem' },
+                  value: data.upiId !== undefined ? data.upiId : (item.upiId || firm.upiId || ''),
+                  placeholder: 'e.g. yourstore@okaxis',
+                  onChange: e => setData(prev => ({ ...prev, upiId: e.target.value }))
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Payment Remark / Note'),
+                React.createElement('input', {
+                  type: 'text',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '7px 12px', fontSize: '0.88rem' },
+                  value: data.note !== undefined ? data.note : (item.note || 'Payment'),
+                  placeholder: 'e.g. Invoice settlement',
+                  onChange: e => setData(prev => ({ ...prev, note: e.target.value }))
+                })
+              )
+            )
+          )
+        ) : kind === 'expense' ? (
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 } },
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Amount (₹) *'),
+              React.createElement('input', {
+                type: 'number',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px', fontSize: '1.05rem', fontWeight: 700 },
+                value: data.amount !== undefined ? data.amount : '',
+                placeholder: 'e.g. 120',
+                onChange: e => setData(prev => ({ ...prev, amount: e.target.value })),
+                autoFocus: true
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Expense Title / Reason *'),
+              React.createElement('input', {
+                type: 'text',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.title || '',
+                placeholder: 'e.g. Chai nashta or Office stationery',
+                onChange: e => setData(prev => ({ ...prev, title: e.target.value }))
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Category'),
+              React.createElement('select', {
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.category || 'General',
+                onChange: e => setData(prev => ({ ...prev, category: e.target.value }))
+              },
+                React.createElement('option', { value: 'General' }, 'General Expense'),
+                React.createElement('option', { value: 'Tea & Snacks' }, '☕ Tea & Snacks / Refreshments'),
+                React.createElement('option', { value: 'Travel' }, '🚗 Travel & Transportation'),
+                React.createElement('option', { value: 'Office Supplies' }, '📎 Office Supplies & Stationery'),
+                React.createElement('option', { value: 'Utilities' }, '💡 Electricity / Internet / Bills'),
+                React.createElement('option', { value: 'Rent' }, '🏢 Shop / Warehouse Rent'),
+                React.createElement('option', { value: 'Maintenance' }, '🔧 Repairs & Maintenance'),
+                React.createElement('option', { value: 'Salary' }, '🧑‍💼 Staff Salary / Wages'),
+                React.createElement('option', { value: 'Marketing' }, '📢 Marketing & Advertising')
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Payment Mode'),
+              React.createElement('select', {
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.paymentMode || 'Cash',
+                onChange: e => setData(prev => ({ ...prev, paymentMode: e.target.value }))
+              },
+                React.createElement('option', { value: 'Cash' }, '💵 Cash'),
+                React.createElement('option', { value: 'UPI' }, '📱 UPI / QR Transfer'),
+                React.createElement('option', { value: 'Bank Transfer' }, '🏛️ Bank Transfer (NEFT/RTGS)'),
+                React.createElement('option', { value: 'Cheque' }, '📜 Cheque')
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Expense Date'),
+              React.createElement('input', {
+                type: 'date',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.expenseDate || new Date().toISOString().slice(0, 10),
+                onChange: e => setData(prev => ({ ...prev, expenseDate: e.target.value }))
+              })
+            )
+          )
+        ) : (kind === 'task' || kind === 'reminder') ? (
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 } },
+            React.createElement('div', { style: { gridColumn: '1 / -1' } },
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Title / Description *'),
+              React.createElement('input', {
+                type: 'text',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px', fontSize: '1rem', fontWeight: 600 },
+                value: data.title || '',
+                placeholder: 'e.g. Call Sharma ji regarding quotation',
+                onChange: e => setData(prev => ({ ...prev, title: e.target.value })),
+                autoFocus: true
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Due Date'),
+              React.createElement('input', {
+                type: 'date',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.dueDate || '',
+                onChange: e => setData(prev => ({ ...prev, dueDate: e.target.value }))
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Priority'),
+              React.createElement('select', {
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.priority || 'MEDIUM',
+                onChange: e => setData(prev => ({ ...prev, priority: e.target.value }))
+              },
+                React.createElement('option', { value: 'LOW' }, '🟢 Low Priority'),
+                React.createElement('option', { value: 'MEDIUM' }, '🟡 Medium Priority'),
+                React.createElement('option', { value: 'HIGH' }, '🔴 High / Urgent')
+              )
+            )
+          )
+        ) : kind === 'note' ? (
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Sticky Note Content *'),
+              React.createElement('textarea', {
+                className: 'form-input',
+                style: { width: '100%', minHeight: 90, padding: '10px 12px', fontSize: '0.92rem' },
+                value: data.title || '',
+                placeholder: 'Write your sticky note here...',
+                onChange: e => setData(prev => ({ ...prev, title: e.target.value })),
+                autoFocus: true
+              })
+            ),
+            React.createElement('div', { style: { maxWidth: 220 } },
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Note Color Theme'),
+              React.createElement('select', {
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.color || 'yellow',
+                onChange: e => setData(prev => ({ ...prev, color: e.target.value }))
+              },
+                React.createElement('option', { value: 'yellow' }, '🟨 Warm Yellow'),
+                React.createElement('option', { value: 'blue' }, '🟦 Sky Blue'),
+                React.createElement('option', { value: 'green' }, '🟩 Fresh Green'),
+                React.createElement('option', { value: 'pink' }, '🟪 Soft Pink')
+              )
+            )
+          )
+        ) : kind === 'customer' ? (
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 } },
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Customer Name *'),
+              React.createElement('input', {
+                type: 'text',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px', fontWeight: 600 },
+                value: data.name || '',
+                placeholder: 'e.g. Manoj Patil',
+                onChange: e => setData(prev => ({ ...prev, name: e.target.value })),
+                autoFocus: true
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Phone Number *'),
+              React.createElement('input', {
+                type: 'tel',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.phone || '',
+                placeholder: 'e.g. 9822113344',
+                onChange: e => setData(prev => ({ ...prev, phone: e.target.value }))
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'City / Town'),
+              React.createElement('input', {
+                type: 'text',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.city || '',
+                placeholder: 'e.g. Kolhapur',
+                onChange: e => setData(prev => ({ ...prev, city: e.target.value }))
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Opening Balance (₹)'),
+              React.createElement('input', {
+                type: 'number',
+                className: 'form-input',
+                style: { width: '100%', padding: '8px 12px' },
+                value: data.openingBalance !== undefined ? data.openingBalance : 0,
+                onChange: e => setData(prev => ({ ...prev, openingBalance: e.target.value }))
+              })
+            )
+          )
+        ) : kind === 'dues' ? (
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Customer Name'),
+                React.createElement('input', {
+                  type: 'text',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '8px 12px' },
+                  value: data.name || '',
+                  onChange: e => setData(prev => ({ ...prev, name: e.target.value }))
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Phone Number'),
+                React.createElement('input', {
+                  type: 'tel',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '8px 12px' },
+                  value: data.phone || '',
+                  onChange: e => setData(prev => ({ ...prev, phone: e.target.value }))
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Pending Balance (₹)'),
+                React.createElement('input', {
+                  type: 'number',
+                  className: 'form-input',
+                  style: { width: '100%', padding: '8px 12px', fontWeight: 700 },
+                  value: data.balance !== undefined ? data.balance : 0,
+                  onChange: e => setData(prev => ({ ...prev, balance: e.target.value }))
+                })
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 } }, 'Custom WhatsApp Message'),
+              React.createElement('textarea', {
+                className: 'form-input',
+                style: { width: '100%', minHeight: 90, padding: '10px 12px', fontSize: '0.88rem' },
+                value: data.msg || '',
+                onChange: e => setData(prev => ({ ...prev, msg: e.target.value }))
+              })
+            )
+          )
+        ) : (
+          React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+            `Ready to execute: ${item.title}`
+          )
+        ),
+
+        // 3. Action Buttons Footer
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 10,
+            borderTop: '1px solid var(--border)',
+            paddingTop: 12,
+            flexWrap: 'wrap'
+          }
+        },
+          (kind === 'upi' || item.type === 'upi_qr') ? (
+            React.createElement(Fragment, null,
+              React.createElement('button', {
+                type: 'button',
+                className: 'omni-action-btn',
+                style: { padding: '8px 14px', fontSize: '0.85rem' },
+                onClick: () => {
+                  if (navigator.clipboard) navigator.clipboard.writeText(liveUpiUrl);
+                  if (window.showToast) window.showToast('Copied UPI Payment Link!', 'success');
+                }
+              }, '📋 Copy Payment Link'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'omni-action-btn',
+                style: { padding: '8px 14px', fontSize: '0.85rem' },
+                onClick: () => {
+                  if (navigator.clipboard) navigator.clipboard.writeText(curVpa);
+                  if (window.showToast) window.showToast(`Copied VPA: ${curVpa}`, 'success');
+                }
+              }, '📋 Copy VPA'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                style: { padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700 },
+                onClick: () => {
+                  window.open(liveUpiUrl, '_blank');
+                  onCancel();
+                }
+              }, '📱 Open in UPI App')
+            )
+          ) : kind === 'dues' ? (
+            React.createElement(Fragment, null,
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                onClick: onCancel
+              }, 'Cancel'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                style: { background: '#16a34a', borderColor: '#16a34a' },
+                onClick: onSave
+              }, '💬 Send via WhatsApp')
+            )
+          ) : (
+            React.createElement(Fragment, null,
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                onClick: onCancel
+              }, 'Cancel'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                disabled: isExecuting,
+                onClick: onSave
+              }, isExecuting ? 'Saving...' : '✓ Confirm & Save')
+            )
+          )
+        )
+      );
+    }
+
     // ─── GLOBAL COMMAND PALETTE & OMNIBAR MODAL ───
     function GlobalSearchModal({
       isOpen,
@@ -922,7 +1411,10 @@
       firms = [],
       onSwitchFirm,
       onOpenWhatsAppDoc,
-      onRefresh
+      onRefresh,
+      activePage = 'invoices',
+      omniPlaceholderIdx = 0,
+      omniPlaceholders = []
     }) {
       if (!isOpen) return null;
 
@@ -941,28 +1433,109 @@
       // In-Place WhatsApp Modal State
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
 
+      // In-Place Task & Tool Data Inspector / Editor
+      const [inspectingItem, setInspectingItem] = useState(null);
+      const [inspectingData, setInspectingData] = useState({});
+      const [isExecutingTask, setIsExecutingTask] = useState(false);
+      const [actionError, setActionError] = useState(null);
+
       // Cached Data Stores for instant search
       const [customers, setCustomers] = useState([]);
       const [invoices, setInvoices] = useState([]);
       const [products, setProducts] = useState([]);
       const [parties, setParties] = useState([]);
       const [staff, setStaff] = useState([]);
+      const [firmProfile, setFirmProfile] = useState(() => firm || (firms && firms.find(f => f.id === API.firmId)) || {});
       const [recents, setRecents] = useState(() => {
         try {
           return JSON.parse(localStorage.getItem('billsoft_omni_recents') || '[]');
         } catch (e) { return []; }
       });
 
-      // Load data on open with safe array normalization
+      // Pinned / Favorite Actions
+      const [pinned, setPinned] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('billsoft_omni_pinned') || '[]');
+        } catch (e) { return ['create_invoice', 'customer_statements', 'record_expense']; }
+      });
+
+      // Command History
+      const [history, setHistory] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('billsoft_omni_history') || '[]');
+        } catch (e) { return []; }
+      });
+      const [historyIndex, setHistoryIndex] = useState(-1);
+
+      // Clipboard auto-detected snippet
+      const [clipboardSnippet, setClipboardSnippet] = useState(null);
+
+      const togglePin = (actionId, e) => {
+        if (e) e.stopPropagation();
+        setPinned(prev => {
+          const next = prev.includes(actionId) ? prev.filter(id => id !== actionId) : [...prev, actionId];
+          try { localStorage.setItem('billsoft_omni_pinned', JSON.stringify(next)); } catch (err) { }
+          return next;
+        });
+      };
+
+      const saveHistory = (q) => {
+        if (!q || !q.trim()) return;
+        const trimmed = q.trim();
+        setHistory(prev => {
+          const updated = [trimmed, ...prev.filter(x => x !== trimmed)].slice(0, 30);
+          try { localStorage.setItem('billsoft_omni_history', JSON.stringify(updated)); } catch (e) { }
+          return updated;
+        });
+      };
+
+      // Listen for custom programmatic query set requests
+      useEffect(() => {
+        const handleSetQuery = (e) => {
+          if (e && e.detail) {
+            setQuery(String(e.detail));
+            setShowGuide(false);
+          }
+        };
+        window.addEventListener('billsoft:set-omni-query', handleSetQuery);
+        return () => window.removeEventListener('billsoft:set-omni-query', handleSetQuery);
+      }, []);
+
+      // Sniff clipboard text on modal open
+      useEffect(() => {
+        if (isOpen && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then(text => {
+            if (text && typeof text === 'string') {
+              const trimmed = text.trim();
+              if (trimmed.length >= 3 && trimmed.length <= 50) {
+                setClipboardSnippet(trimmed);
+              } else {
+                setClipboardSnippet(null);
+              }
+            }
+          }).catch(() => { setClipboardSnippet(null); });
+        } else {
+          setClipboardSnippet(null);
+        }
+      }, [isOpen]);
+
+      // Load data on open with safe array normalization & fetch active firm profile
       useEffect(() => {
         if (!isOpen) return;
         const norm = res => (res && (res.content || res.data || res.items || res.invoices || res.customers || res.products || res.parties || res.employees)) || (Array.isArray(res) ? res : []);
-        if (API.customers && API.customers.list) API.customers.list().then(res => setCustomers(norm(res))).catch(() => {});
-        if (API.invoices && API.invoices.list) API.invoices.list(0, 100).then(res => setInvoices(norm(res))).catch(() => {});
-        if (API.products && API.products.list) API.products.list().then(res => setProducts(norm(res))).catch(() => {});
-        if (API.parties && API.parties.list) API.parties.list().then(res => setParties(norm(res))).catch(() => {});
-        if (API.employees && API.employees.list) API.employees.list().then(res => setStaff(norm(res))).catch(() => {});
-      }, [isOpen]);
+        if (API.firm && API.firm.getCurrent) {
+          API.firm.getCurrent().then(f => {
+            if (f && (f.id || f.firmName)) setFirmProfile(f);
+          }).catch(() => { });
+        } else if (firm) {
+          setFirmProfile(firm);
+        }
+        if (API.customers && API.customers.list) API.customers.list().then(res => setCustomers(norm(res))).catch(() => { });
+        if (API.invoices && API.invoices.list) API.invoices.list(0, 100).then(res => setInvoices(norm(res))).catch(() => { });
+        if (API.products && API.products.list) API.products.list().then(res => setProducts(norm(res))).catch(() => { });
+        if (API.parties && API.parties.list) API.parties.list().then(res => setParties(norm(res))).catch(() => { });
+        if (API.employees && API.employees.list) API.employees.list().then(res => setStaff(norm(res))).catch(() => { });
+      }, [isOpen, firm]);
 
       // Save a recent action or item
       const addRecent = (item) => {
@@ -970,7 +1543,7 @@
         setRecents(prev => {
           const filtered = prev.filter(r => r.title !== item.title);
           const updated = [{ title: item.title, icon: item.icon || '⚡', type: item.type || 'action', ts: Date.now() }, ...filtered].slice(0, 5);
-          try { localStorage.setItem('billsoft_omni_recents', JSON.stringify(updated)); } catch (e) {}
+          try { localStorage.setItem('billsoft_omni_recents', JSON.stringify(updated)); } catch (e) { }
           return updated;
         });
       };
@@ -979,7 +1552,7 @@
       const searchResults = useMemo(() => {
         if (!window.BillsoftSearchEngine) return { smartTasks: [], utilities: [], actions: [], customers: [], invoices: [], products: [], parties: [], staff: [], suggestions: [] };
         return BillsoftSearchEngine.search(query, {
-          firm: firm || {},
+          firm: firmProfile || firm || {},
           customers,
           invoices,
           products,
@@ -989,29 +1562,173 @@
           onQuickCreate,
           onRefresh
         });
-      }, [query, firm, customers, invoices, products, parties, staff, onNavigate, onQuickCreate, onRefresh]);
+      }, [query, firmProfile, firm, customers, invoices, products, parties, staff, onNavigate, onQuickCreate, onRefresh]);
 
       // Flatten items according to the active category filter
       const flattenedItems = useMemo(() => {
         const list = [];
+        const isQueryEmpty = !query.trim();
+
+        // When query is empty and a specific category tab is selected, list all items in that category:
+        if (isQueryEmpty) {
+          if (filter === 'actions') {
+            (BillsoftSearchEngine.ACTIONS || []).forEach(act => list.push({
+              id: act.id,
+              title: act.title,
+              subtitle: act.subtitle || '⚡ Quick Action',
+              icon: act.icon || '⚡',
+              action: () => {
+                if (act.action) act.action({ navigate: onNavigate, onQuickCreate, onRefresh });
+                onClose();
+              },
+              itemType: 'action'
+            }));
+          } else if (filter === 'customers') {
+            (customers || []).forEach(c => list.push({
+              id: c.id,
+              title: c.name || 'Customer',
+              subtitle: `📞 ${c.phone || 'No phone'} • ${c.gstin ? 'GST: ' + c.gstin : (c.city || 'Customer')} • Bal: ${BillsoftUtils.formatCurrency(c.balance || c.openingBalance || 0)}`,
+              icon: '👤',
+              raw: c,
+              itemType: 'customer'
+            }));
+          } else if (filter === 'invoices') {
+            (invoices || []).forEach(inv => list.push({
+              id: inv.id,
+              title: `${inv.invoiceNumber || inv.estimateNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
+              subtitle: `📅 ${BillsoftUtils.formatDate(inv.invoiceDate || inv.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(inv.netTotal || inv.totalAmount || 0)} • Status: ${inv.status || 'FINAL'}`,
+              icon: inv.estimateNumber ? '📝' : '📄',
+              raw: inv,
+              itemType: inv.estimateNumber ? 'quotation' : 'invoice'
+            }));
+          } else if (filter === 'products') {
+            (products || []).forEach(p => list.push({
+              id: p.id,
+              title: p.name || 'Product',
+              subtitle: `SKU: ${p.sku || 'N/A'} • Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
+              icon: '📦',
+              raw: p,
+              itemType: 'product'
+            }));
+          } else if (filter === 'parties') {
+            (parties || []).forEach(p => list.push({
+              id: p.id,
+              title: p.name || 'Vendor',
+              subtitle: `Contact: ${p.contactPerson || 'N/A'} • 📞 ${p.phone || 'No phone'} • Bal: ${BillsoftUtils.formatCurrency(p.netBalance || p.openingBalance || 0)}`,
+              icon: '🏭',
+              raw: p,
+              itemType: 'party'
+            }));
+          } else if (filter === 'staff') {
+            (staff || []).forEach(emp => list.push({
+              id: emp.id,
+              title: emp.name || 'Staff',
+              subtitle: `Role: ${emp.role || emp.designation || 'Employee'} • Dept: ${emp.department || 'General'} • 📞 ${emp.phone || 'N/A'}`,
+              icon: '🧑‍💼',
+              raw: emp,
+              itemType: 'staff'
+            }));
+          } else if (filter === 'utilities') {
+            const f = firmProfile || firm || {};
+            const upiId = (f.upiId && f.upiId.trim()) || '';
+            list.push({
+              type: 'utility',
+              title: '🧮 GST & Tax Calculator',
+              subtitle: 'Calculate GST additions & reverse GST breakdowns (e.g. type "gst 18% on 5000")',
+              icon: '💰',
+              badge: 'Tax Tool',
+              action: () => setQuery('gst 18% on 5000')
+            });
+            list.push({
+              type: 'utility',
+              title: '💵 Cashier Change & Note Breakdown',
+              subtitle: 'Compute customer change and currency denominations (e.g. type "change for 2000 bill 1435")',
+              icon: '💵',
+              badge: 'Cashier Tool',
+              action: () => setQuery('change for 2000 bill 1435')
+            });
+            list.push({
+              type: 'utility',
+              title: '👥 Bill Splitter',
+              subtitle: 'Split bill totals evenly per person (e.g. type "split 4500 by 4")',
+              icon: '👥',
+              badge: 'Split Tool',
+              action: () => setQuery('split 4500 by 4')
+            });
+            list.push({
+              type: 'utility',
+              title: upiId ? `📱 Live UPI Payment QR (${upiId})` : '⚠️ Setup UPI Payment QR Gateway',
+              subtitle: upiId ? `Generate on-screen payment QR for any amount (e.g. type "upi 500")` : 'No UPI ID configured in Business Profile. Click to setup.',
+              icon: '📱',
+              badge: 'UPI Tool',
+              action: () => {
+                if (upiId) setQuery('upi 500');
+                else BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'profile' });
+              }
+            });
+            list.push({
+              type: 'utility',
+              title: '📈 Profit Margin & Markup Calculator',
+              subtitle: 'Compute profit margin and markup percentage (e.g. type "margin cost 800 price 1200")',
+              icon: '📈',
+              badge: 'Margin Tool',
+              action: () => setQuery('margin cost 800 price 1200')
+            });
+            list.push({
+              type: 'utility',
+              title: '✍️ Numbers to Currency Words Converter',
+              subtitle: 'Convert amounts into Indian currency words format (e.g. type "words 125000")',
+              icon: '✍️',
+              badge: 'Words Tool',
+              action: () => setQuery('words 125000')
+            });
+            list.push({
+              type: 'utility',
+              title: `🏛️ ${f.firmName || 'Our Business'} — Bank & Tax Info`,
+              subtitle: `Bank: ${f.bankName || 'N/A'} • A/C: ${f.accountNumber || 'N/A'} • IFSC: ${f.ifscCode || 'N/A'} • GSTIN: ${f.gstin || 'N/A'}`,
+              icon: '🏛️',
+              badge: 'Firm Info',
+              action: () => setQuery('bank details')
+            });
+          }
+          return list;
+        }
+
+        // When query is present, filter using searchResults:
         const res = searchResults || {};
 
-        // 1. Smart In-Place Tasks (Highest Priority)
+        // 1. TOP PRIORITY: Direct Matched Results (Math Equations, Unit Conversions, Live UPI QR, Date Calculations, Direct Tools)
+        const primaryResults = [];
+        const secondarySolutions = [];
+
+        (res.utilities || []).forEach(u => {
+          const isPrimary = u.isCalculatedResult || u.isEquation || u.type === 'math' || u.type === 'arithmetic' ||
+            u.type === 'conversion' || u.type === 'upi_qr' || u.type === 'date_math' || u.type === 'change' ||
+            u.type === 'split' || u.type === 'gst' || u.type === 'margin' || u.type === 'discount' ||
+            u.type === 'commission' || u.type === 'emi' || u.type === 'interest_si' || u.type === 'interest_ci' ||
+            u.type === 'scale_converter' || u.type === 'words_to_num' || u.type === 'words' || u.type === 'format_num' ||
+            u.type === 'gstin' || u.type === 'difference' || u.type === 'growth' || u.type === 'average' || u.type === 'ratio';
+
+          if (isPrimary) {
+            primaryResults.push({ ...u, itemType: 'utility' });
+          } else {
+            secondarySolutions.push({ ...u, itemType: 'utility' });
+          }
+        });
+
+        // Sort primary results by priority score
+        primaryResults.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        primaryResults.forEach(item => list.push(item));
+
+        // 2. Smart Tasks (Scheduled reminders, instant expenses, sticky notes)
         if (filter === 'all' || filter === 'smart' || filter === 'actions') {
           (res.smartTasks || []).forEach(st => list.push({ ...st, itemType: 'smart_task' }));
         }
 
-        // 2. Interactive Utilities & Calculators
-        if (filter === 'all' || filter === 'utilities') {
-          (res.utilities || []).forEach(u => list.push({ ...u, itemType: 'utility' }));
-        }
-
-        // 3. Navigation Actions
+        // 3. Actions & Slash Commands (e.g. /inv, create invoice, attendance)
         if (filter === 'all' || filter === 'actions') {
           (res.actions || []).forEach(a => list.push({ ...a, itemType: 'action' }));
         }
-
-        // 4. Customers
         if (filter === 'all' || filter === 'customers') {
           (res.customers || []).forEach(c => list.push({
             id: c.id,
@@ -1022,8 +1739,6 @@
             itemType: 'customer'
           }));
         }
-
-        // 5. Invoices & Quotations
         if (filter === 'all' || filter === 'invoices') {
           (res.invoices || []).forEach(inv => list.push({
             id: inv.id,
@@ -1034,8 +1749,6 @@
             itemType: inv.estimateNumber ? 'quotation' : 'invoice'
           }));
         }
-
-        // 6. Products / Inventory
         if (filter === 'all' || filter === 'products') {
           (res.products || []).forEach(p => list.push({
             id: p.id,
@@ -1046,8 +1759,6 @@
             itemType: 'product'
           }));
         }
-
-        // 7. Vendors / Suppliers
         if (filter === 'all' || filter === 'parties') {
           (res.parties || []).forEach(p => list.push({
             id: p.id,
@@ -1058,8 +1769,6 @@
             itemType: 'party'
           }));
         }
-
-        // 8. Staff / HR
         if (filter === 'all' || filter === 'staff') {
           (res.staff || []).forEach(emp => list.push({
             id: emp.id,
@@ -1070,8 +1779,13 @@
             itemType: 'staff'
           }));
         }
+
+        // 5. SECONDARY & INTERACTIVE SOLUTIONS (Always AFTER the direct results!)
+        if (filter === 'all' || filter === 'utilities') {
+          secondarySolutions.forEach(item => list.push(item));
+        }
         return list;
-      }, [searchResults, filter]);
+      }, [searchResults, filter, query, customers, invoices, products, parties, staff, firmProfile, firm]);
 
       // Reset highlight when list changes
       useEffect(() => {
@@ -1173,14 +1887,178 @@
         }
       };
 
-      // Keyboard navigation handler
+      // Handle in-place inspection save / execution
+      const handleSaveInspectedItem = async () => {
+        if (!inspectingItem || isExecutingTask) return;
+        setIsExecutingTask(true);
+        setActionError(null);
+        try {
+          const kind = (inspectingItem.editableConfig && inspectingItem.editableConfig.kind) || inspectingItem.type || inspectingItem.itemType;
+          const data = inspectingData || {};
+
+          if (kind === 'upi' || inspectingItem.type === 'upi_qr') {
+            const f = firmProfile || firm || {};
+            const upiId = (data.upiId || inspectingItem.upiId || f.upiId || 'merchant@upi').trim();
+            const fName = (data.firmName || inspectingItem.firmName || f.firmName || 'Store').trim();
+            const upiAmt = parseFloat(data.amount) || 0;
+            const upiNote = data.note || 'Payment';
+            const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(fName)}${upiAmt > 0 ? '&am=' + upiAmt.toFixed(2) : ''}&tn=${encodeURIComponent(upiNote)}&cu=INR`;
+            if (navigator.clipboard) {
+              await navigator.clipboard.writeText(upiString);
+              if (window.showToast) window.showToast(`✓ Copied UPI Link for ${upiAmt > 0 ? '₹' + BillsoftUtils.formatCurrency(upiAmt) : 'payment'}!`, 'success');
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            return;
+          }
+
+          if (kind === 'expense' || inspectingItem.type === 'smart_expense') {
+            if (API.expenses && API.expenses.create) {
+              await API.expenses.create({
+                title: data.title || 'General Expense',
+                amount: parseFloat(data.amount) || 0,
+                expenseDate: data.expenseDate || new Date().toISOString().slice(0, 10),
+                category: data.category || 'General',
+                paymentMode: data.paymentMode || 'Cash'
+              });
+              if (window.showToast) window.showToast(`✓ Expense of ₹${data.amount || 0} recorded successfully!`, 'success');
+              window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'task' || kind === 'reminder' || inspectingItem.type === 'smart_task' || inspectingItem.type === 'smart_reminder') {
+            if (API.reminders && API.reminders.create) {
+              const remData = {
+                title: data.title || 'Task',
+                type: data.type || (kind === 'reminder' ? 'reminder' : 'task'),
+                status: 'TODO',
+                priority: data.priority || 'MEDIUM'
+              };
+              if (data.dueDate) remData.dueDate = data.dueDate;
+              await API.reminders.create(remData);
+              if (window.showToast) window.showToast(`✓ ${data.type === 'reminder' ? 'Reminder' : 'Task'} saved to Planner!`, 'success');
+              window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'note' || inspectingItem.type === 'smart_note') {
+            if (API.notes && API.notes.create) {
+              await API.notes.create({
+                title: data.title || 'Sticky Note',
+                color: data.color || 'yellow'
+              });
+              if (window.showToast) window.showToast(`✓ Sticky note pinned to Planner!`, 'success');
+              window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'customer' || inspectingItem.type === 'smart_customer') {
+            if (API.customers && API.customers.create) {
+              await API.customers.create({
+                name: data.name || 'New Customer',
+                phone: data.phone || '',
+                city: data.city || '',
+                openingBalance: parseFloat(data.openingBalance) || 0
+              });
+              if (window.showToast) window.showToast(`✓ Customer ${data.name} registered!`, 'success');
+              window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'dues' || inspectingItem.type === 'smart_dues_reminder') {
+            const cleanPhone = String(data.phone || '').replace(/\D/g, '');
+            const msg = data.msg || '';
+            if (cleanPhone) {
+              const url = `https://wa.me/${cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`;
+              window.open(url, '_blank');
+            } else {
+              if (navigator.clipboard) await navigator.clipboard.writeText(msg);
+              if (window.showToast) window.showToast('Copied reminder text to clipboard', 'info');
+            }
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'attendance' || inspectingItem.type === 'smart_attendance') {
+            BillsoftSearchEngine.dispatchNavigate({ page: 'hr', hrTab: 'attendance' });
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (kind === 'advance' || inspectingItem.type === 'smart_advance') {
+            BillsoftSearchEngine.dispatchNavigate({ page: 'hr', hrTab: 'advances' });
+            setInspectingItem(null);
+            setActionError(null);
+            onClose();
+            return;
+          }
+
+          if (inspectingItem.action) {
+            await inspectingItem.action({ navigate: onNavigate, onQuickCreate, onRefresh, firm });
+          }
+          setInspectingItem(null);
+          setActionError(null);
+          onClose();
+        } catch (err) {
+          const errMsg = err.message || 'Operation failed. Please check inputs and try again.';
+          setActionError(errMsg);
+          if (window.showToast) window.showToast('Action failed: ' + errMsg, 'error');
+        } finally {
+          setIsExecutingTask(false);
+        }
+      };
+
+      // Keyboard navigation handler with Command History (↑ / ↓)
       const handleKeyDown = (e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
-          if (quickPayInvoice) {
+          if (inspectingItem) {
+            setInspectingItem(null);
+            setActionError(null);
+          } else if (quickPayInvoice) {
             setQuickPayInvoice(null);
           } else {
             onClose();
+          }
+        } else if (e.key === 'ArrowUp' && (query === '' || historyIndex !== -1)) {
+          if (history.length > 0 && historyIndex + 1 < history.length) {
+            e.preventDefault();
+            const nextIdx = historyIndex + 1;
+            setHistoryIndex(nextIdx);
+            setQuery(history[nextIdx]);
+            return;
+          }
+          e.preventDefault();
+          setHighlightedIndex(prev => (prev - 1 + (flattenedItems.length || 1)) % (flattenedItems.length || 1));
+        } else if (e.key === 'ArrowDown' && historyIndex !== -1) {
+          e.preventDefault();
+          if (historyIndex > 0) {
+            const nextIdx = historyIndex - 1;
+            setHistoryIndex(nextIdx);
+            setQuery(history[nextIdx]);
+          } else {
+            setHistoryIndex(-1);
+            setQuery('');
           }
         } else if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -1190,6 +2068,12 @@
           setHighlightedIndex(prev => (prev - 1 + (flattenedItems.length || 1)) % (flattenedItems.length || 1));
         } else if (e.key === 'Enter') {
           e.preventDefault();
+          if (isExecutingTask) return;
+          if (inspectingItem) {
+            handleSaveInspectedItem();
+            return;
+          }
+          if (query.trim()) saveHistory(query);
           if (flattenedItems[highlightedIndex]) {
             handleExecuteItem(flattenedItems[highlightedIndex]);
           }
@@ -1205,6 +2089,10 @@
         }
       };
 
+      const activeSuggestText = (omniPlaceholders && omniPlaceholders[omniPlaceholderIdx])
+        ? omniPlaceholders[omniPlaceholderIdx].replace(/^[^\w\s/]+/, '').trim()
+        : 'kharcha 120, today sales, remind rahul...';
+
       return ReactDOM.createPortal(
         React.createElement('div', {
           className: 'omni-modal-overlay',
@@ -1219,7 +2107,17 @@
               React.createElement('span', { style: { fontSize: '1.25rem', opacity: 0.8 } }, '🔍'),
               React.createElement('input', {
                 className: 'omni-search-input',
-                placeholder: 'Search features, customers, kharcha 150, remind rahul, math...',
+                placeholder: filter === 'all'
+                  ? `Search anything, e.g. "${activeSuggestText}"...`
+                  : {
+                    actions: 'Search actions (e.g. bill banao, hisab, payslip)...',
+                    customers: 'Search customers by name, phone, GSTIN, city...',
+                    invoices: 'Search invoices & quotes by number, customer, date...',
+                    products: 'Search products by name, SKU, barcode...',
+                    parties: 'Search vendors by name, contact, phone...',
+                    staff: 'Search staff by name, role, department...',
+                    utilities: 'Search tools (e.g. gst 18% on 5000, change 2000)...'
+                  }[filter] || `Search anything, e.g. "${activeSuggestText}"...`,
                 value: query,
                 onChange: e => setQuery(e.target.value),
                 onKeyDown: handleKeyDown,
@@ -1236,14 +2134,39 @@
                 className: `btn btn-xs ${showGuide ? 'btn-primary' : 'btn-outline'}`,
                 style: { fontSize: '0.74rem', padding: '3px 8px', fontWeight: 700, borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 },
                 onClick: () => setShowGuide(!showGuide),
-                title: 'Toggle Capabilities & Cheat Sheet Guide (?)'
-              }, 'ℹ️ Guide'),
+                title: showGuide ? 'Back to Search' : 'Toggle Capabilities & Cheat Sheet Guide (?)'
+              }, showGuide ? '← Search' : 'ℹ️ Guide'),
               React.createElement('button', {
                 type: 'button',
                 style: { background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 2, marginLeft: 2 },
                 onClick: onClose,
                 title: 'Close (Esc)'
               }, '✕')
+            ),
+
+            // Clipboard Auto-Detection Snippet
+            clipboardSnippet && !query && React.createElement('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 14px',
+                background: 'rgba(59, 130, 246, 0.08)',
+                borderBottom: '1px solid rgba(59, 130, 246, 0.2)',
+                fontSize: '0.78rem'
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' } },
+                React.createElement('span', null, '📋'),
+                React.createElement('span', null, 'Detected in clipboard:'),
+                React.createElement('code', { style: { background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4, fontWeight: 700, color: 'var(--primary-color, #2563eb)' } }, clipboardSnippet)
+              ),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-xs btn-primary',
+                style: { fontSize: '0.72rem', padding: '2px 8px' },
+                onClick: () => setQuery(clipboardSnippet)
+              }, '🔍 Search Now')
             ),
 
             // 2. Filter Pills Strip
@@ -1261,7 +2184,10 @@
                 key: f.id,
                 type: 'button',
                 className: `omni-filter-pill${filter === f.id ? ' active' : ''}`,
-                onClick: () => setFilter(f.id)
+                onClick: () => {
+                  setFilter(f.id);
+                  if (showGuide) setShowGuide(false);
+                }
               },
                 React.createElement('span', null, f.icon),
                 React.createElement('span', null, f.label)
@@ -1276,357 +2202,1085 @@
                 type: 'button',
                 className: 'omni-suggestion-chip',
                 onClick: () => {
-                  setQuery(s.suggestedKeyword);
-                  if (s.action && s.action.action) handleExecuteItem(s.action);
+                  setQuery(s.suggestedKeyword || s.title);
+                  setInspectingItem(null);
+                  setActionError(null);
                 }
               }, `${s.icon || '⚡'} ${s.title}`))
             ),
 
-            // 4. Interactive (i) Capabilities & Cheat Sheet Drawer
-            showGuide && React.createElement('div', { className: 'omni-guide-drawer' },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                React.createElement('h4', { style: { margin: 0, fontSize: '0.90rem', color: 'var(--text-primary)', fontWeight: 800 } }, '✨ Omnibar Capabilities & Multilingual Guide'),
-                React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-muted)' } }, 'Click any chip to run immediately')
-              ),
-              // Section A: Actions & Smart Tasks
-              React.createElement('div', null,
-                React.createElement('div', { className: 'omni-guide-section-title' }, '⚡ Smart In-Place Tasks (No Page Switch Needed)'),
-                React.createElement('div', { className: 'omni-guide-chip-grid' },
-                  ['kharcha 150 chai nashta', 'todo call Sharma ji 4pm', 'customer Ramesh 9822334455 Kolhapur', 'today sales', 'total udhari', 'low stock', 'change for 2000 bill 1435', 'split 4500 by 4'].map(ex => React.createElement('button', {
-                    key: ex,
-                    type: 'button',
-                    className: 'omni-guide-chip',
-                    onClick: () => { setQuery(ex); setShowGuide(false); }
-                  }, ex))
-                )
-              ),
-              // Section B: Vernacular Deep Navigation
-              React.createElement('div', null,
-                React.createElement('div', { className: 'omni-guide-section-title' }, '🎯 Multilingual Navigation & Deep Routing'),
-                React.createElement('div', { className: 'omni-guide-chip-grid' },
-                  ['bill banao', 'hisab kitab', 'grahak hishob', 'send payslip', 'pagar slip', 'hazari', 'salary advance', 'kharedi order', 'letterhead', 'backup', 'dark mode'].map(ex => React.createElement('button', {
-                    key: ex,
-                    type: 'button',
-                    className: 'omni-guide-chip',
-                    onClick: () => { setQuery(ex); setShowGuide(false); }
-                  }, ex))
-                )
-              ),
-              // Section C: Calculators & Tools
-              React.createElement('div', null,
-                React.createElement('div', { className: 'omni-guide-section-title' }, '🧮 Math, GST & Financial Utilities'),
-                React.createElement('div', { className: 'omni-guide-chip-grid' },
-                  ['1500 * 18 / 100', 'gst 18% on 5000', 'reverse gst 18% on 1180', 'margin cost 800 price 1200', 'upi 2500', 'words 45250', 'gstin 27AABCB1518P1ZM', 'bank details'].map(ex => React.createElement('button', {
-                    key: ex,
-                    type: 'button',
-                    className: 'omni-guide-chip',
-                    onClick: () => { setQuery(ex); setShowGuide(false); }
-                  }, ex))
-                )
-              )
-            ),
-
-            // 5. Results List or Empty State
+            // 4. Results List, Clean Spotlight Default View, Full Capabilities Guide, OR In-Place Inspector
             React.createElement('div', { className: 'omni-results-body' },
-              // If query is empty, show Zero-State Recents & Quick Launch
-              !query.trim() && React.createElement(Fragment, null,
-                recents.length > 0 && React.createElement('div', null,
-                  React.createElement('div', { className: 'omni-group-header' }, '🕒 Recent Searches & Items'),
-                  recents.map((r, idx) => React.createElement('div', {
-                    key: idx,
-                    className: 'omni-item-card',
-                    onClick: () => setQuery(r.title)
-                  },
-                    React.createElement('div', { className: 'omni-item-left' },
-                      React.createElement('span', { className: 'omni-item-icon' }, r.icon || '🕒'),
-                      React.createElement('div', { className: 'omni-item-info' },
-                        React.createElement('span', { className: 'omni-item-title' }, r.title),
-                        React.createElement('span', { className: 'omni-item-subtitle' }, 'Recently accessed')
-                      )
-                    )
-                  ))
-                ),
-                React.createElement('div', null,
-                  React.createElement('div', { className: 'omni-group-header' }, '⚡ Quick Launch'),
-                  [
-                    { title: 'Create Tax Invoice', icon: '📄', cmd: 'bill banao' },
-                    { title: 'Customer Statements & Khata', icon: '📊', cmd: 'hisab kitab' },
-                    { title: 'Monthly Staff Payroll & Payslips', icon: '🧑‍💼', cmd: 'send payslip' },
-                    { title: 'Record Daily Expense (Inline)', icon: '💸', cmd: 'kharcha 120 chai' },
-                    { title: 'Today\'s Sales & Business Snapshot', icon: '📊', cmd: 'today sales' },
-                    { title: 'Instant UPI Payment QR', icon: '📱', cmd: 'upi 1000' }
-                  ].map((act, idx) => React.createElement('div', {
-                    key: idx,
-                    className: 'omni-item-card',
-                    onClick: () => setQuery(act.cmd)
-                  },
-                    React.createElement('div', { className: 'omni-item-left' },
-                      React.createElement('span', { className: 'omni-item-icon' }, act.icon),
-                      React.createElement('div', { className: 'omni-item-info' },
-                        React.createElement('span', { className: 'omni-item-title' }, act.title),
-                        React.createElement('span', { className: 'omni-item-subtitle' }, `Query: "${act.cmd}"`)
-                      )
+              inspectingItem ? (
+                React.createElement(OmniActionInspector, {
+                  item: inspectingItem,
+                  data: inspectingData,
+                  setData: setInspectingData,
+                  onSave: handleSaveInspectedItem,
+                  onCancel: () => { setInspectingItem(null); setActionError(null); },
+                  isExecuting: isExecutingTask,
+                  actionError: actionError,
+                  staffList: staff,
+                  firm: firmProfile || firm || {}
+                })
+              ) : showGuide ? (
+                // Full Comprehensive 6-Category Capabilities Guide (Only when explicitly opened via ℹ️ Guide)
+                React.createElement('div', { className: 'omni-power-guide-container' },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('span', { style: { fontSize: '1.2rem' } }, '✨'),
+                      React.createElement('h4', { style: { margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 800 } }, 'Omnibar Capabilities & Cheat Sheet Guide'),
+                      React.createElement('span', { className: 'omni-badge-smart', style: { fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, '90+ Commands')
                     ),
                     React.createElement('button', {
                       type: 'button',
-                      className: 'omni-action-btn',
-                      onClick: (e) => { e.stopPropagation(); setQuery(act.cmd); }
-                    }, 'Run →')
-                  ))
+                      className: 'btn btn-xs btn-outline',
+                      onClick: () => setShowGuide(false),
+                      style: { fontSize: '0.74rem', padding: '3px 10px', borderRadius: 6 }
+                    }, '← Back to Search')
+                  ),
+                  React.createElement('div', { className: 'omni-guide-grid-2x2' },
+                    // Card 1: Smart In-Place Tasks
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '⚡'),
+                          React.createElement('span', null, 'Smart Tasks (0 Page Switch)')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-smart' }, 'Instant Save')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: 'kharcha 120 chai nashta', desc: '💸 Logs ₹120 expense instantly' },
+                          { syntax: 'todo call Sharma ji 4pm', desc: '📌 Pins sticky note to Planner' },
+                          { syntax: 'customer Manoj 9822113344 Kolhapur', desc: '👤 Registers new customer' },
+                          { syntax: 'remind rahul', desc: '💬 WhatsApp dues with UPI link' },
+                          { syntax: 'upi 500', desc: '📱 Live on-screen payment QR' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    ),
+                    // Card 2: Live Business Intelligence
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '📊'),
+                          React.createElement('span', null, 'Live Business Analytics')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-live' }, 'Realtime')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: 'today sales', desc: '📈 Live billed revenue & pending' },
+                          { syntax: 'total udhari', desc: '💰 Accounts receivable dues' },
+                          { syntax: 'low stock', desc: '⚠️ Critical inventory shortage' },
+                          { syntax: 'gst report', desc: '🏛️ Sales registers & tax filings' },
+                          { syntax: 'bank details', desc: '🏛️ Firm bank, A/C, IFSC & GSTIN' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    ),
+                    // Card 3: Commercial & Tax Math
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '🧮'),
+                          React.createElement('span', null, 'Commercial & Tax Math')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-tools' }, 'Calculator')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: 'gst 18% on 5000', desc: '💰 Base + CGST & SGST breakdown' },
+                          { syntax: 'gst 18% inclusive 5900', desc: '🏷️ Reverse GST & base price' },
+                          { syntax: 'change for 2000 bill 1435', desc: '💵 Cash change & note breakdown' },
+                          { syntax: 'split 4500 by 4', desc: '👥 Divides bill evenly per person' },
+                          { syntax: '10% discount on 5000', desc: '🏷️ Net price & savings amount' },
+                          { syntax: 'margin cost 800 price 1200', desc: '📈 Profit margin & markup %' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    ),
+                    // Card 4: Loans, Interest & Analytics
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '🏦'),
+                          React.createElement('span', null, 'Loans, Interest & Analytics')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-finance' }, 'Financial')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: 'emi 500000 at 9.5% for 5 years', desc: '🏦 Monthly EMI & total interest' },
+                          { syntax: 'si 50000 at 8% for 3 years', desc: '📈 Simple interest calculation' },
+                          { syntax: 'ci 100000 at 7.5% 2yr', desc: '🔄 Compound interest & maturity' },
+                          { syntax: 'avg 120 150 180', desc: '📊 Mean, min, max & sum' },
+                          { syntax: 'split 10000 in 2:3:5', desc: '⚖️ Proportional ratio division' },
+                          { syntax: 'growth 4000 to 6000', desc: '🚀 % change & absolute difference' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    ),
+                    // Card 5: Units, Dates & Currency
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '🌐'),
+                          React.createElement('span', null, 'Units, Dates & Currency')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-utils' }, 'Utilities')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: 'words 125000', desc: '✍️ Cheque & bank words format' },
+                          { syntax: 'one lakh twenty five thousand', desc: '🔢 Words to digits (₹1,25,000)' },
+                          { syntax: '5 kg in grams', desc: '⚖️ Weight / length / volume converter' },
+                          { syntax: '2 quintal in kg', desc: '🌾 Indian units (quintal, tonne)' },
+                          { syntax: '100 usd in inr', desc: '💱 Live multi-currency conversion' },
+                          { syntax: '30 days from today', desc: '📅 Date math & day countdowns' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    ),
+                    // Card 6: Multilingual & Slash Commands
+                    React.createElement('div', { className: 'omni-guide-card' },
+                      React.createElement('div', { className: 'omni-guide-card-header' },
+                        React.createElement('div', { className: 'omni-guide-card-title' },
+                          React.createElement('span', null, '⚡'),
+                          React.createElement('span', null, 'Slash Commands & Trade Speech')
+                        ),
+                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-routing' }, 'Fast Routing')
+                      ),
+                      React.createElement('div', { className: 'omni-guide-chip-list' },
+                        [
+                          { syntax: '/inv • bill banao • pavti banva', desc: '📄 Tax Invoice creator' },
+                          { syntax: '/quo • kaccha bill • andaj patrak', desc: '📝 Estimate / Quotation' },
+                          { syntax: '/khata • kiska kitna udhar • dues', desc: '📊 Customer Ledger Statement' },
+                          { syntax: '/pay • send payslip • tankha', desc: '🧑‍💼 Staff Payroll & Payslips' },
+                          { syntax: '/po • kharedi order • supplier', desc: '📦 Purchase Order desk' },
+                          { syntax: '/qr • /lock • /gst • /theme', desc: '⚡ Fast system utilities' }
+                        ].map((item, i) => React.createElement('div', {
+                          key: i,
+                          className: 'omni-guide-chip-row',
+                          onClick: () => {
+                            const cmd = item.syntax.split('•')[0].trim();
+                            setQuery(cmd);
+                            setShowGuide(false);
+                          }
+                        },
+                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
+                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+                        ))
+                      )
+                    )
+                  )
                 )
-              ),
+              ) : (!query.trim() && filter === 'all') ? (
+                // Clean, Minimalist Spotlight Default View (Only a few essential things)
+                React.createElement('div', { style: { padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 14 } },
+                  // 1. Core Quick Actions
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } }, '⚡ Quick Actions'),
+                    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                      (BillsoftSearchEngine.ACTIONS || []).filter(a => ['create_invoice', 'create_quotation', 'record_expense', 'customer_statements'].includes(a.id)).map(act => React.createElement('button', {
+                        key: act.id,
+                        type: 'button',
+                        className: 'omni-suggestion-chip',
+                        style: { padding: '6px 12px', borderRadius: 8, fontSize: '0.80rem' },
+                        onClick: () => {
+                          if (act.action) act.action({ navigate: onNavigate, onQuickCreate, onRefresh });
+                          onClose();
+                        }
+                      },
+                        React.createElement('span', null, act.icon || '⚡'),
+                        React.createElement('span', null, act.title),
+                        act.slashCommand && React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--primary, #4f46e5)', fontFamily: 'monospace', marginLeft: 4, opacity: 0.85 } }, act.slashCommand)
+                      ))
+                    )
+                  ),
 
-              // Populated Results
-              query.trim() && flattenedItems.length > 0 && flattenedItems.map((item, idx) => {
-                const isHighlighted = idx === highlightedIndex;
+                  // 2. Recent Items (if any, max 2)
+                  recents.length > 0 && React.createElement('div', null,
+                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } }, '🕒 Recent'),
+                    recents.slice(0, 2).map((r, idx) => React.createElement('div', {
+                      key: idx,
+                      className: 'omni-item-card',
+                      style: { padding: '8px 12px' },
+                      onClick: () => setQuery(r.title)
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon' }, r.icon || '🕒'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('span', { className: 'omni-item-title' }, r.title),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, 'Recently accessed')
+                        )
+                      )
+                    ))
+                  ),
 
-                // Special Card for UPI QR code
-                if (item.type === 'upi_qr' && item.qrUrl) {
+                  // 3. Context-Aware Progressive Discovery Chips
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } },
+                      activePage === 'invoices' ? '✨ Suggestions for Invoicing & Sales:' :
+                      activePage === 'hr' ? '✨ Suggestions for HR & Staff:' :
+                      activePage === 'firm' ? '✨ Suggestions for Customers & Inventory:' :
+                      activePage === 'paperwork' ? '✨ Suggestions for Reports & Statements:' :
+                      activePage === 'planner' ? '✨ Suggestions for Tasks & Expenses:' :
+                      '✨ Try Asking:'
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                      (
+                        activePage === 'invoices' ? [
+                          { label: '🧮 gst 18% on 5000', query: 'gst 18% on 5000' },
+                          { label: '🏷️ 10% discount on 2500', query: '10% discount on 2500' },
+                          { label: '💵 change for 2000 bill 1435', query: 'change for 2000 bill 1435' },
+                          { label: '📱 upi 500', query: 'upi 500' }
+                        ] :
+                        activePage === 'hr' ? [
+                          { label: '📅 mark attendance for rahul', query: 'mark attendance for rahul' },
+                          { label: '💰 5000 advance to ganesh', query: '5000 advance to ganesh' },
+                          { label: '🧑‍💼 /pay (Payroll)', query: '/pay' }
+                        ] :
+                        activePage === 'firm' ? [
+                          { label: '👤 customer Manoj 9822113344', query: 'customer Manoj 9822113344' },
+                          { label: '⚠️ low stock', query: 'low stock' },
+                          { label: '💬 remind rahul', query: 'remind rahul' }
+                        ] :
+                        activePage === 'paperwork' ? [
+                          { label: '📊 /khata (Statement)', query: '/khata' },
+                          { label: '💰 total udhari', query: 'total udhari' },
+                          { label: '📊 today sales', query: 'today sales' },
+                          { label: '🏛️ gst report', query: 'gst report' }
+                        ] :
+                        activePage === 'planner' ? [
+                          { label: '💸 kharcha 120 chai', query: 'kharcha 120 chai' },
+                          { label: '📌 todo call client 4pm', query: 'todo call client 4pm' },
+                          { label: '📌 note check balance', query: 'note check balance' }
+                        ] :
+                        [
+                          { label: '⚡ kharcha 120 chai', query: 'kharcha 120 chai' },
+                          { label: '📊 today sales', query: 'today sales' },
+                          { label: '🧮 gst 18% on 5000', query: 'gst 18% on 5000' },
+                          { label: '📱 upi 500', query: 'upi 500' }
+                        ]
+                      ).map((item, i) => React.createElement('button', {
+                        key: i,
+                        type: 'button',
+                        className: 'omni-suggestion-chip',
+                        style: { background: 'var(--bg-secondary, #f8fafc)', border: '1px dashed var(--border, #cbd5e1)', fontSize: '0.78rem', padding: '5px 10px', borderRadius: 6, cursor: 'pointer' },
+                        onClick: () => setQuery(item.query)
+                      }, item.label))
+                    )
+                  )
+                )
+              ) : (
+                // Condition B: Category Browse / Filtered Search Results
+                flattenedItems.length > 0 ? flattenedItems.map((item, idx) => {
+                  const isHighlighted = idx === highlightedIndex;
+
+                  // Special Card for UPI QR code
+                  if (item.type === 'upi_qr' && item.qrUrl) {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                      onClick: () => {
+                        setInspectingItem(item);
+                        setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : { amount: item.amount || '', upiId: item.upiId || '' });
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-upi-qr-card', style: { width: '100%' } },
+                        React.createElement('img', { src: item.qrUrl, alt: 'UPI QR Code' }),
+                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 } },
+                          React.createElement('div', { style: { fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' } }, item.title),
+                          React.createElement('div', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 } }, item.subtitle),
+                          React.createElement('div', { style: { fontSize: '0.74rem', color: '#16a34a', fontWeight: 600, marginTop: 2 } }, '✓ Scan with GPay, PhonePe, Paytm, BHIM to pay directly into your account!'),
+                          React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
+                            React.createElement('button', {
+                              type: 'button',
+                              className: 'omni-action-btn',
+                              style: { background: 'var(--primary, #4f46e5)', color: '#fff', fontWeight: 700 },
+                              onClick: (e) => {
+                                e.stopPropagation();
+                                setInspectingItem(item);
+                                setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : { amount: item.amount || '', upiId: item.upiId || '' });
+                              }
+                            }, '✏️ Edit / Customize QR'),
+                            React.createElement('button', {
+                              type: 'button',
+                              className: 'omni-action-btn',
+                              onClick: (e) => { e.stopPropagation(); item.action(); }
+                            }, '📋 Copy Payment Link'),
+                            item.upiId && React.createElement('button', {
+                              type: 'button',
+                              className: 'omni-action-btn',
+                              onClick: (e) => {
+                                e.stopPropagation();
+                                if (navigator.clipboard) navigator.clipboard.writeText(item.upiId);
+                                if (window.showToast) window.showToast(`Copied VPA: ${item.upiId}`, 'success');
+                              }
+                            }, `📋 Copy VPA (${item.upiId})`)
+                          )
+                        )
+                      )
+                    );
+                  }
+
+                  // Card for Missing UPI ID in Firm Profile
+                  if (item.type === 'upi_missing') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: { background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.35)' },
+                      onClick: () => handleExecuteItem(item)
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.4rem' } }, '⚠️'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#d97706', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#d97706', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || 'Setup Required')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'btn btn-xs btn-primary',
+                        onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
+                      }, 'Setup UPI →')
+                    );
+                  }
+
+                  // Dedicated Card for Authoritative Assistant Answer (GST, Change, Compound, Outstanding, BI, Conversions)
+                  if (item.type === 'assistant_answer' || item.itemType === 'assistant_answer') {
+                    const data = item.data || {};
+                    const sem = item.semanticResult || {};
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: 10,
+                        padding: '14px 16px',
+                        background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%)',
+                        border: '1.5px solid rgba(79, 70, 229, 0.35)',
+                        borderRadius: 12,
+                        boxShadow: '0 4px 12px rgba(79, 70, 229, 0.06)'
+                      }
+                    },
+                      // Header Row
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 } },
+                        React.createElement('div', { className: 'omni-item-left', style: { alignItems: 'flex-start' } },
+                          React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.6rem', lineHeight: 1 } }, item.icon || '✨'),
+                          React.createElement('div', { className: 'omni-item-info', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                              React.createElement('span', { style: { fontSize: '0.68rem', background: 'var(--primary, #4f46e5)', color: '#fff', padding: '2px 8px', borderRadius: 4, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' } }, item.badge || 'Assistant Answer'),
+                              sem.intent && React.createElement('span', { style: { fontSize: '0.68rem', background: 'rgba(79, 70, 229, 0.12)', color: 'var(--primary, #4f46e5)', padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontFamily: 'monospace' } }, sem.intent),
+                              sem.executionMs != null && React.createElement('span', { style: { fontSize: '0.65rem', color: 'var(--text-muted)' } }, `⚡ ${sem.executionMs}ms`)
+                            ),
+                            React.createElement('div', {
+                              style: {
+                                fontWeight: 800,
+                                fontSize: '1.08rem',
+                                color: 'var(--text-primary)',
+                                whiteSpace: 'pre-line',
+                                lineHeight: 1.5,
+                                marginTop: 2
+                              }
+                            }, item.title),
+                            item.subtitle && item.subtitle !== item.title && React.createElement('span', { className: 'omni-item-subtitle', style: { color: 'var(--text-secondary)', fontSize: '0.80rem' } }, item.subtitle)
+                          )
+                        )
+                      ),
+
+                      // Structured Fact Badges Strip
+                      (data.change != null || data.tax != null || data.balance != null || data.totalRevenue != null) && React.createElement('div', {
+                        style: {
+                          display: 'flex',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                          padding: '8px 12px',
+                          background: 'var(--bg-secondary, #f8fafc)',
+                          borderRadius: 8,
+                          border: '1px solid var(--border, #e2e8f0)',
+                          fontSize: '0.78rem'
+                        }
+                      },
+                        data.base != null && React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-secondary)' } }, `🏷️ Base: ₹${BillsoftUtils.formatCurrency(data.base)}`),
+                        data.tax != null && React.createElement('span', { style: { fontWeight: 700, color: '#4f46e5' } }, `🏛️ GST (${data.rate || 18}%): +₹${BillsoftUtils.formatCurrency(data.tax)}`),
+                        data.total != null && React.createElement('span', { style: { fontWeight: 800, color: 'var(--text-primary)' } }, `💰 Total: ₹${BillsoftUtils.formatCurrency(data.total)}`),
+                        data.paid != null && React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-secondary)' } }, `💵 Customer Paid: ₹${BillsoftUtils.formatCurrency(data.paid)}`),
+                        data.change != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#047857',
+                            background: '#d1fae5',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #6ee7b7'
+                          }
+                        }, `🟢 Return Change: ₹${BillsoftUtils.formatCurrency(data.change)}`),
+                        data.balance != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#b91c1c',
+                            background: '#fee2e2',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #fca5a5'
+                          }
+                        }, `🔴 Outstanding Due: ₹${BillsoftUtils.formatCurrency(data.balance)}`),
+                        data.totalRevenue != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#1d4ed8',
+                            background: '#dbeafe',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #93c5fd'
+                          }
+                        }, `📊 Today Sales: ₹${BillsoftUtils.formatCurrency(data.totalRevenue)} (${data.invoiceCount || 0} invoices)`)
+                      ),
+
+                      // Diagnostic Debug Mode Panel (Enabled via localStorage or Toggle)
+                      (typeof window !== 'undefined' && (window.__OMNIBAR_DEBUG__ || localStorage.getItem('billsoft_omni_debug') === 'true')) && React.createElement('div', {
+                        style: {
+                          background: '#1e293b',
+                          color: '#e2e8f0',
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          fontFamily: 'monospace',
+                          fontSize: '0.72rem',
+                          lineHeight: 1.4,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 2
+                        }
+                      },
+                        React.createElement('div', { style: { color: '#38bdf8', fontWeight: 700 } }, `[Omnibar Diagnostic Debug Mode]`),
+                        React.createElement('div', null, `Intent: ${sem.intent || 'UNKNOWN'} | Domain: ${sem.domain || 'UNKNOWN'} | State: ${sem.status || 'ANSWER'}`),
+                        React.createElement('div', null, `Entities: ${JSON.stringify(item.entities || {})}`),
+                        sem.plan && React.createElement('div', null, `Plan: ${JSON.stringify(sem.plan)}`),
+                        React.createElement('div', null, `Confidence: ${sem.confidence != null ? Math.round(sem.confidence * 100) + '%' : '100%'}`)
+                      ),
+
+                      // Bottom Action Buttons
+                      React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' } },
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--primary, #4f46e5)', color: '#fff', fontWeight: 700 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (navigator.clipboard && item.title) {
+                              navigator.clipboard.writeText(item.title);
+                              if (window.showToast) window.showToast('Copied calculation result to clipboard!', 'success');
+                            }
+                          }
+                        }, '📋 Copy Answer'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.72rem' },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            const cur = localStorage.getItem('billsoft_omni_debug') === 'true';
+                            localStorage.setItem('billsoft_omni_debug', cur ? 'false' : 'true');
+                            if (window.showToast) window.showToast(`Debug mode ${cur ? 'disabled' : 'enabled'}`, 'info');
+                            setQuery(query + ' ');
+                            setTimeout(() => setQuery(query), 10);
+                          }
+                        }, '🔍 Toggle Debug')
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Action Previews (Mutations requiring confirmation)
+                  if (item.type === 'assistant_action_preview') {
+                    const sem = item.semanticResult || {};
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        padding: '14px 16px',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1.5px solid rgba(59, 130, 246, 0.4)',
+                        borderRadius: 12
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.5rem' } }, '⚡'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: 'var(--primary-color, #2563eb)', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#2563eb', color: '#fff', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || 'Action Preview')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontWeight: 600 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setInspectingItem(item);
+                            setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : (item.entities ? { ...item.entities } : {}));
+                          }
+                        }, '✏️ Edit Details'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--primary-color, #2563eb)', color: '#fff', fontWeight: 700 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setInspectingItem(item);
+                            setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : (item.entities ? { ...item.entities } : {}));
+                            setTimeout(() => handleSaveInspectedItem(), 50);
+                          }
+                        }, '⚡ Confirm & Save ↵')
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Clarification Required
+                  if (item.type === 'assistant_clarification') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: {
+                        background: 'rgba(234, 179, 8, 0.08)',
+                        border: '1.5px solid rgba(234, 179, 8, 0.4)',
+                        borderRadius: 12,
+                        padding: '14px 16px'
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.5rem' } }, '❓'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#b45309', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#b45309', color: '#fff', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || 'Clarification Needed')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Confirmation Required
+                  if (item.type === 'assistant_confirmation') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: {
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1.5px solid rgba(239, 68, 68, 0.4)',
+                        borderRadius: 12,
+                        padding: '14px 16px'
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.5rem' } }, '⚠️'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#dc2626', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#dc2626', color: '#fff', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, 'Confirmation Required')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Ambiguous Interpretations
+                  if (item.type === 'assistant_ambiguity') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        padding: '14px 16px',
+                        background: 'rgba(245, 158, 11, 0.08)',
+                        border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                        borderRadius: 12
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.5rem' } }, '⚖️'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#b45309', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#b45309', color: '#fff', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || 'Ambiguous Query')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 38 } },
+                        (item.candidates || []).map((cand, cIdx) => React.createElement('button', {
+                          key: cIdx,
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', borderColor: '#b45309', color: 'var(--text-primary)', fontWeight: 600 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (cand.intent === 'GST_CALCULATION') setQuery(`gst 18% on ${query}`);
+                            else if (cand.intent === 'CASHIER_CHANGE') setQuery(`change for ${query}`);
+                            else if (cand.intent === 'RECORD_EXPENSE') setQuery(`kharcha ${query}`);
+                            else setQuery(cand.intent.toLowerCase());
+                          }
+                        }, `→ ${cand.intent.replace(/_/g, ' ')}`))
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Interactive Calculations & Slot Completions (EMI, GST, Split)
+                  if (item.suggestions && Array.isArray(item.suggestions)) {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                      style: { display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 10, padding: '12px 14px' }
+                    },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }, onClick: () => handleExecuteItem(item) },
+                        React.createElement('div', { className: 'omni-item-left' },
+                          React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.3rem' } }, item.icon || '🏦'),
+                          React.createElement('div', { className: 'omni-item-info' },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                              React.createElement('span', { className: 'omni-item-title', style: { fontWeight: 800 } }, item.title),
+                              item.badge && React.createElement('span', { className: 'omni-badge-smart', style: { fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge)
+                            ),
+                            React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 42 } },
+                        item.suggestions.map((sug, sIdx) => React.createElement('button', {
+                          key: sIdx,
+                          type: 'button',
+                          className: 'omni-suggestion-chip',
+                          style: { fontSize: '0.74rem', padding: '4px 10px', borderRadius: 6, background: 'var(--primary-light, rgba(79, 70, 229, 0.1))', border: '1px solid var(--primary, #4f46e5)', color: 'var(--primary, #4f46e5)', fontWeight: 600, cursor: 'pointer' },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (sug.query) {
+                              setQuery(sug.query);
+                            } else if (sug.syntax) {
+                              setQuery(sug.syntax);
+                            } else if (sug.rate && sug.total) {
+                              setQuery(`gst ${sug.rate}% on ${item.amount || sug.base}`);
+                            } else if (sug.count && sug.perPerson) {
+                              setQuery(`split ${item.amount} by ${sug.count}`);
+                            }
+                          }
+                        }, sug.label ? (sug.emi ? `${sug.label} → ₹${sug.emi}/mo` : sug.label) : (sug.count ? `${sug.count} people → ₹${sug.perPerson}` : `${sug.rate}% → ₹${sug.total}`)))
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Smart In-Place Tasks
+                  if (item.itemType === 'smart_task') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: { background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'pointer' },
+                      onClick: () => {
+                        setInspectingItem(item);
+                        setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : (item.payload ? { ...item.payload } : {}));
+                      }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.4rem' } }, item.icon || '⚡'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: 'var(--primary-color, #2563eb)', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || '⚡ Smart Action')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { className: 'omni-action-btn-group' },
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontWeight: 600 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setInspectingItem(item);
+                            setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : (item.payload ? { ...item.payload } : {}));
+                          }
+                        }, '✏️ Edit Details'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--primary-color, #2563eb)', color: '#fff', fontWeight: 700 },
+                          onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
+                        }, '⚡ Quick Save ↵')
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Universal Conversion Engine Result
+                  if (item.type === 'conversion') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                      style: { background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)' },
+                      onClick: () => handleExecuteItem(item)
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.4rem' } }, item.icon || '🧮'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#059669', fontWeight: 800, fontSize: '0.98rem' } }, item.title),
+                            item.badge && React.createElement('span', { style: { fontSize: '0.65rem', background: '#059669', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge)
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle', style: { color: 'var(--text-secondary)' } }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { className: 'omni-action-btn-group' },
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: '#059669', color: '#fff', fontWeight: 700 },
+                          title: 'Copy converted result to clipboard',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (item.action) item.action();
+                          }
+                        }, '📋 Copy Result'),
+                        item.reverseQuery && React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: `Reverse conversion (${item.reverseQuery})`,
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setQuery(item.reverseQuery);
+                          }
+                        }, '🔄 Reverse')
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Conversion Suggestion (Single unit query)
+                  if (item.type === 'conversion_suggestion') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
+                      style: { background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.25)', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }
+                    },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%' } },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.3rem' } }, item.icon || '📏'),
+                        React.createElement('div', { className: 'omni-item-info', style: { flex: 1 } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: 'var(--primary, #6366f1)', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: 'var(--primary, #6366f1)', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, 'Convert to...')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 46 } },
+                        (item.suggestions || []).map((sug, sIdx) => React.createElement('button', {
+                          key: sIdx,
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', borderColor: 'var(--primary, #6366f1)', color: 'var(--primary, #6366f1)', fontWeight: 600 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            const fromUnitStr = item.fromRes?.unit?.symbol || item.fromRes?.unit?.name?.toLowerCase() || '';
+                            setQuery(`${item.val} ${fromUnitStr} to ${sug}`);
+                          }
+                        }, `→ ${sug}`))
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Ambiguous Unit Selection
+                  if (item.type === 'conversion_ambiguous') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: { background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.35)', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }
+                    },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%' } },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.3rem' } }, item.icon || '⚖️'),
+                        React.createElement('div', { className: 'omni-item-info', style: { flex: 1 } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#b45309', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#b45309', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, 'Ambiguous Unit')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 46 } },
+                        (item.options || []).map((opt, oIdx) => React.createElement('button', {
+                          key: oIdx,
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: 'var(--bg-secondary)', borderColor: '#b45309', color: 'var(--text-primary)', fontWeight: 600 },
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (opt.query) setQuery(opt.query);
+                          }
+                        }, opt.label))
+                      )
+                    );
+                  }
+
+                  // Dedicated Card for Conversion Error / Incompatible Units
+                  if (item.type === 'conversion_error') {
+                    return React.createElement('div', {
+                      key: idx,
+                      className: `omni-item-card highlighted`,
+                      style: { background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)' }
+                    },
+                      React.createElement('div', { className: 'omni-item-left' },
+                        React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.3rem' } }, item.icon || '⚠️'),
+                        React.createElement('div', { className: 'omni-item-info' },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { className: 'omni-item-title', style: { color: '#dc2626', fontWeight: 800 } }, item.title),
+                            React.createElement('span', { style: { fontSize: '0.65rem', background: '#dc2626', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || 'Invalid Conversion')
+                          ),
+                          React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
+                        )
+                      )
+                    );
+                  }
+
                   return React.createElement('div', {
                     key: idx,
                     className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                     onClick: () => handleExecuteItem(item)
                   },
-                    React.createElement('div', { className: 'omni-upi-qr-card', style: { width: '100%' } },
-                      React.createElement('img', { src: item.qrUrl, alt: 'UPI QR Code' }),
-                      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-                        React.createElement('div', { style: { fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' } }, item.title),
-                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, item.subtitle),
-                        React.createElement('div', { style: { fontSize: '0.72rem', color: '#16a34a', fontWeight: 600, marginTop: 4 } }, '✓ Scan with GPay, PhonePe, Paytm or BHIM to pay instantly!'),
-                        React.createElement('button', {
-                          type: 'button',
-                          className: 'omni-action-btn',
-                          style: { width: 'fit-content', marginTop: 6 },
-                          onClick: (e) => { e.stopPropagation(); item.action(); }
-                        }, '📋 Copy Payment Link')
-                      )
-                    )
-                  );
-                }
-
-                // Dedicated Card for Smart In-Place Tasks
-                if (item.itemType === 'smart_task') {
-                  return React.createElement('div', {
-                    key: idx,
-                    className: `omni-item-card highlighted`,
-                    style: { background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)' },
-                    onClick: () => handleExecuteItem(item)
-                  },
                     React.createElement('div', { className: 'omni-item-left' },
-                      React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.4rem' } }, item.icon || '⚡'),
+                      React.createElement('span', { className: 'omni-item-icon' }, item.icon || '⚡'),
                       React.createElement('div', { className: 'omni-item-info' },
                         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-                          React.createElement('span', { className: 'omni-item-title', style: { color: 'var(--primary-color, #2563eb)', fontWeight: 800 } }, item.title),
-                          React.createElement('span', { style: { fontSize: '0.65rem', background: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, item.badge || '⚡ Smart Action')
+                          React.createElement('span', { className: 'omni-item-title' }, item.title),
+                          item.slashCommand && React.createElement('span', { style: { fontSize: '0.65rem', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.28)', color: 'var(--primary-color, #2563eb)', padding: '1px 5px', borderRadius: 4, fontWeight: 700, fontFamily: 'monospace' } }, item.slashCommand),
+                          item.badge && React.createElement('span', { style: { fontSize: '0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 4, fontWeight: 700, color: 'var(--text-muted)' } }, item.badge)
                         ),
                         React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
                       )
                     ),
+                    // Contextual 1-Click Action Buttons
                     React.createElement('div', { className: 'omni-action-btn-group' },
+                      // Customer Actions
+                      item.itemType === 'customer' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Create invoice for customer',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            if (onQuickCreate) onQuickCreate('invoice');
+                            window.dispatchEvent(new CustomEvent('billsoft:create-invoice-for-customer', { detail: { customer: item.raw } }));
+                          }
+                        }, '📄 + Invoice'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'View Ledger Statement with dues',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                              detail: { page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true }
+                            }));
+                          }
+                        }, '📊 Statement'),
+                        item.raw && item.raw.phone && React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Send WhatsApp Dues Reminder',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            const bal = parseFloat(item.raw.balance || item.raw.openingBalance || 0);
+                            const f = firm || {};
+                            const msg = `Dear ${item.raw.name},\nThis is a friendly reminder that your outstanding balance with *${f.firmName || 'our store'}* is *₹${BillsoftUtils.formatCurrency(bal)}*.\nKindly clear the pending dues at your earliest convenience. Thank you!`;
+                            const cleanPhone = String(item.raw.phone).replace(/\D/g, '');
+                            window.open(`https://wa.me/${cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                          }
+                        }, '💬 WhatsApp')
+                      ),
+                      // Invoice Actions
+                      item.itemType === 'invoice' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          style: { background: '#16a34a', color: '#fff' },
+                          title: 'Record Cash/UPI Payment for Invoice',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setQuickPayInvoice(item.raw);
+                            setQuickPayAmount(String(item.raw.netTotal || item.raw.totalAmount || ''));
+                          }
+                        }, '💳 Settle / Pay'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Download PDF',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (API.invoices && API.invoices.downloadPdf) {
+                              API.invoices.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Invoice_${item.raw.invoiceNumber || item.id}.pdf`));
+                            }
+                          }
+                        }, '📄 PDF'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Edit Invoice',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'invoices', subTab: 'invoices' } }));
+                            window.dispatchEvent(new CustomEvent('billsoft:focus-invoice', { detail: { id: item.id } }));
+                          }
+                        }, '✏️ Edit')
+                      ),
+                      // Quotation Actions
+                      item.itemType === 'quotation' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Convert Estimate to Tax Invoice',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:convert-quotation', { detail: { id: item.id } }));
+                          }
+                        }, '➡️ Convert to Bill'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Download Estimate PDF',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (API.quotations && API.quotations.downloadPdf) {
+                              API.quotations.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Estimate_${item.raw.estimateNumber || item.id}.pdf`));
+                            }
+                          }
+                        }, '📄 PDF')
+                      ),
+                      // Vendor Actions
+                      item.itemType === 'party' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Create Purchase Order for Vendor',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'paperwork', tab: 'orders' } }));
+                          }
+                        }, '📋 + PO'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'View Vendor Statement',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                              detail: { page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true }
+                            }));
+                          }
+                        }, '📊 Statement')
+                      ),
+                      // Staff Actions
+                      item.itemType === 'staff' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Send Monthly Payslip via WhatsApp',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'payroll' } }));
+                          }
+                        }, '💰 Send Payslip'),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'View Employee Profile',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'staff' } }));
+                            window.dispatchEvent(new CustomEvent('billsoft:focus-employee', { detail: { id: item.id } }));
+                          }
+                        }, '👤 Profile')
+                      ),
+                      // Product Actions
+                      item.itemType === 'product' && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-action-btn',
+                          title: 'Add to new invoice',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            onClose();
+                            if (onQuickCreate) onQuickCreate('invoice');
+                          }
+                        }, '📄 + Invoice')
+                      ),
                       React.createElement('button', {
                         type: 'button',
                         className: 'omni-action-btn',
-                        style: { background: 'var(--primary-color, #2563eb)', color: '#fff', fontWeight: 700 },
                         onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
-                      }, 'Execute ↵')
+                      }, 'Open ↵')
                     )
                   );
-                }
-
-                return React.createElement('div', {
-                  key: idx,
-                  className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
-                  onClick: () => handleExecuteItem(item)
+                }) : React.createElement('div', {
+                  style: { textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)' }
                 },
-                  React.createElement('div', { className: 'omni-item-left' },
-                    React.createElement('span', { className: 'omni-item-icon' }, item.icon || '⚡'),
-                    React.createElement('div', { className: 'omni-item-info' },
-                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-                        React.createElement('span', { className: 'omni-item-title' }, item.title),
-                        item.badge && React.createElement('span', { style: { fontSize: '0.65rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 4, fontWeight: 700, color: 'var(--text-muted)' } }, item.badge)
-                      ),
-                      React.createElement('span', { className: 'omni-item-subtitle' }, item.subtitle)
-                    )
+                  React.createElement('div', { style: { fontSize: '2.2rem', marginBottom: 8 } }, '🔍'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' } },
+                    query.trim() ? `No matches found for "${query}"` : `No records available in "${filter}"`
                   ),
-                  // Contextual 1-Click Action Buttons
-                  React.createElement('div', { className: 'omni-action-btn-group' },
-                    // Customer Actions
-                    item.itemType === 'customer' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Create invoice for customer',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          if (onQuickCreate) onQuickCreate('invoice');
-                          window.dispatchEvent(new CustomEvent('billsoft:create-invoice-for-customer', { detail: { customer: item.raw } }));
-                        }
-                      }, '📄 + Invoice'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'View Ledger Statement with dues',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
-                            detail: { page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true }
-                          }));
-                        }
-                      }, '📊 Statement'),
-                      item.raw && item.raw.phone && React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Send WhatsApp Dues Reminder',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          const bal = parseFloat(item.raw.balance || item.raw.openingBalance || 0);
-                          const f = firm || {};
-                          const msg = `Dear ${item.raw.name},\nThis is a friendly reminder that your outstanding balance with *${f.firmName || 'our store'}* is *₹${BillsoftUtils.formatCurrency(bal)}*.\nKindly clear the pending dues at your earliest convenience. Thank you!`;
-                          const cleanPhone = String(item.raw.phone).replace(/\D/g, '');
-                          window.open(`https://wa.me/${cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-                        }
-                      }, '💬 WhatsApp')
-                    ),
-                    // Invoice Actions
-                    item.itemType === 'invoice' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        style: { background: '#16a34a', color: '#fff' },
-                        title: 'Record Cash/UPI Payment for Invoice',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          setQuickPayInvoice(item.raw);
-                          setQuickPayAmount(String(item.raw.netTotal || item.raw.totalAmount || ''));
-                        }
-                      }, '💳 Settle / Pay'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Download PDF',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          if (API.invoices && API.invoices.downloadPdf) {
-                            API.invoices.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Invoice_${item.raw.invoiceNumber || item.id}.pdf`));
-                          }
-                        }
-                      }, '📄 PDF'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Edit Invoice',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'invoices', subTab: 'invoices' } }));
-                          window.dispatchEvent(new CustomEvent('billsoft:focus-invoice', { detail: { id: item.id } }));
-                        }
-                      }, '✏️ Edit')
-                    ),
-                    // Quotation Actions
-                    item.itemType === 'quotation' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Convert Estimate to Tax Invoice',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:convert-quotation', { detail: { id: item.id } }));
-                        }
-                      }, '➡️ Convert to Bill'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Download Estimate PDF',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          if (API.quotations && API.quotations.downloadPdf) {
-                            API.quotations.downloadPdf(item.id, 'A4').then(blob => BillsoftUtils.downloadBlob(blob, `Estimate_${item.raw.estimateNumber || item.id}.pdf`));
-                          }
-                        }
-                      }, '📄 PDF')
-                    ),
-                    // Vendor Actions
-                    item.itemType === 'party' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Create Purchase Order for Vendor',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'paperwork', tab: 'orders' } }));
-                        }
-                      }, '📋 + PO'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'View Vendor Statement',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
-                            detail: { page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true }
-                          }));
-                        }
-                      }, '📊 Statement')
-                    ),
-                    // Staff Actions
-                    item.itemType === 'staff' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Send Monthly Payslip via WhatsApp',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'payroll' } }));
-                        }
-                      }, '💰 Send Payslip'),
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'View Employee Profile',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'hr', hrTab: 'staff' } }));
-                          window.dispatchEvent(new CustomEvent('billsoft:focus-employee', { detail: { id: item.id } }));
-                        }
-                      }, '👤 Profile')
-                    ),
-                    // Product Actions
-                    item.itemType === 'product' && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        type: 'button',
-                        className: 'omni-action-btn',
-                        title: 'Add to new invoice',
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onClose();
-                          if (onQuickCreate) onQuickCreate('invoice');
-                        }
-                      }, '📄 + Invoice')
-                    ),
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'omni-action-btn',
-                      onClick: (e) => { e.stopPropagation(); handleExecuteItem(item); }
-                    }, 'Open ↵')
+                  React.createElement('div', { style: { fontSize: '0.78rem', marginTop: 4 } },
+                    query.trim() ? 'Try typing a different keyword or command.' : 'Add records to see them listed here, or switch to another category.'
                   )
-                );
-              }),
-
-              // No matches found
-              query.trim() && flattenedItems.length === 0 && React.createElement('div', {
-                style: { textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)' }
-              },
-                React.createElement('div', { style: { fontSize: '2.2rem', marginBottom: 8 } }, '🔍'),
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' } }, `No matches found for "${query}"`),
-                React.createElement('div', { style: { fontSize: '0.78rem', marginTop: 4 } }, 'Try typing "kharcha 120 chai", "hisab kitab", "payslip", or arithmetic like "1500 * 18%".')
+                )
               )
             ),
 
@@ -1738,7 +3392,7 @@
 
 
     // ─── SIDEBAR ───
-    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen }) {
+    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [] }) {
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
         { id: 'invoices', label: 'Invoices & Quotes', icon: Icons.invoice },
@@ -1762,7 +3416,7 @@
               title: 'Close menu'
             }, '✕') : null
           ),
-          onQuickCreate && React.createElement('div', { style: { padding: '0 16px 16px 16px' } },
+          onQuickCreate && React.createElement('div', { style: { padding: '0 16px 12px 16px' } },
             React.createElement('div', {
               style: {
                 display: 'flex',
@@ -1820,6 +3474,30 @@
                 Icons.plus,
                 'Quote'
               )
+            )
+          ),
+          // Sidebar Omnibar AI Smart Trigger
+          onOpenGlobalSearch && React.createElement('div', { className: 'sidebar-omnibar-container' },
+            React.createElement('button', {
+              type: 'button',
+              className: 'sidebar-omnibar-widget',
+              onClick: () => {
+                onOpenGlobalSearch();
+                if (setMobileOpen) setMobileOpen(false);
+              },
+              title: 'Universal AI Omnibar & Command Assistant (Cmd+K / Ctrl+K or /)'
+            },
+              React.createElement('span', { className: 'omni-sparkle-icon' }, '✨'),
+              React.createElement('div', { className: 'omni-content-col' },
+                React.createElement('div', { className: 'omni-top-label' },
+                  React.createElement('span', null, 'AI Assistant'),
+                  React.createElement('span', { style: { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' } })
+                ),
+                React.createElement('div', { key: omniPlaceholderIdx, className: 'omni-cycler-text' },
+                  (omniPlaceholders && omniPlaceholders[omniPlaceholderIdx]) || 'Search or ask anything...'
+                )
+              ),
+              React.createElement('span', { className: 'omni-shortcut-badge' }, (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0) ? '⌘K' : 'Ctrl+K')
             )
           ),
           React.createElement('nav', { className: 'sidebar-nav' },
@@ -2006,13 +3684,13 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (doc && doc.id) {
             const fetched = await API.invoices.get(doc.id);
             if (fetched) fullDoc = fetched;
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const isEst = (fullDoc && (fullDoc.isEstimate || fullDoc.estimateNumber)) || (doc && (doc.isEstimate || doc.estimateNumber));
         const docNum = (fullDoc && (fullDoc.docNumber || fullDoc.invoiceNumber || fullDoc.estimateNumber || fullDoc.id)) || (doc && (doc.docNumber || doc.invoiceNumber || doc.estimateNumber || doc.id)) || '';
@@ -2454,15 +4132,15 @@
                         React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(doc.totalAmount)),
                         React.createElement('td', null, isConverted
                           ? React.createElement('span', {
-                              className: 'badge badge-final',
-                              style: { backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, padding: '4px 8px', borderRadius: 6 }
-                            }, 'Converted')
+                            className: 'badge badge-final',
+                            style: { backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, padding: '4px 8px', borderRadius: 6 }
+                          }, 'Converted')
                           : React.createElement(StatusDropdown, {
-                              invoiceId: doc.id,
-                              currentStatus: doc.status,
-                              isEstimate: doc.isEstimate,
-                              onStatusChange: handleStatusChange
-                            })
+                            invoiceId: doc.id,
+                            currentStatus: doc.status,
+                            isEstimate: doc.isEstimate,
+                            onStatusChange: handleStatusChange
+                          })
                         ),
                         React.createElement('td', { style: { textAlign: 'right' } },
                           React.createElement('div', { style: { display: 'inline-flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'wrap' } },
@@ -6439,7 +8117,7 @@
       const [refundMode, setRefundMode] = useState('CASH');
       const [notes, setNotes] = useState('');
       const [items, setItems] = useState([]);
-      
+
       // Penalty & Tax Exclusion States
       const [excludeTax, setExcludeTax] = useState(false);
       const [penaltyType, setPenaltyType] = useState('NONE');
@@ -7176,11 +8854,11 @@
                     React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'GST Refund:'),
                     excludeTax
                       ? React.createElement('div', { style: { textAlign: 'right' } },
-                          React.createElement('span', { style: { fontWeight: 700, color: 'var(--danger)', fontSize: '0.82rem' } }, '₹0.00'),
-                          totals.totalExcludedGst > 0 && React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.74rem', marginLeft: 6, fontWeight: 500 } },
-                            `(${BillsoftUtils.formatCurrency(totals.totalExcludedGst)} Excluded)`
-                          )
+                        React.createElement('span', { style: { fontWeight: 700, color: 'var(--danger)', fontSize: '0.82rem' } }, '₹0.00'),
+                        totals.totalExcludedGst > 0 && React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.74rem', marginLeft: 6, fontWeight: 500 } },
+                          `(${BillsoftUtils.formatCurrency(totals.totalExcludedGst)} Excluded)`
                         )
+                      )
                       : React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(totals.gst))
                   ),
                   totals.penaltyAmount > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--warning)' } },
@@ -7368,211 +9046,211 @@
 
           // Body
           loading ? React.createElement('div', { style: { padding: 40, textAlign: 'center' } }, React.createElement('div', { className: 'spinner' })) :
-          React.createElement('form', { onSubmit: handleSubmit, style: { padding: '18px 22px' } },
-            // Clean Overview & Breakdown Box
-            React.createElement('div', {
-              style: {
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius, 8px)',
-                padding: '12px 14px',
-                marginBottom: 14,
-                fontSize: '0.84rem'
-              }
-            },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 6 } },
-                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Customer:'),
-                React.createElement('strong', null, customerName)
-              ),
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
-                React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Invoice Total:'),
-                React.createElement('span', null, BillsoftUtils.formatCurrency(invoiceTotalAmt))
-              ),
-              (totalPaidSoFar > 0 || totalReturnedSoFar > 0) && React.createElement('div', {
-                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }
-              },
-                React.createElement('span', { style: { color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 } },
-                  'Already Settled:',
-                  totalTxCount > 0 && React.createElement('button', {
-                    type: 'button',
-                    className: 'btn btn-ghost btn-sm',
-                    style: { padding: '0 4px', fontSize: '0.72rem', height: 'auto', color: 'var(--primary)' },
-                    onClick: () => setShowHistory(!showHistory)
-                  }, showHistory ? '▲ Hide' : `📜 ${totalTxCount} Tx ▾`)
-                ),
-                React.createElement('span', { style: { color: 'var(--success)', fontWeight: 600 } },
-                  `- ${BillsoftUtils.formatCurrency(totalPaidSoFar + totalReturnedSoFar)}`
-                )
-              ),
-
-              // Expandable Prior Transactions History Breakdown
-              showHistory && React.createElement('div', {
-                style: {
-                  margin: '8px 0 6px',
-                  padding: '8px 10px',
-                  background: 'var(--bg-card, #fff)',
-                  border: '1px dashed var(--border)',
-                  borderRadius: 6,
-                  maxHeight: 120,
-                  overflowY: 'auto',
-                  fontSize: '0.76rem'
-                }
-              },
-                pastPayments.map((p, idx) => React.createElement('div', {
-                  key: 'pmt-' + (p.id || idx),
-                  style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: idx < pastPayments.length - 1 ? '1px dotted var(--border)' : 'none' }
-                },
-                  React.createElement('span', null,
-                    `💵 ${p.paymentMode || 'Payment'} • ${BillsoftUtils.formatDate(p.paymentDate || p.createdAt)}`,
-                    p.referenceNumber ? ` (${p.referenceNumber})` : ''
-                  ),
-                  React.createElement('strong', { style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(p.amount))
-                )),
-                pastReturns.map((r, idx) => React.createElement('div', {
-                  key: 'ret-' + (r.id || idx),
-                  style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: 'var(--warning)' }
-                },
-                  React.createElement('span', null, `↩️ Return Note #${r.returnNumber || r.id} • ${BillsoftUtils.formatDate(r.returnDate || r.createdAt)}`),
-                  React.createElement('strong', null, `-${BillsoftUtils.formatCurrency(r.totalRefundAmount)}`)
-                ))
-              ),
-
+            React.createElement('form', { onSubmit: handleSubmit, style: { padding: '18px 22px' } },
+              // Clean Overview & Breakdown Box
               React.createElement('div', {
                 style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  borderTop: '1px solid var(--border)',
-                  paddingTop: 6,
-                  marginTop: 6
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius, 8px)',
+                  padding: '12px 14px',
+                  marginBottom: 14,
+                  fontSize: '0.84rem'
                 }
               },
-                React.createElement('span', { style: { fontWeight: 600 } }, 'Current Due:'),
-                React.createElement('strong', { style: { color: currentOutstanding > 0 ? 'var(--danger)' : 'var(--success)', fontSize: '0.92rem' } },
-                  BillsoftUtils.formatCurrency(currentOutstanding)
-                )
-              )
-            ),
-
-            // Amount Input Field with Quick Presets
-            React.createElement('div', { className: 'form-group', style: { marginBottom: 12 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('label', { className: 'form-label', style: { margin: 0, fontWeight: 600, fontSize: '0.84rem' } }, 'Payment Amount (₹) *'),
-                currentOutstanding > 0 && React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                  Math.abs(parsedAmount - currentOutstanding) > 0.01 && React.createElement('button', {
-                    type: 'button',
-                    className: 'btn btn-ghost btn-sm',
-                    style: { padding: '1px 6px', fontSize: '0.74rem', color: 'var(--primary)', height: 'auto' },
-                    onClick: () => setAmount(currentOutstanding.toFixed(2))
-                  }, '⚡ Full Due'),
-                  currentOutstanding > 200 && Math.abs(parsedAmount - (currentOutstanding / 2)) > 0.01 && React.createElement('button', {
-                    type: 'button',
-                    className: 'btn btn-ghost btn-sm',
-                    style: { padding: '1px 6px', fontSize: '0.74rem', color: 'var(--text-secondary)', height: 'auto' },
-                    onClick: () => setAmount((currentOutstanding / 2).toFixed(2))
-                  }, '50%')
-                )
-              ),
-              React.createElement('input', {
-                type: 'number',
-                step: '0.01',
-                min: '0.01',
-                max: String(currentOutstanding > 0 ? currentOutstanding : 9999999),
-                className: 'form-input',
-                value: amount,
-                onChange: e => setAmount(e.target.value),
-                required: true,
-                autoFocus: true
-              })
-            ),
-
-            // Live Outcome Indicator (Clean Badge)
-            parsedAmount > 0 && React.createElement('div', {
-              style: {
-                padding: '8px 12px',
-                borderRadius: 'var(--radius, 6px)',
-                marginBottom: 12,
-                fontSize: '0.8rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: isOverpaid ? 'rgba(239, 68, 68, 0.08)' : (remainingAfterPayment === 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
-                border: `1px solid ${isOverpaid ? 'var(--danger)' : (remainingAfterPayment === 0 ? 'var(--success)' : 'var(--warning)')}`
-              }
-            },
-              React.createElement('span', { style: { fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 } },
-                isOverpaid ? '⚠️ Amount exceeds due balance' :
-                (remainingAfterPayment === 0 ? '✅ Final Outcome: FULLY PAID' : '⏳ Final Outcome: PARTIAL PAYMENT')
-              ),
-              React.createElement('strong', { style: { color: isOverpaid ? 'var(--danger)' : (remainingAfterPayment === 0 ? 'var(--success)' : 'var(--text)') } },
-                isOverpaid ? `+₹${(parsedAmount - currentOutstanding).toFixed(2)} Extra` :
-                (remainingAfterPayment === 0 ? '₹0.00 Due' : `₹${remainingAfterPayment.toFixed(2)} Due`)
-              )
-            ),
-
-            // Payment Mode & Payment Date Grid
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 } },
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', { className: 'form-label', style: { fontSize: '0.82rem', fontWeight: 600 } }, 'Payment Mode'),
-                React.createElement('select', {
-                  className: 'form-select select-sm',
-                  value: paymentMode,
-                  onChange: e => setPaymentMode(e.target.value)
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 6 } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Customer:'),
+                  React.createElement('strong', null, customerName)
+                ),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Invoice Total:'),
+                  React.createElement('span', null, BillsoftUtils.formatCurrency(invoiceTotalAmt))
+                ),
+                (totalPaidSoFar > 0 || totalReturnedSoFar > 0) && React.createElement('div', {
+                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }
                 },
-                  React.createElement('option', { value: 'Cash' }, '💵 Cash'),
-                  React.createElement('option', { value: 'UPI' }, '📱 UPI / Online'),
-                  React.createElement('option', { value: 'Bank Transfer' }, '🏦 Bank Transfer'),
-                  React.createElement('option', { value: 'Card' }, '💳 Card'),
-                  React.createElement('option', { value: 'Cheque' }, '🧾 Cheque')
+                  React.createElement('span', { style: { color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 } },
+                    'Already Settled:',
+                    totalTxCount > 0 && React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-ghost btn-sm',
+                      style: { padding: '0 4px', fontSize: '0.72rem', height: 'auto', color: 'var(--primary)' },
+                      onClick: () => setShowHistory(!showHistory)
+                    }, showHistory ? '▲ Hide' : `📜 ${totalTxCount} Tx ▾`)
+                  ),
+                  React.createElement('span', { style: { color: 'var(--success)', fontWeight: 600 } },
+                    `- ${BillsoftUtils.formatCurrency(totalPaidSoFar + totalReturnedSoFar)}`
+                  )
+                ),
+
+                // Expandable Prior Transactions History Breakdown
+                showHistory && React.createElement('div', {
+                  style: {
+                    margin: '8px 0 6px',
+                    padding: '8px 10px',
+                    background: 'var(--bg-card, #fff)',
+                    border: '1px dashed var(--border)',
+                    borderRadius: 6,
+                    maxHeight: 120,
+                    overflowY: 'auto',
+                    fontSize: '0.76rem'
+                  }
+                },
+                  pastPayments.map((p, idx) => React.createElement('div', {
+                    key: 'pmt-' + (p.id || idx),
+                    style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: idx < pastPayments.length - 1 ? '1px dotted var(--border)' : 'none' }
+                  },
+                    React.createElement('span', null,
+                      `💵 ${p.paymentMode || 'Payment'} • ${BillsoftUtils.formatDate(p.paymentDate || p.createdAt)}`,
+                      p.referenceNumber ? ` (${p.referenceNumber})` : ''
+                    ),
+                    React.createElement('strong', { style: { color: 'var(--success)' } }, BillsoftUtils.formatCurrency(p.amount))
+                  )),
+                  pastReturns.map((r, idx) => React.createElement('div', {
+                    key: 'ret-' + (r.id || idx),
+                    style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: 'var(--warning)' }
+                  },
+                    React.createElement('span', null, `↩️ Return Note #${r.returnNumber || r.id} • ${BillsoftUtils.formatDate(r.returnDate || r.createdAt)}`),
+                    React.createElement('strong', null, `-${BillsoftUtils.formatCurrency(r.totalRefundAmount)}`)
+                  ))
+                ),
+
+                React.createElement('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    borderTop: '1px solid var(--border)',
+                    paddingTop: 6,
+                    marginTop: 6
+                  }
+                },
+                  React.createElement('span', { style: { fontWeight: 600 } }, 'Current Due:'),
+                  React.createElement('strong', { style: { color: currentOutstanding > 0 ? 'var(--danger)' : 'var(--success)', fontSize: '0.92rem' } },
+                    BillsoftUtils.formatCurrency(currentOutstanding)
+                  )
                 )
               ),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', { className: 'form-label', style: { fontSize: '0.82rem', fontWeight: 600 } }, 'Payment Date'),
-                React.createElement('input', {
-                  type: 'date',
-                  className: 'form-input input-sm',
-                  value: paymentDate,
-                  onChange: e => setPaymentDate(e.target.value),
-                  required: true
-                })
-              )
-            ),
 
-            // Optional Reference / Notes Toggle
-            React.createElement('div', { style: { marginBottom: 16 } },
-              !showDetails && !referenceNumber && !notes ? React.createElement('button', {
-                type: 'button',
-                className: 'btn btn-ghost btn-sm',
-                style: { padding: '2px 0', fontSize: '0.76rem', color: 'var(--text-muted)' },
-                onClick: () => setShowDetails(true)
-              }, '＋ Add Reference / Note (Optional)') :
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+              // Amount Input Field with Quick Presets
+              React.createElement('div', { className: 'form-group', style: { marginBottom: 12 } },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                  React.createElement('label', { className: 'form-label', style: { margin: 0, fontWeight: 600, fontSize: '0.84rem' } }, 'Payment Amount (₹) *'),
+                  currentOutstanding > 0 && React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    Math.abs(parsedAmount - currentOutstanding) > 0.01 && React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-ghost btn-sm',
+                      style: { padding: '1px 6px', fontSize: '0.74rem', color: 'var(--primary)', height: 'auto' },
+                      onClick: () => setAmount(currentOutstanding.toFixed(2))
+                    }, '⚡ Full Due'),
+                    currentOutstanding > 200 && Math.abs(parsedAmount - (currentOutstanding / 2)) > 0.01 && React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-ghost btn-sm',
+                      style: { padding: '1px 6px', fontSize: '0.74rem', color: 'var(--text-secondary)', height: 'auto' },
+                      onClick: () => setAmount((currentOutstanding / 2).toFixed(2))
+                    }, '50%')
+                  )
+                ),
                 React.createElement('input', {
-                  type: 'text',
-                  className: 'form-input input-sm',
-                  placeholder: 'Reference / UTR / Cheque # (Optional)',
-                  value: referenceNumber,
-                  onChange: e => setReferenceNumber(e.target.value)
-                }),
-                React.createElement('input', {
-                  type: 'text',
-                  className: 'form-input input-sm',
-                  placeholder: 'Notes / Remarks (Optional)',
-                  value: notes,
-                  onChange: e => setNotes(e.target.value)
+                  type: 'number',
+                  step: '0.01',
+                  min: '0.01',
+                  max: String(currentOutstanding > 0 ? currentOutstanding : 9999999),
+                  className: 'form-input',
+                  value: amount,
+                  onChange: e => setAmount(e.target.value),
+                  required: true,
+                  autoFocus: true
                 })
-              )
-            ),
+              ),
 
-            // Action Buttons
-            React.createElement('div', { className: 'modal-footer', style: { padding: '12px 0 0', margin: 0, background: 'transparent' } },
-              React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: onClose, disabled: submitting }, 'Cancel'),
-              React.createElement('button', {
-                type: 'submit',
-                className: 'btn btn-primary',
-                disabled: submitting || parsedAmount <= 0
-              }, submitting ? 'Recording...' : `✓ Record ${BillsoftUtils.formatCurrency(parsedAmount)}`)
+              // Live Outcome Indicator (Clean Badge)
+              parsedAmount > 0 && React.createElement('div', {
+                style: {
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius, 6px)',
+                  marginBottom: 12,
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: isOverpaid ? 'rgba(239, 68, 68, 0.08)' : (remainingAfterPayment === 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
+                  border: `1px solid ${isOverpaid ? 'var(--danger)' : (remainingAfterPayment === 0 ? 'var(--success)' : 'var(--warning)')}`
+                }
+              },
+                React.createElement('span', { style: { fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 } },
+                  isOverpaid ? '⚠️ Amount exceeds due balance' :
+                    (remainingAfterPayment === 0 ? '✅ Final Outcome: FULLY PAID' : '⏳ Final Outcome: PARTIAL PAYMENT')
+                ),
+                React.createElement('strong', { style: { color: isOverpaid ? 'var(--danger)' : (remainingAfterPayment === 0 ? 'var(--success)' : 'var(--text)') } },
+                  isOverpaid ? `+₹${(parsedAmount - currentOutstanding).toFixed(2)} Extra` :
+                    (remainingAfterPayment === 0 ? '₹0.00 Due' : `₹${remainingAfterPayment.toFixed(2)} Due`)
+                )
+              ),
+
+              // Payment Mode & Payment Date Grid
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 } },
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', { className: 'form-label', style: { fontSize: '0.82rem', fontWeight: 600 } }, 'Payment Mode'),
+                  React.createElement('select', {
+                    className: 'form-select select-sm',
+                    value: paymentMode,
+                    onChange: e => setPaymentMode(e.target.value)
+                  },
+                    React.createElement('option', { value: 'Cash' }, '💵 Cash'),
+                    React.createElement('option', { value: 'UPI' }, '📱 UPI / Online'),
+                    React.createElement('option', { value: 'Bank Transfer' }, '🏦 Bank Transfer'),
+                    React.createElement('option', { value: 'Card' }, '💳 Card'),
+                    React.createElement('option', { value: 'Cheque' }, '🧾 Cheque')
+                  )
+                ),
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', { className: 'form-label', style: { fontSize: '0.82rem', fontWeight: 600 } }, 'Payment Date'),
+                  React.createElement('input', {
+                    type: 'date',
+                    className: 'form-input input-sm',
+                    value: paymentDate,
+                    onChange: e => setPaymentDate(e.target.value),
+                    required: true
+                  })
+                )
+              ),
+
+              // Optional Reference / Notes Toggle
+              React.createElement('div', { style: { marginBottom: 16 } },
+                !showDetails && !referenceNumber && !notes ? React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-ghost btn-sm',
+                  style: { padding: '2px 0', fontSize: '0.76rem', color: 'var(--text-muted)' },
+                  onClick: () => setShowDetails(true)
+                }, '＋ Add Reference / Note (Optional)') :
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                    React.createElement('input', {
+                      type: 'text',
+                      className: 'form-input input-sm',
+                      placeholder: 'Reference / UTR / Cheque # (Optional)',
+                      value: referenceNumber,
+                      onChange: e => setReferenceNumber(e.target.value)
+                    }),
+                    React.createElement('input', {
+                      type: 'text',
+                      className: 'form-input input-sm',
+                      placeholder: 'Notes / Remarks (Optional)',
+                      value: notes,
+                      onChange: e => setNotes(e.target.value)
+                    })
+                  )
+              ),
+
+              // Action Buttons
+              React.createElement('div', { className: 'modal-footer', style: { padding: '12px 0 0', margin: 0, background: 'transparent' } },
+                React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: onClose, disabled: submitting }, 'Cancel'),
+                React.createElement('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: submitting || parsedAmount <= 0
+                }, submitting ? 'Recording...' : `✓ Record ${BillsoftUtils.formatCurrency(parsedAmount)}`)
+              )
             )
-          )
         )
       );
     }
@@ -8371,13 +10049,13 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (inv && inv.id) {
             const fetched = await API.invoices.get(inv.id);
             if (fetched) fullInv = fetched;
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const invNum = (fullInv && (fullInv.invoiceNumber || fullInv.docNumber || fullInv.id)) || (inv && (inv.invoiceNumber || inv.docNumber || inv.id)) || '';
         const msg = BillsoftWhatsApp.formatInvoice({ invoice: fullInv || inv || {}, firm: firmObj });
@@ -8867,13 +10545,13 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (q && q.id) {
             const fetched = await API.invoices.get(q.id);
             if (fetched) fullEst = fetched;
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const estNum = (fullEst && (fullEst.estimateNumber || fullEst.docNumber || fullEst.id)) || (q && (q.estimateNumber || q.docNumber || q.id)) || '';
         const msg = BillsoftWhatsApp.formatEstimate({ estimate: fullEst || q || {}, firm: firmObj });
@@ -10448,7 +12126,7 @@
                                     let firmObj = { firmName: 'Our Business' };
                                     try {
                                       firmObj = await API.firm.getCurrent();
-                                    } catch (err) {}
+                                    } catch (err) { }
 
                                     const msg = BillsoftWhatsApp.formatPaymentReminder({
                                       customer: c || {},
@@ -10483,12 +12161,12 @@
                                     let stmt = null;
                                     try {
                                       firmObj = await API.firm.getCurrent();
-                                    } catch (err) {}
+                                    } catch (err) { }
                                     try {
                                       if (c && c.id) {
                                         stmt = await API.statements.customer(c.id);
                                       }
-                                    } catch (err) {}
+                                    } catch (err) { }
 
                                     const statementData = stmt || {
                                       totalInvoiced: (analytics && analytics.totalBusiness) || 0,
@@ -10889,12 +12567,12 @@
         let stmt = null;
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (party && party.id) {
             stmt = await API.statements.party(party.id);
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const s = party && summaryMap[party.id];
         const statementData = stmt || {
@@ -12758,13 +14436,13 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (po && po.id) {
             const fetched = await API.purchaseOrders.get(po.id);
             if (fetched) fullPo = fetched;
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const partyId = (po && (po.partyId || (po.party && po.party.id)));
         const partyObj = (parties && parties.find(p => p.id === partyId)) || (po && po.party) || { name: (po && po.partyName) || 'Vendor', phone: '' };
@@ -14457,7 +16135,7 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (err) {}
+        } catch (err) { }
 
         const msg = BillsoftWhatsApp.formatLetter({
           letter: l || {},
@@ -15502,7 +17180,7 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (e) {}
+        } catch (e) { }
 
         let currData = statementData;
         if (!currData) {
@@ -15514,7 +17192,7 @@
             } else if (statementMode === 'firm') {
               currData = await API.statements.firm(from || undefined, to || undefined);
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         let msg = '';
@@ -16288,8 +17966,8 @@
                     )
                   )
                 )
-            )
-          ),
+          )
+        ),
 
         // WhatsApp Share Modal
         whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
@@ -19521,10 +21199,10 @@
                 themeState.schedule === 'sunset'
                   ? 'Sunset schedule active (18:00 to 06:00). Dark mode is automatically applied during evening and night hours.'
                   : themeState.schedule === 'system'
-                  ? 'Syncing with your operating system preference (prefers-color-scheme).'
-                  : themeState.schedule === 'custom'
-                  ? `Custom schedule active: Dark mode from ${themeState.customStart} to ${themeState.customEnd}.`
-                  : 'Manual control active. Use the buttons above or the topbar quick-toggle to change anytime.'
+                    ? 'Syncing with your operating system preference (prefers-color-scheme).'
+                    : themeState.schedule === 'custom'
+                      ? `Custom schedule active: Dark mode from ${themeState.customStart} to ${themeState.customEnd}.`
+                      : 'Manual control active. Use the buttons above or the topbar quick-toggle to change anytime.'
               )
             )
           )
@@ -21479,7 +23157,7 @@
           try {
             const emp = await API.employees.get(e.detail.id);
             if (emp) openEmployeeProfile(emp);
-          } catch (err) {}
+          } catch (err) { }
         };
 
         window.addEventListener('billsoft:app-refresh', fetchEmployees);
@@ -21804,7 +23482,7 @@
         let firmObj = { firmName: 'Our Business' };
         try {
           firmObj = await API.firm.getCurrent();
-        } catch (err) {}
+        } catch (err) { }
 
         const empId = (emp && emp.id) || (salary && salary.empId);
         const empObj = emp || (selectedEmployee && selectedEmployee.id === empId ? selectedEmployee : (employees && employees.find(e => e.id === empId))) || { name: (salary && salary.empName) || 'Employee', phone: '' };
@@ -23116,7 +24794,7 @@
             )
           )
         ),
-// ════════════════════════════════════════
+        // ════════════════════════════════════════
         // SALARY DISBURSAL SETTLEMENT BREAKDOWN MODAL
         // ════════════════════════════════════════
         salaryConfirmData && React.createElement('div', { className: 'modal-overlay', onClick: () => setSalaryConfirmData(null) },
@@ -24036,6 +25714,55 @@
       const [syncStatusText, setSyncStatusText] = useState('Syncing records with database...');
       const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
+      const omniPlaceholders = useMemo(() => [
+        // 1. Instant Smart Actions
+        '⚡ kharcha 120 chai',
+        '📌 todo call Sharma ji',
+        '👤 customer Manoj',
+        '💬 remind rahul dues',
+        '📱 upi 500 qr',
+        // 2. Live Business Intelligence
+        '📊 today sales',
+        '💰 total udhari',
+        '⚠️ low stock alert',
+        '🏛️ gst report',
+        '🏦 bank details',
+        // 3. Commercial & Tax Math
+        '🧮 gst 18% on 5000',
+        '🏷️ gst 18% inclusive',
+        '💵 change for 2000',
+        '👥 split 4500 by 4',
+        '🏷️ 10% discount',
+        '📈 margin cost 800',
+        // 4. Loans, Interest & Analytics
+        '🏦 emi 5L at 9.5%',
+        '📈 simple interest',
+        '🔄 compound interest',
+        '📊 avg 120 150 180',
+        '⚖️ split in 2:3:5',
+        // 5. Units, Dates & Currency
+        '✍️ words 125000',
+        '🔢 one lakh twenty k',
+        '⚖️ 5 kg in grams',
+        '🌾 2 quintal in kg',
+        '💱 100 usd in inr',
+        '📅 30 days from today',
+        // 6. Multilingual Trade Speech & Slash Commands
+        '⚡ /inv • bill banao',
+        '📝 /quo • kaccha bill',
+        '📊 /khata • dues',
+        '🧑‍💼 /pay • tankha',
+        '📦 /po • purchase'
+      ], []);
+      const [omniPlaceholderIdx, setOmniPlaceholderIdx] = useState(0);
+
+      useEffect(() => {
+        const interval = setInterval(() => {
+          setOmniPlaceholderIdx(prev => (prev + 1) % omniPlaceholders.length);
+        }, 2800);
+        return () => clearInterval(interval);
+      }, [omniPlaceholders.length]);
+
       const isInitialLocked = () => {
         if (sessionStorage.getItem('isSessionLocked') === 'true' || localStorage.getItem('isSessionLocked') === 'true') {
           return true;
@@ -24054,6 +25781,7 @@
 
       const [showReauthModal, setShowReauthModal] = useState(isInitialLocked);
       const [isSessionLocked, setIsSessionLocked] = useState(isInitialLocked);
+      const lastReauthPromptTime = useRef(0);
 
       const initApp = async (retryCount = 0) => {
         try {
@@ -24828,7 +26556,18 @@
 
       return React.createElement('div', { className: 'app-layout' },
         React.createElement('div', { className: 'sidebar-container' },
-          React.createElement(Sidebar, { activePage: page, onNavigate: navigate, firmName, onLogout: authEnabled ? handleLogout : null, onQuickCreate: handleQuickCreate, mobileOpen: mobileSidebarOpen, setMobileOpen: setMobileSidebarOpen })
+          React.createElement(Sidebar, {
+            activePage: page,
+            onNavigate: navigate,
+            firmName,
+            onLogout: authEnabled ? handleLogout : null,
+            onQuickCreate: handleQuickCreate,
+            mobileOpen: mobileSidebarOpen,
+            setMobileOpen: setMobileSidebarOpen,
+            onOpenGlobalSearch: () => setShowGlobalSearch(true),
+            omniPlaceholderIdx,
+            omniPlaceholders
+          })
         ),
         React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
           React.createElement('header', { className: 'topbar' },
@@ -24838,18 +26577,7 @@
                 onClick: () => setMobileSidebarOpen(true),
                 title: 'Open navigation menu'
               }, Icons.menu),
-              React.createElement('h1', { className: 'topbar-title' }, current.title),
-              // Omnibar Pill Trigger
-              React.createElement('button', {
-                type: 'button',
-                className: 'topbar-omnibar-trigger hide-mobile',
-                onClick: () => setShowGlobalSearch(true),
-                title: 'Global Search & Command Palette (Ctrl+K / ⌘K or /)'
-              },
-                React.createElement('span', { style: { fontSize: '0.95rem', opacity: 0.85 } }, '🔍'),
-                React.createElement('span', { style: { flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, 'Search anything (bills, hisab, payslip, math)...'),
-                React.createElement('span', { className: 'omni-shortcut-badge' }, (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0) ? '⌘K' : 'Ctrl+K')
-              )
+              React.createElement('h1', { className: 'topbar-title' }, current.title)
             ),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
               // Mobile search icon button
@@ -24965,10 +26693,13 @@
           onClose: () => setShowGlobalSearch(false),
           onNavigate: navigate,
           onQuickCreate: handleQuickCreate,
-          firm: { firmName },
+          firm: (firms && firms.find(f => f.id === API.firmId)) || firms[0] || { firmName },
           firms: firms,
           onSwitchFirm: handleFirmSwitch,
-          onRefresh: handleAppRefresh
+          onRefresh: handleAppRefresh,
+          activePage: page,
+          omniPlaceholderIdx,
+          omniPlaceholders
         }),
         authEnabled && React.createElement(ReauthModal, {
           isOpen: showReauthModal,

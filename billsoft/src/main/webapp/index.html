@@ -951,10 +951,22 @@
       const curFirmName = (data.firmName || item.firmName || firm.firmName || 'Store').trim();
       const curNote = data.note || 'Payment';
       const liveUpiUrl = `upi://pay?pa=${encodeURIComponent(curVpa)}&pn=${encodeURIComponent(curFirmName)}${numAmt > 0 ? '&am=' + numAmt.toFixed(2) : ''}&tn=${encodeURIComponent(curNote)}&cu=INR`;
-      const liveQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(liveUpiUrl)}`;
+      const handleInspectorKeyDown = (e) => {
+        if (e.key === 'Enter') {
+          if (e.target && e.target.tagName === 'TEXTAREA' && e.shiftKey) return;
+          e.preventDefault();
+          if (!isExecuting) {
+            onSave(data);
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      };
 
       return React.createElement('div', {
         className: 'omni-action-inspector',
+        onKeyDown: handleInspectorKeyDown,
         style: {
           padding: '16px 20px',
           background: 'var(--bg-secondary, #f8fafc)',
@@ -1421,6 +1433,8 @@
       const [query, setQuery] = useState('');
       const [filter, setFilter] = useState('all'); // 'all' | 'smart' | 'actions' | 'customers' | 'invoices' | 'products' | 'parties' | 'staff' | 'utilities'
       const [showGuide, setShowGuide] = useState(false);
+      const [guideCategory, setGuideCategory] = useState('all');
+      const [guideSearchText, setGuideSearchText] = useState('');
       const [highlightedIndex, setHighlightedIndex] = useState(0);
 
       // In-Place Quick Payment Modal State
@@ -1442,9 +1456,15 @@
       // Cached Data Stores for instant search
       const [customers, setCustomers] = useState([]);
       const [invoices, setInvoices] = useState([]);
+      const [estimates, setEstimates] = useState([]);
       const [products, setProducts] = useState([]);
       const [parties, setParties] = useState([]);
       const [staff, setStaff] = useState([]);
+      const [purchaseOrders, setPurchaseOrders] = useState([]);
+      const [expenses, setExpenses] = useState([]);
+      const [returns, setReturns] = useState([]);
+      const [letters, setLetters] = useState([]);
+      const [reminders, setReminders] = useState([]);
       const [firmProfile, setFirmProfile] = useState(() => firm || (firms && firms.find(f => f.id === API.firmId)) || {});
       const [recents, setRecents] = useState(() => {
         try {
@@ -1479,15 +1499,107 @@
         });
       };
 
-      const saveHistory = (q) => {
-        if (!q || !q.trim()) return;
-        const trimmed = q.trim();
-        setHistory(prev => {
-          const updated = [trimmed, ...prev.filter(x => x !== trimmed)].slice(0, 30);
-          try { localStorage.setItem('billsoft_omni_history', JSON.stringify(updated)); } catch (e) { }
+      const inputRef = useRef(null);
+      const [frequencyMap, setFrequencyMap] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('billsoft_omni_freq') || '{}');
+        } catch (e) { return {}; }
+      });
+
+      const incrementFrequency = (q) => {
+        if (!q || typeof q !== 'string') return;
+        const key = q.trim();
+        if (!key) return;
+        setFrequencyMap(prev => {
+          const updated = { ...prev, [key]: (prev[key] || 0) + 1 };
+          try { localStorage.setItem('billsoft_omni_freq', JSON.stringify(updated)); } catch (e) { }
           return updated;
         });
       };
+
+      const handleEditQuery = (text, e) => {
+        if (e) e.stopPropagation();
+        setQuery(text);
+        setShowGuide(false);
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            const len = text.length;
+            inputRef.current.setSelectionRange(len, len);
+          }
+        }, 50);
+      };
+
+      const handleRunQuery = (text, e) => {
+        if (e) e.stopPropagation();
+        saveHistory(text);
+        incrementFrequency(text);
+        setQuery(text);
+        setShowGuide(false);
+      };
+
+      const mostUsedList = useMemo(() => {
+        const defaultMostUsed = [
+          { text: '/inv', title: 'Create Tax Invoice (/inv)', subtitle: 'Most used shortcut', icon: '⚡' },
+          { text: 'today sales', title: 'Today\'s Sales & Revenue', subtitle: 'Live business analytics', icon: '📊' },
+          { text: 'kharcha 120 chai nashta', title: 'Record Expense (kharcha 120)', subtitle: 'Instant smart task', icon: '💸' }
+        ];
+
+        const sortedKeys = Object.entries(frequencyMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(entry => entry[0])
+          .filter(k => k && k.length > 1);
+
+        if (sortedKeys.length === 0) return defaultMostUsed;
+
+        const result = [];
+        for (const k of sortedKeys) {
+          if (result.length >= 3) break;
+          result.push({
+            text: k,
+            title: k,
+            subtitle: `Used ${frequencyMap[k]} time${frequencyMap[k] === 1 ? '' : 's'}`,
+            icon: k.startsWith('/') ? '⚡' : (/\b(sales|udhari|stock|bank)\b/i.test(k) ? '📊' : (/\b(kharcha|expense|todo|customer|advance|attendance)\b/i.test(k) ? '⚡' : '🧮'))
+          });
+        }
+
+        for (let i = 0; result.length < 3 && i < defaultMostUsed.length; i++) {
+          const fallback = defaultMostUsed[i];
+          if (!result.some(r => r.text === fallback.text)) {
+            result.push(fallback);
+          }
+        }
+
+        return result.slice(0, 3);
+      }, [frequencyMap]);
+
+      const historicList = useMemo(() => {
+        const defaultHistory = [
+          { text: '17% of 5633', icon: '🧮', subtitle: 'Calculation query' },
+          { text: 'gst 18% on 5000', icon: '🏛️', subtitle: 'Commercial math' },
+          { text: 'total udhari', icon: '💰', subtitle: 'Quick help lookup' }
+        ];
+
+        if (!history || history.length === 0) return defaultHistory;
+
+        const cleanList = history.map(h => typeof h === 'string' ? h : (h && (h.title || h.text))).filter(Boolean);
+        if (cleanList.length === 0) return defaultHistory;
+
+        const res = cleanList.slice(0, 3).map(text => ({
+          text,
+          icon: text.startsWith('/') ? '⚡' : (/\b(sales|udhari|stock|bank)\b/i.test(text) ? '📊' : (/\b(kharcha|expense|todo|customer|advance|attendance)\b/i.test(text) ? '⚡' : (/\b(gst|change|split|discount|margin|emi)\b/i.test(text) ? '🏛️' : '🕒'))),
+          subtitle: 'Recent search'
+        }));
+
+        for (let i = 0; res.length < 3 && i < defaultHistory.length; i++) {
+          const fallback = defaultHistory[i];
+          if (!res.some(r => r.text === fallback.text)) {
+            res.push(fallback);
+          }
+        }
+
+        return res.slice(0, 3);
+      }, [history]);
 
       // Listen for custom programmatic query set requests
       useEffect(() => {
@@ -1522,7 +1634,7 @@
       // Load data on open with safe array normalization & fetch active firm profile
       useEffect(() => {
         if (!isOpen) return;
-        const norm = res => (res && (res.content || res.data || res.items || res.invoices || res.customers || res.products || res.parties || res.employees)) || (Array.isArray(res) ? res : []);
+        const norm = res => (res && (res.content || res.data || res.items || res.invoices || res.customers || res.products || res.parties || res.employees || res.expenses || res.reminders || res.letters || res.returns || res.purchaseOrders)) || (Array.isArray(res) ? res : []);
         if (API.firm && API.firm.getCurrent) {
           API.firm.getCurrent().then(f => {
             if (f && (f.id || f.firmName)) setFirmProfile(f);
@@ -1532,9 +1644,15 @@
         }
         if (API.customers && API.customers.list) API.customers.list().then(res => setCustomers(norm(res))).catch(() => { });
         if (API.invoices && API.invoices.list) API.invoices.list(0, 100).then(res => setInvoices(norm(res))).catch(() => { });
+        if (API.invoices && API.invoices.listEstimates) API.invoices.listEstimates(0, 100).then(res => setEstimates(norm(res))).catch(() => { });
         if (API.products && API.products.list) API.products.list().then(res => setProducts(norm(res))).catch(() => { });
         if (API.parties && API.parties.list) API.parties.list().then(res => setParties(norm(res))).catch(() => { });
-        if (API.employees && API.employees.list) API.employees.list().then(res => setStaff(norm(res))).catch(() => { });
+        if (API.employees && (API.employees.list || API.employees.getAll)) (API.employees.list || API.employees.getAll)().then(res => setStaff(norm(res))).catch(() => { });
+        if (API.purchaseOrders && API.purchaseOrders.list) API.purchaseOrders.list().then(res => setPurchaseOrders(norm(res))).catch(() => { });
+        if (API.expenses && API.expenses.list) API.expenses.list({ size: 100 }).then(res => setExpenses(norm(res))).catch(() => { });
+        if (API.returns && API.returns.list) API.returns.list().then(res => setReturns(norm(res))).catch(() => { });
+        if (API.letters && API.letters.list) API.letters.list().then(res => setLetters(norm(res))).catch(() => { });
+        if (API.reminders && API.reminders.list) API.reminders.list().then(res => setReminders(norm(res))).catch(() => { });
       }, [isOpen, firm]);
 
       // Save a recent action or item
@@ -1548,28 +1666,39 @@
         });
       };
 
-      // Perform real-time search
+      // Perform real-time search with snappy execution timing
       const searchResults = useMemo(() => {
-        if (!window.BillsoftSearchEngine) return { smartTasks: [], utilities: [], actions: [], customers: [], invoices: [], products: [], parties: [], staff: [], suggestions: [] };
-        return BillsoftSearchEngine.search(query, {
+        if (!window.BillsoftSearchEngine) return { smartTasks: [], utilities: [], actions: [], customers: [], invoices: [], estimates: [], products: [], parties: [], staff: [], purchaseOrders: [], expenses: [], returns: [], letters: [], reminders: [], suggestions: [], durationMs: 0 };
+        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const res = BillsoftSearchEngine.search(query, {
           firm: firmProfile || firm || {},
           customers,
           invoices,
+          estimates,
           products,
           parties,
           staff,
+          purchaseOrders,
+          expenses,
+          returns,
+          letters,
+          reminders,
           navigate: onNavigate,
           onQuickCreate,
           onRefresh
-        });
-      }, [query, firmProfile, firm, customers, invoices, products, parties, staff, onNavigate, onQuickCreate, onRefresh]);
+        }) || {};
+        const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const elapsed = Math.max(0.1, t1 - t0);
+        res.durationMs = elapsed;
+        return res;
+      }, [query, firmProfile, firm, customers, invoices, estimates, products, parties, staff, purchaseOrders, expenses, returns, letters, reminders, onNavigate, onQuickCreate, onRefresh]);
 
       // Flatten items according to the active category filter
       const flattenedItems = useMemo(() => {
         const list = [];
         const isQueryEmpty = !query.trim();
 
-        // When query is empty and a specific category tab is selected, list all items in that category:
+        // When query is empty and a specific category tab is selected, list preset items in that category:
         if (isQueryEmpty) {
           if (filter === 'actions') {
             (BillsoftSearchEngine.ACTIONS || []).forEach(act => list.push({
@@ -1581,54 +1710,60 @@
                 if (act.action) act.action({ navigate: onNavigate, onQuickCreate, onRefresh });
                 onClose();
               },
-              itemType: 'action'
+              itemType: 'action',
+              badge: '⚡ Action'
             }));
-          } else if (filter === 'customers') {
-            (customers || []).forEach(c => list.push({
-              id: c.id,
-              title: c.name || 'Customer',
-              subtitle: `📞 ${c.phone || 'No phone'} • ${c.gstin ? 'GST: ' + c.gstin : (c.city || 'Customer')} • Bal: ${BillsoftUtils.formatCurrency(c.balance || c.openingBalance || 0)}`,
-              icon: '👤',
-              raw: c,
-              itemType: 'customer'
-            }));
-          } else if (filter === 'invoices') {
-            (invoices || []).forEach(inv => list.push({
-              id: inv.id,
-              title: `${inv.invoiceNumber || inv.estimateNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
-              subtitle: `📅 ${BillsoftUtils.formatDate(inv.invoiceDate || inv.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(inv.netTotal || inv.totalAmount || 0)} • Status: ${inv.status || 'FINAL'}`,
-              icon: inv.estimateNumber ? '📝' : '📄',
-              raw: inv,
-              itemType: inv.estimateNumber ? 'quotation' : 'invoice'
-            }));
-          } else if (filter === 'products') {
-            (products || []).forEach(p => list.push({
-              id: p.id,
-              title: p.name || 'Product',
-              subtitle: `SKU: ${p.sku || 'N/A'} • Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
-              icon: '📦',
-              raw: p,
-              itemType: 'product'
-            }));
-          } else if (filter === 'parties') {
-            (parties || []).forEach(p => list.push({
-              id: p.id,
-              title: p.name || 'Vendor',
-              subtitle: `Contact: ${p.contactPerson || 'N/A'} • 📞 ${p.phone || 'No phone'} • Bal: ${BillsoftUtils.formatCurrency(p.netBalance || p.openingBalance || 0)}`,
-              icon: '🏭',
-              raw: p,
-              itemType: 'party'
-            }));
-          } else if (filter === 'staff') {
-            (staff || []).forEach(emp => list.push({
-              id: emp.id,
-              title: emp.name || 'Staff',
-              subtitle: `Role: ${emp.role || emp.designation || 'Employee'} • Dept: ${emp.department || 'General'} • 📞 ${emp.phone || 'N/A'}`,
-              icon: '🧑‍💼',
-              raw: emp,
-              itemType: 'staff'
-            }));
-          } else if (filter === 'utilities') {
+          } else if (filter === 'quick_help') {
+            const f = firmProfile || firm || {};
+            list.push({
+              type: 'utility',
+              title: '📊 Today\'s Billed Sales & Revenue',
+              subtitle: 'Check live revenue, invoice count, and collections for today',
+              icon: '📊',
+              badge: '💡 Quick Help',
+              action: () => setQuery('today sales')
+            });
+            list.push({
+              type: 'utility',
+              title: '💰 Total Udhari & Accounts Receivable',
+              subtitle: 'Summary of all pending customer dues and balances',
+              icon: '💰',
+              badge: '💡 Quick Help',
+              action: () => setQuery('total udhari')
+            });
+            list.push({
+              type: 'utility',
+              title: '⚠️ Low Stock Inventory Alert',
+              subtitle: 'Identify products needing reorder before running out of stock',
+              icon: '⚠️',
+              badge: '💡 Quick Help',
+              action: () => setQuery('low stock')
+            });
+            list.push({
+              type: 'utility',
+              title: `🏛️ ${f.firmName || 'Our Business'} — Bank & Tax Info`,
+              subtitle: `Bank: ${f.bankName || 'N/A'} • A/C: ${f.accountNumber || 'N/A'} • IFSC: ${f.ifscCode || 'N/A'} • GSTIN: ${f.gstin || 'N/A'}`,
+              icon: '🏛️',
+              badge: '💡 Quick Help',
+              action: () => setQuery('bank details')
+            });
+            list.push({
+              type: 'utility',
+              title: '💸 Today\'s Business Expenses',
+              subtitle: 'Total expense outflow recorded today',
+              icon: '💸',
+              badge: '💡 Quick Help',
+              action: () => setQuery('today expenses')
+            });
+            list.push({
+              type: 'utility',
+              title: '🏆 Top Customers by Revenue',
+              subtitle: 'List the highest grossing customers in your business',
+              icon: '🏆',
+              badge: '💡 Quick Help',
+              action: () => setQuery('top customers')
+            });
+          } else if (filter === 'special') {
             const f = firmProfile || firm || {};
             const upiId = (f.upiId && f.upiId.trim()) || '';
             list.push({
@@ -1636,7 +1771,7 @@
               title: '🧮 GST & Tax Calculator',
               subtitle: 'Calculate GST additions & reverse GST breakdowns (e.g. type "gst 18% on 5000")',
               icon: '💰',
-              badge: 'Tax Tool',
+              badge: '✨ Special',
               action: () => setQuery('gst 18% on 5000')
             });
             list.push({
@@ -1644,7 +1779,7 @@
               title: '💵 Cashier Change & Note Breakdown',
               subtitle: 'Compute customer change and currency denominations (e.g. type "change for 2000 bill 1435")',
               icon: '💵',
-              badge: 'Cashier Tool',
+              badge: '✨ Special',
               action: () => setQuery('change for 2000 bill 1435')
             });
             list.push({
@@ -1652,7 +1787,7 @@
               title: '👥 Bill Splitter',
               subtitle: 'Split bill totals evenly per person (e.g. type "split 4500 by 4")',
               icon: '👥',
-              badge: 'Split Tool',
+              badge: '✨ Special',
               action: () => setQuery('split 4500 by 4')
             });
             list.push({
@@ -1660,7 +1795,7 @@
               title: upiId ? `📱 Live UPI Payment QR (${upiId})` : '⚠️ Setup UPI Payment QR Gateway',
               subtitle: upiId ? `Generate on-screen payment QR for any amount (e.g. type "upi 500")` : 'No UPI ID configured in Business Profile. Click to setup.',
               icon: '📱',
-              badge: 'UPI Tool',
+              badge: '✨ Special',
               action: () => {
                 if (upiId) setQuery('upi 500');
                 else BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'profile' });
@@ -1671,7 +1806,7 @@
               title: '📈 Profit Margin & Markup Calculator',
               subtitle: 'Compute profit margin and markup percentage (e.g. type "margin cost 800 price 1200")',
               icon: '📈',
-              badge: 'Margin Tool',
+              badge: '✨ Special',
               action: () => setQuery('margin cost 800 price 1200')
             });
             list.push({
@@ -1679,17 +1814,45 @@
               title: '✍️ Numbers to Currency Words Converter',
               subtitle: 'Convert amounts into Indian currency words format (e.g. type "words 125000")',
               icon: '✍️',
-              badge: 'Words Tool',
+              badge: '✨ Special',
               action: () => setQuery('words 125000')
             });
             list.push({
               type: 'utility',
-              title: `🏛️ ${f.firmName || 'Our Business'} — Bank & Tax Info`,
-              subtitle: `Bank: ${f.bankName || 'N/A'} • A/C: ${f.accountNumber || 'N/A'} • IFSC: ${f.ifscCode || 'N/A'} • GSTIN: ${f.gstin || 'N/A'}`,
-              icon: '🏛️',
-              badge: 'Firm Info',
-              action: () => setQuery('bank details')
+              title: '🏦 Loan EMI & Interest Calculator',
+              subtitle: 'Compute monthly EMI and total interest (e.g. type "emi 500000 at 9.5% for 5 years")',
+              icon: '🏦',
+              badge: '✨ Special',
+              action: () => setQuery('emi 500000 at 9.5% for 5 years')
             });
+          } else if (filter === 'records') {
+            (customers || []).slice(0, 6).forEach(c => list.push({
+              id: c.id,
+              title: c.name || 'Customer',
+              subtitle: `📞 ${c.phone || 'No phone'} • Bal: ${BillsoftUtils.formatCurrency(c.balance || c.openingBalance || 0)}`,
+              icon: '👤',
+              raw: c,
+              itemType: 'customer',
+              badge: 'Customer'
+            }));
+            (invoices || []).slice(0, 6).forEach(inv => list.push({
+              id: inv.id,
+              title: `${inv.invoiceNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
+              subtitle: `📅 ${BillsoftUtils.formatDate(inv.invoiceDate || inv.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(inv.netTotal || inv.totalAmount || 0)}`,
+              icon: '📄',
+              raw: inv,
+              itemType: 'invoice',
+              badge: 'Invoice'
+            }));
+            (staff || []).slice(0, 6).forEach(emp => list.push({
+              id: emp.id,
+              title: emp.name || 'Staff',
+              subtitle: `Role: ${emp.role || emp.designation || 'Staff'} • 📞 ${emp.phone || 'N/A'}`,
+              icon: '🧑‍💼',
+              raw: emp,
+              itemType: 'staff',
+              badge: 'Staff'
+            }));
           }
           return list;
         }
@@ -1702,7 +1865,7 @@
         const secondarySolutions = [];
 
         (res.utilities || []).forEach(u => {
-          const isPrimary = u.isCalculatedResult || u.isEquation || u.type === 'math' || u.type === 'arithmetic' ||
+          const isPrimary = u.isAuthoritativeAnswer || u.isCalculatedResult || u.isEquation || u.type === 'math' || u.type === 'arithmetic' ||
             u.type === 'conversion' || u.type === 'upi_qr' || u.type === 'date_math' || u.type === 'change' ||
             u.type === 'split' || u.type === 'gst' || u.type === 'margin' || u.type === 'discount' ||
             u.type === 'commission' || u.type === 'emi' || u.type === 'interest_si' || u.type === 'interest_ci' ||
@@ -1710,82 +1873,157 @@
             u.type === 'gstin' || u.type === 'difference' || u.type === 'growth' || u.type === 'average' || u.type === 'ratio';
 
           if (isPrimary) {
-            primaryResults.push({ ...u, itemType: 'utility' });
+            primaryResults.push({ ...u, itemType: u.itemType || 'utility' });
           } else {
-            secondarySolutions.push({ ...u, itemType: 'utility' });
+            secondarySolutions.push({ ...u, itemType: u.itemType || 'utility' });
           }
         });
 
-        // Sort primary results by priority score
-        primaryResults.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-        primaryResults.forEach(item => list.push(item));
+        // Filter primary results based on active category
+        primaryResults.forEach(item => {
+          const cat = (item.semanticResult && item.semanticResult.category) || (item.badge && item.badge.includes('Action') ? 'ACTION' : (item.badge && item.badge.includes('Quick') ? 'QUICK_HELP' : 'SPECIAL'));
+          if (filter === 'all') {
+            list.push(item);
+          } else if (filter === 'actions' && (cat === 'ACTION' || item.type === 'assistant_action_preview' || item.itemType === 'action')) {
+            list.push(item);
+          } else if (filter === 'quick_help' && (cat === 'QUICK_HELP' || (item.badge && item.badge.includes('Quick')))) {
+            list.push(item);
+          } else if (filter === 'special' && (cat === 'SPECIAL' || (item.badge && (item.badge.includes('Special') || item.badge.includes('Tax') || item.badge.includes('Tool'))))) {
+            list.push(item);
+          }
+        });
 
-        // 2. Smart Tasks (Scheduled reminders, instant expenses, sticky notes)
-        if (filter === 'all' || filter === 'smart' || filter === 'actions') {
-          (res.smartTasks || []).forEach(st => list.push({ ...st, itemType: 'smart_task' }));
+        // 2. Smart Tasks & Action Previews
+        if (filter === 'all' || filter === 'actions') {
+          (res.smartTasks || []).forEach(st => {
+            if (!list.some(x => x.title === st.title)) {
+              list.push({ ...st, itemType: 'smart_task' });
+            }
+          });
         }
 
         // 3. Actions & Slash Commands (e.g. /inv, create invoice, attendance)
         if (filter === 'all' || filter === 'actions') {
-          (res.actions || []).forEach(a => list.push({ ...a, itemType: 'action' }));
+          (res.actions || []).forEach(a => {
+            if (!list.some(x => x.title === a.title)) {
+              list.push({ ...a, itemType: 'action' });
+            }
+          });
         }
-        if (filter === 'all' || filter === 'customers') {
+
+        // 4. Subordinate Search Fallback Records Across All 12 CRM Domains
+        if (filter === 'all' || filter === 'records' || filter === 'quick_help') {
           (res.customers || []).forEach(c => list.push({
             id: c.id,
             title: c.name || 'Customer',
             subtitle: `📞 ${c.phone || 'No phone'} • ${c.gstin ? 'GST: ' + c.gstin : (c.city || 'Customer')} • Bal: ${BillsoftUtils.formatCurrency(c.balance || c.openingBalance || 0)}`,
             icon: '👤',
             raw: c,
-            itemType: 'customer'
+            itemType: 'customer',
+            badge: 'Customer'
           }));
-        }
-        if (filter === 'all' || filter === 'invoices') {
+          (res.staff || []).forEach(emp => list.push({
+            id: emp.id,
+            title: `🧑‍💼 ${emp.name || 'Employee'}`,
+            subtitle: `Role: ${emp.role || emp.designation || 'Staff'} • Dept: ${emp.department || 'General'} • 📞 ${emp.phone || 'N/A'} • Base: ₹${emp.monthlyBaseSalary || 0}`,
+            icon: '🧑‍💼',
+            raw: emp,
+            itemType: 'staff',
+            badge: 'Staff'
+          }));
           (res.invoices || []).forEach(inv => list.push({
             id: inv.id,
-            title: `${inv.invoiceNumber || inv.estimateNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
+            title: `${inv.invoiceNumber || 'INV'} — ${inv.customerName || 'Customer'}`,
             subtitle: `📅 ${BillsoftUtils.formatDate(inv.invoiceDate || inv.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(inv.netTotal || inv.totalAmount || 0)} • Status: ${inv.status || 'FINAL'}`,
-            icon: inv.estimateNumber ? '📝' : '📄',
+            icon: '📄',
             raw: inv,
-            itemType: inv.estimateNumber ? 'quotation' : 'invoice'
+            itemType: 'invoice',
+            badge: 'Invoice'
           }));
-        }
-        if (filter === 'all' || filter === 'products') {
+          (res.estimates || []).forEach(est => list.push({
+            id: est.id,
+            title: `📝 Quotation #${est.estimateNumber || est.invoiceNumber || est.id} — ${est.customerName || 'Client'}`,
+            subtitle: `📅 ${BillsoftUtils.formatDate(est.invoiceDate || est.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(est.netTotal || est.totalAmount || 0)} • Estimate`,
+            icon: '📝',
+            raw: est,
+            itemType: 'quotation',
+            badge: 'Quotation'
+          }));
           (res.products || []).forEach(p => list.push({
             id: p.id,
             title: p.name || 'Product',
             subtitle: `SKU: ${p.sku || 'N/A'} • Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
             icon: '📦',
             raw: p,
-            itemType: 'product'
+            itemType: 'product',
+            badge: 'Product'
           }));
-        }
-        if (filter === 'all' || filter === 'parties') {
           (res.parties || []).forEach(p => list.push({
             id: p.id,
             title: p.name || 'Vendor',
             subtitle: `Contact: ${p.contactPerson || 'N/A'} • 📞 ${p.phone || 'No phone'} • Bal: ${BillsoftUtils.formatCurrency(p.netBalance || p.openingBalance || 0)}`,
             icon: '🏭',
             raw: p,
-            itemType: 'party'
+            itemType: 'party',
+            badge: 'Vendor'
           }));
-        }
-        if (filter === 'all' || filter === 'staff') {
-          (res.staff || []).forEach(emp => list.push({
-            id: emp.id,
-            title: emp.name || 'Staff',
-            subtitle: `Role: ${emp.role || emp.designation || 'Employee'} • Dept: ${emp.department || 'General'} • 📞 ${emp.phone || 'N/A'}`,
-            icon: '🧑‍💼',
-            raw: emp,
-            itemType: 'staff'
+          (res.purchaseOrders || []).forEach(po => list.push({
+            id: po.id,
+            title: `📦 PO-${po.poNumber || po.id} — ${po.partyName || 'Supplier'}`,
+            subtitle: `📅 ${BillsoftUtils.formatDate(po.orderDate || po.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(po.totalAmount || 0)} • Status: ${po.status || 'OPEN'}`,
+            icon: '📦',
+            raw: po,
+            itemType: 'purchase_order',
+            badge: 'Purchase Order'
+          }));
+          (res.expenses || []).forEach(exp => list.push({
+            id: exp.id,
+            title: `💸 ${exp.title || 'Expense'}`,
+            subtitle: `📅 ${BillsoftUtils.formatDate(exp.expenseDate || exp.createdAt)} • Amount: ${BillsoftUtils.formatCurrency(exp.amount || 0)} • Category: ${exp.category || 'General'}`,
+            icon: '💸',
+            raw: exp,
+            itemType: 'expense',
+            badge: 'Expense'
+          }));
+          (res.returns || []).forEach(ret => list.push({
+            id: ret.id,
+            title: `↩️ Return #${ret.returnNumber || ret.id} — ${ret.customerName || 'Customer'}`,
+            subtitle: `📅 ${BillsoftUtils.formatDate(ret.returnDate || ret.createdAt)} • Refund: ${BillsoftUtils.formatCurrency(ret.netTotal || ret.totalAmount || 0)}`,
+            icon: '↩️',
+            raw: ret,
+            itemType: 'return',
+            badge: 'Credit Note'
+          }));
+          (res.letters || []).forEach(letDoc => list.push({
+            id: letDoc.id,
+            title: `📜 ${letDoc.title || 'Business Letter'}`,
+            subtitle: `To: ${letDoc.recipientName || 'Recipient'} • Ref: ${letDoc.letterNumber || 'N/A'} • Status: ${letDoc.status || 'DRAFT'}`,
+            icon: '📜',
+            raw: letDoc,
+            itemType: 'letter',
+            badge: 'Letter'
+          }));
+          (res.reminders || []).forEach(rem => list.push({
+            id: rem.id,
+            title: `⏰ ${rem.title || 'Task'}`,
+            subtitle: `Due: ${rem.dueDate ? String(rem.dueDate).slice(0, 10) : 'Today'} • Status: ${rem.status || 'TODO'} • Priority: ${rem.priority || 'MEDIUM'}`,
+            icon: '⏰',
+            raw: rem,
+            itemType: 'reminder',
+            badge: 'Planner Task'
           }));
         }
 
-        // 5. SECONDARY & INTERACTIVE SOLUTIONS (Always AFTER the direct results!)
-        if (filter === 'all' || filter === 'utilities') {
-          secondarySolutions.forEach(item => list.push(item));
+        // 5. SECONDARY SOLUTIONS
+        if (filter === 'all' || filter === 'special') {
+          secondarySolutions.forEach(item => {
+            if (!list.some(x => x.title === item.title)) {
+              list.push(item);
+            }
+          });
         }
         return list;
-      }, [searchResults, filter, query, customers, invoices, products, parties, staff, firmProfile, firm]);
+      }, [searchResults, filter, query, customers, invoices, estimates, products, parties, staff, purchaseOrders, expenses, returns, letters, reminders, firmProfile, firm]);
 
       // Reset highlight when list changes
       useEffect(() => {
@@ -1797,10 +2035,38 @@
         if (!item) return;
         addRecent(item);
 
-        if (item.action) {
+        // Direct System Commands
+        if (item.action === 'THEME_TOGGLE' || item.capabilityId === 'ACT_THEME_TOGGLE') {
+          if (window.toggleTheme) window.toggleTheme();
+          if (window.showToast) window.showToast('🎨 Theme switched!', 'info');
+          onClose();
+          return;
+        }
+        if (item.action === 'THEME_DARK' || item.capabilityId === 'ACT_THEME_DARK') {
+          if (window.setThemeDarkMode) window.setThemeDarkMode(true);
+          else if (window.toggleTheme) window.toggleTheme();
+          if (window.showToast) window.showToast('🌙 Dark mode enabled!', 'info');
+          onClose();
+          return;
+        }
+        if (item.action === 'THEME_LIGHT' || item.capabilityId === 'ACT_THEME_LIGHT') {
+          if (window.setThemeDarkMode) window.setThemeDarkMode(false);
+          else if (window.toggleTheme) window.toggleTheme();
+          if (window.showToast) window.showToast('☀️ Light mode enabled!', 'info');
+          onClose();
+          return;
+        }
+        if (item.action === 'APP_LOCK' || item.capabilityId === 'ACT_APP_LOCK') {
+          sessionStorage.setItem('isSessionLocked', 'true');
+          window.dispatchEvent(new CustomEvent('billsoft:lock-screen'));
+          if (window.showToast) window.showToast('🔒 Screen locked in Safe Mode', 'info');
+          onClose();
+          return;
+        }
+
+        if (typeof item.action === 'function') {
           item.action({ navigate: onNavigate, onQuickCreate, onRefresh, firm });
           if (item.itemType === 'smart_task') {
-            // keep omnibar open or close after short delay
             setTimeout(onClose, 500);
           } else if (item.itemType !== 'utility') {
             onClose();
@@ -1856,6 +2122,42 @@
             window.dispatchEvent(new CustomEvent('billsoft:focus-employee', { detail: { id: item.id } }));
           }, 60);
           onClose();
+        } else if (item.itemType === 'purchase_order') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'paperwork', tab: 'orders'
+          });
+          onClose();
+        } else if (item.itemType === 'expense') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'planner', plannerTab: 'expenses'
+          });
+          onClose();
+        } else if (item.itemType === 'return') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'invoices', subTab: 'returns'
+          });
+          onClose();
+        } else if (item.itemType === 'letter') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'paperwork', tab: 'letters'
+          });
+          onClose();
+        } else if (item.itemType === 'reminder') {
+          BillsoftSearchEngine.dispatchNavigate({
+            page: 'planner', plannerTab: 'board'
+          });
+          onClose();
+        } else if (item.type === 'assistant_action_preview' || item.type === 'smart_task') {
+          setInspectingItem(item);
+          setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : (item.entities ? { ...item.entities } : (item.payload ? { ...item.payload } : {})));
+        } else if (item.type === 'upi_qr') {
+          setInspectingItem(item);
+          setInspectingData(item.editableConfig ? { ...item.editableConfig.initialValues } : { amount: item.amount || '', upiId: item.upiId || '' });
+        } else if (item.type === 'assistant_answer' || item.itemType === 'assistant_answer') {
+          if (navigator.clipboard && item.title) {
+            navigator.clipboard.writeText(item.title);
+            if (window.showToast) window.showToast('Copied calculation result to clipboard!', 'success');
+          }
         }
       };
 
@@ -1938,7 +2240,11 @@
                 status: 'TODO',
                 priority: data.priority || 'MEDIUM'
               };
-              if (data.dueDate) remData.dueDate = data.dueDate;
+              if (data.dueDate) {
+                let dVal = String(data.dueDate).trim();
+                if (dVal.length === 10) dVal = dVal + 'T09:00:00';
+                remData.dueDate = dVal;
+              }
               await API.reminders.create(remData);
               if (window.showToast) window.showToast(`✓ ${data.type === 'reminder' ? 'Reminder' : 'Task'} saved to Planner!`, 'success');
               window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
@@ -2079,6 +2385,28 @@
           }
         } else if (e.key === 'Tab') {
           e.preventDefault();
+          if (currentAutofill) {
+            setQuery(currentAutofill);
+            setTimeout(() => {
+              if (inputRef.current) {
+                inputRef.current.focus();
+                const len = currentAutofill.length;
+                inputRef.current.setSelectionRange(len, len);
+              }
+            }, 30);
+            return;
+          }
+          if (!query.trim() && activeSuggestText) {
+            setQuery(activeSuggestText);
+            setTimeout(() => {
+              if (inputRef.current) {
+                inputRef.current.focus();
+                const len = activeSuggestText.length;
+                inputRef.current.setSelectionRange(len, len);
+              }
+            }, 30);
+            return;
+          }
           const filters = ['all', 'actions', 'customers', 'invoices', 'products', 'parties', 'staff', 'utilities'];
           const currIdx = filters.indexOf(filter);
           const nextIdx = e.shiftKey ? (currIdx - 1 + filters.length) % filters.length : (currIdx + 1) % filters.length;
@@ -2091,7 +2419,28 @@
 
       const activeSuggestText = (omniPlaceholders && omniPlaceholders[omniPlaceholderIdx])
         ? omniPlaceholders[omniPlaceholderIdx].replace(/^[^\w\s/]+/, '').trim()
-        : 'kharcha 120, today sales, remind rahul...';
+        : '17% of 5633';
+
+      const currentAutofill = useMemo(() => {
+        if (!query.trim()) return activeSuggestText;
+        const qLower = query.trim().toLowerCase();
+        
+        // 1. Match from omniPlaceholders
+        const pMatch = (omniPlaceholders || []).map(p => p.replace(/^[^\w\s/]+/, '').trim()).find(p => p.toLowerCase().startsWith(qLower) && p.toLowerCase() !== qLower);
+        if (pMatch) return pMatch;
+
+        // 2. Match from history
+        const hMatch = (history || []).map(h => typeof h === 'string' ? h : (h && (h.title || h.text))).find(h => h && h.toLowerCase().startsWith(qLower) && h.toLowerCase() !== qLower);
+        if (hMatch) return hMatch;
+
+        // 3. Match from actions
+        const aMatch = (BillsoftSearchEngine.ACTIONS || []).map(a => a.slashCommand || a.title).find(a => a && a.toLowerCase().startsWith(qLower) && a.toLowerCase() !== qLower);
+        if (aMatch) return aMatch;
+
+        return null;
+      }, [query, activeSuggestText, omniPlaceholders, history]);
+
+      const hasContent = Boolean(query.trim() || showGuide || inspectingItem);
 
       return ReactDOM.createPortal(
         React.createElement('div', {
@@ -2100,29 +2449,59 @@
         },
           React.createElement('div', {
             className: 'omni-container',
+            style: {
+              borderRadius: hasContent ? '14px' : '28px',
+              maxWidth: hasContent ? '680px' : '620px',
+              transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
+            },
             onClick: e => e.stopPropagation()
           },
-            // 1. Search Header Input Bar
-            React.createElement('div', { className: 'omni-search-header' },
+            // 1. Search Header Input Bar (Ultra-Clean Spotlight Pill)
+            React.createElement('div', {
+              className: 'omni-search-header',
+              style: {
+                borderBottom: hasContent ? '1px solid var(--border, #e2e8f0)' : 'none',
+                padding: hasContent ? '12px 18px' : '14px 20px'
+              }
+            },
               React.createElement('span', { style: { fontSize: '1.25rem', opacity: 0.8 } }, '🔍'),
               React.createElement('input', {
+                ref: inputRef,
                 className: 'omni-search-input',
-                placeholder: filter === 'all'
-                  ? `Search anything, e.g. "${activeSuggestText}"...`
-                  : {
-                    actions: 'Search actions (e.g. bill banao, hisab, payslip)...',
-                    customers: 'Search customers by name, phone, GSTIN, city...',
-                    invoices: 'Search invoices & quotes by number, customer, date...',
-                    products: 'Search products by name, SKU, barcode...',
-                    parties: 'Search vendors by name, contact, phone...',
-                    staff: 'Search staff by name, role, department...',
-                    utilities: 'Search tools (e.g. gst 18% on 5000, change 2000)...'
-                  }[filter] || `Search anything, e.g. "${activeSuggestText}"...`,
+                placeholder: activeSuggestText ? `${activeSuggestText}...` : 'Type a command, calculation or search (⌘K)...',
                 value: query,
                 onChange: e => setQuery(e.target.value),
                 onKeyDown: handleKeyDown,
                 autoFocus: true
               }),
+              // Snappy Tab Autofill Chip
+              (!query.trim() && activeSuggestText) ? (
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'omni-autofill-badge',
+                  onClick: () => {
+                    setQuery(activeSuggestText);
+                    if (inputRef.current) inputRef.current.focus();
+                  },
+                  title: 'Press Tab to autofill this suggestion'
+                },
+                  React.createElement('span', { style: { opacity: 0.7, marginRight: 2 } }, '⇥'),
+                  React.createElement('span', { style: { fontWeight: 600 } }, 'Tab')
+                )
+              ) : (currentAutofill && currentAutofill.toLowerCase() !== query.trim().toLowerCase()) ? (
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'omni-autofill-badge active',
+                  onClick: () => {
+                    setQuery(currentAutofill);
+                    if (inputRef.current) inputRef.current.focus();
+                  },
+                  title: 'Press Tab to complete query'
+                },
+                  React.createElement('span', { style: { opacity: 0.7, marginRight: 2 } }, '⇥ Tab:'),
+                  React.createElement('span', { style: { fontWeight: 700 } }, currentAutofill)
+                )
+              ) : null,
               query && React.createElement('button', {
                 type: 'button',
                 style: { background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem', padding: 4 },
@@ -2132,9 +2511,9 @@
               React.createElement('button', {
                 type: 'button',
                 className: `btn btn-xs ${showGuide ? 'btn-primary' : 'btn-outline'}`,
-                style: { fontSize: '0.74rem', padding: '3px 8px', fontWeight: 700, borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 },
+                style: { fontSize: '0.74rem', padding: '4px 10px', fontWeight: 700, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 },
                 onClick: () => setShowGuide(!showGuide),
-                title: showGuide ? 'Back to Search' : 'Toggle Capabilities & Cheat Sheet Guide (?)'
+                title: showGuide ? 'Back to Search' : 'Full Command Guide (?)'
               }, showGuide ? '← Search' : 'ℹ️ Guide'),
               React.createElement('button', {
                 type: 'button',
@@ -2144,58 +2523,8 @@
               }, '✕')
             ),
 
-            // Clipboard Auto-Detection Snippet
-            clipboardSnippet && !query && React.createElement('div', {
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 14px',
-                background: 'rgba(59, 130, 246, 0.08)',
-                borderBottom: '1px solid rgba(59, 130, 246, 0.2)',
-                fontSize: '0.78rem'
-              }
-            },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' } },
-                React.createElement('span', null, '📋'),
-                React.createElement('span', null, 'Detected in clipboard:'),
-                React.createElement('code', { style: { background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4, fontWeight: 700, color: 'var(--primary-color, #2563eb)' } }, clipboardSnippet)
-              ),
-              React.createElement('button', {
-                type: 'button',
-                className: 'btn btn-xs btn-primary',
-                style: { fontSize: '0.72rem', padding: '2px 8px' },
-                onClick: () => setQuery(clipboardSnippet)
-              }, '🔍 Search Now')
-            ),
-
-            // 2. Filter Pills Strip
-            React.createElement('div', { className: 'omni-filter-strip' },
-              [
-                { id: 'all', label: 'All', icon: '✨' },
-                { id: 'actions', label: 'Actions', icon: '⚡' },
-                { id: 'customers', label: 'Customers', icon: '👤' },
-                { id: 'invoices', label: 'Invoices & Quotes', icon: '📄' },
-                { id: 'products', label: 'Products', icon: '📦' },
-                { id: 'parties', label: 'Vendors', icon: '🏭' },
-                { id: 'staff', label: 'HR / Staff', icon: '🧑‍💼' },
-                { id: 'utilities', label: 'Tools & Math', icon: '🧮' }
-              ].map(f => React.createElement('button', {
-                key: f.id,
-                type: 'button',
-                className: `omni-filter-pill${filter === f.id ? ' active' : ''}`,
-                onClick: () => {
-                  setFilter(f.id);
-                  if (showGuide) setShowGuide(false);
-                }
-              },
-                React.createElement('span', null, f.icon),
-                React.createElement('span', null, f.label)
-              ))
-            ),
-
-            // 3. "Did You Mean?" Suggestions Banner
-            searchResults.suggestions && searchResults.suggestions.length > 0 && React.createElement('div', { className: 'omni-suggestion-banner' },
+            // 2. "Did You Mean?" Suggestions Banner (Only if query typed and has typo corrections)
+            query.trim() && searchResults.suggestions && searchResults.suggestions.length > 0 && React.createElement('div', { className: 'omni-suggestion-banner' },
               React.createElement('span', null, '💡 Did you mean:'),
               searchResults.suggestions.map(s => React.createElement('button', {
                 key: s.id,
@@ -2209,8 +2538,8 @@
               }, `${s.icon || '⚡'} ${s.title}`))
             ),
 
-            // 4. Results List, Clean Spotlight Default View, Full Capabilities Guide, OR In-Place Inspector
-            React.createElement('div', { className: 'omni-results-body' },
+            // 3. Results Body OR Guide (Rendered ONLY when hasContent is true)
+            hasContent && React.createElement('div', { className: 'omni-results-body' },
               inspectingItem ? (
                 React.createElement(OmniActionInspector, {
                   item: inspectingItem,
@@ -2224,284 +2553,549 @@
                   firm: firmProfile || firm || {}
                 })
               ) : showGuide ? (
-                // Full Comprehensive 6-Category Capabilities Guide (Only when explicitly opened via ℹ️ Guide)
-                React.createElement('div', { className: 'omni-power-guide-container' },
-                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 } },
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                      React.createElement('span', { style: { fontSize: '1.2rem' } }, '✨'),
-                      React.createElement('h4', { style: { margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 800 } }, 'Omnibar Capabilities & Cheat Sheet Guide'),
-                      React.createElement('span', { className: 'omni-badge-smart', style: { fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, '90+ Commands')
-                    ),
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'btn btn-xs btn-outline',
-                      onClick: () => setShowGuide(false),
-                      style: { fontSize: '0.74rem', padding: '3px 10px', borderRadius: 6 }
-                    }, '← Back to Search')
-                  ),
-                  React.createElement('div', { className: 'omni-guide-grid-2x2' },
-                    // Card 1: Smart In-Place Tasks
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '⚡'),
-                          React.createElement('span', null, 'Smart Tasks (0 Page Switch)')
+                // Full Comprehensive List-Based OmniSearch Guide with Dynamic Real DB Data
+                (() => {
+                  const sampleCustomer1 = (customers && customers[0] && (customers[0].name || customers[0].customerName)) || 'Rahul Patil';
+                  const sampleCustomer2 = (customers && customers[1] && (customers[1].name || customers[1].customerName)) || 'Gauri Shinde';
+                  const sampleVendor1 = (parties && parties[0] && (parties[0].name || parties[0].partyName)) || 'ABC Steel Traders';
+                  const sampleVendor2 = (parties && parties[1] && (parties[1].name || parties[1].partyName)) || 'Kalyan Suppliers';
+                  const sampleProduct1 = (products && products[0] && (products[0].name || products[0].productName)) || 'UltraTech Cement 50kg';
+                  const sampleProduct2 = (products && products[1] && (products[1].name || products[1].productName)) || 'Asian Paints 20L';
+                  const sampleStaff1 = (staff && staff[0] && (staff[0].name || staff[0].staffName)) || 'Sachin Kamble';
+                  const sampleStaff2 = (staff && staff[1] && (staff[1].name || staff[1].staffName)) || 'Pooja Verma';
+                  const sampleInvoice1 = (invoices && invoices[0] && (invoices[0].invoiceNumber || `INV-${invoices[0].id}`)) || 'INV-1001';
+                  const sampleInvoice2 = (invoices && invoices[1] && (invoices[1].invoiceNumber || `INV-${invoices[1].id}`)) || 'INV-1002';
+
+                  const guideSections = [
+                    {
+                      id: 'dues',
+                      title: 'Business Receivables & Dues (Live DB)',
+                      icon: '📊',
+                      badge: 'Authoritative',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: 'total udhari', desc: 'Authoritative accounts receivable total dues across all customers', icon: '💰' },
+                        { syntax: `${sampleCustomer1} udhari`, desc: `Realtime unpaid invoice balance for ${sampleCustomer1}`, icon: '👤' },
+                        { syntax: `balance of ${sampleCustomer2}`, desc: `Live customer ledger balance & payment status for ${sampleCustomer2}`, icon: '👤' },
+                        { syntax: `statement of ${sampleCustomer1}`, desc: `Full transaction history, bills & payment records for ${sampleCustomer1}`, icon: '📑' },
+                        { syntax: 'top debtors', desc: 'Ranked list of top accounts with highest outstanding market dues', icon: '📉' },
+                        { syntax: 'total payables', desc: 'Total accounts payable balance owed across all suppliers & vendors', icon: '💳' },
+                        { syntax: `payable to ${sampleVendor1}`, desc: `Outstanding purchase balance owed to ${sampleVendor1}`, icon: '🏢' },
+                        { syntax: 'top creditors', desc: 'Ranked list of suppliers owed highest pending payouts', icon: '🏢' },
+                        { syntax: 'bank details', desc: 'Registered company bank account, IFSC code, UPI ID & GSTIN', icon: '🏛️' }
+                      ]
+                    },
+                    {
+                      id: 'sales',
+                      title: 'Sales, Revenue & Profit (Live DB)',
+                      icon: '📈',
+                      badge: 'Real-Time',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: 'today sales', desc: 'Live sales revenue, invoice count & paid/unpaid split today', icon: '📈' },
+                        { syntax: 'yesterday sales', desc: 'Authoritative sales volume and invoices logged yesterday', icon: '📅' },
+                        { syntax: 'this week sales', desc: 'Cumulative weekly turnover and invoice summary', icon: '📊' },
+                        { syntax: 'this month sales', desc: 'Monthly sales turnover and total collection metrics', icon: '💰' },
+                        { syntax: 'this year revenue', desc: 'Financial year sales total and invoice volume', icon: '🗓️' },
+                        { syntax: 'this month profit', desc: 'Net profit calculation (Gross Revenue - Purchases - Expenses)', icon: '💹' },
+                        { syntax: 'top customers', desc: 'Highest grossing client accounts by total billed volume', icon: '🏆' },
+                        { syntax: 'gst report', desc: 'Tax summary breakdown (Taxable value, CGST, SGST, Total tax)', icon: '📑' },
+                        { syntax: 'total collections', desc: 'Total cash and bank payment receipts collected this period', icon: '💵' }
+                      ]
+                    },
+                    {
+                      id: 'expenses',
+                      title: 'Expenses & Business Outflows (Live DB)',
+                      icon: '💸',
+                      badge: 'Real-Time',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: 'today expenses', desc: 'Total expense outflow logged today with category breakdown', icon: '💸' },
+                        { syntax: 'this month expenses', desc: 'Monthly cumulative operating expenses & payment mode split', icon: '📊' },
+                        { syntax: 'expense category breakdown', desc: 'Category-wise expense breakdown (Rent, Utilities, Travel, Tea)', icon: '🏷️' },
+                        { syntax: 'kharcha 120 chai nashta', desc: 'Instantly logs ₹120 tea/snack expense without page switch', icon: '☕' },
+                        { syntax: 'kharcha 500 petrol delivery', desc: 'Instantly logs ₹500 travel/fuel expense to records', icon: '⛽' }
+                      ]
+                    },
+                    {
+                      id: 'hr',
+                      title: 'Staff, Attendance & Payroll (Live DB)',
+                      icon: '👥',
+                      badge: 'HR Engine',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: `salary of ${sampleStaff1}`, desc: `Salary structure, advances & net payable for ${sampleStaff1}`, icon: '🧑‍💼' },
+                        { syntax: 'salaries summary', desc: 'Firm-wide salary ledger, total monthly payroll & pending payouts', icon: '💼' },
+                        { syntax: `attendance of ${sampleStaff1}`, desc: `Monthly attendance log & present days for ${sampleStaff1}`, icon: '📅' },
+                        { syntax: `attendance ${sampleStaff1} present today`, desc: `Marks attendance for ${sampleStaff1} with one click`, icon: '✅' },
+                        { syntax: `advance of ${sampleStaff1}`, desc: `Current advance balance and repayment ledger for ${sampleStaff1}`, icon: '💵' },
+                        { syntax: `advance ${sampleStaff1} 2000`, desc: `Records salary advance of ₹2,000 for ${sampleStaff1}`, icon: '💵' },
+                        { syntax: 'staff advances', desc: 'Firm-wide employee advance balances and outstanding loans', icon: '📋' }
+                      ]
+                    },
+                    {
+                      id: 'inventory',
+                      title: 'Warehouse Inventory & Stock (Live DB)',
+                      icon: '📦',
+                      badge: 'Live Stock',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: `stock of ${sampleProduct1}`, desc: `Live warehouse inventory quantity & valuation of ${sampleProduct1}`, icon: '📦' },
+                        { syntax: 'low stock', desc: 'Critical inventory shortage alert below minimum stock levels', icon: '⚠️' },
+                        { syntax: 'stock movements', desc: 'Recent inventory inward / outward movements and adjustments', icon: '🔄' },
+                        { syntax: 'top selling products', desc: 'Highest velocity inventory items ranked by sales volume', icon: '🔥' },
+                        { syntax: 'inventory valuation', desc: 'Total warehouse asset value (Cost price & Selling price)', icon: '💎' }
+                      ]
+                    },
+                    {
+                      id: 'documents',
+                      title: 'Invoices, Estimates, Returns & Orders',
+                      icon: '🧾',
+                      badge: 'Documents',
+                      badgeClass: 'omni-badge-live',
+                      items: [
+                        { syntax: `invoice ${sampleInvoice1}`, desc: 'Instant breakdown of line items, taxes, payments & balance', icon: '📄' },
+                        { syntax: 'invoice list', desc: 'List recent billing invoices with payment status and totals', icon: '📑' },
+                        { syntax: 'unpaid invoices', desc: 'Filter all overdue and unpaid customer bills', icon: '⏳' },
+                        { syntax: `estimate ${sampleInvoice2}`, desc: 'Instant breakdown of quotation items and estimated totals', icon: '📝' },
+                        { syntax: 'estimate list', desc: 'List recent quotations and estimates issued to clients', icon: '📋' },
+                        { syntax: 'sales returns', desc: 'Sales return credit notes and refund amounts summary', icon: '↩️' },
+                        { syntax: `returns of ${sampleCustomer1}`, desc: `Credit notes and returned goods ledger for ${sampleCustomer1}`, icon: '🔄' },
+                        { syntax: 'purchase orders', desc: 'Vendor purchase orders list, pending deliveries and amounts', icon: '📦' },
+                        { syntax: 'vendor payouts', desc: 'Vendor payment payout history and settled supplier invoices', icon: '💳' }
+                      ]
+                    },
+                    {
+                      id: 'actions',
+                      title: 'Smart Fast Actions & Tools',
+                      icon: '⚡',
+                      badge: 'Instant Save',
+                      badgeClass: 'omni-badge-smart',
+                      items: [
+                        { syntax: 'customer Manoj 9822113344 Kolhapur', desc: 'Registers new customer in-place with name, phone and city', icon: '👤' },
+                        { syntax: `todo call ${sampleCustomer1} 4pm`, desc: `Pins interactive sticky task for ${sampleCustomer1} to Planner`, icon: '📌' },
+                        { syntax: 'upi 500', desc: 'Generates live dynamic on-screen UPI QR code for ₹500', icon: '📱' },
+                        { syntax: 'note client requested bulk discount', desc: 'Pins a quick business note to the dashboard scratchpad', icon: '📝' },
+                        { syntax: `remind ${sampleCustomer1}`, desc: `Opens WhatsApp draft with payment due link for ${sampleCustomer1}`, icon: '💬' }
+                      ]
+                    },
+                    {
+                      id: 'math',
+                      title: 'Spotlight Arithmetic Engine',
+                      icon: '🧮',
+                      badge: 'Safe Math',
+                      badgeClass: 'omni-badge-tools',
+                      items: [
+                        { syntax: '17% of 5633', desc: 'Base percentage calculation (= ₹957.61)', icon: '🧮' },
+                        { syntax: '5633 + 17%', desc: 'Direct percentage markup / addition (= ₹6,590.61)', icon: '📈' },
+                        { syntax: 'reduce 5633 by 17%', desc: 'Direct percentage discount / decrease (= ₹4,675.39)', icon: '🏷️' },
+                        { syntax: '(450 * 12) + 2500', desc: 'Nested parenthesized expressions with operator precedence (= 7,900)', icon: '🔢' },
+                        { syntax: 'divide 10000 by 4', desc: 'Natural English division (= 2,500)', icon: '➗' },
+                        { syntax: 'multiply 250 by 12', desc: 'Natural English multiplication (= 3,000)', icon: '✖️' },
+                        { syntax: '5000 less 750', desc: 'Natural subtraction expression (= 4,250)', icon: '➖' },
+                        { syntax: 'square of 25', desc: 'Exponent / power calculation (= 625)', icon: '📐' },
+                        { syntax: 'sqrt 144', desc: 'Square root calculation (= 12)', icon: '🍰' },
+                        { syntax: 'half of 15000', desc: 'Fractional math calculation (= 7,500)', icon: '🍰' }
+                      ]
+                    },
+                    {
+                      id: 'commercial',
+                      title: 'Commercial & Cashier Math',
+                      icon: '🏛️',
+                      badge: 'Financial',
+                      badgeClass: 'omni-badge-finance',
+                      items: [
+                        { syntax: 'gst 18% on 5000', desc: 'Base ₹5000 + CGST 9% (₹450) + SGST 9% (₹450) = ₹5,900', icon: '💰' },
+                        { syntax: 'gst 18% inclusive 5900', desc: 'Reverse GST: calculates ₹5,000 net base + ₹900 tax breakdown', icon: '🏷️' },
+                        { syntax: 'change for 2000 bill 1435', desc: 'Cash register change calculation with exact currency notes breakdown', icon: '💵' },
+                        { syntax: 'split 4500 by 4', desc: 'Divides bill evenly (₹1,125 per person)', icon: '👥' },
+                        { syntax: 'split 10000 in 2:3:5', desc: 'Divides amount by ratio (₹2000 : ₹3000 : ₹5000)', icon: '⚖️' },
+                        { syntax: '10% discount on 5000', desc: 'Calculates discounted total ₹4,500 and ₹500 savings', icon: '🏷️' },
+                        { syntax: 'margin cost 800 price 1200', desc: 'Gross margin: 33.3% margin, 50% markup, ₹400 profit', icon: '📈' },
+                        { syntax: 'emi 500000 at 9.5% for 5 years', desc: 'Monthly loan EMI, total payable, and interest breakdown', icon: '🏦' },
+                        { syntax: 'words 125000', desc: 'Converts number to English words for official bank cheques', icon: '✍️' }
+                      ]
+                    },
+                    {
+                      id: 'desi',
+                      title: 'Multilingual (Hindi, Marathi, Hinglish)',
+                      icon: '🌐',
+                      badge: 'Desi Speech',
+                      badgeClass: 'omni-badge-utils',
+                      items: [
+                        { syntax: '5000 ka 10 percent', desc: 'Hindi percentage calculation (= ₹500)', icon: '🇮🇳' },
+                        { syntax: '5000 mein 10% add karo', desc: 'Hinglish percentage increase / markup (= ₹5,500)', icon: '➕' },
+                        { syntax: '5000 se 10% kam karo', desc: 'Hinglish percentage discount / deduction (= ₹4,500)', icon: '➖' },
+                        { syntax: '5000 मध्ये 10% वाढ', desc: 'Marathi percentage increase (= ₹5,500)', icon: '🚩' },
+                        { syntax: '5000 madhun 10% kami', desc: 'Marathi percentage decrease (= ₹4,500)', icon: '🚩' },
+                        { syntax: '1.5 lakh + 50 hazar', desc: 'Indian number denomination arithmetic (= ₹2,00,000)', icon: '🔢' },
+                        { syntax: 'karmachari tankha', desc: 'Hindi resolution for employee payroll & salaries summary', icon: '🧑‍💼' },
+                        { syntax: 'vetan suchi', desc: 'Marathi resolution for employee payroll ledger', icon: '📋' },
+                        { syntax: 'mal wapas', desc: 'Hindi resolution for sales return credit notes', icon: '↩️' },
+                        { syntax: 'aaj ka dhanda', desc: 'Hindi resolution for today live sales & collection', icon: '📈' },
+                        { syntax: 'aajchi bikri', desc: 'Marathi resolution for today sales turnover', icon: '📈' },
+                        { syntax: 'jama rakkam', desc: 'Hindi resolution for payment receipts & collections', icon: '💵' },
+                        { syntax: `khata book ${sampleCustomer1}`, desc: `Hinglish resolution for ${sampleCustomer1} customer ledger`, icon: '📑' }
+                      ]
+                    },
+                    {
+                      id: 'shortcuts',
+                      title: 'System, Theme & Slash Shortcuts',
+                      icon: '⚡',
+                      badge: 'Routing & Tools',
+                      badgeClass: 'omni-badge-routing',
+                      items: [
+                        { syntax: '/theme', desc: 'Toggles light and dark UI themes instantly', icon: '🎨' },
+                        { syntax: 'dark mode', desc: 'Switches application theme to sleek dark mode', icon: '🌙' },
+                        { syntax: 'light mode', desc: 'Switches application theme to clean light mode', icon: '☀️' },
+                        { syntax: '/lock', desc: 'Locks active screen session into PIN-protected Safe Mode', icon: '🔒' },
+                        { syntax: '/inv', desc: 'Opens New Tax Invoice billing creator modal', icon: '📄' },
+                        { syntax: '/quo', desc: 'Opens New Estimate / Quotation creator', icon: '📝' },
+                        { syntax: '/khata', desc: 'Direct access to Customer Ledger & Statements', icon: '📊' },
+                        { syntax: '/pay', desc: 'Opens Staff Payroll, Attendance & Salary manager', icon: '🧑‍💼' },
+                        { syntax: '/po', desc: 'Opens Purchase Order desk for vendor orders', icon: '📦' },
+                        { syntax: '/party', desc: 'Opens Vendor & Supplier directory', icon: '🏢' },
+                        { syntax: '/stock', desc: 'Opens Inventory & Product master catalog', icon: '🏷️' },
+                        { syntax: '5 kg in grams', desc: 'Weight & trade unit conversion (= 5,000 g)', icon: '⚖️' },
+                        { syntax: '100 sqft in sqm', desc: 'Area unit conversion (= 9.29 sq m)', icon: '📐' },
+                        { syntax: '100 usd in inr', desc: 'Currency exchange calculation', icon: '💵' }
+                      ]
+                    }
+                  ];
+
+                  const runGuideQuery = (syntax) => {
+                    saveHistory(syntax);
+                    incrementFrequency(syntax);
+                    setShowGuide(false);
+
+                    const sClean = syntax.trim();
+                    const sLower = sClean.toLowerCase();
+
+                    // 1. Direct System Commands
+                    if (sLower === '/theme' || sLower === 'theme' || sLower === 'toggle theme') {
+                      if (window.toggleTheme) window.toggleTheme();
+                      if (window.showToast) window.showToast('🎨 Theme switched!', 'info');
+                      onClose();
+                      return;
+                    }
+                    if (sLower === 'dark mode' || sLower === 'dark theme') {
+                      if (window.setThemeDarkMode) window.setThemeDarkMode(true);
+                      else if (window.toggleTheme) window.toggleTheme();
+                      if (window.showToast) window.showToast('🌙 Dark mode enabled!', 'info');
+                      onClose();
+                      return;
+                    }
+                    if (sLower === 'light mode' || sLower === 'light theme') {
+                      if (window.setThemeDarkMode) window.setThemeDarkMode(false);
+                      else if (window.toggleTheme) window.toggleTheme();
+                      if (window.showToast) window.showToast('☀️ Light mode enabled!', 'info');
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/lock') {
+                      sessionStorage.setItem('isSessionLocked', 'true');
+                      window.dispatchEvent(new CustomEvent('billsoft:lock-screen'));
+                      if (window.showToast) window.showToast('🔒 Screen locked in Safe Mode', 'info');
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/inv') {
+                      onClose();
+                      if (onQuickCreate) onQuickCreate('invoice');
+                      return;
+                    }
+                    if (sLower === '/quo') {
+                      onClose();
+                      if (onQuickCreate) onQuickCreate('quotation');
+                      return;
+                    }
+                    if (sLower === '/khata') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/pay') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'payroll' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/po') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'purchase-orders' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/party') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'parties' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/stock') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'inventory' });
+                      onClose();
+                      return;
+                    }
+
+                    // 2. Interactive Action Previews (kharcha, todo, customer, advance, upi)
+                    try {
+                      if (typeof OmnibarPipeline !== 'undefined' && OmnibarPipeline.processQuery) {
+                        const pRes = OmnibarPipeline.processQuery(sClean, { firm: firmProfile || firm || {} });
+                        if (pRes && (pRes.type === 'assistant_action_preview' || pRes.type === 'smart_task' || pRes.status === 'ACTION_PREVIEW')) {
+                          setQuery(sClean);
+                          setInspectingItem(pRes);
+                          setInspectingData(pRes.editableConfig ? { ...pRes.editableConfig.initialValues } : (pRes.entities || pRes.payload || {}));
+                          return;
+                        }
+                      }
+                    } catch (e) {
+                      console.error('[Omnibar] Error pre-evaluating guide query:', e);
+                    }
+
+                    // 3. Set query for Assistant Answer / Search calculation
+                    setQuery(sClean);
+                    setTimeout(() => {
+                      if (inputRef.current) inputRef.current.focus();
+                    }, 40);
+                  };
+
+                  const fillGuideQuery = (syntax, e) => {
+                    if (e) e.stopPropagation();
+                    setQuery(syntax);
+                    setShowGuide(false);
+                    setTimeout(() => {
+                      if (inputRef.current) {
+                        inputRef.current.focus();
+                        const len = syntax.length;
+                        inputRef.current.setSelectionRange(len, len);
+                      }
+                    }, 40);
+                  };
+
+                  const filteredSections = guideSections.map(sec => {
+                    if (guideCategory !== 'all' && sec.id !== guideCategory) return null;
+                    const filteredItems = sec.items.filter(it => {
+                      if (!guideSearchText.trim()) return true;
+                      const s = guideSearchText.toLowerCase();
+                      return it.syntax.toLowerCase().includes(s) || it.desc.toLowerCase().includes(s);
+                    });
+                    if (filteredItems.length === 0) return null;
+                    return { ...sec, items: filteredItems };
+                  }).filter(Boolean);
+
+                  const totalMatchingQueries = filteredSections.reduce((acc, s) => acc + s.items.length, 0);
+
+                  const categoryTabs = [
+                    { id: 'all', label: 'All Commands' },
+                    { id: 'dues', label: '📊 Dues & Ledger' },
+                    { id: 'sales', label: '📈 Sales & Revenue' },
+                    { id: 'expenses', label: '💸 Expenses' },
+                    { id: 'hr', label: '👥 Staff & HR' },
+                    { id: 'inventory', label: '📦 Inventory' },
+                    { id: 'documents', label: '🧾 Invoices & PO' },
+                    { id: 'actions', label: '⚡ Fast Actions' },
+                    { id: 'math', label: '🧮 Math Engine' },
+                    { id: 'commercial', label: '🏛️ GST & Cashier' },
+                    { id: 'desi', label: '🌐 Multilingual' },
+                    { id: 'shortcuts', label: '⚡ Shortcuts & Theme' }
+                  ];
+
+                  return React.createElement('div', { className: 'omni-power-guide-container' },
+                    // 1. Sleek Modern Header Bar
+                    React.createElement('div', { className: 'omni-guide-header-bar' },
+                      React.createElement('div', { className: 'omni-guide-top-title-row' },
+                        React.createElement('div', { className: 'omni-guide-title-wrap' },
+                          React.createElement('span', { style: { fontSize: '1.1rem' } }, '✨'),
+                          React.createElement('h4', { className: 'omni-guide-main-heading' }, 'OmniSearch Command Cheat Sheet'),
+                          React.createElement('span', { className: 'omni-guide-count-pill' }, `${totalMatchingQueries} Available`)
                         ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-smart' }, 'Instant Save')
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-guide-action-btn',
+                          onClick: () => setShowGuide(false),
+                          style: { padding: '4px 10px', fontSize: '0.74rem' }
+                        }, '← Back to Search')
                       ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: 'kharcha 120 chai nashta', desc: '💸 Logs ₹120 expense instantly' },
-                          { syntax: 'todo call Sharma ji 4pm', desc: '📌 Pins sticky note to Planner' },
-                          { syntax: 'customer Manoj 9822113344 Kolhapur', desc: '👤 Registers new customer' },
-                          { syntax: 'remind rahul', desc: '💬 WhatsApp dues with UPI link' },
-                          { syntax: 'upi 500', desc: '📱 Live on-screen payment QR' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
-                        ))
+
+                      // 2. Search Filter Input
+                      React.createElement('div', { className: 'omni-guide-search-wrap' },
+                        React.createElement('span', { className: 'omni-guide-search-icon' }, '🔍'),
+                        React.createElement('input', {
+                          type: 'text',
+                          className: 'omni-guide-search-input',
+                          placeholder: 'Filter commands (e.g. udhari, invoice, stock, gst, salary, dark mode)...',
+                          value: guideSearchText,
+                          onChange: (e) => setGuideSearchText(e.target.value)
+                        }),
+                        guideSearchText && React.createElement('button', {
+                          type: 'button',
+                          className: 'omni-guide-search-clear',
+                          onClick: () => setGuideSearchText('')
+                        }, '✕')
+                      ),
+
+                      // 3. Category Filter Tabs
+                      React.createElement('div', { className: 'omni-guide-category-pills' },
+                        categoryTabs.map(tab => React.createElement('button', {
+                          key: tab.id,
+                          type: 'button',
+                          className: `omni-guide-pill ${guideCategory === tab.id ? 'active' : ''}`,
+                          onClick: () => setGuideCategory(tab.id)
+                        }, tab.label))
                       )
                     ),
-                    // Card 2: Live Business Intelligence
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '📊'),
-                          React.createElement('span', null, 'Live Business Analytics')
-                        ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-live' }, 'Realtime')
-                      ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: 'today sales', desc: '📈 Live billed revenue & pending' },
-                          { syntax: 'total udhari', desc: '💰 Accounts receivable dues' },
-                          { syntax: 'low stock', desc: '⚠️ Critical inventory shortage' },
-                          { syntax: 'gst report', desc: '🏛️ Sales registers & tax filings' },
-                          { syntax: 'bank details', desc: '🏛️ Firm bank, A/C, IFSC & GSTIN' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
-                        ))
-                      )
-                    ),
-                    // Card 3: Commercial & Tax Math
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '🧮'),
-                          React.createElement('span', null, 'Commercial & Tax Math')
-                        ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-tools' }, 'Calculator')
-                      ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: 'gst 18% on 5000', desc: '💰 Base + CGST & SGST breakdown' },
-                          { syntax: 'gst 18% inclusive 5900', desc: '🏷️ Reverse GST & base price' },
-                          { syntax: 'change for 2000 bill 1435', desc: '💵 Cash change & note breakdown' },
-                          { syntax: 'split 4500 by 4', desc: '👥 Divides bill evenly per person' },
-                          { syntax: '10% discount on 5000', desc: '🏷️ Net price & savings amount' },
-                          { syntax: 'margin cost 800 price 1200', desc: '📈 Profit margin & markup %' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
-                        ))
-                      )
-                    ),
-                    // Card 4: Loans, Interest & Analytics
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '🏦'),
-                          React.createElement('span', null, 'Loans, Interest & Analytics')
-                        ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-finance' }, 'Financial')
-                      ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: 'emi 500000 at 9.5% for 5 years', desc: '🏦 Monthly EMI & total interest' },
-                          { syntax: 'si 50000 at 8% for 3 years', desc: '📈 Simple interest calculation' },
-                          { syntax: 'ci 100000 at 7.5% 2yr', desc: '🔄 Compound interest & maturity' },
-                          { syntax: 'avg 120 150 180', desc: '📊 Mean, min, max & sum' },
-                          { syntax: 'split 10000 in 2:3:5', desc: '⚖️ Proportional ratio division' },
-                          { syntax: 'growth 4000 to 6000', desc: '🚀 % change & absolute difference' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
-                        ))
-                      )
-                    ),
-                    // Card 5: Units, Dates & Currency
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '🌐'),
-                          React.createElement('span', null, 'Units, Dates & Currency')
-                        ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-utils' }, 'Utilities')
-                      ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: 'words 125000', desc: '✍️ Cheque & bank words format' },
-                          { syntax: 'one lakh twenty five thousand', desc: '🔢 Words to digits (₹1,25,000)' },
-                          { syntax: '5 kg in grams', desc: '⚖️ Weight / length / volume converter' },
-                          { syntax: '2 quintal in kg', desc: '🌾 Indian units (quintal, tonne)' },
-                          { syntax: '100 usd in inr', desc: '💱 Live multi-currency conversion' },
-                          { syntax: '30 days from today', desc: '📅 Date math & day countdowns' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => { setQuery(item.syntax); setShowGuide(false); }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
-                        ))
-                      )
-                    ),
-                    // Card 6: Multilingual & Slash Commands
-                    React.createElement('div', { className: 'omni-guide-card' },
-                      React.createElement('div', { className: 'omni-guide-card-header' },
-                        React.createElement('div', { className: 'omni-guide-card-title' },
-                          React.createElement('span', null, '⚡'),
-                          React.createElement('span', null, 'Slash Commands & Trade Speech')
-                        ),
-                        React.createElement('span', { className: 'omni-guide-card-badge omni-badge-routing' }, 'Fast Routing')
-                      ),
-                      React.createElement('div', { className: 'omni-guide-chip-list' },
-                        [
-                          { syntax: '/inv • bill banao • pavti banva', desc: '📄 Tax Invoice creator' },
-                          { syntax: '/quo • kaccha bill • andaj patrak', desc: '📝 Estimate / Quotation' },
-                          { syntax: '/khata • kiska kitna udhar • dues', desc: '📊 Customer Ledger Statement' },
-                          { syntax: '/pay • send payslip • tankha', desc: '🧑‍💼 Staff Payroll & Payslips' },
-                          { syntax: '/po • kharedi order • supplier', desc: '📦 Purchase Order desk' },
-                          { syntax: '/qr • /lock • /gst • /theme', desc: '⚡ Fast system utilities' }
-                        ].map((item, i) => React.createElement('div', {
-                          key: i,
-                          className: 'omni-guide-chip-row',
-                          onClick: () => {
-                            const cmd = item.syntax.split('•')[0].trim();
-                            setQuery(cmd);
-                            setShowGuide(false);
-                          }
-                        },
-                          React.createElement('span', { className: 'omni-guide-syntax' }, item.syntax),
-                          React.createElement('span', { className: 'omni-guide-desc' }, item.desc)
+
+                    // 4. Clean List-Based Scrollable Command Rows
+                    React.createElement('div', { className: 'omni-guide-list-container' },
+                      filteredSections.length === 0 ? (
+                        React.createElement('div', { style: { padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' } },
+                          'No command matching your filter. Try searching for "udhari", "sales", "salary", or "gst".'
+                        )
+                      ) : (
+                        filteredSections.map(sec => React.createElement('div', { key: sec.id, className: 'omni-guide-category-section' },
+                          React.createElement('div', { className: 'omni-guide-section-header' },
+                            React.createElement('div', { className: 'omni-guide-section-title' },
+                              React.createElement('span', null, sec.icon),
+                              React.createElement('span', null, sec.title)
+                            ),
+                            React.createElement('span', { className: `omni-guide-card-badge ${sec.badgeClass}` }, sec.badge)
+                          ),
+                          React.createElement('div', { className: 'omni-guide-list-rows' },
+                            sec.items.map((item, idx) => React.createElement('div', {
+                              key: idx,
+                              className: 'omni-guide-list-item',
+                              onClick: () => runGuideQuery(item.syntax),
+                              title: `Click to execute "${item.syntax}"`
+                            },
+                              React.createElement('div', { className: 'omni-guide-item-left' },
+                                React.createElement('span', { className: 'omni-guide-item-icon' }, item.icon),
+                                React.createElement('span', { className: 'omni-guide-syntax-badge' }, item.syntax),
+                                React.createElement('span', { className: 'omni-guide-desc-text' }, item.desc)
+                              ),
+                              React.createElement('div', { className: 'omni-guide-item-actions' },
+                                React.createElement('button', {
+                                  type: 'button',
+                                  className: 'omni-guide-action-btn',
+                                  onClick: (e) => fillGuideQuery(item.syntax, e),
+                                  title: 'Insert into search input'
+                                }, 'Fill ✎'),
+                                React.createElement('button', {
+                                  type: 'button',
+                                  className: 'omni-guide-action-btn primary',
+                                  onClick: (e) => {
+                                    e.stopPropagation();
+                                    runGuideQuery(item.syntax);
+                                  },
+                                  title: 'Run command now'
+                                }, 'Run ↵')
+                              )
+                            ))
+                          )
                         ))
                       )
                     )
-                  )
-                )
+                  );
+                })()
               ) : (!query.trim() && filter === 'all') ? (
-                // Clean, Minimalist Spotlight Default View (Only a few essential things)
+                // Clean, Minimalist Default View: Exactly 3 Most Used + 3 Historic Queries
                 React.createElement('div', { style: { padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 14 } },
-                  // 1. Core Quick Actions
+                  // 1. Top Section: 3 Most Used Queries
                   React.createElement('div', null,
-                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } }, '⚡ Quick Actions'),
-                    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-                      (BillsoftSearchEngine.ACTIONS || []).filter(a => ['create_invoice', 'create_quotation', 'record_expense', 'customer_statements'].includes(a.id)).map(act => React.createElement('button', {
-                        key: act.id,
-                        type: 'button',
-                        className: 'omni-suggestion-chip',
-                        style: { padding: '6px 12px', borderRadius: 8, fontSize: '0.80rem' },
-                        onClick: () => {
-                          if (act.action) act.action({ navigate: onNavigate, onQuickCreate, onRefresh });
-                          onClose();
-                        }
+                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+                      React.createElement('span', null, '⚡ Most Used'),
+                      React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 } }, 'Top shortcuts')
+                    ),
+                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                      mostUsedList.map((item, idx) => React.createElement('div', {
+                        key: idx,
+                        className: 'omni-item-card',
+                        style: { padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderRadius: 8 },
+                        onClick: () => handleRunQuery(item.text)
                       },
-                        React.createElement('span', null, act.icon || '⚡'),
-                        React.createElement('span', null, act.title),
-                        act.slashCommand && React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--primary, #4f46e5)', fontFamily: 'monospace', marginLeft: 4, opacity: 0.85 } }, act.slashCommand)
+                        React.createElement('div', { className: 'omni-item-left', style: { gap: 10 } },
+                          React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.15rem' } }, item.icon || '⚡'),
+                          React.createElement('div', { className: 'omni-item-info' },
+                            React.createElement('span', { className: 'omni-item-title', style: { fontSize: '0.85rem', fontWeight: 700 } }, item.title || item.text),
+                            React.createElement('span', { className: 'omni-item-subtitle', style: { fontSize: '0.72rem' } }, item.subtitle)
+                          )
+                        ),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-outline',
+                            style: { fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6, color: 'var(--text-secondary)' },
+                            onClick: (e) => handleEditQuery(item.text, e),
+                            title: 'Load into search box to edit before executing'
+                          }, '✏️ Edit'),
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-primary',
+                            style: { fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6 },
+                            onClick: (e) => handleRunQuery(item.text, e),
+                            title: 'Execute query directly'
+                          }, '↵ Run')
+                        )
                       ))
                     )
                   ),
 
-                  // 2. Recent Items (if any, max 2)
-                  recents.length > 0 && React.createElement('div', null,
-                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } }, '🕒 Recent'),
-                    recents.slice(0, 2).map((r, idx) => React.createElement('div', {
-                      key: idx,
-                      className: 'omni-item-card',
-                      style: { padding: '8px 12px' },
-                      onClick: () => setQuery(r.title)
-                    },
-                      React.createElement('div', { className: 'omni-item-left' },
-                        React.createElement('span', { className: 'omni-item-icon' }, r.icon || '🕒'),
-                        React.createElement('div', { className: 'omni-item-info' },
-                          React.createElement('span', { className: 'omni-item-title' }, r.title),
-                          React.createElement('span', { className: 'omni-item-subtitle' }, 'Recently accessed')
+                  // 2. Bottom Section: 3 Historic Queries
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+                      React.createElement('span', null, '🕒 Recent Queries'),
+                      React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 } }, 'Search history')
+                    ),
+                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                      historicList.map((item, idx) => React.createElement('div', {
+                        key: idx,
+                        className: 'omni-item-card',
+                        style: { padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderRadius: 8 },
+                        onClick: () => handleRunQuery(item.text)
+                      },
+                        React.createElement('div', { className: 'omni-item-left', style: { gap: 10 } },
+                          React.createElement('span', { className: 'omni-item-icon', style: { fontSize: '1.15rem' } }, item.icon || '🕒'),
+                          React.createElement('div', { className: 'omni-item-info' },
+                            React.createElement('span', { className: 'omni-item-title', style: { fontSize: '0.85rem', fontWeight: 700 } }, item.text),
+                            React.createElement('span', { className: 'omni-item-subtitle', style: { fontSize: '0.72rem' } }, item.subtitle)
+                          )
+                        ),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-outline',
+                            style: { fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6, color: 'var(--text-secondary)' },
+                            onClick: (e) => handleEditQuery(item.text, e),
+                            title: 'Load into search box to edit before executing'
+                          }, '✏️ Edit'),
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'btn btn-xs btn-primary',
+                            style: { fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6 },
+                            onClick: (e) => handleRunQuery(item.text, e),
+                            title: 'Execute query directly'
+                          }, '↵ Run')
                         )
-                      )
-                    ))
+                      ))
+                    )
                   ),
 
-                  // 3. Context-Aware Progressive Discovery Chips
-                  React.createElement('div', null,
-                    React.createElement('div', { className: 'omni-group-header', style: { marginBottom: 6 } },
-                      activePage === 'invoices' ? '✨ Suggestions for Invoicing & Sales:' :
-                      activePage === 'hr' ? '✨ Suggestions for HR & Staff:' :
-                      activePage === 'firm' ? '✨ Suggestions for Customers & Inventory:' :
-                      activePage === 'paperwork' ? '✨ Suggestions for Reports & Statements:' :
-                      activePage === 'planner' ? '✨ Suggestions for Tasks & Expenses:' :
-                      '✨ Try Asking:'
-                    ),
-                    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-                      (
-                        activePage === 'invoices' ? [
-                          { label: '🧮 gst 18% on 5000', query: 'gst 18% on 5000' },
-                          { label: '🏷️ 10% discount on 2500', query: '10% discount on 2500' },
-                          { label: '💵 change for 2000 bill 1435', query: 'change for 2000 bill 1435' },
-                          { label: '📱 upi 500', query: 'upi 500' }
-                        ] :
-                        activePage === 'hr' ? [
-                          { label: '📅 mark attendance for rahul', query: 'mark attendance for rahul' },
-                          { label: '💰 5000 advance to ganesh', query: '5000 advance to ganesh' },
-                          { label: '🧑‍💼 /pay (Payroll)', query: '/pay' }
-                        ] :
-                        activePage === 'firm' ? [
-                          { label: '👤 customer Manoj 9822113344', query: 'customer Manoj 9822113344' },
-                          { label: '⚠️ low stock', query: 'low stock' },
-                          { label: '💬 remind rahul', query: 'remind rahul' }
-                        ] :
-                        activePage === 'paperwork' ? [
-                          { label: '📊 /khata (Statement)', query: '/khata' },
-                          { label: '💰 total udhari', query: 'total udhari' },
-                          { label: '📊 today sales', query: 'today sales' },
-                          { label: '🏛️ gst report', query: 'gst report' }
-                        ] :
-                        activePage === 'planner' ? [
-                          { label: '💸 kharcha 120 chai', query: 'kharcha 120 chai' },
-                          { label: '📌 todo call client 4pm', query: 'todo call client 4pm' },
-                          { label: '📌 note check balance', query: 'note check balance' }
-                        ] :
-                        [
-                          { label: '⚡ kharcha 120 chai', query: 'kharcha 120 chai' },
-                          { label: '📊 today sales', query: 'today sales' },
-                          { label: '🧮 gst 18% on 5000', query: 'gst 18% on 5000' },
-                          { label: '📱 upi 500', query: 'upi 500' }
-                        ]
-                      ).map((item, i) => React.createElement('button', {
-                        key: i,
-                        type: 'button',
-                        className: 'omni-suggestion-chip',
-                        style: { background: 'var(--bg-secondary, #f8fafc)', border: '1px dashed var(--border, #cbd5e1)', fontSize: '0.78rem', padding: '5px 10px', borderRadius: 6, cursor: 'pointer' },
-                        onClick: () => setQuery(item.query)
-                      }, item.label))
-                    )
+                  // 3. Subtle Helper Hint
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.74rem',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginTop: 2,
+                      cursor: 'pointer'
+                    },
+                    onClick: () => setShowGuide(true)
+                  },
+                    React.createElement('span', null, '💡'),
+                    React.createElement('span', null, 'Press '),
+                    React.createElement('kbd', { style: { background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)', fontFamily: 'monospace', fontWeight: 700 } }, '?'),
+                    React.createElement('span', null, ' or click '),
+                    React.createElement('strong', { style: { color: 'var(--primary, #4f46e5)' } }, 'ℹ️ Guide'),
+                    React.createElement('span', null, ' for full command reference & calculators.')
                   )
                 )
               ) : (
@@ -2513,6 +3107,8 @@
                   if (item.type === 'upi_qr' && item.qrUrl) {
                     return React.createElement('div', {
                       key: idx,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
                       className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       onClick: () => {
                         setInspectingItem(item);
@@ -2560,7 +3156,9 @@
                   if (item.type === 'upi_missing') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.35)' },
                       onClick: () => handleExecuteItem(item)
                     },
@@ -2588,7 +3186,9 @@
                     const sem = item.semanticResult || {};
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: {
                         display: 'flex',
                         flexDirection: 'column',
@@ -2672,7 +3272,57 @@
                             borderRadius: 6,
                             border: '1px solid #93c5fd'
                           }
-                        }, `📊 Today Sales: ₹${BillsoftUtils.formatCurrency(data.totalRevenue)} (${data.invoiceCount || 0} invoices)`)
+                        }, `📊 Revenue: ₹${BillsoftUtils.formatCurrency(data.totalRevenue)}`),
+                        data.totalUdhari != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#b91c1c',
+                            background: '#fee2e2',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #fca5a5'
+                          }
+                        }, `💰 Total Udhari: ₹${BillsoftUtils.formatCurrency(data.totalUdhari)}`),
+                        data.totalPayable != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#c2410c',
+                            background: '#ffedd5',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #fed7aa'
+                          }
+                        }, `🏭 Vendor Payables: ₹${BillsoftUtils.formatCurrency(data.totalPayable)}`),
+                        data.totalExpense != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#dc2626',
+                            background: '#fee2e2',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #fca5a5'
+                          }
+                        }, `💸 Expenses: ₹${BillsoftUtils.formatCurrency(data.totalExpense)}`),
+                        data.totalValuation != null && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#059669',
+                            background: '#d1fae5',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #6ee7b7'
+                          }
+                        }, `📦 Valuation: ₹${BillsoftUtils.formatCurrency(data.totalValuation)}`),
+                        data.lowStockCount != null && data.lowStockCount > 0 && React.createElement('span', {
+                          style: {
+                            fontWeight: 800,
+                            color: '#b45309',
+                            background: '#fef3c7',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #fde68a'
+                          }
+                        }, `⚠️ Low Stock: ${data.lowStockCount} items`)
                       ),
 
                       // Diagnostic Debug Mode Panel (Enabled via localStorage or Toggle)
@@ -2733,7 +3383,9 @@
                     const sem = item.semanticResult || {};
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: {
                         display: 'flex',
                         flexDirection: 'column',
@@ -2784,7 +3436,9 @@
                   if (item.type === 'assistant_clarification') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: {
                         background: 'rgba(234, 179, 8, 0.08)',
                         border: '1.5px solid rgba(234, 179, 8, 0.4)',
@@ -2809,7 +3463,9 @@
                   if (item.type === 'assistant_confirmation') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: {
                         background: 'rgba(239, 68, 68, 0.08)',
                         border: '1.5px solid rgba(239, 68, 68, 0.4)',
@@ -2834,7 +3490,9 @@
                   if (item.type === 'assistant_ambiguity') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: {
                         display: 'flex',
                         flexDirection: 'column',
@@ -2877,6 +3535,8 @@
                   if (item.suggestions && Array.isArray(item.suggestions)) {
                     return React.createElement('div', {
                       key: idx,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
                       className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 10, padding: '12px 14px' }
                     },
@@ -2919,7 +3579,9 @@
                   if (item.itemType === 'smart_task') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'pointer' },
                       onClick: () => {
                         setInspectingItem(item);
@@ -2961,6 +3623,8 @@
                   if (item.type === 'conversion') {
                     return React.createElement('div', {
                       key: idx,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
                       className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)' },
                       onClick: () => handleExecuteItem(item)
@@ -3003,6 +3667,8 @@
                   if (item.type === 'conversion_suggestion') {
                     return React.createElement('div', {
                       key: idx,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
                       className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.25)', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }
                     },
@@ -3036,7 +3702,9 @@
                   if (item.type === 'conversion_ambiguous') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.35)', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }
                     },
                       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%' } },
@@ -3068,7 +3736,9 @@
                   if (item.type === 'conversion_error') {
                     return React.createElement('div', {
                       key: idx,
-                      className: `omni-item-card highlighted`,
+                      ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                      onMouseEnter: () => setHighlightedIndex(idx),
+                      className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                       style: { background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)' }
                     },
                       React.createElement('div', { className: 'omni-item-left' },
@@ -3086,6 +3756,8 @@
 
                   return React.createElement('div', {
                     key: idx,
+                    ref: isHighlighted ? (el => { if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }) : null,
+                    onMouseEnter: () => setHighlightedIndex(idx),
                     className: `omni-item-card${isHighlighted ? ' highlighted' : ''}`,
                     onClick: () => handleExecuteItem(item)
                   },
@@ -3284,15 +3956,32 @@
               )
             ),
 
-            // 6. Modal Footer & Keybinding hints
-            React.createElement('div', { className: 'omni-modal-footer' },
+            // 6. Modal Footer & Keybinding hints (Rendered ONLY when hasContent is true)
+            hasContent && React.createElement('div', { className: 'omni-modal-footer' },
               React.createElement('div', { className: 'omni-footer-hints' },
                 React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '↑↓'), ' Navigate'),
                 React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '↵ Enter'), ' Select'),
                 React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, 'Tab'), ' Filter'),
-                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '?'), ' Guide')
+                React.createElement('span', null, React.createElement('span', { className: 'omni-footer-hint-badge' }, '?'), ' Guide'),
+                query.trim() && React.createElement('span', {
+                  style: {
+                    fontSize: '0.70rem',
+                    color: '#059669',
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    marginLeft: 6,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(5, 150, 105, 0.08)',
+                    border: '1px solid rgba(5, 150, 105, 0.2)'
+                  },
+                  title: 'Real-time query execution latency'
+                }, `⚡ ${(searchResults.durationMs || 0.4).toFixed(1)}ms`)
               ),
-              React.createElement('div', null,
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                query.trim() && React.createElement('span', {
+                  style: { fontSize: '0.70rem', color: 'var(--text-muted)', fontFamily: 'monospace' }
+                }, `${flattenedItems.length} match${flattenedItems.length === 1 ? '' : 'es'}`),
                 React.createElement('span', { className: 'omni-footer-hint-badge' }, 'ESC'), ' to close'
               )
             ),
@@ -3474,30 +4163,6 @@
                 Icons.plus,
                 'Quote'
               )
-            )
-          ),
-          // Sidebar Omnibar AI Smart Trigger
-          onOpenGlobalSearch && React.createElement('div', { className: 'sidebar-omnibar-container' },
-            React.createElement('button', {
-              type: 'button',
-              className: 'sidebar-omnibar-widget',
-              onClick: () => {
-                onOpenGlobalSearch();
-                if (setMobileOpen) setMobileOpen(false);
-              },
-              title: 'Universal AI Omnibar & Command Assistant (Cmd+K / Ctrl+K or /)'
-            },
-              React.createElement('span', { className: 'omni-sparkle-icon' }, '✨'),
-              React.createElement('div', { className: 'omni-content-col' },
-                React.createElement('div', { className: 'omni-top-label' },
-                  React.createElement('span', null, 'AI Assistant'),
-                  React.createElement('span', { style: { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' } })
-                ),
-                React.createElement('div', { key: omniPlaceholderIdx, className: 'omni-cycler-text' },
-                  (omniPlaceholders && omniPlaceholders[omniPlaceholderIdx]) || 'Search or ask anything...'
-                )
-              ),
-              React.createElement('span', { className: 'omni-shortcut-badge' }, (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0) ? '⌘K' : 'Ctrl+K')
             )
           ),
           React.createElement('nav', { className: 'sidebar-nav' },
@@ -25715,50 +26380,133 @@
       const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
       const omniPlaceholders = useMemo(() => [
-        // 1. Instant Smart Actions
-        '⚡ kharcha 120 chai',
-        '📌 todo call Sharma ji',
-        '👤 customer Manoj',
-        '💬 remind rahul dues',
-        '📱 upi 500 qr',
-        // 2. Live Business Intelligence
-        '📊 today sales',
+        // 1. Live Receivables & Customer Dues
         '💰 total udhari',
-        '⚠️ low stock alert',
-        '🏛️ gst report',
-        '🏦 bank details',
-        // 3. Commercial & Tax Math
-        '🧮 gst 18% on 5000',
-        '🏷️ gst 18% inclusive',
-        '💵 change for 2000',
+        '👤 Rahul udhari',
+        '📊 balance of Gauri',
+        '📑 statement of Rahul Patil',
+        '📉 top debtors',
+        '💳 total payables',
+        '🏢 payable to Tata Steel',
+        '🏢 top creditors',
+        '🏛️ bank details',
+
+        // 2. Sales, Revenue & Turnover
+        '📈 today sales',
+        '📅 yesterday sales',
+        '📊 this week sales',
+        '💰 this month sales',
+        '🗓️ this year revenue',
+        '💹 this month profit',
+        '🏆 top customers',
+        '📑 gst report',
+        '💵 total collections',
+
+        // 3. Expenses & Outflows
+        '💸 today expenses',
+        '📊 this month expenses',
+        '🏷️ expense category breakdown',
+        '☕ kharcha 120 chai nashta',
+        '⛽ kharcha 500 petrol delivery',
+
+        // 4. Staff, HR & Payroll
+        '🧑‍💼 salary of Sachin',
+        '💼 salaries summary',
+        '📅 attendance of Sachin',
+        '✅ attendance Sachin present today',
+        '💵 advance of Sachin',
+        '💵 advance Sachin 2000',
+        '📋 staff advances',
+
+        // 5. Warehouse Inventory & Low Stock
+        '📦 stock of Cement 50kg',
+        '⚠️ low stock',
+        '🔄 stock movements',
+        '🔥 top selling products',
+        '💎 inventory valuation',
+
+        // 6. Invoices, Quotations & Purchase Orders
+        '📄 invoice INV-1001',
+        '📑 invoice list',
+        '⏳ unpaid invoices',
+        '📝 estimate EST-201',
+        '📋 estimate list',
+        '↩️ sales returns',
+        '🔄 returns of Rahul',
+        '📦 purchase orders',
+        '💳 vendor payouts',
+
+        // 7. Instant Actions & Fast Notes
+        '👤 customer Manoj 9822113344 Kolhapur',
+        '📌 todo call Sharma ji 4pm',
+        '📱 upi 500',
+        '📝 note client requested bulk discount',
+        '💬 remind Rahul',
+
+        // 8. Spotlight Arithmetic & Percentages
+        '🧮 17% of 5633',
+        '📈 5633 + 17%',
+        '🏷️ reduce 5633 by 17%',
+        '🔢 (450 * 12) + 2500',
+        '➗ divide 10000 by 4',
+        '✖️ multiply 250 by 12',
+        '➖ 5000 less 750',
+        '📐 square of 25',
+        '🍰 sqrt 144',
+        '🍰 half of 15000',
+
+        // 9. Commercial, GST & Cashier Math
+        '💰 gst 18% on 5000',
+        '🏷️ gst 18% inclusive 5900',
+        '💵 change for 2000 bill 1435',
         '👥 split 4500 by 4',
-        '🏷️ 10% discount',
-        '📈 margin cost 800',
-        // 4. Loans, Interest & Analytics
-        '🏦 emi 5L at 9.5%',
-        '📈 simple interest',
-        '🔄 compound interest',
-        '📊 avg 120 150 180',
-        '⚖️ split in 2:3:5',
-        // 5. Units, Dates & Currency
+        '⚖️ split 10000 in 2:3:5',
+        '🏷️ 10% discount on 5000',
+        '📈 margin cost 800 price 1200',
+        '🏦 emi 500000 at 9.5% for 5 years',
         '✍️ words 125000',
-        '🔢 one lakh twenty k',
+
+        // 10. Multilingual & Vernacular Speech
+        '🇮🇳 5000 ka 10 percent',
+        '➕ 5000 mein 10% add karo',
+        '➖ 5000 se 10% kam karo',
+        '🚩 5000 मध्ये 10% वाढ',
+        '🚩 5000 madhun 10% kami',
+        '🔢 1.5 lakh + 50 hazar',
+        '🧑‍💼 karmachari tankha',
+        '📋 vetan suchi',
+        '↩️ mal wapas',
+        '📈 aaj ka dhanda',
+        '📈 aajchi bikri',
+        '💵 jama rakkam',
+        '📑 khata book Rahul',
+
+        // 11. System, Theme & Shortcuts
+        '🎨 /theme (Toggle Theme)',
+        '🌙 dark mode',
+        '☀️ light mode',
+        '🔒 /lock (Lock Safe Mode)',
+        '📄 /inv (New Invoice)',
+        '📝 /quo (New Estimate)',
+        '📊 /khata (Ledger & Statement)',
+        '🧑‍💼 /pay (Staff Payroll)',
+        '📦 /po (Purchase Order)',
+        '🏢 /party (Vendor Directory)',
+        '🏷️ /stock (Product Catalog)',
         '⚖️ 5 kg in grams',
-        '🌾 2 quintal in kg',
-        '💱 100 usd in inr',
-        '📅 30 days from today',
-        // 6. Multilingual Trade Speech & Slash Commands
-        '⚡ /inv • bill banao',
-        '📝 /quo • kaccha bill',
-        '📊 /khata • dues',
-        '🧑‍💼 /pay • tankha',
-        '📦 /po • purchase'
+        '📐 100 sqft in sqm',
+        '💵 100 usd in inr'
       ], []);
       const [omniPlaceholderIdx, setOmniPlaceholderIdx] = useState(0);
 
       useEffect(() => {
+        if (!omniPlaceholders.length) return;
         const interval = setInterval(() => {
-          setOmniPlaceholderIdx(prev => (prev + 1) % omniPlaceholders.length);
+          setOmniPlaceholderIdx(prev => {
+            const len = omniPlaceholders.length;
+            const step = Math.floor(Math.random() * (len - 1)) + 1;
+            return (prev + step) % len;
+          });
         }, 2800);
         return () => clearInterval(interval);
       }, [omniPlaceholders.length]);
@@ -26578,6 +27326,16 @@
                 title: 'Open navigation menu'
               }, Icons.menu),
               React.createElement('h1', { className: 'topbar-title' }, current.title)
+            ),
+            // Simple Topbar Search Pill
+            React.createElement('div', {
+              className: 'topbar-search-pill',
+              onClick: () => setShowGlobalSearch(true),
+              title: 'Open OmniSearch (⌘K / Ctrl+K)'
+            },
+              React.createElement('span', { style: { fontSize: '0.85rem', opacity: 0.7 } }, '🔍'),
+              React.createElement('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, (omniPlaceholders && omniPlaceholders[omniPlaceholderIdx]) ? `${omniPlaceholders[omniPlaceholderIdx]}...` : 'Search anything (⌘K)...'),
+              React.createElement('kbd', null, (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0) ? '⌘K' : 'Ctrl+K')
             ),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
               // Mobile search icon button

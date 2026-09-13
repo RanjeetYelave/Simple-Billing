@@ -2802,8 +2802,8 @@ const BillsoftSearchEngine = {
     const qClean = this.cleanNaturalQuery(q) || q;
     const suggestions = [];
 
-    // Check financial & utility suggestions
-    if (/^\d+(\.\d+)?%?$/.test(q) || /^\d+\s*%/i.test(q)) {
+    // Check financial & utility suggestions ONLY for standalone numbers/percentages (e.g. "18%", "5%")
+    if (/^\d+(\.\d+)?\s*%?$/.test(q)) {
       const num = parseFloat(q);
       if (!isNaN(num)) {
         suggestions.push({
@@ -2977,18 +2977,88 @@ const BillsoftSearchEngine = {
       return m ? m[1] : null;
     },
 
-    // Extract Natural Language Date & Time (12h/24h, today, tomorrow, weekday, Hindi/Marathi phrases)
+    // Extract Natural Language Date & Time (12h/24h, today, tomorrow, calendar dates, weekday, Hindi/Marathi phrases)
     extractDateTime(text, refDate = new Date()) {
       if (!text) return null;
+      if (typeof window !== 'undefined' && window.OmnibarPipeline && window.OmnibarPipeline.RoleResolver && window.OmnibarPipeline.RoleResolver.extractDateTime) {
+        return window.OmnibarPipeline.RoleResolver.extractDateTime(text, refDate);
+      }
+      if (typeof BillsoftOmnibarPipeline !== 'undefined' && BillsoftOmnibarPipeline.RoleResolver && BillsoftOmnibarPipeline.RoleResolver.extractDateTime) {
+        return BillsoftOmnibarPipeline.RoleResolver.extractDateTime(text, refDate);
+      }
       const q = text.trim();
-
       let targetDate = new Date(refDate.getTime());
       let hasDate = false;
       let hasTime = false;
       let rawTimeStr = '';
       let rawDateStr = '';
 
-      // 1. Relative Offsets: "in 10 minutes", "in 2 hours", "in 3 days", "15 min baad"
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthMap = {
+        january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
+        may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
+        september: 8, sept: 8, sep: 8, october: 9, oct: 9, november: 10, nov: 10, december: 11, dec: 11
+      };
+
+      // 1. Explicit Calendar Dates
+      const dateMonthRegex = /(?:\b(?:on|dated|for)\s+)?\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?:\s*,?\s*(\d{4}))?\b/i;
+      const dmMatch = q.match(dateMonthRegex);
+      if (dmMatch) {
+        const day = parseInt(dmMatch[1], 10);
+        const mIdx = monthMap[dmMatch[2].toLowerCase()];
+        const yr = dmMatch[3] ? parseInt(dmMatch[3], 10) : targetDate.getFullYear();
+        if (mIdx !== undefined && day >= 1 && day <= 31) {
+          targetDate.setFullYear(yr, mIdx, day);
+          hasDate = true;
+          rawDateStr = dmMatch[0];
+        }
+      }
+
+      if (!hasDate) {
+        const monthDateRegex = /(?:\b(?:on|dated|for)\s+)?\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i;
+        const mdMatch = q.match(monthDateRegex);
+        if (mdMatch) {
+          const mIdx = monthMap[mdMatch[1].toLowerCase()];
+          const day = parseInt(mdMatch[2], 10);
+          const yr = mdMatch[3] ? parseInt(mdMatch[3], 10) : targetDate.getFullYear();
+          if (mIdx !== undefined && day >= 1 && day <= 31) {
+            targetDate.setFullYear(yr, mIdx, day);
+            hasDate = true;
+            rawDateStr = mdMatch[0];
+          }
+        }
+      }
+
+      if (!hasDate) {
+        const isoMatch = q.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/);
+        if (isoMatch) {
+          const yr = parseInt(isoMatch[1], 10);
+          const mon = parseInt(isoMatch[2], 10) - 1;
+          const day = parseInt(isoMatch[3], 10);
+          if (mon >= 0 && mon <= 11 && day >= 1 && day <= 31) {
+            targetDate.setFullYear(yr, mon, day);
+            hasDate = true;
+            rawDateStr = isoMatch[0];
+          }
+        }
+      }
+
+      if (!hasDate) {
+        const dmyMatch = q.match(/(?:\b(?:on|dated|for)\s+)?\b(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?\b/);
+        if (dmyMatch) {
+          const day = parseInt(dmyMatch[1], 10);
+          const mon = parseInt(dmyMatch[2], 10) - 1;
+          let yr = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : targetDate.getFullYear();
+          if (yr < 100) yr += 2000;
+          if (mon >= 0 && mon <= 11 && day >= 1 && day <= 31) {
+            targetDate.setFullYear(yr, mon, day);
+            hasDate = true;
+            rawDateStr = dmyMatch[0];
+          }
+        }
+      }
+
+      // 2. Relative Offsets: "in 10 minutes", "in 2 hours", "in 3 days", "15 min baad"
       const relOffsetMatch = q.match(/\b(?:in\s+)?(\d+)\s*(mins?|minutes?|hrs?|hours?|ghante?|days?|din)\s*(?:baad|later|after)?\b/i);
       if (relOffsetMatch) {
         const val = parseInt(relOffsetMatch[1], 10);
@@ -3006,7 +3076,7 @@ const BillsoftSearchEngine = {
         rawTimeStr = relOffsetMatch[0];
       }
 
-      // 2. Relative Dates: "today", "tomorrow", "kal", "udya", "day after tomorrow", "parso", "parva"
+      // 3. Relative Dates: "today", "tomorrow", "kal", "udya", "day after tomorrow", "parso", "parva"
       if (!hasDate) {
         if (/\b(?:day\s+after\s+tomorrow|parso|parva)\b/i.test(q)) {
           targetDate.setDate(targetDate.getDate() + 2);
@@ -3022,7 +3092,7 @@ const BillsoftSearchEngine = {
         }
       }
 
-      // 3. Weekday detection: "next monday", "this friday", "somvar", "shukrawar", etc.
+      // 4. Weekday detection
       if (!hasDate) {
         const daysMap = {
           sunday: 0, ravivar: 0, aitwar: 0,
@@ -3047,7 +3117,7 @@ const BillsoftSearchEngine = {
         }
       }
 
-      // 4a. 12-hour with am/pm (e.g. "11 pm", "11:30 am", "4pm", "at 11 pm", "11.30 pm")
+      // 5. 12-hour with am/pm
       const time12Match = q.match(/(?:at\s+)?\b(\d{1,2})(?::(\d{2})|\.(\d{2}))?\s*(am|pm)\b/i);
       if (time12Match) {
         let hours = parseInt(time12Match[1], 10);
@@ -3060,7 +3130,7 @@ const BillsoftSearchEngine = {
         rawTimeStr = time12Match[0];
       }
 
-      // 4b. Hindi/Marathi time phrasing (e.g. "shaam 6 baje", "shaam ko 6 baje", "subah 9:30 baje", "sakali 8 vajta")
+      // 6. Desi time phrasing
       if (!hasTime) {
         const desiPrefixMatch = q.match(/\b(?:(?:shaam|dopahar|sandhyakali|ratre|raat|evening|night|subah|sakali|morning)(?:\s+(?:ko|chya|la|pe))?\s+)(\d{1,2})(?::(\d{2})|\.(\d{2}))?(?:\s*(?:baje|vajta|vaje))?\b/i);
         const desiSuffixMatch = q.match(/\b(\d{1,2})(?::(\d{2})|\.(\d{2}))?\s*(?:baje|vajta|vaje)(?:\s+(?:ko|chya|la|pe))?(?:\s+(?:shaam|dopahar|sandhyakali|ratre|raat|evening|night|subah|sakali|morning))?\b/i);
@@ -3076,76 +3146,70 @@ const BillsoftSearchEngine = {
         }
       }
 
-      // 4c. 24-hour time: "at 14:30", "at 23:00"
+      // 7. 24-hour time
       if (!hasTime) {
-        const time24Match = q.match(/\bat\s+(\d{1,2}):(\d{2})\b/i);
+        const time24Match = q.match(/(?:at\s+)?\b([01]?\d|2[0-3]):([0-5]\d)\b/i);
         if (time24Match) {
           const hours = parseInt(time24Match[1], 10);
           const minutes = parseInt(time24Match[2], 10);
-          if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-            targetDate.setHours(hours, minutes, 0, 0);
-            hasTime = true;
-            rawTimeStr = time24Match[0];
-          }
-        }
-      }
-
-      // 4d. Standalone "at 11" or "at 4"
-      if (!hasTime) {
-        const atHourMatch = q.match(/\bat\s+(\d{1,2})\b/i);
-        if (atHourMatch) {
-          let hours = parseInt(atHourMatch[1], 10);
-          if (hours >= 1 && hours <= 12) {
-            if (hours <= 7) hours += 12;
-            targetDate.setHours(hours, 0, 0, 0);
-            hasTime = true;
-            rawTimeStr = atHourMatch[0];
-          }
+          targetDate.setHours(hours, minutes, 0, 0);
+          hasTime = true;
+          rawTimeStr = time24Match[0];
         }
       }
 
       if (!hasDate && !hasTime) return null;
 
-      if (hasTime && !hasDate) {
-        if (targetDate.getTime() < refDate.getTime()) {
-          targetDate.setDate(targetDate.getDate() + 1);
+      const yyyy = targetDate.getFullYear();
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      const isoDate = `${yyyy}-${mm}-${dd}`;
+      const monStr = monthNames[targetDate.getMonth()];
+      let label = `${targetDate.getDate()} ${monStr} ${yyyy}`;
+      const now = new Date();
+      if (now.toDateString() === targetDate.toDateString()) label = 'Today';
+      else if (new Date(now.getTime() + 86400000).toDateString() === targetDate.toDateString()) label = 'Tomorrow';
+
+      let formatted = label;
+      if (hasTime) {
+        let h = targetDate.getHours();
+        const m = String(targetDate.getMinutes()).padStart(2, '0');
+        const mer = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        formatted += `, ${h}:${m} ${mer}`;
+      }
+
+      let cleanTitle = q
+        .replace(/^(?:please\s+)?(?:set\s+reminder\s+for|set\s+reminder|create\s+reminder\s+for|create\s+reminder|add\s+reminder\s+for|add\s+reminder|reminder\s+for|reminder\s+to|remind\s+me\s+to|remind\s+me|reminder|remind|todo\s+to|todo|task\s+to|task|alarm\s+for|alarm|yaad\s+dilao|yaad\s+dilana|aathvan\s+kara|athvan\s+kara)\s+/gi, '');
+
+      if (rawDateStr) {
+        for (const p of rawDateStr.split(/\s+/).filter(Boolean)) {
+          cleanTitle = cleanTitle.replace(new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
         }
       }
-      if (hasDate && !hasTime) {
-        targetDate.setHours(9, 0, 0, 0);
+      if (rawTimeStr) {
+        for (const p of rawTimeStr.split(/\s+/).filter(Boolean)) {
+          cleanTitle = cleanTitle.replace(new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
+        }
       }
+      cleanTitle = cleanTitle
+        .replace(/\b(at|on|for|dated|by|today|tomorrow|yesterday|aaj|kal|udya|parso|tonight|pm|am|baje|vajta|shaam|subah|sakali|dopahar|raat|ko|la|pe)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-      const pad = (n) => String(n).padStart(2, '0');
-      const year = targetDate.getFullYear();
-      const month = pad(targetDate.getMonth() + 1);
-      const day = pad(targetDate.getDate());
-      const hours = targetDate.getHours();
-      const minutes = pad(targetDate.getMinutes());
-      const isPM = hours >= 12;
-      const h12 = hours % 12 === 0 ? 12 : hours % 12;
-      const timeFormatted = `${h12}:${minutes} ${isPM ? 'PM' : 'AM'}`;
-
-      const isToday = targetDate.toDateString() === refDate.toDateString();
-      const tomDate = new Date(refDate.getTime());
-      tomDate.setDate(tomDate.getDate() + 1);
-      const isTomorrow = targetDate.toDateString() === tomDate.toDateString();
-
-      let dateFormatted = '';
-      if (isToday) dateFormatted = 'Today';
-      else if (isTomorrow) dateFormatted = 'Tomorrow';
-      else {
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        dateFormatted = `${monthNames[targetDate.getMonth()]} ${targetDate.getDate()}`;
+      if (cleanTitle.length > 0) {
+        cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
       }
-
-      const isoString = `${year}-${month}-${day}T${pad(hours)}:${minutes}:00`;
-      const formatted = `${dateFormatted} at ${timeFormatted}`;
 
       return {
-        dueDate: isoString,
+        date: isoDate,
+        dueDate: isoDate,
         formatted,
-        timeFormatted,
-        dateFormatted,
+        timeFormatted: formatted,
+        dateFormatted: label,
+        label,
+        cleanTitle,
+        isScheduled: hasDate || hasTime,
         rawMatch: [rawDateStr, rawTimeStr].filter(Boolean).join(' ')
       };
     }
@@ -3169,7 +3233,7 @@ const BillsoftSearchEngine = {
         .trim();
       return {
         amount,
-        title: notes || 'Daily Expense'
+        title: notes ? (notes.charAt(0).toUpperCase() + notes.slice(1)) : 'Daily Expense'
       };
     }
     return { partial: true, intent: 'expense' };
@@ -3180,19 +3244,17 @@ const BillsoftSearchEngine = {
     const q = raw.trim();
     if (!q || q.length < 3) return null;
 
-    // Do not conflict with sticky notes (e.g. "note ...") or customer ("customer ...")
     if (/^(?:note|sticky\s+note|tippan|chitthi)\b/i.test(q)) return null;
 
-    const isExplicitReminder = /\b(remind|reminder|alarm|yaad\s+dilao|aathvan\s+kara)\b/i.test(q);
+    const isExplicitReminder = /\b(remind|reminder|alarm|yaad\s+dilao|yaad\s+dilana|aathvan\s+kara|athvan\s+kara)\b/i.test(q);
     const isTaskOrTodo = /^(?:todo|task|kam|kaam)\b/i.test(q);
     const dt = this.NLP.extractDateTime(q);
 
     if (!isExplicitReminder && !isTaskOrTodo && !dt) return null;
 
-    let title = q
-      .replace(/^(?:please\s+)?(?:remind\s+me\s+to|remind\s+me|reminder\s+to|reminder\s+for|reminder|remind|set\s+reminder\s+for|set\s+reminder|alarm\s+for|alarm|yaad\s+dilao|aathvan\s+kara)\s+/gi, '')
-      .replace(/^(?:todo|task|kam|kaam)\s+(?:to\s+)?/gi, '')
-      .replace(/^(?:remind\s+me\s+to|remind\s+me|reminder\s+to|remind)\s+/gi, '');
+    let title = (dt && dt.cleanTitle && dt.cleanTitle.length > 0) ? dt.cleanTitle : q
+      .replace(/^(?:please\s+)?(?:set\s+reminder\s+for|set\s+reminder|create\s+reminder\s+for|create\s+reminder|add\s+reminder\s+for|add\s+reminder|reminder\s+for|reminder\s+to|remind\s+me\s+to|remind\s+me|reminder|remind|todo\s+to|todo|task\s+to|task|alarm\s+for|alarm|yaad\s+dilao|yaad\s+dilana|aathvan\s+kara|athvan\s+kara)\s+/gi, '')
+      .replace(/^(?:todo|task|kam|kaam)\s+(?:to\s+)?/gi, '');
 
     if (dt && dt.rawMatch) {
       const rawParts = dt.rawMatch.split(/\s+/).filter(Boolean);
@@ -3217,13 +3279,13 @@ const BillsoftSearchEngine = {
       return null;
     }
 
-    const isScheduled = !!dt;
+    const isScheduled = !!(dt && dt.isScheduled);
     const itemType = (isExplicitReminder || isScheduled) ? 'reminder' : 'task';
 
     return {
       title,
-      dueDate: dt ? dt.dueDate : null,
-      timeFormatted: dt ? dt.formatted : null,
+      dueDate: dt ? (dt.dueDate || dt.date) : null,
+      timeFormatted: dt ? (dt.timeFormatted || dt.formatted || dt.label) : null,
       type: itemType,
       isScheduled
     };
@@ -4611,9 +4673,15 @@ const BillsoftSearchEngine = {
       actions: [],
       customers: [],
       invoices: [],
+      estimates: [],
       products: [],
       parties: [],
       staff: [],
+      purchaseOrders: [],
+      expenses: [],
+      returns: [],
+      letters: [],
+      reminders: [],
       suggestions: [],
       assistantResult: null
     };
@@ -4622,9 +4690,15 @@ const BillsoftSearchEngine = {
 
     const customers = this.ensureArray(ctx.customers);
     const invoices = this.ensureArray(ctx.invoices);
+    const estimates = this.ensureArray(ctx.estimates);
     const products = this.ensureArray(ctx.products);
     const parties = this.ensureArray(ctx.parties);
     const staff = this.ensureArray(ctx.staff);
+    const purchaseOrders = this.ensureArray(ctx.purchaseOrders);
+    const expenses = this.ensureArray(ctx.expenses);
+    const returns = this.ensureArray(ctx.returns);
+    const letters = this.ensureArray(ctx.letters);
+    const reminders = this.ensureArray(ctx.reminders);
 
     // ─────────────────────────────────────────────────────────────
     // STEP 1: AUTHORITATIVE SEMANTIC REASONING PIPELINE (OmnibarPipeline)
@@ -4639,77 +4713,143 @@ const BillsoftSearchEngine = {
     if (semanticRes && semanticRes.status && semanticRes.status !== 'NO_MATCH' && semanticRes.status !== 'SEARCH_RECORDS' && semanticRes.status !== 'ERROR') {
       results.assistantResult = semanticRes;
 
-      // PRECEDENCE LEVEL 1: CONFIRMATION_REQUIRED
-      if (semanticRes.status === 'CONFIRMATION_REQUIRED') {
-        const confItem = {
-          type: 'assistant_confirmation',
-          itemType: 'assistant_confirmation',
-          isAuthoritativeAnswer: true,
-          priority: 1000,
-          semanticResult: semanticRes,
-          title: semanticRes.message || '⚠️ Confirmation Required',
-          subtitle: `High-risk action: ${semanticRes.intent}. Explicit confirmation required before proceeding.`,
-          riskLevel: semanticRes.riskLevel || 'HIGH',
-          entities: semanticRes.entities,
-          plan: semanticRes.plan,
-          icon: '⚠️',
-          badge: 'Confirmation Required',
-          action: () => { }
+      // 1. DIRECT ACTIONS (Immediate Execution, e.g. Theme Toggle, App Lock)
+      if (semanticRes.status === 'DIRECT_ACTION') {
+        const actItem = {
+          id: (semanticRes.capabilityId || 'direct_action').toLowerCase(),
+          title: semanticRes.title || '⚡ Direct Action',
+          subtitle: semanticRes.subtitle || 'Execute immediately',
+          icon: semanticRes.capabilityId === 'ACT_THEME_TOGGLE' ? '🎨' : '🔒',
+          badge: '⚡ Action',
+          category: 'actions',
+          action: () => {
+            if (semanticRes.action === 'THEME_TOGGLE') {
+              const isDark = document.body.classList.contains('theme-dark');
+              if (isDark) {
+                document.body.classList.remove('theme-dark');
+                try { localStorage.setItem('billsoft_theme', 'light'); } catch (e) { }
+              } else {
+                document.body.classList.add('theme-dark');
+                try { localStorage.setItem('billsoft_theme', 'dark'); } catch (e) { }
+              }
+              window.dispatchEvent(new CustomEvent('billsoft:theme-change'));
+            } else if (semanticRes.action === 'APP_LOCK') {
+              window.dispatchEvent(new CustomEvent('billsoft:app-lock'));
+            }
+          }
         };
-        results.utilities.push(confItem);
-        return results; // Decisive semantic result: do NOT merge unrelated legacy search candidates!
+        results.actions.push(actItem);
+        return results;
       }
 
-      // PRECEDENCE LEVEL 2: ACTION_PREVIEW
+      // 2. DIRECT NAVIGATION
+      if (semanticRes.status === 'NAVIGATE') {
+        const navTarget = semanticRes.target;
+        if (navTarget) {
+          results.actions.push({
+            id: (semanticRes.capabilityId || 'navigate').toLowerCase(),
+            title: semanticRes.title || `Open ${navTarget.page}`,
+            subtitle: semanticRes.subtitle || `Navigate directly to ${navTarget.page}`,
+            icon: '⚡',
+            badge: '⚡ Action',
+            target: navTarget,
+            action: () => BillsoftSearchEngine.dispatchNavigate(navTarget)
+          });
+          return results;
+        }
+      }
+
+      // 3. ACTION PREVIEW (Mutations requiring confirmation card)
       if (semanticRes.status === 'ACTION_PREVIEW') {
+        const cap = semanticRes.capabilityId || '';
+        const kind = (semanticRes.editableConfig && semanticRes.editableConfig.kind) ||
+                     (cap === 'ACT_CREATE_EXPENSE' ? 'expense' :
+                      cap === 'ACT_CREATE_TASK' ? 'task' :
+                      cap === 'ACT_CREATE_NOTE' ? 'note' :
+                      cap === 'ACT_CREATE_CUSTOMER' ? 'customer' :
+                      cap === 'ACT_MARK_ATTENDANCE' ? 'attendance' :
+                      cap === 'ACT_RECORD_ADVANCE' ? 'advance' : 'task');
         const previewItem = {
           type: 'assistant_action_preview',
           itemType: 'assistant_action_preview',
           isAuthoritativeAnswer: true,
           priority: 1000,
           semanticResult: semanticRes,
-          title: semanticRes.message || '⚡ Action Preview',
-          subtitle: `Ready to execute ${semanticRes.intent}. Review details before saving.`,
-          riskLevel: semanticRes.riskLevel || 'LOW',
+          title: semanticRes.title || '⚡ Action Preview',
+          subtitle: semanticRes.subtitle || 'Review parameters before executing',
+          riskLevel: 'LOW',
           entities: semanticRes.entities,
-          plan: semanticRes.plan,
-          icon: '⚡',
-          badge: 'Action Preview',
-          editableConfig: {
-            kind: semanticRes.intent === 'RECORD_EXPENSE' ? 'expense' :
-                  semanticRes.intent === 'CREATE_TODO' ? 'task' :
-                  semanticRes.intent === 'CREATE_CUSTOMER' ? 'customer' :
-                  semanticRes.intent === 'MARK_ATTENDANCE' ? 'attendance' :
-                  semanticRes.intent === 'RECORD_ADVANCE' ? 'advance' : 'task',
-            initialValues: { ...semanticRes.entities }
+          icon: semanticRes.icon || '⚡',
+          badge: '⚡ Action',
+          editableConfig: semanticRes.editableConfig || {
+            kind: kind,
+            initialValues: { ...(semanticRes.entities || {}) }
           },
-          action: () => { }
+          action: async () => {
+            try {
+              const data = (semanticRes.editableConfig && semanticRes.editableConfig.initialValues) || semanticRes.entities || {};
+              if (kind === 'task' || kind === 'reminder') {
+                if (API.reminders && API.reminders.create) {
+                  let dVal = data.dueDate ? String(data.dueDate).trim() : '';
+                  if (dVal.length === 10) dVal = dVal + 'T09:00:00';
+                  await API.reminders.create({
+                    title: data.title || 'Task',
+                    type: data.type || (kind === 'reminder' ? 'reminder' : 'task'),
+                    status: 'TODO',
+                    priority: data.priority || 'MEDIUM',
+                    dueDate: dVal
+                  });
+                  if (window.showToast) window.showToast(`✓ ${data.type === 'reminder' ? 'Reminder' : 'Task'} saved successfully!`, 'success');
+                  window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                }
+              } else if (kind === 'expense') {
+                if (API.expenses && API.expenses.create) {
+                  await API.expenses.create({
+                    title: data.title || 'General Expense',
+                    amount: parseFloat(data.amount) || 0,
+                    expenseDate: data.expenseDate || new Date().toISOString().slice(0, 10),
+                    category: data.category || 'General',
+                    paymentMode: data.paymentMode || 'Cash'
+                  });
+                  if (window.showToast) window.showToast(`✓ Expense of ₹${data.amount || 0} recorded successfully!`, 'success');
+                  window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                }
+              } else if (kind === 'note') {
+                if (API.notes && API.notes.create) {
+                  await API.notes.create({
+                    title: data.title || 'Sticky Note',
+                    color: data.color || 'yellow'
+                  });
+                  if (window.showToast) window.showToast(`✓ Sticky note pinned to Planner!`, 'success');
+                  window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                }
+              } else if (kind === 'customer') {
+                if (API.customers && API.customers.create) {
+                  await API.customers.create({
+                    name: data.name || 'New Customer',
+                    phone: data.phone || '',
+                    city: data.city || '',
+                    openingBalance: parseFloat(data.openingBalance) || 0
+                  });
+                  if (window.showToast) window.showToast(`✓ Customer ${data.name} registered!`, 'success');
+                  window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                }
+              } else if (kind === 'attendance') {
+                BillsoftSearchEngine.dispatchNavigate({ page: 'hr', hrTab: 'attendance' });
+              } else if (kind === 'advance') {
+                BillsoftSearchEngine.dispatchNavigate({ page: 'hr', hrTab: 'advances' });
+              }
+            } catch (e) {
+              if (window.showToast) window.showToast('Action failed: ' + (e.message || 'Error'), 'error');
+            }
+          }
         };
         results.utilities.push(previewItem);
         results.smartTasks.push(previewItem);
-        return results; // Decisive semantic result: do NOT merge unrelated legacy search candidates!
+        return results; // Decisive semantic result: do NOT merge unrelated search candidates
       }
 
-      // PRECEDENCE LEVEL 3: CLARIFICATION_REQUIRED
-      if (semanticRes.status === 'CLARIFICATION_REQUIRED') {
-        const clarifItem = {
-          type: 'assistant_clarification',
-          itemType: 'assistant_clarification',
-          isAuthoritativeAnswer: true,
-          priority: 1000,
-          semanticResult: semanticRes,
-          title: semanticRes.message || 'Clarification Needed',
-          subtitle: `Missing required details: ${(semanticRes.missingFields || []).join(', ')}`,
-          missingFields: semanticRes.missingFields,
-          icon: '❓',
-          badge: 'Clarification Needed',
-          action: () => { }
-        };
-        results.utilities.push(clarifItem);
-        return results;
-      }
-
-      // PRECEDENCE LEVEL 4: AMBIGUOUS
+      // 4. AMBIGUITY (Disambiguation card)
       if (semanticRes.status === 'AMBIGUOUS') {
         const ambigItem = {
           type: 'assistant_ambiguity',
@@ -4717,38 +4857,28 @@ const BillsoftSearchEngine = {
           isAuthoritativeAnswer: true,
           priority: 1000,
           semanticResult: semanticRes,
-          title: semanticRes.message || 'Multiple Interpretations Found',
-          subtitle: 'Please select your intended action below:',
+          title: semanticRes.title || 'Multiple Interpretations Found',
+          subtitle: semanticRes.subtitle || 'Please select your intended option:',
           candidates: semanticRes.candidates || [],
           icon: '⚖️',
-          badge: 'Ambiguous Query',
+          badge: '💡 Quick Help',
           action: () => { }
         };
         results.utilities.push(ambigItem);
         return results;
       }
 
-      // PRECEDENCE LEVEL 5: ANSWER
-      if (semanticRes.status === 'ANSWER') {
-        // Direct Navigation
-        if (semanticRes.intent && (semanticRes.intent.startsWith('NAV_') || (semanticRes.plan && semanticRes.plan.type === 'NAVIGATION'))) {
-          const navTarget = semanticRes.plan && semanticRes.plan.target;
-          if (navTarget) {
-            results.actions.push({
-              id: semanticRes.intent.toLowerCase(),
-              title: semanticRes.message || `Open ${navTarget.page}`,
-              subtitle: `Navigate directly to ${navTarget.page} ${navTarget.tab || navTarget.subTab || ''}`,
-              icon: '⚡',
-              badge: 'Navigation',
-              target: navTarget,
-              action: () => BillsoftSearchEngine.dispatchNavigate(navTarget)
-            });
-            return results;
-          }
-        }
+      // 5. AUTHORITATIVE ANSWER (Special Calculations & Quick Help Business Data)
+      if (semanticRes.status === 'ANSWER' || semanticRes.status === 'QUICK_HELP') {
+        const isQuickHelp = semanticRes.category === 'QUICK_HELP';
+        const badgeLabel = isQuickHelp ? '💡 Quick Help' : '✨ Special';
+        const iconChar = isQuickHelp ? '📊' :
+                         (semanticRes.capabilityId && semanticRes.capabilityId.startsWith('SPEC_MATH') ? '🧮' :
+                          semanticRes.capabilityId === 'SPEC_PAY_UPI_QR' ? '📱' :
+                          semanticRes.capabilityId === 'SPEC_COMM_WHATSAPP' ? '💬' : '✨');
 
-        // View Customer Invoices
-        if (semanticRes.intent === 'VIEW_CUSTOMER_INVOICES' && semanticRes.data && semanticRes.data.invoices) {
+        // Customer Invoices Lookup
+        if (semanticRes.capabilityId === 'QH_CUSTOMER_INVS' && semanticRes.data && semanticRes.data.invoices) {
           const invList = semanticRes.data.invoices;
           const custName = semanticRes.data.customerName || 'Customer';
           results.utilities.push({
@@ -4758,18 +4888,17 @@ const BillsoftSearchEngine = {
             isCalculatedResult: true,
             priority: 1000,
             semanticResult: semanticRes,
-            intent: semanticRes.intent,
-            title: semanticRes.message || `Found ${invList.length} invoice(s) for ${custName}`,
-            subtitle: `Displaying invoices for ${custName}`,
+            intent: semanticRes.capabilityId,
+            title: semanticRes.title || `Found ${invList.length} invoice(s) for ${custName}`,
+            subtitle: semanticRes.subtitle || `Displaying invoices for ${custName}`,
             data: semanticRes.data,
             icon: '📄',
-            badge: 'Assistant Answer'
+            badge: '💡 Quick Help'
           });
           results.invoices = invList;
           return results;
         }
 
-        // Dedicated Authoritative Assistant Answer Card
         const answerCard = {
           type: 'assistant_answer',
           itemType: 'assistant_answer',
@@ -4777,25 +4906,22 @@ const BillsoftSearchEngine = {
           isCalculatedResult: true,
           priority: 1000,
           semanticResult: semanticRes,
-          intent: semanticRes.intent,
-          title: semanticRes.message || 'Assistant Calculation',
-          subtitle: semanticRes.data && semanticRes.data.breakdown ? semanticRes.data.breakdown : `Natural Language Assistant • ${semanticRes.intent}`,
+          intent: semanticRes.capabilityId,
+          title: semanticRes.title || 'Authoritative Answer',
+          subtitle: semanticRes.subtitle || `Category: ${semanticRes.category}`,
           data: semanticRes.data,
           entities: semanticRes.entities,
-          icon: (semanticRes.intent === 'COMPOUND_GST_CHANGE' || semanticRes.intent === 'GST_CALCULATION' || semanticRes.intent === 'CASHIER_CHANGE') ? '🧮' :
-                (semanticRes.intent === 'VIEW_CUSTOMER_OUTSTANDING' || semanticRes.intent === 'VIEW_CUSTOMER_INFO') ? '👤' :
-                semanticRes.intent.startsWith('BI_') ? '📊' : '✨',
-          badge: 'Assistant Answer',
+          icon: iconChar,
+          badge: badgeLabel,
           action: () => {
-            if (navigator.clipboard && semanticRes.message) {
-              navigator.clipboard.writeText(semanticRes.message);
-              if (typeof window !== 'undefined' && window.showToast) window.showToast('Copied to clipboard!', 'success');
+            if (navigator.clipboard && semanticRes.title) {
+              navigator.clipboard.writeText(semanticRes.title);
+              if (typeof window !== 'undefined' && window.showToast) window.showToast('Copied result to clipboard!', 'success');
             }
           }
         };
 
-        // If it's UPI_QR, also provide qrUrl
-        if (semanticRes.intent === 'UPI_QR' && semanticRes.data) {
+        if (semanticRes.capabilityId === 'SPEC_PAY_UPI_QR' && semanticRes.data) {
           answerCard.qrUrl = semanticRes.data.qrUrl;
           answerCard.upiId = semanticRes.data.upiId;
           answerCard.amount = semanticRes.data.amount;
@@ -4803,7 +4929,7 @@ const BillsoftSearchEngine = {
         }
 
         results.utilities.push(answerCard);
-        return results; // Decisive semantic answer: generic search candidates MUST NOT outrank or replace it!
+        return results; // Decisive semantic answer: generic search candidates MUST NOT outrank it!
       }
     }
 
@@ -5319,7 +5445,9 @@ const BillsoftSearchEngine = {
                   priority: 'MEDIUM'
                 };
                 if (inlineReminder.dueDate) {
-                  remData.dueDate = inlineReminder.dueDate;
+                  let dVal = String(inlineReminder.dueDate).trim();
+                  if (dVal.length === 10) dVal = dVal + 'T09:00:00';
+                  remData.dueDate = dVal;
                 }
                 await API.reminders.create(remData);
                 if (window.showToast) {
@@ -5747,8 +5875,50 @@ const BillsoftSearchEngine = {
       }
     }
 
+    for (const est of estimates) {
+      if (!est) continue;
+      if (matchSub(est.estimateNumber) || matchSub(est.invoiceNumber) || matchText(est.customerName) || matchSub(est.customerName)) {
+        results.estimates.push(est);
+      }
+    }
+
+    for (const po of purchaseOrders) {
+      if (!po) continue;
+      if (matchSub(po.poNumber) || matchText(po.partyName) || matchSub(po.partyName) || matchSub(po.status)) {
+        results.purchaseOrders.push(po);
+      }
+    }
+
+    for (const exp of expenses) {
+      if (!exp) continue;
+      if (matchText(exp.title) || matchSub(exp.title) || matchText(exp.category) || matchSub(exp.category)) {
+        results.expenses.push(exp);
+      }
+    }
+
+    for (const ret of returns) {
+      if (!ret) continue;
+      if (matchSub(ret.returnNumber) || matchText(ret.customerName) || matchSub(ret.customerName) || matchSub(ret.reason)) {
+        results.returns.push(ret);
+      }
+    }
+
+    for (const letDoc of letters) {
+      if (!letDoc) continue;
+      if (matchText(letDoc.title) || matchSub(letDoc.title) || matchText(letDoc.recipientName) || matchSub(letDoc.recipientName) || matchSub(letDoc.letterNumber)) {
+        results.letters.push(letDoc);
+      }
+    }
+
+    for (const rem of reminders) {
+      if (!rem) continue;
+      if (matchText(rem.title) || matchSub(rem.title) || matchSub(rem.type) || matchSub(rem.status)) {
+        results.reminders.push(rem);
+      }
+    }
+
     // E. Suggestions
-    if (results.smartTasks.length === 0 && results.actions.length === 0 && results.customers.length === 0 && results.invoices.length === 0 && results.utilities.length === 0) {
+    if (results.smartTasks.length === 0 && results.actions.length === 0 && results.customers.length === 0 && results.invoices.length === 0 && results.utilities.length === 0 && results.staff.length === 0 && results.products.length === 0 && results.parties.length === 0) {
       results.suggestions = this.getSuggestions(raw);
     }
 
@@ -5770,6 +5940,7 @@ const BillsoftSearchEngine = {
 };
 
 if (typeof window !== 'undefined') {
+  window.BillsoftUtils = typeof BillsoftUtils !== 'undefined' ? BillsoftUtils : (window.BillsoftUtils || {});
   window.BillsoftSearchEngine = BillsoftSearchEngine;
   window.BillsoftUtils.searchEngine = BillsoftSearchEngine;
 }

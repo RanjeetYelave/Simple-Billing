@@ -10,5 +10,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     List<AttendanceRecord> findByEmployeeIdOrderByDateDesc(Long employeeId);
     Optional<AttendanceRecord> findByEmployeeIdAndDate(Long employeeId, LocalDate date);
     List<AttendanceRecord> findByEmployeeIdAndDateBetween(Long employeeId, LocalDate start, LocalDate end);
+    List<AttendanceRecord> findByEmployee_FirmIdAndDate(Long firmId, LocalDate date);
+    List<AttendanceRecord> findByEmployee_FirmIdAndEmployee_IdAndDateBetween(Long firmId, Long employeeId, LocalDate start, LocalDate end);
     void deleteByEmployeeId(Long employeeId);
 }

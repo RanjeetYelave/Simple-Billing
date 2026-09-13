@@ -14,6 +14,8 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     List<Employee> findByFirmIdOrderByNameAsc(Long firmId);
 
+    List<Employee> findTop5ByFirmIdAndNameContainingIgnoreCaseOrderByNameAsc(Long firmId, String name);
+
     Optional<Employee> findByIdAndFirmId(Long id, Long firmId);
 
     boolean existsByIdAndFirmId(Long id, Long firmId);

@@ -32,6 +32,7 @@ public class Reminder {
     @Column(length = 2000)
     private String note;
 
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = com.billing.simple.billsoft.config.FlexibleLocalDateTimeDeserializer.class)
     private LocalDateTime dueDate;
 
     private boolean completed = false;

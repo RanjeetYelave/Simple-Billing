@@ -6,5 +6,6 @@ import java.util.List;
 
 public interface EmployeeAdvanceRepository extends JpaRepository<EmployeeAdvance, Long> {
     List<EmployeeAdvance> findByEmployeeIdOrderByDateDesc(Long employeeId);
+    List<EmployeeAdvance> findByEmployee_FirmIdOrderByDateDesc(Long firmId);
     void deleteByEmployeeId(Long employeeId);
 }

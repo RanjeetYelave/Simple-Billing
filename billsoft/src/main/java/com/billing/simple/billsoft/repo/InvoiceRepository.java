@@ -99,4 +99,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.status IN :statuses")
     List<Invoice> findInvoicesWithCustomerForAnalyticsAll(@Param("statuses") List<InvoiceStatus> statuses);
+
+    List<Invoice> findTop10ByFirmIdAndCustomer_IdOrderByInvoiceDateDesc(Long firmId, Long customerId);
+
+    List<Invoice> findTop10ByFirmIdOrderByInvoiceDateDesc(Long firmId);
 }

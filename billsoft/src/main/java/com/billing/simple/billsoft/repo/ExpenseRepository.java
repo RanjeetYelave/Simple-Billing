@@ -19,6 +19,10 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
     Page<Expense> findByFirmIdAndExpenseDateBetween(Long firmId, LocalDate from, LocalDate to, Pageable pageable);
 
+    List<Expense> findByFirmIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc(Long firmId, LocalDate from, LocalDate to);
+
+    List<Expense> findTop10ByFirmIdOrderByExpenseDateDescIdDesc(Long firmId);
+
     Optional<Expense> findByIdAndFirmId(Long id, Long firmId);
 
     boolean existsByIdAndFirmId(Long id, Long firmId);

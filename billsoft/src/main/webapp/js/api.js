@@ -649,6 +649,7 @@ const API = {
       return res;
     },
     getAll: () => API._json(API._qs('/api/employees')),
+    list: () => API._json(API._qs('/api/employees')),
     create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/employees/${id}`, { method: 'DELETE' }),
@@ -728,6 +729,13 @@ const API = {
     exportAdvancesCsv: (id) => API._request(`/api/employees/${id}/advances/export/csv`).then(r => r.blob())
   },
 
+  // ─── Quotations / Estimates Helper ───
+  estimates: {
+    list: (page = 0, size = 50) => API.invoices.listEstimates(page, size),
+    create: (data, firmIdOverride) => API.invoices.createEstimate(data, firmIdOverride),
+    convert: (id, data, firmIdOverride) => API.invoices.convertEstimate(id, data, firmIdOverride)
+  },
+
   // ─── System & Updates ───
   system: {
     updateStatus: () => API._json('/api/system/update-status'),
@@ -744,5 +752,26 @@ const API = {
     health: () => API._json('/api/health'),
     diagnostics: () => API._json('/api/health/diagnostics'),
     heartbeat: (firmId) => API._json(API._qs('/api/system/heartbeat', { firmId }))
+  },
+
+  // ─── OmniSearch Read-Model Service (Authoritative Business Query Layer) ───
+  omnisearch: {
+    customer: (query, customerId) => API._json(API._qs('/api/omnisearch/customer', { query, customerId })),
+    vendor: (query, vendorId) => API._json(API._qs('/api/omnisearch/vendor', { query, vendorId })),
+    invoice: (query, invoiceId, estimateNumber) => API._json(API._qs('/api/omnisearch/invoice', { query, invoiceId, estimateNumber })),
+    sales: (period, startDate, endDate, groupBy) => API._json(API._qs('/api/omnisearch/sales', { period, startDate, endDate, groupBy })),
+    expenses: (period, startDate, endDate, category) => API._json(API._qs('/api/omnisearch/expenses', { period, startDate, endDate, category })),
+    inventory: (query, filter) => API._json(API._qs('/api/omnisearch/inventory', { query, filter })),
+    hr: (query, employeeId, date) => API._json(API._qs('/api/omnisearch/hr', { query, employeeId, date })),
+    salaries: (employeeName, period) => API._json(API._qs('/api/omnisearch/salaries', { employeeName, period })),
+    advances: (employeeName) => API._json(API._qs('/api/omnisearch/advances', { employeeName })),
+    returns: (query, period) => API._json(API._qs('/api/omnisearch/returns', { query, period })),
+    collections: (query, period, mode) => API._json(API._qs('/api/omnisearch/collections', { query, period, mode })),
+    vendorPayouts: (vendorName, period) => API._json(API._qs('/api/omnisearch/vendor-payouts', { vendorName, period })),
+    purchaseOrders: (query, status) => API._json(API._qs('/api/omnisearch/purchase-orders', { query, status })),
+    stockMovements: (query, period) => API._json(API._qs('/api/omnisearch/stock-movements', { query, period })),
+    ledger: (entityType, name, id) => API._json(API._qs('/api/omnisearch/ledger', { entityType, name, id })),
+    aggregate: () => API._json(API._qs('/api/omnisearch/aggregate')),
+    search: (query) => API._json(API._qs('/api/omnisearch/search', { query }))
   }
 };

@@ -7290,6 +7290,7 @@
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [highlightIdx, setHighlightIdx] = useState(-1);
       const containerRef = useRef(null);
+      const inputRef = useRef(null);
 
       useEffect(() => {
         if (value) {
@@ -7306,11 +7307,16 @@
 
       const filtered = useMemo(() => {
         if (!text || !text.trim()) return products || [];
-        const q = text.toLowerCase();
-        return (products || []).filter(p => p.name && p.name.toLowerCase().includes(q));
+        const q = text.toLowerCase().trim();
+        return (products || []).filter(p =>
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.sku && p.sku.toLowerCase().includes(q)) ||
+          (p.category && p.category.toLowerCase().includes(q))
+        );
       }, [products, text]);
 
       const selectProduct = (prod) => {
+        if (!prod) return;
         setText(prod.name);
         if (onChange) onChange(String(prod.id), prod, prod.name);
         setShowSuggestions(false);
@@ -7321,7 +7327,7 @@
         setTimeout(() => {
           setShowSuggestions(false);
           setHighlightIdx(-1);
-        }, 200);
+        }, 220);
       };
 
       const handleKeyDown = (e) => {
@@ -7335,7 +7341,7 @@
           if (e.key === 'ArrowUp') {
             e.preventDefault();
             e.stopPropagation();
-            setHighlightIdx(i => Math.max(i - 1, 0));
+            setHighlightIdx(i => Math.max(i - 1, -1));
             return;
           }
         }
@@ -7343,6 +7349,7 @@
           e.preventDefault();
           e.stopPropagation();
           setShowSuggestions(false);
+          setHighlightIdx(-1);
           return;
         }
         if (e.key === 'Enter') {
@@ -7350,17 +7357,26 @@
           e.stopPropagation();
           if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
             selectProduct(filtered[highlightIdx]);
-          } else {
-            const match = (products || []).find(p => p.name && p.name.toLowerCase() === text.trim().toLowerCase());
-            if (match) {
-              selectProduct(match);
-            } else {
-              if (onChange) onChange('', null, text.trim());
-            }
+            return;
           }
           setShowSuggestions(false);
+          setHighlightIdx(-1);
+          const match = (products || []).find(p => p.name && p.name.toLowerCase() === text.trim().toLowerCase());
+          if (match) {
+            selectProduct(match);
+          } else {
+            if (onChange) onChange('', null, text.trim());
+          }
           if (onEnterAfterSelect) setTimeout(onEnterAfterSelect, 40);
           return;
+        }
+        if (e.key === 'Tab') {
+          if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
+            e.preventDefault();
+            selectProduct(filtered[highlightIdx]);
+            if (onEnterAfterSelect) setTimeout(onEnterAfterSelect, 40);
+            return;
+          }
         }
         if (e.key === 'ArrowLeft') {
           if ((e.target.selectionStart === 0 || !text) && onArrowLeft) {
@@ -7397,6 +7413,7 @@
 
       return React.createElement('div', { ref: containerRef, style: { position: 'relative', width: '100%' } },
         React.createElement('input', {
+          ref: inputRef,
           className: 'input input-sm',
           style: { width: '100%' },
           placeholder: 'Search or type item...',
@@ -7426,22 +7443,29 @@
             background: 'var(--bg-card)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius)',
-            maxHeight: 180,
+            maxHeight: 200,
             overflowY: 'auto',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            boxShadow: '0 6px 18px rgba(0,0,0,0.18)'
           }
         },
           filtered.map((p, i) => React.createElement('div', {
             key: p.id,
-            className: 'autocomplete-item',
+            ref: i === highlightIdx ? (el => { if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' }); }) : null,
+            className: `autocomplete-item${i === highlightIdx ? ' highlighted' : ''}`,
             style: {
-              padding: '6px 10px',
+              padding: '7px 10px',
               cursor: 'pointer',
               fontSize: '0.82rem',
-              background: i === highlightIdx ? 'var(--bg-hover)' : 'transparent',
-              borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light)' : undefined
+              background: i === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.12))' : 'transparent',
+              borderLeft: i === highlightIdx ? '3px solid var(--primary, #4F46E5)' : '3px solid transparent',
+              borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light, rgba(255,255,255,0.06))' : undefined,
+              transition: 'background 0.1s ease, border-color 0.1s ease'
             },
-            onMouseDown: () => selectProduct(p)
+            onMouseDown: (e) => {
+              e.preventDefault();
+              selectProduct(p);
+            },
+            onMouseEnter: () => setHighlightIdx(i)
           },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', { style: { fontWeight: 600 } },
@@ -7489,6 +7513,7 @@
       }, [customers, text]);
 
       const selectCustomer = (cust) => {
+        if (!cust) return;
         setText(cust.name);
         setShowSuggestions(false);
         setHighlightIdx(-1);
@@ -7515,7 +7540,7 @@
           if (e.key === 'ArrowUp') {
             e.preventDefault();
             e.stopPropagation();
-            setHighlightIdx(i => Math.max(i - 1, 0));
+            setHighlightIdx(i => Math.max(i - 1, -1));
             return;
           }
         }
@@ -7523,25 +7548,27 @@
           e.preventDefault();
           e.stopPropagation();
           setShowSuggestions(false);
+          setHighlightIdx(-1);
           return;
         }
         if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
           if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
-            e.preventDefault();
-            e.stopPropagation();
             selectCustomer(filtered[highlightIdx]);
             return;
           }
-          const exactMatch = (customers || []).find(c => c.name && c.name.toLowerCase() === text.trim().toLowerCase());
-          if (exactMatch && showSuggestions) {
-            e.preventDefault();
-            e.stopPropagation();
-            selectCustomer(exactMatch);
-            return;
-          }
           setShowSuggestions(false);
+          setHighlightIdx(-1);
           if (onKeyDownNext) onKeyDownNext(e);
           return;
+        }
+        if (e.key === 'Tab') {
+          if (showSuggestions && highlightIdx >= 0 && highlightIdx < filtered.length) {
+            e.preventDefault();
+            selectCustomer(filtered[highlightIdx]);
+            if (onKeyDownNext) onKeyDownNext(e);
+          }
         }
       };
 
@@ -7566,7 +7593,7 @@
             const val = e.target.value;
             setText(val);
             setShowSuggestions(true);
-            setHighlightIdx(0);
+            setHighlightIdx(-1);
             if (onChange) onChange(val);
           },
           onFocus: (e) => {
@@ -7595,19 +7622,23 @@
           filtered.map((c, idx) =>
             React.createElement('div', {
               key: c.id,
-              className: 'autocomplete-item',
+              ref: idx === highlightIdx ? (el => { if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' }); }) : null,
+              className: `autocomplete-item${idx === highlightIdx ? ' highlighted' : ''}`,
               style: {
                 padding: '8px 12px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                background: idx === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.1))' : 'transparent',
-                borderLeft: idx === highlightIdx ? '3px solid var(--primary)' : '3px solid transparent',
-                transition: 'background 0.1s ease',
-                borderBottom: idx < filtered.length - 1 ? '1px solid var(--border-light)' : undefined
+                background: idx === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.12))' : 'transparent',
+                borderLeft: idx === highlightIdx ? '3px solid var(--primary, #4F46E5)' : '3px solid transparent',
+                transition: 'background 0.1s ease, border-color 0.1s ease',
+                borderBottom: idx < filtered.length - 1 ? '1px solid var(--border-light, rgba(255,255,255,0.06))' : undefined
               },
-              onMouseDown: () => selectCustomer(c),
+              onMouseDown: (e) => {
+                e.preventDefault();
+                selectCustomer(c);
+              },
               onMouseEnter: () => setHighlightIdx(idx)
             },
               React.createElement('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
@@ -7959,7 +7990,13 @@
           }, 60);
         }
       };
-      const removeItem = (idx) => { if (form.items.length <= 1) return; setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) })); };
+      const removeItem = (idx) => {
+        if (form.items.length <= 1) {
+          setForm(f => ({ ...f, items: [emptyItem()] }));
+          return;
+        }
+        setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+      };
 
       const calcTotals = useMemo(() => {
         let subtotal = 0, itemDisc = 0, gstTotal = 0;
@@ -8166,7 +8203,6 @@
           customerEmail: c.email || '',
           customerGstin: c.gstin || ''
         }));
-        focusFirstItem();
       };
 
       const handleKeyDown = (e, nextRef) => {
@@ -8571,8 +8607,25 @@
                       }
                     })),
                     React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, BillsoftUtils.formatCurrency(lineTotal)),
-                    React.createElement('td', null,
-                      React.createElement('span', { className: 'item-remove', onClick: () => removeItem(idx) }, '✕')
+                    React.createElement('td', { style: { textAlign: 'center', width: 36 } },
+                      React.createElement('span', {
+                        className: 'item-remove',
+                        role: 'button',
+                        tabIndex: 0,
+                        title: form.items.length <= 1 ? 'Clear item row' : 'Delete item row',
+                        style: { cursor: 'pointer', userSelect: 'none' },
+                        onClick: (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeItem(idx);
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            removeItem(idx);
+                          }
+                        }
+                      }, '✕')
                     )
                   );
                 })
@@ -14821,7 +14874,10 @@
       };
 
       const removeItemRow = (index) => {
-        if (form.items.length <= 1) return;
+        if (form.items.length <= 1) {
+          setForm(prev => ({ ...prev, items: [defaultItem()] }));
+          return;
+        }
         setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
       };
 
@@ -15604,11 +15660,16 @@
 
                           // Remove Row
                           React.createElement('td', { style: { textAlign: 'center' } },
-                            form.items.length > 1 && React.createElement('button', {
+                            React.createElement('button', {
                               type: 'button',
                               className: 'btn btn-sm btn-ghost',
                               style: { color: 'var(--danger)', padding: '2px 6px' },
-                              onClick: () => removeItemRow(idx)
+                              title: form.items.length <= 1 ? 'Clear item row' : 'Delete item row',
+                              onClick: (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeItemRow(idx);
+                              }
                             }, '✕')
                           )
                         );

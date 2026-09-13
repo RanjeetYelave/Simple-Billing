@@ -5801,3 +5801,40 @@ body.dark-mode .wa-target-btn.active {
   color: #ffffff;
   border-color: #6366f1;
 }
+
+/* ─── Generic Autocomplete Dropdowns & Keyboard Highlights ─── */
+.autocomplete-dropdown {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+  z-index: 1000;
+  animation: omni-fade-in 0.12s ease-out;
+}
+
+.autocomplete-item {
+  transition: background 0.12s ease, border-color 0.12s ease;
+  user-select: none;
+}
+
+.autocomplete-item.highlighted,
+.autocomplete-item:hover {
+  background: var(--bg-hover, rgba(79, 70, 229, 0.08)) !important;
+  border-left-color: var(--primary, #4f46e5) !important;
+}
+
+:root.dark-1 .autocomplete-dropdown,
+:root[data-theme='dark'] .autocomplete-dropdown {
+  background: var(--bg-card, #1e293b);
+  border-color: var(--border, #334155);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+}
+
+:root.dark-1 .autocomplete-item.highlighted,
+:root.dark-1 .autocomplete-item:hover,
+:root[data-theme='dark'] .autocomplete-item.highlighted,
+:root[data-theme='dark'] .autocomplete-item:hover {
+  background: rgba(99, 102, 241, 0.18) !important;
+  border-left-color: #818cf8 !important;
+}

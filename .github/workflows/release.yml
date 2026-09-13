@@ -128,6 +128,7 @@ jobs:
                    --type msi `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
+                   --win-dir-chooser `
                    --win-menu `
                    --win-shortcut `
                    --win-per-user-install `
@@ -153,6 +154,7 @@ jobs:
                        --type msi `
                        --app-version 1.0.${{ github.run_number }} `
                        --vendor "RupeeCRM" `
+                       --win-dir-chooser `
                        --win-menu `
                        --win-shortcut `
                        --win-per-user-install `

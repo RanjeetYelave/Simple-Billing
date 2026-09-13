@@ -1344,7 +1344,7 @@ public class OmnisearchQuickHelpService {
         List<Map<String, Object>> list = new ArrayList<>();
 
         for (PurchaseOrder po : orders) {
-            BigDecimal amt = po.getTotalAmount() != null ? BigDecimal.valueOf(po.getTotalAmount()) : BigDecimal.ZERO;
+            BigDecimal amt = po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO;
             totalAmount = totalAmount.add(amt);
             if (po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.DRAFT) {
                 openCount++;

@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 public class LauncherMain {
 
-    private static final String APP_URL = "http://app.rupeecrm.localhost:8080/";
+    private static final String APP_URL = "http://localhost:8080/";
     private static final String HEALTH_URL = "http://localhost:8080/api/health";
     private static final int PORT = 8080;
 

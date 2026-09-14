@@ -1974,6 +1974,25 @@ input:checked+.slider:before {
   justify-content: center;
   font-weight: 600;
   font-size: 0.85rem;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+.topbar-avatar:hover {
+  transform: scale(1.06);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+.topbar-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .topbar-lock-btn {
@@ -4427,6 +4446,92 @@ th.sortable svg {
 
 .rcrm-liquid-sync-wrapper.theme-retro.theme-retro-dark .rcrm-retro-reload-text {
   color: #38BDF8;
+}
+
+/* ─── TOPBAR INBOX BELL & ANNOUNCEMENTS NOTIFICATION ─── */
+.topbar-inbox-bell-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  padding: 4px 9px;
+  border-radius: 20px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.topbar-inbox-bell-btn .bell-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.topbar-inbox-bell-btn.has-unread {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(245, 158, 11, 0.14)) !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  animation: bellGlowPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.topbar-inbox-bell-btn.has-unread:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.22), rgba(245, 158, 11, 0.22)) !important;
+  border-color: rgba(239, 68, 68, 0.75) !important;
+  transform: translateY(-1px);
+}
+
+.topbar-inbox-bell-btn.has-unread .bell-icon-wrap {
+  animation: bellSwing 2.6s ease-in-out infinite;
+  transform-origin: top center;
+}
+
+.inbox-important-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #ffffff;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 12px;
+  box-shadow: 0 2px 5px rgba(220, 38, 38, 0.35);
+  text-transform: uppercase;
+}
+
+@keyframes bellGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 14px 4px rgba(239, 68, 68, 0.38);
+  }
+}
+
+@keyframes bellSwing {
+  0%, 65%, 100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(14deg);
+  }
+  75% {
+    transform: rotate(-12deg);
+  }
+  80% {
+    transform: rotate(10deg);
+  }
+  85% {
+    transform: rotate(-6deg);
+  }
+  90% {
+    transform: rotate(3deg);
+  }
 }
 
 /* ─── TOPBAR BUTTON THEME STYLING ─── */

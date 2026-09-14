@@ -174,9 +174,21 @@ public class LicenseCoordinator {
             if (msgBody != null && !msgBody.isBlank()) {
                 CustomerMessageEnvelope env = mapper.readValue(msgBody, CustomerMessageEnvelope.class);
                 if (env.getMessages() != null) {
+                    List<CustomerMessage> existingLocal = licenseStorage.loadInboxMessages();
+                    java.util.Set<String> readMessageIds = new java.util.HashSet<>();
+                    if (existingLocal != null) {
+                        for (CustomerMessage existing : existingLocal) {
+                            if (existing.isRead() && existing.getMessageId() != null) {
+                                readMessageIds.add(existing.getMessageId().trim());
+                            }
+                        }
+                    }
                     List<CustomerMessage> validMsgs = new ArrayList<>();
                     for (CustomerMessage msg : env.getMessages()) {
                         if (licenseVerifier.verifyMessage(machineId, msg)) {
+                            if (msg.getMessageId() != null && readMessageIds.contains(msg.getMessageId().trim())) {
+                                msg.setRead(true);
+                            }
                             validMsgs.add(msg);
                         }
                     }

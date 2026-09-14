@@ -23,8 +23,10 @@
   </script>
   <meta name="theme-color" content="#4f46e5" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110'%3E%3Cdefs%3E%3ClinearGradient id='bl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='40%25' stop-color='%231d4ed8'/%3E%3Cstop offset='100%25' stop-color='%230f2766'/%3E%3C/linearGradient%3E%3ClinearGradient id='br' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%231e40af'/%3E%3C/linearGradient%3E%3ClinearGradient id='gl' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300d685'/%3E%3Cstop offset='60%25' stop-color='%23059669'/%3E%3Cstop offset='100%25' stop-color='%23047857'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z' fill='url(%23bl)'/%3E%3Crect x='10' y='38' width='38' height='9' rx='4.5' fill='url(%23br)'/%3E%3Crect x='10' y='52' width='36' height='9' rx='4.5' fill='url(%23br)'/%3E%3Cpath d='M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z' fill='url(%23br)'/%3E%3Cpath d='M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z' fill='url(%23gl)'/%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
 </head>
 
 <body>
@@ -20990,6 +20992,7 @@
       const [bankName, setBankName] = useState('');
       const [bankAccount, setBankAccount] = useState('');
       const [bankIfsc, setBankIfsc] = useState('');
+      const [upiId, setUpiId] = useState('');
 
       const [enableLock, setEnableLock] = useState(false);
       const [password, setPassword] = useState('');
@@ -21227,6 +21230,13 @@
                 React.createElement(WizardInput, { placeholder: 'e.g. HDFC0001234', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
               )
             ),
+            React.createElement(FieldGroup, { label: '📱 UPI ID / VPA for Dynamic Invoice Payment QR' },
+              React.createElement(WizardInput, {
+                placeholder: 'e.g. merchant@okaxis, yourname@icici or 9876543210@paytm',
+                value: upiId,
+                onChange: e => setUpiId(e.target.value)
+              })
+            ),
             React.createElement(NavRow, { onBack: goBack, onNext: handleNextStep, nextLabel: 'Next: Security →' })
           ),
 
@@ -21346,7 +21356,8 @@
                         const firmPayload = {
                           firmName, ownerName, email, phone,
                           addressLine1: address1, addressLine2: address2,
-                          city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                          city, state, pincode, gstin, bankName, bankAccount, bankIfsc,
+                          upiId: (upiId && upiId.trim()) || ''
                         };
                         const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
                         API.firmId = createdFirm.id;
@@ -21375,7 +21386,8 @@
                       const firmPayload = {
                         firmName, ownerName, email, phone,
                         addressLine1: address1, addressLine2: address2,
-                        city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                        city, state, pincode, gstin, bankName, bankAccount, bankIfsc,
+                        upiId: (upiId && upiId.trim()) || ''
                       };
                       const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
                       API.firmId = createdFirm.id;
@@ -22603,7 +22615,20 @@
     // ─── CREDITS & HELPDESK ───
     function CreditsHelpdesk() {
       const [copied, setCopied] = useState(false);
+      const [appVersion, setAppVersion] = useState(null);
       const email = 'yelaveranjeet@gmail.com';
+
+      useEffect(() => {
+        if (typeof API !== 'undefined' && API.system && typeof API.system.updateStatus === 'function') {
+          API.system.updateStatus()
+            .then(res => {
+              if (res && res.currentVersion) {
+                setAppVersion(res.currentVersion);
+              }
+            })
+            .catch(() => {});
+        }
+      }, []);
 
       const handleCopyEmail = () => {
         if (navigator.clipboard) {
@@ -22613,6 +22638,10 @@
           window.showToast && window.showToast('Email address copied to clipboard!', 'success');
         }
       };
+
+      const displayVersion = appVersion
+        ? (appVersion.toLowerCase().startsWith('v') ? `Version ${appVersion.substring(1)}` : `Version ${appVersion}`)
+        : 'Version 1.0.0';
 
       return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
         // Brand Header Card
@@ -22626,7 +22655,7 @@
         },
           React.createElement(RupeeCRMLogo, { size: 56, showWordmark: true, showTagline: true, isDarkBg: false }),
           React.createElement('div', { style: { marginTop: 14, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 } },
-            'Version 1.0 • Offline-First CRM & Enterprise Billing Suite'
+            `${displayVersion} • Offline-First CRM & Enterprise Billing Suite`
           )
         ),
 
@@ -27707,31 +27736,27 @@
                 }
                 return null;
               })(),
-              React.createElement('button', {
-                className: 'topbar-inbox-bell-btn btn btn-ghost',
-                onClick: () => setShowInboxModal(true),
-                title: 'Customer Notifications & Announcements',
-                style: { position: 'relative', padding: '6px 8px', fontSize: '1.05rem', lineHeight: 1 }
-              },
-                '🔔',
-                (inboxMessages && inboxMessages.filter(m => !m.read).length > 0) ? React.createElement('span', {
-                  style: {
-                    position: 'absolute',
-                    top: 2,
-                    right: 2,
-                    background: '#ef4444',
-                    color: '#fff',
-                    borderRadius: '50%',
-                    width: 15,
-                    height: 15,
-                    fontSize: '0.62rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }
-                }, inboxMessages.filter(m => !m.read).length) : null
-              ),
+              (() => {
+                const unreadCount = (inboxMessages && Array.isArray(inboxMessages))
+                  ? inboxMessages.filter(m => !m.read).length
+                  : 0;
+                const hasUnread = unreadCount > 0;
+
+                return React.createElement('button', {
+                  className: `topbar-inbox-bell-btn btn btn-ghost${hasUnread ? ' has-unread' : ''}`,
+                  onClick: () => setShowInboxModal(true),
+                  title: hasUnread
+                    ? `📢 ${unreadCount} Important Announcement${unreadCount > 1 ? 's' : ''} / Message${unreadCount > 1 ? 's' : ''} (Click to view)`
+                    : 'Customer Notifications & Announcements',
+                  'aria-label': 'Customer Notifications & Announcements'
+                },
+                  React.createElement('span', { className: 'bell-icon-wrap' }, '🔔'),
+                  hasUnread && React.createElement('span', { className: 'inbox-important-tag' },
+                    'IMPORTANT',
+                    unreadCount > 1 ? ` (${unreadCount})` : ''
+                  )
+                );
+              })(),
               React.createElement('button', {
                 className: `topbar-sync-action-btn${isSyncing ? ' is-syncing' : ''}`,
                 onClick: handleAppRefresh,
@@ -27785,7 +27810,29 @@
                 }
               }),
               React.createElement(ThemeQuickToggle, null),
-              React.createElement('div', { className: 'topbar-avatar' }, firmName ? firmName.charAt(0).toUpperCase() : 'B')
+              (() => {
+                const activeFirm = (firms && Array.isArray(firms) && (firms.find(f => f.id === API.firmId) || firms[0])) || null;
+                const activeFirmLogo = activeFirm && activeFirm.logoBase64;
+                return React.createElement('div', {
+                  className: 'topbar-avatar',
+                  onClick: () => {
+                    if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'profile' });
+                    } else {
+                      navigate('firm');
+                    }
+                  },
+                  title: `${firmName || 'Business'} Profile (Click to view & edit Firm Profile)`,
+                  'aria-label': 'Firm Profile'
+                },
+                  activeFirmLogo
+                    ? React.createElement('img', {
+                        src: activeFirmLogo,
+                        alt: firmName || 'Firm Logo'
+                      })
+                    : (firmName ? firmName.charAt(0).toUpperCase() : 'B')
+                );
+              })()
             )
           ),
           licenseInfo && licenseInfo.daysRemaining != null && licenseInfo.daysRemaining <= 30 && licenseInfo.daysRemaining >= 0 && licenseStatus === 'ACTIVE' && React.createElement('div', {
@@ -27841,30 +27888,35 @@
               React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📭'),
               React.createElement('p', { style: { margin: 0 } }, 'No messages or announcements yet.')
             ) : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-              inboxMessages.map(msg => React.createElement('div', {
-                key: msg.id,
-                style: {
-                  padding: 14,
-                  borderRadius: 8,
-                  border: msg.read ? '1px solid #e5e7eb' : '1px solid #93c5fd',
-                  background: msg.read ? '#f9fafb' : '#eff6ff'
-                }
-              },
-                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
-                  React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem', color: msg.read ? '#374151' : '#1e40af' } }, msg.title || 'Announcement'),
-                  React.createElement('span', { style: { fontSize: '0.75rem', color: '#9ca3af' } }, msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : '')
-                ),
-                React.createElement('p', { style: { margin: '0 0 8px', fontSize: '0.85rem', color: '#4b5563', whiteSpace: 'pre-wrap' } }, msg.body),
-                !msg.read && React.createElement('button', {
-                  className: 'btn btn-sm btn-ghost',
-                  style: { fontSize: '0.75rem', color: '#2563eb', padding: '2px 6px' },
-                  onClick: () => {
-                    API.license.markMessageRead(msg.id).then(() => {
-                      setInboxMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: true } : m));
-                    });
+              inboxMessages.map(msg => {
+                const messageId = msg.messageId || msg.id;
+                return React.createElement('div', {
+                  key: messageId || Math.random(),
+                  style: {
+                    padding: 14,
+                    borderRadius: 8,
+                    border: msg.read ? '1px solid #e5e7eb' : '1px solid #93c5fd',
+                    background: msg.read ? '#f9fafb' : '#eff6ff'
                   }
-                }, 'Mark as read')
-              ))
+                },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                    React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem', color: msg.read ? '#374151' : '#1e40af' } }, msg.title || 'Announcement'),
+                    React.createElement('span', { style: { fontSize: '0.75rem', color: '#9ca3af' } }, msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : '')
+                  ),
+                  React.createElement('p', { style: { margin: '0 0 8px', fontSize: '0.85rem', color: '#4b5563', whiteSpace: 'pre-wrap' } }, msg.body),
+                  !msg.read && React.createElement('button', {
+                    className: 'btn btn-sm btn-ghost',
+                    style: { fontSize: '0.75rem', color: '#2563eb', padding: '2px 6px' },
+                    onClick: () => {
+                      if (messageId) {
+                        API.license.markMessageRead(messageId).then(() => {
+                          setInboxMessages(prev => prev.map(m => (m.messageId === messageId || m.id === messageId) ? { ...m, read: true } : m));
+                        });
+                      }
+                    }
+                  }, 'Mark as read')
+                );
+              })
             )
           )
         ),

@@ -9,7 +9,7 @@
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
 
-  <script src="js/api.js?v=20260910_markpaid_v4"></script>
+  <script src="js/api.js?v=20260914_licensing_v2"></script>
   <script src="js/utils.js?v=20260910_markpaid_v4"></script>
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
 
@@ -20833,7 +20833,8 @@
     }
 
     // ── Wizard layout helpers ─────────────────────────────────────────────────────
-    const NEW_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
+    const NEW_FIRM_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
+    const NEW_STEPS = NEW_FIRM_STEPS;
     const RESTORE_STEPS = ['Upload & Inspect', 'Select Firms', 'Activation'];
 
     const WizardContainer = ({ children, title, subtitle }) =>
@@ -20993,7 +20994,9 @@
       const [enableLock, setEnableLock] = useState(false);
       const [password, setPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
-      const [productKey, setProductKey] = useState('');
+      const [machineId, setMachineId] = useState('');
+      const [qrDataStr, setQrDataStr] = useState('');
+      const [checkingOnline, setCheckingOnline] = useState(false);
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
 
@@ -21011,6 +21014,12 @@
       useEffect(() => {
         API.backup.autoStatus().then(res => {
           if (res) setAutoStatus(res);
+        }).catch(() => { });
+        API.license.qr().then(res => {
+          if (res && res.mid) {
+            setMachineId(res.mid);
+            setQrDataStr(JSON.stringify(res));
+          }
         }).catch(() => { });
       }, []);
 
@@ -21148,80 +21157,77 @@
               }, '📂'),
               React.createElement('div', null,
                 React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Restore from Backup'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Restore from auto-backup or upload custom backup file')
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Restore firms, invoices, products & settings from a backup file')
               )
             )
           )
         );
       }
 
-      // ── NEW FIRM WIZARD ───────────────────────────────────────────────────────────
+      // ── NEW FIRM FLOW ─────────────────────────────────────────────────────────────
       if (wizardMode === 'new') {
         return React.createElement(WizardContainer, {
-          title: 'Set Up Your Firm',
-          subtitle: `Step ${step} of ${NEW_STEPS.length} — ${NEW_STEPS[step - 1]}`
+          title: 'Set Up Your Business',
+          subtitle: `Step ${step} of ${NEW_FIRM_STEPS.length} — ${NEW_FIRM_STEPS[step - 1]}`
         },
-          React.createElement(StepIndicator, { steps: NEW_STEPS, current: step }),
+          React.createElement(StepIndicator, { steps: NEW_FIRM_STEPS, current: step }),
           React.createElement(ErrorBox, { msg: error }),
 
-          // Step 1 – Firm Details
-          step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
-              React.createElement(FieldGroup, { label: 'Firm Name', required: true },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Sai Enterprises', value: firmName, onChange: e => setFirmName(e.target.value) })
-              ),
-              React.createElement(FieldGroup, { label: 'Owner / Proprietor Name' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'e.g. Ranjeet Yelave', value: ownerName, onChange: e => setOwnerName(e.target.value) })
-              )
+          // Step 1 – Business Identity
+          step === 1 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            React.createElement(FieldGroup, { label: 'Firm / Business Name', required: true },
+              React.createElement(WizardInput, { placeholder: 'e.g. Acme Enterprise Pvt Ltd', value: firmName, onChange: e => setFirmName(e.target.value), autoFocus: true })
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
-              React.createElement(FieldGroup, { label: 'Email Address' },
-                React.createElement(WizardInput, { type: 'email', placeholder: 'contact@firm.com', value: email, onChange: e => setEmail(e.target.value) })
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              React.createElement(FieldGroup, { label: 'Owner / Contact Person' },
+                React.createElement(WizardInput, { placeholder: 'e.g. John Doe', value: ownerName, onChange: e => setOwnerName(e.target.value) })
               ),
               React.createElement(FieldGroup, { label: 'Phone Number' },
-                React.createElement(WizardInput, { type: 'text', placeholder: '+91 98765 43210', value: phone, onChange: e => setPhone(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. 9876543210', value: phone, onChange: e => setPhone(e.target.value) })
               )
             ),
-            React.createElement(FieldGroup, { label: 'GSTIN' },
-              React.createElement(WizardInput, { type: 'text', placeholder: '27AAAAA0000A1Z5', value: gstin, onChange: e => setGstin(e.target.value), style: { textTransform: 'uppercase' } })
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              React.createElement(FieldGroup, { label: 'Email Address' },
+                React.createElement(WizardInput, { type: 'email', placeholder: 'e.g. billing@acme.com', value: email, onChange: e => setEmail(e.target.value) })
+              ),
+              React.createElement(FieldGroup, { label: 'GSTIN (Optional)' },
+                React.createElement(WizardInput, { placeholder: 'e.g. 27AAAAA0000A1Z5', value: gstin, onChange: e => setGstin(e.target.value.toUpperCase()) })
+              )
             ),
-            React.createElement(NavRow, {
-              onBack: () => { setWizardMode(null); },
-              onNext: handleNextStep, nextLabel: 'Next: Address & Banking →'
-            })
+            React.createElement(NavRow, { onBack: () => setWizardMode(null), onNext: handleNextStep, nextLabel: 'Next: Address Details →' })
           ),
 
           // Step 2 – Address & Banking
-          step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
             React.createElement(FieldGroup, { label: 'Address Line 1' },
-              React.createElement(WizardInput, { type: 'text', placeholder: 'Shop No, Building Name', value: address1, onChange: e => setAddress1(e.target.value) })
+              React.createElement(WizardInput, { placeholder: 'Shop / Building / Street', value: address1, onChange: e => setAddress1(e.target.value), autoFocus: true })
             ),
             React.createElement(FieldGroup, { label: 'Address Line 2' },
-              React.createElement(WizardInput, { type: 'text', placeholder: 'Street, Area', value: address2, onChange: e => setAddress2(e.target.value) })
+              React.createElement(WizardInput, { placeholder: 'Area / Landmark', value: address2, onChange: e => setAddress2(e.target.value) })
             ),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
               React.createElement(FieldGroup, { label: 'City' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'Mumbai', value: city, onChange: e => setCity(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. Mumbai', value: city, onChange: e => setCity(e.target.value) })
               ),
               React.createElement(FieldGroup, { label: 'State' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'Maharashtra', value: state, onChange: e => setState(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. Maharashtra', value: state, onChange: e => setState(e.target.value) })
               ),
               React.createElement(FieldGroup, { label: 'Pincode' },
-                React.createElement(WizardInput, { type: 'text', placeholder: '400001', value: pincode, onChange: e => setPincode(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. 400001', value: pincode, onChange: e => setPincode(e.target.value) })
               )
             ),
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
               React.createElement(FieldGroup, { label: 'Bank Name' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'State Bank of India', value: bankName, onChange: e => setBankName(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. HDFC Bank', value: bankName, onChange: e => setBankName(e.target.value) })
               ),
               React.createElement(FieldGroup, { label: 'Account Number' },
-                React.createElement(WizardInput, { type: 'text', placeholder: '12345678901', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
+                React.createElement(WizardInput, { placeholder: 'e.g. 50200012345678', value: bankAccount, onChange: e => setBankAccount(e.target.value) })
               ),
               React.createElement(FieldGroup, { label: 'IFSC Code' },
-                React.createElement(WizardInput, { type: 'text', placeholder: 'SBIN0001234', value: bankIfsc, onChange: e => setBankIfsc(e.target.value), style: { textTransform: 'uppercase' } })
+                React.createElement(WizardInput, { placeholder: 'e.g. HDFC0001234', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
               )
             ),
-            React.createElement(NavRow, { onBack: goBack, onNext: goNext, nextLabel: 'Next: Security →' })
+            React.createElement(NavRow, { onBack: goBack, onNext: handleNextStep, nextLabel: 'Next: Security →' })
           ),
 
           // Step 3 – Security
@@ -21255,67 +21261,137 @@
             React.createElement(NavRow, { onBack: goBack, onNext: handleNextStep, nextLabel: 'Next: Activation →' })
           ),
 
-          // Step 4 – Activation
-          step === 4 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          // Step 4 – Software License & Trial
+          step === 4 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
             React.createElement('div', {
               style: {
-                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 2
               }
             },
               React.createElement('div', {
                 style: {
-                  padding: '16px', background: 'rgba(251,191,36,0.1)', borderRadius: 12,
+                  padding: '14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12,
                   border: '1px solid rgba(251,191,36,0.3)', textAlign: 'center'
                 }
               },
-                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '⏳'),
-                React.createElement('div', { style: { fontWeight: 700, color: '#fbbf24', fontSize: '0.9rem', marginBottom: 4 } }, '30-Day Free Trial'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Skip the key below to begin a 30-day fully featured trial')
+                React.createElement('div', { style: { fontSize: '1.6rem', marginBottom: 4 } }, '⏳'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#fbbf24', fontSize: '0.88rem', marginBottom: 2 } }, '30-Day Free Trial'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', lineHeight: 1.4 } }, 'Start immediately with a fully featured 30-day evaluation trial')
               ),
               React.createElement('div', {
                 style: {
-                  padding: '16px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
+                  padding: '14px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
                   border: '1px solid rgba(99,102,241,0.3)', textAlign: 'center'
                 }
               },
-                React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '🔑'),
-                React.createElement('div', { style: { fontWeight: 700, color: '#a5b4fc', fontSize: '0.9rem', marginBottom: 4 } }, 'Activate Now'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Enter your product key for permanent activation')
+                React.createElement('div', { style: { fontSize: '1.6rem', marginBottom: 4 } }, '🔑'),
+                React.createElement('div', { style: { fontWeight: 700, color: '#a5b4fc', fontSize: '0.88rem', marginBottom: 2 } }, 'Activate License'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', lineHeight: 1.4 } }, 'Scan QR or share Machine ID with your salesman for activation')
               )
             ),
-            React.createElement(FieldGroup, { label: 'Product Key (leave blank for free trial)' },
-              React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: productKey, onChange: e => setProductKey(e.target.value) })
-            ),
-            React.createElement(NavRow, {
-              onBack: goBack,
-              onNext: async () => {
-                setError('');
-                setLoading(true);
-                try {
-                  const firmPayload = {
-                    firmName, ownerName, email, phone,
-                    addressLine1: address1, addressLine2: address2,
-                    city, state, pincode, gstin, bankName, bankAccount, bankIfsc
-                  };
-                  const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
-                  API.firmId = createdFirm.id;
-                  if (enableLock) await API.auth.enable(password);
-                  if (productKey.trim()) {
-                    const actRes = await API.license.activate(productKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
-                    if (!actRes.success) throw new Error('Invalid Product Key. Please check and try again.');
-                  } else {
-                    await API.license.initTrial();
+
+            // Machine ID & QR Card
+            React.createElement('div', {
+              style: {
+                padding: '14px', background: 'rgba(255,255,255,0.04)', borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 14, alignItems: 'center'
+              }
+            },
+              qrDataStr ? React.createElement('img', {
+                src: `/api/omnisearch/qr?size=140&data=${encodeURIComponent(qrDataStr)}`,
+                alt: 'License Activation QR',
+                style: { width: 96, height: 96, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
+              }) : React.createElement('div', { style: { width: 96, height: 96, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '📷'),
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: { fontSize: '0.70rem', color: 'rgba(255,255,255,0.5)', marginBottom: 2, fontWeight: 600 } }, 'MACHINE IDENTITY'),
+                React.createElement('div', {
+                  style: {
+                    fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem', color: '#fff',
+                    letterSpacing: '0.06em', marginBottom: 8, wordBreak: 'break-all'
                   }
-                  window.showToast && window.showToast('Setup complete! Welcome to Billsoft.', 'success');
-                  onComplete();
-                } catch (err) {
-                  setError(err.message || 'Setup failed. Please try again.');
-                  setLoading(false);
-                }
-              },
-              nextLabel: productKey.trim() ? '🔑 Activate & Launch App' : '🚀 Start Free Trial & Launch',
-              loading
-            })
+                }, machineId || 'Loading Machine ID...'),
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-secondary',
+                  onClick: () => {
+                    if (machineId) {
+                      navigator.clipboard.writeText(machineId);
+                      window.showToast && window.showToast('Machine ID copied to clipboard!', 'success');
+                    }
+                  },
+                  style: { padding: '5px 10px', fontSize: '0.75rem' }
+                }, '📋 Copy Machine ID')
+              )
+            ),
+
+            // Nav & Action Buttons
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-ghost',
+                onClick: goBack,
+                disabled: loading || checkingOnline
+              }, '← Back'),
+              React.createElement('div', { style: { display: 'flex', gap: 10 } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-secondary',
+                  disabled: loading || checkingOnline,
+                  onClick: async () => {
+                    setError('');
+                    setCheckingOnline(true);
+                    try {
+                      const syncRes = await API.license.checkOnline();
+                      if (syncRes && syncRes.isValid && syncRes.status === 'ACTIVE') {
+                        const firmPayload = {
+                          firmName, ownerName, email, phone,
+                          addressLine1: address1, addressLine2: address2,
+                          city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                        };
+                        const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
+                        API.firmId = createdFirm.id;
+                        if (enableLock) await API.auth.enable(password);
+                        window.showToast && window.showToast(`Software activated! Tier: ${syncRes.plan}`, 'success');
+                        onComplete();
+                      } else {
+                        setError('No active online license found for this Machine ID yet. Please verify your salesman has activated it, or start the 30-day free trial.');
+                      }
+                    } catch (err) {
+                      setError('Could not connect to online registry. Please check your network connection.');
+                    } finally {
+                      setCheckingOnline(false);
+                    }
+                  },
+                  style: { padding: '10px 14px', fontWeight: 600, fontSize: '0.85rem' }
+                }, checkingOnline ? 'Checking Online...' : '🔍 Check Online Activation'),
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  disabled: loading || checkingOnline,
+                  onClick: async () => {
+                    setError('');
+                    setLoading(true);
+                    try {
+                      const firmPayload = {
+                        firmName, ownerName, email, phone,
+                        addressLine1: address1, addressLine2: address2,
+                        city, state, pincode, gstin, bankName, bankAccount, bankIfsc
+                      };
+                      const createdFirm = await API._json('/api/firm', { method: 'POST', body: firmPayload });
+                      API.firmId = createdFirm.id;
+                      if (enableLock) await API.auth.enable(password);
+                      await API.license.initTrial();
+                      window.showToast && window.showToast('Setup complete! 30-day free trial started.', 'success');
+                      onComplete();
+                    } catch (err) {
+                      setError(err.message || 'Setup failed. Please try again.');
+                      setLoading(false);
+                    }
+                  },
+                  style: { padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem' }
+                }, loading ? 'Setting up...' : '🚀 Start 30-Day Free Trial →')
+              )
+            )
           )
         );
       }
@@ -21513,9 +21589,6 @@
               ' from ', React.createElement('strong', { style: { color: '#fff' } }, isAutoRestore ? 'System Auto-Backup (autobackup_latest.json)' : (backupFile && backupFile.name))
             )
           ),
-          React.createElement(FieldGroup, { label: 'Product Key (leave blank for 30-day trial)' },
-            React.createElement(WizardInput, { type: 'password', placeholder: '••••••••••', value: restoreProductKey, onChange: e => setRestoreProductKey(e.target.value) })
-          ),
           React.createElement(NavRow, {
             onBack: goBack,
             onNext: async () => {
@@ -21533,12 +21606,7 @@
                 } else {
                   throw new Error('Failed to find restored firm.');
                 }
-                if (restoreProductKey.trim()) {
-                  const actRes = await API.license.activate(restoreProductKey.trim()).catch(() => { throw new Error('Invalid Product Key.'); });
-                  if (!actRes.success) throw new Error('Invalid Product Key.');
-                } else {
-                  await API.license.initTrial();
-                }
+                await API.license.initTrial();
                 window.showToast && window.showToast('Backup restored successfully! Welcome back.', 'success');
                 onComplete();
               } catch (err) {
@@ -21546,7 +21614,7 @@
                 setRestoreLoading(false);
               }
             },
-            nextLabel: restoreProductKey.trim() ? '🔑 Activate & Restore' : '🚀 Restore & Start Trial',
+            nextLabel: '🚀 Complete Restore & Launch',
             loading: restoreLoading
           })
         )
@@ -21554,47 +21622,82 @@
     }
 
     function TrialExpiredComponent({ onComplete }) {
-      const [productKey, setProductKey] = useState('');
+      const [machineId, setMachineId] = useState('');
+      const [qrDataStr, setQrDataStr] = useState('');
+      const [checking, setChecking] = useState(false);
       const [error, setError] = useState('');
-      const [loading, setLoading] = useState(false);
 
-      const handleSubmit = async (e) => {
-        e.preventDefault();
+      useEffect(() => {
+        API.license.qr().then(res => {
+          if (res && res.mid) {
+            setMachineId(res.mid);
+            setQrDataStr(JSON.stringify(res));
+          }
+        }).catch(() => { });
+      }, []);
+
+      const handleCheckOnline = async () => {
+        setChecking(true);
         setError('');
-        if (!productKey.trim()) {
-          setError('Product key is required');
-          return;
-        }
-
-        setLoading(true);
         try {
-          const res = await API.license.activate(productKey.trim());
-          if (res.success) {
-            window.showToast && window.showToast('Product activated permanently!', 'success');
+          const res = await API.license.checkOnline();
+          if (res && res.isValid && res.status === 'ACTIVE') {
+            window.showToast && window.showToast(`Software activated! Tier: ${res.plan}`, 'success');
             onComplete();
           } else {
-            setError(res.message || 'Invalid product key');
+            setError('No active online license found for this Machine ID yet. Please verify with your salesman.');
           }
         } catch (err) {
-          setError('Activation failed. Invalid product key.');
+          setError('Could not connect to online registry. Please check your internet connection.');
         } finally {
-          setLoading(false);
+          setChecking(false);
         }
       };
 
-      return React.createElement('div', { className: 'login-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 440, width: '90%', padding: '40px 30px', textAlign: 'center' } },
-          React.createElement('div', { style: { fontSize: '3.5rem', marginBottom: 16 } }, '⚠️'),
-          React.createElement('h2', { style: { color: 'var(--danger)', fontSize: '1.5rem', fontWeight: 700, marginBottom: 8 } }, 'Trial Period Expired'),
-          React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 24 } }, 'Your 30-day free trial has ended. Please enter a valid product key to activate Simple Billing permanently.'),
-          error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.85rem', textAlign: 'left' } }, error),
-          React.createElement('form', { onSubmit: handleSubmit, style: { textAlign: 'left' } },
-            React.createElement('div', { style: { marginBottom: 20 } },
-              React.createElement('label', { className: 'label' }, 'Product Key'),
-              React.createElement('input', { type: 'password', className: 'input', placeholder: 'Enter permanent product key', value: productKey, onChange: e => setProductKey(e.target.value), required: true })
-            ),
-            React.createElement('button', { type: 'submit', className: 'btn btn-primary w-full', disabled: loading, style: { padding: '12px', fontSize: '1rem', fontWeight: 600 } }, loading ? 'Verifying Key...' : 'Activate Software')
-          )
+      return React.createElement('div', { className: 'login-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 20 } },
+        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '100%', padding: '36px 30px', textAlign: 'center' } },
+          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 12 } }, '⏳'),
+          React.createElement('h2', { style: { color: '#f59e0b', fontSize: '1.4rem', fontWeight: 700, marginBottom: 6 } }, '30-Day Evaluation Trial Expired'),
+          React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: 20, lineHeight: 1.5 } },
+            'Your free evaluation period has concluded. To continue using RupeeCRM, share your Machine ID or QR Code with your salesman for activation.'
+          ),
+          error && React.createElement('div', { style: { background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem', textAlign: 'left' } }, error),
+
+          React.createElement('div', {
+            style: {
+              padding: '16px', background: 'var(--bg-secondary, rgba(0,0,0,0.03))', borderRadius: 12,
+              border: '1px solid var(--border)', marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center', textAlign: 'left'
+            }
+          },
+            qrDataStr && React.createElement('img', {
+              src: `/api/omnisearch/qr?size=140&data=${encodeURIComponent(qrDataStr)}`,
+              alt: 'License Activation QR',
+              style: { width: 100, height: 100, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
+            }),
+            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'YOUR MACHINE ID'),
+              React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.98rem', letterSpacing: '0.06em', marginBottom: 8, wordBreak: 'break-all' } }, machineId || 'Loading...'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-secondary',
+                onClick: () => {
+                  if (machineId) {
+                    navigator.clipboard.writeText(machineId);
+                    window.showToast && window.showToast('Machine ID copied to clipboard!', 'success');
+                  }
+                },
+                style: { padding: '5px 10px', fontSize: '0.78rem' }
+              }, '📋 Copy ID')
+            )
+          ),
+
+          React.createElement('button', {
+            type: 'button',
+            className: 'btn btn-primary w-full',
+            disabled: checking,
+            onClick: handleCheckOnline,
+            style: { padding: '12px', fontSize: '0.95rem', fontWeight: 600 }
+          }, checking ? 'Checking Online Activation...' : '🔍 Check Online Activation')
         )
       );
     }
@@ -21606,8 +21709,8 @@
       }));
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
       const [licenseInfo, setLicenseInfo] = useState(null);
-      const [productKey, setProductKey] = useState('');
-      const [actLoading, setActLoading] = useState(false);
+      const [qrDataStr, setQrDataStr] = useState('');
+      const [checkingOnline, setCheckingOnline] = useState(false);
 
       useEffect(() => {
         const handler = () => {
@@ -21668,25 +21771,27 @@
 
       useEffect(() => {
         API.license.status().then(setLicenseInfo).catch(() => { });
+        API.license.qr().then(res => {
+          if (res && res.mid) setQrDataStr(JSON.stringify(res));
+        }).catch(() => { });
       }, []);
 
-      const handleActivate = async (e) => {
-        e.preventDefault();
-        if (!productKey.trim()) return;
-        setActLoading(true);
+      const handleCheckOnline = async () => {
+        setCheckingOnline(true);
         try {
-          const res = await API.license.activate(productKey.trim());
-          if (res.success) {
-            window.showToast('Product activated permanently!', 'success');
-            setProductKey('');
-            API.license.status().then(setLicenseInfo).catch(() => { });
+          const res = await API.license.checkOnline();
+          setLicenseInfo(res);
+          if (res && res.isValid && res.status === 'ACTIVE') {
+            window.showToast && window.showToast(`Software license synced! Tier: ${res.plan}`, 'success');
+          } else if (res && res.validationDescription) {
+            window.showToast && window.showToast(res.validationDescription, 'info');
           } else {
-            window.showToast(res.message || 'Invalid product key', 'error');
+            window.showToast && window.showToast('Online license check complete.', 'info');
           }
         } catch (err) {
-          window.showToast('Activation failed. Invalid product key.', 'error');
+          window.showToast && window.showToast('Could not reach online registry. Check internet connection.', 'error');
         } finally {
-          setActLoading(false);
+          setCheckingOnline(false);
         }
       };
 
@@ -21853,7 +21958,7 @@
                     fontSize: '0.82rem',
                     fontWeight: themeState.activeIsDark ? 700 : 500,
                     background: themeState.activeIsDark ? 'var(--primary)' : 'transparent',
-                    color: themeState.activeIsDark ? (themeState.family === 'classic' ? '#000000' : '#ffffff') : 'var(--text)',
+                    color: themeState.activeIsDark ? '#ffffff' : 'var(--text)',
                     border: 'none',
                     boxShadow: themeState.activeIsDark ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                     borderRadius: 6
@@ -21862,95 +21967,56 @@
               )
             ),
 
-            // Automation / Schedule Options
-            React.createElement('div', { style: { padding: '16px 18px', background: 'var(--bg-secondary)', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 } },
-                '⏰ Automatic Dark Mode Schedule'
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 } },
-                [
-                  { id: 'manual', icon: '🔘', label: 'Manual (Off)' },
-                  { id: 'sunset', icon: '🌅', label: 'Sunset to Sunrise', desc: '6 PM – 6 AM' },
-                  { id: 'system', icon: '🖥️', label: 'Match System OS' },
-                  { id: 'custom', icon: '⏰', label: 'Custom Schedule' }
-                ].map(s => {
-                  const isSelected = themeState.schedule === s.id;
-                  return React.createElement('button', {
-                    key: s.id,
-                    type: 'button',
-                    className: 'btn',
-                    onClick: () => setSchedule(s.id),
-                    style: {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      padding: '10px 12px',
-                      background: isSelected ? 'var(--bg-card)' : 'transparent',
-                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      borderRadius: 8,
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }
-                  },
-                    React.createElement('div', { style: { fontWeight: isSelected ? 700 : 600, fontSize: '0.83rem', color: isSelected ? 'var(--primary)' : 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 } },
-                      s.icon, s.label
-                    ),
-                    s.desc && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } }, s.desc)
-                  );
-                })
-              ),
-
-              // Custom Schedule Inputs
-              themeState.schedule === 'custom' && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, padding: '12px 14px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap' } },
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600 } }, '🌙 Dark Start:'),
-                  React.createElement('input', {
-                    type: 'time',
-                    className: 'input',
-                    value: themeState.customStart,
-                    onChange: e => handleCustomTimeChange('start', e.target.value),
-                    style: { width: 110, padding: '4px 8px', fontSize: '0.85rem' }
-                  })
-                ),
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600 } }, '☀️ Light Start:'),
-                  React.createElement('input', {
-                    type: 'time',
-                    className: 'input',
-                    value: themeState.customEnd,
-                    onChange: e => handleCustomTimeChange('end', e.target.value),
-                    style: { width: 110, padding: '4px 8px', fontSize: '0.85rem' }
-                  })
+            // Scheduling Selector
+            React.createElement('div', { style: { borderTop: '1px solid var(--border)', paddingTop: 18 } },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, '⏱️ Auto Theme Scheduling'),
+                  React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Automatically switch light/dark mode based on time or system preference')
                 )
               ),
-
-              // Status Summary Banner
-              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 } },
-                React.createElement('span', null, 'ℹ️'),
-                themeState.schedule === 'sunset'
-                  ? 'Sunset schedule active (18:00 to 06:00). Dark mode is automatically applied during evening and night hours.'
-                  : themeState.schedule === 'system'
-                    ? 'Syncing with your operating system preference (prefers-color-scheme).'
-                    : themeState.schedule === 'custom'
-                      ? `Custom schedule active: Dark mode from ${themeState.customStart} to ${themeState.customEnd}.`
-                      : 'Manual control active. Use the buttons above or the topbar quick-toggle to change anytime.'
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 12 } },
+                [
+                  { id: 'manual', label: 'Manual Switch' },
+                  { id: 'sunset', label: 'Sunset to Sunrise' },
+                  { id: 'system', label: 'System Match' },
+                  { id: 'custom', label: 'Custom Time' }
+                ].map(opt => React.createElement('button', {
+                  key: opt.id,
+                  type: 'button',
+                  onClick: () => setSchedule(opt.id),
+                  className: `btn ${themeState.schedule === opt.id ? 'btn-primary' : 'btn-secondary'}`,
+                  style: { padding: '8px 10px', fontSize: '0.78rem', justifyContent: 'center' }
+                }, opt.label))
+              ),
+              themeState.schedule === 'custom' && React.createElement('div', {
+                style: {
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                  background: 'var(--bg-secondary)', borderRadius: 8, marginTop: 10
+                }
+              },
+                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Dark Mode from:'),
+                React.createElement('input', {
+                  type: 'time', className: 'input', value: themeState.customStart,
+                  onChange: e => handleCustomTimeChange('start', e.target.value),
+                  style: { padding: '4px 8px', fontSize: '0.8rem', width: 110 }
+                }),
+                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to:'),
+                React.createElement('input', {
+                  type: 'time', className: 'input', value: themeState.customEnd,
+                  onChange: e => handleCustomTimeChange('end', e.target.value),
+                  style: { padding: '4px 8px', fontSize: '0.8rem', width: 110 }
+                })
               )
             )
           )
         ),
 
-        // 2. Display & Status Bar Preferences Card
+        // 2. Status Bar Card
         React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } },
-            React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🖥️'),
-            React.createElement('div', null,
-              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Interface & Visual Preferences'),
-              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Configure workspace diagnostics bar and telemetry monitors.')
-            )
-          ),
-          React.createElement('div', { style: { padding: '18px 20px', background: 'var(--bg-secondary, #f8fafc)', borderRadius: 12, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 } },
-            React.createElement('div', { style: { flex: 1, minWidth: 260 } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.95rem' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
                 React.createElement('span', null, '📊 Live Status Bar & System Metrics')
               ),
               React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
@@ -21972,29 +22038,69 @@
             React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🔑'),
             React.createElement('div', null,
               React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Software License & Activation'),
-              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Manage software license entitlement, perpetual product keys, and tier status.')
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Manage membership tier, machine identity, validity, and online activation sync.')
             )
           ),
 
-          licenseInfo && licenseInfo.status === 'activated' ? (
-            React.createElement('div', { style: { padding: '20px 22px', background: 'rgba(16, 185, 129, 0.08)', borderRadius: 12, border: '1px solid rgba(16, 185, 129, 0.3)' } },
+          licenseInfo && licenseInfo.isValid && licenseInfo.status === 'ACTIVE' ? (
+            React.createElement('div', {
+              style: {
+                padding: '20px 22px',
+                background: licenseInfo.plan === 'GOLD' ? 'rgba(251, 191, 36, 0.08)' : licenseInfo.plan === 'SILVER' ? 'rgba(203, 213, 225, 0.12)' : 'rgba(217, 119, 6, 0.08)',
+                borderRadius: 12,
+                border: `1px solid ${licenseInfo.plan === 'GOLD' ? 'rgba(251, 191, 36, 0.4)' : licenseInfo.plan === 'SILVER' ? 'rgba(148, 163, 184, 0.4)' : 'rgba(217, 119, 6, 0.4)'}`
+              }
+            },
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 } },
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '🛡️'),
+                  React.createElement('span', { style: { fontSize: '1.8rem' } }, licenseInfo.plan === 'GOLD' ? '🥇' : licenseInfo.plan === 'SILVER' ? '🥈' : '🥉'),
                   React.createElement('div', null,
-                    React.createElement('div', { style: { fontWeight: 800, fontSize: '1.05rem', color: '#16a34a' } }, 'Perpetual Enterprise License Active'),
-                    React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Lifetime validity • Zero cloud telemetry • Standalone offline operations')
+                    React.createElement('div', { style: { fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' } },
+                      `${licenseInfo.plan || 'ACTIVE'} MEMBERSHIP`
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                      licenseInfo.customerName ? `Licensed to ${licenseInfo.customerName}` : 'Registered Enterprise License'
+                    )
                   )
                 ),
-                React.createElement('span', { className: 'badge badge-success', style: { fontSize: '0.82rem', padding: '6px 14px', borderRadius: 20 } },
-                  '✅ Activated'
+                React.createElement('span', {
+                  className: 'badge',
+                  style: {
+                    background: licenseInfo.plan === 'GOLD' ? '#f59e0b' : licenseInfo.plan === 'SILVER' ? '#64748b' : '#b45309',
+                    color: '#fff', fontSize: '0.82rem', padding: '6px 14px', borderRadius: 20, fontWeight: 700
+                  }
+                }, `✅ ${licenseInfo.plan} ACTIVE`)
+              ),
+
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, padding: '12px 0', borderTop: '1px dashed rgba(255,255,255,0.15)', borderBottom: '1px dashed rgba(255,255,255,0.15)', marginBottom: 14 } },
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'MACHINE IDENTITY'),
+                  React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' } }, licenseInfo.machineId || '—')
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'EXPIRATION / VALIDITY'),
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } },
+                    licenseInfo.plan === 'GOLD'
+                      ? 'Lifetime Validity (Never Expires)'
+                      : (licenseInfo.expiresAt ? `${new Date(licenseInfo.expiresAt).toLocaleDateString()} (${licenseInfo.daysRemaining != null ? licenseInfo.daysRemaining + ' days remaining' : ''})` : 'Active')
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'REVISION & STATUS'),
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } },
+                    `Revision ${licenseInfo.revision || 1} • Authenticated Ed25519`
+                  )
                 )
               ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, paddingTop: 12, borderTop: '1px dashed rgba(16, 185, 129, 0.3)' } },
-                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, '• Unlimited Multi-Firm Invoicing'),
-                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, '• Unlimited Inventory & Products'),
-                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, '• Zero-Data-Loss Local Storage'),
-                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, '• Lifetime Free Engine Updates')
+
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-secondary',
+                  disabled: checkingOnline,
+                  onClick: handleCheckOnline,
+                  style: { padding: '8px 16px', fontWeight: 600, fontSize: '0.85rem' }
+                }, checkingOnline ? 'Checking Online...' : '🔄 Check Online Activation / Sync')
               )
             )
           ) : (
@@ -22005,7 +22111,7 @@
                   React.createElement('div', null,
                     React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: '#d97706' } }, 'Evaluation Trial Active'),
                     React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
-                      licenseInfo ? `${licenseInfo.trialDaysRemaining} days remaining in trial period.` : 'Evaluation period active.'
+                      licenseInfo ? `${licenseInfo.trialDaysRemaining} days remaining in evaluation trial.` : 'Evaluation period active.'
                     )
                   )
                 ),
@@ -22013,22 +22119,45 @@
                   'Trial Period'
                 )
               ),
-              React.createElement('form', { onSubmit: handleActivate, style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
-                React.createElement('input', {
-                  type: 'password',
-                  className: 'input',
-                  placeholder: 'Enter 25-character permanent product key',
-                  value: productKey,
-                  onChange: e => setProductKey(e.target.value),
-                  style: { flex: 1, minWidth: 260, padding: '10px 14px' },
-                  required: true
+
+              React.createElement('div', {
+                style: {
+                  padding: '14px', background: 'var(--bg-secondary, rgba(0,0,0,0.03))', borderRadius: 10,
+                  border: '1px solid var(--border)', marginBottom: 16, display: 'flex', gap: 14, alignItems: 'center'
+                }
+              },
+                qrDataStr && React.createElement('img', {
+                  src: `/api/omnisearch/qr?size=130&data=${encodeURIComponent(qrDataStr)}`,
+                  alt: 'License Activation QR',
+                  style: { width: 90, height: 90, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
                 }),
+                React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                  React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'YOUR MACHINE ID'),
+                  React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.06em', marginBottom: 6, wordBreak: 'break-all' } },
+                    (licenseInfo && licenseInfo.machineId) || 'Loading...'
+                  ),
+                  React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-secondary',
+                    onClick: () => {
+                      if (licenseInfo && licenseInfo.machineId) {
+                        navigator.clipboard.writeText(licenseInfo.machineId);
+                        window.showToast && window.showToast('Machine ID copied to clipboard!', 'success');
+                      }
+                    },
+                    style: { padding: '4px 10px', fontSize: '0.75rem' }
+                  }, '📋 Copy Machine ID')
+                )
+              ),
+
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
                 React.createElement('button', {
-                  type: 'submit',
+                  type: 'button',
                   className: 'btn btn-primary',
-                  disabled: actLoading,
-                  style: { padding: '10px 20px', fontWeight: 600 }
-                }, actLoading ? 'Verifying Key...' : '🔑 Activate Software')
+                  disabled: checkingOnline,
+                  onClick: handleCheckOnline,
+                  style: { padding: '10px 18px', fontWeight: 600, fontSize: '0.88rem' }
+                }, checkingOnline ? 'Checking Online...' : '🔍 Check Online Activation')
               )
             )
           )
@@ -26438,6 +26567,10 @@
       const [firmLoadKey, setFirmLoadKey] = useState(0);
 
       const [licenseStatus, setLicenseStatus] = useState('trial');
+      const [membershipPlan, setMembershipPlan] = useState(null);
+      const [licenseInfo, setLicenseInfo] = useState(null);
+      const [inboxMessages, setInboxMessages] = useState([]);
+      const [showInboxModal, setShowInboxModal] = useState(false);
       const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -26648,8 +26781,27 @@
           const hasFirmInDb = validList.length > 0 || (lic && lic.hasFirm === true);
 
           if (lic) {
-            setLicenseStatus(lic.status || 'trial');
-            setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+            setLicenseInfo(lic);
+            if (lic.isValid && lic.status === 'ACTIVE') {
+              setLicenseStatus('ACTIVE');
+              setMembershipPlan(lic.plan);
+            } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
+              setLicenseStatus(lic.status);
+              setMembershipPlan(lic.plan);
+            } else if (lic.status === 'expired') {
+              setLicenseStatus('expired');
+            } else if (lic.isTrial) {
+              setLicenseStatus('trial');
+              setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+            } else {
+              setLicenseStatus(lic.status || 'trial');
+              setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+            }
+          }
+          if (API.license && typeof API.license.getMessages === 'function') {
+            API.license.getMessages().then(msgs => {
+              if (Array.isArray(msgs)) setInboxMessages(msgs);
+            }).catch(() => { });
           }
 
           // ONLY enter first-time setup if the server explicitly confirmed zero firms exist
@@ -26867,9 +27019,26 @@
           (API.messages && typeof API.messages.list === 'function' && isAuthenticated && API.firmId ? API.messages.list().then(processMessages).catch(() => { }) : Promise.resolve()),
           (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
             if (lic) {
-              setLicenseStatus(lic.status || 'trial');
-              setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+              setLicenseInfo(lic);
+              if (lic.isValid && lic.status === 'ACTIVE') {
+                setLicenseStatus('ACTIVE');
+                setMembershipPlan(lic.plan);
+              } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
+                setLicenseStatus(lic.status);
+                setMembershipPlan(lic.plan);
+              } else if (lic.status === 'expired') {
+                setLicenseStatus('expired');
+              } else if (lic.isTrial) {
+                setLicenseStatus('trial');
+                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+              } else {
+                setLicenseStatus(lic.status || 'trial');
+                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+              }
             }
+          }).catch(() => { }) : Promise.resolve()),
+          (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
+            if (Array.isArray(msgs)) setInboxMessages(msgs);
           }).catch(() => { }) : Promise.resolve())
         ];
 
@@ -27365,7 +27534,7 @@
 
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
-      if (licenseStatus === 'expired') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { setLicenseStatus('activated'); } }), React.createElement(Toast, { toasts, removeToast }));
+      if (licenseStatus === 'expired' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
       return React.createElement('div', { className: 'app-layout' },
@@ -27412,39 +27581,157 @@
                 onClick: () => setShowGlobalSearch(true),
                 title: 'Search anything (Ctrl+K)'
               }, '🔍'),
-              licenseStatus === 'trial' ? React.createElement('div', { className: 'topbar-trial-badge', style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', padding: '4px 8px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 } }, `⏳ ${trialDaysRemaining}d`) :
-                licenseStatus === 'activated' ? React.createElement('div', {
-                  className: 'topbar-premium-badge',
-                  title: 'RupeeCRM Premium Lifetime License Active',
+              (() => {
+                if (licenseStatus === 'ACTIVE') {
+                  if (membershipPlan === 'GOLD') {
+                    return React.createElement('div', {
+                      className: 'topbar-gold-badge',
+                      title: 'RupeeCRM Gold Lifetime License Active',
+                      style: {
+                        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.25))',
+                        border: '1px solid rgba(245, 158, 11, 0.5)',
+                        color: '#b45309',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5
+                      }
+                    }, '🥇 GOLD');
+                  } else if (membershipPlan === 'SILVER') {
+                    return React.createElement('div', {
+                      className: 'topbar-silver-badge',
+                      title: 'RupeeCRM Silver (3-Year) License Active',
+                      style: {
+                        background: 'linear-gradient(135deg, rgba(148, 163, 184, 0.15), rgba(100, 116, 139, 0.25))',
+                        border: '1px solid rgba(148, 163, 184, 0.5)',
+                        color: '#475569',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5
+                      }
+                    }, '🥈 SILVER');
+                  } else if (membershipPlan === 'BRONZE') {
+                    return React.createElement('div', {
+                      className: 'topbar-bronze-badge',
+                      title: 'RupeeCRM Bronze (1-Year) License Active',
+                      style: {
+                        background: 'linear-gradient(135deg, rgba(180, 83, 9, 0.12), rgba(146, 64, 14, 0.2))',
+                        border: '1px solid rgba(180, 83, 9, 0.4)',
+                        color: '#92400e',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5
+                      }
+                    }, '🥉 BRONZE');
+                  }
+                  return React.createElement('div', {
+                    className: 'topbar-premium-badge',
+                    title: 'RupeeCRM Active License',
+                    style: {
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.18))',
+                      border: '1px solid rgba(168, 85, 247, 0.4)',
+                      color: '#7c3aed',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5
+                    }
+                  }, '✓ ACTIVE');
+                } else if (licenseStatus === 'SUSPENDED') {
+                  return React.createElement('div', {
+                    className: 'topbar-suspended-badge',
+                    title: 'License Suspended',
+                    style: {
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      color: '#dc2626',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5
+                    }
+                  }, '⚠️ SUSPENDED');
+                } else if (licenseStatus === 'REVOKED') {
+                  return React.createElement('div', {
+                    className: 'topbar-revoked-badge',
+                    title: 'License Revoked',
+                    style: {
+                      background: 'rgba(185, 28, 28, 0.15)',
+                      border: '1px solid rgba(185, 28, 28, 0.5)',
+                      color: '#991b1b',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5
+                    }
+                  }, '🚫 REVOKED');
+                } else if (licenseStatus === 'trial') {
+                  return React.createElement('div', {
+                    className: 'topbar-trial-badge',
+                    style: {
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      color: '#d97706',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }
+                  }, `⏳ ${trialDaysRemaining}d Trial`);
+                }
+                return null;
+              })(),
+              React.createElement('button', {
+                className: 'topbar-inbox-bell-btn btn btn-ghost',
+                onClick: () => setShowInboxModal(true),
+                title: 'Customer Notifications & Announcements',
+                style: { position: 'relative', padding: '6px 8px', fontSize: '1.05rem', lineHeight: 1 }
+              },
+                '🔔',
+                (inboxMessages && inboxMessages.filter(m => !m.read).length > 0) ? React.createElement('span', {
                   style: {
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.18))',
-                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                    color: '#7c3aed',
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    fontSize: '0.70rem',
+                    position: 'absolute',
+                    top: 2,
+                    right: 2,
+                    background: '#ef4444',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: 15,
+                    height: 15,
+                    fontSize: '0.62rem',
                     fontWeight: 700,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 5,
-                    boxShadow: '0 1px 2px rgba(124, 58, 237, 0.1)',
-                    userSelect: 'none'
+                    justifyContent: 'center'
                   }
-                },
-                  React.createElement('span', {
-                    style: {
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      backgroundColor: '#7c3aed',
-                      boxShadow: '0 0 5px #7c3aed',
-                      display: 'inline-block'
-                    }
-                  }),
-                  React.createElement('span', null, 'PREMIUM')
-                ) : null,
+                }, inboxMessages.filter(m => !m.read).length) : null
+              ),
               React.createElement('button', {
                 className: `topbar-sync-action-btn${isSyncing ? ' is-syncing' : ''}`,
                 onClick: handleAppRefresh,
@@ -27501,12 +27788,84 @@
               React.createElement('div', { className: 'topbar-avatar' }, firmName ? firmName.charAt(0).toUpperCase() : 'B')
             )
           ),
+          licenseInfo && licenseInfo.daysRemaining != null && licenseInfo.daysRemaining <= 30 && licenseInfo.daysRemaining >= 0 && licenseStatus === 'ACTIVE' && React.createElement('div', {
+            style: {
+              background: 'linear-gradient(90deg, #fffbeb, #fef3c7)',
+              borderBottom: '1px solid #fde68a',
+              padding: '6px 16px',
+              fontSize: '0.8rem',
+              color: '#92400e',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }
+          },
+            React.createElement('span', null, `⚠️ Your ${licenseInfo.plan || 'RupeeCRM'} license will expire in ${licenseInfo.daysRemaining} days (${licenseInfo.expiresAt}). Please contact support or check online to renew.`),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-ghost',
+              style: { padding: '2px 8px', fontSize: '0.75rem', textDecoration: 'underline', color: '#b45309' },
+              onClick: () => {
+                API.license.checkOnline().then(r => {
+                  if (r && r.status) {
+                    setLicenseInfo(r);
+                    setLicenseStatus(r.isValid && r.status === 'ACTIVE' ? 'ACTIVE' : r.status);
+                    if (window.showToast) window.showToast('License status checked online', 'info');
+                  }
+                });
+              }
+            }, 'Check Renewal')
+          ),
           React.createElement('div', { className: 'page-content' },
             React.createElement('div', {
               key: 'invoices-persistent-wrapper',
               style: { display: page === 'invoices' ? 'block' : 'none' }
             }, pageComponents.invoices.comp),
             page !== 'invoices' && current.comp
+          )
+        ),
+        showInboxModal && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 },
+          onClick: () => setShowInboxModal(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { background: '#fff', borderRadius: 12, padding: 24, maxWidth: 520, width: '90%', maxHeight: '80vh', overflowY: 'auto' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, '📢 Announcements & Messages'),
+              React.createElement('button', { className: 'btn btn-ghost', onClick: () => setShowInboxModal(false), style: { fontSize: '1.1rem', cursor: 'pointer' } }, '✕')
+            ),
+            (!inboxMessages || inboxMessages.length === 0) ? React.createElement('div', { style: { textAlign: 'center', padding: '32px 0', color: '#6b7280' } },
+              React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📭'),
+              React.createElement('p', { style: { margin: 0 } }, 'No messages or announcements yet.')
+            ) : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+              inboxMessages.map(msg => React.createElement('div', {
+                key: msg.id,
+                style: {
+                  padding: 14,
+                  borderRadius: 8,
+                  border: msg.read ? '1px solid #e5e7eb' : '1px solid #93c5fd',
+                  background: msg.read ? '#f9fafb' : '#eff6ff'
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                  React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem', color: msg.read ? '#374151' : '#1e40af' } }, msg.title || 'Announcement'),
+                  React.createElement('span', { style: { fontSize: '0.75rem', color: '#9ca3af' } }, msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : '')
+                ),
+                React.createElement('p', { style: { margin: '0 0 8px', fontSize: '0.85rem', color: '#4b5563', whiteSpace: 'pre-wrap' } }, msg.body),
+                !msg.read && React.createElement('button', {
+                  className: 'btn btn-sm btn-ghost',
+                  style: { fontSize: '0.75rem', color: '#2563eb', padding: '2px 6px' },
+                  onClick: () => {
+                    API.license.markMessageRead(msg.id).then(() => {
+                      setInboxMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: true } : m));
+                    });
+                  }
+                }, 'Mark as read')
+              ))
+            )
           )
         ),
         React.createElement(RupeeCRMSyncOverlay, { isSyncing, statusText: syncStatusText, activeFirmName: firmName }),

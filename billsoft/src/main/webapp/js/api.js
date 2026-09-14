@@ -582,9 +582,12 @@ const API = {
 
   // ── Licensing ──
   license: {
-    status: () => API._json('/api/license/status'),
-    activate: (productKey) => API._json('/api/license/activate', { method: 'POST', body: { productKey } }),
-    initTrial: () => API._json('/api/license/init-trial', { method: 'POST' }),
+    status: () => API._json('/api/licensing/status'),
+    qr: () => API._json('/api/licensing/qr'),
+    checkOnline: () => API._json('/api/licensing/check-online', { method: 'POST' }),
+    initTrial: () => API._json('/api/licensing/init-trial', { method: 'POST' }),
+    getMessages: () => API._json('/api/licensing/messages'),
+    markMessageRead: (id) => API._json(`/api/licensing/messages/${id}/read`, { method: 'POST' }),
   },
 
   // ─── Backup & Restore ───

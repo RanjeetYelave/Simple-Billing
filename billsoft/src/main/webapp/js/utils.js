@@ -4953,7 +4953,7 @@ const BillsoftSearchEngine = {
       const amtParam = upiAmt > 0 ? `&am=${upiAmt.toFixed(2)}` : '';
       const amtText = upiAmt > 0 ? BillsoftUtils.formatCurrency(upiAmt) : 'Dynamic / Any Amount';
       const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(firmName)}${amtParam}&cu=INR`;
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUrl)}`;
+      const qrImageUrl = `/api/omnisearch/qr?size=260&data=${encodeURIComponent(upiUrl)}`;
 
       results.utilities.push({
         type: 'upi_qr',

@@ -86,6 +86,13 @@
             <version>3.5.3</version>
         </dependency>
 
+        <!-- Apache OpenNLP for Pure Java Offline NLU / Intent Categorization -->
+        <dependency>
+            <groupId>org.apache.opennlp</groupId>
+            <artifactId>opennlp-tools</artifactId>
+            <version>2.5.3</version>
+        </dependency>
+
         <!-- Devtools -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

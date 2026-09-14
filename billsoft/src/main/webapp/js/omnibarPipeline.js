@@ -2922,7 +2922,7 @@
             const upiAmt = entities.amount || 0;
             const amtParam = upiAmt > 0 ? `&am=${upiAmt.toFixed(2)}` : '';
             const upiUrl = `upi://pay?pa=${rawUpiId}&pn=${encodeURIComponent(firmName)}${amtParam}&cu=INR`;
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUrl)}`;
+            const qrUrl = `/api/omnisearch/qr?size=260&data=${encodeURIComponent(upiUrl)}`;
             return {
               status: 'ANSWER',
               category: 'SPECIAL',

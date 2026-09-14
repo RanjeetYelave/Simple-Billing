@@ -951,6 +951,7 @@
       const curFirmName = (data.firmName || item.firmName || firm.firmName || 'Store').trim();
       const curNote = data.note || 'Payment';
       const liveUpiUrl = `upi://pay?pa=${encodeURIComponent(curVpa)}&pn=${encodeURIComponent(curFirmName)}${numAmt > 0 ? '&am=' + numAmt.toFixed(2) : ''}&tn=${encodeURIComponent(curNote)}&cu=INR`;
+      const liveQrUrl = `/api/omnisearch/qr?size=260&data=${encodeURIComponent(liveUpiUrl)}`;
       const handleInspectorKeyDown = (e) => {
         if (e.key === 'Enter') {
           if (e.target && e.target.tagName === 'TEXTAREA' && e.shiftKey) return;
@@ -1195,7 +1196,7 @@
                 type: 'date',
                 className: 'form-input',
                 style: { width: '100%', padding: '8px 12px' },
-                value: data.dueDate || '',
+                value: data.dueDate ? String(data.dueDate).slice(0, 10) : '',
                 onChange: e => setData(prev => ({ ...prev, dueDate: e.target.value }))
               })
             ),
@@ -3514,19 +3515,23 @@
                         )
                       ),
                       React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 38 } },
-                        (item.candidates || []).map((cand, cIdx) => React.createElement('button', {
-                          key: cIdx,
-                          type: 'button',
-                          className: 'omni-action-btn',
-                          style: { background: 'var(--bg-secondary)', borderColor: '#b45309', color: 'var(--text-primary)', fontWeight: 600 },
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            if (cand.intent === 'GST_CALCULATION') setQuery(`gst 18% on ${query}`);
-                            else if (cand.intent === 'CASHIER_CHANGE') setQuery(`change for ${query}`);
-                            else if (cand.intent === 'RECORD_EXPENSE') setQuery(`kharcha ${query}`);
-                            else setQuery(cand.intent.toLowerCase());
-                          }
-                        }, `→ ${cand.intent.replace(/_/g, ' ')}`))
+                        (item.candidates || []).map((cand, cIdx) => {
+                          const intentStr = typeof cand === 'string' ? cand : (cand && (cand.intent || cand.label || cand.name || ''));
+                          const displayLabel = intentStr ? String(intentStr).replace(/_/g, ' ') : 'Option';
+                          return React.createElement('button', {
+                            key: cIdx,
+                            type: 'button',
+                            className: 'omni-action-btn',
+                            style: { background: 'var(--bg-secondary)', borderColor: '#b45309', color: 'var(--text-primary)', fontWeight: 600 },
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              if (intentStr === 'GST_CALCULATION') setQuery(`gst 18% on ${query}`);
+                              else if (intentStr === 'CASHIER_CHANGE') setQuery(`change for ${query}`);
+                              else if (intentStr === 'RECORD_EXPENSE') setQuery(`kharcha ${query}`);
+                              else if (intentStr) setQuery(String(intentStr).toLowerCase());
+                            }
+                          }, `→ ${displayLabel}`);
+                        })
                       )
                     );
                   }

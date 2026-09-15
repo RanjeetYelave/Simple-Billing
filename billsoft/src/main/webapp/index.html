@@ -2912,22 +2912,22 @@
                       return;
                     }
                     if (sLower === '/pay') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'payroll' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'hr', hrTab: 'payroll' });
                       onClose();
                       return;
                     }
                     if (sLower === '/po') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'purchase-orders' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'orders' });
                       onClose();
                       return;
                     }
                     if (sLower === '/party') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'parties' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'parties' });
                       onClose();
                       return;
                     }
                     if (sLower === '/stock') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'inventory' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'inventory' });
                       onClose();
                       return;
                     }
@@ -5101,33 +5101,40 @@
         }
         return null;
       };
+      const normalizeFirmTab = (t) => {
+        if (t === 'products' || t === 'catalog' || t === 'stock') return 'inventory';
+        if (t === 'vendors') return 'parties';
+        return t || 'inventory';
+      };
       const initialNav = getInitialNav();
-      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'inventory');
+      const [tab, setTab] = useState(() => normalizeFirmTab(initialNav && initialNav.tab));
 
       useEffect(() => {
         const handleNav = (e) => {
           if (!e || !e.detail) return;
           if (e.detail.page && e.detail.page !== 'firm') return;
-          if (e.detail.tab) setTab(e.detail.tab);
+          if (e.detail.tab) setTab(normalizeFirmTab(e.detail.tab));
         };
         if (initialNav && initialNav.tab) {
-          setTab(initialNav.tab);
+          setTab(normalizeFirmTab(initialNav.tab));
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
       }, []);
 
+      const activeTab = normalizeFirmTab(tab);
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'sub-tabs-bar' },
-          React.createElement('button', { className: `btn ${tab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, '📦 Inventory'),
-          React.createElement('button', { className: `btn ${tab === 'customers' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('customers') }, '👥 Customers'),
-          React.createElement('button', { className: `btn ${tab === 'parties' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('parties') }, '🤝 Parties (Vendors)'),
-          React.createElement('button', { className: `btn ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, '🏢 Business Profile')
+          React.createElement('button', { className: `btn ${activeTab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, '📦 Inventory'),
+          React.createElement('button', { className: `btn ${activeTab === 'customers' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('customers') }, '👥 Customers'),
+          React.createElement('button', { className: `btn ${activeTab === 'parties' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('parties') }, '🤝 Parties (Vendors)'),
+          React.createElement('button', { className: `btn ${activeTab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, '🏢 Business Profile')
         ),
-        tab === 'inventory' && React.createElement(ProductManager, { key: API.firmId }),
-        tab === 'customers' && React.createElement(CustomerManager, { key: API.firmId }),
-        tab === 'parties' && React.createElement(PartyManager, { key: API.firmId }),
-        tab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged })
+        activeTab === 'inventory' && React.createElement(ProductManager, { key: API.firmId }),
+        activeTab === 'customers' && React.createElement(CustomerManager, { key: API.firmId }),
+        activeTab === 'parties' && React.createElement(PartyManager, { key: API.firmId }),
+        activeTab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged })
       );
     }
 
@@ -5714,6 +5721,445 @@
       );
     }
 
+    // ─── BUSINESS EXPECTED REVENUE FORECAST DONUT CARD ───
+    function ExpectedRevenueDonutCard({ data }) {
+      const [timeframe, setTimeframe] = useState('month'); // 'month' | 'quarter' | '6m' | 'year'
+      const [hoveredSegment, setHoveredSegment] = useState(null);
+
+      const forecast = useMemo(() => {
+        const now = new Date();
+        const curYear = now.getFullYear();
+        const curMonth = now.getMonth(); // 0-11
+        const curDate = now.getDate();
+
+        // 1. Month calculation
+        const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+        const elapsedMonthDays = Math.max(1, curDate);
+        const remainingMonthDays = Math.max(0, daysInMonth - elapsedMonthDays);
+
+        // 2. Quarter calculation (Q1: 0..2, Q2: 3..5, Q3: 6..8, Q4: 9..11)
+        const quarterIdx = Math.floor(curMonth / 3);
+        const quarterStart = new Date(curYear, quarterIdx * 3, 1);
+        const quarterEnd = new Date(curYear, (quarterIdx + 1) * 3, 0);
+        const totalQuarterDays = Math.max(1, Math.round((quarterEnd - quarterStart) / (1000 * 60 * 60 * 24)) + 1);
+        const elapsedQuarterDays = Math.max(1, Math.round((now - quarterStart) / (1000 * 60 * 60 * 24)) + 1);
+        const remainingQuarterDays = Math.max(0, totalQuarterDays - elapsedQuarterDays);
+
+        // 3. 6 Months calculation (H1: 0..5, H2: 6..11)
+        const halfIdx = curMonth < 6 ? 0 : 1;
+        const halfStart = new Date(curYear, halfIdx * 6, 1);
+        const halfEnd = new Date(curYear, (halfIdx + 1) * 6, 0);
+        const totalHalfDays = Math.max(1, Math.round((halfEnd - halfStart) / (1000 * 60 * 60 * 24)) + 1);
+        const elapsedHalfDays = Math.max(1, Math.round((now - halfStart) / (1000 * 60 * 60 * 24)) + 1);
+        const remainingHalfDays = Math.max(0, totalHalfDays - elapsedHalfDays);
+
+        // 4. Year calculation
+        const isLeap = (curYear % 4 === 0 && (curYear % 100 !== 0 || curYear % 400 === 0));
+        const totalYearDays = isLeap ? 366 : 365;
+        const yearStart = new Date(curYear, 0, 1);
+        const elapsedYearDays = Math.max(1, Math.round((now - yearStart) / (1000 * 60 * 60 * 24)) + 1);
+        const remainingYearDays = Math.max(0, totalYearDays - elapsedYearDays);
+
+        // Historical data points
+        const monthBilled = Number(data && data.businessThisMonth) || 0;
+        const yearBilled = Number(data && data.businessThisYear) || 0;
+        const totalBilled = Number(data && data.totalBusiness) || 0;
+        const totalPaid = Number(data && data.totalPaid) || 0;
+        const totalPending = Number(data && data.totalPending) || 0;
+        const quotePipelineVal = Number(data && data.quotePipelineValue) || 0;
+
+        // Collection efficiency
+        const collectionRate = totalBilled > 0 ? Math.min(1, Math.max(0.1, totalPaid / totalBilled)) : 0.85;
+
+        let timeframeLabel = 'This Month';
+        let elapsedPeriodDays = elapsedMonthDays;
+        let totalPeriodDays = daysInMonth;
+        let remainingPeriodDays = remainingMonthDays;
+        let billedSales = monthBilled;
+        let pipelineWeight = 0.35; // 35% of total quote pipeline expected to close this month
+
+        if (timeframe === 'quarter') {
+          timeframeLabel = `Q${quarterIdx + 1} (${['Jan-Mar', 'Apr-Jun', 'Jul-Sep', 'Oct-Dec'][quarterIdx]})`;
+          elapsedPeriodDays = elapsedQuarterDays;
+          totalPeriodDays = totalQuarterDays;
+          remainingPeriodDays = remainingQuarterDays;
+          billedSales = yearBilled > 0 ? (yearBilled / elapsedYearDays) * elapsedQuarterDays : monthBilled * (elapsedQuarterDays / elapsedMonthDays);
+          pipelineWeight = 0.70;
+        } else if (timeframe === '6m') {
+          timeframeLabel = halfIdx === 0 ? 'H1 (Jan-Jun)' : 'H2 (Jul-Dec)';
+          elapsedPeriodDays = elapsedHalfDays;
+          totalPeriodDays = totalHalfDays;
+          remainingPeriodDays = remainingHalfDays;
+          billedSales = yearBilled > 0 ? (yearBilled / elapsedYearDays) * elapsedHalfDays : monthBilled * (elapsedHalfDays / elapsedMonthDays);
+          pipelineWeight = 0.88;
+        } else if (timeframe === 'year') {
+          timeframeLabel = `FY ${curYear}`;
+          elapsedPeriodDays = elapsedYearDays;
+          totalPeriodDays = totalYearDays;
+          remainingPeriodDays = remainingYearDays;
+          billedSales = Math.max(monthBilled, yearBilled);
+          pipelineWeight = 1.0;
+        }
+
+        // Segment components
+        const realizedPaid = billedSales * collectionRate;
+        const pendingDue = Math.max(0, billedSales - realizedPaid);
+        const quotesExpected = quotePipelineVal * pipelineWeight * 0.75; // 75% win probability
+
+        // Daily velocity run-rate projection across remaining days
+        const dailyRunRate = billedSales > 0 ? (billedSales / elapsedPeriodDays) : (totalBilled > 0 ? (totalBilled / 365) : 0);
+        const projectedVelocity = Math.max(0, dailyRunRate * remainingPeriodDays);
+
+        const totalExpected = realizedPaid + pendingDue + quotesExpected + projectedVelocity;
+
+        // Breakdown segments
+        const rawSegments = [
+          { id: 'realized', name: 'Realized / Paid', amount: realizedPaid, color: '#10b981', desc: 'Collected cash revenue' },
+          { id: 'pending', name: 'Pending Due', amount: pendingDue, color: '#f59e0b', desc: 'Billed due receivables' },
+          { id: 'pipeline', name: 'Quotes Pipeline', amount: quotesExpected, color: '#6366f1', desc: 'Weighted active estimates' },
+          { id: 'projected', name: 'Projected Run-Rate', amount: projectedVelocity, color: '#8b5cf6', desc: 'Velocity run-rate forecast' }
+        ];
+
+        const finalTotal = Math.max(totalExpected, 0);
+        const segments = rawSegments.map(s => {
+          const pct = finalTotal > 0 ? (s.amount / finalTotal) * 100 : 0;
+          return {
+            ...s,
+            percentage: pct,
+            pctFormatted: pct >= 1 ? pct.toFixed(0) : pct.toFixed(1)
+          };
+        });
+
+        const runRatePercentOfTarget = finalTotal > 0 ? Math.min(100, Math.round((realizedPaid / finalTotal) * 100)) : 0;
+
+        return {
+          timeframeLabel,
+          totalExpected: finalTotal,
+          segments,
+          elapsedPeriodDays,
+          totalPeriodDays,
+          remainingPeriodDays,
+          runRatePercentOfTarget,
+          dailyRunRate
+        };
+      }, [data, timeframe]);
+
+      const activeSeg = hoveredSegment ? forecast.segments.find(s => s.id === hoveredSegment) : null;
+
+      // Donut SVG Math
+      const size = 124;
+      const cx = size / 2;
+      const cy = size / 2;
+      const outerR = 50;
+      const innerR = 34;
+      const hoverExpand = 3;
+
+      let currentAngle = -Math.PI / 2;
+      const slices = (forecast.segments || []).map(seg => {
+        const angleSpan = forecast.totalExpected > 0 ? (seg.amount / forecast.totalExpected) * (Math.PI * 2) : 0;
+        const startAngle = currentAngle;
+        const endAngle = currentAngle + angleSpan;
+        currentAngle = endAngle;
+
+        const isHovered = hoveredSegment === seg.id;
+        const rOut = isHovered ? outerR + hoverExpand : outerR;
+        const rIn = isHovered ? innerR - 1 : innerR;
+
+        let pathD = '';
+        if (angleSpan >= Math.PI * 1.999) {
+          pathD = `M ${cx} ${cy - rOut} A ${rOut} ${rOut} 0 1 0 ${cx} ${cy + rOut} A ${rOut} ${rOut} 0 1 0 ${cx} ${cy - rOut} M ${cx} ${cy - rIn} A ${rIn} ${rIn} 0 1 1 ${cx} ${cy + rIn} A ${rIn} ${rIn} 0 1 1 ${cx} ${cy - rIn} Z`;
+        } else if (angleSpan > 0.001) {
+          const x1 = cx + rOut * Math.cos(startAngle);
+          const y1 = cy + rOut * Math.sin(startAngle);
+          const x2 = cx + rOut * Math.cos(endAngle);
+          const y2 = cy + rOut * Math.sin(endAngle);
+          const x3 = cx + rIn * Math.cos(endAngle);
+          const y3 = cy + rIn * Math.sin(endAngle);
+          const x4 = cx + rIn * Math.cos(startAngle);
+          const y4 = cy + rIn * Math.sin(startAngle);
+          const largeArc = angleSpan > Math.PI ? 1 : 0;
+          pathD = `M ${x1} ${y1} A ${rOut} ${rOut} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${rIn} ${rIn} 0 ${largeArc} 0 ${x4} ${y4} Z`;
+        }
+
+        return {
+          ...seg,
+          pathD,
+          isHovered
+        };
+      });
+
+      return React.createElement('div', {
+        className: 'kpi-card kpi-expected-revenue-card',
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          position: 'relative',
+          padding: '16px 20px',
+          gridColumn: 'span 2'
+        }
+      },
+        // Card Top Header: Title + Timeframe Dropdown Selector
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 10,
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: 8
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('span', { style: { fontSize: '1.15rem' } }, '📈'),
+            React.createElement('div', null,
+              React.createElement('div', { className: 'kpi-label', style: { margin: 0, fontSize: '0.82rem', fontWeight: 700 } }, 'Expected Revenue Forecast'),
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, `Analytics based on previous sales velocity & pipeline`)
+            )
+          ),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('select', {
+              className: 'select select-xs',
+              style: {
+                padding: '3px 8px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer'
+              },
+              value: timeframe,
+              onChange: (e) => setTimeframe(e.target.value)
+            },
+              React.createElement('option', { value: 'month' }, '📅 This Month'),
+              React.createElement('option', { value: 'quarter' }, '📅 This Quarter'),
+              React.createElement('option', { value: '6m' }, '📅 Next 6 Months'),
+              React.createElement('option', { value: 'year' }, '📅 This Year')
+            )
+          )
+        ),
+
+        // Main Content: Left Mini-Donut & Right Headline + Legend
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap'
+          }
+        },
+          // Left: Interactive Donut Chart Graphic
+          React.createElement('div', {
+            style: {
+              position: 'relative',
+              width: size,
+              height: size,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto'
+            }
+          },
+            forecast.totalExpected <= 0 ? (
+              React.createElement('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}` },
+                React.createElement('circle', {
+                  cx: cx,
+                  cy: cy,
+                  r: (outerR + innerR) / 2,
+                  fill: 'none',
+                  stroke: 'var(--border-light, #e2e8f0)',
+                  strokeWidth: outerR - innerR,
+                  strokeDasharray: '4 4'
+                }),
+                React.createElement('text', {
+                  x: cx,
+                  y: cy + 4,
+                  textAnchor: 'middle',
+                  fontSize: 18,
+                  fill: 'var(--text-secondary)'
+                }, '📈')
+              )
+            ) : (
+              React.createElement('svg', {
+                width: size,
+                height: size,
+                viewBox: `0 0 ${size} ${size}`,
+                style: { overflow: 'visible' }
+              },
+                slices.map(slice => slice.pathD && React.createElement('path', {
+                  key: slice.id,
+                  d: slice.pathD,
+                  fill: slice.color,
+                  style: {
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    filter: slice.isHovered ? 'drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'none',
+                    opacity: (hoveredSegment && !slice.isHovered) ? 0.4 : 1
+                  },
+                  onMouseEnter: () => setHoveredSegment(slice.id),
+                  onMouseLeave: () => setHoveredSegment(null)
+                }))
+              )
+            ),
+
+            // Center Ring Badge / Value
+            React.createElement('div', {
+              style: {
+                position: 'absolute',
+                width: innerR * 2 - 4,
+                height: innerR * 2 - 4,
+                borderRadius: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                pointerEvents: 'none',
+                padding: 2
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  color: activeSeg ? activeSeg.color : 'var(--text-secondary)',
+                  textTransform: 'uppercase',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: innerR * 2 - 8
+                }
+              }, activeSeg ? activeSeg.name : 'Realized'),
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  color: activeSeg ? activeSeg.color : '#10b981',
+                  lineHeight: 1.1
+                }
+              }, activeSeg ? `${activeSeg.pctFormatted}%` : `${forecast.runRatePercentOfTarget}%`),
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.58rem',
+                  color: 'var(--text-muted, #94a3b8)',
+                  fontWeight: 600
+                }
+              }, activeSeg ? 'share' : 'secured')
+            )
+          ),
+
+          // Right: Total Forecast Readout & 4 Breakdown Segments
+          React.createElement('div', {
+            style: {
+              flex: '1 1 200px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: 8,
+              minWidth: 180
+            }
+          },
+            // Forecast Headline
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' } },
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, `Total Expected (${forecast.timeframeLabel})`),
+                React.createElement('div', {
+                  className: 'kpi-value',
+                  style: {
+                    fontSize: '1.42rem',
+                    fontWeight: 800,
+                    color: 'var(--primary, #4f46e5)',
+                    lineHeight: 1.15
+                  }
+                }, BillsoftUtils.formatCurrency(forecast.totalExpected))
+              ),
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: '#10b981',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  marginBottom: 2
+                }
+              }, `${forecast.elapsedPeriodDays}/${forecast.totalPeriodDays}d passed`)
+            ),
+
+            // Segment Breakdown Grid (2x2)
+            React.createElement('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: 5
+              }
+            },
+              forecast.segments.map(seg => {
+                const isHovered = hoveredSegment === seg.id;
+                return React.createElement('div', {
+                  key: seg.id,
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '3px 6px',
+                    borderRadius: 5,
+                    background: isHovered ? 'var(--bg-hover, rgba(0,0,0,0.05))' : 'transparent',
+                    border: isHovered ? `1px solid ${seg.color}50` : '1px solid transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    opacity: (hoveredSegment && !isHovered) ? 0.45 : 1
+                  },
+                  title: `${seg.name}: ${BillsoftUtils.formatCurrency(seg.amount)} (${seg.desc})`,
+                  onMouseEnter: () => setHoveredSegment(seg.id),
+                  onMouseLeave: () => setHoveredSegment(null)
+                },
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
+                    React.createElement('span', {
+                      style: {
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        backgroundColor: seg.color,
+                        flexShrink: 0
+                      }
+                    }),
+                    React.createElement('span', {
+                      style: {
+                        fontSize: '0.72rem',
+                        fontWeight: isHovered ? 700 : 500,
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }
+                    }, seg.name)
+                  ),
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 } },
+                    React.createElement('span', { style: { fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-primary)' } }, BillsoftUtils.formatCurrency(seg.amount)),
+                    React.createElement('span', {
+                      style: {
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        padding: '1px 3px',
+                        borderRadius: 3,
+                        background: `${seg.color}20`,
+                        color: seg.color
+                      }
+                    }, `${seg.pctFormatted}%`)
+                  )
+                );
+              })
+            )
+          )
+        )
+      );
+    }
+
     // ─── SHARED NOTE / MEMO PREVIEW MODAL ───
     function NotePreviewModal({ note, onClose, onEdit }) {
       useEffect(() => {
@@ -6073,18 +6519,27 @@
 
       // Event listeners for shortcuts & Omnisearch triggers
       useEffect(() => {
-        const handleOpenExpense = () => { setPlannerTab('trackers'); setTrackerSubTab('expenses'); openCreateModal('expense'); };
-        const handleOpenSaving = () => { setPlannerTab('trackers'); setTrackerSubTab('savings'); openCreateModal('saving'); };
-        const handleOpenGoal = () => { setPlannerTab('trackers'); setTrackerSubTab('goals'); openCreateModal('goal'); };
+        const handleOpenExpense = () => { setActiveTab('expenses'); openCreateModal('expense'); };
+        const handleOpenSaving = () => { setActiveTab('savings'); openCreateModal('saving'); };
+        const handleOpenGoal = () => { setActiveTab('goals'); openCreateModal('goal'); };
+        const handleOpenNote = () => { setActiveTab('board'); openCreateModal('note'); };
+        const handleOpenTask = () => { setActiveTab('board'); openCreateModal('task'); };
+        const handleOpenReminder = () => { setActiveTab('board'); openCreateModal('reminder'); };
 
         window.addEventListener('billsoft:open-add-expense', handleOpenExpense);
         window.addEventListener('billsoft:open-add-saving', handleOpenSaving);
         window.addEventListener('billsoft:open-add-goal', handleOpenGoal);
+        window.addEventListener('billsoft:open-add-note', handleOpenNote);
+        window.addEventListener('billsoft:open-add-task', handleOpenTask);
+        window.addEventListener('billsoft:open-add-reminder', handleOpenReminder);
 
         return () => {
           window.removeEventListener('billsoft:open-add-expense', handleOpenExpense);
           window.removeEventListener('billsoft:open-add-saving', handleOpenSaving);
           window.removeEventListener('billsoft:open-add-goal', handleOpenGoal);
+          window.removeEventListener('billsoft:open-add-note', handleOpenNote);
+          window.removeEventListener('billsoft:open-add-task', handleOpenTask);
+          window.removeEventListener('billsoft:open-add-reminder', handleOpenReminder);
         };
       }, [allExpenseCategories, allSavingCategories, goals]);
 
@@ -8325,11 +8780,18 @@
               React.createElement('option', { value: 'DONE' }, '🟢 Done')
             )
           ),
-          rem && React.createElement('div', { style: { width: '100%', marginTop: 8, padding: '8px 12px', backgroundColor: 'var(--bg-hover)', borderRadius: 'var(--radius)', fontSize: '0.8rem' } },
-            React.createElement('strong', null, isTask ? '📋 Linked Task: ' : '🔔 Linked Reminder: '),
-            React.createElement('span', null, rem.title),
-            rem.status && React.createElement('span', { style: { marginLeft: 8, padding: '1px 6px', borderRadius: 4, backgroundColor: rem.status === 'DONE' ? '#dcfce7' : rem.status === 'IN_PROGRESS' ? '#dbeafe' : '#fef3c7', fontSize: '0.7rem' } }, rem.status),
-            rem.dueDate && React.createElement('span', { style: { marginLeft: 8, color: 'var(--text-secondary)' } }, `Due: ${rem.dueDate.split('T')[0]}`)
+          rem && React.createElement('div', {
+            style: { width: '100%', marginTop: 8, padding: '8px 12px', backgroundColor: 'var(--bg-hover)', borderRadius: 'var(--radius)', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 },
+            onClick: () => BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'board' }),
+            title: 'Click to open in Planner Board'
+          },
+            React.createElement('div', null,
+              React.createElement('strong', null, isTask ? '📋 Linked Task: ' : '🔔 Linked Reminder: '),
+              React.createElement('span', null, rem.title),
+              rem.status && React.createElement('span', { style: { marginLeft: 8, padding: '1px 6px', borderRadius: 4, backgroundColor: rem.status === 'DONE' ? '#dcfce7' : rem.status === 'IN_PROGRESS' ? '#dbeafe' : '#fef3c7', fontSize: '0.7rem' } }, rem.status),
+              rem.dueDate && React.createElement('span', { style: { marginLeft: 8, color: 'var(--text-secondary)' } }, `Due: ${rem.dueDate.split('T')[0]}`)
+            ),
+            React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 600, fontSize: '0.76rem' } }, 'Open in Planner →')
           )
         );
       };
@@ -8360,7 +8822,14 @@
                   React.createElement('span', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, m.createdAt ? m.createdAt.split('T')[0] : '')
                 ),
                 React.createElement('div', { style: { fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, m.subject || 'No Subject'),
-                m.reminderId && React.createElement('div', { style: { fontSize: '0.7rem', color: '#0284c7', marginTop: 4 } }, '🔗 Linked to planner item')
+                m.reminderId && React.createElement('div', {
+                  style: { fontSize: '0.72rem', color: '#0284c7', marginTop: 4, cursor: 'pointer', textDecoration: 'underline' },
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'board' });
+                  },
+                  title: 'Open in Planner Board'
+                }, '🔗 Linked to planner item →')
               )
             ) : React.createElement('div', { className: 'empty-state small', style: { textAlign: 'center', padding: 20 } }, 'No messages')
           )
@@ -9129,13 +9598,22 @@
         // ════════════════════════════════════════════════════════════════════════
         dashSegment === 'business' && React.createElement(Fragment, null,
 
-          // 6-Card Business Executive KPI Grid
-          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, businessKpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
-            React.createElement('div', { className: 'kpi-icon' }, k.icon),
-            React.createElement('div', { className: 'kpi-label' }, k.label),
-            React.createElement('div', { className: 'kpi-value' }, k.value),
-            React.createElement('div', { className: 'kpi-sub' }, k.sub)
-          ))),
+          // Business Executive KPI Grid & Expected Revenue Forecaster
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } },
+            React.createElement(ExpectedRevenueDonutCard, { data }),
+            businessKpis.map((k, i) => React.createElement('div', {
+              key: i,
+              className: `kpi-card ${k.cls}`,
+              style: { cursor: k.target ? 'pointer' : 'default', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
+              onClick: () => k.target && BillsoftSearchEngine.dispatchNavigate(k.target),
+              title: k.target ? `Open ${k.label}` : undefined
+            },
+              React.createElement('div', { className: 'kpi-icon' }, k.icon),
+              React.createElement('div', { className: 'kpi-label' }, k.label),
+              React.createElement('div', { className: 'kpi-value' }, k.value),
+              React.createElement('div', { className: 'kpi-sub' }, k.sub)
+            ))
+          ),
 
           // Compact Business Operational Highlights Ribbon
           React.createElement('div', {
@@ -9152,23 +9630,23 @@
               fontSize: '0.85rem'
             }
           },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('parties', 'customers') },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('firm', 'customers'), title: 'View Customers' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👥 Active Customers:'),
               React.createElement('strong', null, `${customers.length} registered`)
             ),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('parties', 'vendors') },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('firm', 'parties'), title: 'View Supply Vendors' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '🏭 Supply Vendors:'),
               React.createElement('strong', { style: { color: '#6366f1' } }, `${parties.length} vendors`)
             ),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('products') },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('firm', 'inventory'), title: 'View Inventory Catalog' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '⚠️ Low Stock Items:'),
               React.createElement('strong', { style: { color: businessStats.lowStockCount > 0 ? '#ef4444' : '#10b981' } }, `${businessStats.lowStockCount} items need reorder`)
             ),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('staff') },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('hr', 'staff'), title: 'View Staff Directory' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👷 Active Staff:'),
               React.createElement('strong', null, `${empAnalytics ? empAnalytics.totalEmployees || 0 : 0} team members`)
             ),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('invoices') },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('invoices', 'overview'), title: 'View Invoice Sales' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '📈 This Month Billed:'),
               React.createElement('strong', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.businessThisMonth || 0))
             )
@@ -9204,7 +9682,7 @@
                     React.createElement('div', { className: 'card-title' }, 'Top Selling Products'),
                     React.createElement('div', { className: 'card-subtitle' }, 'Top 5 by gross revenue contribution')
                   ),
-                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('products') }, 'View Catalog →')
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('firm', 'inventory') }, 'View Catalog →')
                 ),
                 React.createElement('div', { className: 'table-container' },
                   React.createElement('table', null,
@@ -9240,7 +9718,7 @@
                     React.createElement('div', { className: 'card-title' }, 'Top Clients'),
                     React.createElement('div', { className: 'card-subtitle' }, 'Highest billing accounts')
                   ),
-                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('parties', 'customers') }, 'All Customers →')
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('firm', 'customers') }, 'All Customers →')
                 ),
                 React.createElement('div', { className: 'table-container' },
                   React.createElement('table', null,
@@ -9274,7 +9752,7 @@
                     React.createElement('div', { className: 'card-title' }, 'Recent Purchase Orders'),
                     React.createElement('div', { className: 'card-subtitle' }, 'Vendor procurement & supply orders')
                   ),
-                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('purchaseOrders') }, 'All POs →')
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('paperwork', 'orders') }, 'All POs →')
                 ),
                 purchaseOrders && purchaseOrders.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                   purchaseOrders.slice(0, 3).map((po, i) => {
@@ -9371,7 +9849,13 @@
         dashSegment === 'personal' && React.createElement(Fragment, null,
 
           // 4-Card Personal Wealth & Habits Executive KPI Grid
-          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, personalKpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, personalKpis.map((k, i) => React.createElement('div', {
+            key: i,
+            className: `kpi-card ${k.cls}`,
+            style: { cursor: k.target ? 'pointer' : 'default', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
+            onClick: () => k.target && BillsoftSearchEngine.dispatchNavigate(k.target),
+            title: k.target ? `Open ${k.label}` : undefined
+          },
             React.createElement('div', { className: 'kpi-icon' }, k.icon),
             React.createElement('div', { className: 'kpi-label' }, k.label),
             React.createElement('div', { className: 'kpi-value' }, k.value),

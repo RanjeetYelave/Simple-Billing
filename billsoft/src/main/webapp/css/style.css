@@ -1135,6 +1135,20 @@ input[type=number] {
   box-shadow: var(--shadow);
 }
 
+.kpi-expected-revenue-card {
+  grid-column: span 2;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (max-width: 900px) {
+  .kpi-expected-revenue-card {
+    grid-column: span 1;
+  }
+}
+
 .kpi-card .kpi-icon {
   position: absolute;
   right: 16px;

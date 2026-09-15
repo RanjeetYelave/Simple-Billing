@@ -1,0 +1,209 @@
+package com.billing.simple.billsoft.dataprotection;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Storage provider targeting a private GitHub repository vault.
+ * Follows strict low-frequency rules:
+ * - Minimum necessary remote calls (1 on creation, 2 on replacement, max 1 retry on 409 conflict).
+ * - Timeouts: 5000ms connect, 10000ms read.
+ * - Zero background polling or pinging.
+ */
+public class GitHubStorageProvider implements BackupStorageProvider {
+
+    private static final String DEFAULT_REPO = "crucified1215/rupeecrm-dataprotection-vault";
+    private static final String API_BASE = "https://api.github.com";
+
+    private final String repo;
+    private final String authToken;
+    private final ObjectMapper mapper;
+
+    public GitHubStorageProvider() {
+        this(resolveRepo(), resolveToken());
+    }
+
+    public GitHubStorageProvider(String repo, String authToken) {
+        this.repo = repo;
+        this.authToken = authToken;
+        this.mapper = new ObjectMapper();
+    }
+
+    private static String resolveRepo() {
+        String prop = System.getProperty("rupeecrm.dataprotection.repo");
+        if (prop != null && !prop.isBlank()) return prop.trim();
+        String env = System.getenv("RUPEECRM_DATA_PROTECTION_REPO");
+        if (env != null && !env.isBlank()) return env.trim();
+        return DEFAULT_REPO;
+    }
+
+    private static String resolveToken() {
+        String prop = System.getProperty("rupeecrm.dataprotection.token");
+        if (prop != null && !prop.isBlank()) return prop.trim();
+        String env = System.getenv("RUPEECRM_DATA_PROTECTION_TOKEN");
+        if (env != null && !env.isBlank()) return env.trim();
+        return VaultTransportRegistry.resolveDefaultDescriptor();
+    }
+
+    @Override
+    public UploadResult uploadBackup(String machineId, byte[] encryptedData, String lastKnownSha) {
+        if (machineId == null || machineId.isBlank() || encryptedData == null || encryptedData.length == 0) {
+            return UploadResult.error("Invalid parameters for upload", 400);
+        }
+
+        String path = "backups/" + machineId.trim() + ".enc";
+        String sha = lastKnownSha;
+
+        // If sha is unknown, attempt to fetch current SHA or create directly
+        if (sha == null || sha.isBlank()) {
+            sha = fetchFileSha(path);
+        }
+
+        // Attempt upload (Call 1 or 2)
+        UploadResult result = executePutContent(path, encryptedData, sha, machineId);
+        if (result.isSuccess()) {
+            return result;
+        }
+
+        // Bounded retry (max 1) on 409 Conflict
+        if (result.getStatusCode() == 409) {
+            String freshSha = fetchFileSha(path);
+            if (freshSha != null) {
+                return executePutContent(path, encryptedData, freshSha, machineId);
+            }
+        }
+
+        return result;
+    }
+
+    @Override
+    public byte[] downloadBackup(String machineId) {
+        if (machineId == null || machineId.isBlank()) {
+            return null;
+        }
+        String path = "backups/" + machineId.trim() + ".enc";
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = URI.create(urlStr).toURL();
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
+            conn.setRequestProperty("Accept", "application/vnd.github.v3.raw");
+            if (authToken != null && !authToken.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            }
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                try (InputStream in = conn.getInputStream()) {
+                    return in.readAllBytes();
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+        return null;
+    }
+
+    private String fetchFileSha(String path) {
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+        HttpURLConnection conn = null;
+        try {
+            URL url = URI.create(urlStr).toURL();
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
+            conn.setRequestProperty("Accept", "application/json");
+            if (authToken != null && !authToken.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            }
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                try (InputStream in = conn.getInputStream()) {
+                    JsonNode node = mapper.readTree(in);
+                    if (node.has("sha")) {
+                        return node.get("sha").asText();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+        return null;
+    }
+
+    private UploadResult executePutContent(String path, byte[] data, String sha, String machineId) {
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+        HttpURLConnection conn = null;
+        try {
+            URL url = URI.create(urlStr).toURL();
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            if (authToken != null && !authToken.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            }
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setDoOutput(true);
+
+            Map<String, Object> reqBody = new HashMap<>();
+            reqBody.put("message", "Auto Data Protection backup for machine: " + machineId);
+            reqBody.put("content", Base64.getEncoder().encodeToString(data));
+            if (sha != null && !sha.isBlank()) {
+                reqBody.put("sha", sha);
+            }
+
+            byte[] jsonBytes = mapper.writeValueAsBytes(reqBody);
+            try (OutputStream out = conn.getOutputStream()) {
+                out.write(jsonBytes);
+            }
+
+            int code = conn.getResponseCode();
+            if (code == 200 || code == 201) {
+                try (InputStream in = conn.getInputStream()) {
+                    JsonNode node = mapper.readTree(in);
+                    String newSha = node.path("content").path("sha").asText(null);
+                    return UploadResult.ok(newSha);
+                }
+            } else {
+                String errText = "";
+                try (InputStream err = conn.getErrorStream()) {
+                    if (err != null) {
+                        errText = new String(err.readAllBytes(), StandardCharsets.UTF_8);
+                    }
+                }
+                return UploadResult.error("GitHub API error: " + code + " " + errText, code);
+            }
+        } catch (Exception e) {
+            return UploadResult.error("Network exception during upload: " + e.getMessage(), 0);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+}

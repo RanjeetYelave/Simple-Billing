@@ -19,17 +19,21 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.springframework.stereotype.Service;
 
 /**
  * Orchestrates local offline startup validation and background opportunistic daily sync with GitHub.
  */
-public class LicenseCoordinator {
+@Service
+public class LicenseCoordinator implements DataProtectionEntitlement {
 
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final int VALID_LICENSE_SYNC_INTERVAL_DAYS = 14;
 
     private final MachineIdentity machineIdentity;
     private final LicenseVerifier licenseVerifier;
     private final LicenseStorage licenseStorage;
+    private final SnoozeManager snoozeManager;
     private final ObjectMapper mapper;
     private final ScheduledExecutorService scheduler;
 
@@ -39,13 +43,18 @@ public class LicenseCoordinator {
     private boolean dailySyncScheduled = false;
 
     public LicenseCoordinator() {
-        this(new MachineIdentity(), new LicenseVerifier(), new LicenseStorage());
+        this(new MachineIdentity(), new LicenseVerifier(), new LicenseStorage(), new SnoozeManager());
     }
 
     public LicenseCoordinator(MachineIdentity machineIdentity, LicenseVerifier licenseVerifier, LicenseStorage licenseStorage) {
+        this(machineIdentity, licenseVerifier, licenseStorage, new SnoozeManager());
+    }
+
+    public LicenseCoordinator(MachineIdentity machineIdentity, LicenseVerifier licenseVerifier, LicenseStorage licenseStorage, SnoozeManager snoozeManager) {
         this.machineIdentity = machineIdentity;
         this.licenseVerifier = licenseVerifier;
         this.licenseStorage = licenseStorage;
+        this.snoozeManager = snoozeManager;
         this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "rupeecrm-license-sync");
@@ -85,13 +94,16 @@ public class LicenseCoordinator {
         // In offline mode, an expired license STILL ALLOWS startup (Fail-Open), but UI can show warning
         currentValidationResult = ValidationResult.VALID;
 
+        // Check and reset snoozes if revision changed
+        snoozeManager.checkAndResetOnRevisionBump(activeLicense.getRevision());
+
         // Schedule background sync
         scheduleDailySync();
         return true;
     }
 
     /**
-     * Schedules the opportunistic background daily check.
+     * Schedules the opportunistic background check.
      */
     public synchronized void scheduleDailySync() {
         if (dailySyncScheduled) {
@@ -110,14 +122,32 @@ public class LicenseCoordinator {
 
     /**
      * Synchronizes local license state and inbox messages with the remote registry.
-     * @param force if true, bypasses the once-per-day check restriction.
+     * Low-frequency policy:
+     * - If license is comfortably valid: checks at most once every 14 days.
+     * - If license is expired: checks on startup/daily sync to detect operator renewals.
+     * @param force if true, bypasses cadence restriction.
      */
     public void syncWithRegistry(boolean force) {
-        String today = LocalDate.now(DEFAULT_ZONE).toString();
+        LocalDate todayDate = LocalDate.now(DEFAULT_ZONE);
+        String today = todayDate.toString();
         String lastChecked = licenseStorage.getLastSuccessfulCheckDate();
 
-        if (!force && today.equals(lastChecked)) {
-            return; // Already successfully verified today
+        if (!force && lastChecked != null && !lastChecked.isBlank()) {
+            try {
+                LocalDate lastCheckedDate = LocalDate.parse(lastChecked);
+                boolean expired = licenseVerifier.isExpired(activeLicense, Instant.now());
+                if (!expired) {
+                    long daysSinceCheck = java.time.temporal.ChronoUnit.DAYS.between(lastCheckedDate, todayDate);
+                    if (daysSinceCheck < VALID_LICENSE_SYNC_INTERVAL_DAYS) {
+                        return; // Valid license checked < 14 days ago. Skip remote call.
+                    }
+                } else {
+                    if (today.equals(lastChecked)) {
+                        return; // Expired license already checked today.
+                    }
+                }
+            } catch (Exception ignored) {
+            }
         }
 
         String machineId = machineIdentity.getMachineId();
@@ -294,5 +324,64 @@ public class LicenseCoordinator {
 
     public LicenseVerifier getLicenseVerifier() {
         return licenseVerifier;
+    }
+
+    // --- DataProtectionEntitlement Implementation ---
+
+    @Override
+    public boolean isDataProtectionEnabled() {
+        return activeLicense != null && Boolean.TRUE.equals(activeLicense.getDataProtectionEnabled());
+    }
+
+    @Override
+    public Instant getDataProtectionExpiresAt() {
+        return activeLicense != null ? activeLicense.getDataProtectionExpiresAt() : null;
+    }
+
+    @Override
+    public boolean isDataProtectionActive() {
+        return licenseVerifier.isDataProtectionActive(activeLicense, Instant.now());
+    }
+
+    @Override
+    public String getLicenseId() {
+        return activeLicense != null && activeLicense.getLicenseId() != null ? activeLicense.getLicenseId() : "";
+    }
+
+    @Override
+    public String getMachineId() {
+        return machineIdentity.getMachineId();
+    }
+
+    // --- Expiry Days Calculation Helpers ---
+
+    public Long getLicenseDaysRemaining() {
+        if (activeLicense == null || activeLicense.getExpiresAt() == null || activeLicense.getPlan() == MembershipPlan.GOLD) {
+            return null; // Lifetime / no expiry
+        }
+        Instant now = Instant.now();
+        if (now.isAfter(activeLicense.getExpiresAt())) {
+            return 0L;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(now, activeLicense.getExpiresAt());
+    }
+
+    public Long getDataProtectionDaysRemaining() {
+        if (activeLicense == null || !Boolean.TRUE.equals(activeLicense.getDataProtectionEnabled()) || activeLicense.getDataProtectionExpiresAt() == null) {
+            return null; // Lifetime / disabled
+        }
+        Instant now = Instant.now();
+        if (now.isAfter(activeLicense.getDataProtectionExpiresAt())) {
+            return 0L;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(now, activeLicense.getDataProtectionExpiresAt());
+    }
+
+    public SnoozeManager getSnoozeManager() {
+        return snoozeManager;
+    }
+
+    public void shutdown() {
+        scheduler.shutdownNow();
     }
 }

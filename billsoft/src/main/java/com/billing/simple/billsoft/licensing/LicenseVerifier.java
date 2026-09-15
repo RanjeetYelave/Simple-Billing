@@ -19,7 +19,8 @@ import java.util.Base64;
  */
 public class LicenseVerifier {
 
-    private static final String SCHEMA_VERSION = "1";
+    private static final String SCHEMA_VERSION_1 = "1";
+    private static final String SCHEMA_VERSION_2 = "2";
     private static final String LIFETIME_EXPIRY_STRING = "LIFETIME";
 
     private final PublicKey publicKey;
@@ -44,6 +45,7 @@ public class LicenseVerifier {
 
     /**
      * Builds the deterministic canonical newline-delimited payload for license signing and verification.
+     * Supports Schema 2 (with Data Protection) and legacy Schema 1.
      */
     public static String buildCanonicalString(LicensePayload license) {
         if (license == null) {
@@ -60,7 +62,28 @@ public class LicenseVerifier {
         String issuedAt = license.getIssuedAt() != null ? license.getIssuedAt().toString() : "";
         String expiresAt = license.getExpiresAt() != null ? license.getExpiresAt().toString() : LIFETIME_EXPIRY_STRING;
 
-        return SCHEMA_VERSION + "\n" +
+        if (license.getDataProtectionEnabled() != null) {
+            String dpEnabled = String.valueOf(license.getDataProtectionEnabled());
+            String dpExpiresAt = license.getDataProtectionExpiresAt() != null 
+                    ? license.getDataProtectionExpiresAt().toString() 
+                    : LIFETIME_EXPIRY_STRING;
+
+            return SCHEMA_VERSION_2 + "\n" +
+                    licenseId + "\n" +
+                    machineId + "\n" +
+                    customerName + "\n" +
+                    product + "\n" +
+                    edition + "\n" +
+                    plan + "\n" +
+                    status + "\n" +
+                    revision + "\n" +
+                    issuedAt + "\n" +
+                    expiresAt + "\n" +
+                    dpEnabled + "\n" +
+                    dpExpiresAt;
+        }
+
+        return SCHEMA_VERSION_1 + "\n" +
                 licenseId + "\n" +
                 machineId + "\n" +
                 customerName + "\n" +
@@ -80,7 +103,7 @@ public class LicenseVerifier {
         if (msg == null) {
             return "";
         }
-        return SCHEMA_VERSION + "\n" +
+        return SCHEMA_VERSION_1 + "\n" +
                 sanitize(msg.getMessageId()) + "\n" +
                 sanitize(machineId) + "\n" +
                 sanitize(msg.getTitle()) + "\n" +
@@ -168,6 +191,22 @@ public class LicenseVerifier {
             return false;
         }
         return now.isAfter(license.getExpiresAt());
+    }
+
+    /**
+     * Evaluates whether Data Protection add-on is enabled and not expired.
+     */
+    public boolean isDataProtectionActive(LicensePayload license, Instant now) {
+        if (license == null || license.getStatus() != LicenseStatus.ACTIVE) {
+            return false;
+        }
+        if (license.getDataProtectionEnabled() == null || !license.getDataProtectionEnabled()) {
+            return false;
+        }
+        if (license.getDataProtectionExpiresAt() == null) {
+            return true; // Lifetime add-on
+        }
+        return !now.isAfter(license.getDataProtectionExpiresAt());
     }
 
     private static String sanitize(String input) {

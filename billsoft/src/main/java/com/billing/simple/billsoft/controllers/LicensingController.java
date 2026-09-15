@@ -41,12 +41,8 @@ public class LicensingController {
     }
 
     @Autowired
-    public LicensingController(AppConfigRepository appConfigRepo, FirmDetailsRepository firmDetailsRepo) {
-        this(new LicenseCoordinator(), appConfigRepo, firmDetailsRepo);
-    }
-
     public LicensingController(LicenseCoordinator coordinator, AppConfigRepository appConfigRepo, FirmDetailsRepository firmDetailsRepo) {
-        this.coordinator = coordinator;
+        this.coordinator = coordinator != null ? coordinator : new LicenseCoordinator();
         this.appConfigRepo = appConfigRepo;
         this.firmDetailsRepo = firmDetailsRepo;
         // Trigger fast-path startup check on controller bean creation
@@ -108,13 +104,33 @@ public class LicensingController {
             boolean expired = coordinator.getLicenseVerifier().isExpired(license, Instant.now());
             resp.put("isExpired", expired);
 
-            if (license.getExpiresAt() != null) {
-                long daysRemaining = Duration.between(Instant.now(), license.getExpiresAt()).toDays();
-                resp.put("daysRemaining", daysRemaining);
-            } else {
-                resp.put("daysRemaining", null);
-            }
+            Long daysRemaining = coordinator.getLicenseDaysRemaining();
+            resp.put("daysRemaining", daysRemaining);
             resp.put("isTrial", false);
+
+            // Data Protection fields
+            boolean dpEnabled = Boolean.TRUE.equals(license.getDataProtectionEnabled());
+            boolean dpActive = coordinator.isDataProtectionActive();
+            Long dpDaysRemaining = coordinator.getDataProtectionDaysRemaining();
+            resp.put("dataProtectionEnabled", dpEnabled);
+            resp.put("dataProtectionExpiresAt", license.getDataProtectionExpiresAt());
+            resp.put("dataProtectionDaysRemaining", dpDaysRemaining);
+            resp.put("isDataProtectionActive", dpActive);
+
+            // Snooze state
+            boolean licenseSnoozed = coordinator.getSnoozeManager().isLicenseSnoozed(license.getRevision());
+            boolean dpSnoozed = coordinator.getSnoozeManager().isDataProtectionSnoozed(license.getRevision());
+            resp.put("licenseSnoozed", licenseSnoozed);
+            resp.put("licenseSnoozedUntil", coordinator.getSnoozeManager().getCurrentState().getLicenseSnoozedUntil());
+            resp.put("dpSnoozed", dpSnoozed);
+            resp.put("dpSnoozedUntil", coordinator.getSnoozeManager().getCurrentState().getDpSnoozedUntil());
+            resp.put("dpPermanentlySnoozed", coordinator.getSnoozeManager().getCurrentState().isDpPermanentlySnoozed());
+
+            // Popup trigger flags for frontend
+            boolean showLicensePopup = !licenseSnoozed && daysRemaining != null && daysRemaining <= 7 && daysRemaining >= 0;
+            boolean showDpPopup = dpEnabled && !dpSnoozed && dpDaysRemaining != null && dpDaysRemaining <= 7 && dpDaysRemaining >= 0;
+            resp.put("showLicensePopup", showLicensePopup);
+            resp.put("showDpPopup", showDpPopup);
         } else {
             resp.put("plan", null);
             resp.put("status", null);
@@ -122,12 +138,41 @@ public class LicensingController {
             resp.put("isExpired", false);
             resp.put("daysRemaining", null);
             resp.put("isTrial", true);
+            resp.put("dataProtectionEnabled", false);
+            resp.put("dataProtectionExpiresAt", null);
+            resp.put("dataProtectionDaysRemaining", null);
+            resp.put("isDataProtectionActive", false);
+            resp.put("licenseSnoozed", false);
+            resp.put("dpSnoozed", false);
+            resp.put("showLicensePopup", false);
+            resp.put("showDpPopup", false);
         }
 
         List<CustomerMessage> msgs = coordinator.getLicenseStorage().loadInboxMessages();
         long unreadCount = msgs.stream().filter(m -> !m.isRead()).count();
         resp.put("inboxUnreadCount", unreadCount);
 
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/snooze/license")
+    public ResponseEntity<Map<String, Object>> snoozeLicense(@RequestBody Map<String, String> body) {
+        String duration = body != null ? body.get("duration") : "1d";
+        Instant until = coordinator.getSnoozeManager().snoozeLicense(duration, coordinator.getActiveLicense());
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("snoozedUntil", until);
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/snooze/dataprotection")
+    public ResponseEntity<Map<String, Object>> snoozeDataProtection(@RequestBody Map<String, String> body) {
+        String duration = body != null ? body.get("duration") : "1d";
+        Instant until = coordinator.getSnoozeManager().snoozeDataProtection(duration, coordinator.getActiveLicense());
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("snoozedUntil", until);
+        resp.put("permanent", "permanent".equalsIgnoreCase(duration));
         return ResponseEntity.ok(resp);
     }
 

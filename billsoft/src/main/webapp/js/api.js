@@ -665,6 +665,8 @@ const API = {
     initTrial: () => API._json('/api/licensing/init-trial', { method: 'POST' }),
     getMessages: () => API._json('/api/licensing/messages'),
     markMessageRead: (id) => API._json(`/api/licensing/messages/${id}/read`, { method: 'POST' }),
+    snoozeLicense: (duration) => API._json('/api/licensing/snooze/license', { method: 'POST', body: { duration } }),
+    snoozeDataProtection: (duration) => API._json('/api/licensing/snooze/dataprotection', { method: 'POST', body: { duration } }),
   },
 
   // ─── Backup & Restore ───
@@ -853,5 +855,26 @@ const API = {
     ledger: (entityType, name, id) => API._json(API._qs('/api/omnisearch/ledger', { entityType, name, id })),
     aggregate: () => API._json(API._qs('/api/omnisearch/aggregate')),
     search: (query) => API._json(API._qs('/api/omnisearch/search', { query }))
+  },
+
+  // ─── Licensing & Expiry Snooze ───
+  licensing: {
+    status: () => API._json('/api/licensing/status'),
+    checkOnline: () => API._json('/api/licensing/check-online', { method: 'POST' }),
+    activate: (payload) => API._json('/api/licensing/activate', { method: 'POST', body: payload }),
+    initTrial: () => API._json('/api/licensing/init-trial', { method: 'POST' }),
+    qr: () => API._json('/api/licensing/qr'),
+    messages: () => API._json('/api/licensing/messages'),
+    markMessageRead: (id) => API._json(`/api/licensing/messages/${id}/read`, { method: 'POST' }),
+    snoozeLicense: (duration) => API._json('/api/licensing/snooze/license', { method: 'POST', body: { duration } }),
+    snoozeDataProtection: (duration) => API._json('/api/licensing/snooze/dataprotection', { method: 'POST', body: { duration } })
+  },
+
+  // ─── Data Protection Cloud Vault ───
+  dataProtection: {
+    status: () => API._json('/api/dataprotection/status'),
+    backupNow: () => API._json('/api/dataprotection/backup-now', { method: 'POST' }),
+    inspectCloud: (machineId, licenseId) => API._json('/api/dataprotection/inspect-cloud', { method: 'POST', body: { machineId, licenseId } }),
+    restoreCloud: (params) => API._json(API._qs('/api/dataprotection/restore-cloud', params), { method: 'POST' })
   }
 };

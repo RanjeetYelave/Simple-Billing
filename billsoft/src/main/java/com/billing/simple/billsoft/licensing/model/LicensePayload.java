@@ -22,6 +22,8 @@ public class LicensePayload {
     private int revision;
     private Instant issuedAt;
     private Instant expiresAt;
+    private Boolean dataProtectionEnabled;
+    private Instant dataProtectionExpiresAt;
     private String statusReason;
     private String signature;
 
@@ -31,6 +33,14 @@ public class LicensePayload {
     public LicensePayload(String licenseId, String machineId, String customerName, String product,
                           String edition, MembershipPlan plan, LicenseStatus status, int revision,
                           Instant issuedAt, Instant expiresAt, String statusReason, String signature) {
+        this(licenseId, machineId, customerName, product, edition, plan, status, revision,
+             issuedAt, expiresAt, null, null, statusReason, signature);
+    }
+
+    public LicensePayload(String licenseId, String machineId, String customerName, String product,
+                          String edition, MembershipPlan plan, LicenseStatus status, int revision,
+                          Instant issuedAt, Instant expiresAt, Boolean dataProtectionEnabled,
+                          Instant dataProtectionExpiresAt, String statusReason, String signature) {
         this.licenseId = licenseId;
         this.machineId = machineId;
         this.customerName = customerName;
@@ -41,6 +51,8 @@ public class LicensePayload {
         this.revision = revision;
         this.issuedAt = issuedAt;
         this.expiresAt = expiresAt;
+        this.dataProtectionEnabled = dataProtectionEnabled;
+        this.dataProtectionExpiresAt = dataProtectionExpiresAt;
         this.statusReason = statusReason;
         this.signature = signature;
     }
@@ -123,6 +135,22 @@ public class LicensePayload {
 
     public void setExpiresAt(Instant expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public Boolean getDataProtectionEnabled() {
+        return dataProtectionEnabled;
+    }
+
+    public void setDataProtectionEnabled(Boolean dataProtectionEnabled) {
+        this.dataProtectionEnabled = dataProtectionEnabled;
+    }
+
+    public Instant getDataProtectionExpiresAt() {
+        return dataProtectionExpiresAt;
+    }
+
+    public void setDataProtectionExpiresAt(Instant dataProtectionExpiresAt) {
+        this.dataProtectionExpiresAt = dataProtectionExpiresAt;
     }
 
     public String getStatusReason() {

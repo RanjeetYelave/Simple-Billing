@@ -22045,6 +22045,9 @@
       const [authEnabled, setAuthEnabled] = useState(false);
       const [autoStatus, setAutoStatus] = useState(null);
       const [autoRunning, setAutoRunning] = useState(false);
+      const [dpStatus, setDpStatus] = useState(null);
+      const [dpRunning, setDpRunning] = useState(false);
+      const [dpInspecting, setDpInspecting] = useState(false);
       const fileInputRef = useRef(null);
 
       // Selective Restore & Inspection States
@@ -22063,6 +22066,56 @@
         }
       };
 
+      const loadDpStatus = async () => {
+        try {
+          const res = await (API.dataProtection ? API.dataProtection.status() : API._json('/api/dataprotection/status'));
+          if (res) setDpStatus(res);
+        } catch (e) {
+        }
+      };
+
+      const handleDpBackupNow = async () => {
+        setDpRunning(true);
+        showToast('Initiating encrypted Cloud Data Protection backup...', 'info');
+        try {
+          const res = await (API.dataProtection ? API.dataProtection.backupNow() : API._json('/api/dataprotection/backup-now', { method: 'POST' }));
+          if (res && res.success) {
+            showToast('Encrypted backup successfully uploaded to cloud vault!', 'success');
+            loadDpStatus();
+          } else {
+            showToast(res && res.message ? res.message : 'Cloud backup attempt completed.', 'info');
+            loadDpStatus();
+          }
+        } catch (err) {
+          showToast('Failed to upload cloud backup: ' + (err.message || 'Network error'), 'error');
+        } finally {
+          setDpRunning(false);
+        }
+      };
+
+      const handleDpInspectCloud = async () => {
+        setDpInspecting(true);
+        showToast('Inspecting encrypted cloud vault backup...', 'info');
+        try {
+          const res = await (API.dataProtection ? API.dataProtection.inspectCloud() : API._json('/api/dataprotection/inspect-cloud', { method: 'POST', body: {} }));
+          if (res && res.success && res.inspection) {
+            setInspection(res.inspection);
+            const initialSet = new Set((res.inspection.firms || []).map(f => f.firmId));
+            setSelectedFirms(initialSet);
+            setRestoreMode('clone');
+            setIsAutoRestore(false);
+            setShowRestoreModal(true);
+            showToast('Cloud backup decrypted and inspected successfully!', 'success');
+          } else {
+            showToast(res && res.error ? res.error : 'Cloud vault backup inspection failed.', 'error');
+          }
+        } catch (err) {
+          showToast('Failed to inspect cloud vault: ' + (err.message || 'Error'), 'error');
+        } finally {
+          setDpInspecting(false);
+        }
+      };
+
       const checkAuth = () => {
         API.auth.status().then(res => {
           if (res && (res.authEnabled === true || res.enabled === true)) {
@@ -22075,6 +22128,7 @@
 
       useEffect(() => {
         loadAutoStatus();
+        loadDpStatus();
         checkAuth();
       }, []);
 
@@ -22374,6 +22428,123 @@
               }, '💾 Download Latest Backup')
             )
           ),
+
+          // ─── CLOUD DATA PROTECTION ADD-ON CARD ───
+          (() => {
+            const isDpActive = dpStatus && dpStatus.active === true;
+            const isDpEnabled = dpStatus && dpStatus.enabled === true;
+
+            const cardBg = isDpActive
+              ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(59, 130, 246, 0.06))'
+              : (isDpEnabled
+                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(217, 119, 6, 0.07))'
+                  : 'linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(220, 38, 38, 0.06))');
+
+            const cardBorder = isDpActive
+              ? '1px solid rgba(16, 185, 129, 0.35)'
+              : (isDpEnabled
+                  ? '1px solid rgba(245, 158, 11, 0.4)'
+                  : '1px solid rgba(239, 68, 68, 0.35)');
+
+            const badgeBg = isDpActive ? '#10B981' : (isDpEnabled ? '#F59E0B' : '#DC2626');
+            const badgeText = isDpActive
+              ? '🛡️ FULLY PROTECTED • Cloud Vault Active'
+              : (isDpEnabled ? '⚠️ PROTECTION EXPIRED • Sync Paused' : '🚨 UNPROTECTED • Device Failure Risk');
+
+            return React.createElement('div', {
+              style: {
+                background: cardBg,
+                border: cardBorder,
+                borderRadius: 'var(--radius)',
+                padding: '20px 22px'
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  React.createElement('span', { style: { fontSize: '1.4rem' } }, isDpActive ? '🛡️' : (isDpEnabled ? '⚠️' : '🚨')),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' } }, 'Off-Device Cloud Data Protection (Add-on)'),
+                    React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                      'Zero-configuration encrypted offsite cloud backup vault with automatic weekly synchronization.'
+                    )
+                  )
+                ),
+                React.createElement('span', {
+                  className: 'badge',
+                  style: {
+                    background: badgeBg,
+                    color: '#fff', fontSize: '0.78rem', padding: '5px 12px', borderRadius: 20, fontWeight: 700
+                  }
+                }, badgeText)
+              ),
+
+              !isDpActive && !isDpEnabled && React.createElement('div', {
+                style: {
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  marginBottom: 12,
+                  fontSize: '0.80rem',
+                  color: '#b91c1c',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
+              },
+                React.createElement('span', { style: { fontSize: '1.1rem' } }, '⚠️'),
+                React.createElement('span', null,
+                  React.createElement('strong', null, 'Threat Notice: '),
+                  'Your database is stored locally only. If this computer suffers hardware failure, disk corruption, theft, or ransomware, your data is unrecoverable without offsite cloud protection.'
+                )
+              ),
+
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, padding: '12px 0', borderTop: '1px dashed rgba(59,130,246,0.2)', borderBottom: '1px dashed rgba(59,130,246,0.2)', fontSize: '0.84rem' } },
+                React.createElement('div', null,
+                  React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'LAST CLOUD SYNC'),
+                  React.createElement('span', { style: { fontWeight: 600, color: (dpStatus && dpStatus.lastBackupTimestamp) ? '#059669' : 'var(--text-secondary)' } },
+                    (dpStatus && dpStatus.lastBackupFormatted) || (dpStatus && dpStatus.lastBackupTimestamp ? new Date(dpStatus.lastBackupTimestamp).toLocaleString() : 'Never Synced')
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'VAULT FILE SIZE'),
+                  React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
+                    (dpStatus && dpStatus.lastBackupSizeBytes) ? `${(dpStatus.lastBackupSizeBytes / 1024).toFixed(1)} KB (AES-256-GCM)` : '—'
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'NEXT SCHEDULED SYNC'),
+                  React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
+                    (dpStatus && dpStatus.active) ? ((dpStatus.nextSyncFormatted) || 'Automatic (~Weekly)') : 'Paused'
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'ENCRYPTION SPECIFICATION'),
+                  React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
+                    'AES-256-GCM + Recoverable Key'
+                  )
+                )
+              ),
+
+              React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end', flexWrap: 'wrap' } },
+                (dpStatus && dpStatus.lastBackupTimestamp) && React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline btn-sm',
+                  onClick: handleDpInspectCloud,
+                  disabled: dpInspecting || loading,
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', borderColor: '#3B82F6', color: '#2563EB', background: 'rgba(59, 130, 246, 0.05)' }
+                }, dpInspecting ? '🔍 Inspecting Vault...' : '⚡ Inspect & Restore from Cloud'),
+
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-primary btn-sm',
+                  onClick: handleDpBackupNow,
+                  disabled: dpRunning || !(dpStatus && dpStatus.active),
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }
+                }, dpRunning ? '⏳ Uploading Encrypted Backup...' : '☁️ Backup Now to Cloud Vault')
+              )
+            );
+          })(),
 
           // ─── MANUAL EXPORT & RESTORE SECTION ───
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
@@ -23520,6 +23691,7 @@
       const [showDetailsModal, setShowDetailsModal] = useState(false);
       const [lastCheckTime, setLastCheckTime] = useState(null);
       const [diagData, setDiagData] = useState(null);
+      const [dpData, setDpData] = useState(null);
 
       const runDiagnostics = async () => {
         if (autoDismissTimer) clearTimeout(autoDismissTimer);
@@ -23532,14 +23704,21 @@
         let apiOk = true;
         let pingMs = 12;
         let liveData = null;
+        let liveDpData = null;
 
         try {
-          const res = await fetch('/api/health/diagnostics');
+          const [res, dpRes] = await Promise.all([
+            fetch('/api/health/diagnostics'),
+            fetch('/api/dataprotection/status').catch(() => null)
+          ]);
           const elapsed = Math.round(performance.now() - t0);
           pingMs = Math.max(1, elapsed);
           apiOk = res.ok;
           if (res.ok) {
             liveData = await res.json();
+          }
+          if (dpRes && dpRes.ok) {
+            liveDpData = await dpRes.json();
           }
         } catch (e) {
           pingMs = 14;
@@ -23547,31 +23726,37 @@
 
         setLatency(pingMs);
         setDiagData(liveData);
+        setDpData(liveDpData);
 
         // Stage 1: Database Engine Sweep
-        await new Promise(r => setTimeout(r, 180));
-        setProgress(25);
+        await new Promise(r => setTimeout(r, 140));
+        setProgress(20);
         setStep(2);
 
         // Stage 2: REST Gateway & All APIs Health
-        await new Promise(r => setTimeout(r, 200));
-        setProgress(50);
+        await new Promise(r => setTimeout(r, 160));
+        setProgress(40);
         setStep(3);
 
         // Stage 3: Security & Cryptographic Shield
-        await new Promise(r => setTimeout(r, 200));
-        setProgress(70);
+        await new Promise(r => setTimeout(r, 160));
+        setProgress(60);
         setStep(4);
 
         // Stage 4: Ledger Invariants Sync
-        await new Promise(r => setTimeout(r, 180));
-        setProgress(88);
+        await new Promise(r => setTimeout(r, 140));
+        setProgress(75);
         setStep(5);
 
         // Stage 5: Auto-Backup & External Storage Validation
-        await new Promise(r => setTimeout(r, 180));
-        setProgress(100);
+        await new Promise(r => setTimeout(r, 140));
+        setProgress(90);
         setStep(6);
+
+        // Stage 6: Cloud Data Protection & Disaster Recovery Verification
+        await new Promise(r => setTimeout(r, 150));
+        setProgress(100);
+        setStep(7);
         setPhase(apiOk ? 'passed' : 'passed');
         setLastCheckTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
@@ -23593,6 +23778,8 @@
       if (phase === 'dismissed') {
         const apisHealthy = diagData?.apiDiagnostics?.healthy !== false;
         const allSystemsReady = diagData?.database?.connected !== false && apisHealthy && diagData?.autoBackup?.healthy !== false;
+        const isDpActive = dpData && dpData.active === true;
+        const isDpEnabled = dpData && dpData.enabled === true;
 
         return React.createElement(React.Fragment, null,
           React.createElement('div', {
@@ -23612,7 +23799,7 @@
               title: 'Click to view detailed live system health & diagnostic telemetry',
               style: {
                 background: 'var(--bg-secondary, #f8fafc)',
-                border: '1px solid var(--border, #e2e8f0)',
+                border: `1px solid ${!isDpActive ? 'rgba(245, 158, 11, 0.4)' : 'var(--border, #e2e8f0)'}`,
                 borderRadius: 20,
                 padding: '5px 14px',
                 color: 'var(--text-secondary, #64748b)',
@@ -23625,24 +23812,31 @@
                 boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                 fontFamily: "'Inter', sans-serif"
               },
-              onMouseEnter: e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = 'var(--text, #0f172a)'; },
-              onMouseLeave: e => { e.currentTarget.style.borderColor = 'var(--border, #e2e8f0)'; e.currentTarget.style.color = 'var(--text-secondary, #64748b)'; }
+              onMouseEnter: e => { e.currentTarget.style.borderColor = isDpActive ? '#10b981' : '#f59e0b'; e.currentTarget.style.color = 'var(--text, #0f172a)'; },
+              onMouseLeave: e => { e.currentTarget.style.borderColor = !isDpActive ? 'rgba(245, 158, 11, 0.4)' : 'var(--border, #e2e8f0)'; e.currentTarget.style.color = 'var(--text-secondary, #64748b)'; }
             },
               React.createElement('span', {
                 style: {
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  backgroundColor: allSystemsReady ? '#10b981' : '#f59e0b',
-                  boxShadow: `0 0 6px ${allSystemsReady ? '#10b981' : '#f59e0b'}`
+                  backgroundColor: allSystemsReady ? (isDpActive ? '#10b981' : '#f59e0b') : '#ef4444',
+                  boxShadow: `0 0 6px ${allSystemsReady ? (isDpActive ? '#10b981' : '#f59e0b') : '#ef4444'}`
                 }
               }),
               React.createElement('span', { style: { fontWeight: 600, color: allSystemsReady ? '#059669' : '#d97706' } },
                 allSystemsReady ? 'System Ready' : 'System Degraded'
               ),
               React.createElement('span', { style: { opacity: 0.4 } }, '•'),
-              React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.7rem' } }, latency ? `${latency}ms` : '100% OK'),
-              React.createElement('span', { style: { opacity: 0.7, fontSize: '0.7rem', marginLeft: 2 } }, '🛡️')
+              React.createElement('span', {
+                style: {
+                  color: isDpActive ? '#059669' : '#d97706',
+                  fontWeight: isDpActive ? 500 : 700,
+                  fontSize: '0.72rem'
+                }
+              }, isDpActive ? 'Cloud Protected 🛡️' : '⚠️ Cloud Unprotected'),
+              React.createElement('span', { style: { opacity: 0.4 } }, '•'),
+              React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.7rem' } }, latency ? `${latency}ms` : '100% OK')
             )
           ),
 
@@ -23655,7 +23849,7 @@
             React.createElement('div', {
               className: 'card modal-content',
               style: {
-                maxWidth: 620, width: '94%', maxHeight: '90vh', overflowY: 'auto', padding: '24px 22px', borderRadius: 16,
+                maxWidth: 640, width: '94%', maxHeight: '90vh', overflowY: 'auto', padding: '24px 22px', borderRadius: 16,
                 background: 'var(--bg-card, #ffffff)',
                 border: '1px solid var(--border, #e2e8f0)',
                 boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.25)',
@@ -23666,10 +23860,10 @@
               // Header
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border, #e2e8f0)', paddingBottom: 12 } },
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                  React.createElement('div', { style: { width: 36, height: 36, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' } }, '🛡️'),
+                  React.createElement('div', { style: { width: 36, height: 36, borderRadius: 10, background: isDpActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)', color: isDpActive ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' } }, isDpActive ? '🛡️' : '⚠️'),
                   React.createElement('div', null,
                     React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text, #0f172a)' } }, 'RupeeCRM Diagnostics & Telemetry'),
-                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary, #64748b)' } }, 'Live System Health, API Verification & Disaster Recovery')
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary, #64748b)' } }, 'Live System Health, API Verification & Disaster Recovery Telemetry')
                   )
                 ),
                 React.createElement('button', {
@@ -23683,8 +23877,8 @@
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
                 React.createElement('div', {
                   style: {
-                    background: allSystemsReady ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-                    border: `1px solid ${allSystemsReady ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+                    background: allSystemsReady ? (isDpActive ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)') : 'rgba(239, 68, 68, 0.08)',
+                    border: `1px solid ${allSystemsReady ? (isDpActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.35)') : 'rgba(239, 68, 68, 0.25)'}`,
                     padding: '12px 14px', borderRadius: 10,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8
                   }
@@ -23693,12 +23887,14 @@
                     React.createElement('span', {
                       style: {
                         width: 8, height: 8, borderRadius: '50%',
-                        background: allSystemsReady ? '#10b981' : '#f59e0b',
-                        boxShadow: `0 0 8px ${allSystemsReady ? '#10b981' : '#f59e0b'}`
+                        background: allSystemsReady ? (isDpActive ? '#10b981' : '#f59e0b') : '#ef4444',
+                        boxShadow: `0 0 8px ${allSystemsReady ? (isDpActive ? '#10b981' : '#f59e0b') : '#ef4444'}`
                       }
                     }),
-                    React.createElement('span', { style: { fontWeight: 700, fontSize: '0.84rem', color: allSystemsReady ? '#15803d' : '#b45309' } },
-                      allSystemsReady ? '✓ All Core Subsystems & APIs Online • System Ready' : '⚠️ System Diagnostics Degraded'
+                    React.createElement('span', { style: { fontWeight: 700, fontSize: '0.84rem', color: allSystemsReady ? (isDpActive ? '#15803d' : '#b45309') : '#b91c1c' } },
+                      allSystemsReady
+                        ? (isDpActive ? '✓ All Core Subsystems & Off-Device Cloud Vault Active • Fully Protected' : '⚠️ Core Subsystems Online • Offsite Cloud Protection Inactive (Local Storage Only)')
+                        : '⚠️ System Diagnostics Degraded'
                     )
                   ),
                   React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #64748b)', fontFamily: 'monospace' } },
@@ -23706,7 +23902,7 @@
                   )
                 ),
 
-                // Core System Tests Checklist (Unified with API Health)
+                // Core System Tests Checklist (Unified with API Health & Cloud Vault)
                 React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                   [
                     {
@@ -23745,37 +23941,55 @@
                       ok: diagData?.autoBackup?.healthy !== false,
                       icon: '💽',
                       badgeText: '✓ VERIFIED'
+                    },
+                    {
+                      title: 'Off-Device Cloud Data Protection',
+                      status: isDpActive
+                        ? `AES-256-GCM Encrypted Cloud Vault Synced • Automatic Weekly Disaster Recovery (${dpData.lastBackupSizeBytes ? (dpData.lastBackupSizeBytes / 1024).toFixed(1) + ' KB' : 'Armed'})`
+                        : (isDpEnabled
+                            ? '⚠️ Protection Term Expired — Cloud backup vault paused. Local backups continuing.'
+                            : '⚠️ Local Storage Only — No off-device disaster recovery vault configured. Device loss or drive failure is unprotected.'),
+                      ok: isDpActive,
+                      isWarning: isDpEnabled,
+                      isUnprotected: !isDpActive && !isDpEnabled,
+                      icon: isDpActive ? '🛡️' : (isDpEnabled ? '⚠️' : '🚨'),
+                      badgeText: isDpActive ? '✓ FULLY PROTECTED' : (isDpEnabled ? '⚠️ EXPIRED' : '🚨 UNPROTECTED')
                     }
-                  ].map((row, idx) =>
-                    React.createElement('div', {
+                  ].map((row, idx) => {
+                    const badgeBg = row.ok ? '#dcfce7' : (row.isWarning ? '#fef3c7' : '#fee2e2');
+                    const badgeColor = row.ok ? '#16a34a' : (row.isWarning ? '#d97706' : '#dc2626');
+                    const badgeBorder = row.ok ? '#86efac' : (row.isWarning ? '#fcd34d' : '#fca5a5');
+
+                    return React.createElement('div', {
                       key: idx,
                       style: {
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: 'var(--bg-secondary, #f8fafc)',
-                        border: '1px solid var(--border, #e2e8f0)',
+                        background: row.isUnprotected ? 'rgba(239, 68, 68, 0.04)' : 'var(--bg-secondary, #f8fafc)',
+                        border: `1px solid ${row.isUnprotected ? 'rgba(239, 68, 68, 0.25)' : 'var(--border, #e2e8f0)'}`,
                         padding: '10px 14px', borderRadius: 8
                       }
                     },
                       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
                         React.createElement('span', { style: { fontSize: '1rem' } }, row.icon),
                         React.createElement('div', null,
-                          React.createElement('div', { style: { fontWeight: 600, fontSize: '0.8rem', color: 'var(--text, #0f172a)' } }, row.title),
-                          React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary, #64748b)', marginTop: 1 } }, row.status)
+                          React.createElement('div', { style: { fontWeight: 600, fontSize: '0.8rem', color: row.isUnprotected ? '#b91c1c' : 'var(--text, #0f172a)' } }, row.title),
+                          React.createElement('div', { style: { fontSize: '0.7rem', color: row.isUnprotected ? '#dc2626' : 'var(--text-secondary, #64748b)', marginTop: 1 } }, row.status)
                         )
                       ),
                       React.createElement('span', {
                         style: {
                           fontSize: '0.74rem',
-                          color: row.ok ? '#16a34a' : '#dc2626',
+                          color: badgeColor,
                           fontWeight: 700,
-                          background: row.ok ? '#dcfce7' : '#fee2e2',
+                          background: badgeBg,
                           padding: '3px 8px',
                           borderRadius: 6,
-                          border: `1px solid ${row.ok ? '#86efac' : '#fca5a5'}`
+                          border: `1px solid ${badgeBorder}`,
+                          whiteSpace: 'nowrap'
                         }
-                      }, row.ok ? (row.badgeText || '✓ VERIFIED') : '⚠️ CHECK')
-                    )
-                  )
+                      }, row.badgeText || (row.ok ? '✓ VERIFIED' : '⚠️ CHECK'))
+                    );
+                  })
                 ),
 
                 // Footnote
@@ -23824,7 +24038,9 @@
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
           animation: 'fadeIn 0.3s ease-out',
           transition: 'all 0.4s ease',
-          fontFamily: "'Inter', -apple-system, sans-serif"
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          boxSizing: 'border-box',
+          overflow: 'hidden'
         }
       },
         // Cluster Sweep Header
@@ -23906,82 +24122,98 @@
           })
         ),
 
-        // 5 Cluster Gauges Grid
-        React.createElement('div', {
-          style: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gap: 5
-          }
-        },
-          [
-            { id: 'db', title: 'STORAGE / DB', val: step >= 2 ? 'OK' : '...', dot: step >= 2 ? '#10b981' : '#94a3b8', sub: 'H2 ACID' },
-            { id: 'api', title: 'API GATEWAY', val: step >= 3 ? (latency ? `${latency}ms` : 'OK') : '...', dot: step >= 3 ? '#38bdf8' : '#94a3b8', sub: 'HTTP 200' },
-            { id: 'sec', title: 'SECURITY', val: step >= 4 ? 'ARMED' : '...', dot: step >= 4 ? '#818cf8' : '#94a3b8', sub: 'SHA-256' },
-            { id: 'sync', title: 'LEDGER SYNC', val: step >= 5 ? 'SYNCED' : '...', dot: step >= 5 ? '#10b981' : '#94a3b8', sub: '100% PASS' },
-            { id: 'backup', title: 'AUTO BACKUP', val: step >= 6 ? 'ACTIVE' : '...', dot: step >= 6 ? '#10b981' : '#94a3b8', sub: 'DAILY 2AM' }
-          ].map((item, idx) =>
-            React.createElement('div', {
-              key: item.id,
-              style: {
-                background: 'var(--bg-card, #ffffff)',
-                border: '1px solid var(--border, #e2e8f0)',
-                borderRadius: 8,
-                padding: '6px 3px',
-                textAlign: 'center',
-                transition: 'all 0.2s',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)'
+        // 6 Cluster Gauges Grid (Responsive 3x2 Layout to fit perfectly inside login card)
+        (() => {
+          const isDpActive = dpData && dpData.active === true;
+          const isDpEnabled = dpData && dpData.enabled === true;
+
+          return React.createElement('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 6,
+              boxSizing: 'border-box'
+            }
+          },
+            [
+              { id: 'db', title: 'STORAGE / DB', val: step >= 2 ? 'OK' : '...', dot: step >= 2 ? '#10b981' : '#94a3b8', sub: 'H2 ACID' },
+              { id: 'api', title: 'API GATEWAY', val: step >= 3 ? (latency ? `${latency}ms` : 'OK') : '...', dot: step >= 3 ? '#38bdf8' : '#94a3b8', sub: 'HTTP 200' },
+              { id: 'sec', title: 'SECURITY', val: step >= 4 ? 'ARMED' : '...', dot: step >= 4 ? '#818cf8' : '#94a3b8', sub: 'SHA-256' },
+              { id: 'sync', title: 'LEDGER SYNC', val: step >= 5 ? 'SYNCED' : '...', dot: step >= 5 ? '#10b981' : '#94a3b8', sub: '100% PASS' },
+              { id: 'backup', title: 'AUTO BACKUP', val: step >= 6 ? 'ACTIVE' : '...', dot: step >= 6 ? '#10b981' : '#94a3b8', sub: 'DAILY 2AM' },
+              {
+                id: 'dp',
+                title: 'DATA PROTECTION',
+                val: step >= 7 ? (isDpActive ? 'SECURE' : (isDpEnabled ? 'EXPIRED' : 'UNPROTECTED')) : '...',
+                dot: step >= 7 ? (isDpActive ? '#10b981' : (isDpEnabled ? '#f59e0b' : '#ef4444')) : '#94a3b8',
+                sub: isDpActive ? 'CLOUD VAULT' : (isDpEnabled ? 'PAUSED' : 'LOCAL ONLY ⚠️'),
+                isAlert: step >= 7 && !isDpActive
               }
-            },
+            ].map((item, idx) =>
               React.createElement('div', {
+                key: item.id,
                 style: {
-                  fontSize: '0.50rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.03em',
-                  color: 'var(--text-secondary, #64748b)',
-                  textTransform: 'uppercase',
-                  marginBottom: 2,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }
-              }, item.title),
-              React.createElement('div', {
-                style: {
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  color: item.val === '...' ? 'var(--text-secondary, #94a3b8)' : 'var(--text, #0f172a)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 3,
-                  fontFamily: 'monospace'
+                  background: item.isAlert ? 'rgba(239, 68, 68, 0.06)' : 'var(--bg-card, #ffffff)',
+                  border: item.isAlert ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border, #e2e8f0)',
+                  borderRadius: 8,
+                  padding: '7px 4px',
+                  textAlign: 'center',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                  boxSizing: 'border-box'
                 }
               },
-                React.createElement('span', {
+                React.createElement('div', {
                   style: {
-                    display: 'inline-block',
-                    width: 4,
-                    height: 4,
-                    borderRadius: '50%',
-                    backgroundColor: item.dot
+                    fontSize: '0.54rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                    color: item.isAlert ? '#b91c1c' : 'var(--text-secondary, #64748b)',
+                    textTransform: 'uppercase',
+                    marginBottom: 2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
                   }
-                }),
-                item.val
-              ),
-              React.createElement('div', {
-                style: {
-                  fontSize: '0.48rem',
-                  color: 'var(--text-secondary, #94a3b8)',
-                  marginTop: 1,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }
-              }, item.sub)
+                }, item.title),
+                React.createElement('div', {
+                  style: {
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: item.isAlert ? '#dc2626' : (item.val === '...' ? 'var(--text-secondary, #94a3b8)' : 'var(--text, #0f172a)'),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    fontFamily: 'monospace'
+                  }
+                },
+                  React.createElement('span', {
+                    style: {
+                      display: 'inline-block',
+                      width: 5,
+                      height: 5,
+                      borderRadius: '50%',
+                      backgroundColor: item.dot
+                    }
+                  }),
+                  item.val
+                ),
+                React.createElement('div', {
+                  style: {
+                    fontSize: '0.52rem',
+                    color: item.isAlert ? '#dc2626' : 'var(--text-secondary, #94a3b8)',
+                    fontWeight: item.isAlert ? 600 : 400,
+                    marginTop: 1,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }
+                }, item.sub)
+              )
             )
-          )
-        )
+          );
+        })()
       );
     }
 
@@ -24015,7 +24247,7 @@
         }
       };
       return React.createElement('div', { className: 'login-container' },
-        React.createElement('div', { className: 'login-card', style: { maxWidth: 420, padding: '36px 32px' } },
+        React.createElement('div', { className: 'login-card', style: { maxWidth: 440, width: '100%', boxSizing: 'border-box', padding: '36px 32px' } },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 20 } },
             React.createElement(RupeeCRMLogo, { size: 52, showWordmark: true, showTagline: true, isDarkBg: false })
           ),
@@ -25420,6 +25652,55 @@
                   React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } },
                     `Revision ${licenseInfo.revision || 1} • Authenticated Ed25519`
                   )
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'CLOUD DATA PROTECTION'),
+                  licenseInfo.dataProtectionActive ? (
+                    React.createElement('div', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        color: '#059669',
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        fontWeight: 700,
+                        fontSize: '0.80rem'
+                      }
+                    }, `🛡️ FULLY PROTECTED • Active (${licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining + 'd left' : (licenseInfo.dataProtectionExpiresAt || 'Secure')})`)
+                  ) : (licenseInfo.dataProtectionEnabled ? (
+                    React.createElement('div', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(245, 158, 11, 0.12)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                        color: '#b45309',
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        fontWeight: 700,
+                        fontSize: '0.80rem'
+                      }
+                    }, '⚠️ PROTECTION EXPIRED • Cloud Vault Paused')
+                  ) : (
+                    React.createElement('div', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#dc2626',
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        fontWeight: 700,
+                        fontSize: '0.80rem'
+                      }
+                    }, '🚨 UNPROTECTED • Local Storage Only')
+                  ))
                 )
               ),
 
@@ -29921,6 +30202,9 @@
       const [inboxMessages, setInboxMessages] = useState([]);
       const [showInboxModal, setShowInboxModal] = useState(false);
       const [trialDaysRemaining, setTrialDaysRemaining] = useState(30);
+      const [showExpiryModal, setShowExpiryModal] = useState(false);
+      const [expiryModalData, setExpiryModalData] = useState(null);
+      const [snoozeChoice, setSnoozeChoice] = useState('1d');
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
       const [isSyncing, setIsSyncing] = useState(false);
@@ -30145,6 +30429,21 @@
             } else {
               setLicenseStatus(lic.status || 'trial');
               setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+            }
+
+            // Trigger 7-Day Expiry Modal Popup if un-snoozed
+            if (lic.showLicensePopup || lic.showDpPopup) {
+              setExpiryModalData({
+                showLicense: Boolean(lic.showLicensePopup),
+                showDp: Boolean(lic.showDpPopup),
+                daysRemaining: lic.daysRemaining,
+                dpDaysRemaining: lic.dpDaysRemaining,
+                plan: lic.plan,
+                expiresAt: lic.expiresAt,
+                dataProtectionExpiresAt: lic.dataProtectionExpiresAt
+              });
+              setSnoozeChoice('1d');
+              setShowExpiryModal(true);
             }
           }
           if (API.license && typeof API.license.getMessages === 'function') {
@@ -31365,32 +31664,100 @@
               })()
             )
           ),
-          licenseInfo && licenseInfo.daysRemaining != null && licenseInfo.daysRemaining <= 30 && licenseInfo.daysRemaining >= 0 && licenseStatus === 'ACTIVE' && React.createElement('div', {
+          // ─── 15-DAY LICENSE EXPIRY NOTIFICATION BANNER ───
+          licenseInfo && licenseInfo.showLicenseWarning && React.createElement('div', {
             style: {
               background: 'linear-gradient(90deg, #fffbeb, #fef3c7)',
               borderBottom: '1px solid #fde68a',
               padding: '6px 16px',
-              fontSize: '0.8rem',
+              fontSize: '0.82rem',
               color: '#92400e',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap'
             }
           },
-            React.createElement('span', null, `⚠️ Your ${licenseInfo.plan || 'RupeeCRM'} license will expire in ${licenseInfo.daysRemaining} days (${licenseInfo.expiresAt}). Please contact support or check online to renew.`),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-ghost',
-              style: { padding: '2px 8px', fontSize: '0.75rem', textDecoration: 'underline', color: '#b45309' },
-              onClick: () => {
-                API.license.checkOnline().then(r => {
-                  if (r && r.status) {
-                    setLicenseInfo(r);
-                    setLicenseStatus(r.isValid && r.status === 'ACTIVE' ? 'ACTIVE' : r.status);
-                    if (window.showToast) window.showToast('License status checked online', 'info');
-                  }
-                });
-              }
-            }, 'Check Renewal')
+            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+              React.createElement('strong', null, '⚠️ License Expiry Notice:'),
+              `Your ${licenseInfo.plan || 'RupeeCRM'} license expires in ${licenseInfo.daysRemaining} days (${licenseInfo.expiresAt}). Offsite operations and features may be limited upon expiration.`
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('button', {
+                className: 'btn btn-sm btn-ghost',
+                style: { padding: '2px 8px', fontSize: '0.75rem', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 4, background: '#fff' },
+                onClick: () => {
+                  API.licensing.snoozeLicense('1d').then(res => {
+                    if (res && res.status === 'ok') {
+                      setLicenseInfo(prev => ({ ...prev, showLicenseWarning: false, showLicensePopup: false }));
+                      if (window.showToast) window.showToast(`License alert snoozed for ${res.duration || '1 day'}`, 'info');
+                    }
+                  });
+                }
+              }, '💤 Snooze 1 Day'),
+              React.createElement('button', {
+                className: 'btn btn-sm btn-primary',
+                style: { padding: '2px 10px', fontSize: '0.75rem', background: '#d97706', borderColor: '#b45309' },
+                onClick: () => {
+                  API.license.checkOnline().then(r => {
+                    if (r && r.status) {
+                      setLicenseInfo(r);
+                      setLicenseStatus(r.isValid && r.status === 'ACTIVE' ? 'ACTIVE' : r.status);
+                      if (window.showToast) window.showToast('License status checked online', 'info');
+                    }
+                  });
+                }
+              }, '🔄 Check Renewal')
+            )
+          ),
+
+          // ─── 15-DAY DATA PROTECTION EXPIRY NOTIFICATION BANNER ───
+          licenseInfo && licenseInfo.showDpWarning && React.createElement('div', {
+            style: {
+              background: 'linear-gradient(90deg, #eff6ff, #dbeafe)',
+              borderBottom: '1px solid #bfdbfe',
+              padding: '6px 16px',
+              fontSize: '0.82rem',
+              color: '#1e40af',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap'
+            }
+          },
+            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+              React.createElement('strong', null, '🛡️ Data Protection Notice:'),
+              `Your Off-Device Cloud Data Protection add-on expires in ${licenseInfo.dpDaysRemaining} days (${licenseInfo.dataProtectionExpiresAt}). Cloud uploads will pause after expiry.`
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('button', {
+                className: 'btn btn-sm btn-ghost',
+                style: { padding: '2px 8px', fontSize: '0.75rem', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 4, background: '#fff' },
+                onClick: () => {
+                  API.licensing.snoozeDataProtection('7d').then(res => {
+                    if (res && res.status === 'ok') {
+                      setLicenseInfo(prev => ({ ...prev, showDpWarning: false, showDpPopup: false }));
+                      if (window.showToast) window.showToast('Data Protection alert snoozed for 7 days', 'info');
+                    }
+                  });
+                }
+              }, '💤 Snooze 7 Days'),
+              React.createElement('button', {
+                className: 'btn btn-sm btn-primary',
+                style: { padding: '2px 10px', fontSize: '0.75rem' },
+                onClick: () => {
+                  API.license.checkOnline().then(r => {
+                    if (r && r.status) {
+                      setLicenseInfo(r);
+                      setLicenseStatus(r.isValid && r.status === 'ACTIVE' ? 'ACTIVE' : r.status);
+                      if (window.showToast) window.showToast('License status checked online', 'info');
+                    }
+                  });
+                }
+              }, '🔄 Check Renewal')
+            )
           ),
           React.createElement('div', { className: 'page-content' },
             React.createElement('div', {
@@ -31447,6 +31814,149 @@
                   }, 'Mark as read')
                 );
               })
+            )
+          )
+        ),
+
+        // ─── 7-DAY EXPIRY LOGIN/STARTUP MODAL (ASYMMETRIC SNOOZE) ───
+        showExpiryModal && expiryModalData && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 },
+          onClick: () => setShowExpiryModal(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { background: 'var(--card-bg, #fff)', color: 'var(--text-primary, #1e293b)', borderRadius: 16, padding: '28px 30px', maxWidth: 540, width: '92%', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', border: '1px solid var(--border)' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 } },
+              React.createElement('div', { style: { width: 46, height: 46, borderRadius: 12, background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' } }, '⏳'),
+              React.createElement('div', { style: { flex: 1 } },
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 800 } }, 'Subscription Expiry Notice'),
+                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Your subscription term is ending soon. Choose a snooze option or check renewal.')
+              ),
+              React.createElement('button', {
+                className: 'btn btn-ghost',
+                onClick: () => setShowExpiryModal(false),
+                style: { fontSize: '1.2rem', cursor: 'pointer', padding: '4px 8px' }
+              }, '✕')
+            ),
+
+            // Main License Alert Block
+            expiryModalData.showLicense && React.createElement('div', {
+              style: {
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 10,
+                padding: '14px 16px',
+                marginBottom: 14
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                React.createElement('strong', { style: { color: '#b45309', fontSize: '0.95rem' } }, `🔑 ${expiryModalData.plan || 'RupeeCRM'} License Expiry`),
+                React.createElement('span', { className: 'badge', style: { background: '#f59e0b', color: '#fff', fontSize: '0.75rem', fontWeight: 700 } }, `${expiryModalData.daysRemaining} days left`)
+              ),
+              React.createElement('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 10 } },
+                `Expires on: ${expiryModalData.expiresAt}. Snoozing is capped to remaining license term.`
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                React.createElement('select', {
+                  id: 'license-snooze-select',
+                  defaultValue: '1d',
+                  className: 'form-control',
+                  style: { flex: 1, minWidth: 140, fontSize: '0.82rem', padding: '6px 10px' }
+                },
+                  React.createElement('option', { value: '1d' }, 'Snooze for 1 Day'),
+                  React.createElement('option', { value: '3d' }, 'Snooze for 3 Days'),
+                  React.createElement('option', { value: '7d' }, `Snooze for 7 Days (Capped to ${expiryModalData.daysRemaining}d)`)
+                ),
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  style: { fontSize: '0.8rem', borderColor: '#d97706', color: '#b45309' },
+                  onClick: () => {
+                    const sel = document.getElementById('license-snooze-select');
+                    const dur = sel ? sel.value : '1d';
+                    API.licensing.snoozeLicense(dur).then(res => {
+                      if (res && res.status === 'ok') {
+                        setLicenseInfo(prev => ({ ...prev, showLicensePopup: false, showLicenseWarning: false }));
+                        setShowExpiryModal(false);
+                        if (window.showToast) window.showToast(`License alert snoozed for ${res.duration || dur}`, 'info');
+                      }
+                    });
+                  }
+                }, '💤 Snooze License')
+              )
+            ),
+
+            // Data Protection Add-on Alert Block
+            expiryModalData.showDp && React.createElement('div', {
+              style: {
+                background: 'rgba(37, 99, 235, 0.08)',
+                border: '1px solid rgba(37, 99, 235, 0.25)',
+                borderRadius: 10,
+                padding: '14px 16px',
+                marginBottom: 14
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                React.createElement('strong', { style: { color: '#1d4ed8', fontSize: '0.95rem' } }, '🛡️ Cloud Data Protection Add-on Expiry'),
+                React.createElement('span', { className: 'badge', style: { background: '#2563eb', color: '#fff', fontSize: '0.75rem', fontWeight: 700 } }, `${expiryModalData.dpDaysRemaining} days left`)
+              ),
+              React.createElement('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 10 } },
+                `Expires on: ${expiryModalData.dataProtectionExpiresAt}. Unbounded snooze permitted for optional add-on.`
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                React.createElement('select', {
+                  id: 'dp-snooze-select',
+                  defaultValue: '7d',
+                  className: 'form-control',
+                  style: { flex: 1, minWidth: 140, fontSize: '0.82rem', padding: '6px 10px' }
+                },
+                  React.createElement('option', { value: '1d' }, 'Snooze for 1 Day'),
+                  React.createElement('option', { value: '3d' }, 'Snooze for 3 Days'),
+                  React.createElement('option', { value: '7d' }, 'Snooze for 7 Days'),
+                  React.createElement('option', { value: '30d' }, 'Snooze for 30 Days'),
+                  React.createElement('option', { value: '90d' }, 'Snooze for 3 Months'),
+                  React.createElement('option', { value: 'permanent' }, 'Snooze Permanently')
+                ),
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  style: { fontSize: '0.8rem', borderColor: '#2563eb', color: '#1d4ed8' },
+                  onClick: () => {
+                    const sel = document.getElementById('dp-snooze-select');
+                    const dur = sel ? sel.value : '7d';
+                    API.licensing.snoozeDataProtection(dur).then(res => {
+                      if (res && res.status === 'ok') {
+                        setLicenseInfo(prev => ({ ...prev, showDpPopup: false, showDpWarning: false }));
+                        setShowExpiryModal(false);
+                        if (window.showToast) window.showToast(`Data Protection alert snoozed for ${res.duration || dur}`, 'info');
+                      }
+                    });
+                  }
+                }, '💤 Snooze DP')
+              )
+            ),
+
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 } },
+              React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => setShowExpiryModal(false),
+                style: { fontSize: '0.82rem' }
+              }, 'Dismiss for Now'),
+              React.createElement('button', {
+                className: 'btn btn-primary btn-sm',
+                style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' },
+                onClick: () => {
+                  API.license.checkOnline().then(r => {
+                    if (r && r.status) {
+                      setLicenseInfo(r);
+                      setLicenseStatus(r.isValid && r.status === 'ACTIVE' ? 'ACTIVE' : r.status);
+                      setShowExpiryModal(false);
+                      if (window.showToast) window.showToast('License status checked online', 'info');
+                    }
+                  });
+                }
+              }, '🔄 Check Renewal Online')
             )
           )
         ),

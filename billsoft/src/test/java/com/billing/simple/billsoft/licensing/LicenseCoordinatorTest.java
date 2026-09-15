@@ -41,6 +41,13 @@ public class LicenseCoordinatorTest {
         this.coordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage);
     }
 
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        if (coordinator != null) {
+            coordinator.shutdown();
+        }
+    }
+
     @Test
     void testLiveGitHubSync() throws Exception {
         File liveMidFile = new File(tempDir, "live_mid.dat");

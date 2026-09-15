@@ -31,6 +31,9 @@ class GoalServiceTest {
     @Mock
     private SavingRepository savingRepository;
 
+    @Mock
+    private com.billing.simple.billsoft.repo.GoalLogRepository goalLogRepository;
+
     @InjectMocks
     private GoalService goalService;
 

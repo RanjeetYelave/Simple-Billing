@@ -33,6 +33,7 @@ public class BackupDTO {
     private List<EmployeeDocument> employeeDocuments;
     private List<FirmDetails> allFirms;
     private List<SalesReturn> salesReturns;
+    private List<GoalLog> goalLogs;
 
     public List<SavingRecord> getSavings() {
         return savings;
@@ -48,6 +49,14 @@ public class BackupDTO {
 
     public void setGoals(List<Goal> goals) {
         this.goals = goals;
+    }
+
+    public List<GoalLog> getGoalLogs() {
+        return goalLogs;
+    }
+
+    public void setGoalLogs(List<GoalLog> goalLogs) {
+        this.goalLogs = goalLogs;
     }
 
     public List<SalesReturn> getSalesReturns() {

@@ -2769,6 +2769,134 @@ input:checked+.slider:before {
   border-color: rgba(255, 255, 255, 0.05);
 }
 
+/* Goal Progress SVG Timeline Chart */
+.goal-chart-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-theme='dark'] .goal-chart-container {
+  background: rgba(15, 23, 42, 0.4);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.goal-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.goal-chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.goal-chart-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  backdrop-filter: blur(8px);
+}
+
+[data-theme='dark'] .goal-chart-tooltip {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.goal-view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.goal-view-toggle-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.goal-view-toggle-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .goal-view-toggle-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* Dashboard Segment Switcher */
+.dashboard-segment-switcher {
+  display: inline-flex;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.dashboard-segment-btn {
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.dashboard-segment-btn:hover {
+  color: var(--text-primary);
+}
+
+.dashboard-segment-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .dashboard-segment-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+
+
 /* ════════════════════════════════════════════════════════════════
    DASHBOARD MULTI-GOAL EXECUTIVE WIDGET
    ════════════════════════════════════════════════════════════════ */

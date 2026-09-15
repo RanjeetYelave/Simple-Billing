@@ -5037,6 +5037,209 @@
       );
     }
 
+    // ─── GOAL PROGRESS TIMELINE CHART (SVG Native) ───
+    function GoalProgressChart({ goal, linkedSavings = [] }) {
+      const [timeline, setTimeline] = useState(null);
+      const [hoveredIdx, setHoveredIdx] = useState(null);
+
+      useEffect(() => {
+        let mounted = true;
+        API.goals.getTimeline(goal.id).then(res => {
+          if (mounted && res && res.points) {
+            setTimeline(res);
+          }
+        }).catch(() => {});
+        return () => { mounted = false; };
+      }, [goal.id, goal.currentValue, goal.currentStreak, linkedSavings.length]);
+
+      const isSavings = goal.goalType === 'SAVINGS_TARGET' || !goal.goalType;
+      const isHabit = goal.goalType === 'HABIT_STREAK';
+      const isQuit = goal.goalType === 'QUIT_HABIT';
+      const isMilestone = goal.goalType === 'LIFE_MILESTONE';
+
+      let rawPoints = (timeline && timeline.points && timeline.points.length > 0) ? timeline.points : [];
+
+      if (rawPoints.length === 0) {
+        if (isSavings) {
+          if (linkedSavings && linkedSavings.length > 0) {
+            let run = 0;
+            const sorted = [...linkedSavings].sort((a, b) => (a.savingDate || '').localeCompare(b.savingDate || ''));
+            rawPoints = sorted.map(s => {
+              run += Number(s.amount || 0);
+              return {
+                date: s.savingDate || '',
+                delta: Number(s.amount || 0),
+                value: Math.max(0, run),
+                type: Number(s.amount || 0) >= 0 ? 'DEPOSIT' : 'DEDUCTION',
+                notes: s.notes || s.title || ''
+              };
+            });
+          } else {
+            rawPoints = [{ date: goal.startDate || 'Start', delta: 0, value: Number(goal.currentValue || 0), type: 'INITIAL', notes: 'Start' }];
+          }
+        } else {
+          rawPoints = [{ date: goal.startDate || 'Start', delta: 0, value: isHabit || isQuit ? Number(goal.currentStreak || 0) : Number(goal.currentValue || 0), type: 'INITIAL', notes: 'Start' }];
+        }
+      }
+
+      const tgtVal = Number(goal.targetValue || 0);
+      const curVal = isHabit || isQuit ? Number(goal.currentStreak || 0) : Number(goal.currentValue || 0);
+      const color = goal.color || (isSavings ? '#10b981' : (isHabit ? '#f59e0b' : (isQuit ? '#8b5cf6' : '#3b82f6')));
+
+      const width = 520;
+      const height = 150;
+      const padLeft = 50;
+      const padRight = 20;
+      const padTop = 20;
+      const padBottom = 25;
+
+      const chartW = width - padLeft - padRight;
+      const chartH = height - padTop - padBottom;
+
+      const maxDataVal = Math.max(...rawPoints.map(p => Number(p.value || 0)), curVal, 1);
+      const yMax = Math.max(tgtVal > 0 ? tgtVal * 1.12 : maxDataVal * 1.2, maxDataVal * 1.05, 5);
+      const yMin = 0;
+
+      const n = rawPoints.length;
+      const pts = rawPoints.map((p, idx) => {
+        const x = padLeft + (n > 1 ? (idx / (n - 1)) * chartW : chartW / 2);
+        const v = Number(p.value || 0);
+        const y = padTop + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+        return { ...p, x, y };
+      });
+
+      const targetY = tgtVal > 0 ? (padTop + chartH - ((tgtVal - yMin) / (yMax - yMin)) * chartH) : null;
+
+      let linePath = '';
+      let areaPath = '';
+      if (pts.length === 1) {
+        linePath = `M ${padLeft} ${pts[0].y} L ${padLeft + chartW} ${pts[0].y}`;
+        areaPath = `M ${padLeft} ${pts[0].y} L ${padLeft + chartW} ${pts[0].y} L ${padLeft + chartW} ${padTop + chartH} L ${padLeft} ${padTop + chartH} Z`;
+      } else if (pts.length > 1) {
+        linePath = `M ${pts[0].x} ${pts[0].y}`;
+        for (let i = 1; i < pts.length; i++) {
+          const prev = pts[i - 1];
+          const cur = pts[i];
+          const cpx = (prev.x + cur.x) / 2;
+          linePath += ` C ${cpx} ${prev.y}, ${cpx} ${cur.y}, ${cur.x} ${cur.y}`;
+        }
+        areaPath = linePath + ` L ${pts[pts.length - 1].x} ${padTop + chartH} L ${pts[0].x} ${padTop + chartH} Z`;
+      }
+
+      const activePt = hoveredIdx !== null && pts[hoveredIdx] ? pts[hoveredIdx] : (pts.length > 0 ? pts[pts.length - 1] : null);
+
+      return React.createElement('div', { className: 'goal-chart-container' },
+        React.createElement('div', { className: 'goal-chart-header' },
+          React.createElement('span', null, `📈 ${isSavings ? 'Savings Growth Trend' : (isHabit ? 'Streak Timeline' : (isQuit ? 'Clean Days Progression' : 'Milestone Progress'))}`),
+          activePt && React.createElement('span', { style: { color: 'var(--text-primary)', fontWeight: 700 } },
+            `${activePt.date || ''}: ${isSavings ? BillsoftUtils.formatCurrency(activePt.value) : (isHabit || isQuit ? activePt.value + ' Days' : activePt.value + ' ' + (goal.unit || ''))}`
+          )
+        ),
+        React.createElement('svg', {
+          className: 'goal-chart-svg',
+          viewBox: `0 0 ${width} ${height}`,
+          style: { maxHeight: 160 }
+        },
+          React.createElement('defs', null,
+            React.createElement('linearGradient', { id: `goal-grad-${goal.id}`, x1: '0', y1: '0', x2: '0', y2: '1' },
+              React.createElement('stop', { offset: '0%', stopColor: color, stopOpacity: 0.38 }),
+              React.createElement('stop', { offset: '100%', stopColor: color, stopOpacity: 0.02 })
+            )
+          ),
+          // Y-axis gridlines
+          [0, 0.5, 1].map((pct, i) => {
+            const gy = padTop + chartH * (1 - pct);
+            const val = yMin + (yMax - yMin) * pct;
+            return React.createElement('g', { key: i },
+              React.createElement('line', {
+                x1: padLeft,
+                y1: gy,
+                x2: padLeft + chartW,
+                y2: gy,
+                stroke: 'var(--border)',
+                strokeDasharray: '3 3',
+                strokeOpacity: 0.5
+              }),
+              React.createElement('text', {
+                x: padLeft - 6,
+                y: gy + 3,
+                textAnchor: 'end',
+                fontSize: '9',
+                fill: 'var(--text-muted)'
+              }, isSavings ? ('₹' + (val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val.toFixed(0))) : val.toFixed(0))
+            );
+          }),
+          // Target reference line
+          targetY !== null && targetY >= padTop && targetY <= padTop + chartH && React.createElement('g', null,
+            React.createElement('line', {
+              x1: padLeft,
+              y1: targetY,
+              x2: padLeft + chartW,
+              y2: targetY,
+              stroke: '#6366f1',
+              strokeWidth: '1.5',
+              strokeDasharray: '5 4'
+            }),
+            React.createElement('text', {
+              x: padLeft + chartW - 2,
+              y: targetY - 4,
+              textAnchor: 'end',
+              fontSize: '9',
+              fontWeight: '700',
+              fill: '#6366f1'
+            }, `🎯 Target: ${isSavings ? BillsoftUtils.formatCurrency(tgtVal) : tgtVal}`)
+          ),
+          // Area & Line
+          areaPath && React.createElement('path', { d: areaPath, fill: `url(#goal-grad-${goal.id})` }),
+          linePath && React.createElement('path', { d: linePath, fill: 'none', stroke: color, strokeWidth: '2.5', strokeLinecap: 'round', strokeLinejoin: 'round' }),
+          // Data Points & Hover
+          pts.map((p, idx) => {
+            const isHov = hoveredIdx === idx;
+            const isNeg = Number(p.delta) < 0 || p.type === 'RESET' || p.type === 'DEDUCTION' || p.type === 'DECREMENT';
+            const isReconcile = p.type === 'RECONCILE';
+            const ptColor = isReconcile ? '#3b82f6' : (isNeg ? '#dc2626' : (isSavings ? '#10b981' : color));
+            return React.createElement('g', {
+              key: idx,
+              style: { cursor: 'pointer' },
+              onMouseEnter: () => setHoveredIdx(idx),
+              onMouseLeave: () => setHoveredIdx(null)
+            },
+              isHov && React.createElement('line', {
+                x1: p.x,
+                y1: padTop,
+                x2: p.x,
+                y2: padTop + chartH,
+                stroke: color,
+                strokeWidth: '1',
+                strokeDasharray: '2 2'
+              }),
+              isHov && React.createElement('circle', {
+                cx: p.x,
+                cy: p.y,
+                r: 8,
+                fill: ptColor,
+                fillOpacity: 0.25
+              }),
+              React.createElement('circle', {
+                cx: p.x,
+                cy: p.y,
+                r: isHov ? 5 : 3.5,
+                fill: ptColor,
+                stroke: '#fff',
+                strokeWidth: 1.5
+              })
+            );
+          })
+        ),
+        activePt && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-light)', paddingTop: 4 } },
+          React.createElement('span', null, `${activePt.notes || activePt.type || 'Entry'}`),
+          React.createElement('span', { style: { fontWeight: 700, color: Number(activePt.delta) < 0 ? '#dc2626' : '#059669' } },
+            `${Number(activePt.delta) >= 0 ? '+' : ''}${isSavings ? BillsoftUtils.formatCurrency(activePt.delta) : activePt.delta} (${isSavings ? BillsoftUtils.formatCurrency(activePt.value) : activePt.value})`
+          )
+        )
+      );
+    }
+
     // ─── PLANNER PAGE (BOARD + TRACKERS & GOALS HUB) ───
     function PlannerPage({
       reminders,
@@ -5066,6 +5269,8 @@
       onIncrementGoal,
       onResetGoal,
       onQuickSavingGoal,
+      onDeductGoal,
+      onReconcileGoal,
       onIncrementStreakGoal
     }) {
       const getInitialNav = () => {
@@ -5088,6 +5293,10 @@
 
       const [showCompletedArchive, setShowCompletedArchive] = useState(false);
       const [expandedGoalId, setExpandedGoalId] = useState(null); // Track opened history drawer
+      const [goalDrawerView, setGoalDrawerView] = useState({}); // goalId -> 'graph' | 'ledger'
+
+      const [deductModal, setDeductModal] = useState({ isOpen: false, goal: null, amount: 1000, paymentMode: 'UPI', notes: '' });
+      const [reconcileModal, setReconcileModal] = useState({ isOpen: false, goal: null, targetValue: '', notes: '' });
 
       useEffect(() => {
         const handleNav = (e) => {
@@ -6576,7 +6785,7 @@
                               onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
                             }
                           }
-                        }, '💰 +₹1,000'),
+                        }, '💰 +₹1k'),
                         React.createElement('button', {
                           className: 'progress-quick-pill-btn',
                           onClick: () => {
@@ -6585,7 +6794,7 @@
                               onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
                             }
                           }
-                        }, '💰 +₹5,000'),
+                        }, '💰 +₹5k'),
                         React.createElement('button', {
                           className: 'progress-quick-pill-btn',
                           onClick: () => {
@@ -6594,12 +6803,22 @@
                             setFormTitle(`${g.title} Deposit`);
                             setFormCategory(g.title);
                           }
-                        }, '➕ Custom ₹'),
+                        }, '➕ Deposit'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: 'var(--danger)', borderColor: 'rgba(220,38,38,0.3)' },
+                          onClick: () => setDeductModal({ isOpen: true, goal: g, amount: 1000, paymentMode: 'UPI', notes: '' })
+                        }, '💸 Deduct'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
+                          onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(curVal), notes: '' })
+                        }, '🎯 Update To ₹'),
                         React.createElement('button', {
                           className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
                           style: { marginLeft: 'auto' },
                           onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                        }, `📜 History (${linkedSavings.length}) ${isExpanded ? '▲' : '▼'}`)
+                        }, `📈 / 📜 History (${linkedSavings.length}) ${isExpanded ? '▲' : '▼'}`)
                       ),
 
                       // Habit Streak Quick Actions
@@ -6625,13 +6844,23 @@
                         }, '+1 Month (+30d)'),
                         React.createElement('button', {
                           className: 'progress-quick-pill-btn',
-                          style: { color: 'var(--danger)', marginLeft: 'auto' },
+                          style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
+                          onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(g.currentStreak || 0), notes: '' })
+                        }, '🎯 Set Streak To'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: 'var(--danger)' },
                           onClick: () => {
                             if (confirm(`Reset habit streak for "${g.title}"?`)) {
                               onResetGoal(g.id);
                             }
                           }
-                        }, '↺ Reset')
+                        }, '↺ Reset'),
+                        React.createElement('button', {
+                          className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
+                          style: { marginLeft: 'auto' },
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 History ${isExpanded ? '▲' : '▼'}`)
                       ),
 
                       // Quit Habit Quick Actions
@@ -6642,49 +6871,111 @@
                         }, '🌿 Another Day Clean!'),
                         React.createElement('button', {
                           className: 'progress-quick-pill-btn',
-                          style: { color: 'var(--danger)', marginLeft: 'auto' },
+                          style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
+                          onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(g.currentStreak || 0), notes: '' })
+                        }, '🎯 Set Days Clean'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: 'var(--danger)' },
                           onClick: () => {
                             if (confirm(`Reset relapse timer for "${g.title}"? Stay strong and start fresh!`)) {
                               onResetGoal(g.id);
                             }
                           }
-                        }, '↺ Relapse Reset')
+                        }, '↺ Relapse Reset'),
+                        React.createElement('button', {
+                          className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
+                          style: { marginLeft: 'auto' },
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 History ${isExpanded ? '▲' : '▼'}`)
                       ),
 
                       // Life Milestone Quick Actions
                       isMilestone && React.createElement(Fragment, null,
                         React.createElement('button', { className: 'progress-quick-pill-btn primary', onClick: () => onIncrementGoal(g.id, 1) }, '+1 Step'),
                         React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, 5) }, '+5 Steps'),
-                        React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, -1) }, '-1 Step')
+                        React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, -1) }, '-1 Step'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
+                          onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(curVal), notes: '' })
+                        }, '🎯 Set Progress To'),
+                        React.createElement('button', {
+                          className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
+                          style: { marginLeft: 'auto' },
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 History ${isExpanded ? '▲' : '▼'}`)
                       )
                     ),
 
-                    // 6. Expandable Linked Savings Drawer
-                    isSavings && isExpanded && React.createElement('div', { className: 'progress-history-drawer' },
-                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' } },
-                        React.createElement('span', null, `📜 Linked Savings Ledger (${linkedSavings.length} contributions)`),
-                        React.createElement('span', { style: { color: '#059669' } }, `Total: ${BillsoftUtils.formatCurrency(curVal)}`)
-                      ),
-                      linkedSavings.length > 0 ? (
-                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' } },
-                          linkedSavings.map(sav => React.createElement('div', { key: sav.id, className: 'progress-history-entry' },
-                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, `📅 ${sav.savingDate}`),
-                              React.createElement('span', { style: { fontWeight: 600 } }, sav.title),
-                              sav.paymentMode && React.createElement('span', { style: { fontSize: '0.68rem', padding: '1px 5px', borderRadius: 4, background: 'rgba(99,102,241,0.1)', color: '#4f46e5' } }, sav.paymentMode)
-                            ),
-                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                              React.createElement('span', { style: { fontWeight: 700, color: '#059669' } }, `+${BillsoftUtils.formatCurrency(sav.amount || 0)}`),
-                              React.createElement('button', {
-                                className: 'btn btn-ghost btn-xs',
-                                style: { color: 'var(--danger)', padding: '2px 4px' },
-                                onClick: () => setDeleteConfirmItem({ type: 'saving', id: sav.id, title: sav.title })
-                              }, '🗑️')
-                            )
-                          ))
+                    // 6. Expandable Goal Analytics & History Drawer
+                    isExpanded && React.createElement('div', { className: 'progress-history-drawer' },
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', paddingBottom: 6, borderBottom: '1px solid var(--border-light)' } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          React.createElement('span', null, '📊 Goal Progression Analytics'),
+                          React.createElement('div', { className: 'goal-view-toggle' },
+                            React.createElement('button', {
+                              className: `goal-view-toggle-btn${(goalDrawerView[g.id] || 'graph') === 'graph' ? ' active' : ''}`,
+                              onClick: () => setGoalDrawerView(prev => ({ ...prev, [g.id]: 'graph' }))
+                            }, '📈 Graph Trend'),
+                            React.createElement('button', {
+                              className: `goal-view-toggle-btn${(goalDrawerView[g.id] || 'graph') === 'ledger' ? ' active' : ''}`,
+                              onClick: () => setGoalDrawerView(prev => ({ ...prev, [g.id]: 'ledger' }))
+                            }, '📜 Ledger Table')
+                          )
+                        ),
+                        React.createElement('span', { style: { color: '#059669', fontWeight: 700 } },
+                          isSavings ? `Balance: ${BillsoftUtils.formatCurrency(curVal)}` : (isHabit || isQuit ? `Current: ${g.currentStreak || 0} Days` : `Progress: ${curVal} ${g.unit || ''}`)
                         )
-                      ) : React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px 0' } },
-                        'No savings entries linked yet. Click +₹1,000 or +₹5,000 above to make your first deposit!'
+                      ),
+
+                      // Mode 1: Interactive SVG Graph View
+                      (goalDrawerView[g.id] || 'graph') === 'graph' && React.createElement(GoalProgressChart, {
+                        goal: g,
+                        linkedSavings: linkedSavings
+                      }),
+
+                      // Mode 2: Itemized Ledger Table View
+                      (goalDrawerView[g.id] || 'graph') === 'ledger' && React.createElement(Fragment, null,
+                        isSavings ? (
+                          linkedSavings.length > 0 ? (
+                            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 200, overflowY: 'auto' } },
+                              linkedSavings.map(sav => {
+                                const isDeduct = Number(sav.amount || 0) < 0;
+                                return React.createElement('div', { key: sav.id, className: 'progress-history-entry' },
+                                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                                    React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.74rem' } }, `📅 ${sav.savingDate}`),
+                                    React.createElement('span', { style: { fontWeight: 600 } }, sav.title),
+                                    sav.paymentMode && React.createElement('span', { style: { fontSize: '0.68rem', padding: '1px 5px', borderRadius: 4, background: isDeduct ? 'rgba(220,38,38,0.1)' : 'rgba(99,102,241,0.1)', color: isDeduct ? '#dc2626' : '#4f46e5' } }, sav.paymentMode)
+                                  ),
+                                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                                    React.createElement('span', { style: { fontWeight: 700, color: isDeduct ? '#dc2626' : '#059669' } },
+                                      `${isDeduct ? '-' : '+'}${BillsoftUtils.formatCurrency(Math.abs(sav.amount || 0))}`
+                                    ),
+                                    React.createElement('button', {
+                                      className: 'btn btn-ghost btn-xs',
+                                      style: { color: 'var(--danger)', padding: '2px 4px' },
+                                      onClick: () => setDeleteConfirmItem({ type: 'saving', id: sav.id, title: sav.title })
+                                    }, '🗑️')
+                                  )
+                                );
+                              })
+                            )
+                          ) : React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' } },
+                            'No financial transactions linked yet. Use +₹1k, +₹5k, or Deposit above to add funds.'
+                          )
+                        ) : (
+                          React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '8px 0' } },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                              React.createElement('span', null, `🏁 Started: ${g.startDate || 'Recent'}`),
+                              React.createElement('span', null, `🔥 Current: ${g.currentStreak || 0} ${g.unit || 'days'}`)
+                            ),
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                              React.createElement('span', null, `🏆 Longest: ${g.longestStreak || 0} ${g.unit || 'days'}`),
+                              React.createElement('span', null, `🎯 Target: ${g.targetValue || 0} ${g.unit || 'days'}`)
+                            )
+                          )
+                        )
                       )
                     )
                   );
@@ -6871,6 +7162,141 @@
               }, '🗑️ Delete')
             )
           )
+        ),
+
+        // Dedicated Goal Deduction / Withdrawal Modal
+        deductModal.isOpen && deductModal.goal && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeductModal({ isOpen: false, goal: null, amount: 1000, paymentMode: 'UPI', notes: '' }) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 440, width: '90%', margin: '60px auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: 0, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8 } }, '💸 Deduct from Goal Savings'),
+            React.createElement('div', { style: { background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem' } },
+              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, deductModal.goal.title),
+              React.createElement('div', { style: { color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 2 } }, `Current Goal Balance: ${BillsoftUtils.formatCurrency(deductModal.goal.currentValue || 0)}`)
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Deduction Amount (₹) *'),
+              React.createElement('input', {
+                className: 'input w-full',
+                type: 'number',
+                step: '0.01',
+                placeholder: 'e.g. 1000',
+                value: deductModal.amount,
+                onChange: e => setDeductModal(prev => ({ ...prev, amount: e.target.value }))
+              }),
+              React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 6 } },
+                [500, 1000, 5000, 10000].map(amt => React.createElement('button', {
+                  key: amt,
+                  type: 'button',
+                  className: 'btn btn-outline btn-xs',
+                  onClick: () => setDeductModal(prev => ({ ...prev, amount: amt }))
+                }, `₹${amt.toLocaleString('en-IN')}`))
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment / Transfer Mode'),
+              React.createElement('select', {
+                className: 'select w-full',
+                value: deductModal.paymentMode,
+                onChange: e => setDeductModal(prev => ({ ...prev, paymentMode: e.target.value }))
+              },
+                paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Reason / Withdrawal Notes'),
+              React.createElement('input', {
+                className: 'input w-full',
+                placeholder: 'e.g. Emergency Outflow, Fund Reallocation',
+                value: deductModal.notes,
+                onChange: e => setDeductModal(prev => ({ ...prev, notes: e.target.value }))
+              })
+            ),
+            React.createElement('div', { style: { background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', color: '#991b1b' } },
+              `Resulting Balance: ${BillsoftUtils.formatCurrency(Math.max(0, Number(deductModal.goal.currentValue || 0) - Number(deductModal.amount || 0)))} (Will be recorded as a deduction in Savings)`
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setDeductModal({ isOpen: false, goal: null, amount: 1000, paymentMode: 'UPI', notes: '' }) }, 'Cancel'),
+              React.createElement('button', {
+                className: 'btn btn-danger',
+                disabled: !deductModal.amount || Number(deductModal.amount) <= 0,
+                onClick: () => {
+                  if (onDeductGoal) {
+                    onDeductGoal(deductModal.goal.id, Number(deductModal.amount), deductModal.paymentMode, deductModal.notes);
+                  }
+                  setDeductModal({ isOpen: false, goal: null, amount: 1000, paymentMode: 'UPI', notes: '' });
+                }
+              }, `💸 Deduct ${BillsoftUtils.formatCurrency(Number(deductModal.amount) || 0)}`)
+            )
+          )
+        ),
+
+        // Dedicated Goal Reconciliation / "Update Value To" Modal
+        reconcileModal.isOpen && reconcileModal.goal && React.createElement('div', { className: 'modal-overlay', onClick: () => setReconcileModal({ isOpen: false, goal: null, targetValue: '', notes: '' }) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 440, width: '90%', margin: '60px auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: 0, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8 } }, '🎯 Update Goal Value / Reconcile'),
+            React.createElement('div', { style: { background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem' } },
+              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, reconcileModal.goal.title),
+              React.createElement('div', { style: { color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 2 } },
+                reconcileModal.goal.goalType === 'SAVINGS_TARGET' || !reconcileModal.goal.goalType
+                  ? `Current Balance: ${BillsoftUtils.formatCurrency(reconcileModal.goal.currentValue || 0)}`
+                  : (reconcileModal.goal.goalType === 'LIFE_MILESTONE' ? `Current: ${reconcileModal.goal.currentValue || 0} ${reconcileModal.goal.unit || ''}` : `Current Streak: ${reconcileModal.goal.currentStreak || 0} Days`)
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } },
+                reconcileModal.goal.goalType === 'SAVINGS_TARGET' || !reconcileModal.goal.goalType ? 'New Actual Balance (₹) *' : (reconcileModal.goal.goalType === 'LIFE_MILESTONE' ? 'New Milestone Count *' : 'New Streak Days *')
+              ),
+              React.createElement('input', {
+                className: 'input w-full',
+                type: 'number',
+                step: '0.01',
+                placeholder: 'e.g. 50000',
+                value: reconcileModal.targetValue,
+                onChange: e => setReconcileModal(prev => ({ ...prev, targetValue: e.target.value })),
+                autoFocus: true
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Reconciliation Reason / Remarks'),
+              React.createElement('input', {
+                className: 'input w-full',
+                placeholder: 'e.g. Bank statement audit, Interest accrual',
+                value: reconcileModal.notes,
+                onChange: e => setReconcileModal(prev => ({ ...prev, notes: e.target.value }))
+              })
+            ),
+            // Financial delta indicator
+            (reconcileModal.goal.goalType === 'SAVINGS_TARGET' || !reconcileModal.goal.goalType) && reconcileModal.targetValue !== '' && (() => {
+              const cur = Number(reconcileModal.goal.currentValue || 0);
+              const target = Number(reconcileModal.targetValue || 0);
+              const delta = target - cur;
+              const isPos = delta >= 0;
+              return React.createElement('div', {
+                style: {
+                  background: isPos ? '#ecfdf5' : '#fef2f2',
+                  border: `1px solid ${isPos ? '#a7f3d0' : '#fee2e2'}`,
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: '0.8rem',
+                  color: isPos ? '#065f46' : '#991b1b'
+                }
+              },
+                `Adjustment Delta: ${isPos ? '+' : ''}${BillsoftUtils.formatCurrency(delta)} (Will record as ${isPos ? 'deposit' : 'deduction'} adjustment)`
+              );
+            })(),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setReconcileModal({ isOpen: false, goal: null, targetValue: '', notes: '' }) }, 'Cancel'),
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                disabled: reconcileModal.targetValue === '',
+                onClick: () => {
+                  if (onReconcileGoal) {
+                    onReconcileGoal(reconcileModal.goal.id, Number(reconcileModal.targetValue), reconcileModal.notes);
+                  }
+                  setReconcileModal({ isOpen: false, goal: null, targetValue: '', notes: '' });
+                }
+              }, '✓ Update Value')
+            )
+          )
         )
       );
     }
@@ -7054,7 +7480,7 @@
 
 
 
-    // ─── DASHBOARD ───
+    // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
       messages,
@@ -7078,20 +7504,36 @@
       onIncrementGoal,
       onResetGoal,
       onQuickSavingGoal,
-      onIncrementStreakGoal
+      onIncrementStreakGoal,
+      onDeductGoal,
+      onReconcileGoal
     }) {
+      const [dashSegment, setDashSegment] = useState('business'); // 'business' (default) | 'personal'
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [purchaseOrders, setPurchaseOrders] = useState([]);
+      const [products, setProducts] = useState([]);
+      const [parties, setParties] = useState([]);
+      const [customers, setCustomers] = useState([]);
+      const [empAnalytics, setEmpAnalytics] = useState(null);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
       const [updateInfo, setUpdateInfo] = useState(null);
       const [updateDismissed, setUpdateDismissed] = useState(false);
-      const [empAnalytics, setEmpAnalytics] = useState(null);
       const [dismissedIds, setDismissedIds] = useState([]);
       const [dashGoalTab, setDashGoalTab] = useState('ALL'); // 'ALL' | 'SAVINGS' | 'HABITS'
+      const [expandedGoalCharts, setExpandedGoalCharts] = useState({});
 
-      // Customer list state for associations
-      const [customers, setCustomers] = useState([]);
+      // Deduct Modal state
+      const [deductModalGoal, setDeductModalGoal] = useState(null);
+      const [deductAmount, setDeductAmount] = useState('');
+      const [deductPaymentMode, setDeductPaymentMode] = useState('UPI');
+      const [deductNotes, setDeductNotes] = useState('');
+
+      // Reconcile Modal state
+      const [reconcileModalGoal, setReconcileModalGoal] = useState(null);
+      const [reconcileValue, setReconcileValue] = useState('');
+      const [reconcileNotes, setReconcileNotes] = useState('');
 
       // Quick Action Modal State
       const [quickModalOpen, setQuickModalOpen] = useState(false);
@@ -7141,11 +7583,30 @@
 
       const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Credit/Debit Card'];
 
+      const norm = (res) => Array.isArray(res) ? res : (res && res.content && Array.isArray(res.content) ? res.content : []);
+
       const loadDashboardData = useCallback(() => {
-        API.analytics.firm().then(d => { setData(d); setLoading(false); }).catch(e => { showToast('Failed to load analytics', 'error'); setLoading(false); });
-        API.system.updateStatus().then(res => { if (res && res.updateAvailable) setUpdateInfo(res); }).catch(() => { });
-        API.employees.analytics().then(setEmpAnalytics).catch(() => { });
-        API.customers.list().then(setCustomers).catch(() => []);
+        setLoading(true);
+        Promise.allSettled([
+          API.analytics.firm(),
+          API.purchaseOrders && API.purchaseOrders.list ? API.purchaseOrders.list() : Promise.resolve([]),
+          API.products && API.products.list ? API.products.list() : Promise.resolve([]),
+          API.parties && API.parties.list ? API.parties.list() : Promise.resolve([]),
+          API.customers && API.customers.list ? API.customers.list() : Promise.resolve([]),
+          API.employees && API.employees.analytics ? API.employees.analytics() : Promise.resolve(null),
+          API.system && API.system.updateStatus ? API.system.updateStatus() : Promise.resolve(null)
+        ]).then(([firmRes, poRes, prodRes, partyRes, custRes, empRes, updateRes]) => {
+          if (firmRes.status === 'fulfilled' && firmRes.value) setData(firmRes.value);
+          if (poRes.status === 'fulfilled') setPurchaseOrders(norm(poRes.value));
+          if (prodRes.status === 'fulfilled') setProducts(norm(prodRes.value));
+          if (partyRes.status === 'fulfilled') setParties(norm(partyRes.value));
+          if (custRes.status === 'fulfilled') setCustomers(norm(custRes.value));
+          if (empRes.status === 'fulfilled' && empRes.value) setEmpAnalytics(empRes.value);
+          if (updateRes.status === 'fulfilled' && updateRes.value && updateRes.value.updateAvailable) setUpdateInfo(updateRes.value);
+          setLoading(false);
+        }).catch(() => {
+          setLoading(false);
+        });
       }, []);
 
       useEffect(() => {
@@ -7162,32 +7623,74 @@
 
       const isMsgUnread = (m) => m && !m.read && !m.isRead;
 
-      // Get latest unread message for banner
+      // Latest unread message for banner
       const latestUnread = useMemo(() => {
         if (!messages) return null;
         const unread = messages.filter(m => isMsgUnread(m) && !dismissedIds.includes(m.id));
         return unread.length > 0 ? unread[0] : null;
       }, [messages, dismissedIds]);
 
-      // Calculate Expense, Savings & Operations Stats
-      const extraStats = useMemo(() => {
+      // Calculate Business Metrics
+      const businessStats = useMemo(() => {
+        const vendorPayables = purchaseOrders.reduce((acc, po) => {
+          const isCancelled = po.status === 'CANCELLED';
+          if (isCancelled) return acc;
+          const pending = po.pendingAmount != null ? Number(po.pendingAmount) : (Number(po.totalAmount || 0) - Number(po.paidAmount || 0));
+          return acc + Math.max(0, pending);
+        }, 0);
+
+        const openPos = purchaseOrders.filter(po => {
+          if (po.status === 'CANCELLED' || po.status === 'COMPLETED') return false;
+          const pending = po.pendingAmount != null ? Number(po.pendingAmount) : (Number(po.totalAmount || 0) - Number(po.paidAmount || 0));
+          return pending > 0;
+        });
+
+        const lowStockProducts = products.filter(p => {
+          const min = p.minStockLevel != null ? Number(p.minStockLevel) : 0;
+          const cur = p.stockQuantity != null ? Number(p.stockQuantity) : (p.currentStock != null ? Number(p.currentStock) : 0);
+          return min > 0 && cur <= min;
+        });
+
+        const totalInventoryValue = products.reduce((acc, p) => {
+          const cur = p.stockQuantity != null ? Number(p.stockQuantity) : (p.currentStock != null ? Number(p.currentStock) : 0);
+          const price = p.purchasePrice != null ? Number(p.purchasePrice) : (p.unitPrice != null ? Number(p.unitPrice) : (p.price != null ? Number(p.price) : 0));
+          return acc + (Math.max(0, cur) * Math.max(0, price));
+        }, 0);
+
+        return {
+          vendorPayables,
+          openPoCount: openPos.length,
+          totalPos: purchaseOrders.length,
+          lowStockCount: lowStockProducts.length,
+          totalProducts: products.length,
+          totalInventoryValue,
+          totalVendors: parties.length
+        };
+      }, [purchaseOrders, products, parties]);
+
+      // Calculate Personal Stats
+      const personalStats = useMemo(() => {
         const currentMonthStr = BillsoftUtils.todayStr().substring(0, 7);
-        const totalExpenses = expenses ? expenses.reduce((acc, e) => acc + (e.amount || 0), 0) : 0;
+        const totalExpenses = expenses ? expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0) : 0;
         const currentMonthExpenses = expenses
           ? expenses
             .filter(e => e.expenseDate && e.expenseDate.startsWith(currentMonthStr))
-            .reduce((acc, e) => acc + (e.amount || 0), 0)
+            .reduce((acc, e) => acc + (Number(e.amount) || 0), 0)
           : 0;
 
-        const totalSavings = savings ? savings.reduce((acc, s) => acc + (s.amount || 0), 0) : 0;
+        const totalSavings = savings ? savings.reduce((acc, s) => acc + (Number(s.amount) || 0), 0) : 0;
         const currentMonthSavings = savings
           ? savings
             .filter(s => s.savingDate && s.savingDate.startsWith(currentMonthStr))
-            .reduce((acc, s) => acc + (s.amount || 0), 0)
+            .reduce((acc, s) => acc + (Number(s.amount) || 0), 0)
           : 0;
 
         const pendingTasks = reminders ? reminders.filter(r => r.type === 'task' && !r.completed).length : 0;
         const activeReminders = reminders ? reminders.filter(r => r.type !== 'task' && !r.completed).length : 0;
+        const activeGoalsCount = goals ? goals.filter(g => g.status !== 'ACHIEVED').length : 0;
+        const achievedGoalsCount = goals ? goals.filter(g => g.status === 'ACHIEVED').length : 0;
+        const longestStreak = goals && goals.length > 0 ? Math.max(0, ...goals.map(g => Number(g.longestStreak || g.currentStreak || 0))) : 0;
+        const activeHabitsCount = goals ? goals.filter(g => g.goalType === 'HABIT_STREAK' || g.goalType === 'QUIT_HABIT').length : 0;
 
         return {
           totalExpenses,
@@ -7195,12 +7698,16 @@
           totalSavings,
           currentMonthSavings,
           pendingTasks,
-          activeReminders
+          activeReminders,
+          activeGoalsCount,
+          achievedGoalsCount,
+          longestStreak,
+          activeHabitsCount
         };
-      }, [expenses, savings, reminders]);
+      }, [expenses, savings, reminders, goals]);
 
-      // Filtered Goals for Dashboard Widget
-      const dashFilteredGoals = useMemo(() => {
+      // Filtered Goals for Personal View
+      const filteredGoals = useMemo(() => {
         if (!goals || goals.length === 0) return [];
         return goals.filter(g => {
           if (dashGoalTab === 'SAVINGS') return g.goalType === 'SAVINGS_TARGET' || !g.goalType;
@@ -7209,9 +7716,13 @@
         });
       }, [goals, dashGoalTab]);
 
-      const navigateToGoals = () => {
+      const toggleChartExpansion = (goalId) => {
+        setExpandedGoalCharts(prev => ({ ...prev, [goalId]: !prev[goalId] }));
+      };
+
+      const navigateTo = (page, tab) => {
         window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
-          detail: { page: 'planner', tab: 'goals' }
+          detail: { page, tab }
         }));
       };
 
@@ -7380,50 +7891,127 @@
         }
       };
 
-      if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading dashboard...'));
-      if (!data) return React.createElement('div', { className: 'empty-state' }, React.createElement('h3', null, 'No data available'));
+      const handleSaveDeduct = () => {
+        if (!deductModalGoal) return;
+        const amt = parseFloat(deductAmount);
+        if (isNaN(amt) || amt <= 0) {
+          showToast('Please enter a valid amount to deduct', 'error');
+          return;
+        }
+        if (onDeductGoal) {
+          onDeductGoal(deductModalGoal.id, amt, deductPaymentMode, deductNotes.trim());
+        }
+        setDeductModalGoal(null);
+        setDeductAmount('');
+        setDeductNotes('');
+      };
+
+      const handleSaveReconcile = () => {
+        if (!reconcileModalGoal) return;
+        const val = parseFloat(reconcileValue);
+        if (isNaN(val) || val < 0) {
+          showToast('Please enter a valid target balance', 'error');
+          return;
+        }
+        if (onReconcileGoal) {
+          onReconcileGoal(reconcileModalGoal.id, val, reconcileNotes.trim());
+        }
+        setReconcileModalGoal(null);
+        setReconcileValue('');
+        setReconcileNotes('');
+      };
+
+      if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading dashboard intelligence...'));
+      if (!data) return React.createElement('div', { className: 'empty-state' }, React.createElement('h3', null, 'No business data available'));
 
       const collectionRate = (data.totalBusiness && data.totalBusiness > 0)
         ? Math.min(100, Math.round(((data.totalPaid || 0) / data.totalBusiness) * 100))
         : 0;
 
-      const kpis = [
+      const maxBusinessVal = Math.max(data.businessThisYear || 0, data.businessThisMonth || 0, data.businessThisWeek || 0, data.businessToday || 0, 1);
+      const currentFirmObj = firms ? firms.find(f => String(f.id) === String(API.firmId)) : null;
+
+      // ─── 6 Business KPIs ───
+      const businessKpis = [
         {
           label: 'Total Revenue',
-          value: BillsoftUtils.formatCurrency(data.totalBusiness),
+          value: BillsoftUtils.formatCurrency(data.totalBusiness || 0),
           sub: `Today: ${BillsoftUtils.formatCurrency(data.businessToday || 0)}`,
           cls: 'kpi-blue',
           icon: Icons.rupee
         },
         {
           label: 'Total Paid',
-          value: BillsoftUtils.formatCurrency(data.totalPaid),
+          value: BillsoftUtils.formatCurrency(data.totalPaid || 0),
           sub: `${collectionRate}% collected`,
           cls: 'kpi-green',
           icon: Icons.check
         },
         {
-          label: 'Total Pending',
-          value: BillsoftUtils.formatCurrency(data.totalPending),
-          sub: 'Awaiting payment',
+          label: 'Customer Receivables',
+          value: BillsoftUtils.formatCurrency(data.totalPending || 0),
+          sub: `${data.overdueInvoiceCount || 0} overdue invoices`,
           cls: 'kpi-amber',
           icon: Icons.clock
         },
         {
-          label: 'Monthly Expenses',
-          value: BillsoftUtils.formatCurrency(extraStats.currentMonthExpenses),
-          sub: `Lifetime: ${BillsoftUtils.formatCurrency(extraStats.totalExpenses)}`,
+          label: 'Vendor Payables',
+          value: BillsoftUtils.formatCurrency(businessStats.vendorPayables),
+          sub: `${businessStats.openPoCount} open POs (${businessStats.totalVendors} vendors)`,
+          cls: 'kpi-purple',
+          icon: '📦'
+        },
+        {
+          label: 'Inventory Asset',
+          value: BillsoftUtils.formatCurrency(businessStats.totalInventoryValue),
+          sub: businessStats.lowStockCount > 0 ? `⚠️ ${businessStats.lowStockCount} low stock alerts` : `${businessStats.totalProducts} active SKUs`,
+          cls: 'kpi-teal',
+          icon: '🏷️'
+        },
+        {
+          label: 'Quotes Pipeline',
+          value: BillsoftUtils.formatCurrency(data.quotePipelineValue || 0),
+          sub: `${data.quoteCount || 0} active quotations`,
+          cls: 'kpi-indigo',
+          icon: '📄'
+        }
+      ];
+
+      // ─── 4 Personal KPIs ───
+      const personalKpis = [
+        {
+          label: 'Total Savings Reserves',
+          value: BillsoftUtils.formatCurrency(personalStats.totalSavings),
+          sub: `This Month: ${BillsoftUtils.formatCurrency(personalStats.currentMonthSavings)}`,
+          cls: 'kpi-green',
+          icon: '💰'
+        },
+        {
+          label: 'Monthly Expenses Outflow',
+          value: BillsoftUtils.formatCurrency(personalStats.currentMonthExpenses),
+          sub: `Lifetime: ${BillsoftUtils.formatCurrency(personalStats.totalExpenses)}`,
           cls: 'kpi-red',
           icon: '💳'
         },
+        {
+          label: 'Active Goals Focus',
+          value: `${personalStats.activeGoalsCount} Active`,
+          sub: `${personalStats.achievedGoalsCount} Achieved Goals`,
+          cls: 'kpi-blue',
+          icon: '🎯'
+        },
+        {
+          label: 'Habit Streaks',
+          value: `${personalStats.longestStreak} Days Best`,
+          sub: `${personalStats.activeHabitsCount} Habits Tracked`,
+          cls: 'kpi-amber',
+          icon: '🔥'
+        }
       ];
-
-      const maxBusinessVal = Math.max(data.businessThisYear || 0, data.businessThisMonth || 0, data.businessThisWeek || 0, data.businessToday || 0, 1);
-      const currentFirmObj = firms ? firms.find(f => String(f.id) === String(API.firmId)) : null;
 
       return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
 
-        // Sleek Header Bar with Quick Action Buttons
+        // Sleek Header Bar with Dual Segment Switcher & Universal Quick Actions
         React.createElement('div', {
           style: {
             display: 'flex',
@@ -7434,12 +8022,28 @@
             paddingBottom: 4
           }
         },
-          React.createElement('div', null,
-            React.createElement('h1', { style: { margin: 0, fontSize: '1.4rem', fontWeight: 700, letterSpacing: '-0.02em' } }, 'Dashboard'),
-            React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 } },
-              `${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}${currentFirmObj ? ' • ' + currentFirmObj.firmName : ''}`
+          // Left: Title + Segment Switcher
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
+            React.createElement('div', null,
+              React.createElement('h1', { style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em' } }, 'Dashboard'),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                `${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}${currentFirmObj ? ' • ' + currentFirmObj.firmName : ''}`
+              )
+            ),
+            // Segment Switcher Pill
+            React.createElement('div', { className: 'dashboard-segment-switcher' },
+              React.createElement('button', {
+                className: `dashboard-segment-btn${dashSegment === 'business' ? ' active' : ''}`,
+                onClick: () => setDashSegment('business')
+              }, '🏢 Business View'),
+              React.createElement('button', {
+                className: `dashboard-segment-btn${dashSegment === 'personal' ? ' active' : ''}`,
+                onClick: () => setDashSegment('personal')
+              }, '👤 Personal View')
             )
           ),
+
+          // Right: Pinned Universal Quick Actions
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
@@ -7492,7 +8096,7 @@
                   React.createElement('strong', { style: { fontSize: '0.92rem', color: 'var(--text-primary)' } },
                     (() => {
                       const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
-                      return rem ? rem.title : (latestUnread.subject || 'New Notification');
+                      return rem ? rem.title : (latestUnread.subject || 'New Attention Notification');
                     })()
                   ),
                   latestUnread.reminderId && (() => {
@@ -7542,260 +8146,453 @@
             )
           ) : null,
 
-        // Executive 4-KPI Grid
-        React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, kpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
-          React.createElement('div', { className: 'kpi-icon' }, k.icon),
-          React.createElement('div', { className: 'kpi-label' }, k.label),
-          React.createElement('div', { className: 'kpi-value' }, k.value),
-          React.createElement('div', { className: 'kpi-sub' }, k.sub)
-        ))),
+        // ════════════════════════════════════════════════════════════════════════
+        // PERSPECTIVE 1: BUSINESS VIEW (DEFAULT)
+        // ════════════════════════════════════════════════════════════════════════
+        dashSegment === 'business' && React.createElement(Fragment, null,
 
-        // Compact Operational Highlights Ribbon
-        React.createElement('div', {
-          style: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 16,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'var(--bg-secondary, #f8f9fa)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            padding: '10px 16px',
-            fontSize: '0.85rem'
-          }
-        },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '📋 Pending Tasks:'),
-            React.createElement('strong', { style: { color: extraStats.pendingTasks > 0 ? '#0284c7' : 'var(--text-primary)' } }, `${extraStats.pendingTasks} tasks`)
-          ),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '🔔 Active Reminders:'),
-            React.createElement('strong', { style: { color: extraStats.activeReminders > 0 ? '#7c3aed' : 'var(--text-primary)' } }, `${extraStats.activeReminders} active`)
-          ),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '📈 This Month Billed:'),
-            React.createElement('strong', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.businessThisMonth || 0))
-          ),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👥 Active Customers:'),
-            React.createElement('strong', null, `${customers.length}`)
-          )
-        ),
+          // 6-Card Business Executive KPI Grid
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, businessKpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
+            React.createElement('div', { className: 'kpi-icon' }, k.icon),
+            React.createElement('div', { className: 'kpi-label' }, k.label),
+            React.createElement('div', { className: 'kpi-value' }, k.value),
+            React.createElement('div', { className: 'kpi-sub' }, k.sub)
+          ))),
 
-        // 🎯 Executive Multi-Goal Progress Widget
-        React.createElement('div', { className: 'dashboard-goals-widget' },
-          React.createElement('div', { className: 'dashboard-goals-widget-header' },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-              React.createElement('span', { style: { fontSize: '1.25rem' } }, '🎯'),
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '1.02rem', letterSpacing: '-0.01em' } }, 'Goals & Active Focus'),
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Live progress, habit streaks & 1-tap fast deposits')
-              )
+          // Compact Business Operational Highlights Ribbon
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 16,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-secondary, #f8f9fa)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '10px 16px',
+              fontSize: '0.85rem'
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('parties', 'customers') },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👥 Active Customers:'),
+              React.createElement('strong', null, `${customers.length} registered`)
             ),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 2, background: 'var(--bg-hover)', borderRadius: 8 } },
-                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'ALL' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('ALL') }, `All (${goals.length})`),
-                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'SAVINGS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('SAVINGS') }, `Savings (${goals.filter(g => g.goalType === 'SAVINGS_TARGET' || !g.goalType).length})`),
-                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'HABITS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('HABITS') }, `Habits (${goals.filter(g => g.goalType === 'HABIT_STREAK' || g.goalType === 'QUIT_HABIT').length})`)
-              ),
-              React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('goal') }, '🎯 + Goal'),
-              React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: navigateToGoals, style: { color: 'var(--primary)', fontWeight: 600 } }, 'View Hub →')
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('parties', 'vendors') },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '🏭 Supply Vendors:'),
+              React.createElement('strong', { style: { color: '#6366f1' } }, `${parties.length} vendors`)
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('products') },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '⚠️ Low Stock Items:'),
+              React.createElement('strong', { style: { color: businessStats.lowStockCount > 0 ? '#ef4444' : '#10b981' } }, `${businessStats.lowStockCount} items need reorder`)
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('staff') },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👷 Active Staff:'),
+              React.createElement('strong', null, `${empAnalytics ? empAnalytics.totalEmployees || 0 : 0} team members`)
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('invoices') },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '📈 This Month Billed:'),
+              React.createElement('strong', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.businessThisMonth || 0))
             )
           ),
 
-          dashFilteredGoals.length > 0 ? (
-            React.createElement('div', { className: 'dashboard-goals-list' },
-              dashFilteredGoals.slice(0, 4).map(g => {
-                const isSavings = g.goalType === 'SAVINGS_TARGET' || !g.goalType;
-                const isHabit = g.goalType === 'HABIT_STREAK';
-                const isQuit = g.goalType === 'QUIT_HABIT';
-                const isMilestone = g.goalType === 'LIFE_MILESTONE';
-                const curVal = g.currentValue != null ? g.currentValue : 0;
-                const tgtVal = g.targetValue != null ? g.targetValue : 0;
-                const pct = (tgtVal > 0) ? Math.min(100, Math.round((curVal / tgtVal) * 100)) : (g.status === 'ACHIEVED' ? 100 : 0);
-                const isAchieved = g.status === 'ACHIEVED';
-                const todayStr = BillsoftUtils.todayStr();
-                const isCheckedInToday = g.lastCheckInDate && g.lastCheckInDate === todayStr;
-                const cardColor = g.color || (isSavings ? '#10b981' : (isHabit ? '#f59e0b' : (isQuit ? '#8b5cf6' : '#3b82f6')));
+          // Business 2-Column Analytics Matrix
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20 } },
 
-                return React.createElement('div', { key: g.id, className: 'dashboard-goal-row' },
-                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                      React.createElement('span', { style: { fontSize: '1.2rem', padding: '4px 8px', borderRadius: 8, background: `${cardColor}18` } }, g.icon || (isSavings ? '💰' : (isHabit ? '🔥' : '🎯'))),
+            // Left Column: Revenue Breakdown & Top Selling Products
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+
+              // Revenue Breakdown Timeline
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Revenue Breakdown'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Sales velocity by timeframe')
+                  ),
+                  React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.76rem' } }, 'Billed Sales')
+                ),
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+                  createStatRow('Today', data.businessToday || 0, maxBusinessVal),
+                  createStatRow('This Week', data.businessThisWeek || 0, maxBusinessVal),
+                  createStatRow('This Month', data.businessThisMonth || 0, maxBusinessVal),
+                  createStatRow('This Year', data.businessThisYear || 0, maxBusinessVal)
+                )
+              ),
+
+              // Top Products
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Top Selling Products'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Top 5 by gross revenue contribution')
+                  ),
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('products') }, 'View Catalog →')
+                ),
+                React.createElement('div', { className: 'table-container' },
+                  React.createElement('table', null,
+                    React.createElement('thead', null, React.createElement('tr', null,
+                      React.createElement('th', { style: { width: 40 } }, '#'),
+                      React.createElement('th', null, 'Product'),
+                      React.createElement('th', { style: { textAlign: 'center' } }, 'Qty Sold'),
+                      React.createElement('th', { style: { textAlign: 'right' } }, 'Revenue')
+                    )),
+                    React.createElement('tbody', null,
+                      (data.topProducts || []).map((p, i) => React.createElement('tr', { key: i },
+                        React.createElement('td', null, React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: i === 0 ? 'rgba(79, 70, 229, 0.15)' : 'var(--bg-secondary)', color: i === 0 ? 'var(--primary)' : 'var(--text-secondary)' } }, `#${i + 1}`)),
+                        React.createElement('td', { style: { fontWeight: 500 } }, p.productName),
+                        React.createElement('td', { style: { textAlign: 'center' } }, React.createElement('span', { className: 'badge', style: { background: 'var(--bg-secondary)', color: 'var(--text-primary)' } }, p.totalQty)),
+                        React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(p.totalAmount))
+                      )),
+                      (!data.topProducts || data.topProducts.length === 0) && React.createElement('tr', null,
+                        React.createElement('td', { colSpan: 4, style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 24 } }, 'No product sales recorded yet')
+                      )
+                    )
+                  )
+                )
+              )
+            ),
+
+            // Right Column: Top Customers, Recent POs & Counterparty Search
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+
+              // Top Customers
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Top Clients'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Highest billing accounts')
+                  ),
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('parties', 'customers') }, 'All Customers →')
+                ),
+                React.createElement('div', { className: 'table-container' },
+                  React.createElement('table', null,
+                    React.createElement('thead', null, React.createElement('tr', null,
+                      React.createElement('th', null, 'Customer'),
+                      React.createElement('th', { style: { textAlign: 'center' } }, 'Invoices'),
+                      React.createElement('th', null, 'Business'),
+                      React.createElement('th', null, 'Pending')
+                    )),
+                    React.createElement('tbody', null,
+                      (data.topCustomers || []).map((c, i) => React.createElement('tr', { key: i },
+                        React.createElement('td', { style: { fontWeight: 500 } }, c.customerName),
+                        React.createElement('td', { style: { textAlign: 'center' } }, React.createElement('span', { className: 'badge', style: { background: 'var(--bg-secondary)', color: 'var(--text-primary)' } }, c.invoiceCount)),
+                        React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(c.totalAmount)),
+                        React.createElement('td', { style: { color: (c.pendingAmount && c.pendingAmount > 0) ? '#d97706' : 'var(--text-secondary)', fontWeight: (c.pendingAmount && c.pendingAmount > 0) ? 600 : 400 } },
+                          BillsoftUtils.formatCurrency(c.pendingAmount)
+                        )
+                      )),
+                      (!data.topCustomers || data.topCustomers.length === 0) && React.createElement('tr', null,
+                        React.createElement('td', { colSpan: 4, style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 24 } }, 'No customer transactions yet')
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Recent Purchase Orders (POs)
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Recent Purchase Orders'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Vendor procurement & supply orders')
+                  ),
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('purchaseOrders') }, 'All POs →')
+                ),
+                purchaseOrders && purchaseOrders.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                  purchaseOrders.slice(0, 3).map((po, i) => {
+                    const st = po.status || 'DRAFT';
+                    const badgeCls = st === 'RECEIVED' || st === 'PAID' ? 'badge-success' : (st === 'ISSUED' || st === 'PARTIALLY_RECEIVED' ? 'badge-primary' : 'badge-warning');
+                    return React.createElement('div', {
+                      key: po.id || i,
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: 6,
+                        border: '1px solid var(--border-light)'
+                      }
+                    },
                       React.createElement('div', null,
-                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.92rem' } }, g.title),
-                        React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } },
-                          isSavings ? `${BillsoftUtils.formatCurrency(curVal)} of ${BillsoftUtils.formatCurrency(tgtVal)}` :
-                          (isHabit ? `🔥 ${g.currentStreak || 0} day streak (Best: ${g.longestStreak || 0}d)` :
-                          (isQuit ? `🌿 ${g.currentStreak || 0} days clean` : `${curVal} / ${tgtVal} ${g.unit || ''}`))
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          React.createElement('strong', { style: { fontSize: '0.88rem' } }, po.poNumber || `PO #${po.id}`),
+                          React.createElement('span', { className: `badge ${badgeCls}`, style: { fontSize: '0.72rem', padding: '1px 6px' } }, st)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          `Vendor: ${po.partyName || po.vendorName || 'General Vendor'}${po.orderDate ? ' • ' + po.orderDate : ''}`
+                        )
+                      ),
+                      React.createElement('div', { style: { textAlign: 'right' } },
+                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, BillsoftUtils.formatCurrency(po.totalAmount || 0)),
+                        React.createElement('div', { style: { fontSize: '0.74rem', color: (po.pendingAmount && po.pendingAmount > 0) ? '#d97706' : '#059669' } },
+                          (po.pendingAmount && po.pendingAmount > 0) ? `Due: ${BillsoftUtils.formatCurrency(po.pendingAmount)}` : 'Cleared'
                         )
                       )
-                    ),
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                      React.createElement('span', {
-                        className: 'progress-percent-pill',
-                        style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : { fontSize: '0.72rem', padding: '2px 8px' }
-                      }, isAchieved ? '🏆 Done!' : `${pct}%`),
-                      // Quick Action Buttons
-                      isSavings && React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                        React.createElement('button', {
-                          className: 'progress-quick-pill-btn',
-                          style: { fontSize: '0.72rem', padding: '3px 8px' },
-                          onClick: () => {
-                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
-                            else onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
-                          }
-                        }, '+₹1k'),
-                        React.createElement('button', {
-                          className: 'progress-quick-pill-btn',
-                          style: { fontSize: '0.72rem', padding: '3px 8px' },
-                          onClick: () => {
-                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 5000);
-                            else onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
-                          }
-                        }, '+₹5k')
-                      ),
-                      isHabit && React.createElement('button', {
-                        className: `progress-quick-pill-btn${isCheckedInToday ? '' : ' flame'}`,
-                        style: { fontSize: '0.72rem', padding: '3px 10px' },
-                        disabled: isCheckedInToday,
-                        onClick: () => onCheckInGoal && onCheckInGoal(g.id)
-                      }, isCheckedInToday ? '✓ Done' : '🔥 Check-in'),
-                      isQuit && React.createElement('button', {
-                        className: 'progress-quick-pill-btn flame',
-                        style: { fontSize: '0.72rem', padding: '3px 10px' },
-                        onClick: () => onCheckInGoal && onCheckInGoal(g.id)
-                      }, '🌿 Clean Day'),
-                      isMilestone && React.createElement('button', {
-                        className: 'progress-quick-pill-btn primary',
-                        style: { fontSize: '0.72rem', padding: '3px 8px' },
-                        onClick: () => onIncrementGoal && onIncrementGoal(g.id, 1)
-                      }, '+1 Step')
-                    )
-                  ),
-                  // Progress Track
-                  React.createElement('div', { className: 'progress-pill-track', style: { height: 10 } },
-                    React.createElement('div', {
-                      className: `progress-pill-fill${isAchieved ? '' : ' striped'}`,
-                      style: {
-                        width: `${pct}%`,
-                        background: isAchieved ? '#10b981' : `linear-gradient(90deg, ${cardColor}cc, ${cardColor})`
-                      }
-                    })
+                    );
+                  })
+                ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
+                  'No purchase orders recorded yet.',
+                  React.createElement('div', { style: { marginTop: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => navigateTo('purchaseOrders') }, '+ Create Purchase Order')
                   )
-                );
-              }),
-              dashFilteredGoals.length > 4 && React.createElement('div', { style: { textAlign: 'center', paddingTop: 4 } },
-                React.createElement('button', { className: 'btn btn-link btn-xs', onClick: navigateToGoals }, `+${dashFilteredGoals.length - 4} more goals in Goals Hub →`)
+                )
+              ),
+
+              // Quick Customer Lookup
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Customer Quick Search'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Instant analytics & ledger lookup')
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('input', {
+                    className: 'input input-sm w-full',
+                    placeholder: '🔍 Search customer by name...',
+                    value: searchName,
+                    onChange: e => setSearchName(e.target.value)
+                  }),
+                  searchResults && searchResults.length > 0 && React.createElement('div', { style: { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 } },
+                    searchResults.slice(0, 4).map((r, i) => React.createElement('div', {
+                      key: i,
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: 6,
+                        border: '1px solid var(--border-light)'
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, r.customerName || 'Customer'),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          `Business: ${BillsoftUtils.formatCurrency(r.totalBusiness)} • Paid: ${BillsoftUtils.formatCurrency(r.totalPaid)}`
+                        )
+                      ),
+                      React.createElement('div', { style: { textAlign: 'right' } },
+                        React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: (r.totalPending && r.totalPending > 0) ? '#d97706' : '#059669' } },
+                          (r.totalPending && r.totalPending > 0) ? `Pending: ${BillsoftUtils.formatCurrency(r.totalPending)}` : 'Cleared'
+                        )
+                      )
+                    ))
+                  ),
+                  searchResults && searchResults.length === 0 && React.createElement('p', { style: { marginTop: 12, fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' } }, 'No matching customers found.')
+                )
               )
             )
-          ) : React.createElement('div', { className: 'empty-state', style: { padding: '20px 0', textAlign: 'center' } },
-            React.createElement('p', { style: { margin: '0 0 8px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } }, 'No active goals or habit streaks yet.'),
-            React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => openQuickModal('goal') }, '🎯 Set Your First Goal')
           )
         ),
 
-        // Main 2-Column Analytics & Intelligence Grid
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20 } },
+        // ════════════════════════════════════════════════════════════════════════
+        // PERSPECTIVE 2: PERSONAL VIEW (PRIVACY-SAFE SWITCH)
+        // ════════════════════════════════════════════════════════════════════════
+        dashSegment === 'personal' && React.createElement(Fragment, null,
 
-          // Left Column: Revenue & Products
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+          // 4-Card Personal Wealth & Habits Executive KPI Grid
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, personalKpis.map((k, i) => React.createElement('div', { key: i, className: `kpi-card ${k.cls}` },
+            React.createElement('div', { className: 'kpi-icon' }, k.icon),
+            React.createElement('div', { className: 'kpi-label' }, k.label),
+            React.createElement('div', { className: 'kpi-value' }, k.value),
+            React.createElement('div', { className: 'kpi-sub' }, k.sub)
+          ))),
 
-            // Revenue Breakdown
-            React.createElement('div', { className: 'card' },
-              React.createElement('div', { className: 'card-header' },
-                React.createElement('div', { className: 'card-title' }, 'Revenue Breakdown'),
-                React.createElement('div', { className: 'card-subtitle' }, 'By time period')
+          // 🎯 Goals & Habit Streaks Executive Hub
+          React.createElement('div', { className: 'dashboard-goals-widget' },
+            React.createElement('div', { className: 'dashboard-goals-widget-header' },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '🎯'),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.02rem', letterSpacing: '-0.01em' } }, 'Personal Goals & Habit Streaks'),
+                  React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Live progress, timeline graphs, streak counters & 1-tap fast deposits / deductions')
+                )
               ),
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
-                createStatRow('Today', data.businessToday || 0, maxBusinessVal),
-                createStatRow('This Week', data.businessThisWeek || 0, maxBusinessVal),
-                createStatRow('This Month', data.businessThisMonth || 0, maxBusinessVal),
-                createStatRow('This Year', data.businessThisYear || 0, maxBusinessVal)
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 2, background: 'var(--bg-hover)', borderRadius: 8 } },
+                  React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'ALL' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('ALL') }, `All (${goals.length})`),
+                  React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'SAVINGS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('SAVINGS') }, `Savings (${goals.filter(g => g.goalType === 'SAVINGS_TARGET' || !g.goalType).length})`),
+                  React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'HABITS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('HABITS') }, `Habits (${goals.filter(g => g.goalType === 'HABIT_STREAK' || g.goalType === 'QUIT_HABIT').length})`)
+                ),
+                React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('goal') }, '🎯 + Goal'),
+                React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: () => navigateTo('planner', 'goals'), style: { color: 'var(--primary)', fontWeight: 600 } }, 'Full Goals Hub →')
               )
             ),
 
-            // Top Products
-            React.createElement('div', { className: 'card' },
-              React.createElement('div', { className: 'card-header' },
-                React.createElement('div', { className: 'card-title' }, 'Top Products'),
-                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Top 5 by Revenue')
-              ),
-              React.createElement('div', { className: 'table-container' },
-                React.createElement('table', null,
-                  React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: 40 } }, '#'),
-                    React.createElement('th', null, 'Product'),
-                    React.createElement('th', { style: { textAlign: 'center' } }, 'Qty Sold'),
-                    React.createElement('th', { style: { textAlign: 'right' } }, 'Revenue')
-                  )),
-                  React.createElement('tbody', null,
-                    (data.topProducts || []).map((p, i) => React.createElement('tr', { key: i },
-                      React.createElement('td', null, React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: i === 0 ? 'rgba(79, 70, 229, 0.15)' : 'var(--bg-secondary)', color: i === 0 ? 'var(--primary)' : 'var(--text-secondary)' } }, `#${i + 1}`)),
-                      React.createElement('td', { style: { fontWeight: 500 } }, p.productName),
-                      React.createElement('td', { style: { textAlign: 'center' } }, React.createElement('span', { className: 'badge', style: { background: 'var(--bg-secondary)', color: 'var(--text-primary)' } }, p.totalQty)),
-                      React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(p.totalAmount))
-                    )),
-                    (!data.topProducts || data.topProducts.length === 0) && React.createElement('tr', null,
-                      React.createElement('td', { colSpan: 4, style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 24 } }, 'No product sales recorded yet')
+            filteredGoals.length > 0 ? (
+              React.createElement('div', { className: 'dashboard-goals-list' },
+                filteredGoals.slice(0, 5).map(g => {
+                  const isSavings = g.goalType === 'SAVINGS_TARGET' || !g.goalType;
+                  const isHabit = g.goalType === 'HABIT_STREAK';
+                  const isQuit = g.goalType === 'QUIT_HABIT';
+                  const isMilestone = g.goalType === 'LIFE_MILESTONE';
+                  const curVal = g.currentValue != null ? g.currentValue : 0;
+                  const tgtVal = g.targetValue != null ? g.targetValue : 0;
+                  const pct = (tgtVal > 0) ? Math.min(100, Math.round((curVal / tgtVal) * 100)) : (g.status === 'ACHIEVED' ? 100 : 0);
+                  const isAchieved = g.status === 'ACHIEVED';
+                  const todayStr = BillsoftUtils.todayStr();
+                  const isCheckedInToday = g.lastCheckInDate && g.lastCheckInDate === todayStr;
+                  const cardColor = g.color || (isSavings ? '#10b981' : (isHabit ? '#f59e0b' : (isQuit ? '#8b5cf6' : '#3b82f6')));
+                  const isChartOpen = Boolean(expandedGoalCharts[g.id]);
+                  const linkedSavingsList = (savings || []).filter(s => String(s.goalId) === String(g.id));
+
+                  return React.createElement('div', { key: g.id, className: 'dashboard-goal-row' },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                        React.createElement('span', { style: { fontSize: '1.2rem', padding: '4px 8px', borderRadius: 8, background: `${cardColor}18` } }, g.icon || (isSavings ? '💰' : (isHabit ? '🔥' : '🎯'))),
+                        React.createElement('div', null,
+                          React.createElement('div', { style: { fontWeight: 600, fontSize: '0.92rem' } }, g.title),
+                          React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } },
+                            isSavings ? `${BillsoftUtils.formatCurrency(curVal)} of ${BillsoftUtils.formatCurrency(tgtVal)}` :
+                            (isHabit ? `🔥 ${g.currentStreak || 0} day streak (Best: ${g.longestStreak || 0}d)` :
+                            (isQuit ? `🌿 ${g.currentStreak || 0} days clean` : `${curVal} / ${tgtVal} ${g.unit || ''}`))
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+                        React.createElement('span', {
+                          className: 'progress-percent-pill',
+                          style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : { fontSize: '0.72rem', padding: '2px 8px' }
+                        }, isAchieved ? '🏆 Done!' : `${pct}%`),
+
+                        // Fast Action Buttons
+                        isSavings && React.createElement(Fragment, null,
+                          React.createElement('button', {
+                            className: 'progress-quick-pill-btn',
+                            style: { fontSize: '0.72rem', padding: '3px 8px' },
+                            onClick: () => {
+                              if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
+                              else onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                            }
+                          }, '+₹1k'),
+                          React.createElement('button', {
+                            className: 'progress-quick-pill-btn',
+                            style: { fontSize: '0.72rem', padding: '3px 8px' },
+                            onClick: () => {
+                              if (onQuickSavingGoal) onQuickSavingGoal(g.id, 5000);
+                              else onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                            }
+                          }, '+₹5k'),
+                          React.createElement('button', {
+                            className: 'progress-quick-pill-btn',
+                            style: { fontSize: '0.72rem', padding: '3px 8px', borderColor: '#fca5a5', color: '#dc2626' },
+                            title: 'Deduct Amount from Goal',
+                            onClick: () => {
+                              setDeductModalGoal(g);
+                              setDeductAmount('');
+                              setDeductNotes('');
+                            }
+                          }, '💸 Deduct'),
+                          React.createElement('button', {
+                            className: 'progress-quick-pill-btn',
+                            style: { fontSize: '0.72rem', padding: '3px 8px' },
+                            title: 'Reconcile Balance Directly',
+                            onClick: () => {
+                              setReconcileModalGoal(g);
+                              setReconcileValue(String(g.currentValue || 0));
+                              setReconcileNotes('');
+                            }
+                          }, '🎯 Reconcile')
+                        ),
+
+                        isHabit && React.createElement(Fragment, null,
+                          React.createElement('button', {
+                            className: `progress-quick-pill-btn${isCheckedInToday ? '' : ' flame'}`,
+                            style: { fontSize: '0.72rem', padding: '3px 10px' },
+                            disabled: isCheckedInToday,
+                            onClick: () => onCheckInGoal && onCheckInGoal(g.id)
+                          }, isCheckedInToday ? '✓ Done' : '🔥 Check-in'),
+                          React.createElement('button', {
+                            className: 'progress-quick-pill-btn',
+                            style: { fontSize: '0.72rem', padding: '3px 8px' },
+                            title: 'Reset Streak to 0',
+                            onClick: () => onResetGoal && onResetGoal(g.id)
+                          }, '↺ Reset')
+                        ),
+
+                        isQuit && React.createElement('button', {
+                          className: 'progress-quick-pill-btn flame',
+                          style: { fontSize: '0.72rem', padding: '3px 10px' },
+                          onClick: () => onCheckInGoal && onCheckInGoal(g.id)
+                        }, '🌿 Clean Day'),
+
+                        isMilestone && React.createElement('button', {
+                          className: 'progress-quick-pill-btn primary',
+                          style: { fontSize: '0.72rem', padding: '3px 8px' },
+                          onClick: () => onIncrementGoal && onIncrementGoal(g.id, 1)
+                        }, '+1 Step'),
+
+                        // Toggle Timeline Graph
+                        React.createElement('button', {
+                          className: `btn btn-xs ${isChartOpen ? 'btn-primary' : 'btn-ghost'}`,
+                          style: { fontSize: '0.72rem', padding: '2px 6px', height: 24 },
+                          title: 'Toggle Progress Timeline Graph',
+                          onClick: () => toggleChartExpansion(g.id)
+                        }, isChartOpen ? '📈 Hide Graph' : '📈 Graph')
+                      )
+                    ),
+
+                    // Progress Track Bar
+                    React.createElement('div', { className: 'progress-pill-track', style: { height: 10, margin: '8px 0 0 0' } },
+                      React.createElement('div', {
+                        className: `progress-pill-fill${isAchieved ? '' : ' striped'}`,
+                        style: {
+                          width: `${pct}%`,
+                          background: isAchieved ? '#10b981' : `linear-gradient(90deg, ${cardColor}cc, ${cardColor})`
+                        }
+                      })
+                    ),
+
+                    // Inline Expandable Timeline Graph View
+                    isChartOpen && React.createElement('div', {
+                      style: {
+                        marginTop: 12,
+                        padding: 12,
+                        background: 'var(--bg-secondary)',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)'
+                      }
+                    },
+                      React.createElement(GoalProgressChart, {
+                        goal: g,
+                        linkedSavings: linkedSavingsList
+                      })
                     )
-                  )
+                  );
+                }),
+                filteredGoals.length > 5 && React.createElement('div', { style: { textAlign: 'center', paddingTop: 4 } },
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'goals') }, `+${filteredGoals.length - 5} more goals in Goals Hub →`)
                 )
               )
+            ) : React.createElement('div', { className: 'empty-state', style: { padding: '20px 0', textAlign: 'center' } },
+              React.createElement('p', { style: { margin: '0 0 8px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } }, 'No active personal goals or habit streaks yet.'),
+              React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => openQuickModal('goal') }, '🎯 Set Your First Goal')
             )
           ),
 
-          // Right Column: Customers & Search
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+          // 2-Column Personal Life Operations Matrix
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20 } },
 
-            // Top Customers
-            React.createElement('div', { className: 'card' },
-              React.createElement('div', { className: 'card-header' },
-                React.createElement('div', { className: 'card-title' }, 'Top Customers'),
-                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Top 5 by Revenue')
-              ),
-              React.createElement('div', { className: 'table-container' },
-                React.createElement('table', null,
-                  React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', null, 'Customer'),
-                    React.createElement('th', { style: { textAlign: 'center' } }, 'Invoices'),
-                    React.createElement('th', null, 'Business'),
-                    React.createElement('th', null, 'Pending')
-                  )),
-                  React.createElement('tbody', null,
-                    (data.topCustomers || []).map((c, i) => React.createElement('tr', { key: i },
-                      React.createElement('td', { style: { fontWeight: 500 } }, c.customerName),
-                      React.createElement('td', { style: { textAlign: 'center' } }, React.createElement('span', { className: 'badge', style: { background: 'var(--bg-secondary)', color: 'var(--text-primary)' } }, c.invoiceCount)),
-                      React.createElement('td', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(c.totalAmount)),
-                      React.createElement('td', { style: { color: (c.pendingAmount && c.pendingAmount > 0) ? '#d97706' : 'var(--text-secondary)', fontWeight: (c.pendingAmount && c.pendingAmount > 0) ? 600 : 400 } },
-                        BillsoftUtils.formatCurrency(c.pendingAmount)
-                      )
-                    )),
-                    (!data.topCustomers || data.topCustomers.length === 0) && React.createElement('tr', null,
-                      React.createElement('td', { colSpan: 4, style: { textAlign: 'center', color: 'var(--text-secondary)', padding: 24 } }, 'No customer transactions yet')
-                    )
+            // Left Column: Due Reminders & Today's Tasks
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+
+              // Reminders Card
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Due & Upcoming Reminders'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Attention triggers & deadlines')
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('reminder') }, '+ New'),
+                    React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'reminders') }, 'All →')
                   )
-                )
-              )
-            ),
-
-            // Quick Customer Lookup
-            React.createElement('div', { className: 'card' },
-              React.createElement('div', { className: 'card-header' },
-                React.createElement('div', { className: 'card-title' }, 'Customer Quick Search'),
-                React.createElement('div', { className: 'card-subtitle' }, 'Instant analytics & ledger search')
-              ),
-              React.createElement('div', null,
-                React.createElement('input', {
-                  className: 'input input-sm w-full',
-                  placeholder: '🔍 Search customer by name...',
-                  value: searchName,
-                  onChange: e => setSearchName(e.target.value)
-                }),
-                searchResults && searchResults.length > 0 && React.createElement('div', { style: { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 } },
-                  searchResults.slice(0, 4).map((r, i) => React.createElement('div', {
-                    key: i,
+                ),
+                (reminders && reminders.filter(r => r.type !== 'task' && !r.completed).length > 0) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                  reminders.filter(r => r.type !== 'task' && !r.completed).slice(0, 4).map((r, i) => React.createElement('div', {
+                    key: r.id || i,
                     style: {
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -7807,25 +8604,269 @@
                     }
                   },
                     React.createElement('div', null,
-                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, r.customerName || 'Customer'),
-                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                        `Business: ${BillsoftUtils.formatCurrency(r.totalBusiness)} • Paid: ${BillsoftUtils.formatCurrency(r.totalPaid)}`
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, r.title),
+                      React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        `${r.dueDate ? '⏰ Due ' + r.dueDate.replace('T', ' ').substring(0, 16) : 'No due date'}${r.tags ? ' • #' + r.tags : ''}`
                       )
                     ),
-                    React.createElement('div', { style: { textAlign: 'right' } },
-                      React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: (r.totalPending && r.totalPending > 0) ? '#d97706' : '#059669' } },
-                        (r.totalPending && r.totalPending > 0) ? `Pending: ${BillsoftUtils.formatCurrency(r.totalPending)}` : 'Cleared'
-                      )
+                    React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                      React.createElement('button', {
+                        className: 'btn btn-xs btn-outline',
+                        onClick: () => {
+                          const currentDue = r.dueDate ? new Date(r.dueDate) : new Date();
+                          currentDue.setHours(currentDue.getHours() + 24);
+                          if (onUpdateReminder) onUpdateReminder(r.id, { ...r, dueDate: currentDue.toISOString().slice(0, 19) });
+                        }
+                      }, '+1d'),
+                      React.createElement('button', {
+                        className: 'btn btn-xs btn-primary',
+                        onClick: () => onMarkDone && onMarkDone(r.id)
+                      }, '✓')
                     )
                   ))
+                ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'No pending reminders for today! 🎯')
+              ),
+
+              // Tasks Kanban Mini-List
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Actionable Tasks'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Quick to-do items & priorities')
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('task') }, '+ Task'),
+                    React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'tasks') }, 'Board →')
+                  )
                 ),
-                searchResults && searchResults.length === 0 && React.createElement('p', { style: { marginTop: 12, fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' } }, 'No matching customers found.')
+                (reminders && reminders.filter(r => r.type === 'task' && !r.completed).length > 0) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                  reminders.filter(r => r.type === 'task' && !r.completed).slice(0, 4).map((t, i) => React.createElement('div', {
+                    key: t.id || i,
+                    style: {
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-light)'
+                    }
+                  },
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, t.title),
+                      React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        `${t.dueDate ? '📅 ' + t.dueDate.split('T')[0] : 'Open Task'}${t.tags ? ' • #' + t.tags : ''}`
+                      )
+                    ),
+                    React.createElement('select', {
+                      className: 'select select-xs',
+                      style: { fontSize: '0.75rem', height: 26, padding: '0 6px' },
+                      value: t.status || 'TODO',
+                      onChange: e => {
+                        const st = e.target.value;
+                        if (onUpdateReminder) {
+                          onUpdateReminder(t.id, {
+                            ...t,
+                            status: st,
+                            progress: st === 'DONE' ? 100 : (st === 'IN_PROGRESS' ? 50 : 0),
+                            completed: st === 'DONE'
+                          });
+                        }
+                      }
+                    },
+                      React.createElement('option', { value: 'TODO' }, 'To Do'),
+                      React.createElement('option', { value: 'IN_PROGRESS' }, 'In Progress'),
+                      React.createElement('option', { value: 'DONE' }, 'Done')
+                    )
+                  ))
+                ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'All tasks clear! ✨')
+              )
+            ),
+
+            // Right Column: Recent Outflow & Savings Stream & Scratchpad
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+
+              // Recent Expenses Outflow
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Recent Outflows (Expenses)'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Personal & operational expenditures')
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('expense') }, '+ Expense'),
+                    React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'expenses') }, 'Log →')
+                  )
+                ),
+                (expenses && expenses.length > 0) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                  expenses.slice(0, 3).map((e, i) => React.createElement('div', {
+                    key: e.id || i,
+                    style: {
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-light)'
+                    }
+                  },
+                    React.createElement('div', null,
+                      React.createElement('strong', { style: { fontSize: '0.88rem' } }, e.title),
+                      React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        `${e.category || 'Expense'} • ${e.expenseDate || ''} • ${e.paymentMode || 'UPI'}`
+                      )
+                    ),
+                    React.createElement('div', { style: { fontWeight: 600, color: '#ef4444', fontSize: '0.9rem' } },
+                      `-${BillsoftUtils.formatCurrency(e.amount)}`
+                    )
+                  ))
+                ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'No expense transactions recorded.')
+              ),
+
+              // Recent Savings Deposits
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Recent Wealth Savings Stream'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Investments, SIPs & reserves')
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('saving') }, '+ Saving'),
+                    React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'savings') }, 'Vault →')
+                  )
+                ),
+                (savings && savings.length > 0) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                  savings.slice(0, 3).map((s, i) => {
+                    const linkedGoal = s.goalId && goals ? goals.find(g => String(g.id) === String(s.goalId)) : null;
+                    return React.createElement('div', {
+                      key: s.id || i,
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: 6,
+                        border: '1px solid var(--border-light)'
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('strong', { style: { fontSize: '0.88rem' } }, s.title),
+                          linkedGoal && React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.7rem', padding: '1px 6px' } }, linkedGoal.title)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          `${s.category || 'Saving'} • ${s.savingDate || ''} • ${s.paymentMode || 'UPI'}`
+                        )
+                      ),
+                      React.createElement('div', { style: { fontWeight: 600, color: '#10b981', fontSize: '0.9rem' } },
+                        `+${BillsoftUtils.formatCurrency(s.amount)}`
+                      )
+                    );
+                  })
+                ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'No savings deposits recorded yet.')
+              ),
+
+              // Personal Memos & Sticky Notes Scratchpad
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'card-title' }, 'Personal Scratchpad & Memos'),
+                    React.createElement('div', { className: 'card-subtitle' }, 'Fast unformatted notes & thoughts')
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('note') }, '+ Note'),
+                    React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'notes') }, 'Memos →')
+                  )
+                ),
+                (notes && notes.length > 0) ? React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 } },
+                  notes.slice(0, 3).map((n, i) => React.createElement('div', {
+                    key: n.id || i,
+                    style: {
+                      background: 'rgba(254, 240, 138, 0.25)',
+                      border: '1px solid #fef08a',
+                      borderRadius: 8,
+                      padding: '10px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4
+                    }
+                  },
+                    React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem', color: '#854d0e' } }, n.title),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: '#713f12', whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'hidden' } }, n.content || n.note || '')
+                  ))
+                ) : React.createElement('div', { style: { padding: '12px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'Scratchpad is empty.')
               )
             )
           )
         ),
 
-        // Quick Creation Modal Overlay directly on Dashboard
+        // ════════════════════════════════════════════════════════════════════════
+        // DEDUCTION MODAL
+        // ════════════════════════════════════════════════════════════════════════
+        deductModalGoal && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeductModalGoal(null) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { style: { borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8 } },
+                '💸 Deduct from Goal'
+              ),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                `${deductModalGoal.title} (Current: ${BillsoftUtils.formatCurrency(deductModalGoal.currentValue || 0)})`
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Deduction Amount (₹) *'),
+              React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: 'e.g. 2500', value: deductAmount, onChange: e => setDeductAmount(e.target.value) })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment Channel / Destination'),
+              React.createElement('select', { className: 'select w-full', value: deductPaymentMode, onChange: e => setDeductPaymentMode(e.target.value) },
+                paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Reason / Notes'),
+              React.createElement('input', { className: 'input w-full', placeholder: 'e.g. Emergency medical payment, withdrawal', value: deductNotes, onChange: e => setDeductNotes(e.target.value) })
+            ),
+            React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setDeductModalGoal(null) }, 'Cancel'),
+              React.createElement('button', { className: 'btn btn-danger', onClick: handleSaveDeduct }, 'Confirm Deduction')
+            )
+          )
+        ),
+
+        // ════════════════════════════════════════════════════════════════════════
+        // RECONCILE / UPDATE VALUE TO MODAL
+        // ════════════════════════════════════════════════════════════════════════
+        reconcileModalGoal && React.createElement('div', { className: 'modal-overlay', onClick: () => setReconcileModalGoal(null) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { style: { borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 } },
+                '🎯 Reconcile Balance ("Update Value To")'
+              ),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                `Set exact verified bank balance for "${reconcileModalGoal.title}"`
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'New Current Balance (₹) *'),
+              React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: 'e.g. 75000', value: reconcileValue, onChange: e => setReconcileValue(e.target.value) })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Audit Reason / Notes'),
+              React.createElement('input', { className: 'input w-full', placeholder: 'e.g. Monthly bank passbook reconciliation', value: reconcileNotes, onChange: e => setReconcileNotes(e.target.value) })
+            ),
+            React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setReconcileModalGoal(null) }, 'Cancel'),
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleSaveReconcile }, 'Set Exact Balance')
+            )
+          )
+        ),
+
+        // ════════════════════════════════════════════════════════════════════════
+        // UNIVERSAL QUICK CREATION MODAL OVERLAY
+        // ════════════════════════════════════════════════════════════════════════
         quickModalOpen && React.createElement('div', { className: 'modal-overlay', onClick: () => setQuickModalOpen(false) },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 480, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 } },
@@ -19890,6 +20931,9 @@
                           React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(99, 102, 241, 0.1)', color: '#4f46e5', padding: '2px 7px', borderRadius: 6 } }, `📄 ${firm.invoiceCount || 0} Invoices`),
                           React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', padding: '2px 7px', borderRadius: 6 } }, `👥 ${firm.customerCount || 0} Customers`),
                           React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(245, 158, 11, 0.1)', color: '#d97706', padding: '2px 7px', borderRadius: 6 } }, `📦 ${firm.productCount || 0} Products`),
+                          (firm.goalCount > 0 || firm.goalLogCount > 0) && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.12)', color: '#047857', padding: '2px 7px', borderRadius: 6 } }, `🎯 ${firm.goalCount || 0} Goals (${firm.goalLogCount || 0} Logs)`),
+                          firm.savingCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(234, 88, 12, 0.1)', color: '#c2410c', padding: '2px 7px', borderRadius: 6 } }, `💰 ${firm.savingCount} Savings`),
+                          firm.expenseCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', padding: '2px 7px', borderRadius: 6 } }, `💳 ${firm.expenseCount} Expenses`),
                           firm.employeeCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(139, 92, 246, 0.1)', color: '#7c3aed', padding: '2px 7px', borderRadius: 6 } }, `👔 ${firm.employeeCount} Staff`),
                           firm.purchaseOrderCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(14, 165, 233, 0.1)', color: '#0284c7', padding: '2px 7px', borderRadius: 6 } }, `🛒 ${firm.purchaseOrderCount} Orders`)
                         )
@@ -22269,6 +23313,9 @@
                       React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(99,102,241,0.25)', color: '#c7d2fe', padding: '2px 7px', borderRadius: 6 } }, `📄 ${firm.invoiceCount || 0} Invoices`),
                       React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.25)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `👥 ${firm.customerCount || 0} Customers`),
                       React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(245,158,11,0.25)', color: '#fde68a', padding: '2px 7px', borderRadius: 6 } }, `📦 ${firm.productCount || 0} Products`),
+                      (firm.goalCount > 0 || firm.goalLogCount > 0) && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.3)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `🎯 ${firm.goalCount || 0} Goals (${firm.goalLogCount || 0} Logs)`),
+                      firm.savingCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(249,115,22,0.25)', color: '#fed7aa', padding: '2px 7px', borderRadius: 6 } }, `💰 ${firm.savingCount} Savings`),
+                      firm.expenseCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', padding: '2px 7px', borderRadius: 6 } }, `💳 ${firm.expenseCount} Expenses`),
                       firm.employeeCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(139,92,246,0.25)', color: '#ddd6fe', padding: '2px 7px', borderRadius: 6 } }, `👔 ${firm.employeeCount} Staff`),
                       firm.purchaseOrderCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(14,165,233,0.25)', color: '#bae6fd', padding: '2px 7px', borderRadius: 6 } }, `🛒 ${firm.purchaseOrderCount} Orders`)
                     )
@@ -28075,12 +29122,30 @@
         });
       };
       const handleQuickSavingGoal = (id, amount, notes) => {
-        return API.goals.quickSaving(id, amount, notes).then(updated => {
+        return API.goals.quickSaving(id, amount, 'UPI', notes).then(updated => {
           setGoals(prev => prev.map(g => g.id === id ? updated : g));
           refreshSavings();
           showToast(`₹${amount.toLocaleString('en-IN')} added to goal savings!`, 'success');
         }).catch(e => {
           showToast('Failed to add quick saving', 'error');
+        });
+      };
+      const handleDeductGoal = (id, amount, paymentMode, notes) => {
+        return API.goals.deduct(id, amount, paymentMode, notes).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          refreshSavings();
+          showToast(`₹${amount.toLocaleString('en-IN')} deducted from goal savings`, 'info');
+        }).catch(e => {
+          showToast('Failed to deduct from goal', 'error');
+        });
+      };
+      const handleReconcileGoal = (id, targetValue, notes) => {
+        return API.goals.reconcile(id, targetValue, notes).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          refreshSavings();
+          showToast(`Goal balance updated to ₹${Number(targetValue).toLocaleString('en-IN')}`, 'success');
+        }).catch(e => {
+          showToast('Failed to update goal balance', 'error');
         });
       };
       const handleIncrementStreakGoal = (id, days) => {
@@ -28329,7 +29394,9 @@
             onIncrementGoal: handleIncrementGoal,
             onResetGoal: handleResetGoal,
             onQuickSavingGoal: handleQuickSavingGoal,
-            onIncrementStreakGoal: handleIncrementStreakGoal
+            onIncrementStreakGoal: handleIncrementStreakGoal,
+            onDeductGoal: handleDeductGoal,
+            onReconcileGoal: handleReconcileGoal
           })
         },
         invoices: {
@@ -28379,6 +29446,8 @@
             onIncrementGoal: handleIncrementGoal,
             onResetGoal: handleResetGoal,
             onQuickSavingGoal: handleQuickSavingGoal,
+            onDeductGoal: handleDeductGoal,
+            onReconcileGoal: handleReconcileGoal,
             onIncrementStreakGoal: handleIncrementStreakGoal
           })
         },

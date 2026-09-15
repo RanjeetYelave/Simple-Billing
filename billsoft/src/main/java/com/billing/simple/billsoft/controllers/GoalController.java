@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/goals")
@@ -61,16 +62,40 @@ public class GoalController {
     @PostMapping("/{id}/quick-saving")
     public Goal quickSaving(
             @PathVariable Long id,
-            @RequestBody java.util.Map<String, Object> payload) {
+            @RequestBody Map<String, Object> payload) {
         BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(payload.getOrDefault("amount", "1000").toString()));
         String paymentMode = payload.getOrDefault("paymentMode", "UPI").toString();
         String notes = payload.getOrDefault("notes", "Quick Goal Contribution").toString();
         return service.addSavingsToGoal(id, amount, paymentMode, notes);
     }
 
+    @PostMapping("/{id}/deduct")
+    public Goal deductSaving(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> payload) {
+        BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(payload.getOrDefault("amount", "1000").toString()));
+        String paymentMode = payload.getOrDefault("paymentMode", "UPI").toString();
+        String notes = payload.getOrDefault("notes", "Goal Deduction / Withdrawal").toString();
+        return service.deductSavingsFromGoal(id, amount, paymentMode, notes);
+    }
+
+    @PostMapping("/{id}/reconcile")
+    public Goal reconcile(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> payload) {
+        BigDecimal targetValue = BigDecimal.valueOf(Double.parseDouble(payload.getOrDefault("targetValue", "0").toString()));
+        String notes = payload.getOrDefault("notes", "").toString();
+        return service.reconcileGoalBalance(id, targetValue, notes);
+    }
+
     @GetMapping("/{id}/savings")
     public List<com.billing.simple.billsoft.entities.SavingRecord> getLinkedSavings(@PathVariable Long id) {
         return service.getLinkedSavingsForGoal(id);
+    }
+
+    @GetMapping("/{id}/timeline")
+    public Map<String, Object> getTimeline(@PathVariable Long id) {
+        return service.getGoalTimeline(id);
     }
 
     @PostMapping("/{id}/increment")

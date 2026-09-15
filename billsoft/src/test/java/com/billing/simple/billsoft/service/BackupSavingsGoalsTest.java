@@ -49,6 +49,7 @@ class BackupSavingsGoalsTest {
     @Mock private SalesReturnItemRepository salesReturnItemRepo;
     @Mock private SavingRepository savingRepo;
     @Mock private GoalRepository goalRepo;
+    @Mock private GoalLogRepository goalLogRepo;
 
     @InjectMocks
     private BackupService service;
@@ -72,6 +73,9 @@ class BackupSavingsGoalsTest {
         when(goalRepo.findByFirmIdOrderByCreatedAtDesc(firmId)).thenReturn(List.of(
                 Goal.builder().id(501L).firmId(firmId).title("Emergency Fund").goalType(GoalType.SAVINGS_TARGET).build()
         ));
+        when(goalLogRepo.findByFirmIdOrderByLogDateAscCreatedAtAsc(firmId)).thenReturn(List.of(
+                GoalLog.builder().id(901L).firmId(firmId).goalId(501L).actionType("DEPOSIT").deltaValue(new BigDecimal("1000")).build()
+        ));
 
         BackupDTO backup = service.exportData(firmId);
 
@@ -80,6 +84,8 @@ class BackupSavingsGoalsTest {
         assertEquals("SIP Mutual Fund", backup.getSavings().get(0).getTitle());
         assertEquals(1, backup.getGoals().size());
         assertEquals("Emergency Fund", backup.getGoals().get(0).getTitle());
+        assertEquals(1, backup.getGoalLogs().size());
+        assertEquals("DEPOSIT", backup.getGoalLogs().get(0).getActionType());
     }
 
     @Test
@@ -103,18 +109,24 @@ class BackupSavingsGoalsTest {
         backup.setGoals(List.of(
                 Goal.builder().id(10L).firmId(1L).title("Goal 1").build()
         ));
+        backup.setGoalLogs(List.of(
+                GoalLog.builder().id(100L).firmId(1L).goalId(10L).actionType("CHECK_IN").build(),
+                GoalLog.builder().id(101L).firmId(1L).goalId(10L).actionType("BOOST").build()
+        ));
 
         BackupInspectionDTO inspection = service.inspectBackup(backup);
 
         assertNotNull(inspection);
         assertEquals(2, inspection.getFirms().get(0).getSavingCount());
         assertEquals(1, inspection.getFirms().get(0).getGoalCount());
+        assertEquals(2, inspection.getFirms().get(0).getGoalLogCount());
         assertEquals(2, inspection.getTotalStats().get("totalSavings"));
         assertEquals(1, inspection.getTotalStats().get("totalGoals"));
+        assertEquals(2, inspection.getTotalStats().get("totalGoalLogs"));
     }
 
     @Test
-    void testImportRemapsGoalIdInSavings() {
+    void testImportRemapsGoalIdInSavingsAndGoalLogs() {
         BackupDTO backup = new BackupDTO();
         Map<String, Object> meta = new HashMap<>();
         meta.put("version", "2.0");
@@ -144,6 +156,16 @@ class BackupSavingsGoalsTest {
                 .build();
         backup.setSavings(List.of(oldSaving));
 
+        GoalLog oldGoalLog = GoalLog.builder()
+                .id(777L)
+                .firmId(1L)
+                .goalId(999L)
+                .actionType("DEPOSIT")
+                .deltaValue(new BigDecimal("20000.00"))
+                .notes("Initial gold deposit")
+                .build();
+        backup.setGoalLogs(List.of(oldGoalLog));
+
         when(firmDetailsRepo.save(any(FirmDetails.class))).thenAnswer(i -> {
             FirmDetails f = i.getArgument(0);
             f.setId(10L); // New firm ID
@@ -162,6 +184,12 @@ class BackupSavingsGoalsTest {
             return s;
         });
 
+        when(goalLogRepo.save(any(GoalLog.class))).thenAnswer(i -> {
+            GoalLog gl = i.getArgument(0);
+            gl.setId(400L);
+            return gl;
+        });
+
         List<FirmDetails> restored = service.importSelectiveData(backup, Set.of(1L), "clone", null);
 
         assertNotNull(restored);
@@ -175,6 +203,11 @@ class BackupSavingsGoalsTest {
         // Verify saving was saved with mapped goal ID 200L and new firm ID 10L
         verify(savingRepo, times(1)).save(argThat(s ->
                 s.getFirmId().equals(10L) && Long.valueOf(200L).equals(s.getGoalId()) && "Gold Deposit".equals(s.getTitle())
+        ));
+
+        // Verify goal log was saved with mapped goal ID 200L and new firm ID 10L
+        verify(goalLogRepo, times(1)).save(argThat(gl ->
+                gl.getFirmId().equals(10L) && Long.valueOf(200L).equals(gl.getGoalId()) && "DEPOSIT".equals(gl.getActionType())
         ));
     }
 }

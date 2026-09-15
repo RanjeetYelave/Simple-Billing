@@ -27,7 +27,16 @@ public class BackupInspectionDTO {
         private int expenseCount;
         private int savingCount;
         private int goalCount;
+        private int goalLogCount;
         private int letterCount;
+
+        public int getGoalLogCount() {
+            return goalLogCount;
+        }
+
+        public void setGoalLogCount(int goalLogCount) {
+            this.goalLogCount = goalLogCount;
+        }
 
         public int getSavingCount() {
             return savingCount;

@@ -65,6 +65,12 @@ public class BackupIntegrationTest {
     private BusinessLetterRepository businessLetterRepo;
     @Autowired
     private InboxMessageRepository inboxMessageRepo;
+    @Autowired
+    private SavingRepository savingRepo;
+    @Autowired
+    private GoalRepository goalRepo;
+    @Autowired
+    private GoalLogRepository goalLogRepo;
 
     @BeforeEach
     void cleanDb() {
@@ -248,6 +254,42 @@ public class BackupIntegrationTest {
                 .build();
         inboxMessageRepo.save(msg);
 
+        // 13. Create Goal, GoalLog, Saving
+        Goal goal = Goal.builder()
+                .firmId(firmId)
+                .title("Annual Revenue Target")
+                .goalType(GoalType.SAVINGS_TARGET)
+                .targetValue(new BigDecimal("1000000.00"))
+                .currentValue(new BigDecimal("250000.00"))
+                .unit("INR")
+                .startDate(LocalDate.now())
+                .status("IN_PROGRESS")
+                .currentStreak(5)
+                .longestStreak(12)
+                .build();
+        goal = goalRepo.save(goal);
+
+        GoalLog goalLog = GoalLog.builder()
+                .firmId(firmId)
+                .goalId(goal.getId())
+                .actionType("INCREMENT")
+                .deltaValue(new BigDecimal("50000.00"))
+                .resultingValue(new BigDecimal("250000.00"))
+                .logDate(LocalDate.now())
+                .notes("Milestone reached Q3")
+                .build();
+        goalLogRepo.save(goalLog);
+
+        SavingRecord saving = SavingRecord.builder()
+                .firmId(firmId)
+                .title("Fixed Deposit Q3")
+                .amount(new BigDecimal("50000.00"))
+                .category("FD")
+                .savingDate(LocalDate.now())
+                .goalId(goal.getId())
+                .build();
+        savingRepo.save(saving);
+
         // ─── EXECUTE EXPORT ───
         BackupDTO export = backupService.exportData(firmId);
 
@@ -271,6 +313,9 @@ public class BackupIntegrationTest {
         assertEquals(1, export.getSalaryRecords().size());
         assertEquals(1, export.getBusinessLetters().size());
         assertEquals(1, export.getInboxMessages().size());
+        assertEquals(1, export.getGoals().size());
+        assertEquals(1, export.getGoalLogs().size());
+        assertEquals(1, export.getSavings().size());
 
         // ─── EXECUTE IMPORT AS NEW RESTORED FIRM ───
         backupService.importData(export, null, false);
@@ -317,6 +362,21 @@ public class BackupIntegrationTest {
         assertEquals(1, restoredMovements.size());
         assertEquals(restoredProducts.get(0).getId(), restoredMovements.get(0).getProductId());
 
+        // Verify restored goals, logs, and savings
+        List<Goal> restoredGoals = goalRepo.findByFirmIdOrderByCreatedAtDesc(restoredFirmId);
+        assertEquals(1, restoredGoals.size());
+        assertEquals("Annual Revenue Target", restoredGoals.get(0).getTitle());
+        Long restoredGoalId = restoredGoals.get(0).getId();
+
+        List<GoalLog> restoredGoalLogs = goalLogRepo.findByGoalIdAndFirmIdOrderByLogDateAscCreatedAtAsc(restoredGoalId, restoredFirmId);
+        assertEquals(1, restoredGoalLogs.size());
+        assertEquals("INCREMENT", restoredGoalLogs.get(0).getActionType());
+        assertEquals(new BigDecimal("50000.00"), restoredGoalLogs.get(0).getDeltaValue());
+
+        List<SavingRecord> restoredSavings = savingRepo.findByFirmIdOrderBySavingDateDescIdDesc(restoredFirmId);
+        assertEquals(1, restoredSavings.size());
+        assertEquals(restoredGoalId, restoredSavings.get(0).getGoalId());
+
         // ─── EXECUTE FACTORY RESET ───
         backupService.factoryReset();
 
@@ -327,5 +387,8 @@ public class BackupIntegrationTest {
         assertEquals(0, partyRepo.count());
         assertEquals(0, purchaseOrderRepo.count());
         assertEquals(0, stockMovementRepo.count());
+        assertEquals(0, goalRepo.count());
+        assertEquals(0, goalLogRepo.count());
+        assertEquals(0, savingRepo.count());
     }
 }

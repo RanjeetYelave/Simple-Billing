@@ -75,6 +75,8 @@ class BackupServiceTest {
     private SavingRepository savingRepo;
     @Mock
     private GoalRepository goalRepo;
+    @Mock
+    private GoalLogRepository goalLogRepo;
 
     @InjectMocks
     private BackupService service;
@@ -192,6 +194,7 @@ class BackupServiceTest {
     @Test
     void testFactoryReset() {
         service.factoryReset();
+        verify(goalLogRepo, times(1)).deleteAllInBatch();
         verify(firmDetailsRepo, times(1)).deleteAllInBatch();
         verify(customerRepo, times(1)).deleteAllInBatch();
         verify(productRepo, times(1)).deleteAllInBatch();

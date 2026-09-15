@@ -25186,6 +25186,7 @@
     function TrialExpiredComponent({ onComplete }) {
       const [machineId, setMachineId] = useState('');
       const [qrDataStr, setQrDataStr] = useState('');
+      const [licenseInfo, setLicenseInfo] = useState(null);
       const [checking, setChecking] = useState(false);
       const [error, setError] = useState('');
 
@@ -25196,6 +25197,13 @@
             setQrDataStr(JSON.stringify(res));
           }
         }).catch(() => { });
+
+        API.license.status().then(lic => {
+          if (lic) {
+            setLicenseInfo(lic);
+            if (lic.machineId && !machineId) setMachineId(lic.machineId);
+          }
+        }).catch(() => { });
       }, []);
 
       const handleCheckOnline = async () => {
@@ -25203,9 +25211,16 @@
         setError('');
         try {
           const res = await API.license.checkOnline();
+          setLicenseInfo(res);
           if (res && res.isValid && res.status === 'ACTIVE') {
             window.showToast && window.showToast(`Software activated! Tier: ${res.plan}`, 'success');
             onComplete();
+          } else if (res && res.status === 'SUSPENDED') {
+            setError(`License is SUSPENDED: ${res.statusReason || 'Administrative hold'}`);
+          } else if (res && res.status === 'REVOKED') {
+            setError(`License is REVOKED: ${res.statusReason || 'Administrative action'}`);
+          } else if (res && (res.status === 'EXPIRED' || res.isExpired)) {
+            setError(`License is EXPIRED. ${res.statusReason ? 'Note: ' + res.statusReason : 'Please contact your salesman for renewal.'}`);
           } else {
             setError('No active online license found for this Machine ID yet. Please verify with your salesman.');
           }
@@ -25216,13 +25231,79 @@
         }
       };
 
+      const isSuspended = licenseInfo && licenseInfo.status === 'SUSPENDED';
+      const isRevoked = licenseInfo && licenseInfo.status === 'REVOKED';
+      const isPaidExpired = licenseInfo && (licenseInfo.status === 'EXPIRED' || (licenseInfo.isExpired && !licenseInfo.isTrial));
+
+      let icon = '⏳';
+      let title = '30-Day Evaluation Trial Expired';
+      let titleColor = '#f59e0b';
+      let description = 'Your free evaluation period has concluded. To continue using RupeeCRM, share your Machine ID or QR Code with your salesman for activation.';
+
+      if (isSuspended) {
+        icon = '🚫';
+        title = 'Software License Suspended';
+        titleColor = '#ef4444';
+        description = 'Access to RupeeCRM for this machine has been temporarily suspended by administration.';
+      } else if (isRevoked) {
+        icon = '🛑';
+        title = 'Software License Revoked';
+        titleColor = '#dc2626';
+        description = 'This software license has been permanently revoked by administration.';
+      } else if (isPaidExpired) {
+        icon = '⏰';
+        title = 'RupeeCRM License Expired';
+        titleColor = '#f59e0b';
+        description = `Your ${licenseInfo.plan || ''} membership has concluded. Please contact your salesman for license renewal.`;
+      }
+
+      const adminReason = licenseInfo && licenseInfo.statusReason ? licenseInfo.statusReason.trim() : null;
+      const latestMsgBody = licenseInfo && licenseInfo.latestMessageBody ? licenseInfo.latestMessageBody.trim() : null;
+      const latestMsgTitle = licenseInfo && licenseInfo.latestMessageTitle ? licenseInfo.latestMessageTitle.trim() : null;
+
       return React.createElement('div', { className: 'login-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 20 } },
-        React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '100%', padding: '36px 30px', textAlign: 'center' } },
-          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 12 } }, '⏳'),
-          React.createElement('h2', { style: { color: '#f59e0b', fontSize: '1.4rem', fontWeight: 700, marginBottom: 6 } }, '30-Day Evaluation Trial Expired'),
-          React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: 20, lineHeight: 1.5 } },
-            'Your free evaluation period has concluded. To continue using RupeeCRM, share your Machine ID or QR Code with your salesman for activation.'
+        React.createElement('div', { className: 'card', style: { maxWidth: 500, width: '100%', padding: '36px 30px', textAlign: 'center' } },
+          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 12 } }, icon),
+          React.createElement('h2', { style: { color: titleColor, fontSize: '1.4rem', fontWeight: 700, marginBottom: 6 } }, title),
+          React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.5 } }, description),
+
+          // Prominent Operator Message Box if Reason or Direct Message was sent from Activator
+          (adminReason || latestMsgBody) && React.createElement('div', {
+            style: {
+              background: isSuspended || isRevoked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+              border: `1px solid ${isSuspended || isRevoked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+              borderRadius: 10,
+              padding: '12px 14px',
+              marginBottom: 16,
+              textAlign: 'left'
+            }
+          },
+            React.createElement('div', {
+              style: {
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                color: isSuspended || isRevoked ? '#ef4444' : '#f59e0b',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 4
+              }
+            }, '📢 Message from Activator / Administrator:'),
+            adminReason && React.createElement('div', { style: { fontSize: '0.86rem', color: 'var(--text-primary)', fontWeight: 600, lineHeight: 1.4 } }, adminReason),
+            latestMsgBody && (!adminReason || latestMsgBody !== adminReason) && React.createElement('div', {
+              style: {
+                fontSize: '0.82rem',
+                color: 'var(--text-secondary)',
+                marginTop: adminReason ? 6 : 0,
+                lineHeight: 1.4,
+                whiteSpace: 'pre-line'
+              }
+            },
+              latestMsgTitle && React.createElement('strong', { style: { color: 'var(--text-primary)', display: 'block', marginBottom: 2 } }, latestMsgTitle),
+              latestMsgBody
+            )
           ),
+
           error && React.createElement('div', { style: { background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem', textAlign: 'left' } }, error),
 
           React.createElement('div', {
@@ -30421,10 +30502,10 @@
             } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
               setLicenseStatus(lic.status);
               setMembershipPlan(lic.plan);
-            } else if (lic.status === 'expired') {
-              setLicenseStatus('expired');
+            } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
+              setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
             } else if (lic.isTrial) {
-              setLicenseStatus('trial');
+              setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
               setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
             } else {
               setLicenseStatus(lic.status || 'trial');
@@ -30726,10 +30807,10 @@
               } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
                 setLicenseStatus(lic.status);
                 setMembershipPlan(lic.plan);
-              } else if (lic.status === 'expired') {
-                setLicenseStatus('expired');
+              } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
+                setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
               } else if (lic.isTrial) {
-                setLicenseStatus('trial');
+                setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
                 setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
               } else {
                 setLicenseStatus(lic.status || 'trial');
@@ -31392,7 +31473,7 @@
 
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
-      if (licenseStatus === 'expired' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));
+      if (licenseStatus === 'expired' || licenseStatus === 'EXPIRED' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
       return React.createElement('div', { className: 'app-layout' },

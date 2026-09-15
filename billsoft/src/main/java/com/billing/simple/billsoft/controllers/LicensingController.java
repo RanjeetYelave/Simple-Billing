@@ -151,6 +151,16 @@ public class LicensingController {
         List<CustomerMessage> msgs = coordinator.getLicenseStorage().loadInboxMessages();
         long unreadCount = msgs.stream().filter(m -> !m.isRead()).count();
         resp.put("inboxUnreadCount", unreadCount);
+        if (!msgs.isEmpty()) {
+            CustomerMessage latestMsg = msgs.get(msgs.size() - 1);
+            resp.put("latestMessageTitle", latestMsg.getTitle());
+            resp.put("latestMessageBody", latestMsg.getBody());
+            resp.put("latestMessageDate", latestMsg.getCreatedAt());
+        } else {
+            resp.put("latestMessageTitle", null);
+            resp.put("latestMessageBody", null);
+            resp.put("latestMessageDate", null);
+        }
 
         return ResponseEntity.ok(resp);
     }

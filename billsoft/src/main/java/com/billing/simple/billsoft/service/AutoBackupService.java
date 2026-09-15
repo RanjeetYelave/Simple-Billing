@@ -42,27 +42,8 @@ public class AutoBackupService {
      * This directory is outside the software codebase and survives software deletion/updates.
      */
     public File getBackupDirectory() {
-        String dataDirPath = System.getProperty("BILLSOFT_DATA_DIR");
-        if (dataDirPath == null || dataDirPath.trim().isEmpty()) {
-            dataDirPath = System.getenv("BILLSOFT_DATA_DIR");
-        }
-        if (dataDirPath == null || dataDirPath.trim().isEmpty()) {
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("win")) {
-                String appData = System.getenv("APPDATA");
-                if (appData != null && !appData.isEmpty()) {
-                    dataDirPath = appData + File.separator + "SimpleBilling";
-                } else {
-                    dataDirPath = System.getProperty("user.home") + File.separator + ".simplebilling";
-                }
-            } else if (os.contains("mac")) {
-                dataDirPath = System.getProperty("user.home") + "/Library/Application Support/SimpleBilling";
-            } else {
-                dataDirPath = System.getProperty("user.home") + File.separator + ".simplebilling";
-            }
-        }
-
-        File backupDir = new File(dataDirPath, "backups");
+        File dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
+        File backupDir = new File(dataDir, "backups");
         if (!backupDir.exists()) {
             boolean created = backupDir.mkdirs();
             if (created) {

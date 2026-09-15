@@ -85,8 +85,10 @@ public class LauncherMain {
         // Setup shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
 
-        // Auto-register Windows Startup on first run (Registry + Startup Folder VBS)
-        setupWindowsAutoStart(true);
+        // Auto-register Windows Startup on first run (Registry + Startup Folder VBS) on Windows only
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            setupWindowsAutoStart(true);
+        }
 
         // Setup System Tray
         setupSystemTray();
@@ -260,18 +262,21 @@ public class LauncherMain {
                 JPanel settingsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 4));
                 settingsRow.setOpaque(false);
 
-                autoStartCheckbox = new JCheckBox("🚀 Automatically start RupeeCRM service on Windows boot (Silent background mode)");
-                autoStartCheckbox.setSelected(isWindowsAutoStartEnabled());
-                autoStartCheckbox.setOpaque(false);
-                autoStartCheckbox.setForeground(new Color(203, 213, 225));
-                autoStartCheckbox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                autoStartCheckbox.addActionListener(e -> {
-                    boolean enable = autoStartCheckbox.isSelected();
-                    setupWindowsAutoStart(enable);
-                });
-                settingsRow.add(autoStartCheckbox);
+                boolean isWin = System.getProperty("os.name").toLowerCase().contains("win");
+                if (isWin) {
+                    autoStartCheckbox = new JCheckBox("🚀 Automatically start RupeeCRM service on Windows boot (Silent background mode)");
+                    autoStartCheckbox.setSelected(isWindowsAutoStartEnabled());
+                    autoStartCheckbox.setOpaque(false);
+                    autoStartCheckbox.setForeground(new Color(203, 213, 225));
+                    autoStartCheckbox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+                    autoStartCheckbox.addActionListener(e -> {
+                        boolean enable = autoStartCheckbox.isSelected();
+                        setupWindowsAutoStart(enable);
+                    });
+                    settingsRow.add(autoStartCheckbox);
+                }
 
-                JLabel trayInfo = new JLabel("💡 Tip: RupeeCRM runs quietly in the notification area. Close this window anytime to minimize.");
+                JLabel trayInfo = new JLabel("💡 Tip: RupeeCRM runs quietly in the background. Close this window anytime to minimize.");
                 trayInfo.setFont(new Font("Segoe UI", Font.ITALIC, 11));
                 trayInfo.setForeground(new Color(148, 163, 184));
                 settingsRow.add(trayInfo);
@@ -705,9 +710,11 @@ public class LauncherMain {
                 });
                 popup.add(dataDirItem);
 
-                CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
-                autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
-                popup.add(autoStartItem);
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
+                    autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
+                    popup.add(autoStartItem);
+                }
 
                 MenuItem restartItem = new MenuItem("🔄 Restart Service");
                 restartItem.addActionListener(e -> restartService());
@@ -1076,24 +1083,7 @@ public class LauncherMain {
     }
 
     private Path getDataDirectory() {
-        String envPath = System.getenv("RUPEECRM_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
-        }
-        envPath = System.getenv("BILLSOFT_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
-        }
-        String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                return Paths.get(appData, "SimpleBilling");
-            }
-        } else if (os.contains("mac")) {
-            return Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
-        }
-        return Paths.get(System.getProperty("user.home"), ".simplebilling");
+        return getDataDirectoryStatic();
     }
 
     private void backupDatabase(Path dataDir) {
@@ -1138,23 +1128,86 @@ public class LauncherMain {
     }
 
     private static Path getDataDirectoryStatic() {
-        String envPath = System.getenv("RUPEECRM_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
+        String custom = System.getProperty("RUPEECRM_DATA_DIR");
+        if (custom == null || custom.trim().isEmpty()) {
+            custom = System.getenv("RUPEECRM_DATA_DIR");
         }
-        envPath = System.getenv("BILLSOFT_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
+        if (custom == null || custom.trim().isEmpty()) {
+            custom = System.getProperty("BILLSOFT_DATA_DIR");
         }
+        if (custom == null || custom.trim().isEmpty()) {
+            custom = System.getenv("BILLSOFT_DATA_DIR");
+        }
+
+        if (custom != null && !custom.trim().isEmpty()) {
+            Path customPath = Paths.get(custom.trim());
+            try {
+                if (!Files.exists(customPath)) {
+                    Files.createDirectories(customPath);
+                }
+            } catch (Exception ignored) {}
+            return customPath;
+        }
+
         String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("win")) {
+        Path targetDir;
+        Path legacyDir = null;
+
+        if (os.contains("mac")) {
+            targetDir = Paths.get(System.getProperty("user.home"), "Library", "Application Support", "RupeeCRM");
+            legacyDir = Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
+        } else if (os.contains("win")) {
             String appData = System.getenv("APPDATA");
             if (appData != null && !appData.isEmpty()) {
-                return Paths.get(appData, "SimpleBilling");
+                targetDir = Paths.get(appData, "SimpleBilling");
+            } else {
+                targetDir = Paths.get(System.getProperty("user.home"), ".simplebilling");
             }
-        } else if (os.contains("mac")) {
-            return Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
+        } else {
+            targetDir = Paths.get(System.getProperty("user.home"), ".rupeecrm");
+            legacyDir = Paths.get(System.getProperty("user.home"), ".simplebilling");
         }
-        return Paths.get(System.getProperty("user.home"), ".simplebilling");
+
+        try {
+            if (!Files.exists(targetDir)) {
+                Files.createDirectories(targetDir);
+            }
+
+            // Safe One-Time Migration: Only if target database doesn't exist and legacy database DOES exist
+            if (legacyDir != null && Files.exists(legacyDir)) {
+                Path targetDb = targetDir.resolve("database.mv.db");
+                Path legacyDb = legacyDir.resolve("database.mv.db");
+                if (!Files.exists(targetDb) && Files.exists(legacyDb)) {
+                    System.out.println("Detected legacy database. Performing safe one-time migration from " + legacyDir + " to " + targetDir);
+                    Path finalLegacy = legacyDir;
+                    Path finalTarget = targetDir;
+                    Files.walkFileTree(finalLegacy, new java.nio.file.SimpleFileVisitor<Path>() {
+                        @Override
+                        public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                            Path rel = finalLegacy.relativize(dir);
+                            Path dest = finalTarget.resolve(rel.toString());
+                            if (!Files.exists(dest)) {
+                                Files.createDirectories(dest);
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                            Path rel = finalLegacy.relativize(file);
+                            Path dest = finalTarget.resolve(rel.toString());
+                            if (!Files.exists(dest)) {
+                                Files.copy(file, dest, StandardCopyOption.COPY_ATTRIBUTES);
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Data directory initialization note: " + e.getMessage());
+        }
+
+        return targetDir;
     }
 }

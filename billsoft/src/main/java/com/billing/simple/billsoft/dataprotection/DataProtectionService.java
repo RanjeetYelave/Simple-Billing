@@ -82,26 +82,8 @@ public class DataProtectionService {
     }
 
     private static File resolveBackupDirectory() {
-        String dataDirPath = System.getProperty("BILLSOFT_DATA_DIR");
-        if (dataDirPath == null || dataDirPath.trim().isEmpty()) {
-            dataDirPath = System.getenv("BILLSOFT_DATA_DIR");
-        }
-        if (dataDirPath == null || dataDirPath.trim().isEmpty()) {
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("win")) {
-                String appData = System.getenv("APPDATA");
-                if (appData != null && !appData.isEmpty()) {
-                    dataDirPath = appData + File.separator + "SimpleBilling";
-                } else {
-                    dataDirPath = System.getProperty("user.home") + File.separator + ".simplebilling";
-                }
-            } else if (os.contains("mac")) {
-                dataDirPath = System.getProperty("user.home") + "/Library/Application Support/SimpleBilling";
-            } else {
-                dataDirPath = System.getProperty("user.home") + "/.simplebilling";
-            }
-        }
-        File dir = new File(dataDirPath, "backups");
+        File dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
+        File dir = new File(dataDir, "backups");
         if (!dir.exists()) {
             dir.mkdirs();
         }

@@ -486,24 +486,7 @@ public class UpdateService {
     }
 
     private Path getDataDirectory() {
-        String envPath = System.getenv("RUPEECRM_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
-        }
-        envPath = System.getenv("BILLSOFT_DATA_DIR");
-        if (envPath != null && !envPath.trim().isEmpty()) {
-            return Paths.get(envPath.trim());
-        }
-        String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                return Paths.get(appData, "SimpleBilling");
-            }
-        } else if (os.contains("mac")) {
-            return Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
-        }
-        return Paths.get(System.getProperty("user.home"), ".simplebilling");
+        return com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory().toPath();
     }
 
     private Path getUpdateFilePath() {

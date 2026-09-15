@@ -35,6 +35,11 @@
       'invoce': 'invoice', 'invoic': 'invoice', 'invice': 'invoice', 'invoi': 'invoice', 'bil': 'bill',
       'outstading': 'outstanding', 'outstandng': 'outstanding', 'outstandin': 'outstanding', 'udhar': 'udhari',
       'expence': 'expense', 'expenc': 'expense', 'expns': 'expense', 'kharch': 'kharcha', 'kharchaa': 'kharcha',
+      'gol': 'goal', 'gaol': 'goal', 'gool': 'goal', 'lakshy': 'lakshya', 'dhyey': 'dhyeya', 'dhey': 'dhyeya', 'strek': 'streak', 'strak': 'streak', 'hbit': 'habit', 'habbit': 'habit',
+      'savng': 'saving', 'savngs': 'savings', 'savnges': 'savings', 'bchat': 'bachat', 'bachatt': 'bachat', 'invst': 'invest', 'invstmnt': 'investment', 'deposite': 'deposit', 'resrv': 'reserve', 'resrve': 'reserve',
+      'todoo': 'todo', 'todu': 'todo', 'notte': 'note', 'stiky': 'sticky', 'plannr': 'planner', 'planer': 'planner',
+      'dashbord': 'dashboard', 'dshboard': 'dashboard', 'persnal': 'personal', 'personel': 'personal',
+      'bckup': 'backup', 'bakup': 'backup', 'backp': 'backup', 'bakcup': 'backup', 'restor': 'restore', 'restre': 'restore',
       'remindr': 'reminder', 'remider': 'reminder', 'rmind': 'remind', 'remnd': 'remind',
       'septeber': 'september', 'septmber': 'september', 'setember': 'september', 'septembr': 'september',
       'febuary': 'february', 'febrary': 'february', 'feburary': 'february',
@@ -1734,6 +1739,24 @@
       if (/^\/po\b|\bcreate\s*purchase\s*order\b|\bsupplier\s*order\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'paperwork', tab: 'orders' } };
       }
+      if (/^\/goal\b|^\/goals\b|^\/habit\b|^\/habits\b|^\/streak\b|^\/streaks\b|^\/target\b|\b(?:goals?|habits?|streaks?|targets?|lakshya|dhyey)\b/i.test(lower) && !/\d+/.test(lower) && !/\b(summary|total|report|status)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'goals' } };
+      }
+      if (/^\/save\b|^\/saving\b|^\/savings\b|^\/bachat\b|^\/invest\b|^\/sip\b|^\/deposit\b|\b(?:savings?|investments?|bachat|sip|reserves?)\b/i.test(lower) && !/\d+/.test(lower) && !/\b(summary|total|report|status)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'savings' } };
+      }
+      if (/^\/personal\b|^\/wealth\b|^\/myfinances\b|^\/personalfin\b|\b(?:personal\s*(?:dashboard|wealth|finance|hisab|cockpit)|vyaktigat\s*dashboard)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'dashboard', dashboardSegment: 'personal' } };
+      }
+      if (/^\/biz\b|^\/business\b|^\/salesdash\b|^\/maindash\b|\b(?:business\s*(?:dashboard|overview|cockpit)|vyapar\s*dashboard|sales\s*dashboard)\b/i.test(lower) && !/\b(summary|report|health)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'dashboard', dashboardSegment: 'business' } };
+      }
+      if (/^\/backup\b|^\/bckup\b|^\/restore\b|^\/snapshot\b|\b(?:backup\s*(?:data|settings|file|download)?|restore\s*data|data\s*save\s*karo|surakshit\s*theva)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'settings', tab: 'backup' } };
+      }
+      if (/^\/todo\b|^\/board\b|^\/kanban\b|^\/planner\b|\b(?:task\s*board|planner\s*board|kanban\s*board)\b/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'board' } };
+      }
 
       // Direct System Actions
       if (/^(?:theme|toggle\s*theme|\/theme|switch\s*theme)$/i.test(cleaned)) {
@@ -2866,6 +2889,51 @@
             data: { entityName, entityType: isVendor ? 'VENDOR' : 'CUSTOMER' },
             actions: [
               { label: 'Open Statements', route: 'paperwork', tab: 'statements' }
+            ]
+          };
+        }
+
+        // ─── 18. GOALS & HABITS ───
+        case 'QH_GOALS_SUMMARY': {
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_GOALS_SUMMARY',
+            domain: 'PLANNER',
+            title: `🎯 Goals, Streaks & Daily Habits`,
+            subtitle: `Track active savings targets, check-in streaks and milestones`,
+            actions: [
+              { label: 'Open Goals Hub', route: 'planner', plannerTab: 'goals' }
+            ]
+          };
+        }
+
+        // ─── 19. SAVINGS & RESERVES ───
+        case 'QH_SAVINGS_SUMMARY': {
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_SAVINGS_SUMMARY',
+            domain: 'PLANNER',
+            title: `💰 Savings, Investments & Reserves`,
+            subtitle: `Review SIPs, mutual funds, gold deposits and financial reserve buffers`,
+            actions: [
+              { label: 'Open Savings Ledger', route: 'planner', plannerTab: 'savings' }
+            ]
+          };
+        }
+
+        // ─── 20. DATABASE BACKUP & INTEGRITY ───
+        case 'QH_BACKUP_STATUS': {
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_BACKUP_STATUS',
+            domain: 'SETTINGS',
+            title: `💾 Database Snapshot & Backup Health`,
+            subtitle: `Export or verify offline database snapshots and integrity`,
+            actions: [
+              { label: 'Open Backup Settings', route: 'settings', tab: 'backup' }
             ]
           };
         }

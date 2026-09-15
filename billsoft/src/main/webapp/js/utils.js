@@ -24,6 +24,11 @@ const BillsoftUtils = {
     return d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   },
 
+  countUnicodeChars(str) {
+    if (!str) return 0;
+    return Array.from(str).length;
+  },
+
   getDocTimestamp(doc) {
     if (!doc) return 0;
     // 1. Extract calendar day (YYYY-MM-DD)
@@ -2152,7 +2157,7 @@ const BillsoftSearchEngine = {
         'sarva kharch', 'kharchachi yadi', 'सर्व खर्च', 'खर्च नोंदवही'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'expenses' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'expenses' });
       }
     },
     {
@@ -2163,16 +2168,16 @@ const BillsoftSearchEngine = {
       icon: '💰',
       badge: 'Planner',
       slashCommand: '/save',
-      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' },
+      target: { page: 'planner', plannerTab: 'savings' },
       keywords: [
         '/save', '/saving', '/bachat', '/invest', '/sip', '/deposit', 'save', 'saving', 'bachat', 'invest', 'sip',
         'add saving', 'new saving', 'record saving', 'log saving', 'invest money', 'sip investment', 'gold saving', 'fixed deposit', 'emergency fund', 'savings ledger', 'savings', 'deposits',
         'bachat karo', 'bachat jodo', 'paisa bachao', 'invest karo', 'sip katao', 'बचत करो', 'बचत जोड़ो', 'पैसा बचाओ', 'निवेश करो',
-        'bachat nondwa', 'paise vachva', 'shillak theva', 'गुंतवणूक करा', 'बचत नोंदवा', 'पैसे वाचवा',
-        'savng', 'bachatt', 'invst'
+        'bachat nondwa', 'paise vachva', 'shillak theva', 'guntavanuk kara', 'गुंतवणूक करा', 'बचत नोंदवा', 'पैसे वाचवा',
+        'savng', 'savngs', 'bachatt', 'invst', 'bchat', 'deposite'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'savings' });
         window.dispatchEvent(new CustomEvent('billsoft:open-add-saving'));
       }
     },
@@ -2184,15 +2189,16 @@ const BillsoftSearchEngine = {
       icon: '📈',
       badge: 'Planner',
       slashCommand: '/savings',
-      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' },
+      target: { page: 'planner', plannerTab: 'savings' },
       keywords: [
         '/savings', '/investments', '/bachatlist', '/reserves', 'savings', 'investments',
         'all savings', 'view savings list', 'savings sheet', 'monthly savings',
         'saari bachat', 'bachat ki list', 'सारी बचत', 'बचत लिस्ट',
-        'sarva bachat', 'bachat yadi', 'सर्व बचत', 'बचत नोंदवही'
+        'sarva bachat', 'bachat yadi', 'सर्व बचत', 'बचत नोंदवही',
+        'savng', 'savngs', 'resrve'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'savings' });
       }
     },
     {
@@ -2203,16 +2209,16 @@ const BillsoftSearchEngine = {
       icon: '🎯',
       badge: 'Planner',
       slashCommand: '/goal',
-      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' },
+      target: { page: 'planner', plannerTab: 'goals' },
       keywords: [
         '/goal', '/streak', '/habit', '/target', '/milestone', 'goal', 'streak', 'habit', 'target',
         'add goal', 'new goal', 'create habit', 'new streak', 'quit habit', 'set target', 'financial goal', 'daily streak', 'habits', 'goals',
         'lakshya banao', 'aadat sudharo', 'streak shuru', 'लक्ष्य बनाओ', 'आदत सुधारो', 'स्ट्रिक शुरू करो',
-        'dhyey theva', 'naveen goal', 'सवय लावा', 'ध्येय ठरवा',
-        'gol', 'strk', 'hbit'
+        'dhyey theva', 'naveen goal', 'सवय लावा', 'ध्येय ठरवा', 'सवयी',
+        'gol', 'gaol', 'gool', 'strk', 'hbit', 'habbit', 'dhyey', 'lakshy'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'goals' });
         window.dispatchEvent(new CustomEvent('billsoft:open-add-goal'));
       }
     },
@@ -2224,15 +2230,15 @@ const BillsoftSearchEngine = {
       icon: '🔥',
       badge: 'Planner',
       slashCommand: '/goals',
-      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' },
+      target: { page: 'planner', plannerTab: 'goals' },
       keywords: [
         '/goals', '/streaks', '/habits', '/targets', 'goals', 'streaks', 'habits',
         'view goals', 'all goals', 'my goals', 'habit tracker', 'streak counter',
         'saare goals', 'meray goals', 'सारे लक्ष्य', 'आदतें',
-        'sarva dhyey', 'सवयी'
+        'sarva dhyey', 'सवयी', 'gol', 'habits list'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'goals' });
       }
     },
     {
@@ -2281,6 +2287,46 @@ const BillsoftSearchEngine = {
       }
     },
     {
+      id: 'open_personal_dashboard',
+      title: 'Personal Dashboard & Wealth Hub',
+      subtitle: 'Switch to personal wealth, savings, goals and expense outflow cockpit',
+      category: 'actions',
+      icon: '💎',
+      badge: 'Dashboard',
+      slashCommand: '/personal',
+      target: { page: 'dashboard', dashboardSegment: 'personal' },
+      keywords: [
+        '/personal', '/wealth', '/myfinances', '/personalfin', 'personal', 'wealth',
+        'personal dashboard', 'personal wealth', 'personal finance', 'my goals', 'my savings', 'personal cockpit',
+        'nij kharcha', 'personal hisab', 'khud ka kharcha', 'vyaktigat dashboard', 'khud ki bachat', 'personal dashboard kholo',
+        'व्यक्तिगत डैशबोर्ड', 'पर्सनल डैशबोर्ड', 'माझे वित्त', 'माझे डॅशबोर्ड',
+        'persnal', 'personel', 'dashbord'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'dashboard', dashboardSegment: 'personal' });
+      }
+    },
+    {
+      id: 'open_business_dashboard',
+      title: 'Business Dashboard & Sales Overview',
+      subtitle: 'Switch to business metrics, revenue, receivables and cashflow cockpit',
+      category: 'actions',
+      icon: '📊',
+      badge: 'Dashboard',
+      slashCommand: '/biz',
+      target: { page: 'dashboard', dashboardSegment: 'business' },
+      keywords: [
+        '/biz', '/business', '/salesdash', '/maindash', 'biz', 'business',
+        'business dashboard', 'sales dashboard', 'business overview', 'revenue analytics', 'turnover',
+        'vyapar dashboard', 'dukaan dashboard', 'business hisab', 'dhandha dashboard', 'business cockpit',
+        'बिजनेस डैशबोर्ड', 'व्यापार डॅशबोर्ड', 'दुकान डैशबोर्ड',
+        'busines', 'bizness', 'dashbord'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'dashboard', dashboardSegment: 'business' });
+      }
+    },
+    {
       id: 'backup_data',
       title: 'Database Backup & Restore',
       subtitle: 'Export or restore database snapshots for offline safekeeping',
@@ -2293,13 +2339,13 @@ const BillsoftSearchEngine = {
         // Slash commands & Shorthands
         '/backup', '/export', '/save', '/restore', '/db', 'backup', 'export', 'restore',
         // English
-        'backup', 'download backup', 'export data', 'save database', 'database backup', 'full backup', 'data backup', 'restore data', 'save my data', 'export json', 'offline backup', 'snapshot',
+        'backup', 'download backup', 'export data', 'save database', 'database backup', 'full backup', 'data backup', 'restore data', 'save my data', 'export json', 'offline backup', 'snapshot', 'backup settings',
         // Hindi / Hinglish
         'backup lo', 'data save karo', 'backup download', 'data bacha ke rakho', 'backup file', 'saara data download karo', 'बैकअप लो', 'डाटा सेव करो', 'बैकअप डाउनलोड', 'डाटा सुरक्षित रखो',
         // Marathi (Romanized & Devanagari)
         'backup gya', 'data theva', 'surakshit theva', 'backup utarva', 'सर्व डेटा जतन करा', 'डेटा सुरक्षित ठेवा', 'बॅकअप घ्या',
         // Typos
-        'bakup', 'backp', 'bakcup', 'databackup', 'bakup data'
+        'bakup', 'backp', 'bakcup', 'bckup', 'databackup', 'bakup data'
       ],
       action: (ctx) => {
         BillsoftSearchEngine.dispatchNavigate({ page: 'settings', tab: 'backup' });

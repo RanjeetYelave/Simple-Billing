@@ -58,9 +58,22 @@ public class ReminderService {
     @Transactional
     public Reminder update(Long id, Reminder updated) {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Reminder r = (firmId != null)
-                ? reminderRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Reminder not found"))
-                : reminderRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
+        Reminder r = null;
+        if (firmId != null) {
+            r = reminderRepository.findByIdAndFirmId(id, firmId).orElse(null);
+            if (r == null) {
+                Reminder fallback = reminderRepository.findById(id).orElse(null);
+                if (fallback != null && (fallback.getFirmId() == null || fallback.getFirmId().equals(firmId))) {
+                    r = fallback;
+                    r.setFirmId(firmId);
+                }
+            }
+        } else {
+            r = reminderRepository.findById(id).orElse(null);
+        }
+        if (r == null) {
+            throw new IllegalArgumentException("Reminder not found");
+        }
 
         if (updated.getCustomerId() != null && r.getFirmId() != null) {
             if (!customerRepository.existsByIdAndFirmId(updated.getCustomerId(), r.getFirmId())) {
@@ -98,9 +111,15 @@ public class ReminderService {
     public boolean delete(Long id) {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (firmId != null) {
-            if (!reminderRepository.existsByIdAndFirmId(id, firmId)) return false;
-            reminderRepository.deleteByIdAndFirmId(id, firmId);
-            return true;
+            if (reminderRepository.existsByIdAndFirmId(id, firmId)) {
+                reminderRepository.deleteByIdAndFirmId(id, firmId);
+                return true;
+            }
+            if (reminderRepository.existsById(id)) {
+                reminderRepository.deleteById(id);
+                return true;
+            }
+            return false;
         }
         if (!reminderRepository.existsById(id)) return false;
         reminderRepository.deleteById(id);
@@ -110,13 +129,26 @@ public class ReminderService {
     @Transactional
     public Reminder markDone(Long id) {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Reminder r = (firmId != null)
-                ? reminderRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Reminder not found"))
-                : reminderRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
+        Reminder r = null;
+        if (firmId != null) {
+            r = reminderRepository.findByIdAndFirmId(id, firmId).orElse(null);
+            if (r == null) {
+                Reminder fallback = reminderRepository.findById(id).orElse(null);
+                if (fallback != null && (fallback.getFirmId() == null || fallback.getFirmId().equals(firmId))) {
+                    r = fallback;
+                    r.setFirmId(firmId);
+                }
+            }
+        } else {
+            r = reminderRepository.findById(id).orElse(null);
+        }
+        if (r == null) {
+            throw new IllegalArgumentException("Reminder not found");
+        }
         r.setCompleted(true);
         r.setCompletedAt(LocalDateTime.now());
         r.setStatus("DONE");
         r.setProgress(100);
-        return r;
+        return reminderRepository.save(r);
     }
 }

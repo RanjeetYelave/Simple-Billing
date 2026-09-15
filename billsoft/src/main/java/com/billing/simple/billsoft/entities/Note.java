@@ -25,9 +25,11 @@ public class Note {
     @Column(nullable = false, length = 200)
     private String title;
 
-    @Column(length = 4000)
+    @Lob
+    @Column(columnDefinition = "CLOB")
     private String content;
 
+    @Column(length = 1000)
     private String tags; // Comma-separated values
 
     private LocalDateTime createdAt;

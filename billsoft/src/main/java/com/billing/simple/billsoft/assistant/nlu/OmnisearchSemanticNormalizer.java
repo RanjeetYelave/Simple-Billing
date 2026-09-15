@@ -44,7 +44,21 @@ public class OmnisearchSemanticNormalizer {
             Map.entry("reciept", "receipt"),
             Map.entry("stok", "stock"),
             Map.entry("stockk", "stock"),
-            Map.entry("inventry", "inventory")
+            Map.entry("inventry", "inventory"),
+            Map.entry("gol", "goal"),
+            Map.entry("gaol", "goal"),
+            Map.entry("gool", "goal"),
+            Map.entry("savng", "saving"),
+            Map.entry("savngs", "savings"),
+            Map.entry("invst", "invest"),
+            Map.entry("bachatt", "bachat"),
+            Map.entry("bckup", "backup"),
+            Map.entry("bakup", "backup"),
+            Map.entry("backp", "backup"),
+            Map.entry("dashbord", "dashboard"),
+            Map.entry("persnal", "personal"),
+            Map.entry("remindr", "reminder"),
+            Map.entry("todoo", "todo")
     );
 
     // Concept Matcher Regexes (Unicode-aware for Indic scripts: Hindi & Marathi)
@@ -57,6 +71,10 @@ public class OmnisearchSemanticNormalizer {
     private static final Pattern INVOICE_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(invoices?|bills?|sales\\s+bill|बिल|इनव्हॉइस)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
     private static final Pattern SALES_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(sales?|turnover|revenue|bikri|dhandha|galla|vikri|विक्री|गल्ला|सेल)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
     private static final Pattern PROFILE_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(profile|details|information|info|contact|phone|mobile|address|gstin|gst\\s+number|माहिती|तपशील|नंबर)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
+    private static final Pattern GOAL_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(goals?|streaks?|habits?|milestones?|targets?|lakshya|dhyeya?|dhyey|aadat|लक्ष्य|ध्येय|सवय|सवयी|स्ट्रिक)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
+    private static final Pattern SAVING_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(savings?|investments?|invest|sip|deposit|deposits|reserves?|bachat|guntavanuk|बचत|गुंतवणूक|डिपॉझिट)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
+    private static final Pattern BACKUP_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(backups?|restore|snapshot|export\\s+data|save\\s+database|बॅकअप|बैकअप)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
+    private static final Pattern PLANNER_PATTERN = Pattern.compile("(?iu)(?:^|\\s|[^a-zA-Z0-9\\u0900-\\u097F])(planner|todos?|tasks?|kanban|reminders?|notes?|memos?|tippan|aathvan|नियोजन|टास्क|नोंद|टिप्पण)(?:$|\\s|[^a-zA-Z0-9\\u0900-\\u097F])");
 
     // Relational / Possessive particles to strip when isolating entity tokens
     private static final String PARTICLE_REGEX = "(?i)\\b('s|of|for|from|to|with|about|ka|ki|ke|ko|se|cha|chi|che|la|kadun|var|sathi|karita|ne|ni|batao|dikhao|dakhva|sang|kiti|ahe|kitna|kitni|hai|hain|show|give|tell|get|find|please|what\\s+is|what\\s+are|what|is|are|how\\s+much|how\\s+many|how|does|owe|us|we|have|pay|collect|earn|monthly|staff|record|create|make|new|naya|nayi|banao|kara|add|spent|spend|likho)\\b";
@@ -108,6 +126,10 @@ public class OmnisearchSemanticNormalizer {
         if (INVOICE_PATTERN.matcher(working).find()) concepts.add("CONCEPT_INVOICE");
         if (SALES_PATTERN.matcher(working).find()) concepts.add("CONCEPT_SALES");
         if (PROFILE_PATTERN.matcher(working).find()) concepts.add("CONCEPT_PROFILE");
+        if (GOAL_PATTERN.matcher(working).find()) concepts.add("CONCEPT_GOAL");
+        if (SAVING_PATTERN.matcher(working).find()) concepts.add("CONCEPT_SAVING");
+        if (BACKUP_PATTERN.matcher(working).find()) concepts.add("CONCEPT_BACKUP");
+        if (PLANNER_PATTERN.matcher(working).find()) concepts.add("CONCEPT_PLANNER");
 
         // 3. Extract Isolated Entity Token by removing concept tokens and particles
         String entityCleaned = working;
@@ -120,6 +142,10 @@ public class OmnisearchSemanticNormalizer {
         entityCleaned = INVOICE_PATTERN.matcher(entityCleaned).replaceAll(" ");
         entityCleaned = SALES_PATTERN.matcher(entityCleaned).replaceAll(" ");
         entityCleaned = PROFILE_PATTERN.matcher(entityCleaned).replaceAll(" ");
+        entityCleaned = GOAL_PATTERN.matcher(entityCleaned).replaceAll(" ");
+        entityCleaned = SAVING_PATTERN.matcher(entityCleaned).replaceAll(" ");
+        entityCleaned = BACKUP_PATTERN.matcher(entityCleaned).replaceAll(" ");
+        entityCleaned = PLANNER_PATTERN.matcher(entityCleaned).replaceAll(" ");
 
         // Remove particles and numbers
         entityCleaned = entityCleaned.replaceAll(PARTICLE_REGEX, " ");

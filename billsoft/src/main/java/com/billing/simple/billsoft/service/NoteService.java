@@ -33,7 +33,31 @@ public class NoteService {
         return noteRepository.findByFirmId(authoritativeFirmId != null ? authoritativeFirmId : firmId);
     }
 
+    public static int countCodePoints(String s) {
+        if (s == null) return 0;
+        return s.codePointCount(0, s.length());
+    }
+
+    private void validateNote(Note note) {
+        if (note == null) {
+            throw new IllegalArgumentException("Note payload cannot be null");
+        }
+        if (note.getTitle() == null || note.getTitle().trim().isEmpty()) {
+            throw new IllegalArgumentException("Note title is required.");
+        }
+        if (countCodePoints(note.getTitle()) > 200) {
+            throw new IllegalArgumentException("Note title cannot exceed 200 characters.");
+        }
+        if (note.getContent() != null && countCodePoints(note.getContent()) > 50000) {
+            throw new IllegalArgumentException("Note content cannot exceed 50,000 characters.");
+        }
+        if (note.getTags() != null && countCodePoints(note.getTags()) > 1000) {
+            throw new IllegalArgumentException("Note tags cannot exceed 1,000 characters.");
+        }
+    }
+
     public Note create(Note note) {
+        validateNote(note);
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (firmId != null) {
             note.setFirmId(firmId);
@@ -48,6 +72,7 @@ public class NoteService {
 
     @Transactional
     public Note update(Long id, Note updated) {
+        validateNote(updated);
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         Note n = (firmId != null)
                 ? noteRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Note not found"))

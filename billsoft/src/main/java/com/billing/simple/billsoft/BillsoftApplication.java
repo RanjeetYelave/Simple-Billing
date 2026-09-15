@@ -45,6 +45,14 @@ public class BillsoftApplication {
 					stmt.execute("ALTER TABLE invoices ALTER COLUMN status VARCHAR(50)");
 				} catch (Exception ignored) {
 				}
+				try {
+					stmt.execute("ALTER TABLE notes ALTER COLUMN content CLOB");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE notes ALTER COLUMN tags VARCHAR(1000)");
+				} catch (Exception ignored) {
+				}
 			} catch (Exception e) {
 				System.err.println("Database migration note: " + e.getMessage());
 			}

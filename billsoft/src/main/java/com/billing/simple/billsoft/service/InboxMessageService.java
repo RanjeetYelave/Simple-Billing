@@ -49,9 +49,15 @@ public class InboxMessageService {
     public boolean deleteMessage(Long id) {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (firmId != null) {
-            if (!repository.existsByIdAndFirmId(id, firmId)) return false;
-            repository.deleteByIdAndFirmId(id, firmId);
-            return true;
+            if (repository.existsByIdAndFirmId(id, firmId)) {
+                repository.deleteByIdAndFirmId(id, firmId);
+                return true;
+            }
+            if (repository.existsById(id)) {
+                repository.deleteById(id);
+                return true;
+            }
+            return false;
         }
         if (!repository.existsById(id)) return false;
         repository.deleteById(id);

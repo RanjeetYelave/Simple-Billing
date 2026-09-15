@@ -72,6 +72,10 @@ class BackupSelectiveImportTest {
     private SalesReturnRepository salesReturnRepo;
     @Mock
     private SalesReturnItemRepository salesReturnItemRepo;
+    @Mock
+    private SavingRepository savingRepo;
+    @Mock
+    private GoalRepository goalRepo;
 
     @InjectMocks
     private BackupService service;

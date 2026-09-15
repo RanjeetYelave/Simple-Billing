@@ -2456,6 +2456,370 @@ input:checked+.slider:before {
   padding: 4px 0;
 }
 
+/* ════════════════════════════════════════════════════════════════
+   iOS "PROGRESS" APP INSPIRED PILL-FILLING GOALS SYSTEM
+   ════════════════════════════════════════════════════════════════ */
+.progress-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .progress-app-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.progress-app-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-app-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary-light, #93c5fd);
+}
+
+[data-theme='dark'] .progress-app-card {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .progress-app-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.4);
+}
+
+/* Card Header */
+.progress-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.progress-card-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.progress-card-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.progress-card-title-group {
+  min-width: 0;
+  flex: 1;
+}
+
+.progress-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.progress-card-type-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+/* Values & Percent Banner */
+.progress-values-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.progress-val-current {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.progress-val-target {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.progress-percent-pill {
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+/* Iconic Progress Pill Track */
+.progress-pill-track {
+  width: 100%;
+  height: 16px;
+  background: var(--surface-sunken, #e2e8f0);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .progress-pill-track {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-pill-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
+}
+
+.progress-pill-fill.striped {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.18) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.18) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 20px 20px;
+}
+
+/* Multi-Segment Habit Day Capsules */
+.progress-segmented-pills {
+  display: flex;
+  gap: 5px;
+  width: 100%;
+}
+
+.progress-segment-pill {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-sunken, #e2e8f0);
+  transition: all 0.25s ease;
+}
+
+[data-theme='dark'] .progress-segment-pill {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-segment-pill.active {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+/* Meta Footer: Countdown & Tags */
+.progress-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.progress-countdown-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+}
+
+/* Quick Action 1-Tap Ribbon */
+.progress-quick-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  align-items: center;
+}
+
+.progress-quick-pill-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress-quick-pill-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--bg-card);
+}
+
+.progress-quick-pill-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.progress-quick-pill-btn.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.progress-quick-pill-btn.primary:hover {
+  background: var(--primary-hover, #1d4ed8);
+  color: #fff;
+}
+
+.progress-quick-pill-btn.flame {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.3);
+}
+
+.progress-quick-pill-btn.flame:hover {
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.5);
+  color: #fff;
+}
+
+/* Expandable Linked Savings Drawer */
+.progress-history-drawer {
+  background: var(--surface-sunken, #f8fafc);
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideDown 0.2s ease-out;
+}
+
+[data-theme='dark'] .progress-history-drawer {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.progress-history-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light, #f1f5f9);
+  font-size: 0.78rem;
+}
+
+[data-theme='dark'] .progress-history-entry {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DASHBOARD MULTI-GOAL EXECUTIVE WIDGET
+   ════════════════════════════════════════════════════════════════ */
+.dashboard-goals-widget {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-goals-widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-light, #f1f5f9);
+  padding-bottom: 12px;
+}
+
+.dashboard-goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-goal-row {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface-sunken, #f8fafc);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+[data-theme='dark'] .dashboard-goal-row {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.dashboard-goal-row:hover {
+  border-color: var(--primary-light, #93c5fd);
+  background: var(--bg-card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
 
 /* ============================================================
    INVOICE / QUOTATION FORM - COMPLETE REDESIGN

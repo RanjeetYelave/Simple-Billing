@@ -92,6 +92,34 @@ public class ExpenseService {
         return true;
     }
 
+    public static final List<String> DEFAULT_CATEGORIES = List.of(
+            "Office Supplies",
+            "Rent & Facilities",
+            "Utilities (Electricity/Water/Internet)",
+            "Salaries & Wages",
+            "Travel & Conveyance",
+            "Software & Digital Tools",
+            "Marketing & Advertising",
+            "Repairs & Maintenance",
+            "Packaging & Shipping",
+            "Legal & Professional Fees",
+            "Taxes & Government Dues",
+            "Miscellaneous"
+    );
+
+    public List<String> getCategoriesByFirm(Long firmId) {
+        Set<String> categories = new LinkedHashSet<>(DEFAULT_CATEGORIES);
+        if (firmId != null) {
+            List<Expense> list = repository.findByFirmIdOrderByExpenseDateDescIdDesc(firmId);
+            for (Expense e : list) {
+                if (e.getCategory() != null && !e.getCategory().trim().isBlank()) {
+                    categories.add(e.getCategory().trim());
+                }
+            }
+        }
+        return new ArrayList<>(categories);
+    }
+
     public Map<String, Object> getSummaryByFirm(Long firmId) {
         List<Expense> expenses = getExpensesByFirm(firmId);
         LocalDate now = LocalDate.now();
@@ -111,7 +139,7 @@ public class ExpenseService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        Map<String, BigDecimal> categoryTotals = new HashMap<>();
+        Map<String, BigDecimal> categoryTotals = new LinkedHashMap<>();
         for (Expense e : expenses) {
             if (e.getCategory() != null && !e.getCategory().trim().isEmpty()) {
                 String cat = e.getCategory().trim();

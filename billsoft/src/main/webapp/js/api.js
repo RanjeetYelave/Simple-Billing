@@ -452,6 +452,80 @@ const API = {
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
       return API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses/summary'), { headers }));
     },
+    categories: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses/categories'), { headers }));
+    },
+  },
+
+  // ── Savings Tracker ──
+  savings: {
+    list: (params = {}, firmIdOverride) => {
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => {
+        const q = typeof params === 'object' && params !== null ? params : {};
+        return API._json(API._qs('/api/savings', q), { headers });
+      });
+    },
+    listByFirm: (firmId) => API._json(`/api/savings/firm/${firmId}`, { headers: { 'X-Firm-Id': String(firmId) } }),
+    create: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json('/api/savings', { method: 'POST', headers, body: { ...data, firmId: fid } }));
+    },
+    update: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/savings/${id}`, { method: 'PUT', headers, body: data });
+    },
+    delete: (id, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._request(`/api/savings/${id}`, { method: 'DELETE', headers }));
+    },
+    summary: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/savings/summary'), { headers }));
+    },
+    categories: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/savings/categories'), { headers }));
+    },
+  },
+
+  // ── Goals & Habit Tracker ──
+  goals: {
+    list: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/goals'), { headers }));
+    },
+    get: (id) => API._json(`/api/goals/${id}`),
+    create: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json('/api/goals', { method: 'POST', headers, body: { ...data, firmId: fid } }));
+    },
+    update: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(`/api/goals/${id}`, { method: 'PUT', headers, body: data });
+    },
+    delete: (id, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._request(`/api/goals/${id}`, { method: 'DELETE', headers }));
+    },
+    checkIn: (id) => API._json(`/api/goals/${id}/check-in`, { method: 'POST' }),
+    incrementStreak: (id, days = 1) => API._json(API._qs(`/api/goals/${id}/increment-streak`, { days }), { method: 'POST' }),
+    quickSaving: (id, amount = 1000, paymentMode = 'UPI', notes = 'Quick Goal Contribution') => API._json(`/api/goals/${id}/quick-saving`, { method: 'POST', body: { amount, paymentMode, notes } }),
+    getSavings: (id) => API._json(`/api/goals/${id}/savings`),
+    increment: (id, delta = 1) => API._json(API._qs(`/api/goals/${id}/increment`, { delta }), { method: 'POST' }),
+    reset: (id) => API._json(`/api/goals/${id}/reset`, { method: 'POST' }),
   },
 
   // ── Messages ──

@@ -40,6 +40,8 @@ public class BackupService {
     private final InvoicePaymentRepository invoicePaymentRepo;
     private final SalesReturnRepository salesReturnRepo;
     private final SalesReturnItemRepository salesReturnItemRepo;
+    private final SavingRepository savingRepo;
+    private final GoalRepository goalRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -66,7 +68,9 @@ public class BackupService {
                          AppConfigRepository appConfigRepo,
                          InvoicePaymentRepository invoicePaymentRepo,
                          SalesReturnRepository salesReturnRepo,
-                         SalesReturnItemRepository salesReturnItemRepo) {
+                         SalesReturnItemRepository salesReturnItemRepo,
+                         SavingRepository savingRepo,
+                         GoalRepository goalRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -93,6 +97,8 @@ public class BackupService {
         this.invoicePaymentRepo = invoicePaymentRepo;
         this.salesReturnRepo = salesReturnRepo;
         this.salesReturnItemRepo = salesReturnItemRepo;
+        this.savingRepo = savingRepo;
+        this.goalRepo = goalRepo;
     }
 
     public BackupDTO exportData(Long firmId) {
@@ -121,6 +127,8 @@ public class BackupService {
         backup.setReminders(reminderRepo.findByFirmId(firmId));
         backup.setNotes(noteRepo.findByFirmId(firmId));
         backup.setExpenses(expenseRepo.findByFirmIdOrderByExpenseDateDescIdDesc(firmId));
+        backup.setSavings(savingRepo.findByFirmIdOrderBySavingDateDescIdDesc(firmId));
+        backup.setGoals(goalRepo.findByFirmIdOrderByCreatedAtDesc(firmId));
 
         // Employees and employee sub-records
         List<Employee> employees = employeeRepo.findByFirmId(firmId);
@@ -187,6 +195,8 @@ public class BackupService {
         backup.setReminders(reminderRepo.findAll());
         backup.setNotes(noteRepo.findAll());
         backup.setExpenses(expenseRepo.findAll());
+        backup.setSavings(savingRepo.findAll());
+        backup.setGoals(goalRepo.findAll());
 
         List<Employee> employees = employeeRepo.findAll();
         backup.setEmployees(employees);
@@ -284,6 +294,22 @@ public class BackupService {
             }
             summary.setExpenseCount(expCount);
 
+            int savCount = 0;
+            if (backup.getSavings() != null) {
+                savCount = (int) backup.getSavings().stream()
+                        .filter(sav -> isFullSystem ? Objects.equals(sav.getFirmId(), fId) : true)
+                        .count();
+            }
+            summary.setSavingCount(savCount);
+
+            int goalCount = 0;
+            if (backup.getGoals() != null) {
+                goalCount = (int) backup.getGoals().stream()
+                        .filter(g -> isFullSystem ? Objects.equals(g.getFirmId(), fId) : true)
+                        .count();
+            }
+            summary.setGoalCount(goalCount);
+
             int letterCount = 0;
             if (backup.getBusinessLetters() != null) {
                 letterCount = (int) backup.getBusinessLetters().stream()
@@ -303,6 +329,8 @@ public class BackupService {
         totalStats.put("totalPurchaseOrders", backup.getPurchaseOrders() != null ? backup.getPurchaseOrders().size() : 0);
         totalStats.put("totalEmployees", backup.getEmployees() != null ? backup.getEmployees().size() : 0);
         totalStats.put("totalExpenses", backup.getExpenses() != null ? backup.getExpenses().size() : 0);
+        totalStats.put("totalSavings", backup.getSavings() != null ? backup.getSavings().size() : 0);
+        totalStats.put("totalGoals", backup.getGoals() != null ? backup.getGoals().size() : 0);
         totalStats.put("totalLetters", backup.getBusinessLetters() != null ? backup.getBusinessLetters().size() : 0);
         dto.setTotalStats(totalStats);
 
@@ -876,6 +904,64 @@ public class BackupService {
             }
         }
 
+        // 10.1 Goals
+        Map<Long, Long> oldToNewGoalMap = new HashMap<>();
+        if (backup.getGoals() != null) {
+            for (Goal g : backup.getGoals()) {
+                Long oldFid = g.getFirmId() != null ? g.getFirmId() : -1L;
+                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport) {
+                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Goal newGoal = Goal.builder()
+                            .firmId(mappedFirmId)
+                            .title(g.getTitle())
+                            .goalType(g.getGoalType())
+                            .targetValue(g.getTargetValue())
+                            .currentValue(g.getCurrentValue())
+                            .unit(g.getUnit())
+                            .startDate(g.getStartDate())
+                            .targetDate(g.getTargetDate())
+                            .status(g.getStatus())
+                            .currentStreak(g.getCurrentStreak())
+                            .longestStreak(g.getLongestStreak())
+                            .lastCheckInDate(g.getLastCheckInDate())
+                            .icon(g.getIcon())
+                            .color(g.getColor())
+                            .notes(g.getNotes())
+                            .tags(g.getTags())
+                            .build();
+                    newGoal = goalRepo.save(newGoal);
+                    if (g.getId() != null) {
+                        oldToNewGoalMap.put(g.getId(), newGoal.getId());
+                    }
+                }
+            }
+        }
+
+        // 10.2 Savings
+        if (backup.getSavings() != null) {
+            for (SavingRecord sav : backup.getSavings()) {
+                Long oldFid = sav.getFirmId() != null ? sav.getFirmId() : -1L;
+                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport) {
+                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedGoalId = (sav.getGoalId() != null) ? oldToNewGoalMap.get(sav.getGoalId()) : null;
+                    SavingRecord newSav = SavingRecord.builder()
+                            .firmId(mappedFirmId)
+                            .title(sav.getTitle())
+                            .amount(sav.getAmount())
+                            .category(sav.getCategory())
+                            .savingDate(sav.getSavingDate())
+                            .paymentMode(sav.getPaymentMode())
+                            .goalId(mappedGoalId)
+                            .notes(sav.getNotes())
+                            .tags(sav.getTags())
+                            .build();
+                    savingRepo.save(newSav);
+                }
+            }
+        }
+
         // 11. Employees
         Map<Long, Employee> oldToNewEmpMap = new HashMap<>();
         if (backup.getEmployees() != null) {
@@ -1137,6 +1223,8 @@ public class BackupService {
         employeeRepo.deleteAllInBatch();
 
         // Operational business records
+        savingRepo.deleteAllInBatch();
+        goalRepo.deleteAllInBatch();
         expenseRepo.deleteAllInBatch();
         reminderRepo.deleteAllInBatch();
         inboxMessageRepo.deleteAllInBatch();

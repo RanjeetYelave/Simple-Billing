@@ -18,6 +18,8 @@ public class BackupDTO {
     private List<Reminder> reminders;
     private List<Note> notes;
     private List<Expense> expenses;
+    private List<SavingRecord> savings;
+    private List<Goal> goals;
     private List<Employee> employees;
     private List<AttendanceRecord> attendanceRecords;
     private List<LeaveRecord> leaveRecords;
@@ -31,6 +33,22 @@ public class BackupDTO {
     private List<EmployeeDocument> employeeDocuments;
     private List<FirmDetails> allFirms;
     private List<SalesReturn> salesReturns;
+
+    public List<SavingRecord> getSavings() {
+        return savings;
+    }
+
+    public void setSavings(List<SavingRecord> savings) {
+        this.savings = savings;
+    }
+
+    public List<Goal> getGoals() {
+        return goals;
+    }
+
+    public void setGoals(List<Goal> goals) {
+        this.goals = goals;
+    }
 
     public List<SalesReturn> getSalesReturns() {
         return salesReturns;

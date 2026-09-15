@@ -72,4 +72,11 @@ public class ExpenseController {
         if (authoritativeFirmId == null) authoritativeFirmId = firmId;
         return service.getSummaryByFirm(authoritativeFirmId);
     }
+
+    @GetMapping("/categories")
+    public List<String> categories(@RequestParam(required = false) Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        return service.getCategoriesByFirm(authoritativeFirmId);
+    }
 }

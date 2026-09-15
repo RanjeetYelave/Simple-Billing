@@ -5037,11 +5037,13 @@
       );
     }
 
-    // ─── PLANNER PAGE ───
+    // ─── PLANNER PAGE (BOARD + TRACKERS & GOALS HUB) ───
     function PlannerPage({
       reminders,
       notes,
       expenses = [],
+      savings = [],
+      goals = [],
       firms,
       onMarkDone,
       onUpdateReminder,
@@ -5053,7 +5055,18 @@
       onDeleteNote,
       onCreateExpense,
       onUpdateExpense,
-      onDeleteExpense
+      onDeleteExpense,
+      onCreateSaving,
+      onUpdateSaving,
+      onDeleteSaving,
+      onCreateGoal,
+      onUpdateGoal,
+      onDeleteGoal,
+      onCheckInGoal,
+      onIncrementGoal,
+      onResetGoal,
+      onQuickSavingGoal,
+      onIncrementStreakGoal
     }) {
       const getInitialNav = () => {
         const p = window.__billsoftPendingNav;
@@ -5063,15 +5076,28 @@
         return null;
       };
       const initialNav = getInitialNav();
-      const [plannerTab, setPlannerTab] = useState(() => (initialNav && (initialNav.plannerTab || (initialNav.tab === 'expenses' ? 'expenses' : 'board'))) || 'board'); // 'board' | 'expenses'
+      const [activeTab, setActiveTab] = useState(() => {
+        if (initialNav) {
+          if (initialNav.plannerTab === 'expenses' || initialNav.trackerSubTab === 'expenses' || initialNav.tab === 'expenses') return 'expenses';
+          if (initialNav.plannerTab === 'savings' || initialNav.trackerSubTab === 'savings' || initialNav.tab === 'savings') return 'savings';
+          if (initialNav.plannerTab === 'board' || initialNav.tab === 'board') return 'board';
+          if (initialNav.plannerTab === 'goals' || initialNav.trackerSubTab === 'goals' || initialNav.plannerTab === 'trackers' || initialNav.tab === 'goals') return 'goals';
+        }
+        return 'goals';
+      }); // 'goals' | 'board' | 'expenses' | 'savings'
+
+      const [showCompletedArchive, setShowCompletedArchive] = useState(false);
+      const [expandedGoalId, setExpandedGoalId] = useState(null); // Track opened history drawer
 
       useEffect(() => {
         const handleNav = (e) => {
           if (!e || !e.detail) return;
           if (e.detail.page && e.detail.page !== 'planner') return;
-          if (e.detail.plannerTab) setPlannerTab(e.detail.plannerTab);
-          else if (e.detail.tab === 'expenses') setPlannerTab('expenses');
-          else if (e.detail.tab === 'board') setPlannerTab('board');
+          const target = e.detail.trackerSubTab || e.detail.plannerTab || e.detail.tab;
+          if (target === 'expenses') setActiveTab('expenses');
+          else if (target === 'savings') setActiveTab('savings');
+          else if (target === 'board') setActiveTab('board');
+          else if (target === 'goals' || target === 'trackers') setActiveTab('goals');
         };
         if (initialNav) {
           handleNav({ detail: initialNav });
@@ -5079,6 +5105,7 @@
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
       }, []);
+
       const [customers, setCustomers] = useState([]);
       const [searchQuery, setSearchQuery] = useState('');
       const [activeTag, setActiveTag] = useState(null);
@@ -5094,10 +5121,12 @@
       const [completedPageSize, setCompletedPageSize] = useState(10);
       const [expensePage, setExpensePage] = useState(1);
       const [expensePageSize, setExpensePageSize] = useState(10);
+      const [savingPage, setSavingPage] = useState(1);
+      const [savingPageSize, setSavingPageSize] = useState(10);
 
       // Modal state
       const [modalOpen, setModalOpen] = useState(false);
-      const [modalType, setModalType] = useState('reminder'); // 'reminder' | 'task' | 'note' | 'expense'
+      const [modalType, setModalType] = useState('reminder'); // 'reminder' | 'task' | 'note' | 'expense' | 'saving' | 'goal'
       const [editingItem, setEditingItem] = useState(null); // item being edited or null for create
       const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
 
@@ -5111,13 +5140,31 @@
       const [formCustomerId, setFormCustomerId] = useState('');
       const [formFirmId, setFormFirmId] = useState('');
 
-      // Expense form state
+      // Expense & Saving form state
       const [formAmount, setFormAmount] = useState('');
       const [formCategory, setFormCategory] = useState('Office Supplies');
-      const [formExpenseDate, setFormExpenseDate] = useState('');
+      const [formCustomCategory, setFormCustomCategory] = useState('');
+      const [formDate, setFormDate] = useState('');
       const [formPaymentMode, setFormPaymentMode] = useState('UPI');
+      const [formGoalId, setFormGoalId] = useState('');
 
-      const expenseCategories = [
+      // Goal specific form state
+      const [formGoalType, setFormGoalType] = useState('SAVINGS_TARGET');
+      const [formTargetValue, setFormTargetValue] = useState('');
+      const [formUnit, setFormUnit] = useState('₹');
+      const [formStartDate, setFormStartDate] = useState('');
+      const [formTargetDate, setFormTargetDate] = useState('');
+      const [formIcon, setFormIcon] = useState('💰');
+      const [formColor, setFormColor] = useState('#10b981');
+
+      // Category filters
+      const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('');
+      const [savingCategoryFilter, setSavingCategoryFilter] = useState('');
+      const [goalStatusFilter, setGoalStatusFilter] = useState('ALL'); // ALL | ACTIVE | ACHIEVED
+      const [fromDateFilter, setFromDateFilter] = useState('');
+      const [toDateFilter, setToDateFilter] = useState('');
+
+      const defaultExpenseCategories = [
         'Office Supplies',
         'Rent & Facilities',
         'Utilities',
@@ -5125,14 +5172,58 @@
         'Travel & Transport',
         'Software & Subscriptions',
         'Marketing',
+        'Repairs & Maintenance',
         'Miscellaneous'
       ];
 
-      const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Credit/Debit Card'];
+      const defaultSavingCategories = [
+        'Mutual Funds / SIP',
+        'Gold & Silver',
+        'Emergency Fund',
+        'Fixed Deposit / RD',
+        'Business Reserves',
+        'Cash Savings',
+        'Tax Provision',
+        'Retirement Fund',
+        'Stock Market',
+        'Real Estate Fund'
+      ];
+
+      const paymentModes = ['UPI', 'Bank Transfer', 'Cash', 'Auto-Debit', 'Credit/Debit Card'];
+
+      // Extract dynamic categories (defaults + all existing custom categories)
+      const allExpenseCategories = useMemo(() => {
+        const set = new Set(defaultExpenseCategories);
+        expenses.forEach(e => { if (e.category && e.category.trim()) set.add(e.category.trim()); });
+        return Array.from(set);
+      }, [expenses]);
+
+      const allSavingCategories = useMemo(() => {
+        const set = new Set(defaultSavingCategories);
+        savings.forEach(s => { if (s.category && s.category.trim()) set.add(s.category.trim()); });
+        return Array.from(set);
+      }, [savings]);
 
       useEffect(() => {
         API.customers.list().then(setCustomers).catch(() => []);
       }, []);
+
+      // Event listeners for shortcuts & Omnisearch triggers
+      useEffect(() => {
+        const handleOpenExpense = () => { setPlannerTab('trackers'); setTrackerSubTab('expenses'); openCreateModal('expense'); };
+        const handleOpenSaving = () => { setPlannerTab('trackers'); setTrackerSubTab('savings'); openCreateModal('saving'); };
+        const handleOpenGoal = () => { setPlannerTab('trackers'); setTrackerSubTab('goals'); openCreateModal('goal'); };
+
+        window.addEventListener('billsoft:open-add-expense', handleOpenExpense);
+        window.addEventListener('billsoft:open-add-saving', handleOpenSaving);
+        window.addEventListener('billsoft:open-add-goal', handleOpenGoal);
+
+        return () => {
+          window.removeEventListener('billsoft:open-add-expense', handleOpenExpense);
+          window.removeEventListener('billsoft:open-add-saving', handleOpenSaving);
+          window.removeEventListener('billsoft:open-add-goal', handleOpenGoal);
+        };
+      }, [allExpenseCategories, allSavingCategories, goals]);
 
       // Extract unique tags across reminders, tasks, and notes
       const allUniqueTags = useMemo(() => {
@@ -5192,7 +5283,6 @@
       const allCompletedItems = useMemo(() => {
         return reminders.filter(r => r.completed);
       }, [reminders]);
-      const completedItems = allCompletedItems;
 
       const filteredCompletedItems = useMemo(() => {
         return reminders.filter(r => {
@@ -5227,7 +5317,7 @@
         });
       }, [notes, searchQuery, activeTag, boardFromDate, boardToDate]);
 
-      // Safe clamped pagination calculations (handles item addition, removal, stage moves)
+      // Pagination calculations
       const reminderPageSize = 5;
       const reminderTotalPages = Math.max(1, Math.ceil(filteredReminders.length / reminderPageSize));
       const safeReminderPage = Math.min(Math.max(1, reminderPage), reminderTotalPages);
@@ -5243,7 +5333,6 @@
       const completedTotalPages = Math.max(1, Math.ceil(filteredCompletedItems.length / completedPageSize));
       const safeCompletedPage = Math.min(Math.max(1, completedPage), completedTotalPages);
 
-      // Reset page numbers on filter changes
       useEffect(() => {
         setReminderPage(1);
         setTaskPage(1);
@@ -5251,15 +5340,10 @@
         setCompletedPage(1);
       }, [searchQuery, activeTag, boardFromDate, boardToDate, completedTypeFilter, completedSearch, completedPageSize]);
 
-      // Expense-specific filters & Date Range
-      const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('');
-      const [expenseMonthFilter, setExpenseMonthFilter] = useState(''); // e.g. '2026-08'
-      const [fromDateFilter, setFromDateFilter] = useState('');
-      const [toDateFilter, setToDateFilter] = useState('');
-
       useEffect(() => {
         setExpensePage(1);
-      }, [searchQuery, expenseCategoryFilter, expenseMonthFilter, fromDateFilter, toDateFilter]);
+        setSavingPage(1);
+      }, [searchQuery, expenseCategoryFilter, savingCategoryFilter, fromDateFilter, toDateFilter]);
 
       // Expense Tracker Computations & Filtering
       const filteredExpenses = useMemo(() => {
@@ -5267,15 +5351,14 @@
           const q = searchQuery.toLowerCase().trim();
           const inSearch = !q || (e.title && e.title.toLowerCase().includes(q)) || (e.notes && e.notes.toLowerCase().includes(q));
           const inCat = !expenseCategoryFilter || e.category === expenseCategoryFilter;
-          const inMonth = !expenseMonthFilter || (e.expenseDate && e.expenseDate.startsWith(expenseMonthFilter));
 
           let inDateRange = true;
           if (fromDateFilter && e.expenseDate && e.expenseDate < fromDateFilter) inDateRange = false;
           if (toDateFilter && e.expenseDate && e.expenseDate > toDateFilter) inDateRange = false;
 
-          return inSearch && inCat && inMonth && inDateRange;
+          return inSearch && inCat && inDateRange;
         });
-      }, [expenses, searchQuery, expenseCategoryFilter, expenseMonthFilter, fromDateFilter, toDateFilter]);
+      }, [expenses, searchQuery, expenseCategoryFilter, fromDateFilter, toDateFilter]);
 
       const expenseStats = useMemo(() => {
         const totalAllTime = expenses.reduce((acc, e) => acc + (e.amount || 0), 0);
@@ -5313,21 +5396,88 @@
       const expenseTotalPages = Math.max(1, Math.ceil(filteredExpenses.length / expensePageSize));
       const safeExpensePage = Math.min(Math.max(1, expensePage), expenseTotalPages);
 
-      const handlePrintExpenseStatement = () => {
+      // Savings Tracker Computations & Filtering
+      const filteredSavings = useMemo(() => {
+        return savings.filter(s => {
+          const q = searchQuery.toLowerCase().trim();
+          const inSearch = !q || (s.title && s.title.toLowerCase().includes(q)) || (s.notes && s.notes.toLowerCase().includes(q));
+          const inCat = !savingCategoryFilter || s.category === savingCategoryFilter;
+
+          let inDateRange = true;
+          if (fromDateFilter && s.savingDate && s.savingDate < fromDateFilter) inDateRange = false;
+          if (toDateFilter && s.savingDate && s.savingDate > toDateFilter) inDateRange = false;
+
+          return inSearch && inCat && inDateRange;
+        });
+      }, [savings, searchQuery, savingCategoryFilter, fromDateFilter, toDateFilter]);
+
+      const savingStats = useMemo(() => {
+        const totalAllTime = savings.reduce((acc, s) => acc + (s.amount || 0), 0);
+        const currentMonthStr = BillsoftUtils.todayStr().substring(0, 7);
+        const totalThisMonth = savings
+          .filter(s => s.savingDate && s.savingDate.startsWith(currentMonthStr))
+          .reduce((acc, s) => acc + (s.amount || 0), 0);
+
+        const categoryCounts = {};
+        savings.forEach(s => {
+          if (s.category) {
+            categoryCounts[s.category] = (categoryCounts[s.category] || 0) + (s.amount || 0);
+          }
+        });
+        let topCat = 'None';
+        let maxSaved = 0;
+        Object.entries(categoryCounts).forEach(([cat, val]) => {
+          if (val > maxSaved) {
+            maxSaved = val;
+            topCat = cat;
+          }
+        });
+
+        const selectedTotal = filteredSavings.reduce((acc, s) => acc + (s.amount || 0), 0);
+
+        return {
+          totalAllTime,
+          totalThisMonth,
+          selectedTotal,
+          topCat,
+          count: filteredSavings.length
+        };
+      }, [savings, filteredSavings]);
+
+      const savingTotalPages = Math.max(1, Math.ceil(filteredSavings.length / savingPageSize));
+      const safeSavingPage = Math.min(Math.max(1, savingPage), savingTotalPages);
+
+      // Goals & Habits Computations
+      const filteredGoals = useMemo(() => {
+        return goals.filter(g => {
+          const q = searchQuery.toLowerCase().trim();
+          const inSearch = !q || (g.title && g.title.toLowerCase().includes(q)) || (g.notes && g.notes.toLowerCase().includes(q));
+          const inStatus = goalStatusFilter === 'ALL' || g.status === goalStatusFilter;
+          return inSearch && inStatus;
+        });
+      }, [goals, searchQuery, goalStatusFilter]);
+
+      const activeGoalsCount = useMemo(() => goals.filter(g => g.status === 'ACTIVE').length, [goals]);
+      const bestStreak = useMemo(() => {
+        let max = 0;
+        goals.forEach(g => {
+          if (g.currentStreak && g.currentStreak > max) max = g.currentStreak;
+          if (g.longestStreak && g.longestStreak > max) max = g.longestStreak;
+        });
+        return max;
+      }, [goals]);
+
+      // Print Statement Handlers
+      const handlePrintStatement = (isExpense = true) => {
         const firmObj = firms && firms.length > 0 ? (firms.find(f => f.id === API.firmId) || firms[0]) : { firmName: 'RupeeCRM Business' };
-
-        let rangeLabel = 'All Historical Records';
-        if (fromDateFilter || toDateFilter) {
-          rangeLabel = `${fromDateFilter || 'Beginning'} to ${toDateFilter || 'Today'}`;
-        } else if (expenseMonthFilter) {
-          rangeLabel = `Month: ${expenseMonthFilter}`;
-        }
-
-        const totalSpent = filteredExpenses.reduce((acc, e) => acc + (e.amount || 0), 0);
+        const rangeLabel = (fromDateFilter || toDateFilter) ? `${fromDateFilter || 'Beginning'} to ${toDateFilter || 'Today'}` : 'All Historical Records';
+        const items = isExpense ? filteredExpenses : filteredSavings;
+        const total = isExpense ? expenseStats.selectedTotal : savingStats.selectedTotal;
+        const docTitle = isExpense ? 'Expense Statement' : 'Savings & Investment Ledger';
 
         const printWin = window.open('', '_blank', 'width=900,height=700');
         if (!printWin) {
-          window.showToast('Please allow popups to print expense statement', 'error');
+          window.showToast('Please allow popups to print statement', 'error');
           return;
         }
 
@@ -5335,27 +5485,24 @@
           <!DOCTYPE html>
           <html>
           <head>
-            <title>Expense Statement - ${firmObj.firmName || 'Billsoft'}</title>
+            <title>${docTitle} - ${firmObj.firmName || 'RupeeCRM'}</title>
             <style>
               body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; padding: 30px; line-height: 1.5; }
               .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #cbd5e1; padding-bottom: 16px; margin-bottom: 20px; }
               .title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; }
               .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
-              .badge { display: inline-block; background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
+              .badge { display: inline-block; background: ${isExpense ? '#fee2e2' : '#d1fae5'}; color: ${isExpense ? '#991b1b' : '#065f46'}; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
               .summary-box { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
               .summary-item { display: flex; flex-direction: column; }
               .summary-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600; }
-              .summary-val { font-size: 18px; font-weight: 700; color: #dc2626; margin-top: 2px; }
+              .summary-val { font-size: 18px; font-weight: 700; color: ${isExpense ? '#dc2626' : '#059669'}; margin-top: 2px; }
               table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
               th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
               th { background: #f1f5f9; color: #475569; font-weight: 600; text-transform: uppercase; font-size: 11px; }
               tr:nth-child(even) { background: #fafafa; }
               .text-right { text-align: right; }
               .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
-              @media print {
-                body { padding: 0; }
-                .no-print { display: none; }
-              }
+              @media print { body { padding: 0; } .no-print { display: none; } }
             </style>
           </head>
           <body>
@@ -5365,30 +5512,27 @@
             <div class="header">
               <div>
                 <h1 class="title">${firmObj.firmName || 'RupeeCRM Business'}</h1>
-                <div class="subtitle">Official Expense Statement • Statement Period: <strong>${rangeLabel}</strong></div>
+                <div class="subtitle">Official ${docTitle} • Period: <strong>${rangeLabel}</strong></div>
               </div>
               <div style="text-align: right;">
-                <span class="badge">FINANCIAL EXPENSE REPORT</span>
+                <span class="badge">${isExpense ? 'EXPENSE REPORT' : 'SAVINGS & INVESTMENT LEDGER'}</span>
                 <div style="font-size: 12px; color: #64748b; margin-top: 6px;">Generated: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
               </div>
             </div>
-
             <div class="summary-box">
               <div class="summary-item">
-                <span class="summary-label">Total Expenditure</span>
-                <span class="summary-val">${BillsoftUtils.formatCurrency(totalSpent)}</span>
+                <span class="summary-label">${isExpense ? 'Total Expenditure' : 'Total Accumulated Savings'}</span>
+                <span class="summary-val">${BillsoftUtils.formatCurrency(total)}</span>
               </div>
               <div class="summary-item">
                 <span class="summary-label">Total Records</span>
-                <span class="summary-val" style="color: #2563eb;">${filteredExpenses.length} entries</span>
+                <span class="summary-val" style="color: #2563eb;">${items.length} entries</span>
               </div>
               <div class="summary-item">
                 <span class="summary-label">Firm</span>
                 <span class="summary-val" style="color: #059669; font-size: 14px;">${firmObj.firmName || 'Default'}</span>
               </div>
             </div>
-
-            <h3 style="font-size: 15px; margin-bottom: 8px;">Itemized Expense Transactions</h3>
             <table>
               <thead>
                 <tr>
@@ -5400,25 +5544,26 @@
                 </tr>
               </thead>
               <tbody>
-                ${filteredExpenses.map(e => `
+                ${items.map(it => `
                   <tr>
-                    <td>${e.expenseDate || '-'}</td>
-                    <td><strong>${e.category || 'General'}</strong></td>
-                    <td>${e.paymentMode || 'Cash'}</td>
-                    <td>${e.title} ${e.notes ? '<br><small style="color:#64748b;">(' + e.notes + ')</small>' : ''}</td>
-                    <td class="text-right" style="font-weight:700; color:#dc2626;">-${BillsoftUtils.formatCurrency(e.amount || 0)}</td>
+                    <td>${(it.expenseDate || it.savingDate || '-')}</td>
+                    <td><strong>${it.category || 'General'}</strong></td>
+                    <td>${it.paymentMode || 'UPI'}</td>
+                    <td>${it.title} ${it.notes ? '<br><small style="color:#64748b;">(' + it.notes + ')</small>' : ''}</td>
+                    <td class="text-right" style="font-weight:700; color:${isExpense ? '#dc2626' : '#059669'};">
+                      ${isExpense ? '-' : '+'}${BillsoftUtils.formatCurrency(it.amount || 0)}
+                    </td>
                   </tr>
                 `).join('')}
                 <tr style="font-weight:700; background:#f8fafc;">
-                  <td colspan="4" class="text-right">TOTAL EXPENDITURE FOR PERIOD:</td>
-                  <td class="text-right" style="color:#dc2626; font-size:15px;">-${BillsoftUtils.formatCurrency(totalSpent)}</td>
+                  <td colspan="4" class="text-right">TOTAL FOR PERIOD:</td>
+                  <td class="text-right" style="color:${isExpense ? '#dc2626' : '#059669'}; font-size:15px;">
+                    ${isExpense ? '-' : '+'}${BillsoftUtils.formatCurrency(total)}
+                  </td>
                 </tr>
               </tbody>
             </table>
-
-            <div class="footer">
-              Generated automatically by RupeeCRM Business Suite
-            </div>
+            <div class="footer">Generated automatically by RupeeCRM Business Suite</div>
           </body>
           </html>
         `;
@@ -5440,9 +5585,18 @@
         setFormCustomerId('');
         setFormFirmId(API.firmId ? String(API.firmId) : '');
         setFormAmount('');
-        setFormCategory('Office Supplies');
-        setFormExpenseDate(BillsoftUtils.todayStr());
+        setFormCategory(type === 'saving' ? (allSavingCategories[0] || 'Mutual Funds / SIP') : (allExpenseCategories[0] || 'Office Supplies'));
+        setFormCustomCategory('');
+        setFormDate(BillsoftUtils.todayStr());
         setFormPaymentMode('UPI');
+        setFormGoalId('');
+        setFormGoalType('SAVINGS_TARGET');
+        setFormTargetValue('');
+        setFormUnit('₹');
+        setFormStartDate(BillsoftUtils.todayStr());
+        setFormTargetDate('');
+        setFormIcon('💰');
+        setFormColor('#10b981');
         setModalOpen(true);
       };
 
@@ -5458,9 +5612,18 @@
         setFormCustomerId(item.customerId ? String(item.customerId) : '');
         setFormFirmId(item.firmId ? String(item.firmId) : '');
         setFormAmount(item.amount != null ? String(item.amount) : '');
-        setFormCategory(item.category || 'Office Supplies');
-        setFormExpenseDate(item.expenseDate ? item.expenseDate.split('T')[0] : BillsoftUtils.todayStr());
+        setFormCategory(item.category || (type === 'saving' ? 'Mutual Funds / SIP' : 'Office Supplies'));
+        setFormCustomCategory('');
+        setFormDate((item.expenseDate || item.savingDate) ? (item.expenseDate || item.savingDate).split('T')[0] : BillsoftUtils.todayStr());
         setFormPaymentMode(item.paymentMode || 'UPI');
+        setFormGoalId(item.goalId ? String(item.goalId) : '');
+        setFormGoalType(item.goalType || 'SAVINGS_TARGET');
+        setFormTargetValue(item.targetValue != null ? String(item.targetValue) : '');
+        setFormUnit(item.unit || '₹');
+        setFormStartDate(item.startDate ? item.startDate.split('T')[0] : BillsoftUtils.todayStr());
+        setFormTargetDate(item.targetDate ? item.targetDate.split('T')[0] : '');
+        setFormIcon(item.icon || '💰');
+        setFormColor(item.color || '#10b981');
         setModalOpen(true);
       };
 
@@ -5469,6 +5632,9 @@
           window.showToast('Title is required', 'error');
           return;
         }
+
+        const effectiveCategory = (formCategory === '__custom__' && formCustomCategory.trim()) ? formCustomCategory.trim() : formCategory;
+        const targetFirmId = formFirmId ? parseInt(formFirmId, 10) : (API.firmId ? API.firmId : null);
 
         if (modalType === 'expense') {
           const numAmt = parseFloat(formAmount);
@@ -5479,18 +5645,62 @@
           const expensePayload = {
             title: formTitle.trim(),
             amount: numAmt,
-            category: formCategory,
-            expenseDate: formExpenseDate || BillsoftUtils.todayStr(),
+            category: effectiveCategory,
+            expenseDate: formDate || BillsoftUtils.todayStr(),
             paymentMode: formPaymentMode,
             notes: formNote.trim(),
-            firmId: formFirmId ? parseInt(formFirmId, 10) : (API.firmId ? API.firmId : null)
+            tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+            firmId: targetFirmId
           };
 
-          if (editingItem) {
-            onUpdateExpense(editingItem.id, expensePayload);
-          } else {
-            onCreateExpense(expensePayload);
+          if (editingItem) onUpdateExpense(editingItem.id, expensePayload);
+          else onCreateExpense(expensePayload);
+          setModalOpen(false);
+          return;
+        }
+
+        if (modalType === 'saving') {
+          const numAmt = parseFloat(formAmount);
+          if (isNaN(numAmt) || numAmt <= 0) {
+            window.showToast('Valid amount is required', 'error');
+            return;
           }
+          const savingPayload = {
+            title: formTitle.trim(),
+            amount: numAmt,
+            category: effectiveCategory,
+            savingDate: formDate || BillsoftUtils.todayStr(),
+            paymentMode: formPaymentMode,
+            goalId: formGoalId ? parseInt(formGoalId, 10) : null,
+            notes: formNote.trim(),
+            tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+            firmId: targetFirmId
+          };
+
+          if (editingItem) onUpdateSaving(editingItem.id, savingPayload);
+          else onCreateSaving(savingPayload);
+          setModalOpen(false);
+          return;
+        }
+
+        if (modalType === 'goal') {
+          const numTarget = parseFloat(formTargetValue) || 0;
+          const goalPayload = {
+            title: formTitle.trim(),
+            goalType: formGoalType,
+            targetValue: numTarget,
+            unit: formUnit.trim() || '₹',
+            startDate: formStartDate || BillsoftUtils.todayStr(),
+            targetDate: formTargetDate || null,
+            icon: formIcon.trim() || '💰',
+            color: formColor || '#10b981',
+            notes: formNote.trim(),
+            tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+            firmId: targetFirmId
+          };
+
+          if (editingItem) onUpdateGoal(editingItem.id, goalPayload);
+          else onCreateGoal(goalPayload);
           setModalOpen(false);
           return;
         }
@@ -5499,7 +5709,7 @@
           title: formTitle.trim(),
           tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
           customerId: formCustomerId ? parseInt(formCustomerId, 10) : null,
-          firmId: formFirmId ? parseInt(formFirmId, 10) : (API.firmId ? API.firmId : null)
+          firmId: targetFirmId
         };
 
         if (modalType === 'note') {
@@ -5519,19 +5729,12 @@
         }
 
         if (editingItem) {
-          if (modalType === 'note') {
-            onUpdateNote(editingItem.id, payload);
-          } else {
-            onUpdateReminder(editingItem.id, payload);
-          }
+          if (modalType === 'note') onUpdateNote(editingItem.id, payload);
+          else onUpdateReminder(editingItem.id, payload);
         } else {
-          if (modalType === 'note') {
-            onCreateNote(payload);
-          } else if (modalType === 'task') {
-            onCreateTask(payload);
-          } else {
-            onCreateReminder(payload);
-          }
+          if (modalType === 'note') onCreateNote(payload);
+          else if (modalType === 'task') onCreateTask(payload);
+          else onCreateReminder(payload);
         }
         setModalOpen(false);
       };
@@ -5584,248 +5787,162 @@
         );
       };
 
+      const savingsGoalsOptions = useMemo(() => {
+        return goals.filter(g => g.goalType === 'SAVINGS_TARGET' || !g.goalType);
+      }, [goals]);
+
       return React.createElement('div', { className: 'planner-container', style: { padding: '8px 0' } },
-        // Top Navigation Sub-Tab Bar
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 } },
+        // Top Navigation: 4 Clean Tabs + Direct Action Buttons
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
           React.createElement('div', { className: 'tabs', style: { margin: 0, display: 'inline-flex', padding: 4, background: 'var(--bg-hover)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' } },
-            React.createElement('button', { className: `tab${plannerTab === 'board' ? ' active' : ''}`, onClick: () => setPlannerTab('board') }, '📌 Planner Board'),
-            React.createElement('button', { className: `tab${plannerTab === 'expenses' ? ' active' : ''}`, onClick: () => setPlannerTab('expenses') }, '💸 Expense Tracker')
+            React.createElement('button', { className: `tab${activeTab === 'goals' ? ' active' : ''}`, onClick: () => setActiveTab('goals') }, '🎯 Goals & Habits'),
+            React.createElement('button', { className: `tab${activeTab === 'board' ? ' active' : ''}`, onClick: () => setActiveTab('board') }, '📋 Tasks & Board'),
+            React.createElement('button', { className: `tab${activeTab === 'expenses' ? ' active' : ''}`, onClick: () => setActiveTab('expenses') }, '💸 Expense Outflow'),
+            React.createElement('button', { className: `tab${activeTab === 'savings' ? ' active' : ''}`, onClick: () => setActiveTab('savings') }, '💰 Savings & Reserves')
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            activeTab === 'goals' && React.createElement('button', { className: 'btn btn-primary btn-sm', style: { backgroundColor: '#6366f1', borderColor: '#6366f1' }, onClick: () => openCreateModal('goal') }, '🎯 + Set Goal / Habit'),
+            activeTab === 'board' && React.createElement('div', { style: { display: 'flex', gap: 6 } },
+              React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => openCreateModal('reminder') }, '🔔 + Reminder'),
+              React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => openCreateModal('task') }, '📋 + Task'),
+              React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => openCreateModal('note') }, '📝 + Note')
+            ),
+            activeTab === 'expenses' && React.createElement('button', { className: 'btn btn-primary btn-sm', style: { backgroundColor: '#dc2626', borderColor: '#dc2626' }, onClick: () => openCreateModal('expense') }, '💸 + Record Expense'),
+            activeTab === 'savings' && React.createElement('button', { className: 'btn btn-primary btn-sm', style: { backgroundColor: '#059669', borderColor: '#059669' }, onClick: () => openCreateModal('saving') }, '💰 + Record Saving')
           )
         ),
 
-
-
         // ════════════════════════════════════════
-        // TAB 1: PLANNER BOARD (Reminders, Tasks, Notes, Completed)
+        // TAB: PLANNER BOARD (Reminders, Tasks, Notes, Collapsible Completed)
         // ════════════════════════════════════════
-        // ════════════════════════════════════════
-        // TAB 1: PLANNER BOARD (Reminders, Tasks, Notes, Completed)
-        // ════════════════════════════════════════
-        plannerTab === 'board' && React.createElement(Fragment, null,
-          // ── 1. Sleek Top Mini KPI Stats Strip ──
-          React.createElement('div', { className: 'planner-stats-strip' },
-            // KPI 1: Notes
-            React.createElement('div', {
-              className: 'planner-stat-card',
-              onClick: () => openCreateModal('note'),
-              title: 'Click to add a new Note'
-            },
-              React.createElement('div', { className: 'planner-stat-icon', style: { background: 'rgba(16, 185, 129, 0.12)', color: '#059669' } }, '📝'),
-              React.createElement('div', { className: 'planner-stat-info' },
-                React.createElement('div', { className: 'planner-stat-label' }, 'Total Notes'),
-                React.createElement('div', { className: 'planner-stat-value' }, notes.length),
-                React.createElement('div', { className: 'planner-stat-sub' }, `${filteredNotes.length} active notes in view`)
-              )
-            ),
-
-            // KPI 2: Active Tasks
-            React.createElement('div', {
-              className: 'planner-stat-card',
-              onClick: () => openCreateModal('task'),
-              title: 'Click to add a new Task'
-            },
-              React.createElement('div', { className: 'planner-stat-icon', style: { background: 'rgba(2, 132, 199, 0.12)', color: '#0284c7' } }, '📋'),
-              React.createElement('div', { className: 'planner-stat-info' },
-                React.createElement('div', { className: 'planner-stat-label' }, 'Active Tasks'),
-                React.createElement('div', { className: 'planner-stat-value' }, filteredTasks.length),
-                React.createElement('div', { className: 'planner-stat-sub' },
-                  `${filteredTasks.filter(t => t.status === 'IN_PROGRESS').length} in progress • ${filteredTasks.filter(t => t.status === 'TODO' || !t.status).length} to do`
-                )
-              )
-            ),
-
-            // KPI 3: Pending Reminders
-            React.createElement('div', {
-              className: 'planner-stat-card',
-              onClick: () => openCreateModal('reminder'),
-              title: 'Click to add a new Reminder'
-            },
-              React.createElement('div', { className: 'planner-stat-icon', style: { background: 'rgba(124, 58, 237, 0.12)', color: '#7c3aed' } }, '🔔'),
-              React.createElement('div', { className: 'planner-stat-info' },
-                React.createElement('div', { className: 'planner-stat-label' }, 'Pending Reminders'),
-                React.createElement('div', { className: 'planner-stat-value' }, filteredReminders.length),
-                React.createElement('div', { className: 'planner-stat-sub' },
-                  `${filteredReminders.filter(r => r.dueDate && r.dueDate.split('T')[0] <= BillsoftUtils.todayStr()).length} due today or overdue`
-                )
-              )
-            ),
-
-            // KPI 4: Completed Items
-            React.createElement('div', {
-              className: 'planner-stat-card'
-            },
-              React.createElement('div', { className: 'planner-stat-icon', style: { background: 'rgba(100, 116, 139, 0.12)', color: '#475569' } }, '✅'),
-              React.createElement('div', { className: 'planner-stat-info' },
-                React.createElement('div', { className: 'planner-stat-label' }, 'Completed'),
-                React.createElement('div', { className: 'planner-stat-value' }, completedStats.total),
-                React.createElement('div', { className: 'planner-stat-sub' },
-                  `${reminders.length > 0 ? Math.round((completedStats.total / reminders.length) * 100) : 0}% task completion rate`
-                )
-              )
-            )
-          ),
-
-          // ── 2. Unified Industrial Control Toolbar ──
+        activeTab === 'board' && React.createElement(Fragment, null,
+          // Filter & Actions Toolbar
           React.createElement('div', { className: 'planner-toolbar-card' },
             React.createElement('div', { className: 'planner-toolbar-main' },
-              // Search with icon
               React.createElement('div', { className: 'planner-search-wrap' },
                 React.createElement('span', { className: 'planner-search-icon' }, '🔍'),
                 React.createElement('input', {
                   className: 'input input-sm planner-search-input',
-                  placeholder: 'Search notes, tasks, reminders, tags...',
+                  placeholder: 'Search tasks, reminders, notes, tags...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 })
               ),
-
-              // Date Filters
-              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' } }, 'Date:'),
-                React.createElement('input', {
-                  className: 'input input-sm',
-                  type: 'date',
-                  style: { width: 135 },
-                  value: boardFromDate,
-                  onChange: e => setBoardFromDate(e.target.value),
-                  title: 'Filter from date'
-                }),
-                React.createElement('span', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }, 'to'),
-                React.createElement('input', {
-                  className: 'input input-sm',
-                  type: 'date',
-                  style: { width: 135 },
-                  value: boardToDate,
-                  onChange: e => setBoardToDate(e.target.value),
-                  title: 'Filter to date'
-                }),
-                (boardFromDate || boardToDate || searchQuery || activeTag) && React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  style: { fontSize: '0.75rem', padding: '3px 8px' },
-                  onClick: () => { setBoardFromDate(''); setBoardToDate(''); setSearchQuery(''); setActiveTag(null); }
-                }, '✕ Clear Filters')
-              ),
-
-              // Action Buttons
               React.createElement('div', { className: 'planner-actions-group' },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'From:'),
+                  React.createElement('input', {
+                    className: 'input input-sm',
+                    type: 'date',
+                    style: { width: 135 },
+                    value: boardFromDate,
+                    onChange: e => setBoardFromDate(e.target.value)
+                  })
+                ),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'To:'),
+                  React.createElement('input', {
+                    className: 'input input-sm',
+                    type: 'date',
+                    style: { width: 135 },
+                    value: boardToDate,
+                    onChange: e => setBoardToDate(e.target.value)
+                  })
+                ),
+                (searchQuery || activeTag || boardFromDate || boardToDate) && React.createElement('button', {
+                  className: 'btn btn-ghost btn-sm',
+                  style: { color: 'var(--danger)', fontWeight: 600 },
+                  onClick: () => { setSearchQuery(''); setActiveTag(null); setBoardFromDate(''); setBoardToDate(''); }
+                }, '✕ Clear Filters'),
                 React.createElement('button', {
-                  className: 'btn btn-sm',
-                  style: { background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', border: '1px solid rgba(124, 58, 237, 0.3)', fontWeight: 600 },
-                  onClick: () => openCreateModal('reminder')
-                }, '🔔 + Reminder'),
-                React.createElement('button', {
-                  className: 'btn btn-sm',
-                  style: { background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', border: '1px solid rgba(2, 132, 199, 0.3)', fontWeight: 600 },
-                  onClick: () => openCreateModal('task')
-                }, '📋 + Task'),
-                React.createElement('button', {
-                  className: 'btn btn-sm',
-                  style: { background: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 600 },
-                  onClick: () => openCreateModal('note')
-                }, '📝 + Note')
+                  className: `btn btn-sm ${showCompletedArchive ? 'btn-primary' : 'btn-outline'}`,
+                  style: { marginLeft: 'auto', fontWeight: 600 },
+                  onClick: () => setShowCompletedArchive(!showCompletedArchive)
+                }, `📜 Archive (${completedStats.total}) ${showCompletedArchive ? '▲ Hide' : '▼ View'}`)
               )
             ),
-
-            // Tag Chips Strip
-            allUniqueTags.length > 0 && React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12, borderTop: '1px solid var(--border-light)', paddingTop: 10, alignItems: 'center' } },
-              React.createElement('span', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Filter Tags:'),
-              React.createElement('span', {
-                onClick: () => setActiveTag(null),
+            allUniqueTags.length > 0 && React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-light)', alignItems: 'center' } },
+              React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Filter Tags:'),
+              allUniqueTags.map(t => React.createElement('button', {
+                key: t,
+                className: `badge${activeTag === t ? ' badge-primary' : ''}`,
                 style: {
-                  fontSize: '0.72rem',
-                  padding: '2px 9px',
-                  borderRadius: 12,
                   cursor: 'pointer',
-                  backgroundColor: !activeTag ? 'var(--primary)' : 'var(--bg-hover)',
-                  color: !activeTag ? '#fff' : 'var(--text-secondary)',
-                  fontWeight: 700,
-                  transition: 'all 0.15s ease'
-                }
-              }, 'All'),
-              allUniqueTags.map(tag => React.createElement('span', {
-                key: tag,
-                onClick: () => setActiveTag(activeTag === tag ? null : tag),
-                style: {
-                  fontSize: '0.72rem',
-                  padding: '2px 9px',
-                  borderRadius: 12,
-                  cursor: 'pointer',
-                  backgroundColor: activeTag === tag ? 'var(--primary)' : 'var(--bg-hover)',
-                  color: activeTag === tag ? '#fff' : 'var(--text-secondary)',
+                  border: '1px solid ' + (activeTag === t ? 'var(--primary)' : 'var(--border)'),
+                  background: activeTag === t ? 'var(--primary)' : 'var(--bg-card)',
+                  color: activeTag === t ? '#fff' : 'var(--text-secondary)',
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  fontSize: '0.74rem',
                   fontWeight: 600,
-                  border: '1px solid var(--border)',
-                  transition: 'all 0.15s ease'
-                }
-              }, `#${tag}`))
+                  transition: 'all 0.15s'
+                },
+                onClick: () => setActiveTag(activeTag === t ? null : t)
+              }, `#${t}`))
             )
           ),
 
-          // ── 3. Industrial Kanban Board Layout (3 Active Columns: Reminders, Tasks, Notes) ──
+          // 3. Modern 3-Column Kanban Board
           React.createElement('div', { className: 'planner-kanban-board' },
-
-            // ── COLUMN 1: REMINDERS ──
-            React.createElement('div', { className: 'planner-kanban-col' },
-              // Header
+            // Column 1: Reminders
+            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #f59e0b' } },
               React.createElement('div', { className: 'planner-kanban-header' },
                 React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('div', { className: 'planner-col-dot', style: { background: '#7c3aed' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, '🔔 Reminders'),
+                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#f59e0b', boxShadow: '0 0 8px rgba(245,158,11,0.6)' } }),
+                  React.createElement('span', { className: 'planner-col-title' }, 'Active Reminders'),
                   React.createElement('span', { className: 'planner-col-badge' }, filteredReminders.length)
                 ),
                 React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  style: { width: 26, height: 26, padding: 0, borderRadius: 6, fontSize: '0.9rem', color: '#7c3aed' },
-                  onClick: () => openCreateModal('reminder'),
-                  title: 'Add new reminder'
-                }, '+')
+                  className: 'btn btn-xs btn-outline',
+                  style: { borderColor: '#f59e0b', color: '#d97706', fontWeight: 600, padding: '2px 8px' },
+                  onClick: () => openCreateModal('reminder')
+                }, '+ New')
               ),
-              // List
               React.createElement('div', { className: 'planner-card-list' },
-                filteredReminders.length > 0 ? filteredReminders.slice((safeReminderPage - 1) * reminderPageSize, safeReminderPage * reminderPageSize).map(r => {
-                  const isDueSoon = r.dueDate && r.dueDate.split('T')[0] <= BillsoftUtils.todayStr();
-                  return React.createElement('div', { key: r.id, className: 'planner-card' },
-                    React.createElement('div', { className: 'planner-card-header' },
-                      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
-                        React.createElement('input', {
-                          type: 'checkbox',
-                          checked: r.completed,
-                          onChange: () => onMarkDone(r.id),
-                          style: { marginTop: 3, cursor: 'pointer', accentColor: '#7c3aed' },
-                          title: 'Mark as completed'
-                        }),
-                        React.createElement('div', { style: { flex: 1 } },
+                filteredReminders.length > 0 ? (
+                  filteredReminders.slice((safeReminderPage - 1) * reminderPageSize, safeReminderPage * reminderPageSize).map(r => {
+                    const isOverdue = r.dueDate && r.dueDate.split('T')[0] < BillsoftUtils.todayStr();
+                    return React.createElement('div', { key: r.id, className: 'planner-card', style: { borderLeft: '3px solid #f59e0b' } },
+                      React.createElement('div', { className: 'planner-card-header' },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1 } },
+                          React.createElement('input', {
+                            type: 'checkbox',
+                            checked: false,
+                            onChange: () => onMarkDone(r.id),
+                            title: 'Mark completed',
+                            style: { marginTop: 3, cursor: 'pointer', accentColor: '#f59e0b', width: 16, height: 16 }
+                          }),
                           React.createElement('div', { className: 'planner-card-title' }, r.title)
+                        ),
+                        React.createElement('div', { style: { display: 'flex', gap: 2 } },
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('reminder', r), title: 'Edit' }, '✏️'),
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'reminder', id: r.id, title: r.title }), title: 'Delete' }, '🗑️')
                         )
                       ),
-                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem' }, onClick: () => openEditModal('reminder', r), title: 'Edit' }, '✏️'),
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'reminder', id: r.id, title: r.title }), title: 'Delete' }, '🗑️')
-                      )
-                    ),
-                    r.note && React.createElement('div', { className: 'planner-card-body' }, r.note),
-                    React.createElement('div', { className: 'planner-card-meta' },
-                      r.dueDate && React.createElement('span', {
-                        className: 'planner-meta-badge',
-                        style: {
-                          backgroundColor: isDueSoon ? 'rgba(239, 68, 68, 0.12)' : 'rgba(124, 58, 237, 0.1)',
-                          color: isDueSoon ? '#dc2626' : '#7c3aed'
-                        }
-                      }, `⏰ ${r.dueDate.split('T')[0]}`),
-                      renderTags(r.tags)
-                    ),
-                    renderAssociations(r.customerId, r.firmId)
-                  );
-                }) : React.createElement('div', { className: 'planner-empty-col' },
-                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '🔔'),
-                  React.createElement('span', null, 'No pending reminders'),
-                  React.createElement('button', {
-                    className: 'btn btn-outline btn-xs',
-                    style: { fontSize: '0.74rem', marginTop: 4 },
-                    onClick: () => openCreateModal('reminder')
-                  }, '+ Add Reminder')
+                      r.note && React.createElement('div', { className: 'planner-card-body' }, r.note),
+                      React.createElement('div', { className: 'planner-card-meta' },
+                        r.dueDate && React.createElement('span', {
+                          className: 'planner-meta-badge',
+                          style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+                        }, `${isOverdue ? '⚠️ Overdue: ' : '📅 Due: '}${r.dueDate.split('T')[0]}`),
+                        renderTags(r.tags)
+                      ),
+                      renderAssociations(r.customerId, r.firmId)
+                    );
+                  })
+                ) : (
+                  React.createElement('div', { className: 'planner-empty-col' },
+                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '🔔'),
+                    React.createElement('span', { style: { fontWeight: 600 } }, 'No pending reminders'),
+                    React.createElement('button', {
+                      className: 'btn btn-outline btn-xs',
+                      style: { fontSize: '0.75rem', marginTop: 6, borderColor: '#f59e0b', color: '#d97706' },
+                      onClick: () => openCreateModal('reminder')
+                    }, '+ Add Reminder')
+                  )
                 )
               ),
-              React.createElement(PaginationControls, {
+              filteredReminders.length > reminderPageSize && React.createElement(PaginationControls, {
                 currentPage: safeReminderPage,
                 totalPages: reminderTotalPages,
                 totalItems: filteredReminders.length,
@@ -5834,93 +5951,82 @@
               })
             ),
 
-            // ── COLUMN 2: TASKS ──
-            React.createElement('div', { className: 'planner-kanban-col' },
-              // Header
+            // Column 2: Tasks
+            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #6366f1' } },
               React.createElement('div', { className: 'planner-kanban-header' },
                 React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('div', { className: 'planner-col-dot', style: { background: '#0284c7' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, '📋 Tasks'),
+                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#6366f1', boxShadow: '0 0 8px rgba(99,102,241,0.6)' } }),
+                  React.createElement('span', { className: 'planner-col-title' }, 'Task Pipeline'),
                   React.createElement('span', { className: 'planner-col-badge' }, filteredTasks.length)
                 ),
                 React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  style: { width: 26, height: 26, padding: 0, borderRadius: 6, fontSize: '0.9rem', color: '#0284c7' },
-                  onClick: () => openCreateModal('task'),
-                  title: 'Add new task'
-                }, '+')
+                  className: 'btn btn-xs btn-primary',
+                  style: { fontWeight: 600, padding: '2px 8px' },
+                  onClick: () => openCreateModal('task')
+                }, '+ New')
               ),
-              // List
               React.createElement('div', { className: 'planner-card-list' },
-                filteredTasks.length > 0 ? filteredTasks.slice((safeTaskPage - 1) * taskPageSize, safeTaskPage * taskPageSize).map(t => {
-                  const isDueSoon = t.dueDate && t.dueDate.split('T')[0] <= BillsoftUtils.todayStr();
-                  return React.createElement('div', { key: t.id, className: 'planner-card' },
-                    React.createElement('div', { className: 'planner-card-header' },
-                      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-start', flex: 1 } },
-                        React.createElement('input', {
-                          type: 'checkbox',
-                          checked: t.completed,
-                          onChange: () => handleProgressChangeInline(t, t.completed ? 0 : 100),
-                          style: { marginTop: 3, cursor: 'pointer', accentColor: '#0284c7' },
-                          title: 'Toggle completion'
-                        }),
-                        React.createElement('div', { style: { flex: 1 } },
+                filteredTasks.length > 0 ? (
+                  filteredTasks.slice((safeTaskPage - 1) * taskPageSize, safeTaskPage * taskPageSize).map(t => {
+                    const isOverdue = t.dueDate && t.dueDate.split('T')[0] < BillsoftUtils.todayStr();
+                    return React.createElement('div', { key: t.id, className: 'planner-card', style: { borderLeft: '3px solid #6366f1' } },
+                      React.createElement('div', { className: 'planner-card-header' },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1 } },
+                          React.createElement('input', {
+                            type: 'checkbox',
+                            checked: false,
+                            onChange: () => handleStatusChangeInline(t, 'DONE'),
+                            title: 'Mark task done',
+                            style: { marginTop: 3, cursor: 'pointer', accentColor: 'var(--primary)', width: 16, height: 16 }
+                          }),
                           React.createElement('div', { className: 'planner-card-title' }, t.title)
+                        ),
+                        React.createElement('div', { style: { display: 'flex', gap: 2 } },
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('task', t), title: 'Edit' }, '✏️'),
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'task', id: t.id, title: t.title }), title: 'Delete' }, '🗑️')
                         )
                       ),
-                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem' }, onClick: () => openEditModal('task', t), title: 'Edit' }, '✏️'),
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'task', id: t.id, title: t.title }), title: 'Delete' }, '🗑️')
-                      )
-                    ),
-                    t.note && React.createElement('div', { className: 'planner-card-body' }, t.note),
-
-                    // Stage Selector Pill
-                    React.createElement('div', { style: { marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)', padding: '4px 8px', borderRadius: 6 } },
-                      React.createElement('span', { style: { fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' } }, 'Stage:'),
-                      React.createElement('select', {
-                        style: {
-                          fontSize: '0.72rem',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          fontWeight: 700,
-                          color: t.status === 'DONE' ? '#15803d' : (t.status === 'IN_PROGRESS' ? '#1d4ed8' : '#b45309'),
-                          backgroundColor: t.status === 'DONE' ? '#dcfce7' : (t.status === 'IN_PROGRESS' ? '#dbeafe' : '#fef3c7'),
-                          border: 'none',
-                          cursor: 'pointer'
+                      t.note && React.createElement('div', { className: 'planner-card-body' }, t.note),
+                      React.createElement('div', { style: { marginTop: 8 } },
+                        React.createElement('select', {
+                          className: 'select select-xs w-full',
+                          value: t.status || 'TODO',
+                          onChange: e => handleStatusChangeInline(t, e.target.value),
+                          style: {
+                            fontWeight: 600,
+                            borderRadius: 6,
+                            backgroundColor: t.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.08)' : (t.status === 'DONE' ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-secondary)'),
+                            borderColor: t.status === 'IN_PROGRESS' ? '#3b82f6' : (t.status === 'DONE' ? '#10b981' : 'var(--border)')
+                          }
                         },
-                        value: t.status || 'TODO',
-                        onChange: e => handleStatusChangeInline(t, e.target.value)
-                      },
-                        React.createElement('option', { value: 'TODO' }, '🟡 To Do'),
-                        React.createElement('option', { value: 'IN_PROGRESS' }, '🔵 In Progress'),
-                        React.createElement('option', { value: 'DONE' }, '🟢 Done')
-                      )
-                    ),
-
-                    React.createElement('div', { className: 'planner-card-meta' },
-                      t.dueDate && React.createElement('span', {
-                        className: 'planner-meta-badge',
-                        style: {
-                          backgroundColor: isDueSoon ? 'rgba(239, 68, 68, 0.12)' : 'rgba(2, 132, 199, 0.1)',
-                          color: isDueSoon ? '#dc2626' : '#0284c7'
-                        }
-                      }, `📅 ${t.dueDate.split('T')[0]}`),
-                      renderTags(t.tags)
-                    ),
-                    renderAssociations(t.customerId, t.firmId)
-                  );
-                }) : React.createElement('div', { className: 'planner-empty-col' },
-                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '📋'),
-                  React.createElement('span', null, 'No active tasks'),
-                  React.createElement('button', {
-                    className: 'btn btn-outline btn-xs',
-                    style: { fontSize: '0.74rem', marginTop: 4 },
-                    onClick: () => openCreateModal('task')
-                  }, '+ Add Task')
+                          React.createElement('option', { value: 'TODO' }, '🟡 To Do'),
+                          React.createElement('option', { value: 'IN_PROGRESS' }, '🔵 In Progress'),
+                          React.createElement('option', { value: 'DONE' }, '🟢 Done')
+                        )
+                      ),
+                      React.createElement('div', { className: 'planner-card-meta' },
+                        t.dueDate && React.createElement('span', {
+                          className: 'planner-meta-badge',
+                          style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+                        }, `${isOverdue ? '⚠️ Due: ' : '📅 Due: '}${t.dueDate.split('T')[0]}`),
+                        renderTags(t.tags)
+                      ),
+                      renderAssociations(t.customerId, t.firmId)
+                    );
+                  })
+                ) : (
+                  React.createElement('div', { className: 'planner-empty-col' },
+                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '📋'),
+                    React.createElement('span', { style: { fontWeight: 600 } }, 'No tasks in pipeline'),
+                    React.createElement('button', {
+                      className: 'btn btn-primary btn-xs',
+                      style: { fontSize: '0.75rem', marginTop: 6 },
+                      onClick: () => openCreateModal('task')
+                    }, '+ Add Task')
+                  )
                 )
               ),
-              React.createElement(PaginationControls, {
+              filteredTasks.length > taskPageSize && React.createElement(PaginationControls, {
                 currentPage: safeTaskPage,
                 totalPages: taskTotalPages,
                 totalItems: filteredTasks.length,
@@ -5929,52 +6035,51 @@
               })
             ),
 
-            // ── COLUMN 3: NOTES ──
-            React.createElement('div', { className: 'planner-kanban-col' },
-              // Header
+            // Column 3: Notes
+            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #8b5cf6' } },
               React.createElement('div', { className: 'planner-kanban-header' },
                 React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('div', { className: 'planner-col-dot', style: { background: '#059669' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, '📝 Notes'),
+                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#8b5cf6', boxShadow: '0 0 8px rgba(139,92,246,0.6)' } }),
+                  React.createElement('span', { className: 'planner-col-title' }, 'Notes & Memos'),
                   React.createElement('span', { className: 'planner-col-badge' }, filteredNotes.length)
                 ),
                 React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  style: { width: 26, height: 26, padding: 0, borderRadius: 6, fontSize: '0.9rem', color: '#059669' },
-                  onClick: () => openCreateModal('note'),
-                  title: 'Add new note'
-                }, '+')
+                  className: 'btn btn-xs btn-outline',
+                  style: { borderColor: '#8b5cf6', color: '#7c3aed', fontWeight: 600, padding: '2px 8px' },
+                  onClick: () => openCreateModal('note')
+                }, '+ New')
               ),
-              // List
               React.createElement('div', { className: 'planner-card-list' },
-                filteredNotes.length > 0 ? filteredNotes.slice((safeNotePage - 1) * notePageSize, safeNotePage * notePageSize).map(n =>
-                  React.createElement('div', { key: n.id, className: 'planner-card' },
-                    React.createElement('div', { className: 'planner-card-header' },
-                      React.createElement('div', { style: { flex: 1 } },
-                        React.createElement('div', { className: 'planner-card-title' }, n.title)
+                filteredNotes.length > 0 ? (
+                  filteredNotes.slice((safeNotePage - 1) * notePageSize, safeNotePage * notePageSize).map(n =>
+                    React.createElement('div', { key: n.id, className: 'planner-card', style: { borderLeft: '3px solid #8b5cf6' } },
+                      React.createElement('div', { className: 'planner-card-header' },
+                        React.createElement('div', { style: { flex: 1 } },
+                          React.createElement('div', { className: 'planner-card-title' }, n.title)
+                        ),
+                        React.createElement('div', { style: { display: 'flex', gap: 2 } },
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('note', n), title: 'Edit' }, '✏️'),
+                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'note', id: n.id, title: n.title }), title: 'Delete' }, '🗑️')
+                        )
                       ),
-                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem' }, onClick: () => openEditModal('note', n), title: 'Edit' }, '✏️'),
-                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 5px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'note', id: n.id, title: n.title }), title: 'Delete' }, '🗑️')
-                      )
-                    ),
-                    n.content && React.createElement('div', { className: 'planner-card-body' }, n.content),
-                    React.createElement('div', { className: 'planner-card-meta' },
-                      renderTags(n.tags)
-                    ),
-                    renderAssociations(n.customerId, n.firmId)
+                      n.content && React.createElement('div', { className: 'planner-card-body' }, n.content),
+                      React.createElement('div', { className: 'planner-card-meta' }, renderTags(n.tags)),
+                      renderAssociations(n.customerId, n.firmId)
+                    )
                   )
-                ) : React.createElement('div', { className: 'planner-empty-col' },
-                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '📝'),
-                  React.createElement('span', null, 'No notes saved'),
-                  React.createElement('button', {
-                    className: 'btn btn-outline btn-xs',
-                    style: { fontSize: '0.74rem', marginTop: 4 },
-                    onClick: () => openCreateModal('note')
-                  }, '+ Add Note')
+                ) : (
+                  React.createElement('div', { className: 'planner-empty-col' },
+                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '📝'),
+                    React.createElement('span', { style: { fontWeight: 600 } }, 'No notes saved'),
+                    React.createElement('button', {
+                      className: 'btn btn-outline btn-xs',
+                      style: { fontSize: '0.75rem', marginTop: 6, borderColor: '#8b5cf6', color: '#7c3aed' },
+                      onClick: () => openCreateModal('note')
+                    }, '+ Add Note')
+                  )
                 )
               ),
-              React.createElement(PaginationControls, {
+              filteredNotes.length > notePageSize && React.createElement(PaginationControls, {
                 currentPage: safeNotePage,
                 totalPages: noteTotalPages,
                 totalItems: filteredNotes.length,
@@ -5984,143 +6089,58 @@
             )
           ),
 
-          // ── 4. Dedicated Paginated Completed History Section (Below the 3 columns) ──
-          React.createElement('div', { className: 'planner-history-section' },
-            // Header with title, type filter pills, and search
+          // 4. Completed History Archive (Collapsible)
+          showCompletedArchive && React.createElement('div', { className: 'planner-history-section', style: { marginTop: 24 } },
             React.createElement('div', { className: 'planner-history-header' },
-              React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('span', { style: { fontSize: '1.1rem' } }, '📜'),
-                  React.createElement('span', { style: { fontWeight: 700, fontSize: '1.02rem', color: 'var(--text-primary)' } }, 'Completed History'),
-                  React.createElement('span', { className: 'badge', style: { backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 700 } }, filteredCompletedItems.length)
-                ),
-                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 } }, 'Archive of finished tasks and resolved reminders')
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '📜'),
+                React.createElement('span', { style: { fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' } }, 'Completed Archive'),
+                React.createElement('span', { className: 'badge', style: { fontWeight: 700 } }, filteredCompletedItems.length)
               ),
-
-              // Filter Controls Group
               React.createElement('div', { className: 'planner-history-filters' },
-                // Type Filter Pills
-                React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 3, background: 'var(--bg-hover)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' } },
-                  React.createElement('button', {
-                    type: 'button',
-                    className: `tab${completedTypeFilter === 'all' ? ' active' : ''}`,
-                    style: { padding: '4px 10px', fontSize: '0.75rem' },
-                    onClick: () => setCompletedTypeFilter('all')
-                  }, `All (${completedStats.total})`),
-                  React.createElement('button', {
-                    type: 'button',
-                    className: `tab${completedTypeFilter === 'task' ? ' active' : ''}`,
-                    style: { padding: '4px 10px', fontSize: '0.75rem' },
-                    onClick: () => setCompletedTypeFilter('task')
-                  }, `📋 Tasks (${completedStats.tasks})`),
-                  React.createElement('button', {
-                    type: 'button',
-                    className: `tab${completedTypeFilter === 'reminder' ? ' active' : ''}`,
-                    style: { padding: '4px 10px', fontSize: '0.75rem' },
-                    onClick: () => setCompletedTypeFilter('reminder')
-                  }, `🔔 Reminders (${completedStats.reminders})`)
+                React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 3, background: 'var(--bg-hover)', borderRadius: 'var(--radius-md)' } },
+                  React.createElement('button', { className: `tab${completedTypeFilter === 'all' ? ' active' : ''}`, onClick: () => setCompletedTypeFilter('all'), style: { padding: '4px 12px', fontSize: '0.76rem', fontWeight: 600 } }, `All (${completedStats.total})`),
+                  React.createElement('button', { className: `tab${completedTypeFilter === 'task' ? ' active' : ''}`, onClick: () => setCompletedTypeFilter('task'), style: { padding: '4px 12px', fontSize: '0.76rem', fontWeight: 600 } }, `📋 Tasks (${completedStats.tasks})`),
+                  React.createElement('button', { className: `tab${completedTypeFilter === 'reminder' ? ' active' : ''}`, onClick: () => setCompletedTypeFilter('reminder'), style: { padding: '4px 12px', fontSize: '0.76rem', fontWeight: 600 } }, `🔔 Reminders (${completedStats.reminders})`)
                 ),
-
-                // Dedicated Search input for history
-                React.createElement('div', { style: { position: 'relative', width: 220 } },
-                  React.createElement('span', { style: { position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--text-muted)', pointerEvents: 'none' } }, '🔍'),
-                  React.createElement('input', {
-                    className: 'input input-sm',
-                    style: { width: '100%', paddingLeft: 26, fontSize: '0.8rem', height: 32 },
-                    placeholder: 'Search history...',
-                    value: completedSearch,
-                    onChange: e => setCompletedSearch(e.target.value)
-                  }),
-                  completedSearch && React.createElement('button', {
-                    type: 'button',
-                    className: 'btn btn-ghost btn-xs',
-                    style: { position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', padding: '0 4px', fontSize: '0.75rem' },
-                    onClick: () => setCompletedSearch('')
-                  }, '✕')
-                )
+                React.createElement('input', {
+                  className: 'input input-sm',
+                  style: { minWidth: 200 },
+                  placeholder: 'Search completed history...',
+                  value: completedSearch,
+                  onChange: e => setCompletedSearch(e.target.value)
+                })
               )
             ),
-
-            // History List
             React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 } },
               filteredCompletedItems.length > 0 ? (
-                filteredCompletedItems.slice((safeCompletedPage - 1) * completedPageSize, safeCompletedPage * completedPageSize).map(item => {
-                  const isTask = item.type === 'task';
-                  return React.createElement('div', { key: item.id, className: 'planner-history-row' },
-                    // Left: Checkbox + Title + Note snippet
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 } },
-                      React.createElement('input', {
-                        type: 'checkbox',
-                        checked: true,
-                        onChange: () => {
-                          if (isTask) {
-                            handleProgressChangeInline(item, 0);
-                          } else {
-                            onUpdateReminder(item.id, { ...item, completed: false, inboxNotified: false });
-                          }
-                          window.showToast?.('Item restored to active', 'info');
-                        },
-                        title: 'Click to restore to active',
-                        style: { marginTop: 3, cursor: 'pointer', accentColor: '#10b981', width: 16, height: 16 }
-                      }),
-                      React.createElement('div', { style: { minWidth: 0, flex: 1 } },
-                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', textDecoration: 'line-through', color: 'var(--text-secondary)', wordBreak: 'break-word' } }, item.title),
-                        item.note && React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.note)
-                      )
-                    ),
-
-                    // Middle: Metadata Badges
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 } },
+                filteredCompletedItems.slice((safeCompletedPage - 1) * completedPageSize, safeCompletedPage * completedPageSize).map(item =>
+                  React.createElement('div', { key: item.id, className: 'planner-history-row' },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                      React.createElement('span', { style: { color: '#10b981', fontSize: '1.1rem' } }, '✓'),
+                      React.createElement('span', { style: { textDecoration: 'line-through', fontWeight: 600, color: 'var(--text-secondary)' } }, item.title),
                       React.createElement('span', {
-                        className: 'planner-meta-badge',
+                        className: 'badge',
                         style: {
-                          backgroundColor: isTask ? 'rgba(2, 132, 199, 0.1)' : 'rgba(124, 58, 237, 0.1)',
-                          color: isTask ? '#0284c7' : '#7c3aed',
-                          fontSize: '0.72rem'
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: item.type === 'task' ? 'rgba(99,102,241,0.1)' : 'rgba(245,158,11,0.1)',
+                          color: item.type === 'task' ? '#4f46e5' : '#d97706'
                         }
-                      }, isTask ? '📋 Task' : '🔔 Reminder'),
-                      item.dueDate && React.createElement('span', {
-                        className: 'planner-meta-badge',
-                        style: { backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)', fontSize: '0.72rem' }
-                      }, `Due: ${item.dueDate.split('T')[0]}`),
-                      renderTags(item.tags),
-                      renderAssociations(item.customerId, item.firmId)
+                      }, item.type === 'task' ? '📋 Task' : '🔔 Reminder')
                     ),
-
-                    // Right: Actions
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 } },
-                      React.createElement('button', {
-                        className: 'btn btn-outline btn-xs',
-                        style: { fontSize: '0.72rem', padding: '3px 8px', color: '#059669', borderColor: '#a7f3d0' },
-                        onClick: () => {
-                          if (isTask) {
-                            handleProgressChangeInline(item, 0);
-                          } else {
-                            onUpdateReminder(item.id, { ...item, completed: false, inboxNotified: false });
-                          }
-                          window.showToast?.('Item restored to active', 'info');
-                        },
-                        title: 'Restore to active list'
-                      }, '🔄 Restore'),
-                      React.createElement('button', {
-                        className: 'btn btn-ghost btn-xs',
-                        style: { padding: '3px 6px', fontSize: '0.8rem', color: 'var(--danger)' },
-                        onClick: () => setDeleteConfirmItem({ type: 'item', id: item.id, title: item.title }),
-                        title: 'Permanently delete item'
-                      }, '🗑️')
+                    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                      React.createElement('button', { className: 'btn btn-outline btn-xs', onClick: () => onUpdateReminder(item.id, { ...item, completed: false }) }, '🔄 Restore'),
+                      React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'reminder', id: item.id, title: item.title }) }, '🗑️')
                     )
-                  );
-                })
-              ) : (
-                React.createElement('div', { className: 'planner-empty-col', style: { padding: '30px 16px' } },
-                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '📜'),
-                  React.createElement('span', null, completedSearch ? 'No completed items match your search' : 'No completed history found in this category')
+                  )
                 )
+              ) : React.createElement('div', { className: 'planner-empty-col', style: { padding: 32 } },
+                React.createElement('span', { style: { fontSize: '1.5rem' } }, '📜'),
+                React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'No completed records matching your filters.')
               )
             ),
-
-            // Pagination Controls with page size options
-            React.createElement(PaginationControls, {
+            filteredCompletedItems.length > completedPageSize && React.createElement(PaginationControls, {
               currentPage: safeCompletedPage,
               totalPages: completedTotalPages,
               totalItems: filteredCompletedItems.length,
@@ -6132,46 +6152,30 @@
         ),
 
         // ════════════════════════════════════════
-        // TAB 2: EXPENSE TRACKER
+        // TAB: EXPENSE TRACKER
         // ════════════════════════════════════════
-        plannerTab === 'expenses' && React.createElement(Fragment, null,
-          // Expense KPI Overview Cards
-          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 24 } },
+        activeTab === 'expenses' && React.createElement(Fragment, null,
+          // Financial Outflow Summary Ribbon
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
             React.createElement('div', { className: 'kpi-card kpi-red' },
               React.createElement('div', { className: 'kpi-icon' }, '💸'),
-              React.createElement('div', { className: 'kpi-label' }, 'Current Month Expenses'),
+              React.createElement('div', { className: 'kpi-label' }, 'Monthly Outflow (Spend)'),
               React.createElement('div', { className: 'kpi-value' }, BillsoftUtils.formatCurrency(expenseStats.totalThisMonth)),
-              React.createElement('div', { className: 'kpi-sub' }, `For ${new Date().toLocaleString('default', { month: 'short', year: 'numeric' })}`)
-            ),
-            React.createElement('div', { className: 'kpi-card kpi-amber' },
-              React.createElement('div', { className: 'kpi-icon' }, '📊'),
-              React.createElement('div', { className: 'kpi-label' }, 'Total Expenses (All Time)'),
-              React.createElement('div', { className: 'kpi-value' }, BillsoftUtils.formatCurrency(expenseStats.totalAllTime)),
-              React.createElement('div', { className: 'kpi-sub' }, 'Lifetime expenses recorded')
+              React.createElement('div', { className: 'kpi-sub' }, `All-time spend: ${BillsoftUtils.formatCurrency(expenseStats.totalAllTime)}`)
             ),
             React.createElement('div', { className: 'kpi-card kpi-blue' },
-              React.createElement('div', { className: 'kpi-icon' }, '🏷️'),
-              React.createElement('div', { className: 'kpi-label' }, 'Top Spend Category'),
-              React.createElement('div', { className: 'kpi-value', style: { fontSize: '1.25rem' } }, expenseStats.topCat),
-              React.createElement('div', { className: 'kpi-sub' }, 'Highest category spend')
-            ),
-            React.createElement('div', { className: 'kpi-card kpi-green' },
-              React.createElement('div', { className: 'kpi-icon' }, '📝'),
-              React.createElement('div', { className: 'kpi-label' }, 'Expense Transactions'),
-              React.createElement('div', { className: 'kpi-value' }, expenseStats.count),
-              React.createElement('div', { className: 'kpi-sub' }, 'Recorded entries')
+              React.createElement('div', { className: 'kpi-icon' }, '📊'),
+              React.createElement('div', { className: 'kpi-label' }, 'Total Expense Records'),
+              React.createElement('div', { className: 'kpi-value' }, `${filteredExpenses.length} Entries`),
+              React.createElement('div', { className: 'kpi-sub' }, `${allExpenseCategories.length} categorized spend areas`)
             )
           ),
-
-          // Clean Inline Expense Filter Toolbar & Date Range Bar
-          React.createElement('div', { className: 'card', style: { marginBottom: 24, padding: '14px 20px' } },
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              // Row 1: Search, Category, Buttons
+            React.createElement('div', { className: 'card', style: { marginBottom: 20, padding: '14px 18px' } },
               React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
                 React.createElement('input', {
                   className: 'input input-sm',
                   style: { flex: '1 1 200px', minWidth: 160, maxWidth: 300 },
-                  placeholder: 'Search expense title or notes...',
+                  placeholder: 'Search expenses...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 }),
@@ -6182,151 +6186,514 @@
                   onChange: e => setExpenseCategoryFilter(e.target.value)
                 },
                   React.createElement('option', { value: '' }, 'All Categories'),
-                  expenseCategories.map(c => React.createElement('option', { key: c, value: c }, c))
+                  allExpenseCategories.map(c => React.createElement('option', { key: c, value: c }, c))
                 ),
-                React.createElement('div', { style: { display: 'flex', gap: 8, marginLeft: 'auto' } },
-                  React.createElement('button', {
-                    className: 'btn btn-outline btn-sm',
-                    onClick: handlePrintExpenseStatement
-                  }, '🖨️ Print Statement'),
-                  React.createElement('button', {
-                    className: 'btn btn-primary btn-sm',
-                    style: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
-                    onClick: () => openCreateModal('expense')
-                  }, '💸 + Record Expense')
-                )
-              ),
-
-              // Row 2: Standardized Date Range Filter Bar
-              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-secondary, #f8f9fa)', borderRadius: 8, padding: '8px 12px' } },
-                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 } }, 'From:'),
                 React.createElement('input', {
                   className: 'input input-sm',
                   type: 'date',
-                  style: { width: 140, flexShrink: 0 },
+                  style: { width: 135 },
                   value: fromDateFilter,
                   onChange: e => setFromDateFilter(e.target.value)
                 }),
-                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 } }, 'To:'),
                 React.createElement('input', {
                   className: 'input input-sm',
                   type: 'date',
-                  style: { width: 140, flexShrink: 0 },
+                  style: { width: 135 },
                   value: toDateFilter,
                   onChange: e => setToDateFilter(e.target.value)
                 }),
-
-                // Quick Date Presets
-                React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  onClick: () => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    setFromDateFilter(`${year}-${month}-01`);
-                    setToDateFilter(BillsoftUtils.todayStr());
-                    setExpenseMonthFilter('');
-                  }
-                }, 'This Month'),
-                React.createElement('button', {
-                  className: 'btn btn-ghost btn-sm',
-                  onClick: () => {
-                    const year = new Date().getFullYear();
-                    setFromDateFilter(`${year}-01-01`);
-                    setToDateFilter(BillsoftUtils.todayStr());
-                    setExpenseMonthFilter('');
-                  }
-                }, 'This Year'),
+                React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => handlePrintStatement(true) }, '🖨️ Print Statement'),
                 (fromDateFilter || toDateFilter || expenseCategoryFilter || searchQuery) && React.createElement('button', {
                   className: 'btn btn-ghost btn-sm',
-                  style: { flexShrink: 0, marginLeft: 'auto' },
-                  onClick: () => {
-                    setFromDateFilter('');
-                    setToDateFilter('');
-                    setExpenseMonthFilter('');
-                    setExpenseCategoryFilter('');
-                    setSearchQuery('');
-                  }
+                  onClick: () => { setFromDateFilter(''); setToDateFilter(''); setExpenseCategoryFilter(''); setSearchQuery(''); }
                 }, '✕ Reset')
               )
+            ),
+            React.createElement('div', { className: 'card', style: { padding: 20 } },
+              React.createElement('h3', { style: { marginTop: 0, marginBottom: 14, borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '1rem', fontWeight: 700 } }, 'Expense Outflow Entries'),
+                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${filteredExpenses.length} entries`)
+              ),
+              filteredExpenses.length > 0 ? (
+                React.createElement(Fragment, null,
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                    filteredExpenses.slice((safeExpensePage - 1) * expensePageSize, safeExpensePage * expensePageSize).map(exp =>
+                      React.createElement('div', {
+                        key: exp.id,
+                        style: {
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 16px',
+                          backgroundColor: 'var(--bg-card)',
+                          borderRadius: 'var(--radius)',
+                          border: '1px solid var(--border)',
+                          borderLeft: '4px solid #dc2626'
+                        }
+                      },
+                        React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                            React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
+                            exp.category && React.createElement('span', { style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 12, backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 600 } }, exp.category),
+                            exp.paymentMode && React.createElement('span', { style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 12, backgroundColor: '#e0e7ff', color: '#3730a3', fontWeight: 500 } }, exp.paymentMode)
+                          ),
+                          React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
+                            exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
+                            exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
+                          )
+                        ),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+                          React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
+                          React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
+                            React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️')
+                          )
+                        )
+                      )
+                    )
+                  ),
+                  React.createElement(PaginationControls, {
+                    currentPage: safeExpensePage,
+                    totalPages: expenseTotalPages,
+                    totalItems: filteredExpenses.length,
+                    onPageChange: setExpensePage,
+                    pageSize: expensePageSize,
+                    onPageSizeChange: setExpensePageSize
+                  })
+                )
+              ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } }, 'No expense records found. Click "+ Record Expense" to add.')
             )
           ),
 
-          // Expense Transactions List Card
-          React.createElement('div', { className: 'card', style: { padding: 20 } },
-            React.createElement('h3', { style: { marginTop: 0, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              React.createElement('span', { style: { fontSize: '1.05rem', fontWeight: 700 } }, 'Expense Transactions'),
-              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)' } }, `${filteredExpenses.length} record${filteredExpenses.length !== 1 ? 's' : ''}`)
+        // ════════════════════════════════════════
+        // TAB: SAVINGS & RESERVES
+        // ════════════════════════════════════════
+        activeTab === 'savings' && React.createElement(Fragment, null,
+          // Financial Savings Summary Ribbon
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
+            React.createElement('div', { className: 'kpi-card kpi-green' },
+              React.createElement('div', { className: 'kpi-icon' }, '💰'),
+              React.createElement('div', { className: 'kpi-label' }, 'Monthly Savings / Inflow'),
+              React.createElement('div', { className: 'kpi-value' }, BillsoftUtils.formatCurrency(savingStats.totalThisMonth)),
+              React.createElement('div', { className: 'kpi-sub' }, `All-time reserves: ${BillsoftUtils.formatCurrency(savingStats.totalAllTime)}`)
             ),
-            filteredExpenses.length > 0 ? React.createElement(Fragment, null,
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-                filteredExpenses.slice((safeExpensePage - 1) * expensePageSize, safeExpensePage * expensePageSize).map(exp => React.createElement('div', {
-                  key: exp.id,
-                  style: {
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 16px',
-                    backgroundColor: 'var(--bg-card)',
-                    borderRadius: 'var(--radius)',
-                    border: '1px solid var(--border)',
-                    borderLeft: '4px solid #dc2626'
-                  }
-                },
-                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                      React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, exp.title),
-                      exp.category && React.createElement('span', {
-                        style: {
-                          fontSize: '0.7rem',
-                          padding: '2px 8px',
-                          borderRadius: 12,
-                          backgroundColor: '#fee2e2',
-                          color: '#991b1b',
-                          fontWeight: 600
-                        }
-                      }, exp.category),
-                      exp.paymentMode && React.createElement('span', {
-                        style: {
-                          fontSize: '0.7rem',
-                          padding: '2px 8px',
-                          borderRadius: 12,
-                          backgroundColor: '#e0e7ff',
-                          color: '#3730a3',
-                          fontWeight: 500
-                        }
-                      }, exp.paymentMode)
-                    ),
-                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
-                      exp.expenseDate && React.createElement('span', null, `📅 ${exp.expenseDate}`),
-                      exp.notes && React.createElement('span', null, `📝 ${exp.notes}`)
-                    )
-                  ),
-                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
-                    React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#dc2626' } }, `-${BillsoftUtils.formatCurrency(exp.amount || 0)}`),
-                    React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem' }, onClick: () => openEditModal('expense', exp) }, '✏️ Edit'),
-                      React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { padding: '3px 8px', fontSize: '0.8rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'expense', id: exp.id, title: exp.title }) }, '🗑️ Delete')
-                    )
-                  )
-                ))
+            React.createElement('div', { className: 'kpi-card kpi-blue' },
+              React.createElement('div', { className: 'kpi-icon' }, '📈'),
+              React.createElement('div', { className: 'kpi-label' }, 'Monthly Savings Rate'),
+              React.createElement('div', { className: 'kpi-value' },
+                (savingStats.totalThisMonth + expenseStats.totalThisMonth > 0)
+                  ? `${((savingStats.totalThisMonth / (savingStats.totalThisMonth + expenseStats.totalThisMonth)) * 100).toFixed(1)}%`
+                  : '0.0%'
               ),
-              React.createElement(PaginationControls, {
-                currentPage: safeExpensePage,
-                totalPages: expenseTotalPages,
-                totalItems: filteredExpenses.length,
-                onPageChange: setExpensePage,
-                pageSize: expensePageSize,
-                onPageSizeChange: setExpensePageSize
-              })
-            ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } },
-              React.createElement('h4', { style: { color: 'var(--text-secondary)', margin: 0 } }, 'No expense records found'),
-              React.createElement('p', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'Click "+ Record Expense" above to add your first entry.')
+              React.createElement('div', { className: 'kpi-sub' }, 'Savings vs Total Outflow')
+            ),
+            React.createElement('div', { className: 'kpi-card kpi-amber' },
+              React.createElement('div', { className: 'kpi-icon' }, '🎯'),
+              React.createElement('div', { className: 'kpi-label' }, 'Linked Savings Goals'),
+              React.createElement('div', { className: 'kpi-value' }, `${savingsGoalsOptions.length} Goals`),
+              React.createElement('div', { className: 'kpi-sub' }, `${filteredSavings.length} total deposit entries`)
             )
-          )
+          ),
+            React.createElement('div', { className: 'card', style: { marginBottom: 20, padding: '14px 18px' } },
+              React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+                React.createElement('input', {
+                  className: 'input input-sm',
+                  style: { flex: '1 1 200px', minWidth: 160, maxWidth: 300 },
+                  placeholder: 'Search savings & investments...',
+                  value: searchQuery,
+                  onChange: e => setSearchQuery(e.target.value)
+                }),
+                React.createElement('select', {
+                  className: 'select select-sm',
+                  style: { minWidth: 150 },
+                  value: savingCategoryFilter,
+                  onChange: e => setSavingCategoryFilter(e.target.value)
+                },
+                  React.createElement('option', { value: '' }, 'All Categories'),
+                  allSavingCategories.map(c => React.createElement('option', { key: c, value: c }, c))
+                ),
+                React.createElement('input', {
+                  className: 'input input-sm',
+                  type: 'date',
+                  style: { width: 135 },
+                  value: fromDateFilter,
+                  onChange: e => setFromDateFilter(e.target.value)
+                }),
+                React.createElement('input', {
+                  className: 'input input-sm',
+                  type: 'date',
+                  style: { width: 135 },
+                  value: toDateFilter,
+                  onChange: e => setToDateFilter(e.target.value)
+                }),
+                React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => handlePrintStatement(false) }, '🖨️ Print Ledger'),
+                (fromDateFilter || toDateFilter || savingCategoryFilter || searchQuery) && React.createElement('button', {
+                  className: 'btn btn-ghost btn-sm',
+                  onClick: () => { setFromDateFilter(''); setToDateFilter(''); setSavingCategoryFilter(''); setSearchQuery(''); }
+                }, '✕ Reset')
+              )
+            ),
+            React.createElement('div', { className: 'card', style: { padding: 20 } },
+              React.createElement('h3', { style: { marginTop: 0, marginBottom: 14, borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '1rem', fontWeight: 700 } }, 'Savings & Investment Ledger'),
+                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, `${filteredSavings.length} entries`)
+              ),
+              filteredSavings.length > 0 ? (
+                React.createElement(Fragment, null,
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                    filteredSavings.slice((safeSavingPage - 1) * savingPageSize, safeSavingPage * savingPageSize).map(sav => {
+                      const linkedGoal = sav.goalId ? goals.find(g => g.id === sav.goalId) : null;
+                      return React.createElement('div', {
+                        key: sav.id,
+                        style: {
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 16px',
+                          backgroundColor: 'var(--bg-card)',
+                          borderRadius: 'var(--radius)',
+                          border: '1px solid var(--border)',
+                          borderLeft: '4px solid #10b981'
+                        }
+                      },
+                        React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                            React.createElement('span', { style: { fontWeight: 600, fontSize: '0.95rem' } }, sav.title),
+                            sav.category && React.createElement('span', { style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 12, backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 600 } }, sav.category),
+                            sav.paymentMode && React.createElement('span', { style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 12, backgroundColor: '#e0e7ff', color: '#3730a3', fontWeight: 500 } }, sav.paymentMode),
+                            linkedGoal && React.createElement('span', { style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.12)', color: '#4f46e5', fontWeight: 600 } }, `🎯 Goal: ${linkedGoal.title}`)
+                          ),
+                          React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: 16 } },
+                            sav.savingDate && React.createElement('span', null, `📅 ${sav.savingDate}`),
+                            sav.notes && React.createElement('span', null, `📝 ${sav.notes}`)
+                          )
+                        ),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+                          React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: '#059669' } }, `+${BillsoftUtils.formatCurrency(sav.amount || 0)}`),
+                          React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => openEditModal('saving', sav) }, '✏️ Edit'),
+                            React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'saving', id: sav.id, title: sav.title }) }, '🗑️')
+                          )
+                        )
+                      );
+                    })
+                  ),
+                  React.createElement(PaginationControls, {
+                    currentPage: safeSavingPage,
+                    totalPages: savingTotalPages,
+                    totalItems: filteredSavings.length,
+                    onPageChange: setSavingPage,
+                    pageSize: savingPageSize,
+                    onPageSizeChange: setSavingPageSize
+                  })
+                )
+              ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } }, 'No savings records found. Click "+ Record Saving" to deposit.')
+            )
+          ),
+
+        // ════════════════════════════════════════
+        // TAB: GOALS & HABITS (iOS Progress App Inspired)
+        // ════════════════════════════════════════
+        activeTab === 'goals' && React.createElement(Fragment, null,
+          // Financial & Habit Goals Summary Ribbon
+          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
+            React.createElement('div', { className: 'kpi-card kpi-blue' },
+              React.createElement('div', { className: 'kpi-icon' }, '🎯'),
+              React.createElement('div', { className: 'kpi-label' }, 'Active Goals'),
+              React.createElement('div', { className: 'kpi-value' }, `${activeGoalsCount} Active`),
+              React.createElement('div', { className: 'kpi-sub' }, `${goals.filter(g => g.status === 'ACHIEVED').length} Achieved • ${goals.length} Total`)
+            ),
+            React.createElement('div', { className: 'kpi-card kpi-amber' },
+              React.createElement('div', { className: 'kpi-icon' }, '🔥'),
+              React.createElement('div', { className: 'kpi-label' }, 'Longest Habit Streak'),
+              React.createElement('div', { className: 'kpi-value' }, `${bestStreak} Days`),
+              React.createElement('div', { className: 'kpi-sub' }, 'Continuous daily consistency')
+            ),
+            React.createElement('div', { className: 'kpi-card kpi-green' },
+              React.createElement('div', { className: 'kpi-icon' }, '💰'),
+              React.createElement('div', { className: 'kpi-label' }, 'Total Savings Accumulated'),
+              React.createElement('div', { className: 'kpi-value' }, BillsoftUtils.formatCurrency(savingStats.totalAllTime)),
+              React.createElement('div', { className: 'kpi-sub' }, `${savingsGoalsOptions.length} savings targets`)
+            )
+          ),
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 3, background: 'var(--bg-hover)', borderRadius: 10 } },
+              React.createElement('button', { className: `tab${goalStatusFilter === 'ALL' ? ' active' : ''}`, onClick: () => setGoalStatusFilter('ALL') }, `All Goals (${goals.length})`),
+              React.createElement('button', { className: `tab${goalStatusFilter === 'ACTIVE' ? ' active' : ''}`, onClick: () => setGoalStatusFilter('ACTIVE') }, `Active (${activeGoalsCount})`),
+              React.createElement('button', { className: `tab${goalStatusFilter === 'ACHIEVED' ? ' active' : ''}`, onClick: () => setGoalStatusFilter('ACHIEVED') }, `Achieved (${goals.filter(g => g.status === 'ACHIEVED').length})`)
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+              React.createElement('input', {
+                className: 'input input-sm',
+                style: { width: 220 },
+                placeholder: '🔍 Search goals, tags...',
+                value: searchQuery,
+                onChange: e => setSearchQuery(e.target.value)
+              })
+            )
+          ),
+
+            filteredGoals.length > 0 ? (
+              React.createElement('div', { className: 'progress-app-grid' },
+                filteredGoals.map(g => {
+                  const isSavings = g.goalType === 'SAVINGS_TARGET' || !g.goalType;
+                  const isHabit = g.goalType === 'HABIT_STREAK';
+                  const isQuit = g.goalType === 'QUIT_HABIT';
+                  const isMilestone = g.goalType === 'LIFE_MILESTONE';
+
+                  const curVal = g.currentValue != null ? g.currentValue : 0;
+                  const tgtVal = g.targetValue != null ? g.targetValue : 0;
+                  const isAchieved = g.status === 'ACHIEVED' || (tgtVal > 0 && curVal >= tgtVal);
+                  const pct = (tgtVal > 0) ? Math.min(100, Math.round((curVal / tgtVal) * 100)) : (isAchieved ? 100 : 0);
+
+                  const todayStr = BillsoftUtils.todayStr();
+                  const isCheckedInToday = g.lastCheckInDate && g.lastCheckInDate === todayStr;
+
+                  // Find linked savings records for this goal
+                  const linkedSavings = isSavings ? savings.filter(s => {
+                    if (s.goalId && String(s.goalId) === String(g.id)) return true;
+                    if (g.tags && s.tags) {
+                      const gTags = g.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+                      const sTags = s.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+                      if (gTags.some(gt => sTags.includes(gt))) return true;
+                    }
+                    if (s.category && g.title && s.category.trim().toLowerCase() === g.title.trim().toLowerCase()) return true;
+                    return false;
+                  }) : [];
+
+                  const isExpanded = expandedGoalId === g.id;
+                  const cardColor = g.color || (isSavings ? '#10b981' : (isHabit ? '#f59e0b' : (isQuit ? '#8b5cf6' : '#3b82f6')));
+
+                  // Calculate remaining days
+                  let daysRemaining = null;
+                  if (g.targetDate) {
+                    const tDate = new Date(g.targetDate);
+                    const nDate = new Date();
+                    const diffTime = tDate - nDate;
+                    daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  }
+
+                  return React.createElement('div', {
+                    key: g.id,
+                    className: 'progress-app-card',
+                    style: { borderTop: `4px solid ${cardColor}` }
+                  },
+                    // 1. Card Header
+                    React.createElement('div', { className: 'progress-card-header' },
+                      React.createElement('div', { className: 'progress-card-icon-title' },
+                        React.createElement('div', {
+                          className: 'progress-card-icon',
+                          style: { background: `${cardColor}18`, color: cardColor }
+                        }, g.icon || (isSavings ? '💰' : (isHabit ? '🔥' : (isQuit ? '🌿' : '🎯')))),
+                        React.createElement('div', { className: 'progress-card-title-group' },
+                          React.createElement('div', { className: 'progress-card-title' }, g.title),
+                          React.createElement('span', {
+                            className: 'progress-card-type-chip',
+                            style: { background: `${cardColor}15`, color: cardColor }
+                          },
+                            isSavings ? '💰 Savings Target' : (isHabit ? '🔥 Daily Streak' : (isQuit ? '🌿 Clean Counter' : '🎯 Milestone'))
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                        React.createElement('button', { className: 'btn btn-ghost btn-xs', onClick: () => openEditModal('goal', g), title: 'Edit Goal' }, '✏️'),
+                        React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'goal', id: g.id, title: g.title }), title: 'Delete Goal' }, '🗑️')
+                      )
+                    ),
+
+                    // Tags if present
+                    g.tags && React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
+                      g.tags.split(',').map((t, idx) => React.createElement('span', {
+                        key: idx,
+                        style: { fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontWeight: 600 }
+                      }, `#${t.trim()}`))
+                    ),
+
+                    // 2. Values & Percent Row
+                    React.createElement('div', { className: 'progress-values-row' },
+                      React.createElement('div', null,
+                        isSavings && React.createElement(Fragment, null,
+                          React.createElement('div', { className: 'progress-val-current' }, BillsoftUtils.formatCurrency(curVal)),
+                          React.createElement('div', { className: 'progress-val-target' }, `Target: ${BillsoftUtils.formatCurrency(tgtVal)}`)
+                        ),
+                        isHabit && React.createElement(Fragment, null,
+                          React.createElement('div', { className: 'progress-val-current', style: { color: '#d97706' } }, `🔥 ${g.currentStreak || 0} Days`),
+                          React.createElement('div', { className: 'progress-val-target' }, `Personal Best: ${g.longestStreak || 0} days`)
+                        ),
+                        isQuit && React.createElement(Fragment, null,
+                          React.createElement('div', { className: 'progress-val-current', style: { color: '#7c3aed' } }, `🌿 ${g.currentStreak || 0} Days Clean`),
+                          React.createElement('div', { className: 'progress-val-target' }, `Started: ${g.startDate || 'Recent'}`)
+                        ),
+                        isMilestone && React.createElement(Fragment, null,
+                          React.createElement('div', { className: 'progress-val-current' }, `${curVal} ${g.unit || ''}`),
+                          React.createElement('div', { className: 'progress-val-target' }, `Target: ${tgtVal} ${g.unit || ''}`)
+                        )
+                      ),
+                      React.createElement('div', { className: 'progress-percent-pill', style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : {} },
+                        isAchieved ? '🏆 Achieved!' : (tgtVal > 0 ? `${pct}% Complete` : 'In Progress')
+                      )
+                    ),
+
+                    // 3. Progress Pill Filling Track
+                    React.createElement('div', { className: 'progress-pill-track' },
+                      React.createElement('div', {
+                        className: `progress-pill-fill${isAchieved ? '' : ' striped'}`,
+                        style: {
+                          width: `${pct}%`,
+                          background: isAchieved ? '#10b981' : `linear-gradient(90deg, ${cardColor}cc, ${cardColor})`
+                        }
+                      })
+                    ),
+
+                    // Multi-segment mini pills for habit streaks
+                    isHabit && React.createElement('div', { className: 'progress-segmented-pills' },
+                      [...Array(7)].map((_, i) => {
+                        const filled = (g.currentStreak || 0) >= (7 - i);
+                        return React.createElement('div', {
+                          key: i,
+                          className: `progress-segment-pill${filled ? ' active' : ''}`
+                        });
+                      })
+                    ),
+
+                    // 4. Meta Footer: Target Countdown & Remarks
+                    React.createElement('div', { className: 'progress-card-footer' },
+                      daysRemaining != null ? React.createElement('span', { className: 'progress-countdown-pill' },
+                        daysRemaining > 0 ? `⏳ ${daysRemaining} days left` : (daysRemaining === 0 ? '⏰ Due Today!' : `⚠️ Passed target by ${Math.abs(daysRemaining)}d`)
+                      ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, `Started ${g.startDate || 'recently'}`),
+                      g.notes && React.createElement('span', { style: { fontStyle: 'italic', maxWidth: '50%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, g.notes)
+                    ),
+
+                    // 5. One-Tap Quick Action Pill Ribbon
+                    React.createElement('div', { className: 'progress-quick-ribbon' },
+                      // Savings Goal Quick Actions
+                      isSavings && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          onClick: () => {
+                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
+                            else {
+                              onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                            }
+                          }
+                        }, '💰 +₹1,000'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          onClick: () => {
+                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 5000);
+                            else {
+                              onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                            }
+                          }
+                        }, '💰 +₹5,000'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          onClick: () => {
+                            openCreateModal('saving');
+                            setFormGoalId(String(g.id));
+                            setFormTitle(`${g.title} Deposit`);
+                            setFormCategory(g.title);
+                          }
+                        }, '➕ Custom ₹'),
+                        React.createElement('button', {
+                          className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
+                          style: { marginLeft: 'auto' },
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📜 History (${linkedSavings.length}) ${isExpanded ? '▲' : '▼'}`)
+                      ),
+
+                      // Habit Streak Quick Actions
+                      isHabit && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: `progress-quick-pill-btn${isCheckedInToday ? '' : ' flame'}`,
+                          disabled: isCheckedInToday,
+                          onClick: () => onCheckInGoal(g.id)
+                        }, isCheckedInToday ? '✓ Checked in today' : '🔥 Check In Today'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          onClick: () => {
+                            if (onIncrementStreakGoal) onIncrementStreakGoal(g.id, 7);
+                            else onCheckInGoal(g.id);
+                          }
+                        }, '+1 Week (+7d)'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          onClick: () => {
+                            if (onIncrementStreakGoal) onIncrementStreakGoal(g.id, 30);
+                            else onCheckInGoal(g.id);
+                          }
+                        }, '+1 Month (+30d)'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: 'var(--danger)', marginLeft: 'auto' },
+                          onClick: () => {
+                            if (confirm(`Reset habit streak for "${g.title}"?`)) {
+                              onResetGoal(g.id);
+                            }
+                          }
+                        }, '↺ Reset')
+                      ),
+
+                      // Quit Habit Quick Actions
+                      isQuit && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn flame',
+                          onClick: () => onCheckInGoal(g.id)
+                        }, '🌿 Another Day Clean!'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { color: 'var(--danger)', marginLeft: 'auto' },
+                          onClick: () => {
+                            if (confirm(`Reset relapse timer for "${g.title}"? Stay strong and start fresh!`)) {
+                              onResetGoal(g.id);
+                            }
+                          }
+                        }, '↺ Relapse Reset')
+                      ),
+
+                      // Life Milestone Quick Actions
+                      isMilestone && React.createElement(Fragment, null,
+                        React.createElement('button', { className: 'progress-quick-pill-btn primary', onClick: () => onIncrementGoal(g.id, 1) }, '+1 Step'),
+                        React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, 5) }, '+5 Steps'),
+                        React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, -1) }, '-1 Step')
+                      )
+                    ),
+
+                    // 6. Expandable Linked Savings Drawer
+                    isSavings && isExpanded && React.createElement('div', { className: 'progress-history-drawer' },
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' } },
+                        React.createElement('span', null, `📜 Linked Savings Ledger (${linkedSavings.length} contributions)`),
+                        React.createElement('span', { style: { color: '#059669' } }, `Total: ${BillsoftUtils.formatCurrency(curVal)}`)
+                      ),
+                      linkedSavings.length > 0 ? (
+                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' } },
+                          linkedSavings.map(sav => React.createElement('div', { key: sav.id, className: 'progress-history-entry' },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, `📅 ${sav.savingDate}`),
+                              React.createElement('span', { style: { fontWeight: 600 } }, sav.title),
+                              sav.paymentMode && React.createElement('span', { style: { fontSize: '0.68rem', padding: '1px 5px', borderRadius: 4, background: 'rgba(99,102,241,0.1)', color: '#4f46e5' } }, sav.paymentMode)
+                            ),
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                              React.createElement('span', { style: { fontWeight: 700, color: '#059669' } }, `+${BillsoftUtils.formatCurrency(sav.amount || 0)}`),
+                              React.createElement('button', {
+                                className: 'btn btn-ghost btn-xs',
+                                style: { color: 'var(--danger)', padding: '2px 4px' },
+                                onClick: () => setDeleteConfirmItem({ type: 'saving', id: sav.id, title: sav.title })
+                              }, '🗑️')
+                            )
+                          ))
+                        )
+                      ) : React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px 0' } },
+                        'No savings entries linked yet. Click +₹1,000 or +₹5,000 above to make your first deposit!'
+                      )
+                    )
+                  );
+                })
+              )
+            ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } }, 'No goals created yet. Click "+ Set Goal / Habit" to create one.')
         ),
 
-        // Unified Add / Edit Modal Dialog (Reminders, Tasks, Notes, Expenses)
+        // Unified Add / Edit Modal Dialog (Reminders, Tasks, Notes, Expenses, Savings, Goals)
         modalOpen && React.createElement('div', { className: 'modal-overlay', onClick: () => setModalOpen(false) },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 500, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
@@ -6335,12 +6702,18 @@
 
             // Title Input
             React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title / Description *'),
-              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: modalType === 'expense' ? 'e.g. Office Stationery, Internet Bill' : 'Enter Title', value: formTitle, onChange: e => setFormTitle(e.target.value) })
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title / Goal Name *'),
+              React.createElement('input', {
+                className: 'input w-full',
+                type: 'text',
+                placeholder: modalType === 'expense' ? 'e.g. Office Stationery, Internet Bill' : (modalType === 'saving' ? 'e.g. Monthly SIP in Nifty 50' : (modalType === 'goal' ? 'e.g. Save ₹2 Lakhs, Daily 30m Reading' : 'Enter Title')),
+                value: formTitle,
+                onChange: e => setFormTitle(e.target.value)
+              })
             ),
 
-            // Expense Specific Fields
-            modalType === 'expense' && React.createElement(Fragment, null,
+            // Expense or Saving Specific Fields
+            (modalType === 'expense' || modalType === 'saving') && React.createElement(Fragment, null,
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
                 React.createElement('div', null,
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Amount (₹) *'),
@@ -6348,15 +6721,33 @@
                 ),
                 React.createElement('div', null,
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Category'),
-                  React.createElement('select', { className: 'select w-full', value: formCategory, onChange: e => setFormCategory(e.target.value) },
-                    expenseCategories.map(c => React.createElement('option', { key: c, value: c }, c))
+                  React.createElement('select', {
+                    className: 'select w-full',
+                    value: formCategory,
+                    onChange: e => setFormCategory(e.target.value)
+                  },
+                    (modalType === 'saving' ? allSavingCategories : allExpenseCategories).map(c => React.createElement('option', { key: c, value: c }, c)),
+                    React.createElement('option', { value: '__custom__' }, '➕ Custom Category...')
                   )
                 )
               ),
+
+              // Inline custom category input if selected
+              formCategory === '__custom__' && React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--primary)', display: 'block', marginBottom: 4, fontWeight: 600 } }, 'Enter Custom Category Name *'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  placeholder: 'e.g. Warehouse Lease, Crypto Reserve',
+                  value: formCustomCategory,
+                  onChange: e => setFormCustomCategory(e.target.value),
+                  autoFocus: true
+                })
+              ),
+
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
                 React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Expense Date'),
-                  React.createElement('input', { className: 'input w-full', type: 'date', value: formExpenseDate, onChange: e => setFormExpenseDate(e.target.value) })
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
+                  React.createElement('input', { className: 'input w-full', type: 'date', value: formDate, onChange: e => setFormDate(e.target.value) })
                 ),
                 React.createElement('div', null,
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment Mode'),
@@ -6364,12 +6755,71 @@
                     paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
                   )
                 )
+              ),
+
+              // Saving: Link to Savings Goal
+              modalType === 'saving' && savingsGoalsOptions.length > 0 && React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, '🎯 Link to Savings Goal (Optional)'),
+                React.createElement('select', { className: 'select w-full', value: formGoalId, onChange: e => setFormGoalId(e.target.value) },
+                  React.createElement('option', { value: '' }, 'None (Unallocated Savings)'),
+                  savingsGoalsOptions.map(g => React.createElement('option', { key: g.id, value: String(g.id) }, `${g.title} (Target: ${BillsoftUtils.formatCurrency(g.targetValue || 0)})`))
+                )
+              )
+            ),
+
+            // Goal Specific Fields
+            modalType === 'goal' && React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Goal Type'),
+                  React.createElement('select', {
+                    className: 'select w-full',
+                    value: formGoalType,
+                    onChange: e => {
+                      const gt = e.target.value;
+                      setFormGoalType(gt);
+                      if (gt === 'SAVINGS_TARGET') { setFormUnit('₹'); setFormIcon('💰'); }
+                      else if (gt === 'HABIT_STREAK') { setFormUnit('days'); setFormIcon('🔥'); }
+                      else if (gt === 'QUIT_HABIT') { setFormUnit('days'); setFormIcon('🚭'); }
+                      else { setFormUnit('count'); setFormIcon('🎯'); }
+                    }
+                  },
+                    React.createElement('option', { value: 'SAVINGS_TARGET' }, '💰 Savings Financial Target'),
+                    React.createElement('option', { value: 'HABIT_STREAK' }, '🔥 Daily Habit Streak'),
+                    React.createElement('option', { value: 'QUIT_HABIT' }, '🚭 Quit Bad Habit / Vice'),
+                    React.createElement('option', { value: 'LIFE_MILESTONE' }, '🎯 Milestone Counter')
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Value / Days'),
+                  React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: formGoalType === 'SAVINGS_TARGET' ? 'e.g. 500000' : 'e.g. 30', value: formTargetValue, onChange: e => setFormTargetValue(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Unit'),
+                  React.createElement('input', { className: 'input w-full', placeholder: '₹, days, km, books', value: formUnit, onChange: e => setFormUnit(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Deadline (Optional)'),
+                  React.createElement('input', { className: 'input w-full', type: 'date', value: formTargetDate, onChange: e => setFormTargetDate(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Icon / Emoji'),
+                  React.createElement('input', { className: 'input w-full', placeholder: '💰, 🔥, 🚭, 🎯', value: formIcon, onChange: e => setFormIcon(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Accent Color'),
+                  React.createElement('input', { className: 'input w-full', type: 'color', value: formColor, onChange: e => setFormColor(e.target.value) })
+                )
               )
             ),
 
             // Note / Content / Remarks input
             React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, modalType === 'note' ? 'Content' : (modalType === 'expense' ? 'Notes / Remarks' : 'Note')),
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, modalType === 'note' ? 'Content' : 'Notes / Remarks'),
               React.createElement('textarea', { className: 'textarea w-full', placeholder: 'Enter description or remarks...', rows: 3, value: formNote, onChange: e => setFormNote(e.target.value) })
             ),
 
@@ -6379,46 +6829,10 @@
               React.createElement('input', { className: 'input w-full', type: 'date', value: formDueDate, onChange: e => setFormDueDate(e.target.value) })
             ),
 
-            // Task Custom Field (Stage: TODO, IN_PROGRESS, DONE)
-            modalType === 'task' && React.createElement('div', { style: { background: 'var(--bg-hover)', padding: 12, borderRadius: 6 } },
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Task Stage'),
-              React.createElement('select', {
-                className: 'select w-full',
-                value: formStatus,
-                onChange: e => {
-                  const newSt = e.target.value;
-                  setFormStatus(newSt);
-                  setFormProgress(newSt === 'DONE' ? 100 : (newSt === 'IN_PROGRESS' ? 50 : 0));
-                }
-              },
-                React.createElement('option', { value: 'TODO' }, '🟡 To Do'),
-                React.createElement('option', { value: 'IN_PROGRESS' }, '🔵 In Progress'),
-                React.createElement('option', { value: 'DONE' }, '🟢 Done')
-              )
-            ),
-
-            // Tags Input (for planner board items)
-            modalType !== 'expense' && React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags (comma separated)'),
-              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'e.g. urgent, invoice, billing', value: formTags, onChange: e => setFormTags(e.target.value) })
-            ),
-
-            // Associations
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: modalType === 'expense' ? '1fr' : '1fr 1fr', gap: 12 } },
-              modalType !== 'expense' && React.createElement('div', null,
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Customer Association'),
-                React.createElement('select', { className: 'select w-full', value: formCustomerId, onChange: e => setFormCustomerId(e.target.value) },
-                  React.createElement('option', { value: '' }, 'None'),
-                  customers.map(c => React.createElement('option', { key: c.id, value: String(c.id) }, c.name))
-                )
-              ),
-              React.createElement('div', null,
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Firm Association'),
-                React.createElement('select', { className: 'select w-full', value: formFirmId, onChange: e => setFormFirmId(e.target.value) },
-                  React.createElement('option', { value: '' }, 'None'),
-                  firms.map(f => React.createElement('option', { key: f.id, value: String(f.id) }, f.firmName))
-                )
-              )
+            // Tags Input (for goals, savings, reminders, tasks, notes)
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, modalType === 'goal' ? 'Tags (comma separated, e.g. Car, Emergency)' : (modalType === 'saving' ? 'Tags (comma separated, e.g. Car)' : 'Tags (comma separated)')),
+              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'e.g. Car, Emergency, SIP', value: formTags, onChange: e => setFormTags(e.target.value) })
             ),
 
             // Modal Actions
@@ -6429,10 +6843,10 @@
           )
         ),
 
-        // Delete Confirmation Modal for Planner Items (Reminders, Tasks, Notes)
+        // Delete Confirmation Modal for Planner Items (Reminders, Tasks, Notes, Expenses, Savings, Goals)
         deleteConfirmItem && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteConfirmItem(null) },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
-            React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 6 } }, `🗑️ Delete ${deleteConfirmItem.type === 'note' ? 'Note' : (deleteConfirmItem.type === 'task' ? 'Task' : (deleteConfirmItem.type === 'expense' ? 'Expense Record' : 'Reminder'))}`),
+            React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 6 } }, `🗑️ Delete ${deleteConfirmItem.type === 'note' ? 'Note' : (deleteConfirmItem.type === 'task' ? 'Task' : (deleteConfirmItem.type === 'expense' ? 'Expense Record' : (deleteConfirmItem.type === 'saving' ? 'Savings Record' : (deleteConfirmItem.type === 'goal' ? 'Goal' : 'Reminder'))))}`),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
               `Are you sure you want to delete "${deleteConfirmItem.title || 'this item'}"? This action cannot be undone.`
             ),
@@ -6445,6 +6859,10 @@
                     onDeleteNote(deleteConfirmItem.id);
                   } else if (deleteConfirmItem.type === 'expense') {
                     onDeleteExpense(deleteConfirmItem.id);
+                  } else if (deleteConfirmItem.type === 'saving') {
+                    onDeleteSaving(deleteConfirmItem.id);
+                  } else if (deleteConfirmItem.type === 'goal') {
+                    onDeleteGoal(deleteConfirmItem.id);
                   } else {
                     onDeleteReminder(deleteConfirmItem.id);
                   }
@@ -6643,6 +7061,8 @@
       reminders = [],
       notes = [],
       expenses = [],
+      savings = [],
+      goals = [],
       firms = [],
       onMarkDone,
       onUpdateReminder,
@@ -6651,7 +7071,14 @@
       onCreateReminder,
       onCreateTask,
       onCreateNote,
-      onCreateExpense
+      onCreateExpense,
+      onCreateSaving,
+      onCreateGoal,
+      onCheckInGoal,
+      onIncrementGoal,
+      onResetGoal,
+      onQuickSavingGoal,
+      onIncrementStreakGoal
     }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -6661,13 +7088,14 @@
       const [updateDismissed, setUpdateDismissed] = useState(false);
       const [empAnalytics, setEmpAnalytics] = useState(null);
       const [dismissedIds, setDismissedIds] = useState([]);
+      const [dashGoalTab, setDashGoalTab] = useState('ALL'); // 'ALL' | 'SAVINGS' | 'HABITS'
 
       // Customer list state for associations
       const [customers, setCustomers] = useState([]);
 
       // Quick Action Modal State
       const [quickModalOpen, setQuickModalOpen] = useState(false);
-      const [quickModalType, setQuickModalType] = useState('reminder'); // 'reminder' | 'task' | 'expense' | 'note'
+      const [quickModalType, setQuickModalType] = useState('reminder'); // 'reminder' | 'task' | 'expense' | 'saving' | 'goal' | 'note'
 
       // Form state for Quick Modal
       const [qTitle, setQTitle] = useState('');
@@ -6676,6 +7104,14 @@
       const [qTags, setQTags] = useState('');
       const [qAmount, setQAmount] = useState('');
       const [qCategory, setQCategory] = useState('Office Supplies');
+      const [qCustomCategory, setQCustomCategory] = useState('');
+      const [qGoalId, setQGoalId] = useState('');
+      const [qGoalType, setQGoalType] = useState('SAVINGS_TARGET');
+      const [qTargetValue, setQTargetValue] = useState('');
+      const [qUnit, setQUnit] = useState('₹');
+      const [qTargetDate, setQTargetDate] = useState('');
+      const [qIcon, setQIcon] = useState('💰');
+      const [qColor, setQColor] = useState('#10b981');
       const [qExpenseDate, setQExpenseDate] = useState('');
       const [qPaymentMode, setQPaymentMode] = useState('UPI');
       const [qCustomerId, setQCustomerId] = useState('');
@@ -6689,6 +7125,17 @@
         'Travel & Transport',
         'Software & Subscriptions',
         'Marketing',
+        'Miscellaneous'
+      ];
+
+      const savingCategories = [
+        'Emergency Fund',
+        'Business Reinvestment',
+        'Mutual Funds & Stocks',
+        'Fixed Deposit',
+        'Gold & Bullion',
+        'Equipment & Vehicle',
+        'Tax Reserve',
         'Miscellaneous'
       ];
 
@@ -6722,7 +7169,7 @@
         return unread.length > 0 ? unread[0] : null;
       }, [messages, dismissedIds]);
 
-      // Calculate Expense & Operations Stats
+      // Calculate Expense, Savings & Operations Stats
       const extraStats = useMemo(() => {
         const currentMonthStr = BillsoftUtils.todayStr().substring(0, 7);
         const totalExpenses = expenses ? expenses.reduce((acc, e) => acc + (e.amount || 0), 0) : 0;
@@ -6732,16 +7179,41 @@
             .reduce((acc, e) => acc + (e.amount || 0), 0)
           : 0;
 
+        const totalSavings = savings ? savings.reduce((acc, s) => acc + (s.amount || 0), 0) : 0;
+        const currentMonthSavings = savings
+          ? savings
+            .filter(s => s.savingDate && s.savingDate.startsWith(currentMonthStr))
+            .reduce((acc, s) => acc + (s.amount || 0), 0)
+          : 0;
+
         const pendingTasks = reminders ? reminders.filter(r => r.type === 'task' && !r.completed).length : 0;
         const activeReminders = reminders ? reminders.filter(r => r.type !== 'task' && !r.completed).length : 0;
 
         return {
           totalExpenses,
           currentMonthExpenses,
+          totalSavings,
+          currentMonthSavings,
           pendingTasks,
           activeReminders
         };
-      }, [expenses, reminders]);
+      }, [expenses, savings, reminders]);
+
+      // Filtered Goals for Dashboard Widget
+      const dashFilteredGoals = useMemo(() => {
+        if (!goals || goals.length === 0) return [];
+        return goals.filter(g => {
+          if (dashGoalTab === 'SAVINGS') return g.goalType === 'SAVINGS_TARGET' || !g.goalType;
+          if (dashGoalTab === 'HABITS') return g.goalType === 'HABIT_STREAK' || g.goalType === 'QUIT_HABIT';
+          return true;
+        });
+      }, [goals, dashGoalTab]);
+
+      const navigateToGoals = () => {
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+          detail: { page: 'planner', tab: 'goals' }
+        }));
+      };
 
       // Quick Modal Handlers
       const openQuickModal = (type) => {
@@ -6751,7 +7223,15 @@
         setQDueDate(BillsoftUtils.todayStr());
         setQTags('');
         setQAmount('');
-        setQCategory('Office Supplies');
+        setQCategory(type === 'saving' ? 'Emergency Fund' : 'Office Supplies');
+        setQCustomCategory('');
+        setQGoalId('');
+        setQGoalType('SAVINGS_TARGET');
+        setQTargetValue('');
+        setQUnit('₹');
+        setQTargetDate('');
+        setQIcon('💰');
+        setQColor('#10b981');
         setQExpenseDate(BillsoftUtils.todayStr());
         setQPaymentMode('UPI');
         setQCustomerId('');
@@ -6774,16 +7254,61 @@
             showToast('Valid amount is required', 'error');
             return;
           }
+          const finalCat = (qCategory === '__custom__' && qCustomCategory.trim()) ? qCustomCategory.trim() : (qCategory === '__custom__' ? 'General Expense' : qCategory);
           const payload = {
             title: qTitle.trim(),
             amount: numAmt,
-            category: qCategory,
+            category: finalCat,
             expenseDate: qExpenseDate || BillsoftUtils.todayStr(),
             paymentMode: qPaymentMode,
             notes: qNote.trim(),
+            tags: qTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
             firmId: targetFirmId
           };
           if (onCreateExpense) onCreateExpense(payload);
+          setQuickModalOpen(false);
+          return;
+        }
+
+        if (quickModalType === 'saving') {
+          const numAmt = parseFloat(qAmount);
+          if (isNaN(numAmt) || numAmt <= 0) {
+            showToast('Valid amount is required', 'error');
+            return;
+          }
+          const finalCat = (qCategory === '__custom__' && qCustomCategory.trim()) ? qCustomCategory.trim() : (qCategory === '__custom__' ? 'General Savings' : qCategory);
+          const payload = {
+            title: qTitle.trim(),
+            amount: numAmt,
+            category: finalCat,
+            savingDate: qExpenseDate || BillsoftUtils.todayStr(),
+            paymentMode: qPaymentMode,
+            goalId: qGoalId ? parseInt(qGoalId, 10) : null,
+            notes: qNote.trim(),
+            tags: qTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+            firmId: targetFirmId
+          };
+          if (onCreateSaving) onCreateSaving(payload);
+          setQuickModalOpen(false);
+          return;
+        }
+
+        if (quickModalType === 'goal') {
+          const numTarget = parseFloat(qTargetValue) || 0;
+          const goalPayload = {
+            title: qTitle.trim(),
+            goalType: qGoalType,
+            targetValue: numTarget,
+            unit: qUnit.trim() || '₹',
+            startDate: BillsoftUtils.todayStr(),
+            targetDate: qTargetDate || null,
+            icon: qIcon.trim() || '💰',
+            color: qColor || '#10b981',
+            notes: qNote.trim(),
+            tags: qTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
+            firmId: targetFirmId
+          };
+          if (onCreateGoal) onCreateGoal(goalPayload);
           setQuickModalOpen(false);
           return;
         }
@@ -6933,6 +7458,16 @@
             }, '💳 + Expense'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
+              onClick: () => openQuickModal('saving'),
+              style: { gap: 6, fontSize: '0.82rem' }
+            }, '💰 + Saving'),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-outline',
+              onClick: () => openQuickModal('goal'),
+              style: { gap: 6, fontSize: '0.82rem' }
+            }, '🎯 + Goal'),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-outline',
               onClick: () => openQuickModal('note'),
               style: { gap: 6, fontSize: '0.82rem' }
             }, '📝 + Note')
@@ -7045,6 +7580,119 @@
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '👥 Active Customers:'),
             React.createElement('strong', null, `${customers.length}`)
+          )
+        ),
+
+        // 🎯 Executive Multi-Goal Progress Widget
+        React.createElement('div', { className: 'dashboard-goals-widget' },
+          React.createElement('div', { className: 'dashboard-goals-widget-header' },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { fontSize: '1.25rem' } }, '🎯'),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '1.02rem', letterSpacing: '-0.01em' } }, 'Goals & Active Focus'),
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Live progress, habit streaks & 1-tap fast deposits')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('div', { className: 'tabs', style: { margin: 0, padding: 2, background: 'var(--bg-hover)', borderRadius: 8 } },
+                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'ALL' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('ALL') }, `All (${goals.length})`),
+                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'SAVINGS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('SAVINGS') }, `Savings (${goals.filter(g => g.goalType === 'SAVINGS_TARGET' || !g.goalType).length})`),
+                React.createElement('button', { className: `tab tab-sm${dashGoalTab === 'HABITS' ? ' active' : ''}`, style: { padding: '4px 10px', fontSize: '0.78rem' }, onClick: () => setDashGoalTab('HABITS') }, `Habits (${goals.filter(g => g.goalType === 'HABIT_STREAK' || g.goalType === 'QUIT_HABIT').length})`)
+              ),
+              React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('goal') }, '🎯 + Goal'),
+              React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: navigateToGoals, style: { color: 'var(--primary)', fontWeight: 600 } }, 'View Hub →')
+            )
+          ),
+
+          dashFilteredGoals.length > 0 ? (
+            React.createElement('div', { className: 'dashboard-goals-list' },
+              dashFilteredGoals.slice(0, 4).map(g => {
+                const isSavings = g.goalType === 'SAVINGS_TARGET' || !g.goalType;
+                const isHabit = g.goalType === 'HABIT_STREAK';
+                const isQuit = g.goalType === 'QUIT_HABIT';
+                const isMilestone = g.goalType === 'LIFE_MILESTONE';
+                const curVal = g.currentValue != null ? g.currentValue : 0;
+                const tgtVal = g.targetValue != null ? g.targetValue : 0;
+                const pct = (tgtVal > 0) ? Math.min(100, Math.round((curVal / tgtVal) * 100)) : (g.status === 'ACHIEVED' ? 100 : 0);
+                const isAchieved = g.status === 'ACHIEVED';
+                const todayStr = BillsoftUtils.todayStr();
+                const isCheckedInToday = g.lastCheckInDate && g.lastCheckInDate === todayStr;
+                const cardColor = g.color || (isSavings ? '#10b981' : (isHabit ? '#f59e0b' : (isQuit ? '#8b5cf6' : '#3b82f6')));
+
+                return React.createElement('div', { key: g.id, className: 'dashboard-goal-row' },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                      React.createElement('span', { style: { fontSize: '1.2rem', padding: '4px 8px', borderRadius: 8, background: `${cardColor}18` } }, g.icon || (isSavings ? '💰' : (isHabit ? '🔥' : '🎯'))),
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.92rem' } }, g.title),
+                        React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } },
+                          isSavings ? `${BillsoftUtils.formatCurrency(curVal)} of ${BillsoftUtils.formatCurrency(tgtVal)}` :
+                          (isHabit ? `🔥 ${g.currentStreak || 0} day streak (Best: ${g.longestStreak || 0}d)` :
+                          (isQuit ? `🌿 ${g.currentStreak || 0} days clean` : `${curVal} / ${tgtVal} ${g.unit || ''}`))
+                        )
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                      React.createElement('span', {
+                        className: 'progress-percent-pill',
+                        style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : { fontSize: '0.72rem', padding: '2px 8px' }
+                      }, isAchieved ? '🏆 Done!' : `${pct}%`),
+                      // Quick Action Buttons
+                      isSavings && React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { fontSize: '0.72rem', padding: '3px 8px' },
+                          onClick: () => {
+                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
+                            else onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                          }
+                        }, '+₹1k'),
+                        React.createElement('button', {
+                          className: 'progress-quick-pill-btn',
+                          style: { fontSize: '0.72rem', padding: '3px 8px' },
+                          onClick: () => {
+                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 5000);
+                            else onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                          }
+                        }, '+₹5k')
+                      ),
+                      isHabit && React.createElement('button', {
+                        className: `progress-quick-pill-btn${isCheckedInToday ? '' : ' flame'}`,
+                        style: { fontSize: '0.72rem', padding: '3px 10px' },
+                        disabled: isCheckedInToday,
+                        onClick: () => onCheckInGoal && onCheckInGoal(g.id)
+                      }, isCheckedInToday ? '✓ Done' : '🔥 Check-in'),
+                      isQuit && React.createElement('button', {
+                        className: 'progress-quick-pill-btn flame',
+                        style: { fontSize: '0.72rem', padding: '3px 10px' },
+                        onClick: () => onCheckInGoal && onCheckInGoal(g.id)
+                      }, '🌿 Clean Day'),
+                      isMilestone && React.createElement('button', {
+                        className: 'progress-quick-pill-btn primary',
+                        style: { fontSize: '0.72rem', padding: '3px 8px' },
+                        onClick: () => onIncrementGoal && onIncrementGoal(g.id, 1)
+                      }, '+1 Step')
+                    )
+                  ),
+                  // Progress Track
+                  React.createElement('div', { className: 'progress-pill-track', style: { height: 10 } },
+                    React.createElement('div', {
+                      className: `progress-pill-fill${isAchieved ? '' : ' striped'}`,
+                      style: {
+                        width: `${pct}%`,
+                        background: isAchieved ? '#10b981' : `linear-gradient(90deg, ${cardColor}cc, ${cardColor})`
+                      }
+                    })
+                  )
+                );
+              }),
+              dashFilteredGoals.length > 4 && React.createElement('div', { style: { textAlign: 'center', paddingTop: 4 } },
+                React.createElement('button', { className: 'btn btn-link btn-xs', onClick: navigateToGoals }, `+${dashFilteredGoals.length - 4} more goals in Goals Hub →`)
+              )
+            )
+          ) : React.createElement('div', { className: 'empty-state', style: { padding: '20px 0', textAlign: 'center' } },
+            React.createElement('p', { style: { margin: '0 0 8px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } }, 'No active goals or habit streaks yet.'),
+            React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => openQuickModal('goal') }, '🎯 Set Your First Goal')
           )
         ),
 
@@ -7181,17 +7829,17 @@
         quickModalOpen && React.createElement('div', { className: 'modal-overlay', onClick: () => setQuickModalOpen(false) },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 480, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 } },
-              quickModalType === 'reminder' ? '🔔 Quick Reminder' : (quickModalType === 'task' ? '📋 Quick Task' : (quickModalType === 'expense' ? '💳 Quick Expense' : '📝 Quick Note'))
+              quickModalType === 'reminder' ? '🔔 Quick Reminder' : (quickModalType === 'task' ? '📋 Quick Task' : (quickModalType === 'expense' ? '💳 Quick Expense' : (quickModalType === 'saving' ? '💰 Quick Saving' : (quickModalType === 'goal' ? '🎯 Quick Goal / Habit' : '📝 Quick Note'))))
             ),
 
             // Title Input
             React.createElement('div', null,
               React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Title *'),
-              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: quickModalType === 'expense' ? 'e.g. Office Supplies, Internet' : 'Enter Title', value: qTitle, onChange: e => setQTitle(e.target.value) })
+              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: quickModalType === 'expense' ? 'e.g. Office Supplies, Internet' : (quickModalType === 'saving' ? 'e.g. Monthly SIP, Gold Purchase' : (quickModalType === 'goal' ? 'e.g. Save ₹2 Lakhs, Daily 30m Reading' : 'Enter Title')), value: qTitle, onChange: e => setQTitle(e.target.value) })
             ),
 
-            // Expense Specific Fields
-            quickModalType === 'expense' && React.createElement(Fragment, null,
+            // Expense or Saving Specific Fields
+            (quickModalType === 'expense' || quickModalType === 'saving') && React.createElement(Fragment, null,
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
                 React.createElement('div', null,
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Amount (₹) *'),
@@ -7200,9 +7848,14 @@
                 React.createElement('div', null,
                   React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Category'),
                   React.createElement('select', { className: 'select w-full', value: qCategory, onChange: e => setQCategory(e.target.value) },
-                    expenseCategories.map(c => React.createElement('option', { key: c, value: c }, c))
+                    (quickModalType === 'saving' ? savingCategories : expenseCategories).map(c => React.createElement('option', { key: c, value: c }, c)),
+                    React.createElement('option', { value: '__custom__' }, '+ Custom Category...')
                   )
                 )
+              ),
+              qCategory === '__custom__' && React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Custom Category Name *'),
+                React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'Enter custom category name...', value: qCustomCategory, onChange: e => setQCustomCategory(e.target.value) })
               ),
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
                 React.createElement('div', null,
@@ -7215,11 +7868,58 @@
                     paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
                   )
                 )
+              ),
+              quickModalType === 'saving' && React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Link to Financial Goal (Optional)'),
+                React.createElement('select', { className: 'select w-full', value: qGoalId, onChange: e => setQGoalId(e.target.value) },
+                  React.createElement('option', { value: '' }, '-- Unlinked / General Saving --'),
+                  (goals || []).filter(g => g.type === 'SAVINGS_TARGET' || g.goalType === 'SAVINGS_TARGET' || !g.goalType).map(g => React.createElement('option', { key: g.id, value: String(g.id) }, `${g.title} (${BillsoftUtils.formatCurrency(g.currentValue || g.currentAmount || 0)} / ${BillsoftUtils.formatCurrency(g.targetValue || g.targetAmount || 0)})`))
+                )
+              )
+            ),
+
+            // Goal Specific Fields for Quick Modal
+            quickModalType === 'goal' && React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Goal Type'),
+                  React.createElement('select', {
+                    className: 'select w-full',
+                    value: qGoalType,
+                    onChange: e => {
+                      const gt = e.target.value;
+                      setQGoalType(gt);
+                      if (gt === 'SAVINGS_TARGET') { setQUnit('₹'); setQIcon('💰'); }
+                      else if (gt === 'HABIT_STREAK') { setQUnit('days'); setQIcon('🔥'); }
+                      else if (gt === 'QUIT_HABIT') { setQUnit('days'); setQIcon('🌿'); }
+                      else { setQUnit('count'); setQIcon('🎯'); }
+                    }
+                  },
+                    React.createElement('option', { value: 'SAVINGS_TARGET' }, '💰 Savings Financial Target'),
+                    React.createElement('option', { value: 'HABIT_STREAK' }, '🔥 Daily Habit Streak'),
+                    React.createElement('option', { value: 'QUIT_HABIT' }, '🌿 Quit Habit / Clean Days'),
+                    React.createElement('option', { value: 'LIFE_MILESTONE' }, '🎯 Milestone Counter')
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Value / Days'),
+                  React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: qGoalType === 'SAVINGS_TARGET' ? 'e.g. 500000' : 'e.g. 30', value: qTargetValue, onChange: e => setQTargetValue(e.target.value) })
+                )
+              ),
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Icon / Emoji'),
+                  React.createElement('input', { className: 'input w-full', placeholder: '💰, 🔥, 🌿, 🎯', value: qIcon, onChange: e => setQIcon(e.target.value) })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Deadline (Optional)'),
+                  React.createElement('input', { className: 'input w-full', type: 'date', value: qTargetDate, onChange: e => setQTargetDate(e.target.value) })
+                )
               )
             ),
 
             // Associations (Customer & Firm Selectors)
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+            (quickModalType !== 'goal') && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               React.createElement('div', null,
                 React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Associate Customer'),
                 React.createElement('select', { className: 'select w-full', value: qCustomerId, onChange: e => setQCustomerId(e.target.value) },
@@ -7237,7 +7937,7 @@
 
             // Note / Content input
             React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, quickModalType === 'note' ? 'Content' : (quickModalType === 'expense' ? 'Notes / Remarks' : 'Note')),
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, quickModalType === 'note' ? 'Content' : ((quickModalType === 'expense' || quickModalType === 'saving' || quickModalType === 'goal') ? 'Notes / Remarks' : 'Note')),
               React.createElement('textarea', { className: 'textarea w-full', placeholder: 'Enter details...', rows: 3, value: qNote, onChange: e => setQNote(e.target.value) })
             ),
 
@@ -7247,10 +7947,10 @@
               React.createElement('input', { className: 'input w-full', type: 'date', value: qDueDate, onChange: e => setQDueDate(e.target.value) })
             ),
 
-            // Tags Input
-            quickModalType !== 'expense' && React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags (comma separated)'),
-              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'e.g. urgent, billing', value: qTags, onChange: e => setQTags(e.target.value) })
+            // Tags Input (for reminders, tasks, savings, goals, notes)
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags (comma separated, e.g. Car, Emergency)'),
+              React.createElement('input', { className: 'input w-full', type: 'text', placeholder: 'e.g. Car, Emergency, SIP', value: qTags, onChange: e => setQTags(e.target.value) })
             ),
 
             // Modal Actions
@@ -26581,6 +27281,8 @@
       const [reminders, setReminders] = useState([]);
       const [notes, setNotes] = useState([]);
       const [expenses, setExpenses] = useState([]);
+      const [savings, setSavings] = useState([]);
+      const [goals, setGoals] = useState([]);
       const [messages, setMessages] = useState([]);
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
@@ -26946,6 +27648,8 @@
         setReminders([]);
         setNotes([]);
         setExpenses([]);
+        setSavings([]);
+        setGoals([]);
         setMessages([]);
         lastSeenMsgIdRef.current = null;
         const msg = typeof reason === 'string' ? reason : 'Logged out successfully';
@@ -26968,7 +27672,7 @@
         }).catch(() => { });
       };
       useEffect(() => { loadFirms(); }, [firmLoadKey]);
-      // Load reminders, notes, and expenses after firm is ready AND user is authenticated
+      // Load reminders, notes, expenses, savings, and goals after firm is ready AND user is authenticated
       useEffect(() => {
         if (isAuthenticated && API.firmId) {
           if (API.reminders && typeof API.reminders.list === 'function') {
@@ -26979,6 +27683,12 @@
           }
           if (API.expenses && typeof API.expenses.listByFirm === 'function') {
             API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { });
+          }
+          if (API.savings && typeof API.savings.listByFirm === 'function') {
+            API.savings.listByFirm(API.firmId).then(setSavings).catch(() => { });
+          }
+          if (API.goals && typeof API.goals.list === 'function') {
+            API.goals.list().then(setGoals).catch(() => { });
           }
         }
       }, [isAuthenticated, API.firmId]);
@@ -27045,6 +27755,8 @@
           (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(setReminders).catch(() => { }) : Promise.resolve()),
           (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && API.firmId ? API.notes.listByFirm(API.firmId).then(setNotes).catch(() => { }) : Promise.resolve()),
           (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && API.firmId ? API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { }) : Promise.resolve()),
+          (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && API.firmId ? API.savings.listByFirm(API.firmId).then(setSavings).catch(() => { }) : Promise.resolve()),
+          (API.goals && typeof API.goals.list === 'function' && isAuthenticated && API.firmId ? API.goals.list().then(setGoals).catch(() => { }) : Promise.resolve()),
           (API.messages && typeof API.messages.list === 'function' && isAuthenticated && API.firmId ? API.messages.list().then(processMessages).catch(() => { }) : Promise.resolve()),
           (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
             if (lic) {
@@ -27270,6 +27982,116 @@
         });
       };
 
+      const refreshGoals = () => {
+        if (API.goals && typeof API.goals.list === 'function') {
+          API.goals.list().then(setGoals).catch(() => { });
+        }
+      };
+      const refreshSavings = () => {
+        if (API.savings && typeof API.savings.listByFirm === 'function' && API.firmId) {
+          API.savings.listByFirm(API.firmId).then(setSavings).catch(() => { });
+        }
+      };
+
+      const handleCreateSaving = (data) => {
+        return API.savings.create(data).then(newSav => {
+          if (!newSav.firmId || String(newSav.firmId) === String(API.firmId)) {
+            setSavings(prev => [newSav, ...prev]);
+            showToast('Savings recorded successfully', 'success');
+          } else {
+            const targetFirm = (firms || []).find(f => String(f.id) === String(newSav.firmId));
+            showToast(`Savings recorded for ${targetFirm ? targetFirm.firmName : 'Firm #' + newSav.firmId}`, 'success');
+          }
+          refreshGoals();
+        }).catch(e => {
+          showToast('Failed to record savings', 'error');
+        });
+      };
+      const handleUpdateSaving = (id, data) => {
+        return API.savings.update(id, data).then(updated => {
+          setSavings(prev => prev.map(s => s.id === id ? updated : s));
+          showToast('Savings updated successfully', 'success');
+          refreshGoals();
+        }).catch(e => {
+          showToast('Failed to update savings', 'error');
+        });
+      };
+      const handleDeleteSaving = (id) => {
+        return API.savings.delete(id).then(() => {
+          setSavings(prev => prev.filter(s => s.id !== id));
+          showToast('Savings record deleted', 'success');
+          refreshGoals();
+        }).catch(e => {
+          showToast('Failed to delete savings record', 'error');
+        });
+      };
+
+      const handleCreateGoal = (data) => {
+        return API.goals.create(data).then(newGoal => {
+          setGoals(prev => [newGoal, ...prev]);
+          showToast('Goal created successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to create goal', 'error');
+        });
+      };
+      const handleUpdateGoal = (id, data) => {
+        return API.goals.update(id, data).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          showToast('Goal updated successfully', 'success');
+        }).catch(e => {
+          showToast('Failed to update goal', 'error');
+        });
+      };
+      const handleDeleteGoal = (id) => {
+        return API.goals.delete(id).then(() => {
+          setGoals(prev => prev.filter(g => g.id !== id));
+          showToast('Goal deleted', 'success');
+          refreshSavings();
+        }).catch(e => {
+          showToast('Failed to delete goal', 'error');
+        });
+      };
+      const handleCheckInGoal = (id) => {
+        return API.goals.checkIn(id).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          showToast('🔥 Checked in for today! Keep up the streak!', 'success');
+        }).catch(e => {
+          showToast('Failed to check in', 'error');
+        });
+      };
+      const handleIncrementGoal = (id, delta) => {
+        return API.goals.increment(id, delta).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+        }).catch(e => {
+          showToast('Failed to update progress', 'error');
+        });
+      };
+      const handleResetGoal = (id) => {
+        return API.goals.reset(id).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          showToast('Timer reset. Stay strong and start fresh!', 'info');
+        }).catch(e => {
+          showToast('Failed to reset goal timer', 'error');
+        });
+      };
+      const handleQuickSavingGoal = (id, amount, notes) => {
+        return API.goals.quickSaving(id, amount, notes).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          refreshSavings();
+          showToast(`₹${amount.toLocaleString('en-IN')} added to goal savings!`, 'success');
+        }).catch(e => {
+          showToast('Failed to add quick saving', 'error');
+        });
+      };
+      const handleIncrementStreakGoal = (id, days) => {
+        return API.goals.incrementStreak(id, days).then(updated => {
+          setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          showToast(`+${days} days added to streak!`, 'success');
+        }).catch(e => {
+          showToast('Failed to increment streak', 'error');
+        });
+      };
+
       const handleEditQuotation = (id) => { setEditQuotationId(id); setEditInvoiceId(null); setConvertedFromQuotationId(null); setPage('invoices'); };
       const handleConvertToInvoice = (quotationOrId) => {
         const qId = (quotationOrId && typeof quotationOrId === 'object') ? quotationOrId.id : quotationOrId;
@@ -27490,6 +28312,8 @@
             reminders,
             notes,
             expenses,
+            savings,
+            goals,
             firms,
             onMarkDone: handleMarkReminderDone,
             onUpdateReminder: handleUpdateReminder,
@@ -27498,7 +28322,14 @@
             onCreateReminder: handleCreateReminder,
             onCreateTask: handleCreateTask,
             onCreateNote: handleCreateNote,
-            onCreateExpense: handleCreateExpense
+            onCreateExpense: handleCreateExpense,
+            onCreateSaving: handleCreateSaving,
+            onCreateGoal: handleCreateGoal,
+            onCheckInGoal: handleCheckInGoal,
+            onIncrementGoal: handleIncrementGoal,
+            onResetGoal: handleResetGoal,
+            onQuickSavingGoal: handleQuickSavingGoal,
+            onIncrementStreakGoal: handleIncrementStreakGoal
           })
         },
         invoices: {
@@ -27524,6 +28355,8 @@
             reminders,
             notes,
             expenses,
+            savings,
+            goals,
             firms,
             onMarkDone: handleMarkReminderDone,
             onUpdateReminder: handleUpdateReminder,
@@ -27535,7 +28368,18 @@
             onDeleteNote: handleDeleteNote,
             onCreateExpense: handleCreateExpense,
             onUpdateExpense: handleUpdateExpense,
-            onDeleteExpense: handleDeleteExpense
+            onDeleteExpense: handleDeleteExpense,
+            onCreateSaving: handleCreateSaving,
+            onUpdateSaving: handleUpdateSaving,
+            onDeleteSaving: handleDeleteSaving,
+            onCreateGoal: handleCreateGoal,
+            onUpdateGoal: handleUpdateGoal,
+            onDeleteGoal: handleDeleteGoal,
+            onCheckInGoal: handleCheckInGoal,
+            onIncrementGoal: handleIncrementGoal,
+            onResetGoal: handleResetGoal,
+            onQuickSavingGoal: handleQuickSavingGoal,
+            onIncrementStreakGoal: handleIncrementStreakGoal
           })
         },
         inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },

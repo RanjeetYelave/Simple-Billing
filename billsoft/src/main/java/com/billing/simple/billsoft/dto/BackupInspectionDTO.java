@@ -25,7 +25,25 @@ public class BackupInspectionDTO {
         private int purchaseOrderCount;
         private int employeeCount;
         private int expenseCount;
+        private int savingCount;
+        private int goalCount;
         private int letterCount;
+
+        public int getSavingCount() {
+            return savingCount;
+        }
+
+        public void setSavingCount(int savingCount) {
+            this.savingCount = savingCount;
+        }
+
+        public int getGoalCount() {
+            return goalCount;
+        }
+
+        public void setGoalCount(int goalCount) {
+            this.goalCount = goalCount;
+        }
 
         public Long getFirmId() {
             return firmId;

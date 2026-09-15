@@ -2152,7 +2152,87 @@ const BillsoftSearchEngine = {
         'sarva kharch', 'kharchachi yadi', 'सर्व खर्च', 'खर्च नोंदवही'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'expenses' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'expenses' });
+      }
+    },
+    {
+      id: 'add_saving',
+      title: 'Record Investment / Savings',
+      subtitle: 'Log SIP, mutual fund, gold or cash savings deposit & link to goals',
+      category: 'actions',
+      icon: '💰',
+      badge: 'Planner',
+      slashCommand: '/save',
+      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' },
+      keywords: [
+        '/save', '/saving', '/bachat', '/invest', '/sip', '/deposit', 'save', 'saving', 'bachat', 'invest', 'sip',
+        'add saving', 'new saving', 'record saving', 'log saving', 'invest money', 'sip investment', 'gold saving', 'fixed deposit', 'emergency fund', 'savings ledger', 'savings', 'deposits',
+        'bachat karo', 'bachat jodo', 'paisa bachao', 'invest karo', 'sip katao', 'बचत करो', 'बचत जोड़ो', 'पैसा बचाओ', 'निवेश करो',
+        'bachat nondwa', 'paise vachva', 'shillak theva', 'गुंतवणूक करा', 'बचत नोंदवा', 'पैसे वाचवा',
+        'savng', 'bachatt', 'invst'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' });
+        window.dispatchEvent(new CustomEvent('billsoft:open-add-saving'));
+      }
+    },
+    {
+      id: 'view_savings',
+      title: 'Savings & Reserves Ledger',
+      subtitle: 'Review total savings, category allocations, and progress against goals',
+      category: 'actions',
+      icon: '📈',
+      badge: 'Planner',
+      slashCommand: '/savings',
+      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' },
+      keywords: [
+        '/savings', '/investments', '/bachatlist', '/reserves', 'savings', 'investments',
+        'all savings', 'view savings list', 'savings sheet', 'monthly savings',
+        'saari bachat', 'bachat ki list', 'सारी बचत', 'बचत लिस्ट',
+        'sarva bachat', 'bachat yadi', 'सर्व बचत', 'बचत नोंदवही'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'savings' });
+      }
+    },
+    {
+      id: 'add_goal',
+      title: 'Set Goal / Daily Habit Streak',
+      subtitle: 'Create savings targets, daily habits, milestones or quit-vice counters',
+      category: 'actions',
+      icon: '🎯',
+      badge: 'Planner',
+      slashCommand: '/goal',
+      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' },
+      keywords: [
+        '/goal', '/streak', '/habit', '/target', '/milestone', 'goal', 'streak', 'habit', 'target',
+        'add goal', 'new goal', 'create habit', 'new streak', 'quit habit', 'set target', 'financial goal', 'daily streak', 'habits', 'goals',
+        'lakshya banao', 'aadat sudharo', 'streak shuru', 'लक्ष्य बनाओ', 'आदत सुधारो', 'स्ट्रिक शुरू करो',
+        'dhyey theva', 'naveen goal', 'सवय लावा', 'ध्येय ठरवा',
+        'gol', 'strk', 'hbit'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' });
+        window.dispatchEvent(new CustomEvent('billsoft:open-add-goal'));
+      }
+    },
+    {
+      id: 'view_goals',
+      title: 'Goals, Streaks & Habits Hub',
+      subtitle: 'Track live savings goals, daily check-in streaks and milestones',
+      category: 'actions',
+      icon: '🔥',
+      badge: 'Planner',
+      slashCommand: '/goals',
+      target: { page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' },
+      keywords: [
+        '/goals', '/streaks', '/habits', '/targets', 'goals', 'streaks', 'habits',
+        'view goals', 'all goals', 'my goals', 'habit tracker', 'streak counter',
+        'saare goals', 'meray goals', 'सारे लक्ष्य', 'आदतें',
+        'sarva dhyey', 'सवयी'
+      ],
+      action: (ctx) => {
+        BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'trackers', trackerSubTab: 'goals' });
       }
     },
     {

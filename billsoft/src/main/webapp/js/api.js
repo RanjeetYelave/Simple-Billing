@@ -597,6 +597,12 @@ const API = {
     productStats: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/analytics/product/${id}`))),
   },
 
+  // ── Standalone Isolated KPI Facade Layer ──
+  kpis: {
+    dashboard: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/kpis/dashboard'))),
+    customers: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/kpis/customers'))),
+  },
+
   // ── Statements ──
   statements: {
     customer: (id, from, to) => {

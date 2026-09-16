@@ -210,7 +210,10 @@ public class PurchaseOrderPdfService {
         doc.add(partyShipWrapTable);
 
         // 3. Line Items Table (Multi-Page Split & Repeating Headers)
-        PdfPTable itemTable = new PdfPTable(new float[]{5, 38, 12, 8, 8, 13, 16});
+        boolean hidePrices = Boolean.TRUE.equals(po != null ? po.getHidePricesOnPo() : false);
+        PdfPTable itemTable = hidePrices
+                ? new PdfPTable(new float[]{6, 52, 16, 12, 14})
+                : new PdfPTable(new float[]{5, 38, 12, 8, 8, 13, 16});
         itemTable.setWidthPercentage(100);
         itemTable.setHeaderRows(1);
         itemTable.setSplitLate(false);
@@ -219,8 +222,12 @@ public class PurchaseOrderPdfService {
         itemTable.getDefaultCell().setBorderColor(BORDER_COLOR);
 
         // Headers
-        String[] headers = {"#", "Item & Description", "HSN", "Qty", "Unit", "Rate (₹)", "Total (₹)"};
-        int[] aligns = {Element.ALIGN_CENTER, Element.ALIGN_LEFT, Element.ALIGN_CENTER, Element.ALIGN_RIGHT, Element.ALIGN_CENTER, Element.ALIGN_RIGHT, Element.ALIGN_RIGHT};
+        String[] headers = hidePrices
+                ? new String[]{"#", "Item & Description", "HSN", "Qty", "Unit"}
+                : new String[]{"#", "Item & Description", "HSN", "Qty", "Unit", "Rate (₹)", "Total (₹)"};
+        int[] aligns = hidePrices
+                ? new int[]{Element.ALIGN_CENTER, Element.ALIGN_LEFT, Element.ALIGN_CENTER, Element.ALIGN_RIGHT, Element.ALIGN_CENTER}
+                : new int[]{Element.ALIGN_CENTER, Element.ALIGN_LEFT, Element.ALIGN_CENTER, Element.ALIGN_RIGHT, Element.ALIGN_CENTER, Element.ALIGN_RIGHT, Element.ALIGN_RIGHT};
 
         for (int i = 0; i < headers.length; i++) {
             PdfPCell th = new PdfPCell(new Phrase(headers[i], tableHeaderFont));
@@ -237,7 +244,7 @@ public class PurchaseOrderPdfService {
         List<PurchaseOrderItem> items = po != null ? po.getItems() : null;
         if (items == null || items.isEmpty()) {
             PdfPCell emptyC = new PdfPCell(new Phrase("No line items in this purchase order.", normalFont));
-            emptyC.setColspan(7);
+            emptyC.setColspan(headers.length);
             emptyC.setPadding(14);
             emptyC.setHorizontalAlignment(Element.ALIGN_CENTER);
             emptyC.setBorderColor(BORDER_COLOR);
@@ -286,26 +293,28 @@ public class PurchaseOrderPdfService {
                 cUnit.setBorderColor(BORDER_COLOR);
                 itemTable.addCell(cUnit);
 
-                PdfPCell cRate = new PdfPCell(new Phrase(CURRENCY_FORMAT.format(it.getUnitPrice() != null ? it.getUnitPrice() : BigDecimal.ZERO), normalFont));
-                cRate.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                cRate.setBackgroundColor(rowBg);
-                cRate.setPadding(6);
-                cRate.setBorderColor(BORDER_COLOR);
-                itemTable.addCell(cRate);
+                if (!hidePrices) {
+                    PdfPCell cRate = new PdfPCell(new Phrase(CURRENCY_FORMAT.format(it.getUnitPrice() != null ? it.getUnitPrice() : BigDecimal.ZERO), normalFont));
+                    cRate.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                    cRate.setBackgroundColor(rowBg);
+                    cRate.setPadding(6);
+                    cRate.setBorderColor(BORDER_COLOR);
+                    itemTable.addCell(cRate);
 
-                PdfPCell cTot = new PdfPCell(new Phrase(CURRENCY_FORMAT.format(it.getTotalAmount() != null ? it.getTotalAmount() : BigDecimal.ZERO), boldFont));
-                cTot.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                cTot.setBackgroundColor(rowBg);
-                cTot.setPadding(6);
-                cTot.setBorderColor(BORDER_COLOR);
-                itemTable.addCell(cTot);
+                    PdfPCell cTot = new PdfPCell(new Phrase(CURRENCY_FORMAT.format(it.getTotalAmount() != null ? it.getTotalAmount() : BigDecimal.ZERO), boldFont));
+                    cTot.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                    cTot.setBackgroundColor(rowBg);
+                    cTot.setPadding(6);
+                    cTot.setBorderColor(BORDER_COLOR);
+                    itemTable.addCell(cTot);
+                }
             }
         }
 
         doc.add(itemTable);
 
         // 4. Totals Summary & Notes Block
-        PdfPTable bottomTable = new PdfPTable(new float[]{55, 45});
+        PdfPTable bottomTable = hidePrices ? new PdfPTable(1) : new PdfPTable(new float[]{55, 45});
         bottomTable.setWidthPercentage(100);
         bottomTable.setKeepTogether(true);
         bottomTable.getDefaultCell().setBorder(Rectangle.NO_BORDER);
@@ -313,6 +322,12 @@ public class PurchaseOrderPdfService {
         PdfPCell notesCell = new PdfPCell();
         notesCell.setBorder(Rectangle.NO_BORDER);
         notesCell.setPadding(10);
+        if (hidePrices) {
+            Paragraph specNotice = new Paragraph("Official Supply Order (Quantities & Specifications)", boldFont);
+            specNotice.getFont().setColor(THEME_PRIMARY);
+            notesCell.addElement(specNotice);
+            notesCell.addElement(new Paragraph("\n"));
+        }
         if (po != null && po.getNotes() != null && !po.getNotes().isEmpty()) {
             notesCell.addElement(new Paragraph("Notes / Instructions:", boldFont));
             notesCell.addElement(new Paragraph(po.getNotes(), smallMuted));
@@ -323,51 +338,53 @@ public class PurchaseOrderPdfService {
         }
         bottomTable.addCell(notesCell);
 
-        PdfPCell summaryCell = new PdfPCell();
-        summaryCell.setBorder(Rectangle.LEFT);
-        summaryCell.setBorderColor(BORDER_COLOR);
-        summaryCell.setBorderWidth(1f);
-        summaryCell.setPadding(8);
+        if (!hidePrices) {
+            PdfPCell summaryCell = new PdfPCell();
+            summaryCell.setBorder(Rectangle.LEFT);
+            summaryCell.setBorderColor(BORDER_COLOR);
+            summaryCell.setBorderWidth(1f);
+            summaryCell.setPadding(8);
 
-        PdfPTable sumGrid = new PdfPTable(new float[]{60, 40});
-        sumGrid.setWidthPercentage(100);
-        sumGrid.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+            PdfPTable sumGrid = new PdfPTable(new float[]{60, 40});
+            sumGrid.setWidthPercentage(100);
+            sumGrid.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-        addSummaryRow(sumGrid, "Subtotal (Taxable):", "₹ " + CURRENCY_FORMAT.format(po != null && po.getSubtotalWithoutTax() != null ? po.getSubtotalWithoutTax() : BigDecimal.ZERO), normalFont);
-        if (po != null && po.getTotalDiscountAmount() != null && po.getTotalDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
-            addSummaryRow(sumGrid, "Total Discount:", "- ₹ " + CURRENCY_FORMAT.format(po.getTotalDiscountAmount()), normalFont);
-        }
-        if (po != null && po.getTotalGstAmount() != null && po.getTotalGstAmount().compareTo(BigDecimal.ZERO) > 0) {
-            addSummaryRow(sumGrid, "GST Amount:", "₹ " + CURRENCY_FORMAT.format(po.getTotalGstAmount()), normalFont);
-        }
-        if (po != null && po.getRoundOff() != null && po.getRoundOff().compareTo(BigDecimal.ZERO) != 0) {
-            addSummaryRow(sumGrid, "Round Off:", (po.getRoundOff().compareTo(BigDecimal.ZERO) > 0 ? "+" : "") + CURRENCY_FORMAT.format(po.getRoundOff()), smallMuted);
-        }
-        addSummaryRow(sumGrid, "Grand Total:", "₹ " + CURRENCY_FORMAT.format(po != null && po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO), totalBoldFont);
+            addSummaryRow(sumGrid, "Subtotal (Taxable):", "₹ " + CURRENCY_FORMAT.format(po != null && po.getSubtotalWithoutTax() != null ? po.getSubtotalWithoutTax() : BigDecimal.ZERO), normalFont);
+            if (po != null && po.getTotalDiscountAmount() != null && po.getTotalDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(sumGrid, "Total Discount:", "- ₹ " + CURRENCY_FORMAT.format(po.getTotalDiscountAmount()), normalFont);
+            }
+            if (po != null && po.getTotalGstAmount() != null && po.getTotalGstAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(sumGrid, "GST Amount:", "₹ " + CURRENCY_FORMAT.format(po.getTotalGstAmount()), normalFont);
+            }
+            if (po != null && po.getRoundOff() != null && po.getRoundOff().compareTo(BigDecimal.ZERO) != 0) {
+                addSummaryRow(sumGrid, "Round Off:", (po.getRoundOff().compareTo(BigDecimal.ZERO) > 0 ? "+" : "") + CURRENCY_FORMAT.format(po.getRoundOff()), smallMuted);
+            }
+            addSummaryRow(sumGrid, "Grand Total:", "₹ " + CURRENCY_FORMAT.format(po != null && po.getTotalAmount() != null ? po.getTotalAmount() : BigDecimal.ZERO), totalBoldFont);
 
-        // Paid & Balance
-        if (po != null && po.getPaidAmount() != null && po.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
-            addSummaryRow(sumGrid, "Amount Paid:", "₹ " + CURRENCY_FORMAT.format(po.getPaidAmount()), normalFont);
-            BigDecimal balance = po.getTotalAmount().subtract(po.getPaidAmount()).max(BigDecimal.ZERO);
-            addSummaryRow(sumGrid, "Balance Due:", "₹ " + CURRENCY_FORMAT.format(balance), boldFont);
-        }
+            // Paid & Balance
+            if (po != null && po.getPaidAmount() != null && po.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(sumGrid, "Amount Paid:", "₹ " + CURRENCY_FORMAT.format(po.getPaidAmount()), normalFont);
+                BigDecimal balance = po.getTotalAmount().subtract(po.getPaidAmount()).max(BigDecimal.ZERO);
+                addSummaryRow(sumGrid, "Balance Due:", "₹ " + CURRENCY_FORMAT.format(balance), boldFont);
+            }
 
-        summaryCell.addElement(sumGrid);
-        bottomTable.addCell(summaryCell);
+            summaryCell.addElement(sumGrid);
+            bottomTable.addCell(summaryCell);
+        }
 
         PdfPTable bottomWrapTable = new PdfPTable(1);
         bottomWrapTable.setWidthPercentage(100);
         bottomWrapTable.setKeepTogether(true);
-        PdfPCell bCell = new PdfPCell(bottomTable);
-        bCell.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
-        bCell.setBorderColor(BORDER_COLOR);
-        bCell.setBorderWidth(1f);
-        bCell.setPadding(0);
-        bottomWrapTable.addCell(bCell);
+        PdfPCell bwCell = new PdfPCell(bottomTable);
+        bwCell.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
+        bwCell.setBorderColor(BORDER_COLOR);
+        bwCell.setBorderWidth(1f);
+        bwCell.setPadding(0);
+        bottomWrapTable.addCell(bwCell);
         doc.add(bottomWrapTable);
 
-        // 5. Signatory Footer Block
-        PdfPTable signTable = new PdfPTable(new float[]{60, 40});
+        // 5. Signature Block
+        PdfPTable signTable = new PdfPTable(new float[]{50, 50});
         signTable.setWidthPercentage(100);
         signTable.setKeepTogether(true);
         signTable.getDefaultCell().setBorder(Rectangle.NO_BORDER);
@@ -375,7 +392,9 @@ public class PurchaseOrderPdfService {
         PdfPCell signLeft = new PdfPCell();
         signLeft.setBorder(Rectangle.NO_BORDER);
         signLeft.setPadding(12);
-        signLeft.addElement(new Paragraph("This is a computer-generated official Purchase Order.", smallMuted));
+        signLeft.addElement(new Paragraph("Vendor Acknowledgment", boldFont));
+        signLeft.addElement(new Paragraph("Signature & Stamp:", smallMuted));
+        signLeft.addElement(new Paragraph("\n\n"));
         signTable.addCell(signLeft);
 
         PdfPCell signRight = new PdfPCell();
@@ -401,6 +420,62 @@ public class PurchaseOrderPdfService {
         doc.add(signWrapTable);
 
         doc.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Generates a single combined/merged multi-page PDF containing all provided purchase orders.
+     */
+    public byte[] generateMergedPdf(List<PurchaseOrder> poList) throws Exception {
+        if (poList == null || poList.isEmpty()) {
+            return new byte[0];
+        }
+        if (poList.size() == 1) {
+            return generatePdf(poList.get(0));
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Document mergedDoc = new Document();
+        com.lowagie.text.pdf.PdfCopy copy = new com.lowagie.text.pdf.PdfCopy(mergedDoc, baos);
+        mergedDoc.open();
+
+        for (PurchaseOrder po : poList) {
+            byte[] singlePdf = generatePdf(po);
+            com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(singlePdf);
+            int pages = reader.getNumberOfPages();
+            for (int i = 1; i <= pages; i++) {
+                copy.addPage(copy.getImportedPage(reader, i));
+            }
+            copy.freeReader(reader);
+            reader.close();
+        }
+
+        mergedDoc.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Generates a ZIP archive containing individual PDFs for each purchase order.
+     */
+    public byte[] generateZipBundle(List<PurchaseOrder> poList) throws Exception {
+        if (poList == null || poList.isEmpty()) {
+            return new byte[0];
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            for (PurchaseOrder po : poList) {
+                byte[] pdfBytes = generatePdf(po);
+                String safePoNum = po.getPoNumber() != null ? po.getPoNumber() : ("PO-" + po.getId());
+                String safeParty = po.getPartyName() != null ? po.getPartyName().replaceAll("[^a-zA-Z0-9.-]", "_") : "Vendor";
+                String filename = safePoNum + "_" + safeParty + ".pdf";
+
+                java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(filename);
+                zos.putNextEntry(entry);
+                zos.write(pdfBytes);
+                zos.closeEntry();
+            }
+        }
         return baos.toByteArray();
     }
 

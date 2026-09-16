@@ -37,4 +37,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT p FROM Product p WHERE p.firmId = :firmId AND (p.itemType IS NULL OR p.itemType = 'GOODS') AND p.stockQuantity <= p.minStockLevel ORDER BY p.stockQuantity ASC")
     List<Product> findLowStockProductsByFirmId(@Param("firmId") Long firmId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Product p SET p.preferredPartyId = :partyId WHERE p.id = :productId AND p.firmId = :firmId")
+    void updatePreferredPartyId(@Param("productId") Long productId, @Param("partyId") Long partyId, @Param("firmId") Long firmId);
 }

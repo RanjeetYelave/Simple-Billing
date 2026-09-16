@@ -216,7 +216,8 @@ public class PurchaseOrderController {
     public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id,
                                               @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                               @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             byte[] pdfBytes = poService.generatePoPdf(id, firmId);
             HttpHeaders headers = new HttpHeaders();
@@ -228,5 +229,80 @@ public class PurchaseOrderController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<PurchaseOrder>> createBatch(@RequestBody com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request,
+                                                           @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                           @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        if (firmId == null && request != null) {
+            firmId = request.getFirmId();
+        }
+        if (firmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            List<PurchaseOrder> createdOrders = poService.createPurchaseOrdersBatch(request, firmId);
+            return ResponseEntity.ok(createdOrders);
+        } catch (IllegalStateException e) {
+            // Duplicate request error
+            return ResponseEntity.status(409).build();
+        } catch (IllegalArgumentException | com.billing.simple.billsoft.security.TenantSecurityException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/batch/pdf")
+    public ResponseEntity<byte[]> downloadMergedPdf(@RequestParam(value = "ids") List<Long> ids,
+                                                    @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                    @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        try {
+            byte[] pdfBytes = poService.generateMergedPoPdf(ids, firmId);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            String timestamp = java.time.LocalDate.now().toString();
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"PurchaseOrders_Batch_" + timestamp + ".pdf\"");
+            return ResponseEntity.ok().headers(headers).body(pdfBytes);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/batch/zip")
+    public ResponseEntity<byte[]> downloadZipBundle(@RequestParam(value = "ids") List<Long> ids,
+                                                    @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                    @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        try {
+            byte[] zipBytes = poService.generateZipBundle(ids, firmId);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType("application/zip"));
+            String timestamp = java.time.LocalDate.now().toString();
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"PurchaseOrders_Batch_" + timestamp + ".zip\"");
+            return ResponseEntity.ok().headers(headers).body(zipBytes);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/vendor-history")
+    public ResponseEntity<Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto>> getVendorHistory(@RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                                                                                @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        if (firmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> historyMap = poService.getProductVendorHistory(firmId);
+        return ResponseEntity.ok(historyMap);
     }
 }

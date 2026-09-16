@@ -82,6 +82,10 @@ public class PurchaseOrder {
     @Column(length = 500)
     private String shippingAddress;
 
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean hidePricesOnPo = false;
+
     @OneToMany(mappedBy = "purchaseOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     @Builder.Default
@@ -207,6 +211,22 @@ public class PurchaseOrder {
     public Party getParty() { return party; }
     public void setParty(Party party) { this.party = party; }
 
+    @Transient
+    @com.fasterxml.jackson.annotation.JsonProperty("partyId")
+    public Long getPartyId() {
+        return this.party != null ? this.party.getId() : null;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("partyId")
+    public void setPartyId(Long partyId) {
+        if (partyId != null) {
+            if (this.party == null) {
+                this.party = new Party();
+            }
+            this.party.setId(partyId);
+        }
+    }
+
     public String getPartyName() { return partyName; }
     public void setPartyName(String partyName) { this.partyName = partyName; }
 
@@ -248,6 +268,9 @@ public class PurchaseOrder {
 
     public String getShippingAddress() { return shippingAddress; }
     public void setShippingAddress(String shippingAddress) { this.shippingAddress = shippingAddress; }
+
+    public Boolean getHidePricesOnPo() { return hidePricesOnPo != null ? hidePricesOnPo : false; }
+    public void setHidePricesOnPo(Boolean hidePricesOnPo) { this.hidePricesOnPo = hidePricesOnPo != null ? hidePricesOnPo : false; }
 
     public List<PurchaseOrderItem> getItems() { return items; }
     public void setItems(List<PurchaseOrderItem> items) { this.items = items; }
@@ -304,6 +327,7 @@ public class PurchaseOrder {
         private String paymentTerms;
         private String referenceNumber;
         private String shippingAddress;
+        private Boolean hidePricesOnPo = false;
         private List<PurchaseOrderItem> items = new ArrayList<>();
         private BigDecimal subtotalWithoutTax = BigDecimal.ZERO;
         private BigDecimal totalGstAmount = BigDecimal.ZERO;
@@ -335,6 +359,7 @@ public class PurchaseOrder {
         public PurchaseOrderBuilder paymentTerms(String paymentTerms) { this.paymentTerms = paymentTerms; return this; }
         public PurchaseOrderBuilder referenceNumber(String referenceNumber) { this.referenceNumber = referenceNumber; return this; }
         public PurchaseOrderBuilder shippingAddress(String shippingAddress) { this.shippingAddress = shippingAddress; return this; }
+        public PurchaseOrderBuilder hidePricesOnPo(Boolean hidePricesOnPo) { this.hidePricesOnPo = hidePricesOnPo != null ? hidePricesOnPo : false; return this; }
         public PurchaseOrderBuilder items(List<PurchaseOrderItem> items) { this.items = items; return this; }
         public PurchaseOrderBuilder subtotalWithoutTax(BigDecimal subtotalWithoutTax) { this.subtotalWithoutTax = subtotalWithoutTax; return this; }
         public PurchaseOrderBuilder totalGstAmount(BigDecimal totalGstAmount) { this.totalGstAmount = totalGstAmount; return this; }
@@ -368,6 +393,7 @@ public class PurchaseOrder {
             po.paymentTerms = this.paymentTerms;
             po.referenceNumber = this.referenceNumber;
             po.shippingAddress = this.shippingAddress;
+            po.hidePricesOnPo = this.hidePricesOnPo != null ? this.hidePricesOnPo : false;
             po.items = this.items != null ? this.items : new ArrayList<>();
             po.subtotalWithoutTax = this.subtotalWithoutTax != null ? this.subtotalWithoutTax : BigDecimal.ZERO;
             po.totalGstAmount = this.totalGstAmount != null ? this.totalGstAmount : BigDecimal.ZERO;

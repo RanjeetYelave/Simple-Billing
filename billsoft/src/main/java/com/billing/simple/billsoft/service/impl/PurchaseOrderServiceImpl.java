@@ -419,4 +419,155 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
         return pdfService.generatePdf(po);
     }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> PROCESSED_CLIENT_REQUESTS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<PurchaseOrder> createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            firmId = authoritativeFirmId;
+        }
+        if (firmId == null) {
+            throw new IllegalArgumentException("Authoritative Firm ID is required");
+        }
+        if (request == null || request.getOrders() == null || request.getOrders().isEmpty()) {
+            throw new IllegalArgumentException("At least one purchase order is required for batch creation");
+        }
+
+        // 1. Short-lived in-memory duplicate submission / rapid double-click guard
+        if (request.getClientRequestId() != null && !request.getClientRequestId().trim().isEmpty()) {
+            String reqId = request.getClientRequestId().trim();
+            long now = System.currentTimeMillis();
+            // Prune entries older than 5 minutes
+            PROCESSED_CLIENT_REQUESTS.entrySet().removeIf(e -> now - e.getValue() > 300_000L);
+            if (PROCESSED_CLIENT_REQUESTS.putIfAbsent(reqId, now) != null) {
+                throw new IllegalStateException("Duplicate batch submission detected. This batch has already been processed.");
+            }
+        }
+
+        // 2. Process all orders atomically
+        List<PurchaseOrder> createdOrders = new ArrayList<>();
+        for (PurchaseOrder poInput : request.getOrders()) {
+            poInput.setFirmId(firmId);
+            if (poInput.getHidePricesOnPo() == null && request.getHidePricesOnPo() != null) {
+                poInput.setHidePricesOnPo(request.getHidePricesOnPo());
+            }
+            if (poInput.getExpectedDeliveryDate() == null && request.getExpectedDeliveryDate() != null) {
+                poInput.setExpectedDeliveryDate(request.getExpectedDeliveryDate());
+            }
+            if ((poInput.getNotes() == null || poInput.getNotes().trim().isEmpty()) && request.getNotes() != null) {
+                poInput.setNotes(request.getNotes());
+            }
+            if (poInput.getPoDate() == null) {
+                poInput.setPoDate(LocalDate.now());
+            }
+            PurchaseOrder created = createPurchaseOrder(poInput);
+            createdOrders.add(created);
+        }
+
+        // 3. Update preferred vendors if requested
+        if (request.getUpdatePreferredVendors() != null) {
+            for (com.billing.simple.billsoft.dtos.PreferredVendorUpdate update : request.getUpdatePreferredVendors()) {
+                if (update.getProductId() != null && update.getPartyId() != null) {
+                    if (productRepository.existsByIdAndFirmId(update.getProductId(), firmId) &&
+                            partyRepository.existsByIdAndFirmId(update.getPartyId(), firmId)) {
+                        productRepository.updatePreferredPartyId(update.getProductId(), update.getPartyId(), firmId);
+                    }
+                }
+            }
+        }
+
+        return createdOrders;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateMergedPoPdf(List<Long> poIds, Long firmId) throws Exception {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            firmId = authoritativeFirmId;
+        }
+        if (poIds == null || poIds.isEmpty()) {
+            return new byte[0];
+        }
+
+        List<PurchaseOrder> orders = new ArrayList<>();
+        for (Long id : poIds) {
+            Optional<PurchaseOrder> poOpt = (firmId != null)
+                    ? poRepository.findByIdAndFirmId(id, firmId)
+                    : poRepository.findById(id);
+            poOpt.ifPresent(orders::add);
+        }
+
+        return pdfService.generateMergedPdf(orders);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateZipBundle(List<Long> poIds, Long firmId) throws Exception {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            firmId = authoritativeFirmId;
+        }
+        if (poIds == null || poIds.isEmpty()) {
+            return new byte[0];
+        }
+
+        List<PurchaseOrder> orders = new ArrayList<>();
+        for (Long id : poIds) {
+            Optional<PurchaseOrder> poOpt = (firmId != null)
+                    ? poRepository.findByIdAndFirmId(id, firmId)
+                    : poRepository.findById(id);
+            poOpt.ifPresent(orders::add);
+        }
+
+        return pdfService.generateZipBundle(orders);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> getProductVendorHistory(Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            firmId = authoritativeFirmId;
+        }
+        if (firmId == null) {
+            return java.util.Collections.emptyMap();
+        }
+
+        List<Object[]> rawList = poRepository.findProductVendorHistoryRaw(firmId);
+        java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> historyMap = new java.util.LinkedHashMap<>();
+
+        for (Object[] row : rawList) {
+            if (row == null || row.length < 5 || row[0] == null) continue;
+            Long productId = ((Number) row[0]).longValue();
+            Long partyId = row[1] != null ? ((Number) row[1]).longValue() : null;
+            String partyName = row[2] != null ? row[2].toString() : null;
+            String poNumber = row[3] != null ? row[3].toString() : null;
+            LocalDate poDate = (row[4] instanceof LocalDate) ? (LocalDate) row[4] : null;
+            BigDecimal qty = (row.length > 5 && row[5] instanceof BigDecimal) ? (BigDecimal) row[5] : BigDecimal.ONE;
+
+            if (!historyMap.containsKey(productId)) {
+                // First encountered entry is the latest because of ORDER BY poDate DESC, id DESC
+                com.billing.simple.billsoft.dtos.ProductVendorHistoryDto dto = com.billing.simple.billsoft.dtos.ProductVendorHistoryDto.builder()
+                        .productId(productId)
+                        .latestPartyId(partyId)
+                        .latestPartyName(partyName)
+                        .latestPoNumber(poNumber)
+                        .latestPoDate(poDate)
+                        .totalQuantityOrdered(qty)
+                        .build();
+                historyMap.put(productId, dto);
+            } else {
+                com.billing.simple.billsoft.dtos.ProductVendorHistoryDto existing = historyMap.get(productId);
+                if (qty != null && existing.getTotalQuantityOrdered() != null) {
+                    existing.setTotalQuantityOrdered(existing.getTotalQuantityOrdered().add(qty));
+                }
+            }
+        }
+
+        return historyMap;
+    }
 }

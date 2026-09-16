@@ -71,6 +71,10 @@ public class Product {
     @Column(precision = 15, scale = 2)
     private BigDecimal gstPercentage;
 
+    // Optional preferred supplier/vendor
+    @Column(name = "preferred_party_id")
+    private Long preferredPartyId;
+
     @Column(nullable = false)
     private Long firmId;
 
@@ -134,6 +138,8 @@ public class Product {
     public void setHsnCode(String hsnCode) { this.hsnCode = hsnCode; }
     public BigDecimal getGstPercentage() { return gstPercentage; }
     public void setGstPercentage(BigDecimal gstPercentage) { this.gstPercentage = gstPercentage; }
+    public Long getPreferredPartyId() { return preferredPartyId; }
+    public void setPreferredPartyId(Long preferredPartyId) { this.preferredPartyId = preferredPartyId; }
     public Long getFirmId() { return firmId; }
     public void setFirmId(Long firmId) { this.firmId = firmId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
@@ -160,6 +166,7 @@ public class Product {
         private String unit = "pcs";
         private String hsnCode;
         private BigDecimal gstPercentage;
+        private Long preferredPartyId;
         private Long firmId;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -178,6 +185,7 @@ public class Product {
         public ProductBuilder unit(String unit) { this.unit = unit; return this; }
         public ProductBuilder hsnCode(String hsnCode) { this.hsnCode = hsnCode; return this; }
         public ProductBuilder gstPercentage(BigDecimal gstPercentage) { this.gstPercentage = gstPercentage; return this; }
+        public ProductBuilder preferredPartyId(Long preferredPartyId) { this.preferredPartyId = preferredPartyId; return this; }
         public ProductBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
         public ProductBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProductBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
@@ -198,6 +206,7 @@ public class Product {
             p.unit = this.unit;
             p.hsnCode = this.hsnCode;
             p.gstPercentage = this.gstPercentage;
+            p.preferredPartyId = this.preferredPartyId;
             p.firmId = this.firmId;
             p.createdAt = this.createdAt;
             p.updatedAt = this.updatedAt;

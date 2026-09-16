@@ -207,7 +207,14 @@ const API = {
       const res = await API._request(API._qs(`/api/purchase-orders/${id}/pdf`));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
-    }
+    },
+    createBatch: (data) => API._ensureFirmReady().then(() => API._json('/api/purchase-orders/batch', {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId || data.firmId }
+    })),
+    getVendorHistory: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders/vendor-history'))),
+    batchPdfUrl: (ids) => API._qs(API.BASE_URL + `/api/purchase-orders/batch/pdf`, { ids: Array.isArray(ids) ? ids.join(',') : ids }),
+    batchZipUrl: (ids) => API._qs(API.BASE_URL + `/api/purchase-orders/batch/zip`, { ids: Array.isArray(ids) ? ids.join(',') : ids })
   },
 
   // ── Business Letters (Letter Pad) ──

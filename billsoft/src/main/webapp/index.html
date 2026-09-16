@@ -15116,6 +15116,1147 @@
       );
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // SMART REORDER & MULTI-VENDOR PO ASSISTANT MODAL
+    // ═══════════════════════════════════════════════════════════
+    function SmartReorderModal({ isOpen, onClose, onSuccess, initialProductId }) {
+      if (!isOpen) return null;
+
+      const [step, setStep] = useState(1); // 1: Items & Vendors, 2: Preview, 3: Success Hub
+      const [loading, setLoading] = useState(true);
+      const [catalogProducts, setCatalogProducts] = useState([]);
+      const [parties, setParties] = useState([]);
+      const [vendorHistory, setVendorHistory] = useState({});
+
+      const [items, setItems] = useState([]);
+      const [hidePricesOnPo, setHidePricesOnPo] = useState(false);
+      const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(BillsoftUtils.futureDateStr(7));
+      const [poNotes, setPoNotes] = useState('Please supply the items as per the specifications above.');
+
+      const [submitting, setSubmitting] = useState(false);
+      const [createdPos, setCreatedPos] = useState([]);
+      const [previewSinglePo, setPreviewSinglePo] = useState(null);
+
+      // Autocomplete search to add products
+      const [productSearchQuery, setProductSearchQuery] = useState('');
+      const [showProductDropdown, setShowProductDropdown] = useState(false);
+
+      // Quick Create Product sub-modal
+      const [showQuickProductModal, setShowQuickProductModal] = useState(false);
+      const [quickProductForm, setQuickProductForm] = useState({
+        name: '',
+        sku: '',
+        hsnCode: '',
+        unit: 'pcs',
+        costPrice: '',
+        price: '',
+        gstPercentage: '18',
+        minStockLevel: '5'
+      });
+      const [savingProduct, setSavingProduct] = useState(false);
+
+      // Quick Create Vendor sub-modal
+      const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
+      const [quickVendorForm, setQuickVendorForm] = useState({
+        name: '',
+        contactPerson: '',
+        phone: '',
+        email: '',
+        gstin: '',
+        address: ''
+      });
+      const [savingVendor, setSavingVendor] = useState(false);
+      const [quickVendorTargetRowId, setQuickVendorTargetRowId] = useState(null);
+
+      // Load dependencies on mount/open
+      useEffect(() => {
+        let isMounted = true;
+        setLoading(true);
+        Promise.all([
+          API.products.list(),
+          API.parties.list(),
+          API.purchaseOrders.getVendorHistory().catch(() => ({}))
+        ]).then(([prods, parts, history]) => {
+          if (!isMounted) return;
+          const prodList = prods || [];
+          const partyList = parts || [];
+          const histMap = history || {};
+
+          setCatalogProducts(prodList);
+          setParties(partyList);
+          setVendorHistory(histMap);
+
+          // Seed items
+          let seedList = [];
+          if (initialProductId) {
+            const found = prodList.find(p => p.id === Number(initialProductId) || p.id === initialProductId);
+            if (found) seedList = [found];
+          } else {
+            // Seed low stock items
+            seedList = prodList.filter(p => p.itemType !== 'SERVICE' && Number(p.stockQuantity || 0) <= Number(p.minStockLevel || 5));
+          }
+
+          const initialRows = seedList.map(p => {
+            const stock = Number(p.stockQuantity || 0);
+            const minStock = Number(p.minStockLevel || 5);
+            const deficit = Math.max(1, minStock - stock);
+
+            let resolvedPartyId = null;
+            let provenance = 'UNASSIGNED';
+            let provenanceDetail = 'No historical vendor found';
+
+            if (p.preferredPartyId && partyList.some(v => v.id === p.preferredPartyId)) {
+              resolvedPartyId = p.preferredPartyId;
+              provenance = 'PREFERRED';
+              const vObj = partyList.find(v => v.id === p.preferredPartyId);
+              provenanceDetail = `Preferred: ${vObj ? vObj.name : ''}`;
+            } else if (histMap[p.id] && partyList.some(v => v.id === histMap[p.id].partyId)) {
+              resolvedPartyId = histMap[p.id].partyId;
+              provenance = 'SMART';
+              const vh = histMap[p.id];
+              provenanceDetail = `From ${vh.lastPoNumber || 'past order'}${vh.lastPoDate ? ' (' + BillsoftUtils.formatDate(vh.lastPoDate) + ')' : ''}`;
+            }
+
+            return {
+              _rowId: BillsoftUtils.generateId(),
+              productId: p.id,
+              name: p.name,
+              sku: p.sku || '',
+              unit: p.unit || 'pcs',
+              currentStock: stock,
+              minStockLevel: minStock,
+              deficit: deficit,
+              orderQty: deficit,
+              unitCost: p.costPrice != null ? p.costPrice : (p.price || 0),
+              gstPercentage: p.gstPercentage != null ? p.gstPercentage : 0,
+              partyId: resolvedPartyId,
+              provenance: provenance,
+              provenanceDetail: provenanceDetail,
+              setAsPreferred: false
+            };
+          });
+
+          setItems(initialRows);
+          setLoading(false);
+        }).catch(err => {
+          console.error(err);
+          showToast('Failed to initialize Reorder Assistant', 'error');
+          if (isMounted) setLoading(false);
+        });
+
+        return () => { isMounted = false; };
+      }, [initialProductId]);
+
+      const updateRow = (rowId, updates) => {
+        setItems(prev => prev.map(r => r._rowId === rowId ? { ...r, ...updates } : r));
+      };
+
+      const removeRow = (rowId) => {
+        setItems(prev => prev.filter(r => r._rowId !== rowId));
+      };
+
+      const addProductToReorder = (prod) => {
+        if (!prod) return;
+        const existing = items.find(r => r.productId === prod.id);
+        if (existing) {
+          updateRow(existing._rowId, { orderQty: Number(existing.orderQty) + 1 });
+          showToast(`Increased quantity for ${prod.name}`, 'info');
+          setProductSearchQuery('');
+          setShowProductDropdown(false);
+          return;
+        }
+
+        const stock = Number(prod.stockQuantity || 0);
+        const minStock = Number(prod.minStockLevel || 5);
+        const deficit = Math.max(1, minStock - stock);
+
+        let resolvedPartyId = null;
+        let provenance = 'UNASSIGNED';
+        let provenanceDetail = 'No historical vendor found';
+
+        if (prod.preferredPartyId && parties.some(v => v.id === prod.preferredPartyId)) {
+          resolvedPartyId = prod.preferredPartyId;
+          provenance = 'PREFERRED';
+          const vObj = parties.find(v => v.id === prod.preferredPartyId);
+          provenanceDetail = `Preferred: ${vObj ? vObj.name : ''}`;
+        } else if (vendorHistory[prod.id] && parties.some(v => v.id === vendorHistory[prod.id].partyId)) {
+          resolvedPartyId = vendorHistory[prod.id].partyId;
+          provenance = 'SMART';
+          const vh = vendorHistory[prod.id];
+          provenanceDetail = `From ${vh.lastPoNumber || 'past order'}${vh.lastPoDate ? ' (' + BillsoftUtils.formatDate(vh.lastPoDate) + ')' : ''}`;
+        }
+
+        const newRow = {
+          _rowId: BillsoftUtils.generateId(),
+          productId: prod.id,
+          name: prod.name,
+          sku: prod.sku || '',
+          unit: prod.unit || 'pcs',
+          currentStock: stock,
+          minStockLevel: minStock,
+          deficit: deficit,
+          orderQty: deficit,
+          unitCost: prod.costPrice != null ? prod.costPrice : (prod.price || 0),
+          gstPercentage: prod.gstPercentage != null ? prod.gstPercentage : 0,
+          partyId: resolvedPartyId,
+          provenance: provenance,
+          provenanceDetail: provenanceDetail,
+          setAsPreferred: false
+        };
+
+        setItems(prev => [...prev, newRow]);
+        setProductSearchQuery('');
+        setShowProductDropdown(false);
+      };
+
+      const handleQuickCreateProduct = async () => {
+        if (!quickProductForm.name.trim()) {
+          showToast('Product Name is required', 'error');
+          return;
+        }
+        setSavingProduct(true);
+        try {
+          const body = {
+            name: quickProductForm.name.trim(),
+            sku: quickProductForm.sku ? quickProductForm.sku.trim() : null,
+            hsnCode: quickProductForm.hsnCode ? quickProductForm.hsnCode.trim() : null,
+            unit: quickProductForm.unit || 'pcs',
+            itemType: 'GOODS',
+            costPrice: quickProductForm.costPrice ? parseFloat(quickProductForm.costPrice) : null,
+            price: quickProductForm.price ? parseFloat(quickProductForm.price) : 0,
+            gstPercentage: quickProductForm.gstPercentage ? parseFloat(quickProductForm.gstPercentage) : 0,
+            minStockLevel: quickProductForm.minStockLevel ? parseInt(quickProductForm.minStockLevel) : 5,
+            stockQuantity: 0
+          };
+          const created = await API.products.create(body);
+          setCatalogProducts(prev => [created, ...prev]);
+          addProductToReorder(created);
+          setShowQuickProductModal(false);
+          setQuickProductForm({ name: '', sku: '', hsnCode: '', unit: 'pcs', costPrice: '', price: '', gstPercentage: '18', minStockLevel: '5' });
+          showToast(`Created & added "${created.name}"`, 'success');
+        } catch (e) {
+          showToast(e.message || 'Failed to create product', 'error');
+        } finally {
+          setSavingProduct(false);
+        }
+      };
+
+      const handleQuickCreateVendor = async () => {
+        if (!quickVendorForm.name.trim()) {
+          showToast('Vendor Name is required', 'error');
+          return;
+        }
+        setSavingVendor(true);
+        try {
+          const body = {
+            name: quickVendorForm.name.trim(),
+            contactPerson: quickVendorForm.contactPerson || null,
+            phone: quickVendorForm.phone || null,
+            email: quickVendorForm.email || null,
+            gstin: quickVendorForm.gstin || null,
+            address: quickVendorForm.address || null,
+            type: 'SUPPLIER'
+          };
+          const created = await API.parties.create(body);
+          setParties(prev => [created, ...prev]);
+          if (quickVendorTargetRowId) {
+            updateRow(quickVendorTargetRowId, {
+              partyId: created.id,
+              provenance: 'USER',
+              provenanceDetail: `Assigned new vendor: ${created.name}`
+            });
+          }
+          setShowQuickVendorModal(false);
+          setQuickVendorForm({ name: '', contactPerson: '', phone: '', email: '', gstin: '', address: '' });
+          setQuickVendorTargetRowId(null);
+          showToast(`Created vendor "${created.name}"`, 'success');
+        } catch (e) {
+          showToast(e.message || 'Failed to create vendor', 'error');
+        } finally {
+          setSavingVendor(false);
+        }
+      };
+
+      const groupedVendors = useMemo(() => {
+        const groups = {};
+        items.forEach(it => {
+          const pId = it.partyId || 'UNASSIGNED';
+          if (!groups[pId]) {
+            const partyObj = parties.find(p => p.id === it.partyId) || null;
+            groups[pId] = {
+              partyId: it.partyId,
+              party: partyObj,
+              partyName: partyObj ? partyObj.name : '⚠️ Unassigned Vendor',
+              items: [],
+              subtotal: 0,
+              totalGst: 0,
+              grandTotal: 0
+            };
+          }
+          const qty = Number(it.orderQty) || 0;
+          const cost = Number(it.unitCost) || 0;
+          const gstPct = Number(it.gstPercentage) || 0;
+          const lineTaxable = qty * cost;
+          const lineGst = (lineTaxable * gstPct) / 100;
+          const lineTotal = lineTaxable + lineGst;
+
+          groups[pId].items.push({ ...it, lineTaxable, lineGst, lineTotal });
+          groups[pId].subtotal += lineTaxable;
+          groups[pId].totalGst += lineGst;
+          groups[pId].grandTotal += lineTotal;
+        });
+        return Object.values(groups);
+      }, [items, parties]);
+
+      const unassignedItemsCount = useMemo(() => {
+        return items.filter(it => !it.partyId).length;
+      }, [items]);
+
+      const totalGrandAmount = useMemo(() => {
+        return groupedVendors.reduce((sum, g) => sum + g.grandTotal, 0);
+      }, [groupedVendors]);
+
+      const handleProceedToPreview = () => {
+        if (items.length === 0) {
+          showToast('Please add at least one product to reorder', 'error');
+          return;
+        }
+        if (unassignedItemsCount > 0) {
+          showToast(`Please assign vendors to all ${unassignedItemsCount} unassigned item(s) before proceeding`, 'error');
+          return;
+        }
+        setStep(2);
+      };
+
+      const handleExecuteBatchCreation = async () => {
+        if (submitting) return;
+        setSubmitting(true);
+
+        try {
+          const clientRequestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+          const payload = {
+            clientRequestId: clientRequestId,
+            hidePricesOnPo: hidePricesOnPo,
+            expectedDeliveryDate: expectedDeliveryDate || null,
+            notes: poNotes || 'Please supply the items as per the specifications above.',
+            orders: groupedVendors.filter(g => g.partyId).map(g => ({
+              party: { id: g.partyId },
+              partyId: g.partyId,
+              poDate: BillsoftUtils.todayStr(),
+              expectedDeliveryDate: expectedDeliveryDate || null,
+              notes: poNotes || 'Please supply the items as per the specifications above.',
+              hidePricesOnPo: hidePricesOnPo,
+              status: 'ISSUED',
+              items: g.items.map(it => ({
+                productId: it.productId,
+                productName: it.name,
+                description: '',
+                hsnCode: '',
+                quantity: Number(it.orderQty) || 1,
+                unit: it.unit || 'pcs',
+                unitPrice: Number(it.unitCost) || 0,
+                discountValue: 0,
+                gstPercent: Number(it.gstPercentage) || 0
+              }))
+            })),
+            updatePreferredVendors: items
+              .filter(it => it.setAsPreferred && it.productId && it.partyId)
+              .map(it => ({
+                productId: it.productId,
+                partyId: it.partyId
+              }))
+          };
+
+          const res = await API.purchaseOrders.createBatch(payload);
+          const posList = Array.isArray(res) ? res : [res];
+          setCreatedPos(posList);
+          setStep(3);
+          showToast(`🎉 Successfully generated ${posList.length} Purchase Orders!`, 'success');
+          if (onSuccess) onSuccess(posList);
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+        } catch (e) {
+          console.error(e);
+          showToast(e.message || 'Batch PO generation failed', 'error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      const handlePrintAllPos = () => {
+        if (createdPos.length === 0) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          showToast('Popup blocked. Please allow popups to print.', 'error');
+          return;
+        }
+
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Batch Purchase Orders Print</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; color: #111; }
+              .po-container { page-break-after: always; padding: 20px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 30px; }
+              .po-container:last-child { page-break-after: auto; }
+              .po-header { display: flex; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 15px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+              th { background-color: #f3f4f6; }
+              .text-right { text-align: right; }
+              @media print {
+                body { padding: 0; }
+                .po-container { border: none; margin: 0; padding: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            ${createdPos.map(po => `
+              <div class="po-container">
+                <div class="po-header">
+                  <div>
+                    <h2 style="margin:0 0 4px 0;">PURCHASE ORDER</h2>
+                    <div style="font-size:14px;font-weight:bold;color:#4f46e5;">${po.poNumber || 'PO'}</div>
+                    <div style="font-size:12px;color:#666;">Date: ${BillsoftUtils.formatDate(po.poDate)}</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:12px;color:#666;">Vendor / Supplier</div>
+                    <h3 style="margin:2px 0 0 0;">${po.partyName || (po.party ? po.party.name : '—')}</h3>
+                    ${po.partyGstin ? `<div style="font-size:12px;">GSTIN: ${po.partyGstin}</div>` : ''}
+                  </div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:40px;">#</th>
+                      <th>Item & Description</th>
+                      <th style="width:70px;text-align:center;">Qty</th>
+                      <th style="width:70px;text-align:center;">Unit</th>
+                      ${!po.hidePricesOnPo ? `
+                        <th style="width:100px;text-align:right;">Unit Price</th>
+                        <th style="width:70px;text-align:center;">GST %</th>
+                        <th style="width:110px;text-align:right;">Total</th>
+                      ` : ''}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${(po.items || []).map((it, idx) => `
+                      <tr>
+                        <td>${idx + 1}</td>
+                        <td><strong>${it.productName || (it.product ? it.product.name : '')}</strong></td>
+                        <td style="text-align:center;">${it.quantity}</td>
+                        <td style="text-align:center;">${it.unit || 'pcs'}</td>
+                        ${!po.hidePricesOnPo ? `
+                          <td style="text-align:right;">${BillsoftUtils.formatCurrency(it.unitPrice || 0)}</td>
+                          <td style="text-align:center;">${it.gstPercent || 0}%</td>
+                          <td style="text-align:right;">${BillsoftUtils.formatCurrency(it.totalAmount || 0)}</td>
+                        ` : ''}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                ${!po.hidePricesOnPo ? `
+                  <div style="margin-top:15px;display:flex;justify-content:flex-end;">
+                    <table style="width:260px;margin:0;">
+                      <tr><td style="border:none;"><strong>Grand Total:</strong></td><td style="border:none;text-align:right;font-size:15px;font-weight:bold;color:#4f46e5;">${BillsoftUtils.formatCurrency(po.totalAmount || 0)}</td></tr>
+                    </table>
+                  </div>
+                ` : '<div style="margin-top:15px;font-size:12px;color:#666;font-style:italic;">* Quantities and specifications only. Pricing columns omitted as requested.</div>'}
+              </div>
+            `).join('')}
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      };
+
+      const handleDownloadCombinedPdf = () => {
+        const ids = createdPos.map(p => p.id);
+        const url = API.purchaseOrders.batchPdfUrl(ids);
+        BillsoftUtils.downloadPdfUrl(url, `Combined_POs_${ids.length}_vendors.pdf`);
+      };
+
+      const handleDownloadZip = () => {
+        const ids = createdPos.map(p => p.id);
+        const url = API.purchaseOrders.batchZipUrl(ids);
+        BillsoftUtils.downloadPdfUrl(url, `PurchaseOrders_Bundle_${ids.length}_vendors.zip`);
+      };
+
+      const handleDownloadSinglePoPdf = (po) => {
+        const url = API.purchaseOrders.pdfUrl(po.id);
+        BillsoftUtils.downloadPdfUrl(url, `${po.poNumber || 'PO'}.pdf`);
+      };
+
+      const filteredCatalog = useMemo(() => {
+        if (!productSearchQuery.trim()) return catalogProducts.slice(0, 8);
+        const q = productSearchQuery.toLowerCase();
+        return catalogProducts.filter(p => (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)).slice(0, 10);
+      }, [catalogProducts, productSearchQuery]);
+
+      return React.createElement('div', { className: 'smart-reorder-modal-backdrop', onClick: onClose },
+        React.createElement('div', { className: 'smart-reorder-modal', onClick: e => e.stopPropagation() },
+          
+          // Header
+          React.createElement('div', { className: 'smart-reorder-header' },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { fontSize: '1.4rem' } }, '⚡'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Smart Reorder & Multi-Vendor PO Assistant'),
+                React.createElement('p', { style: { margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                  step === 1 ? 'Configure items, adjust quantities, and verify vendor assignments' :
+                  (step === 2 ? 'Consolidated vendor preview before generating official Purchase Orders' : 'Purchase Orders generated successfully!')
+                )
+              )
+            ),
+            // Stepper
+            React.createElement('div', { className: 'smart-reorder-stepper' },
+              React.createElement('div', { className: `smart-reorder-step ${step === 1 ? 'active' : (step > 1 ? 'completed' : '')}` },
+                React.createElement('span', { className: 'smart-reorder-step-num' }, step > 1 ? '✓' : '1'),
+                React.createElement('span', null, '1. Items & Vendors')
+              ),
+              React.createElement('span', { style: { color: 'var(--border)' } }, '➔'),
+              React.createElement('div', { className: `smart-reorder-step ${step === 2 ? 'active' : (step > 2 ? 'completed' : '')}` },
+                React.createElement('span', { className: 'smart-reorder-step-num' }, step > 2 ? '✓' : '2'),
+                React.createElement('span', null, '2. Preview N POs')
+              ),
+              React.createElement('span', { style: { color: 'var(--border)' } }, '➔'),
+              React.createElement('div', { className: `smart-reorder-step ${step === 3 ? 'active completed' : ''}` },
+                React.createElement('span', { className: 'smart-reorder-step-num' }, '3'),
+                React.createElement('span', null, '3. Post-Creation Hub')
+              )
+            ),
+            React.createElement('button', { className: 'modal-close', onClick: onClose, style: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' } }, '✕')
+          ),
+
+          // Body
+          React.createElement('div', { className: 'smart-reorder-body' },
+            loading ? (
+              React.createElement('div', { className: 'loading-screen', style: { padding: '60px 0' } },
+                React.createElement('div', { className: 'spinner' }),
+                React.createElement('div', { style: { marginTop: 12, color: 'var(--text-secondary)' } }, 'Analyzing catalog and historical purchase orders...')
+              )
+            ) : (
+              // Step 1: Configure Items & Vendors
+              step === 1 ? React.createElement(Fragment, null,
+                // Top control toolbar
+                React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
+                  // Left: Add product search + Quick buttons
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, position: 'relative', flex: 1, maxWidth: 500 } },
+                    React.createElement('div', { style: { position: 'relative', flex: 1 } },
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        placeholder: '🔍 Search & add any catalog product...',
+                        value: productSearchQuery,
+                        onFocus: () => setShowProductDropdown(true),
+                        onChange: e => { setProductSearchQuery(e.target.value); setShowProductDropdown(true); }
+                      }),
+                      showProductDropdown && React.createElement('div', {
+                        className: 'autocomplete-dropdown',
+                        style: { position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 220 }
+                      },
+                        filteredCatalog.length === 0 ? (
+                          React.createElement('div', { style: { padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'No matching products in catalog')
+                        ) : (
+                          filteredCatalog.map(p => React.createElement('div', {
+                            key: p.id,
+                            className: 'autocomplete-item',
+                            style: { padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' },
+                            onMouseDown: () => addProductToReorder(p)
+                          },
+                            React.createElement('div', null,
+                              React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem' } }, p.name),
+                              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, `Stock: ${p.stockQuantity || 0} ${p.unit || 'pcs'} | Min: ${p.minStockLevel || 5}`)
+                            ),
+                            React.createElement('button', { className: 'btn btn-xs btn-primary' }, '+ Add')
+                          ))
+                        )
+                      )
+                    ),
+                    React.createElement('button', {
+                      className: 'btn btn-outline btn-sm',
+                      title: 'Quick Create Product without leaving workflow',
+                      onClick: () => setShowQuickProductModal(true)
+                    }, '+ New Product'),
+                    React.createElement('button', {
+                      className: 'btn btn-outline btn-sm',
+                      title: 'Quick Create Vendor / Supplier',
+                      onClick: () => { setQuickVendorTargetRowId(null); setShowQuickVendorModal(true); }
+                    }, '+ New Vendor')
+                  ),
+
+                  // Right: Hide prices on vendor document toggle
+                  React.createElement('div', {
+                    style: { display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)' },
+                    title: 'When enabled, vendor document displays quantities & specs only with pricing columns hidden. All internal accounting and cost totals remain intact.'
+                  },
+                    React.createElement('input', {
+                      type: 'checkbox',
+                      id: 'chkHidePrices',
+                      checked: hidePricesOnPo,
+                      onChange: e => setHidePricesOnPo(e.target.checked)
+                    }),
+                    React.createElement('label', { htmlFor: 'chkHidePrices', style: { fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 } },
+                      '🔒 Hide Prices on Vendor PO',
+                      React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 400 } }, '(Vendor sees Qty only)')
+                    )
+                  )
+                ),
+
+                // Table of items
+                items.length === 0 ? (
+                  React.createElement('div', { style: { textAlign: 'center', padding: '48px 20px', border: '1px dashed var(--border)', borderRadius: 10 } },
+                    React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } }, '📦'),
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem' } }, 'No Items Selected for Reorder'),
+                    React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                      'Use the search bar above to add existing products or click "+ New Product" to create one.'
+                    )
+                  )
+                ) : (
+                  React.createElement('div', { className: 'table-container', style: { border: '1px solid var(--border)', borderRadius: 8 } },
+                    React.createElement('table', null,
+                      React.createElement('thead', null, React.createElement('tr', null,
+                        React.createElement('th', { style: { width: '22%' } }, 'Product / Item'),
+                        React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Current / Min'),
+                        React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Order Qty'),
+                        React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Est. Unit Cost'),
+                        React.createElement('th', { style: { width: '28%' } }, 'Assigned Vendor (Smart Selection)'),
+                        React.createElement('th', { style: { width: '8%', textAlign: 'center' } }, 'Set Pref?'),
+                        React.createElement('th', { style: { width: '6%', textAlign: 'center' } }, '')
+                      )),
+                      React.createElement('tbody', null,
+                        items.map(row => {
+                          const isUnassigned = !row.partyId;
+                          let badgeClass = 'vendor-badge-unassigned';
+                          let badgeIcon = '⚠️';
+                          let badgeText = 'Unassigned';
+
+                          if (row.provenance === 'PREFERRED') {
+                            badgeClass = 'vendor-badge-preferred';
+                            badgeIcon = '🎯';
+                            badgeText = 'Preferred Vendor';
+                          } else if (row.provenance === 'SMART') {
+                            badgeClass = 'vendor-badge-smart';
+                            badgeIcon = '⏱️';
+                            badgeText = 'Smart Selected';
+                          } else if (row.provenance === 'USER') {
+                            badgeClass = 'vendor-badge-user';
+                            badgeIcon = '👤';
+                            badgeText = 'User Selected';
+                          }
+
+                          return React.createElement('tr', { key: row._rowId, style: { background: isUnassigned ? 'rgba(245, 158, 11, 0.04)' : undefined } },
+                            // Column 1: Product Name & SKU
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, row.name),
+                              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                                row.sku ? `SKU: ${row.sku}` : `Deficit: ${row.deficit} ${row.unit}`
+                              )
+                            ),
+                            // Column 2: Current / Min Stock
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('div', { style: { fontSize: '0.85rem', fontWeight: 600, color: row.currentStock <= row.minStockLevel ? '#EF4444' : '#10B981' } },
+                                `${row.currentStock} / ${row.minStockLevel}`
+                              ),
+                              React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)' } }, row.unit)
+                            ),
+                            // Column 3: Order Quantity Input
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('input', {
+                                type: 'number',
+                                min: '1',
+                                step: 'any',
+                                className: 'input input-sm',
+                                style: { width: 75, textAlign: 'center', fontWeight: 700 },
+                                value: row.orderQty,
+                                onChange: e => updateRow(row._rowId, { orderQty: Math.max(1, parseFloat(e.target.value) || 1) })
+                              })
+                            ),
+                            // Column 4: Unit Cost Input
+                            React.createElement('td', { style: { textAlign: 'right' } },
+                              React.createElement('input', {
+                                type: 'number',
+                                min: '0',
+                                step: 'any',
+                                className: 'input input-sm',
+                                style: { width: 90, textAlign: 'right' },
+                                value: row.unitCost,
+                                onChange: e => updateRow(row._rowId, { unitCost: parseFloat(e.target.value) || 0 })
+                              })
+                            ),
+                            // Column 5: Vendor Selector + Provenance Badge
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                                React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                                  React.createElement('select', {
+                                    className: 'select select-sm w-full',
+                                    value: row.partyId || '',
+                                    onChange: e => {
+                                      const val = e.target.value ? Number(e.target.value) : null;
+                                      const vObj = parties.find(p => p.id === val);
+                                      updateRow(row._rowId, {
+                                        partyId: val,
+                                        provenance: val ? 'USER' : 'UNASSIGNED',
+                                        provenanceDetail: val ? `Manually assigned: ${vObj ? vObj.name : ''}` : 'No vendor assigned'
+                                      });
+                                    }
+                                  },
+                                    React.createElement('option', { value: '' }, '⚠️ Choose Vendor / Supplier...'),
+                                    parties.map(p => React.createElement('option', { key: p.id, value: p.id }, p.name))
+                                  ),
+                                  React.createElement('button', {
+                                    className: 'btn btn-xs btn-ghost',
+                                    title: 'Quick Create Vendor for this item',
+                                    onClick: () => {
+                                      setQuickVendorTargetRowId(row._rowId);
+                                      setShowQuickVendorModal(true);
+                                    }
+                                  }, '+')
+                                ),
+                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                  React.createElement('span', { className: `vendor-badge ${badgeClass}` },
+                                    `${badgeIcon} ${badgeText}`
+                                  ),
+                                  React.createElement('span', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: row.provenanceDetail },
+                                    row.provenanceDetail
+                                  )
+                                )
+                              )
+                            ),
+                            // Column 6: Set as Preferred Vendor Checkbox
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('input', {
+                                type: 'checkbox',
+                                title: 'Save selected vendor as preferred vendor for future reorders',
+                                disabled: !row.partyId,
+                                checked: row.setAsPreferred,
+                                onChange: e => updateRow(row._rowId, { setAsPreferred: e.target.checked })
+                              })
+                            ),
+                            // Column 7: Remove Button
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('button', {
+                                className: 'btn btn-xs btn-ghost',
+                                style: { color: 'var(--danger)' },
+                                title: 'Remove item from reorder',
+                                onClick: () => removeRow(row._rowId)
+                              }, '✕')
+                            )
+                          );
+                        })
+                      )
+                    )
+                  )
+                )
+              ) : (
+                // Step 2: Consolidated Vendor PO Preview
+                step === 2 ? React.createElement(Fragment, null,
+                  React.createElement('div', { style: { marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' } },
+                        `Consolidated Multi-Vendor Purchase Orders Preview`
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        `Creating ${groupedVendors.length} individual Purchase Orders for ${items.length} total item(s).`
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                      React.createElement('span', {
+                        className: 'badge',
+                        style: {
+                          background: hidePricesOnPo ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                          color: hidePricesOnPo ? '#D97706' : '#10B981',
+                          padding: '4px 10px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600
+                        }
+                      }, hidePricesOnPo ? '🔒 Prices Hidden on Vendor Document' : '💰 Standard Document (Prices Included)')
+                    )
+                  ),
+
+                  // Delivery Date & PO Notes
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 16, background: 'var(--bg-secondary)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Expected Delivery Date'),
+                      React.createElement('input', {
+                        type: 'date',
+                        className: 'input w-full',
+                        value: expectedDeliveryDate,
+                        onChange: e => setExpectedDeliveryDate(e.target.value)
+                      })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Order Notes / Instructions for Vendors'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        value: poNotes,
+                        onChange: e => setPoNotes(e.target.value),
+                        placeholder: 'e.g. Please supply specifications as listed. Deliver to main warehouse.'
+                      })
+                    )
+                  ),
+
+                  // Vendor Cards
+                  groupedVendors.map((group, idx) => React.createElement('div', { key: idx, className: 'reorder-vendor-card' },
+                    React.createElement('div', { className: 'reorder-vendor-card-header' },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                        React.createElement('span', { style: { fontSize: '1.2rem' } }, '🏢'),
+                        React.createElement('div', null,
+                          React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem' } }, group.partyName),
+                          React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                            group.party ? `${group.party.phone || ''} ${group.party.gstin ? '• GSTIN: ' + group.party.gstin : ''}` : 'Unassigned Vendor'
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { textAlign: 'right' } },
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, `${group.items.length} Item(s)`),
+                        React.createElement('div', { style: { fontWeight: 700, color: 'var(--primary)', fontSize: '1rem' } }, BillsoftUtils.formatCurrency(group.grandTotal))
+                      )
+                    ),
+                    React.createElement('div', { style: { padding: '10px 14px' } },
+                      React.createElement('table', { style: { width: '100%', fontSize: '0.82rem' } },
+                        React.createElement('thead', null, React.createElement('tr', { style: { borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' } },
+                          React.createElement('th', { style: { textAlign: 'left', paddingBottom: 6 } }, 'Item Name'),
+                          React.createElement('th', { style: { textAlign: 'center', paddingBottom: 6, width: 80 } }, 'Qty'),
+                          React.createElement('th', { style: { textAlign: 'right', paddingBottom: 6, width: 100 } }, 'Unit Cost'),
+                          React.createElement('th', { style: { textAlign: 'right', paddingBottom: 6, width: 80 } }, 'GST %'),
+                          React.createElement('th', { style: { textAlign: 'right', paddingBottom: 6, width: 110 } }, 'Est. Total')
+                        )),
+                        React.createElement('tbody', null,
+                          group.items.map((it, iIdx) => React.createElement('tr', { key: iIdx, style: { borderBottom: '1px solid var(--border)' } },
+                            React.createElement('td', { style: { padding: '6px 0', fontWeight: 500 } }, it.name),
+                            React.createElement('td', { style: { padding: '6px 0', textAlign: 'center', fontWeight: 600 } }, `${it.orderQty} ${it.unit}`),
+                            React.createElement('td', { style: { padding: '6px 0', textAlign: 'right' } }, BillsoftUtils.formatCurrency(it.unitCost)),
+                            React.createElement('td', { style: { padding: '6px 0', textAlign: 'right' } }, `${it.gstPercentage}%`),
+                            React.createElement('td', { style: { padding: '6px 0', textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(it.lineTotal))
+                          ))
+                        )
+                      )
+                    )
+                  ))
+                ) : (
+                  // Step 3: Success Action Hub
+                  React.createElement(Fragment, null,
+                    React.createElement('div', { className: 'reorder-success-hero' },
+                      React.createElement('div', { className: 'reorder-success-icon' }, '✓'),
+                      React.createElement('h3', { style: { margin: '0 0 6px 0', fontSize: '1.3rem', fontWeight: 700 } },
+                        `Successfully Generated ${createdPos.length} Purchase Orders!`
+                      ),
+                      React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+                        'All purchase orders have been saved transactionally with sequential numbering and firm isolation.'
+                      )
+                    ),
+
+                    // Bulk Actions Banner
+                    React.createElement('div', {
+                      style: {
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'var(--bg-secondary)',
+                        padding: '14px 18px',
+                        borderRadius: 10,
+                        border: '1px solid var(--border)',
+                        marginBottom: 20
+                      }
+                    },
+                      React.createElement('button', {
+                        className: 'btn btn-primary',
+                        style: { display: 'flex', alignItems: 'center', gap: 6 },
+                        onClick: handlePrintAllPos
+                      }, '🖨️ Print All POs (Batch)'),
+                      React.createElement('button', {
+                        className: 'btn btn-outline',
+                        style: { display: 'flex', alignItems: 'center', gap: 6 },
+                        onClick: handleDownloadCombinedPdf
+                      }, '📄 Download Combined PDF'),
+                      React.createElement('button', {
+                        className: 'btn btn-outline',
+                        style: { display: 'flex', alignItems: 'center', gap: 6 },
+                        onClick: handleDownloadZip
+                      }, '📦 Download All as ZIP')
+                    ),
+
+                    // List of Created POs
+                    React.createElement('div', { style: { marginBottom: 10, fontWeight: 700, fontSize: '0.95rem' } }, 'Generated Purchase Orders:'),
+                    createdPos.map((po, idx) => React.createElement('div', { key: po.id || idx, className: 'reorder-success-card' },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                        React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.82rem', padding: '4px 8px' } }, po.poNumber || `PO #${idx + 1}`),
+                        React.createElement('div', null,
+                          React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem' } }, po.partyName || (po.party ? po.party.name : 'Vendor')),
+                          React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } },
+                            `${(po.items || []).length} items | Date: ${BillsoftUtils.formatDate(po.poDate)}`
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                        React.createElement('div', { style: { textAlign: 'right', marginRight: 8 } },
+                          React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, BillsoftUtils.formatCurrency(po.totalAmount || 0)),
+                          po.hidePricesOnPo && React.createElement('span', { style: { fontSize: '0.68rem', color: '#D97706', fontWeight: 600 } }, '🔒 Prices Hidden on Doc')
+                        ),
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-outline',
+                          title: 'View official PO preview',
+                          onClick: () => setPreviewSinglePo(po)
+                        }, '👁️ View'),
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-outline',
+                          title: 'Download PDF',
+                          onClick: () => handleDownloadSinglePoPdf(po)
+                        }, '📥 PDF')
+                      )
+                    ))
+                  )
+                )
+              )
+            )
+          ),
+
+          // Footer
+          React.createElement('div', { className: 'smart-reorder-footer' },
+            step === 1 ? React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+                  `${items.length} items to reorder`
+                ),
+                unassignedItemsCount > 0 && React.createElement('span', { className: 'vendor-badge vendor-badge-unassigned' },
+                  `⚠️ ${unassignedItemsCount} item(s) need vendor assignment`
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 10 } },
+                React.createElement('button', { className: 'btn btn-outline', onClick: onClose }, 'Cancel'),
+                React.createElement('button', {
+                  className: 'btn btn-primary',
+                  disabled: items.length === 0 || unassignedItemsCount > 0,
+                  onClick: handleProceedToPreview
+                }, 'Next: Preview Vendor POs ➔')
+              )
+            ) : (
+              step === 2 ? React.createElement(Fragment, null,
+                React.createElement('div', null,
+                  React.createElement('span', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Total Estimated Cost: '),
+                  React.createElement('strong', { style: { fontSize: '1rem', color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(totalGrandAmount))
+                ),
+                React.createElement('div', { style: { display: 'flex', gap: 10 } },
+                  React.createElement('button', { className: 'btn btn-outline', disabled: submitting, onClick: () => setStep(1) }, '← Back to Items'),
+                  React.createElement('button', {
+                    className: 'btn btn-primary',
+                    disabled: submitting,
+                    onClick: handleExecuteBatchCreation,
+                    style: { display: 'flex', alignItems: 'center', gap: 6 }
+                  }, submitting ? 'Creating Purchase Orders...' : `🚀 Confirm & Generate ${groupedVendors.length} POs`)
+                )
+              ) : (
+                React.createElement(Fragment, null,
+                  React.createElement('div', null),
+                  React.createElement('button', {
+                    className: 'btn btn-primary',
+                    onClick: () => {
+                      onClose();
+                      window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                    }
+                  }, '✓ Done & Return to Inventory')
+                )
+              )
+            )
+          ),
+
+          // ════════════════════════════════════════════════════
+          // SUB-MODAL 1: Quick Create Product
+          // ════════════════════════════════════════════════════
+          showQuickProductModal && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 1100 }, onClick: () => setShowQuickProductModal(false) },
+            React.createElement('div', { className: 'modal', style: { maxWidth: 520, width: '92%' }, onClick: e => e.stopPropagation() },
+              React.createElement('div', { className: 'modal-header' },
+                React.createElement('div', { className: 'modal-title' }, '✨ Quick Create Product'),
+                React.createElement('button', { className: 'modal-close', onClick: () => setShowQuickProductModal(false) }, '✕')
+              ),
+              React.createElement('div', { className: 'modal-body' },
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'Product Name *'),
+                    React.createElement('input', {
+                      className: 'input w-full',
+                      autoFocus: true,
+                      placeholder: 'e.g. Copper Pipe 15mm',
+                      value: quickProductForm.name,
+                      onChange: e => setQuickProductForm(f => ({ ...f, name: e.target.value }))
+                    })
+                  ),
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'SKU / Code'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        value: quickProductForm.sku,
+                        onChange: e => setQuickProductForm(f => ({ ...f, sku: e.target.value }))
+                      })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'Unit'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        value: quickProductForm.unit,
+                        onChange: e => setQuickProductForm(f => ({ ...f, unit: e.target.value }))
+                      })
+                    )
+                  ),
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'Cost Price'),
+                      React.createElement('input', {
+                        type: 'number',
+                        className: 'input w-full',
+                        value: quickProductForm.costPrice,
+                        onChange: e => setQuickProductForm(f => ({ ...f, costPrice: e.target.value }))
+                      })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'Selling Price'),
+                      React.createElement('input', {
+                        type: 'number',
+                        className: 'input w-full',
+                        value: quickProductForm.price,
+                        onChange: e => setQuickProductForm(f => ({ ...f, price: e.target.value }))
+                      })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'GST %'),
+                      React.createElement('input', {
+                        type: 'number',
+                        className: 'input w-full',
+                        value: quickProductForm.gstPercentage,
+                        onChange: e => setQuickProductForm(f => ({ ...f, gstPercentage: e.target.value }))
+                      })
+                    )
+                  )
+                )
+              ),
+              React.createElement('div', { className: 'modal-footer' },
+                React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowQuickProductModal(false) }, 'Cancel'),
+                React.createElement('button', { className: 'btn btn-primary', disabled: savingProduct, onClick: handleQuickCreateProduct }, savingProduct ? 'Saving...' : 'Save & Add')
+              )
+            )
+          ),
+
+          // ════════════════════════════════════════════════════
+          // SUB-MODAL 2: Quick Create Vendor
+          // ════════════════════════════════════════════════════
+          showQuickVendorModal && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 1100 }, onClick: () => setShowQuickVendorModal(false) },
+            React.createElement('div', { className: 'modal', style: { maxWidth: 520, width: '92%' }, onClick: e => e.stopPropagation() },
+              React.createElement('div', { className: 'modal-header' },
+                React.createElement('div', { className: 'modal-title' }, '🏢 Quick Create Vendor / Supplier'),
+                React.createElement('button', { className: 'modal-close', onClick: () => setShowQuickVendorModal(false) }, '✕')
+              ),
+              React.createElement('div', { className: 'modal-body' },
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'Vendor / Supplier Name *'),
+                    React.createElement('input', {
+                      className: 'input w-full',
+                      autoFocus: true,
+                      placeholder: 'e.g. Apex Hardware Supplies',
+                      value: quickVendorForm.name,
+                      onChange: e => setQuickVendorForm(f => ({ ...f, name: e.target.value }))
+                    })
+                  ),
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'Phone'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        value: quickVendorForm.phone,
+                        onChange: e => setQuickVendorForm(f => ({ ...f, phone: e.target.value }))
+                      })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'GSTIN'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        value: quickVendorForm.gstin,
+                        onChange: e => setQuickVendorForm(f => ({ ...f, gstin: e.target.value }))
+                      })
+                    )
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('label', { style: { fontSize: '0.8rem', display: 'block', marginBottom: 4 } }, 'Address'),
+                    React.createElement('input', {
+                      className: 'input w-full',
+                      value: quickVendorForm.address,
+                      onChange: e => setQuickVendorForm(f => ({ ...f, address: e.target.value }))
+                    })
+                  )
+                )
+              ),
+              React.createElement('div', { className: 'modal-footer' },
+                React.createElement('button', { className: 'btn btn-outline', onClick: () => setShowQuickVendorModal(false) }, 'Cancel'),
+                React.createElement('button', { className: 'btn btn-primary', disabled: savingVendor, onClick: handleQuickCreateVendor }, savingVendor ? 'Saving...' : 'Save Vendor')
+              )
+            )
+          ),
+
+          // ════════════════════════════════════════════════════
+          // SUB-MODAL 3: View Single PO Preview
+          // ════════════════════════════════════════════════════
+          previewSinglePo && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 1150 }, onClick: () => setPreviewSinglePo(null) },
+            React.createElement('div', { className: 'card modal-content', style: { maxWidth: 680, width: '92%', maxHeight: '85vh', overflowY: 'auto', padding: 24 }, onClick: e => e.stopPropagation() },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 } },
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontWeight: 800, fontSize: '1.2rem', color: 'var(--text-primary)' } }, 'Purchase Order Preview'),
+                  React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 700 } }, previewSinglePo.poNumber || 'PO')
+                ),
+                React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                  React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => handleDownloadSinglePoPdf(previewSinglePo) }, '📥 Download PDF'),
+                  React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: () => setPreviewSinglePo(null) }, '✕')
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: '0.85rem' } },
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontWeight: 700 } }, previewSinglePo.partyName || 'Vendor'),
+                  React.createElement('div', { style: { color: 'var(--text-secondary)' } }, previewSinglePo.partyGstin ? `GSTIN: ${previewSinglePo.partyGstin}` : '')
+                ),
+                React.createElement('div', { style: { textAlign: 'right' } },
+                  React.createElement('div', { style: { fontWeight: 600 } }, `Date: ${BillsoftUtils.formatDate(previewSinglePo.poDate)}`),
+                  previewSinglePo.expectedDeliveryDate && React.createElement('div', { style: { color: 'var(--text-secondary)' } }, `Delivery: ${BillsoftUtils.formatDate(previewSinglePo.expectedDeliveryDate)}`)
+                )
+              ),
+              React.createElement('table', { style: { width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' } },
+                React.createElement('thead', null, React.createElement('tr', { style: { borderBottom: '2px solid var(--border)' } },
+                  React.createElement('th', { style: { textAlign: 'left', padding: '6px 0' } }, 'Item'),
+                  React.createElement('th', { style: { textAlign: 'center', padding: '6px 0', width: 70 } }, 'Qty'),
+                  !previewSinglePo.hidePricesOnPo && React.createElement('th', { style: { textAlign: 'right', padding: '6px 0', width: 100 } }, 'Price'),
+                  !previewSinglePo.hidePricesOnPo && React.createElement('th', { style: { textAlign: 'right', padding: '6px 0', width: 110 } }, 'Total')
+                )),
+                React.createElement('tbody', null,
+                  (previewSinglePo.items || []).map((it, idx) => React.createElement('tr', { key: idx, style: { borderBottom: '1px solid var(--border)' } },
+                    React.createElement('td', { style: { padding: '8px 0', fontWeight: 500 } }, it.productName || (it.product ? it.product.name : '')),
+                    React.createElement('td', { style: { padding: '8px 0', textAlign: 'center', fontWeight: 600 } }, `${it.quantity} ${it.unit || 'pcs'}`),
+                    !previewSinglePo.hidePricesOnPo && React.createElement('td', { style: { padding: '8px 0', textAlign: 'right' } }, BillsoftUtils.formatCurrency(it.unitPrice || 0)),
+                    !previewSinglePo.hidePricesOnPo && React.createElement('td', { style: { padding: '8px 0', textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(it.totalAmount || 0))
+                  ))
+                )
+              ),
+              !previewSinglePo.hidePricesOnPo ? (
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 10, borderTop: '2px solid var(--border)', fontSize: '1rem', fontWeight: 800 } },
+                  React.createElement('span', { style: { marginRight: 20 } }, 'Total:'),
+                  React.createElement('span', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(previewSinglePo.totalAmount || 0))
+                )
+              ) : (
+                React.createElement('div', { style: { marginTop: 14, fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic' } },
+                  '* Pricing columns omitted on vendor document as configured.'
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
     // ─── PRODUCT & INVENTORY MANAGER ───
     function ProductManager() {
       const [products, setProducts] = useState([]);
@@ -15160,6 +16301,14 @@
 
       // Delete Modal State
       const [deleteProductId, setDeleteProductId] = useState(null);
+
+      // Smart Reorder Modal State
+      const [showReorderModal, setShowReorderModal] = useState(false);
+      const [reorderInitialProductId, setReorderInitialProductId] = useState(null);
+      const openSmartReorder = (productId = null) => {
+        setReorderInitialProductId(productId);
+        setShowReorderModal(true);
+      };
 
       // Inline Quick Stock Edit States
       const [editingStockId, setEditingStockId] = useState(null);
@@ -15446,6 +16595,11 @@
             )
           ),
           React.createElement('div', { style: { display: 'flex', gap: 10 } },
+            React.createElement('button', {
+              className: 'btn btn-secondary',
+              onClick: () => openSmartReorder(null),
+              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', borderColor: 'rgba(99, 102, 241, 0.3)', fontWeight: 600 }
+            }, '⚡ Smart Reorder'),
             React.createElement('button', { className: 'btn btn-outline', onClick: () => openHistory(null), style: { display: 'flex', alignItems: 'center', gap: 6 } },
               '📜 Movement Ledger'
             ),
@@ -15501,6 +16655,13 @@
             React.createElement('div', { style: { fontSize: '1.5rem', fontWeight: 700, marginTop: 4, color: '#F59E0B' } }, summary.lowStockCount || 0),
             React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
               'Items at or below reorder level (Click to filter)'
+            ),
+            summary.lowStockCount > 0 && React.createElement('div', { style: { marginTop: 8 } },
+              React.createElement('button', {
+                className: 'btn btn-xs btn-outline',
+                style: { borderColor: '#F59E0B', color: '#F59E0B', width: '100%', fontSize: '0.72rem', fontWeight: 600 },
+                onClick: (e) => { e.stopPropagation(); openSmartReorder(null); }
+              }, '⚡ Smart Reorder Low Stock')
             )
           ),
 
@@ -15799,6 +16960,13 @@
                               style: { color: 'var(--primary)' },
                               onClick: () => openQuickAdjust(p)
                             }, '⚡'),
+                            // Smart Reorder item button
+                            !isService && React.createElement('button', {
+                              className: 'btn btn-sm btn-ghost',
+                              title: 'Reorder this item via Smart PO Assistant',
+                              style: { color: '#4f46e5' },
+                              onClick: () => openSmartReorder(p.id)
+                            }, '🛒'),
                             // Movement History button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
@@ -16206,7 +17374,17 @@
               React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteProduct }, '🗑️ Delete Product')
             )
           )
-        )
+        ),
+
+        // ════════════════════════════════════════════════════
+        // MODAL 5: Smart Reorder & Multi-Vendor PO Assistant
+        // ════════════════════════════════════════════════════
+        React.createElement(SmartReorderModal, {
+          isOpen: showReorderModal,
+          initialProductId: reorderInitialProductId,
+          onClose: () => { setShowReorderModal(false); setReorderInitialProductId(null); },
+          onSuccess: () => { load(); }
+        })
       );
     }
 
@@ -18210,6 +19388,7 @@
       const [editingPoId, setEditingPoId] = useState(null);
       const [deletePoId, setDeletePoId] = useState(null);
       const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+      const [showReorderModal, setShowReorderModal] = useState(false);
 
       // Pagination State
       const [poPage, setPoPage] = useState(1);
@@ -19445,8 +20624,15 @@
               'Issue and track purchase orders sent to vendors & suppliers with live debt tracking.'
             )
           ),
-          React.createElement('button', { className: 'btn btn-primary', onClick: openCreate, style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            Icons.plus, ' Create Purchase Order'
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            React.createElement('button', {
+              className: 'btn btn-secondary',
+              onClick: () => setShowReorderModal(true),
+              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', borderColor: 'rgba(99, 102, 241, 0.3)', fontWeight: 600 }
+            }, '⚡ Smart Reorder Assistant'),
+            React.createElement('button', { className: 'btn btn-primary', onClick: openCreate, style: { display: 'flex', alignItems: 'center', gap: 6 } },
+              Icons.plus, ' Create Purchase Order'
+            )
           )
         ),
 
@@ -19998,6 +21184,13 @@
           pdfFileName: whatsAppModalDoc.pdfFileName,
           pdfUrl: whatsAppModalDoc.pdfUrl,
           pdfBlob: whatsAppModalDoc.pdfBlob
+        }),
+
+        // Smart Reorder Assistant Modal
+        React.createElement(SmartReorderModal, {
+          isOpen: showReorderModal,
+          onClose: () => setShowReorderModal(false),
+          onSuccess: () => { load(); }
         })
       );
     }

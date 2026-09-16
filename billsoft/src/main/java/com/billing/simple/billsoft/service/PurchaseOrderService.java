@@ -29,4 +29,12 @@ public interface PurchaseOrderService {
     byte[] generatePoPdf(Long id, Long firmId) throws Exception;
 
     PurchaseOrder recordPoPayment(Long id, Long firmId, java.math.BigDecimal amount, java.time.LocalDate paymentDate, String paymentMode, String referenceNumber, String notes);
+
+    List<PurchaseOrder> createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId);
+
+    byte[] generateMergedPoPdf(List<Long> poIds, Long firmId) throws Exception;
+
+    byte[] generateZipBundle(List<Long> poIds, Long firmId) throws Exception;
+
+    java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> getProductVendorHistory(Long firmId);
 }

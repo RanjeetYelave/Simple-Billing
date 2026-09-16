@@ -38,6 +38,14 @@ public class BillsoftApplication {
 					stmt.execute("ALTER TABLE notes ALTER COLUMN tags VARCHAR(1000)");
 				} catch (Exception ignored) {
 				}
+				try {
+					stmt.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS hide_prices_on_po BOOLEAN DEFAULT FALSE");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS preferred_party_id BIGINT");
+				} catch (Exception ignored) {
+				}
 			} catch (Exception e) {
 				System.err.println("Database migration note: " + e.getMessage());
 			}

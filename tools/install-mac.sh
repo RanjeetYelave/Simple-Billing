@@ -3,7 +3,7 @@
 # RupeeCRM macOS 1-Line Quick Installer
 # ==============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-mac.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overhaul/tools/install-mac.sh | bash
 #
 # This installer:
 # 1. Downloads the latest native RupeeCRM.app bundle directly via curl.

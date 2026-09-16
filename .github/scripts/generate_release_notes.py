@@ -156,7 +156,7 @@ def generate_markdown(cat_stats, total, whats_new_text, version=""):
     md.append("- **Windows Portable**: `RupeeCRM-Windows-x64.zip`")
     md.append("- **macOS Apple Silicon (M1/M2/M3/M4)**: `RupeeCRM-macOS-arm64.tar.gz` (Native Application Bundle)")
     md.append("- **WAR Payload**: `billsoft.war`\n")
-    branch = "OTA_update"
+    branch = "overhaul"
     md.append("### 🍏 macOS Quick Install (Zero-Warning)")
     md.append("To install or update on macOS without Gatekeeper malware warnings, run in Terminal:")
     md.append("```bash")

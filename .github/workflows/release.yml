@@ -291,27 +291,27 @@ jobs:
           name: regression-reports
           path: ./dist
 
-      - name: Generate Release Notes
+      - name: Set up Python for Release Changelog
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Extract Regression Test Reports
         run: |
-          if [ -f billsoft/release-notes.txt ]; then
-            cat billsoft/release-notes.txt > release-notes.txt
-          else
-            echo "## RupeeCRM Release v1.0.${{ github.run_number }}" > release-notes.txt
-            echo "Professional CRM and billing background service with custom offline domain and bundled JRE." >> release-notes.txt
+          mkdir -p surefire-reports
+          if [ -f "dist/Regression-Test-Results.zip" ]; then
+            unzip -q -o dist/Regression-Test-Results.zip -d ./
           fi
-          echo "" >> release-notes.txt
-          echo "### 📦 Distribution Artifacts" >> release-notes.txt
-          echo "- **Windows Installer**: \`RupeeCRM-Setup.msi\`" >> release-notes.txt
-          echo "- **Windows Portable**: \`RupeeCRM-Windows-x64.zip\`" >> release-notes.txt
-          echo "- **macOS Apple Silicon (M1/M2/M3/M4)**: \`RupeeCRM-macOS-arm64.dmg\`" >> release-notes.txt
-          echo "- **WAR Payload**: \`billsoft.war\`" >> release-notes.txt
-          echo "" >> release-notes.txt
-          echo "> **Note on macOS Releases**: Production builds signed and notarized with Apple Developer ID provide zero-friction Drag-to-Applications installation. Builds without Apple signing secrets are provided as developer/preview artifacts." >> release-notes.txt
-          echo "" >> release-notes.txt
-          echo "### 🧪 Automated Quality & Regression Testing" >> release-notes.txt
-          echo "- **Regression Test Pack**: 160 Tests (Billing, Accounting, Security, HR, Inventory, PO, PDFs, E2E)" >> release-notes.txt
-          echo "- **Test Execution Results**: Attached below as \`Regression-Test-Results.zip\`" >> release-notes.txt
-          echo "- **JaCoCo Coverage Report**: Attached below as \`Regression-Test-Coverage-Report.zip\`" >> release-notes.txt
+
+      - name: Generate Release Notes and Regression Summary
+        run: |
+          git log -1 --pretty=format:"%B" ${{ github.sha }} > git-commit-msg.txt
+          python3 .github/scripts/generate_release_notes.py \
+            --commit-msg-file git-commit-msg.txt \
+            --release-notes-file billsoft/release-notes.txt \
+            --surefire-dirs surefire-reports,billsoft/target/surefire-reports \
+            --version v1.0.${{ github.run_number }} \
+            --output release-notes.txt
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2

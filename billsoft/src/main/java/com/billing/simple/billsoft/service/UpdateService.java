@@ -216,19 +216,45 @@ public class UpdateService {
             headers.set("User-Agent", "Billsoft-App");
             HttpEntity<String> entity = new HttpEntity<>(headers);
             
-            ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
-            Map<String, Object> githubRelease = githubResponse.getBody();
+            ResponseEntity<Object> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Object.class);
+            Object body = githubResponse.getBody();
+            Map<String, Object> selectedRelease = null;
 
-            if (githubRelease != null && githubRelease.containsKey("tag_name")) {
-                String latestVersion = (String) githubRelease.get("tag_name");
+            if (body instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> releases = (List<Map<String, Object>>) body;
+                for (Map<String, Object> rel : releases) {
+                    if (rel != null && rel.containsKey("tag_name") && hasWarAsset(rel)) {
+                        String relVer = (String) rel.get("tag_name");
+                        if (selectedRelease == null) {
+                            selectedRelease = rel;
+                        } else {
+                            String selVer = (String) selectedRelease.get("tag_name");
+                            if (compareVersions(relVer, selVer) > 0) {
+                                selectedRelease = rel;
+                            }
+                        }
+                    }
+                }
+            } else if (body instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> singleRel = (Map<String, Object>) body;
+                if (singleRel.containsKey("tag_name")) {
+                    selectedRelease = singleRel;
+                }
+            }
+
+            if (selectedRelease != null && selectedRelease.containsKey("tag_name")) {
+                String latestVersion = (String) selectedRelease.get("tag_name");
                 response.put("latestVersion", latestVersion);
 
-                boolean updateAvailable = !normalizeVersion(currentVersion).equals(normalizeVersion(latestVersion));
+                int cmp = compareVersions(latestVersion, currentVersion);
+                boolean updateAvailable = cmp > 0;
                 response.put("updateAvailable", updateAvailable);
-                response.put("releaseNotes", githubRelease.get("body"));
+                response.put("releaseNotes", extractCustomerChangelog((String) selectedRelease.get("body")));
 
                 @SuppressWarnings("unchecked")
-                List<Map<String, Object>> assets = (List<Map<String, Object>>) githubRelease.get("assets");
+                List<Map<String, Object>> assets = (List<Map<String, Object>>) selectedRelease.get("assets");
                 if (assets != null) {
                     for (Map<String, Object> asset : assets) {
                         String name = (String) asset.get("name");
@@ -253,6 +279,111 @@ public class UpdateService {
             return response;
         }
         return response;
+    }
+
+    private boolean hasWarAsset(Map<String, Object> release) {
+        if (release == null || !release.containsKey("assets")) return false;
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> assets = (List<Map<String, Object>>) release.get("assets");
+        if (assets == null) return false;
+        for (Map<String, Object> asset : assets) {
+            if ("billsoft.war".equals(asset.get("name")) && asset.get("browser_download_url") != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Clean and extract customer-facing What's New notes from the release body.
+     * Excludes internal CI regression tables and distribution asset lists from the customer update dialog.
+     */
+    public static String extractCustomerChangelog(String rawBody) {
+        if (rawBody == null || rawBody.trim().isEmpty()) {
+            return "";
+        }
+        String body = rawBody.trim();
+
+        if (body.contains("## What's New")) {
+            int startIdx = body.indexOf("## What's New") + "## What's New".length();
+            int endIdx = body.length();
+            if (body.contains("## Regression Test Summary")) {
+                endIdx = body.indexOf("## Regression Test Summary");
+            } else if (body.contains("### 📦 Distribution Artifacts")) {
+                endIdx = body.indexOf("### 📦 Distribution Artifacts");
+            }
+            String whatsNew = body.substring(startIdx, Math.max(startIdx, endIdx)).trim();
+            if (!whatsNew.isEmpty()) {
+                return whatsNew;
+            }
+        }
+
+        if (body.contains("## Regression Test Summary")) {
+            return body.substring(0, body.indexOf("## Regression Test Summary")).trim();
+        }
+        if (body.contains("### 📦 Distribution Artifacts")) {
+            return body.substring(0, body.indexOf("### 📦 Distribution Artifacts")).trim();
+        }
+        return body;
+    }
+
+    /**
+     * Semantic version comparison supporting arbitrary segment counts (e.g. v1.0.3 vs v1.0.0, 1.0.12 vs 1.0.9).
+     * Returns:
+     *   > 0 if v1 > v2
+     *   0 if v1 == v2
+     *   < 0 if v1 < v2
+     */
+    public static int compareVersions(String v1, String v2) {
+        if (v1 == null && v2 == null) return 0;
+        if (v1 == null) return -1;
+        if (v2 == null) return 1;
+
+        String norm1 = v1.replaceAll("^[vV]", "").trim();
+        String norm2 = v2.replaceAll("^[vV]", "").trim();
+
+        // Separate base version from pre-release/build suffix (e.g. 1.0.0-SNAPSHOT -> base: 1.0.0, suffix: SNAPSHOT)
+        String[] split1 = norm1.split("[-+]", 2);
+        String[] split2 = norm2.split("[-+]", 2);
+
+        String base1 = split1[0];
+        String base2 = split2[0];
+
+        String[] parts1 = base1.split("\\.");
+        String[] parts2 = base2.split("\\.");
+
+        int maxLen = Math.max(parts1.length, parts2.length);
+        for (int i = 0; i < maxLen; i++) {
+            long num1 = 0;
+            long num2 = 0;
+            if (i < parts1.length && !parts1[i].trim().isEmpty()) {
+                try {
+                    num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", ""));
+                } catch (NumberFormatException ignored) {}
+            }
+            if (i < parts2.length && !parts2[i].trim().isEmpty()) {
+                try {
+                    num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", ""));
+                } catch (NumberFormatException ignored) {}
+            }
+            if (num1 != num2) {
+                return Long.compare(num1, num2);
+            }
+        }
+
+        // Base versions are numerically equal; check pre-release tags (release > pre-release)
+        boolean hasSuffix1 = split1.length > 1 && !split1[1].isEmpty();
+        boolean hasSuffix2 = split2.length > 1 && !split2[1].isEmpty();
+
+        if (!hasSuffix1 && hasSuffix2) {
+            return 1; // 1.0.0 > 1.0.0-SNAPSHOT
+        } else if (hasSuffix1 && !hasSuffix2) {
+            return -1; // 1.0.0-SNAPSHOT < 1.0.0
+        } else if (hasSuffix1 && hasSuffix2) {
+            return split1[1].compareToIgnoreCase(split2[1]);
+        }
+
+        return 0;
     }
 
     /**

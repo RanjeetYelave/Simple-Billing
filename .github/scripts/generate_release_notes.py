@@ -154,9 +154,13 @@ def generate_markdown(cat_stats, total, whats_new_text, version=""):
     md.append("### 📦 Distribution Artifacts")
     md.append("- **Windows Installer**: `RupeeCRM-Setup.msi`")
     md.append("- **Windows Portable**: `RupeeCRM-Windows-x64.zip`")
-    md.append("- **macOS Apple Silicon (M1/M2/M3/M4)**: `RupeeCRM-macOS-arm64.dmg`")
+    md.append("- **macOS Apple Silicon (M1/M2/M3/M4)**: `RupeeCRM-macOS-arm64.tar.gz` (Native Application Bundle)")
     md.append("- **WAR Payload**: `billsoft.war`\n")
-    md.append("> **Note on macOS Releases**: Production builds signed and notarized with Apple Developer ID provide zero-friction Drag-to-Applications installation. Builds without Apple signing secrets are provided as developer/preview artifacts.\n")
+    md.append("### 🍏 macOS Quick Install (Zero-Warning)")
+    md.append("To install or update on macOS without Gatekeeper malware warnings, run in Terminal:")
+    md.append("```bash")
+    md.append("curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-mac.sh | bash")
+    md.append("```\n")
     
     return "\n".join(md)
 

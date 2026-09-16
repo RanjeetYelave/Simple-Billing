@@ -206,13 +206,13 @@ jobs:
           cp downloaded-war/billsoft.war package-input/runtime/billsoft.war
           xattr -cr package-input
 
-      - name: Package macOS Apple Silicon (ARM64) DMG
+      - name: Package macOS Apple Silicon (ARM64) Native App Bundle
         run: |
           jpackage --name "RupeeCRM" \
                    --input package-input \
                    --main-jar launcher.jar \
                    --main-class com.billing.simple.launcher.LauncherMain \
-                   --type dmg \
+                   --type app-image \
                    --dest dist-pkg \
                    --app-version 1.0.${{ github.run_number }} \
                    --vendor "RupeeCRM" \
@@ -220,43 +220,13 @@ jobs:
                    --mac-package-identifier "com.rupeecrm.billing" \
                    --java-options "-Djava.awt.headless=false"
 
-          mv dist-pkg/*.dmg RupeeCRM-macOS-arm64.dmg
-
-      - name: Sign and Notarize macOS ARM64 DMG
-        if: env.APPLE_CERTIFICATE_P12_BASE64 != ''
-        env:
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          CERT_P12=$RUNNER_TEMP/certificate.p12
-          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_P12"
-          security import "$CERT_P12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          codesign --force --sign "Developer ID Application" --timestamp RupeeCRM-macOS-arm64.dmg
-
-          xcrun notarytool submit RupeeCRM-macOS-arm64.dmg \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-          xcrun stapler staple RupeeCRM-macOS-arm64.dmg
+          tar -czf RupeeCRM-macOS-arm64.tar.gz -C dist-pkg RupeeCRM.app
 
       - name: Upload macOS ARM64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64-distribution
-          path: RupeeCRM-macOS-arm64.dmg
+          path: RupeeCRM-macOS-arm64.tar.gz
           if-no-files-found: error
 
   release:
@@ -324,7 +294,7 @@ jobs:
             dist/billsoft.war.sha256
             dist/RupeeCRM-Windows-x64.zip
             dist/RupeeCRM-Setup.msi
-            dist/RupeeCRM-macOS-arm64.dmg
+            dist/RupeeCRM-macOS-arm64.tar.gz
             dist/Regression-Test-Coverage-Report.zip
             dist/Regression-Test-Results.zip
           generate_release_notes: false

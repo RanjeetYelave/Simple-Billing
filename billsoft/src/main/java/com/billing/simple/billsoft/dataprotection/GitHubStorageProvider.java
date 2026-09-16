@@ -2,6 +2,8 @@ package com.billing.simple.billsoft.dataprotection;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -19,9 +21,11 @@ import java.util.Map;
  * - Minimum necessary remote calls (1 on creation, 2 on replacement, max 1 retry on 409 conflict).
  * - Timeouts: 5000ms connect, 10000ms read.
  * - Zero background polling or pinging.
+ * - Never leaks secrets or raw GitHub error bodies to customer messages.
  */
 public class GitHubStorageProvider implements BackupStorageProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(GitHubStorageProvider.class);
     private static final String DEFAULT_REPO = "crucified1215/rupeecrm-dataprotection-vault";
     private static final String API_BASE = "https://api.github.com";
 
@@ -58,7 +62,7 @@ public class GitHubStorageProvider implements BackupStorageProvider {
     @Override
     public UploadResult uploadBackup(String machineId, byte[] encryptedData, String lastKnownSha) {
         if (machineId == null || machineId.isBlank() || encryptedData == null || encryptedData.length == 0) {
-            return UploadResult.error("Invalid parameters for upload", 400);
+            return UploadResult.error("Invalid parameters for upload", 400, DataProtectionErrorCode.DP_005);
         }
 
         String path = "backups/" + machineId.trim() + ".enc";
@@ -111,8 +115,11 @@ public class GitHubStorageProvider implements BackupStorageProvider {
                 try (InputStream in = conn.getInputStream()) {
                     return in.readAllBytes();
                 }
+            } else {
+                log.warn("Cloud vault download failed with HTTP status {}", code);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("Cloud vault download network error: {}", e.getMessage());
         } finally {
             if (conn != null) {
                 conn.disconnect();
@@ -190,16 +197,13 @@ public class GitHubStorageProvider implements BackupStorageProvider {
                     return UploadResult.ok(newSha);
                 }
             } else {
-                String errText = "";
-                try (InputStream err = conn.getErrorStream()) {
-                    if (err != null) {
-                        errText = new String(err.readAllBytes(), StandardCharsets.UTF_8);
-                    }
-                }
-                return UploadResult.error("GitHub API error: " + code + " " + errText, code);
+                DataProtectionErrorCode errorCode = DataProtectionErrorCode.fromHttpStatus(code);
+                log.warn("Cloud vault upload failed: HTTP {} ({})", code, errorCode.getCode());
+                return UploadResult.error(errorCode.formatMessage(), code, errorCode);
             }
         } catch (Exception e) {
-            return UploadResult.error("Network exception during upload: " + e.getMessage(), 0);
+            log.warn("Cloud vault upload exception: {}", e.getMessage());
+            return UploadResult.error(DataProtectionErrorCode.DP_004.formatMessage(), 0, DataProtectionErrorCode.DP_004);
         } finally {
             if (conn != null) {
                 conn.disconnect();

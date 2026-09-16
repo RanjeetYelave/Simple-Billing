@@ -833,7 +833,8 @@ const API = {
     metrics: () => API._json('/api/health/metrics'),
     health: () => API._json('/api/health'),
     diagnostics: () => API._json('/api/health/diagnostics'),
-    heartbeat: (firmId) => API._json(API._qs('/api/system/heartbeat', { firmId }))
+    heartbeat: (firmId) => API._json(API._qs('/api/system/heartbeat', { firmId })),
+    getNetworkStatus: (forceRefresh) => API._json(API._qs('/api/system/network-status', { forceRefresh }))
   },
 
   // ─── OmniSearch Read-Model Service (Authoritative Business Query Layer) ───

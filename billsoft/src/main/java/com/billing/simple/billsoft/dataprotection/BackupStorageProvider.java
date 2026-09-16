@@ -10,20 +10,26 @@ public interface BackupStorageProvider {
         private final String sha;
         private final String errorMessage;
         private final int statusCode;
+        private final DataProtectionErrorCode errorCode;
 
-        public UploadResult(boolean success, String sha, String errorMessage, int statusCode) {
+        public UploadResult(boolean success, String sha, String errorMessage, int statusCode, DataProtectionErrorCode errorCode) {
             this.success = success;
             this.sha = sha;
             this.errorMessage = errorMessage;
             this.statusCode = statusCode;
+            this.errorCode = errorCode;
         }
 
         public static UploadResult ok(String sha) {
-            return new UploadResult(true, sha, null, 200);
+            return new UploadResult(true, sha, null, 200, null);
+        }
+
+        public static UploadResult error(String errorMessage, int statusCode, DataProtectionErrorCode errorCode) {
+            return new UploadResult(false, null, errorMessage, statusCode, errorCode);
         }
 
         public static UploadResult error(String errorMessage, int statusCode) {
-            return new UploadResult(false, null, errorMessage, statusCode);
+            return new UploadResult(false, null, errorMessage, statusCode, DataProtectionErrorCode.fromHttpStatus(statusCode));
         }
 
         public boolean isSuccess() {
@@ -40,6 +46,10 @@ public interface BackupStorageProvider {
 
         public int getStatusCode() {
             return statusCode;
+        }
+
+        public DataProtectionErrorCode getErrorCode() {
+            return errorCode;
         }
     }
 

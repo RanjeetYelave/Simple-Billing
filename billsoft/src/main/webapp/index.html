@@ -22502,9 +22502,12 @@
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, padding: '12px 0', borderTop: '1px dashed rgba(59,130,246,0.2)', borderBottom: '1px dashed rgba(59,130,246,0.2)', fontSize: '0.84rem' } },
                 React.createElement('div', null,
                   React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'LAST CLOUD SYNC'),
-                  React.createElement('span', { style: { fontWeight: 600, color: (dpStatus && dpStatus.lastBackupTimestamp) ? '#059669' : 'var(--text-secondary)' } },
-                    (dpStatus && dpStatus.lastBackupFormatted) || (dpStatus && dpStatus.lastBackupTimestamp ? new Date(dpStatus.lastBackupTimestamp).toLocaleString() : 'Never Synced')
-                  )
+                  (() => {
+                    const hasCloudSync = dpStatus && (dpStatus.lastSuccessfulCloudBackupAt || dpStatus.lastBackupTimestamp);
+                    const syncText = (dpStatus && dpStatus.lastBackupFormatted) ||
+                      (hasCloudSync ? new Date(dpStatus.lastSuccessfulCloudBackupAt || dpStatus.lastBackupTimestamp).toLocaleString() : 'Never Synced');
+                    return React.createElement('span', { style: { fontWeight: 600, color: hasCloudSync ? '#059669' : 'var(--text-secondary)' } }, syncText);
+                  })()
                 ),
                 React.createElement('div', null,
                   React.createElement('span', { style: { color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600 } }, 'VAULT FILE SIZE'),
@@ -22527,7 +22530,7 @@
               ),
 
               React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end', flexWrap: 'wrap' } },
-                (dpStatus && dpStatus.lastBackupTimestamp) && React.createElement('button', {
+                (dpStatus && (dpStatus.lastSuccessfulCloudBackupAt || dpStatus.lastBackupTimestamp)) && React.createElement('button', {
                   type: 'button',
                   className: 'btn btn-outline btn-sm',
                   onClick: handleDpInspectCloud,
@@ -25345,15 +25348,12 @@
       );
     }
 
-    // ─── GENERAL PREFERENCES ───
-    function SettingsGeneral() {
+    // ─── APPEARANCE & DISPLAY SETTINGS ───
+    function SettingsAppearance() {
       const [themeState, setThemeState] = useState(() => (window.getThemeState ? window.getThemeState() : {
         family: 'modern', isDark: false, activeIsDark: false, schedule: 'manual', customStart: '19:00', customEnd: '07:00', activeClass: 'light-1'
       }));
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
-      const [licenseInfo, setLicenseInfo] = useState(null);
-      const [qrDataStr, setQrDataStr] = useState('');
-      const [checkingOnline, setCheckingOnline] = useState(false);
 
       useEffect(() => {
         const handler = () => {
@@ -25410,32 +25410,6 @@
         localStorage.setItem('billsoft_show_status_bar', checked ? 'true' : 'false');
         window.dispatchEvent(new CustomEvent('billsoft:statusbar-toggle', { detail: { show: checked } }));
         if (window.showToast) window.showToast(checked ? 'System status bar enabled' : 'System status bar disabled', 'success');
-      };
-
-      useEffect(() => {
-        API.license.status().then(setLicenseInfo).catch(() => { });
-        API.license.qr().then(res => {
-          if (res && res.mid) setQrDataStr(JSON.stringify(res));
-        }).catch(() => { });
-      }, []);
-
-      const handleCheckOnline = async () => {
-        setCheckingOnline(true);
-        try {
-          const res = await API.license.checkOnline();
-          setLicenseInfo(res);
-          if (res && res.isValid && res.status === 'ACTIVE') {
-            window.showToast && window.showToast(`Software license synced! Tier: ${res.plan}`, 'success');
-          } else if (res && res.validationDescription) {
-            window.showToast && window.showToast(res.validationDescription, 'info');
-          } else {
-            window.showToast && window.showToast('Online license check complete.', 'info');
-          }
-        } catch (err) {
-          window.showToast && window.showToast('Could not reach online registry. Check internet connection.', 'error');
-        } finally {
-          setCheckingOnline(false);
-        }
       };
 
       const activeBadgeText = themeState.family === 'classic'
@@ -25673,15 +25647,60 @@
               )
             )
           )
-        ),
+        )
+      );
+    }
 
-        // 3. Software Licensing & Activation Card
+    // ─── SOFTWARE LICENSING & ACTIVATION ───
+    function SettingsLicensing() {
+      const [licenseInfo, setLicenseInfo] = useState(null);
+      const [qrDataStr, setQrDataStr] = useState('');
+      const [checkingOnline, setCheckingOnline] = useState(false);
+
+      const loadLicense = () => {
+        API.license.status().then(setLicenseInfo).catch(() => { });
+        API.license.qr().then(res => {
+          if (res && res.mid) setQrDataStr(JSON.stringify(res));
+        }).catch(() => { });
+      };
+
+      useEffect(() => {
+        loadLicense();
+      }, []);
+
+      const handleCheckOnline = async () => {
+        setCheckingOnline(true);
+        try {
+          const res = await API.license.checkOnline();
+          setLicenseInfo(res);
+          if (res && res.isValid && res.status === 'ACTIVE') {
+            window.showToast && window.showToast(`Software license synced! Tier: ${res.plan}`, 'success');
+          } else if (res && res.validationDescription) {
+            window.showToast && window.showToast(res.validationDescription, 'info');
+          } else {
+            window.showToast && window.showToast('Online license check complete.', 'info');
+          }
+        } catch (err) {
+          window.showToast && window.showToast('Could not reach online registry. Check internet connection.', 'error');
+        } finally {
+          setCheckingOnline(false);
+        }
+      };
+
+      return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
+        // Software Licensing & Activation Card
         React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } },
-            React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🔑'),
-            React.createElement('div', null,
-              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Software License & Activation'),
-              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Manage membership tier, machine identity, validity, and online activation sync.')
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🔑'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Software Licensing & Entitlements'),
+                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Manage membership tier, machine identity, validity, and online registry synchronization.')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.08)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(16, 185, 129, 0.2)' } },
+              React.createElement('span', null, '🔒'),
+              React.createElement('span', { style: { fontWeight: 600 } }, 'Ed25519 Local Verification')
             )
           ),
 
@@ -25785,7 +25804,18 @@
                 )
               ),
 
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline btn-sm',
+                  onClick: () => {
+                    if (licenseInfo && licenseInfo.machineId) {
+                      navigator.clipboard.writeText(licenseInfo.machineId);
+                      window.showToast && window.showToast('Machine ID copied to clipboard!', 'success');
+                    }
+                  },
+                  style: { padding: '6px 12px', fontSize: '0.8rem' }
+                }, '📋 Copy Machine ID'),
                 React.createElement('button', {
                   type: 'button',
                   className: 'btn btn-secondary',
@@ -25856,6 +25886,8 @@
         )
       );
     }
+
+    const SettingsGeneral = SettingsAppearance;
 
     // ─── SECURITY & ACCESS CONTROL ───
     function SettingsSecurity() {
@@ -26380,6 +26412,40 @@
           )
         ),
 
+        // Keyboard Shortcuts Cheatsheet Card
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
+            React.createElement('div', { style: { fontSize: '1.5rem', padding: 10, borderRadius: 12, background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' } }, '⌨️'),
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Keyboard Shortcuts & Power Navigation'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Boost daily cashier and bookkeeping productivity with universal hotkeys')
+            )
+          ),
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 } },
+            [
+              { key: 'Ctrl + K  /  ⌘K', desc: 'Omnisearch & Quick Action Bar' },
+              { key: 'Ctrl + B  /  ⌘B', desc: 'Instant New Invoice / POS Bill' },
+              { key: 'Ctrl + Shift + L', desc: 'Lock Session & Protect Screen' },
+              { key: 'Esc', desc: 'Dismiss Active Modal or Dialog' }
+            ].map((s, idx) => React.createElement('div', {
+              key: idx,
+              style: {
+                padding: '12px 14px', borderRadius: 10, background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4
+              }
+            },
+              React.createElement('kbd', {
+                style: {
+                  fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem',
+                  background: 'var(--bg-card)', padding: '2px 8px', borderRadius: 6,
+                  border: '1px solid var(--border)', display: 'inline-block', width: 'fit-content', color: 'var(--primary)'
+                }
+              }, s.key),
+              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, s.desc)
+            ))
+          )
+        ),
+
         // Credits Card
         React.createElement('div', { className: 'card', style: { padding: '28px', borderRadius: 16 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } },
@@ -26415,6 +26481,19 @@
     }
 
     function SettingsHub({ onFirmChanged, onStartUpdate }) {
+      const normalizeSettingsTab = (t) => {
+        if (!t) return 'appearance';
+        const low = String(t).toLowerCase();
+        if (low === 'general' || low === 'appearance' || low === 'theme' || low === 'display') return 'appearance';
+        if (low === 'license' || low === 'licensing' || low === 'activation') return 'license';
+        if (low === 'security' || low === 'lock' || low === 'password') return 'security';
+        if (low === 'firm' || low === 'profile' || low === 'branding' || low === 'business') return 'firm';
+        if (low === 'backup' || low === 'restore' || low === 'vault') return 'backup';
+        if (low === 'updates' || low === 'update' || low === 'software' || low === 'network') return 'updates';
+        if (low === 'credits' || low === 'help' || low === 'about' || low === 'support') return 'credits';
+        return 'appearance';
+      };
+
       const getInitialNav = () => {
         const p = window.__billsoftPendingNav;
         if (p && p.page === 'settings' && (Date.now() - (p.ts || 0) < 15000)) {
@@ -26423,36 +26502,206 @@
         return null;
       };
       const initialNav = getInitialNav();
-      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'general');
+      const [tab, setTab] = useState(() => normalizeSettingsTab((initialNav && initialNav.tab) || 'appearance'));
 
       useEffect(() => {
         const handleNav = (e) => {
           if (!e || !e.detail) return;
           if (e.detail.page && e.detail.page !== 'settings') return;
-          if (e.detail.tab) setTab(e.detail.tab);
+          if (e.detail.tab) setTab(normalizeSettingsTab(e.detail.tab));
         };
         if (initialNav && initialNav.tab) {
-          setTab(initialNav.tab);
+          setTab(normalizeSettingsTab(initialNav.tab));
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
       }, []);
 
+      const activeTab = normalizeSettingsTab(tab);
+
       return React.createElement('div', null,
         React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 10, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' } },
-          React.createElement('button', { className: `btn ${tab === 'general' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('general') }, '⚙️ General'),
-          React.createElement('button', { className: `btn ${tab === 'security' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('security') }, '🔒 Security & Lock'),
-          React.createElement('button', { className: `btn ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, '🏢 Firm Profile'),
-          React.createElement('button', { className: `btn ${tab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, '💾 Backup & Restore'),
-          React.createElement('button', { className: `btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('updates') }, '🔄 Software Update'),
-          React.createElement('button', { className: `btn ${tab === 'credits' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('credits') }, '🎧 Help & Credits')
+          React.createElement('button', { className: `btn ${activeTab === 'appearance' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('appearance') }, '🎨 Appearance'),
+          React.createElement('button', { className: `btn ${activeTab === 'license' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('license') }, '🔑 Licensing'),
+          React.createElement('button', { className: `btn ${activeTab === 'security' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('security') }, '🔒 Security & Lock'),
+          React.createElement('button', { className: `btn ${activeTab === 'firm' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('firm') }, '🏢 Firm Branding'),
+          React.createElement('button', { className: `btn ${activeTab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, '💾 Backup & Vault'),
+          React.createElement('button', { className: `btn ${activeTab === 'updates' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('updates') }, '🔄 Software Updates'),
+          React.createElement('button', { className: `btn ${activeTab === 'credits' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('credits') }, '🎧 Help & About')
         ),
-        tab === 'general' && React.createElement(SettingsGeneral, null),
-        tab === 'security' && React.createElement(SettingsSecurity, null),
-        tab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
-        tab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
-        tab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate }),
-        tab === 'credits' && React.createElement(CreditsHelpdesk, null)
+        activeTab === 'appearance' && React.createElement(SettingsAppearance, null),
+        activeTab === 'license' && React.createElement(SettingsLicensing, null),
+        activeTab === 'security' && React.createElement(SettingsSecurity, null),
+        activeTab === 'firm' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
+        activeTab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
+        activeTab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate }),
+        activeTab === 'credits' && React.createElement(CreditsHelpdesk, null)
+      );
+    }
+
+    // ─── NETWORK CONNECTIVITY MODAL & CLOUD TELEMETRY ───
+    function NetworkConnectivityModal({ isOpen, onClose, networkData, onRefresh }) {
+      const [refreshing, setRefreshing] = useState(false);
+      const [data, setData] = useState(networkData);
+
+      useEffect(() => {
+        setData(networkData);
+      }, [networkData]);
+
+      if (!isOpen) return null;
+
+      const isConnected = data ? data.connected !== false : navigator.onLine;
+      const isCloudReachable = data ? data.cloudServicesReachable !== false : isConnected;
+      const latency = data && data.latencyMs >= 0 ? `${data.latencyMs}ms` : (isConnected ? 'Fast' : 'N/A');
+
+      const handleTest = async () => {
+        setRefreshing(true);
+        try {
+          if (API.system && typeof API.system.getNetworkStatus === 'function') {
+            const res = await API.system.getNetworkStatus(true);
+            setData(res);
+            if (onRefresh) onRefresh(res);
+            window.showToast && window.showToast(res.connected ? 'Network test: Online and connected' : 'Network test: Offline (Local Mode Active)', res.connected ? 'success' : 'info');
+          }
+        } catch (e) {
+          console.error("Network test error", e);
+        } finally {
+          setRefreshing(false);
+        }
+      };
+
+      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+        React.createElement('div', {
+          className: 'card modal-content',
+          style: { maxWidth: 520, width: '92%', margin: '60px auto', padding: 24, borderRadius: 16 },
+          onClick: e => e.stopPropagation()
+        },
+          // Header
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid var(--border)', paddingBottom: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('div', { style: { width: 38, height: 38, borderRadius: 10, background: isConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', color: isConnected ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' } }, isConnected ? '🌐' : '📡'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text)' } }, 'Network & Cloud Connectivity'),
+                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Real-time telemetry for Licensing, Cloud Vault & Updates')
+              )
+            ),
+            React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: onClose }, '✕')
+          ),
+
+          // Main Status Card
+          React.createElement('div', {
+            style: {
+              background: isConnected ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+              border: `1px solid ${isConnected ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+              padding: '14px 16px', borderRadius: 12, marginBottom: 18,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', {
+                style: {
+                  width: 10, height: 10, borderRadius: '50%',
+                  backgroundColor: isConnected ? '#10b981' : '#f59e0b',
+                  boxShadow: `0 0 8px ${isConnected ? '#10b981' : '#f59e0b'}`
+                }
+              }),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: isConnected ? '#15803d' : '#b45309' } },
+                  isConnected ? 'Online • Connected to Internet' : 'Offline-First Local Mode Active'
+                ),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  isConnected ? 'All cloud synchronization features are active' : 'Point-of-Sale & Billing 100% operational offline'
+                )
+              )
+            ),
+            React.createElement('span', { style: { fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-secondary)' } },
+              isConnected ? `RTT: ${latency}` : 'Offline'
+            )
+          ),
+
+          // Subsystem Check Grid
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 } },
+            [
+              {
+                title: 'Offline-First Billing Engine',
+                desc: 'Invoicing, POS, Barcode, GST & Local DB',
+                status: '100% Operational',
+                badge: 'ACTIVE',
+                ok: true,
+                icon: '⚡'
+              },
+              {
+                title: 'Off-Device Cloud Data Protection',
+                desc: 'Weekly client-encrypted cloud backup vault',
+                status: isCloudReachable ? 'Connected & Ready' : 'Paused (Will auto-sync when online)',
+                badge: isCloudReachable ? 'CONNECTED' : 'PAUSED',
+                ok: isCloudReachable,
+                icon: '🛡️'
+              },
+              {
+                title: 'Licensing & Announcement Registry',
+                desc: 'Opportunistic verification & customer messages',
+                status: isConnected ? 'Online Verification Active' : 'Offline Grace Active (Local Cache)',
+                badge: isConnected ? 'SYNCED' : 'CACHED',
+                ok: true,
+                icon: '🔑'
+              },
+              {
+                title: 'Application Updates & Release Feed',
+                desc: 'Automated release version checking',
+                status: isConnected ? 'Connected to GitHub Release Feed' : 'Standby (Offline)',
+                badge: isConnected ? 'STANDBY' : 'OFFLINE',
+                ok: isConnected,
+                icon: '🚀'
+              }
+            ].map((sub, idx) =>
+              React.createElement('div', {
+                key: idx,
+                style: {
+                  background: 'var(--bg-card, rgba(255,255,255,0.03))',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  React.createElement('span', { style: { fontSize: '1.1rem' } }, sub.icon),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { fontWeight: 600, fontSize: '0.84rem', color: 'var(--text)' } }, sub.title),
+                    React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, sub.desc)
+                  )
+                ),
+                React.createElement('span', {
+                  style: {
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    background: sub.ok ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                    color: sub.ok ? '#10b981' : '#f59e0b',
+                    border: `1px solid ${sub.ok ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                  }
+                }, sub.badge)
+              )
+            )
+          ),
+
+          // Actions Footer
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, borderTop: '1px solid var(--border)' } },
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              onClick: handleTest,
+              disabled: refreshing
+            }, refreshing ? 'Testing...' : '🔄 Test Connection Now'),
+            React.createElement('button', {
+              className: 'btn btn-primary btn-sm',
+              onClick: onClose
+            }, 'Done')
+          )
+        )
       );
     }
 
@@ -26463,9 +26712,12 @@
       const [reqCount, setReqCount] = useState(() => API.sessionRequestsCount || 0);
       const [sessionSeconds, setSessionSeconds] = useState(0);
       const [showModal, setShowModal] = useState(false);
+      const [showNetworkModal, setShowNetworkModal] = useState(false);
       const [refreshing, setRefreshing] = useState(false);
       const [backupInfo, setBackupInfo] = useState(null);
       const [diagData, setDiagData] = useState(null);
+      const [networkData, setNetworkData] = useState(null);
+      const [browserOnline, setBrowserOnline] = useState(() => navigator.onLine !== false);
 
       const fetchMetrics = useCallback(async () => {
         const t0 = performance.now();
@@ -26487,6 +26739,10 @@
             if (data.metrics) setMetrics(data.metrics);
             if (data.backup) setBackupInfo(data.backup);
             if (data.diagnostics) setDiagData(data.diagnostics);
+            if (data.network) {
+              setNetworkData(data.network);
+              window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: data.network }));
+            }
             if (Array.isArray(data.messages)) {
               window.dispatchEvent(new CustomEvent('billsoft:messages-sync', { detail: data.messages }));
             }
@@ -26496,6 +26752,23 @@
           setPingMs(null);
         }
       }, []);
+
+      useEffect(() => {
+        const handleOnline = () => { setBrowserOnline(true); fetchMetrics(); };
+        const handleOffline = () => { setBrowserOnline(false); setNetworkData(prev => ({ ...(prev || {}), connected: false })); };
+        const handleNetStatus = (e) => { if (e && e.detail) setNetworkData(e.detail); };
+        const handleAppRefresh = () => { fetchMetrics(); };
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        window.addEventListener('billsoft:network-status', handleNetStatus);
+        window.addEventListener('billsoft:app-refresh', handleAppRefresh);
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+          window.removeEventListener('billsoft:network-status', handleNetStatus);
+          window.removeEventListener('billsoft:app-refresh', handleAppRefresh);
+        };
+      }, [fetchMetrics]);
 
       useEffect(() => {
         fetchMetrics();
@@ -26578,6 +26851,24 @@
               }),
               React.createElement('span', { style: { fontWeight: 600, color: pingMs !== null ? 'var(--text)' : 'var(--danger)' } },
                 pingMs !== null ? `System Healthy (${pingMs}ms)` : 'Connecting...'
+              )
+            ),
+            React.createElement('div', { className: 'bottom-status-divider' }),
+            // Internet & Cloud Status Indicator
+            React.createElement('div', {
+              className: 'bottom-status-item',
+              title: (networkData?.connected ?? browserOnline) ? 'Internet & Cloud Services connected (Click for Network Hub)' : 'Offline Local Mode - POS Billing fully functional (Click to test)',
+              onClick: () => setShowNetworkModal(true)
+            },
+              React.createElement('span', {
+                style: {
+                  width: 7, height: 7, borderRadius: '50%',
+                  backgroundColor: (networkData?.connected ?? browserOnline) ? '#10B981' : '#F59E0B',
+                  boxShadow: (networkData?.connected ?? browserOnline) ? '0 0 6px #10B981' : '0 0 6px #F59E0B'
+                }
+              }),
+              React.createElement('span', { style: { fontWeight: 600, color: (networkData?.connected ?? browserOnline) ? 'var(--text)' : '#b45309' } },
+                (networkData?.connected ?? browserOnline) ? 'Cloud Online' : 'Offline Mode'
               )
             ),
             React.createElement('div', { className: 'bottom-status-divider' }),
@@ -26924,7 +27215,18 @@
               }, 'Close')
             )
           )
-        )
+        ),
+
+        // Network Connectivity Hub Modal
+        showNetworkModal && React.createElement(NetworkConnectivityModal, {
+          isOpen: showNetworkModal,
+          onClose: () => setShowNetworkModal(false),
+          networkData: networkData,
+          onRefresh: (fresh) => {
+            setNetworkData(fresh);
+            window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: fresh }));
+          }
+        })
       );
     }
 
@@ -27095,6 +27397,8 @@
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
       const [lastChecked, setLastChecked] = useState(null);
+      const [netData, setNetData] = useState(null);
+      const [netTesting, setNetTesting] = useState(false);
 
       const fetchUpdateInfo = () => {
         setLoading(true);
@@ -27115,8 +27419,26 @@
 
       useEffect(() => {
         const t = setTimeout(() => fetchUpdateInfo(), 400);
+        if (API.system && typeof API.system.getNetworkStatus === 'function') {
+          API.system.getNetworkStatus(false).then(setNetData).catch(() => {});
+        }
         return () => clearTimeout(t);
       }, []);
+
+      const handleTestNetwork = async () => {
+        setNetTesting(true);
+        try {
+          if (API.system && typeof API.system.getNetworkStatus === 'function') {
+            const res = await API.system.getNetworkStatus(true);
+            setNetData(res);
+            if (window.showToast) window.showToast(res.connected ? `Network OK: ${res.latencyMs >= 0 ? res.latencyMs + 'ms latency' : 'Connected'}` : 'Offline-first mode active', res.connected ? 'success' : 'info');
+          }
+        } catch (e) {
+          if (window.showToast) window.showToast('Network probe failed', 'error');
+        } finally {
+          setNetTesting(false);
+        }
+      };
 
       const handleInstall = () => {
         if (onStartUpdate) {
@@ -27344,6 +27666,48 @@
             }, `RupeeCRM ${info.currentVersion || 'v1.0.0'} is currently the newest version.`)
           )
         ) : null,
+
+        // Network & Cloud Diagnostics Card
+        React.createElement('div', {
+          style: {
+            marginTop: 20,
+            padding: '16px 20px',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('div', {
+              style: {
+                width: 36, height: 36, borderRadius: 8,
+                background: (netData && netData.connected !== false) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                color: (netData && netData.connected !== false) ? '#10b981' : '#f59e0b',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem'
+              }
+            }, (netData && netData.connected !== false) ? '🌐' : '📡'),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' } }, 'Network & Cloud Diagnostic'),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                (netData && netData.connected !== false)
+                  ? `Cloud Connected • Latency: ${netData.latencyMs >= 0 ? netData.latencyMs + 'ms' : 'Fast'} • GitHub API Host Active`
+                  : 'Offline-First Local Mode Active (POS Billing 100% Operational)'
+              )
+            )
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'btn btn-outline btn-sm',
+            disabled: netTesting,
+            onClick: handleTestNetwork,
+            style: { padding: '6px 12px', fontSize: '0.8rem', fontWeight: 600 }
+          }, netTesting ? 'Testing...' : '⚡ Test Reachability')
+        ),
 
         // Footer Action
         React.createElement('div', {
@@ -30288,9 +30652,12 @@
       const [snoozeChoice, setSnoozeChoice] = useState('1d');
       const [firstTimeSetup, setFirstTimeSetup] = useState(false);
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-      const [isSyncing, setIsSyncing] = useState(false);
-      const [syncStatusText, setSyncStatusText] = useState('Syncing records with database...');
       const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+      const [isSyncing, setIsSyncing] = useState(false);
+      const [syncStatusText, setSyncStatusText] = useState('Refreshing workspace...');
+      const [isNetOnline, setIsNetOnline] = useState(() => navigator.onLine !== false);
+      const [networkDetails, setNetworkDetails] = useState(null);
+      const [showNetworkModal, setShowNetworkModal] = useState(false);
 
       const omniPlaceholders = useMemo(() => [
         // 1. Live Receivables & Customer Dues
@@ -30820,6 +31187,13 @@
           }).catch(() => { }) : Promise.resolve()),
           (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
             if (Array.isArray(msgs)) setInboxMessages(msgs);
+          }).catch(() => { }) : Promise.resolve()),
+          (API.system && typeof API.system.getNetworkStatus === 'function' ? API.system.getNetworkStatus(true).then(net => {
+            if (net) {
+              setNetworkDetails(net);
+              setIsNetOnline(net.connected !== false);
+              window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: net }));
+            }
           }).catch(() => { }) : Promise.resolve())
         ];
 
@@ -30902,6 +31276,25 @@
           window.removeEventListener('billsoft:open-global-search', handleOpenOmni);
         };
       }, [page, handleAppRefresh]);
+
+      useEffect(() => {
+        const handleNetStatus = (e) => {
+          if (e && e.detail) {
+            setNetworkDetails(e.detail);
+            setIsNetOnline(e.detail.connected !== false);
+          }
+        };
+        const handleOnline = () => { setIsNetOnline(true); };
+        const handleOffline = () => { setIsNetOnline(false); setNetworkDetails(prev => ({ ...(prev || {}), connected: false })); };
+        window.addEventListener('billsoft:network-status', handleNetStatus);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+          window.removeEventListener('billsoft:network-status', handleNetStatus);
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
+      }, []);
 
       const navigate = (p) => {
         setPage(p);
@@ -31646,6 +32039,17 @@
                 }
                 return null;
               })(),
+              // Internet Connectivity Indicator Pill
+              React.createElement('div', {
+                className: `topbar-network-pill ${isNetOnline ? 'online' : 'offline'}`,
+                title: isNetOnline
+                  ? `Internet & Cloud Vault Connected ${networkDetails && networkDetails.latencyMs >= 0 ? '(' + networkDetails.latencyMs + 'ms)' : ''} (Click for telemetry)`
+                  : 'Offline-First Local Mode Active • Billing 100% Operational (Click for telemetry)',
+                onClick: () => setShowNetworkModal(true)
+              },
+                React.createElement('span', { className: `topbar-network-dot ${isNetOnline ? 'online' : 'offline'} pulse` }),
+                React.createElement('span', { className: 'hide-mobile' }, isNetOnline ? 'Online' : 'Offline Mode')
+              ),
               (() => {
                 const unreadCount = (inboxMessages && Array.isArray(inboxMessages))
                   ? inboxMessages.filter(m => !m.read).length
@@ -32092,6 +32496,12 @@
           dialogState: confirmDialog,
           onConfirm: handleDialogConfirm,
           onCancel: handleDialogCancel
+        }),
+        React.createElement(NetworkConnectivityModal, {
+          isOpen: showNetworkModal,
+          onClose: () => setShowNetworkModal(false),
+          networkData: networkDetails,
+          onRefresh: (d) => { setNetworkDetails(d); setIsNetOnline(d.connected !== false); }
         })
       );
     }

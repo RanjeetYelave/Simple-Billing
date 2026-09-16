@@ -80,6 +80,6 @@ public class DataProtectionCryptoTest {
     public void testObfuscatedTokenReconstruction() {
         String token = VaultTransportRegistry.resolveDefaultDescriptor();
         assertNotNull(token);
-        assertEquals("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", token);
+        assertEquals("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", token);
     }
 }

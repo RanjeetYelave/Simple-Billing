@@ -151,7 +151,7 @@ public class DataProtectionService {
         Map<String, Object> resp = new HashMap<>();
         if (entitlement == null || !entitlement.isDataProtectionActive()) {
             resp.put("success", false);
-            resp.put("message", "Data Protection is not active for the current license");
+            resp.put("message", DataProtectionErrorCode.DP_008.formatMessage());
             return resp;
         }
 
@@ -164,9 +164,17 @@ public class DataProtectionService {
         try {
             boolean success = executeBackupProcess();
             resp.put("success", success);
-            resp.put("lastSuccessfulBackup", currentStatus.getLastSuccessfulCloudBackupAt());
+            Instant lastSuccess = currentStatus.getLastSuccessfulCloudBackupAt();
+            resp.put("lastSuccessfulBackup", lastSuccess);
+            resp.put("lastSuccessfulCloudBackupAt", lastSuccess);
+            resp.put("lastBackupTimestamp", lastSuccess != null ? lastSuccess.toString() : null);
             resp.put("sizeBytes", currentStatus.getLastBackupSizeBytes());
             resp.put("error", currentStatus.getLastError());
+            if (!success) {
+                resp.put("message", currentStatus.getLastError() != null ? currentStatus.getLastError() : DataProtectionErrorCode.DP_007.formatMessage());
+            } else {
+                resp.put("message", "Encrypted backup successfully uploaded to cloud vault!");
+            }
             return resp;
         } finally {
             uploadInProgress.set(false);
@@ -189,7 +197,7 @@ public class DataProtectionService {
         File backupFile = new File(backupDir, LATEST_BACKUP_NAME);
 
         if (!backupFile.exists() || !backupFile.isFile() || backupFile.length() == 0) {
-            currentStatus.setLastError("Local backup file (" + LATEST_BACKUP_NAME + ") not found on disk");
+            currentStatus.setLastError(DataProtectionErrorCode.DP_001.formatMessage());
             saveStatus(currentStatus);
             return false;
         }
@@ -224,9 +232,9 @@ public class DataProtectionService {
                 return false;
             }
         } catch (Exception e) {
-            currentStatus.setLastError("Encryption/packaging error: " + e.getMessage());
+            log.warn("Data Protection encryption/packaging failed: {}", e.getMessage());
+            currentStatus.setLastError(DataProtectionErrorCode.DP_005.formatMessage());
             saveStatus(currentStatus);
-            log.warn("Data Protection failed with exception: {}", e.getMessage());
             return false;
         }
     }
@@ -255,7 +263,10 @@ public class DataProtectionService {
         map.put("enabled", enabled);
         map.put("active", active);
         map.put("expiresAt", expiresAt);
-        map.put("lastSuccessfulCloudBackupAt", currentStatus.getLastSuccessfulCloudBackupAt());
+        Instant lastSuccess = currentStatus.getLastSuccessfulCloudBackupAt();
+        map.put("lastSuccessfulCloudBackupAt", lastSuccess);
+        map.put("lastBackupTimestamp", lastSuccess != null ? lastSuccess.toString() : null);
+        map.put("lastBackupFormatted", lastSuccess != null ? java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy, hh:mm:ss a").withZone(java.time.ZoneId.systemDefault()).format(lastSuccess) : null);
         map.put("lastBackupSizeBytes", currentStatus.getLastBackupSizeBytes());
         map.put("lastAttemptAt", currentStatus.getLastAttemptAt());
         map.put("lastError", currentStatus.getLastError());

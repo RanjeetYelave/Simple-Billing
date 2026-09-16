@@ -34,19 +34,22 @@ public class HealthController {
     private final DataSource dataSource;
 
     private final com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService;
+    private final com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService;
 
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
                             ApiDiagnosticsService apiDiagnosticsService,
                             InboxMessageService inboxMessageService,
                             DataSource dataSource,
-                            com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService) {
+                            com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService,
+                            com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService) {
         this.systemMetricsService = systemMetricsService;
         this.autoBackupService = autoBackupService;
         this.apiDiagnosticsService = apiDiagnosticsService;
         this.inboxMessageService = inboxMessageService;
         this.dataSource = dataSource;
         this.tenantDataIntegrityAuditService = tenantDataIntegrityAuditService;
+        this.networkReachabilityService = networkReachabilityService;
     }
 
     @GetMapping("/api/health")
@@ -55,6 +58,23 @@ public class HealthController {
             "status", "UP",
             "timestamp", System.currentTimeMillis()
         ));
+    }
+
+    @GetMapping({"/api/system/network-status", "/api/network/status"})
+    public ResponseEntity<Map<String, Object>> getNetworkStatus(
+            @RequestParam(required = false, defaultValue = "false") boolean forceRefresh,
+            @RequestParam(required = false, defaultValue = "false") boolean force) {
+        boolean doForce = forceRefresh || force;
+        if (networkReachabilityService == null) {
+            return ResponseEntity.ok(Map.of(
+                "connected", true,
+                "mode", "ONLINE",
+                "cloudServicesReachable", true,
+                "latencyMs", 0L,
+                "description", "Network reachability service uninitialized"
+            ));
+        }
+        return ResponseEntity.ok(networkReachabilityService.getStatus(doForce).toMap());
     }
 
     @GetMapping("/api/diagnostics/api-suite")
@@ -79,7 +99,7 @@ public class HealthController {
     }
 
     /**
-     * Unified Heartbeat API: Consolidates metrics, backup status, diagnostics, and firm inbox messages
+     * Unified Heartbeat API: Consolidates metrics, backup status, diagnostics, network status, and firm inbox messages
      * into a single lightweight HTTP call to eliminate redundant background network polling.
      */
     @GetMapping({"/api/system/heartbeat", "/api/health/heartbeat"})
@@ -87,6 +107,7 @@ public class HealthController {
         Map<String, Object> metricsData = systemMetricsService != null ? systemMetricsService.getMetricsSnapshot() : Map.of();
         Map<String, Object> backupData = autoBackupService != null ? autoBackupService.ensureTodayBackup() : Map.of();
         Map<String, Object> diagData = buildDiagnosticsData(backupData);
+        Map<String, Object> netData = networkReachabilityService != null ? networkReachabilityService.getStatus(false).toMap() : Map.of("connected", true);
         List<InboxMessage> messages = (firmId != null && inboxMessageService != null)
                 ? inboxMessageService.getMessagesByFirm(firmId)
                 : Collections.emptyList();
@@ -97,6 +118,7 @@ public class HealthController {
         response.put("metrics", metricsData);
         response.put("backup", backupData);
         response.put("diagnostics", diagData);
+        response.put("network", netData);
         response.put("messages", messages);
         return ResponseEntity.ok(response);
     }

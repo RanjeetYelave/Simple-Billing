@@ -92,6 +92,7 @@ class FirmDetailsServiceTest {
         FirmDetails payload = new FirmDetails();
         payload.setFirmName(" Updated Firm ");
         payload.setPhone(" 1234567890 ");
+        payload.setUpiId(" store@okaxis ");
 
         when(repo.findById(id)).thenReturn(Optional.of(existing));
         when(repo.save(any(FirmDetails.class))).thenAnswer(i -> i.getArguments()[0]);
@@ -101,6 +102,7 @@ class FirmDetailsServiceTest {
         assertNotNull(result);
         assertEquals("Updated Firm", result.getFirmName());
         assertEquals("1234567890", result.getPhone());
+        assertEquals("store@okaxis", result.getUpiId());
     }
 
     @Test

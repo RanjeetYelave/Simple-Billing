@@ -1,11 +1,14 @@
 package com.billing.simple.billsoft.service.impl;
 
+import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.BusinessLetter;
 import com.billing.simple.billsoft.entities.LetterRecipientType;
 import com.billing.simple.billsoft.entities.LetterStatus;
 import com.billing.simple.billsoft.repositories.BusinessLetterRepository;
 import com.billing.simple.billsoft.service.BusinessLetterPdfService;
 import com.billing.simple.billsoft.service.BusinessLetterService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,18 +23,41 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
 
     private final BusinessLetterRepository letterRepository;
     private final BusinessLetterPdfService pdfService;
+    private final com.billing.simple.billsoft.repo.CustomerRepository customerRepository;
+    private final com.billing.simple.billsoft.repositories.PartyRepository partyRepository;
 
     public BusinessLetterServiceImpl(BusinessLetterRepository letterRepository,
-                                    BusinessLetterPdfService pdfService) {
+                                    BusinessLetterPdfService pdfService,
+                                    com.billing.simple.billsoft.repo.CustomerRepository customerRepository,
+                                    com.billing.simple.billsoft.repositories.PartyRepository partyRepository) {
         this.letterRepository = letterRepository;
         this.pdfService = pdfService;
+        this.customerRepository = customerRepository;
+        this.partyRepository = partyRepository;
     }
 
     @Override
     public BusinessLetter createLetter(BusinessLetter letter) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            letter.setFirmId(authoritativeFirmId);
+        }
         if (letter.getFirmId() == null) {
             throw new IllegalArgumentException("Firm ID is required");
         }
+
+        // Validate recipient relationship if customer or party is linked
+        if (letter.getCustomerId() != null) {
+            if (!customerRepository.existsByIdAndFirmId(letter.getCustomerId(), letter.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced customer does not belong to the current firm");
+            }
+        }
+        if (letter.getPartyId() != null) {
+            if (!partyRepository.existsByIdAndFirmId(letter.getPartyId(), letter.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced party does not belong to the current firm");
+            }
+        }
+
         if (letter.getRecipientName() == null || letter.getRecipientName().trim().isEmpty()) {
             throw new IllegalArgumentException("Recipient name is required");
         }
@@ -51,10 +77,32 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
 
     @Override
     public BusinessLetter updateLetter(Long id, BusinessLetter updated) {
-        BusinessLetter existing = (updated.getFirmId() != null
-                ? letterRepository.findByIdAndFirmId(id, updated.getFirmId())
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) authoritativeFirmId = updated.getFirmId();
+
+        BusinessLetter existing = (authoritativeFirmId != null
+                ? letterRepository.findByIdAndFirmId(id, authoritativeFirmId)
                 : letterRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
+
+        // Validate recipient relationship if customer or party is linked
+        if (updated.getCustomerId() != null) {
+            if (!customerRepository.existsByIdAndFirmId(updated.getCustomerId(), existing.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced customer does not belong to the current firm");
+            }
+            existing.setCustomerId(updated.getCustomerId());
+        } else {
+            existing.setCustomerId(null);
+        }
+
+        if (updated.getPartyId() != null) {
+            if (!partyRepository.existsByIdAndFirmId(updated.getPartyId(), existing.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced party does not belong to the current firm");
+            }
+            existing.setPartyId(updated.getPartyId());
+        } else {
+            existing.setPartyId(null);
+        }
 
         if (updated.getLetterNumber() != null && !updated.getLetterNumber().trim().isEmpty()) {
             existing.setLetterNumber(updated.getLetterNumber().trim());
@@ -115,6 +163,16 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
                 .filter(l -> start == null || !l.getLetterDate().isBefore(start))
                 .filter(l -> end == null || !l.getLetterDate().isAfter(end))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<BusinessLetter> getPaginatedLetters(Long firmId, Pageable pageable) {
+        if (firmId == null) {
+            return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+        }
+        Page<BusinessLetter> page = letterRepository.findByFirmId(firmId, pageable);
+        return PageResponse.of(page);
     }
 
     @Override

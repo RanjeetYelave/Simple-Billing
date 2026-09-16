@@ -6,7 +6,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -15,7 +17,7 @@ import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.EncodeHintType;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.lowagie.text.Document;
@@ -64,8 +66,12 @@ public class InvoicePdfService {
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         float margin = isA5 ? 20 : 28;
-        Document doc = new Document(pageSize, margin, margin, margin, margin);
-        PdfWriter.getInstance(doc, baos);
+        Document doc = new Document(pageSize, margin, margin, margin, margin + 10);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+
+        // Multi-page page number event helper
+        PageNumberHelper pageHelper = new PageNumberHelper(isA5 ? 7f : 8f);
+        writer.setPageEvent(pageHelper);
 
         doc.open();
 
@@ -95,25 +101,6 @@ public class InvoicePdfService {
         docTitleP.setAlignment(Element.ALIGN_CENTER);
         docTitleP.setSpacingAfter(6f);
         doc.add(docTitleP);
-
-        // ═══════════════════════════════════════════════════════════════════════════════
-        // MAIN ENCLOSING BOX (Unified Outer Frame)
-        // ═══════════════════════════════════════════════════════════════════════════════
-        PdfPTable mainFrame = new PdfPTable(1);
-        mainFrame.setWidthPercentage(100);
-        mainFrame.getDefaultCell().setBorder(Rectangle.BOX);
-        mainFrame.getDefaultCell().setBorderWidth(1f);
-        mainFrame.getDefaultCell().setBorderColor(DARK_BORDER);
-        mainFrame.getDefaultCell().setPadding(0);
-
-        PdfPCell innerContainerCell = new PdfPCell();
-        innerContainerCell.setBorder(Rectangle.BOX);
-        innerContainerCell.setBorderWidth(1f);
-        innerContainerCell.setBorderColor(DARK_BORDER);
-        innerContainerCell.setPadding(0);
-
-        PdfPTable contentTable = new PdfPTable(1);
-        contentTable.setWidthPercentage(100);
 
         // ─────────────────────────────────────────────────────────────────────────────
         // 1. FIRM HEADER BLOCK (Logo on Left, Firm Info on Right)
@@ -207,12 +194,15 @@ public class InvoicePdfService {
         }
         firmBlock.addCell(firmInfoCell);
 
+        PdfPTable firmBlockWrapper = new PdfPTable(1);
+        firmBlockWrapper.setWidthPercentage(100);
         PdfPCell firmBlockWrap = new PdfPCell(firmBlock);
-        firmBlockWrap.setBorder(Rectangle.BOTTOM);
+        firmBlockWrap.setBorder(Rectangle.BOX);
         firmBlockWrap.setBorderColor(DARK_BORDER);
         firmBlockWrap.setBorderWidth(1f);
         firmBlockWrap.setPadding(0);
-        contentTable.addCell(firmBlockWrap);
+        firmBlockWrapper.addCell(firmBlockWrap);
+        doc.add(firmBlockWrapper);
 
         // ─────────────────────────────────────────────────────────────────────────────
         // 2. BILL TO & INVOICE META ROW
@@ -290,19 +280,25 @@ public class InvoicePdfService {
 
         billToMetaTable.addCell(rightMeta);
 
+        PdfPTable billToWrapper = new PdfPTable(1);
+        billToWrapper.setWidthPercentage(100);
         PdfPCell billToMetaWrap = new PdfPCell(billToMetaTable);
-        billToMetaWrap.setBorder(Rectangle.BOTTOM);
+        billToMetaWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
         billToMetaWrap.setBorderColor(DARK_BORDER);
         billToMetaWrap.setBorderWidth(1f);
         billToMetaWrap.setPadding(0);
-        contentTable.addCell(billToMetaWrap);
+        billToWrapper.addCell(billToMetaWrap);
+        doc.add(billToWrapper);
 
         // ─────────────────────────────────────────────────────────────────────────────
-        // 3. ITEMS TABLE
+        // 3. ITEMS TABLE (With Multi-Page Split & Repeating Headers)
         // ─────────────────────────────────────────────────────────────────────────────
         float[] itemColWidths = new float[]{0.35f, 2.3f, 0.9f, 0.8f, 0.6f, 1.0f, 1.05f};
         PdfPTable itemsTable = new PdfPTable(itemColWidths);
         itemsTable.setWidthPercentage(100);
+        itemsTable.setHeaderRows(1);
+        itemsTable.setSplitLate(false);
+        itemsTable.setSplitRows(true);
 
         // Table Header Row
         String[] itemHeaders = {"#", "Item name", "HSN/ SAC", "Quantity", "Unit", "Price/ Unit", "Amount"};
@@ -311,6 +307,14 @@ public class InvoicePdfService {
             th.setBackgroundColor(HEADER_BLUE);
             th.setBorderColor(LIGHT_BORDER);
             th.setBorderWidth(0.5f);
+            if (i == 0) {
+                th.setBorderColorLeft(DARK_BORDER);
+                th.setBorderWidthLeft(1f);
+            }
+            if (i == itemHeaders.length - 1) {
+                th.setBorderColorRight(DARK_BORDER);
+                th.setBorderWidthRight(1f);
+            }
             th.setPadding(5f);
             th.setHorizontalAlignment(i == 0 || i == 2 || i == 3 || i == 4 ? Element.ALIGN_CENTER : (i >= 5 ? Element.ALIGN_RIGHT : Element.ALIGN_LEFT));
             itemsTable.addCell(th);
@@ -331,7 +335,9 @@ public class InvoicePdfService {
                         hsnCode = it.getProduct().getHsnCode().trim();
                     }
 
-                    if (it.getProduct() != null && it.getProduct().getName() != null) {
+                    if (it.getProductName() != null && !it.getProductName().isBlank()) {
+                        itemName = it.getProductName().trim();
+                    } else if (it.getProduct() != null && it.getProduct().getName() != null) {
                         itemName = it.getProduct().getName();
                     } else if (it.getUnit() != null) {
                         itemName = "Custom Item";
@@ -344,13 +350,21 @@ public class InvoicePdfService {
                 String priceStr = "₹ " + formatAmount(it.getPricePerUnit());
                 String amountStr = "₹ " + formatAmount(it.getLineTotal());
 
-                itemsTable.addCell(makeCell(String.valueOf(idx++), normalText, Element.ALIGN_CENTER, 5f));
+                PdfPCell cIdx = makeCell(String.valueOf(idx++), normalText, Element.ALIGN_CENTER, 5f);
+                cIdx.setBorderColorLeft(DARK_BORDER);
+                cIdx.setBorderWidthLeft(1f);
+                itemsTable.addCell(cIdx);
+
                 itemsTable.addCell(makeCell(itemName, normalText, Element.ALIGN_LEFT, 5f));
                 itemsTable.addCell(makeCell(hsnCode, normalText, Element.ALIGN_CENTER, 5f));
                 itemsTable.addCell(makeCell(String.valueOf(q), normalText, Element.ALIGN_CENTER, 5f));
                 itemsTable.addCell(makeCell(unit, normalText, Element.ALIGN_CENTER, 5f));
                 itemsTable.addCell(makeCell(priceStr, normalText, Element.ALIGN_RIGHT, 5f));
-                itemsTable.addCell(makeCell(amountStr, normalText, Element.ALIGN_RIGHT, 5f));
+
+                PdfPCell cAmt = makeCell(amountStr, normalText, Element.ALIGN_RIGHT, 5f);
+                cAmt.setBorderColorRight(DARK_BORDER);
+                cAmt.setBorderWidthRight(1f);
+                itemsTable.addCell(cAmt);
             }
         } else {
             PdfPCell emptyCell = new PdfPCell(new Phrase("No items recorded", normalText));
@@ -358,6 +372,10 @@ public class InvoicePdfService {
             emptyCell.setHorizontalAlignment(Element.ALIGN_CENTER);
             emptyCell.setPadding(12f);
             emptyCell.setBorderColor(LIGHT_BORDER);
+            emptyCell.setBorderColorLeft(DARK_BORDER);
+            emptyCell.setBorderWidthLeft(1f);
+            emptyCell.setBorderColorRight(DARK_BORDER);
+            emptyCell.setBorderWidthRight(1f);
             itemsTable.addCell(emptyCell);
         }
 
@@ -368,31 +386,52 @@ public class InvoicePdfService {
         totalLabelCell.setColspan(2);
         totalLabelCell.setBorderColor(LIGHT_BORDER);
         totalLabelCell.setBorderWidth(0.5f);
+        totalLabelCell.setBorderColorLeft(DARK_BORDER);
+        totalLabelCell.setBorderWidthLeft(1f);
+        totalLabelCell.setBorderColorBottom(DARK_BORDER);
+        totalLabelCell.setBorderWidthBottom(1f);
         totalLabelCell.setPadding(5f);
         totalLabelCell.setHorizontalAlignment(Element.ALIGN_LEFT);
         itemsTable.addCell(totalLabelCell);
 
-        itemsTable.addCell(makeCell("", boldText, Element.ALIGN_CENTER, 5f)); // HSN blank
-        itemsTable.addCell(makeCell(String.valueOf(totalQty), boldText, Element.ALIGN_CENTER, 5f)); // Total Qty
-        itemsTable.addCell(makeCell("", boldText, Element.ALIGN_CENTER, 5f)); // Unit blank
-        itemsTable.addCell(makeCell("", boldText, Element.ALIGN_RIGHT, 5f)); // Price/Unit blank
-        itemsTable.addCell(makeCell("₹ " + formatAmount(grandTotal), totalBoldFont, Element.ALIGN_RIGHT, 5f)); // Total Amount
+        PdfPCell cellHsnTotal = makeCell("", boldText, Element.ALIGN_CENTER, 5f);
+        cellHsnTotal.setBorderColorBottom(DARK_BORDER);
+        cellHsnTotal.setBorderWidthBottom(1f);
+        itemsTable.addCell(cellHsnTotal);
 
-        PdfPCell itemsTableWrap = new PdfPCell(itemsTable);
-        itemsTableWrap.setBorder(Rectangle.BOTTOM);
-        itemsTableWrap.setBorderColor(DARK_BORDER);
-        itemsTableWrap.setBorderWidth(1f);
-        itemsTableWrap.setPadding(0);
-        contentTable.addCell(itemsTableWrap);
+        PdfPCell cellQtyTotal = makeCell(String.valueOf(totalQty), boldText, Element.ALIGN_CENTER, 5f);
+        cellQtyTotal.setBorderColorBottom(DARK_BORDER);
+        cellQtyTotal.setBorderWidthBottom(1f);
+        itemsTable.addCell(cellQtyTotal);
+
+        PdfPCell cellUnitTotal = makeCell("", boldText, Element.ALIGN_CENTER, 5f);
+        cellUnitTotal.setBorderColorBottom(DARK_BORDER);
+        cellUnitTotal.setBorderWidthBottom(1f);
+        itemsTable.addCell(cellUnitTotal);
+
+        PdfPCell cellPriceTotal = makeCell("", boldText, Element.ALIGN_RIGHT, 5f);
+        cellPriceTotal.setBorderColorBottom(DARK_BORDER);
+        cellPriceTotal.setBorderWidthBottom(1f);
+        itemsTable.addCell(cellPriceTotal);
+
+        PdfPCell cellGrandTotal = makeCell("₹ " + formatAmount(grandTotal), totalBoldFont, Element.ALIGN_RIGHT, 5f);
+        cellGrandTotal.setBorderColorRight(DARK_BORDER);
+        cellGrandTotal.setBorderWidthRight(1f);
+        cellGrandTotal.setBorderColorBottom(DARK_BORDER);
+        cellGrandTotal.setBorderWidthBottom(1f);
+        itemsTable.addCell(cellGrandTotal);
+
+        doc.add(itemsTable);
 
         // ─────────────────────────────────────────────────────────────────────────────
         // 4. AMOUNTS IN WORDS & SUMMARY BREAKDOWN
         // ─────────────────────────────────────────────────────────────────────────────
         PdfPTable summaryTable = new PdfPTable(new float[]{2.2f, 1.8f});
         summaryTable.setWidthPercentage(100);
+        summaryTable.setKeepTogether(true);
 
         // Sub Header: "Invoice Amount In Words" vs "Amounts:"
-        PdfPCell wordsHeader = new PdfPCell(new Phrase("Invoice Amount In Words", subTitleFont));
+        PdfPCell wordsHeader = new PdfPCell(new Phrase(isEstimate ? "Quotation Amount In Words" : "Invoice Amount In Words", subTitleFont));
         wordsHeader.setBackgroundColor(HEADER_BLUE);
         wordsHeader.setBorder(Rectangle.NO_BORDER);
         wordsHeader.setPadding(4f);
@@ -438,8 +477,10 @@ public class InvoicePdfService {
             addBreakdownRow(amountsBreakdown, "Tax / GST", "₹ " + formatAmount(totalTax), normalText, normalText);
         }
         addBreakdownRow(amountsBreakdown, "Total", "₹ " + formatAmount(grandTotal), totalBoldFont, totalBoldFont);
-        addBreakdownRow(amountsBreakdown, "Received", "₹ " + formatAmount(received), normalText, normalText);
-        addBreakdownRow(amountsBreakdown, "Balance", "₹ " + formatAmount(balance), boldText, boldText);
+        if (!isEstimate) {
+            addBreakdownRow(amountsBreakdown, "Received", "₹ " + formatAmount(received), normalText, normalText);
+            addBreakdownRow(amountsBreakdown, "Balance", "₹ " + formatAmount(balance), boldText, boldText);
+        }
 
         PdfPCell amountsContent = new PdfPCell(amountsBreakdown);
         amountsContent.setBorder(Rectangle.LEFT);
@@ -448,55 +489,76 @@ public class InvoicePdfService {
         amountsContent.setPadding(0);
         summaryTable.addCell(amountsContent);
 
+        PdfPTable summaryWrapper = new PdfPTable(1);
+        summaryWrapper.setWidthPercentage(100);
+        summaryWrapper.setKeepTogether(true);
         PdfPCell summaryWrap = new PdfPCell(summaryTable);
-        summaryWrap.setBorder(Rectangle.BOTTOM);
+        summaryWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
         summaryWrap.setBorderColor(DARK_BORDER);
         summaryWrap.setBorderWidth(1f);
         summaryWrap.setPadding(0);
-        contentTable.addCell(summaryWrap);
+        summaryWrapper.addCell(summaryWrap);
+        doc.add(summaryWrapper);
 
         // ─────────────────────────────────────────────────────────────────────────────
         // 5. FOOTER: UPI QR CODE & AUTHORIZED SIGNATORY
         // ─────────────────────────────────────────────────────────────────────────────
         PdfPTable footerTable = new PdfPTable(new float[]{2.2f, 1.8f});
         footerTable.setWidthPercentage(100);
+        footerTable.setKeepTogether(true);
 
-        // Left Half: UPI QR Code & Scan To Pay Badge
+        // Left Half: UPI QR Code / Payment Box
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
-        qrCell.setPadding(8f);
-        qrCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+        qrCell.setPadding(10f);
+        qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
 
         boolean showUpiQr = !isEstimate && firm != null && firm.getUpiId() != null && !firm.getUpiId().trim().isBlank();
         if (showUpiQr) {
             try {
                 String upiId = firm.getUpiId().trim();
-                String upiFirmName = (firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName() : "Business";
-                String upiUri = String.format("upi://pay?pa=%s&pn=%s&am=%s&cu=INR", upiId, upiFirmName.replaceAll(" ", "%20"), formatAmount(grandTotal));
+                String upiFirmName = (firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName().trim() : "Business";
+                String encodedName = java.net.URLEncoder.encode(upiFirmName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                String upiUri = "upi://pay?pa=" + upiId + "&pn=" + encodedName + "&am=" + formatAmount(grandTotal) + "&cu=INR";
 
                 QRCodeWriter qrWriter = new QRCodeWriter();
-                BitMatrix bitMatrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140);
-                ByteArrayOutputStream qrBaos = new ByteArrayOutputStream();
-                MatrixToImageWriter.writeToStream(bitMatrix, "PNG", qrBaos);
+                Map<EncodeHintType, Object> hints = new HashMap<>();
+                hints.put(EncodeHintType.MARGIN, 0);
+                BitMatrix matrix = qrWriter.encode(upiUri, BarcodeFormat.QR_CODE, 140, 140, hints);
+                int width = matrix.getWidth();
+                int height = matrix.getHeight();
+                byte[] rawData = new byte[width * height * 3];
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        boolean isBlack = matrix.get(x, y);
+                        byte val = (byte) (isBlack ? 0 : 255);
+                        int idx = (y * width + x) * 3;
+                        rawData[idx] = val;
+                        rawData[idx + 1] = val;
+                        rawData[idx + 2] = val;
+                    }
+                }
+                Image qrImage = Image.getInstance(width, height, 3, 8, rawData);
+                float qrSize = isA5 ? 58f : 66f;
+                qrImage.scaleToFit(qrSize, qrSize);
+                qrImage.setAlignment(Image.ALIGN_CENTER);
 
-                Image qrImage = Image.getInstance(qrBaos.toByteArray());
-                qrImage.scaleToFit(isA5 ? 65f : 78f, isA5 ? 65f : 78f);
-                qrImage.setAlignment(Image.LEFT);
+                // Professional Section Header
+                Paragraph pTitle = new Paragraph("SCAN TO PAY", new Font(Font.HELVETICA, isA5 ? 7.5f : 8.5f, Font.BOLD, TEXT_DARK));
+                pTitle.setAlignment(Element.ALIGN_CENTER);
+                pTitle.setSpacingAfter(5f);
+                qrCell.addElement(pTitle);
+
                 qrCell.addElement(qrImage);
 
-                // UPI Scan to Pay Badge
-                Paragraph pUpiBadge = new Paragraph("  UPI SCAN TO PAY  ", new Font(Font.HELVETICA, 7.5f, Font.BOLD, Color.WHITE));
-                PdfPTable badgeTable = new PdfPTable(1);
-                badgeTable.setWidthPercentage(42);
-                badgeTable.setHorizontalAlignment(Element.ALIGN_LEFT);
-                PdfPCell badgeCell = new PdfPCell(pUpiBadge);
-                badgeCell.setBackgroundColor(UPI_GREEN);
-                badgeCell.setBorder(Rectangle.NO_BORDER);
-                badgeCell.setPadding(2f);
-                badgeCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-                badgeTable.addCell(badgeCell);
-                qrCell.addElement(badgeTable);
-            } catch (Exception ignored) {}
+                // Professional Clean Caption (No raw UPI ID)
+                Paragraph pSub = new Paragraph("Scan with any UPI app", new Font(Font.HELVETICA, isA5 ? 6f : 6.5f, Font.NORMAL, TEXT_MUTED));
+                pSub.setAlignment(Element.ALIGN_CENTER);
+                pSub.setSpacingBefore(4f);
+                qrCell.addElement(pSub);
+            } catch (Throwable t) {
+                qrCell.addElement(new Paragraph(" ", normalText));
+            }
         } else {
             // If Quotation or no UPI ID configured, show clean empty space / footer note
             qrCell.addElement(new Paragraph(" ", normalText));
@@ -509,36 +571,88 @@ public class InvoicePdfService {
         signCell.setBorder(Rectangle.LEFT);
         signCell.setBorderColor(DARK_BORDER);
         signCell.setBorderWidth(1f);
-        signCell.setPadding(10f);
+        signCell.setPadding(8f);
         signCell.setHorizontalAlignment(Element.ALIGN_CENTER);
 
         Paragraph pFor = new Paragraph("For, " + fName, boldText);
         pFor.setAlignment(Element.ALIGN_CENTER);
+        pFor.setSpacingAfter(4f);
         signCell.addElement(pFor);
 
         // Realistic Drawn Signature / Ink Path Simulation
-        Paragraph pSigSpace = new Paragraph("\n\n\n", normalText);
+        Paragraph pSigSpace = new Paragraph("\n\n", normalText);
         pSigSpace.setAlignment(Element.ALIGN_CENTER);
         signCell.addElement(pSigSpace);
 
-        Paragraph pAuth = new Paragraph("Authorized Signatory", normalText);
+        Paragraph pAuth = new Paragraph("Authorized Signatory", new Font(Font.HELVETICA, isA5 ? 7.5f : 8f, Font.NORMAL, TEXT_MUTED));
         pAuth.setAlignment(Element.ALIGN_CENTER);
         signCell.addElement(pAuth);
 
         footerTable.addCell(signCell);
 
+        PdfPTable footerWrapper = new PdfPTable(1);
+        footerWrapper.setWidthPercentage(100);
+        footerWrapper.setKeepTogether(true);
         PdfPCell footerWrap = new PdfPCell(footerTable);
-        footerWrap.setBorder(Rectangle.NO_BORDER);
+        footerWrap.setBorder(Rectangle.LEFT | Rectangle.RIGHT | Rectangle.BOTTOM);
+        footerWrap.setBorderColor(DARK_BORDER);
+        footerWrap.setBorderWidth(1f);
         footerWrap.setPadding(0);
-        contentTable.addCell(footerWrap);
-
-        // Add to main document
-        innerContainerCell.addElement(contentTable);
-        mainFrame.addCell(innerContainerCell);
-        doc.add(mainFrame);
+        footerWrapper.addCell(footerWrap);
+        doc.add(footerWrapper);
 
         doc.close();
         return baos.toByteArray();
+    }
+
+    /**
+     * Page Number Helper for professional multi-page document pagination.
+     */
+    private static class PageNumberHelper extends com.lowagie.text.pdf.PdfPageEventHelper {
+        private com.lowagie.text.pdf.PdfTemplate totalPagesTemplate;
+        private com.lowagie.text.pdf.BaseFont baseFont;
+        private final float fontSize;
+
+        public PageNumberHelper(float fontSize) {
+            this.fontSize = fontSize;
+        }
+
+        @Override
+        public void onOpenDocument(PdfWriter writer, Document document) {
+            try {
+                baseFont = com.lowagie.text.pdf.BaseFont.createFont(com.lowagie.text.pdf.BaseFont.HELVETICA, com.lowagie.text.pdf.BaseFont.WINANSI, com.lowagie.text.pdf.BaseFont.NOT_EMBEDDED);
+                totalPagesTemplate = writer.getDirectContent().createTemplate(30, 16);
+            } catch (Exception ignored) {}
+        }
+
+        @Override
+        public void onEndPage(PdfWriter writer, Document document) {
+            if (baseFont == null || totalPagesTemplate == null) return;
+            com.lowagie.text.pdf.PdfContentByte cb = writer.getDirectContent();
+            String text = "Page " + writer.getPageNumber() + " of ";
+            float textSize = baseFont.getWidthPoint(text, fontSize);
+            float textBase = document.bottom() - 12;
+            float x = document.right() - 60;
+
+            cb.beginText();
+            cb.setFontAndSize(baseFont, fontSize);
+            cb.setColorFill(new Color(156, 163, 175));
+            cb.setTextMatrix(x, textBase);
+            cb.showText(text);
+            cb.endText();
+            cb.addTemplate(totalPagesTemplate, x + textSize, textBase);
+        }
+
+        @Override
+        public void onCloseDocument(PdfWriter writer, Document document) {
+            if (baseFont == null || totalPagesTemplate == null) return;
+            totalPagesTemplate.beginText();
+            totalPagesTemplate.setFontAndSize(baseFont, fontSize);
+            totalPagesTemplate.setColorFill(new Color(156, 163, 175));
+            totalPagesTemplate.setTextMatrix(0, 0);
+            totalPagesTemplate.showText(String.valueOf(writer.getPageNumber()));
+            totalPagesTemplate.endText();
+        }
     }
 
     private static PdfPCell makeCell(String text, Font font, int alignment, float padding) {

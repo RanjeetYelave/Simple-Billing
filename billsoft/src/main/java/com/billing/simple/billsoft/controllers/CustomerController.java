@@ -40,8 +40,10 @@ public class CustomerController {
 		customer.setEmail(request.getEmail());
 		customer.setAddress(request.getAddress());
 		customer.setGstin(request.getGstin());
-		customer.setFirmId(request.getFirmId());
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		customer.setFirmId(fid != null ? fid : request.getFirmId());
 		return ResponseEntity.ok(service.create(customer));
+
 	}
 
 	@GetMapping

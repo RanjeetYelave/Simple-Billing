@@ -32,8 +32,8 @@ jobs:
         run: |
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
-      - name: Build with Maven
-        run: mvn clean package -DskipTests
+      - name: Build with Maven and Run Regression Tests
+        run: mvn clean package
 
       - name: Rename WAR file
         working-directory: ./billsoft
@@ -42,6 +42,16 @@ jobs:
       - name: Generate Checksum
         run: |
           sha256sum billsoft/target/billsoft.war | awk '{print $1}' > billsoft/target/billsoft.war.sha256
+
+      - name: Package Regression Test Reports
+        run: |
+          mkdir -p reports-dist
+          if [ -d "billsoft/target/site/jacoco" ]; then
+            (cd billsoft/target/site && zip -r ../../../reports-dist/Regression-Test-Coverage-Report.zip jacoco)
+          fi
+          if [ -d "billsoft/target/surefire-reports" ]; then
+            (cd billsoft/target && zip -r ../../reports-dist/Regression-Test-Results.zip surefire-reports)
+          fi
 
       - name: Upload WAR artifact
         uses: actions/upload-artifact@v4
@@ -52,8 +62,16 @@ jobs:
             billsoft/target/billsoft.war.sha256
           if-no-files-found: error
 
+      - name: Upload Regression Reports artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-reports
+          path: reports-dist/*
+          if-no-files-found: warn
+
   build-windows:
     runs-on: windows-latest
+    needs: [build-war]
 
     steps:
       - name: Checkout Code
@@ -66,13 +84,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Update version in application.properties
-        shell: pwsh
-        run: |
-          (Get-Content billsoft/src/main/resources/application.properties) -replace 'app.version=.*', 'app.version=v1.0.${{ github.run_number }}' | Set-Content billsoft/src/main/resources/application.properties
+      - name: Download WAR payload
+        uses: actions/download-artifact@v4
+        with:
+          name: war-payload
+          path: downloaded-war
 
-      - name: Build with Maven
-        run: mvn clean package -DskipTests
+      - name: Build Launcher with Maven
+        run: mvn clean package -pl launcher -DskipTests
 
       - name: Prepare jpackage input
         shell: pwsh
@@ -80,7 +99,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path package-input
           New-Item -ItemType Directory -Force -Path package-input/runtime
           Copy-Item launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
-          Copy-Item billsoft/target/billsoft-0.0.1-SNAPSHOT.war package-input/runtime/billsoft.war
+          Copy-Item downloaded-war/billsoft.war package-input/runtime/billsoft.war
 
       - name: Package Standalone Portable Zip
         shell: pwsh
@@ -111,6 +130,7 @@ jobs:
                    --type msi `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
+                   --win-dir-chooser `
                    --win-menu `
                    --win-shortcut `
                    --win-per-user-install `
@@ -136,6 +156,7 @@ jobs:
                        --type msi `
                        --app-version 1.0.${{ github.run_number }} `
                        --vendor "RupeeCRM" `
+                       --win-dir-chooser `
                        --win-menu `
                        --win-shortcut `
                        --win-per-user-install `
@@ -154,9 +175,63 @@ jobs:
             RupeeCRM-Setup.msi
           if-no-files-found: error
 
+  build-macos-arm64:
+    runs-on: macos-14
+    needs: [build-war]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Download WAR payload
+        uses: actions/download-artifact@v4
+        with:
+          name: war-payload
+          path: downloaded-war
+
+      - name: Build Launcher with Maven
+        run: mvn clean package -pl launcher -DskipTests
+
+      - name: Prepare jpackage input
+        run: |
+          mkdir -p package-input/runtime
+          cp launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
+          cp downloaded-war/billsoft.war package-input/runtime/billsoft.war
+          xattr -cr package-input
+
+      - name: Package macOS Apple Silicon (ARM64) Native App Bundle
+        run: |
+          jpackage --name "RupeeCRM" \
+                   --input package-input \
+                   --main-jar launcher.jar \
+                   --main-class com.billing.simple.launcher.LauncherMain \
+                   --type app-image \
+                   --dest dist-pkg \
+                   --app-version 1.0.${{ github.run_number }} \
+                   --vendor "RupeeCRM" \
+                   --mac-package-name "RupeeCRM" \
+                   --mac-package-identifier "com.rupeecrm.billing" \
+                   --java-options "-Djava.awt.headless=false"
+
+          tar -czf RupeeCRM-macOS-arm64.tar.gz -C dist-pkg RupeeCRM.app
+
+      - name: Upload macOS ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-distribution
+          path: RupeeCRM-macOS-arm64.tar.gz
+          if-no-files-found: error
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-war, build-windows]
+    needs: [build-war, build-windows, build-macos-arm64]
 
     steps:
       - name: Checkout Code
@@ -174,14 +249,39 @@ jobs:
           name: windows-distribution
           path: ./dist
 
-      - name: Generate Release Notes
+      - name: Download macOS ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64-distribution
+          path: ./dist
+
+      - name: Download Regression Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: regression-reports
+          path: ./dist
+
+      - name: Set up Python for Release Changelog
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Extract Regression Test Reports
         run: |
-          if [ -f billsoft/release-notes.txt ]; then
-            cat billsoft/release-notes.txt > release-notes.txt
-          else
-            echo "## RupeeCRM Release v1.0.${{ github.run_number }}" > release-notes.txt
-            echo "Professional CRM and billing background service with custom offline domain and bundled JRE." >> release-notes.txt
+          mkdir -p surefire-reports
+          if [ -f "dist/Regression-Test-Results.zip" ]; then
+            unzip -q -o dist/Regression-Test-Results.zip -d ./
           fi
+
+      - name: Generate Release Notes and Regression Summary
+        run: |
+          git log -1 --pretty=format:"%B" ${{ github.sha }} > git-commit-msg.txt
+          python3 .github/scripts/generate_release_notes.py \
+            --commit-msg-file git-commit-msg.txt \
+            --release-notes-file billsoft/release-notes.txt \
+            --surefire-dirs surefire-reports,billsoft/target/surefire-reports \
+            --version v1.0.${{ github.run_number }} \
+            --output release-notes.txt
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
@@ -194,5 +294,8 @@ jobs:
             dist/billsoft.war.sha256
             dist/RupeeCRM-Windows-x64.zip
             dist/RupeeCRM-Setup.msi
+            dist/RupeeCRM-macOS-arm64.tar.gz
+            dist/Regression-Test-Coverage-Report.zip
+            dist/Regression-Test-Results.zip
           generate_release_notes: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false

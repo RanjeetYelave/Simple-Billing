@@ -54,12 +54,12 @@ public class InvoiceCalculationEngine {
         if (request.getCurrency() != null) invoice.setCurrency(request.getCurrency());
         invoice.setTags(request.getTags());
 
-        InvoiceStatus st = request.getStatus() != null ? request.getStatus() : InvoiceStatus.FINAL;
+        InvoiceStatus st = request.getStatus() != null ? request.getStatus() : InvoiceStatus.UNPAID;
         invoice.setStatus(st);
 
         if (request.getDueDate() != null) {
             invoice.setDueDate(request.getDueDate());
-        } else if (st == InvoiceStatus.FINAL || st == InvoiceStatus.DRAFT) {
+        } else if (st == InvoiceStatus.FINAL || st == InvoiceStatus.UNPAID || st == InvoiceStatus.DRAFT) {
             invoice.setDueDate(LocalDate.now().plusDays(14));
         }
 
@@ -78,8 +78,26 @@ public class InvoiceCalculationEngine {
         
         invoice.setPaid(Boolean.TRUE.equals(request.getPaid()));
 
-        if (request.getFirmId() != null) {
-            invoice.setFirmId(request.getFirmId());
+        Long currentTenantFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (isUpdateMode) {
+            // Firm ownership of existing invoices is immutable
+            if (currentTenantFirmId != null && invoice.getFirmId() != null && !invoice.getFirmId().equals(currentTenantFirmId)) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Cannot modify an invoice belonging to a different firm.");
+            }
+        } else {
+            // New invoice
+            if (currentTenantFirmId != null) {
+                invoice.setFirmId(currentTenantFirmId);
+            } else if (request.getFirmId() != null) {
+                invoice.setFirmId(request.getFirmId());
+            }
+        }
+
+        // Validate customer firm ownership
+        if (customer != null && customer.getFirmId() != null && invoice.getFirmId() != null) {
+            if (!customer.getFirmId().equals(invoice.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Customer (ID " + customer.getId() + ") belongs to a different firm.");
+            }
         }
 
         /* ======================================================================
@@ -99,6 +117,11 @@ public class InvoiceCalculationEngine {
         if (request.getItems() != null) {
             for (InvoiceRequestItem ri : request.getItems()) {
                 Product product = findProduct(ri.getProductId(), productList);
+                if (product != null && product.getFirmId() != null && invoice.getFirmId() != null) {
+                    if (!product.getFirmId().equals(invoice.getFirmId())) {
+                        throw new com.billing.simple.billsoft.security.TenantSecurityException("Product (ID " + product.getId() + ", " + product.getName() + ") belongs to a different firm.");
+                    }
+                }
                 InvoiceItem item = buildItem(ri, product);
                 if (item != null) {
                     item.setInvoice(invoice);
@@ -195,8 +218,10 @@ public class InvoiceCalculationEngine {
             BigDecimal taxable = nz(it.getTaxableAmount());
 
             BigDecimal gstPercent = nz(it.getGstPercent());
+            if (gstPercent.compareTo(ZERO) < 0) gstPercent = ZERO;
             if (gstPercent.compareTo(ZERO) == 0 && it.getProduct() != null && it.getProduct().getGstPercentage() != null) {
                 gstPercent = nz(it.getProduct().getGstPercentage());
+                if (gstPercent.compareTo(ZERO) < 0) gstPercent = ZERO;
                 it.setGstPercent(gstPercent);
             }
 
@@ -251,7 +276,10 @@ public class InvoiceCalculationEngine {
         InvoiceItem item = new InvoiceItem();
 
         item.setProduct(product);
-        int qty = req.getQty() != null ? req.getQty() : 0;
+        item.setProductName(req.getProductName() != null && !req.getProductName().isBlank()
+                ? req.getProductName()
+                : (product != null ? product.getName() : null));
+        int qty = req.getQty() != null ? Math.max(0, req.getQty()) : 0;
         item.setQty(qty);
 
         item.setUnit(req.getUnit() != null ? req.getUnit()
@@ -263,6 +291,10 @@ public class InvoiceCalculationEngine {
         BigDecimal price = req.getPricePerUnit() != null
                 ? req.getPricePerUnit()
                 : (product != null ? nz(product.getPrice()) : ZERO);
+
+        if (price.compareTo(ZERO) < 0) {
+            price = ZERO;
+        }
 
         price = price.setScale(SCALE, RoundingMode.HALF_UP);
         item.setPricePerUnit(price);
@@ -294,6 +326,10 @@ public class InvoiceCalculationEngine {
         BigDecimal gstPct = req.getGstPercent() != null
                 ? req.getGstPercent()
                 : (product != null ? nz(product.getGstPercentage()) : ZERO);
+
+        if (gstPct.compareTo(ZERO) < 0) {
+            gstPct = ZERO;
+        }
 
         gstPct = gstPct.setScale(SCALE, RoundingMode.HALF_UP);
         item.setGstPercent(gstPct);

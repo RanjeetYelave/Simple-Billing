@@ -1,0 +1,136 @@
+package com.billing.simple.billsoft.controllers;
+
+import com.billing.simple.billsoft.dtos.InvoiceRequest;
+import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
+import com.billing.simple.billsoft.entities.Customer;
+import com.billing.simple.billsoft.entities.Invoice;
+import com.billing.simple.billsoft.entities.InvoicePayment;
+import com.billing.simple.billsoft.entities.InvoiceStatus;
+import com.billing.simple.billsoft.repo.CustomerRepository;
+import com.billing.simple.billsoft.repo.InvoicePaymentRepository;
+import com.billing.simple.billsoft.repo.InvoiceRepository;
+import com.billing.simple.billsoft.service.InvoiceService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest
+public class InvoicePaymentTest {
+
+    @Autowired
+    private InvoiceService invoiceService;
+
+    @Autowired
+    private InvoiceRepository invoiceRepo;
+
+    @Autowired
+    private InvoicePaymentRepository paymentRepo;
+
+    @Autowired
+    private CustomerRepository customerRepo;
+
+    @Test
+    void testPartialAndFullPaymentFlow() {
+        Customer cust = new Customer();
+        cust.setName("Payment Test Customer");
+        cust.setFirmId(1L);
+        cust = customerRepo.save(cust);
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(cust.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem item = new InvoiceRequestItem();
+        item.setQty(2);
+        item.setPricePerUnit(BigDecimal.valueOf(500)); // Total 1000
+        req.setItems(List.of(item));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+        assertThat(invoice.getId()).isNotNull();
+        assertThat(invoice.getPaid()).isFalse();
+
+        // 1. Partial payment of 400
+        InvoicePayment p1 = invoiceService.recordPayment(invoice.getId(), BigDecimal.valueOf(400), LocalDate.now(), "Cash", "REC-001", "Initial deposit");
+        assertThat(p1.getId()).isNotNull();
+
+        Invoice afterP1 = invoiceRepo.findById(invoice.getId()).orElseThrow();
+        assertThat(afterP1.getPaid()).isFalse();
+
+        List<InvoicePayment> payments = invoiceService.getPayments(invoice.getId());
+        assertThat(payments).hasSize(1);
+        assertThat(payments.get(0).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(400));
+
+        // 2. Remaining payment of 600
+        InvoicePayment p2 = invoiceService.recordPayment(invoice.getId(), BigDecimal.valueOf(600), LocalDate.now(), "UPI", "UPI-12345", "Settlement");
+        assertThat(p2.getId()).isNotNull();
+
+        Invoice afterP2 = invoiceRepo.findById(invoice.getId()).orElseThrow();
+        assertThat(afterP2.getPaid()).isTrue();
+
+        List<InvoicePayment> allPayments = invoiceService.getPayments(invoice.getId());
+        assertThat(allPayments).hasSize(2);
+    }
+
+    @Test
+    void testDefaultInvoiceStatusIsUnpaid() {
+        Customer cust = new Customer();
+        cust.setName("Unpaid Default Customer");
+        cust.setFirmId(1L);
+        cust = customerRepo.save(cust);
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(cust.getId());
+        // Do not set status explicitly
+
+        InvoiceRequestItem item = new InvoiceRequestItem();
+        item.setQty(1);
+        item.setPricePerUnit(BigDecimal.valueOf(250));
+        req.setItems(List.of(item));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+        assertThat(invoice.getId()).isNotNull();
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        assertThat(invoice.getPaid()).isFalse();
+    }
+
+    @Test
+    void testQuotationConversionDefaultsToUnpaid() {
+        Customer cust = new Customer();
+        cust.setName("Quote Conversion Customer");
+        cust.setFirmId(1L);
+        cust = customerRepo.save(cust);
+
+        InvoiceRequest quoteReq = new InvoiceRequest();
+        quoteReq.setFirmId(1L);
+        quoteReq.setCustomerId(cust.getId());
+        quoteReq.setStatus(InvoiceStatus.ESTIMATE);
+
+        InvoiceRequestItem item = new InvoiceRequestItem();
+        item.setQty(3);
+        item.setPricePerUnit(BigDecimal.valueOf(100));
+        quoteReq.setItems(List.of(item));
+
+        Invoice quote = invoiceService.createInvoice(quoteReq);
+        assertThat(quote.getId()).isNotNull();
+        assertThat(quote.getStatus()).isEqualTo(InvoiceStatus.ESTIMATE);
+
+        // Convert quotation to invoice
+        Invoice convertedInvoice = invoiceService.convertEstimateToInvoice(quote.getId(), null);
+        assertThat(convertedInvoice.getId()).isNotNull();
+        assertThat(convertedInvoice.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        assertThat(convertedInvoice.getPaid()).isFalse();
+        assertThat(convertedInvoice.getInvoiceNumber()).isNotNull();
+
+        // Refresh quote to verify it has convertedInvoiceId linked
+        Invoice refreshedQuote = invoiceRepo.findById(quote.getId()).orElseThrow();
+        assertThat(refreshedQuote.getConvertedInvoiceId()).isEqualTo(convertedInvoice.getId());
+    }
+}

@@ -30,13 +30,17 @@ public class PartyController {
     }
 
     @GetMapping("/summaries")
-    public ResponseEntity<List<PartyFinancialSummary>> listSummaries(@RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
-                                                                     @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+    public ResponseEntity<com.billing.simple.billsoft.dtos.PageResponse<PartyFinancialSummary>> listSummaries(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
         if (firmId == null) {
             return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(partyService.getAllPartiesWithFinancialSummaries(firmId));
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "name");
+        return ResponseEntity.ok(partyService.getPaginatedPartiesWithFinancialSummaries(firmId, pageable));
     }
 
     @GetMapping("/{id}")
@@ -117,6 +121,17 @@ public class PartyController {
             return ResponseEntity.badRequest().build();
         }
         return ResponseEntity.ok(partyService.getPaymentsByParty(id, firmId));
+    }
+
+    @GetMapping("/{id}/unallocated-payments")
+    public ResponseEntity<List<PartyPayment>> getUnallocatedPayments(@PathVariable Long id,
+                                                                    @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+                                                                    @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        if (firmId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(partyService.getUnallocatedPayments(id, firmId));
     }
 
     @PostMapping("/{id}/payments")

@@ -5,13 +5,17 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.StockMovementRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class ProductService {
@@ -24,12 +28,30 @@ public class ProductService {
 		this.stockMovementRepo = stockMovementRepo;
 	}
 
+	@PostConstruct
+	public void sanitizeNegativeStock() {
+		try {
+			List<Product> all = repo.findAll();
+			for (Product p : all) {
+				if (p.getStockQuantity() != null && p.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
+					p.setStockQuantity(BigDecimal.ZERO);
+					repo.save(p);
+				}
+			}
+		} catch (Exception ignored) {
+		}
+	}
+
 	@Transactional
 	public Product create(Product product) {
-		if (product.getStockQuantity() == null) {
+		Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (currentFirmId != null) {
+			product.setFirmId(currentFirmId);
+		}
+		if (product.getStockQuantity() == null || product.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
 			product.setStockQuantity(BigDecimal.ZERO);
 		}
-		if (product.getMinStockLevel() == null) {
+		if (product.getMinStockLevel() == null || product.getMinStockLevel().compareTo(BigDecimal.ZERO) < 0) {
 			product.setMinStockLevel(new BigDecimal("5.000"));
 		}
 		if (product.getItemType() == null || product.getItemType().trim().isEmpty()) {
@@ -63,16 +85,41 @@ public class ProductService {
 	}
 
 	public List<Product> getAll(Long firmId) {
-		return repo.findByFirmId(firmId);
+		Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (targetFirmId == null) {
+			return Collections.emptyList();
+		}
+		return repo.findByFirmId(targetFirmId);
+	}
+
+	public PageResponse<Product> getPaginatedProducts(Long firmId, String search, Pageable pageable) {
+		Long targetFirmId = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (targetFirmId == null) {
+			return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+		}
+		Page<Product> page;
+		if (search != null && !search.trim().isEmpty()) {
+			page = repo.findByFirmIdAndNameContainingIgnoreCase(targetFirmId, search.trim(), pageable);
+		} else {
+			page = repo.findByFirmId(targetFirmId, pageable);
+		}
+		return PageResponse.of(page);
 	}
 
 	public Product getById(Long id) {
-		return repo.findById(id).orElse(null);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+	}
+
+	public Product getById(Long id, Long firmId) {
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
 	}
 
 	@Transactional
 	public Product update(Long id, Product updated) {
-		Optional<Product> opt = repo.findById(id);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt = fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty())
 			return null;
 		Product existing = opt.get();
@@ -86,34 +133,58 @@ public class ProductService {
 		existing.setBarcode(updated.getBarcode());
 		existing.setCategory(updated.getCategory());
 		existing.setItemType(updated.getItemType() != null ? updated.getItemType() : "GOODS");
-		existing.setMinStockLevel(updated.getMinStockLevel() != null ? updated.getMinStockLevel() : new BigDecimal("5.000"));
+		existing.setMinStockLevel(updated.getMinStockLevel() != null && updated.getMinStockLevel().compareTo(BigDecimal.ZERO) >= 0 ? updated.getMinStockLevel() : new BigDecimal("5.000"));
 		existing.setDescription(updated.getDescription());
+		if (updated.getStockQuantity() != null) {
+			existing.setStockQuantity(updated.getStockQuantity().compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : updated.getStockQuantity());
+		}
 		return repo.save(existing);
 	}
 
 	@Transactional
 	public boolean delete(Long id) {
-		if (!repo.existsById(id))
-			return false;
-		repo.deleteById(id);
-		return true;
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid != null) {
+			if (!repo.existsByIdAndFirmId(id, fid))
+				return false;
+			repo.deleteByIdAndFirmId(id, fid);
+			return true;
+		} else {
+			if (!repo.existsById(id))
+				return false;
+			repo.deleteById(id);
+			return true;
+		}
 	}
+
 
 	/**
 	 * Adjusts stock directly from inventory manager (Add / Deduct / Set).
 	 */
 	@Transactional
 	public Product adjustStock(Long id, BigDecimal quantity, String mode, String note) {
-		Optional<Product> opt = repo.findById(id);
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt;
+		if (fid != null) {
+			opt = repo.findByIdAndFirmId(id, fid);
+			if (opt.isEmpty()) {
+				throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized for firm: " + fid);
+			}
+		} else {
+			opt = repo.findById(id);
+		}
 		if (opt.isEmpty())
 			return null;
 
 		Product product = opt.get();
 		BigDecimal prevStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
+		if (prevStock.compareTo(BigDecimal.ZERO) < 0) {
+			prevStock = BigDecimal.ZERO;
+		}
 		BigDecimal change = BigDecimal.ZERO;
 		BigDecimal newStock = prevStock;
 
-		if (quantity == null) {
+		if (quantity == null || quantity.compareTo(BigDecimal.ZERO) < 0) {
 			quantity = BigDecimal.ZERO;
 		}
 
@@ -122,10 +193,13 @@ public class ProductService {
 			change = quantity;
 			newStock = prevStock.add(quantity);
 		} else if ("SUBTRACT".equalsIgnoreCase(mode) || "DEDUCT".equalsIgnoreCase(mode)) {
-			change = quantity.negate();
 			newStock = prevStock.subtract(quantity);
+			if (newStock.compareTo(BigDecimal.ZERO) < 0) {
+				newStock = BigDecimal.ZERO;
+			}
+			change = newStock.subtract(prevStock);
 		} else { // "SET"
-			newStock = quantity;
+			newStock = quantity.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : quantity;
 			change = newStock.subtract(prevStock);
 		}
 
@@ -159,7 +233,7 @@ public class ProductService {
 			return;
 		}
 
-		Optional<Product> opt = repo.findById(productId);
+		Optional<Product> opt = (firmId != null) ? repo.findByIdAndFirmId(productId, firmId) : repo.findById(productId);
 		if (opt.isEmpty()) {
 			return;
 		}
@@ -171,7 +245,13 @@ public class ProductService {
 		}
 
 		BigDecimal prevStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
+		if (prevStock.compareTo(BigDecimal.ZERO) < 0) {
+			prevStock = BigDecimal.ZERO;
+		}
 		BigDecimal newStock = prevStock.add(quantityChange);
+		if (newStock.compareTo(BigDecimal.ZERO) < 0) {
+			newStock = BigDecimal.ZERO;
+		}
 		product.setStockQuantity(newStock);
 		repo.save(product);
 
@@ -192,75 +272,107 @@ public class ProductService {
 	}
 
 	public List<StockMovement> getStockMovements(Long productId, Long firmId) {
-		if (productId != null && firmId != null) {
-			return stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, firmId);
-		} else if (productId != null) {
-			return stockMovementRepo.findByProductIdOrderByCreatedAtDesc(productId);
-		} else if (firmId != null) {
-			return stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid != null && productId != null) {
+			return stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, fid);
+		} else if (fid != null) {
+			return stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(fid);
 		}
 		return Collections.emptyList();
 	}
 
+	public PageResponse<StockMovement> getPaginatedMovements(Long productId, Long firmId, Pageable pageable) {
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid == null) {
+			return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+		}
+		Page<StockMovement> page;
+		if (productId != null) {
+			page = stockMovementRepo.findByProductIdAndFirmId(productId, fid, pageable);
+		} else {
+			page = stockMovementRepo.findByFirmId(fid, pageable);
+		}
+		return PageResponse.of(page);
+	}
+
+
 	public List<String> getCategories(Long firmId) {
-		return repo.findDistinctCategoriesByFirmId(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		return fid != null ? repo.findDistinctCategoriesByFirmId(fid) : Collections.emptyList();
 	}
 
 	public Map<String, Object> getInventorySummary(Long firmId) {
-		List<Product> list = repo.findByFirmId(firmId);
+		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (fid == null) {
+			Map<String, Object> emptySummary = new HashMap<>();
+			emptySummary.put("totalProducts", 0L);
+			emptySummary.put("goodsCount", 0L);
+			emptySummary.put("servicesCount", 0L);
+			emptySummary.put("lowStockCount", 0L);
+			emptySummary.put("outOfStockCount", 0L);
+			emptySummary.put("totalRetailValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			emptySummary.put("totalCostValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			emptySummary.put("averageGrossMarginPercent", BigDecimal.ZERO);
+			return emptySummary;
+		}
+		List<Product> list = repo.findByFirmId(fid);
+
 		long totalProducts = list.size();
-		BigDecimal totalStockUnits = BigDecimal.ZERO;
-		BigDecimal totalValuationAtCost = BigDecimal.ZERO;
-		BigDecimal totalValuationAtRetail = BigDecimal.ZERO;
+		long goodsCount = 0;
+		long servicesCount = 0;
 		long lowStockCount = 0;
 		long outOfStockCount = 0;
-		long servicesCount = 0;
-		Set<String> categories = new HashSet<>();
+
+		BigDecimal totalRetailValue = BigDecimal.ZERO;
+		BigDecimal totalCostValue = BigDecimal.ZERO;
+
+		BigDecimal totalMarginSum = BigDecimal.ZERO;
+		int marginProductCount = 0;
 
 		for (Product p : list) {
-			if (p.getCategory() != null && !p.getCategory().trim().isEmpty()) {
-				categories.add(p.getCategory().trim());
-			}
-
 			if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
 				servicesCount++;
 				continue;
 			}
+			goodsCount++;
 
 			BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
-			BigDecimal minStock = p.getMinStockLevel() != null ? p.getMinStockLevel() : new BigDecimal("5.000");
+			BigDecimal minLevel = p.getMinStockLevel() != null ? p.getMinStockLevel() : new BigDecimal("5.000");
 			BigDecimal price = p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO;
 			BigDecimal cost = p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO;
 
-			totalStockUnits = totalStockUnits.add(stock);
-			totalValuationAtCost = totalValuationAtCost.add(cost.multiply(stock));
-			totalValuationAtRetail = totalValuationAtRetail.add(price.multiply(stock));
-
 			if (stock.compareTo(BigDecimal.ZERO) <= 0) {
 				outOfStockCount++;
-			} else if (stock.compareTo(minStock) <= 0) {
+			} else if (stock.compareTo(minLevel) <= 0) {
 				lowStockCount++;
+			}
+
+			if (stock.compareTo(BigDecimal.ZERO) > 0) {
+				totalRetailValue = totalRetailValue.add(price.multiply(stock));
+				totalCostValue = totalCostValue.add(cost.multiply(stock));
+			}
+
+			if (price.compareTo(BigDecimal.ZERO) > 0 && cost.compareTo(BigDecimal.ZERO) > 0) {
+				BigDecimal margin = price.subtract(cost).divide(price, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+				totalMarginSum = totalMarginSum.add(margin);
+				marginProductCount++;
 			}
 		}
 
-		BigDecimal estimatedMarginPercent = BigDecimal.ZERO;
-		if (totalValuationAtRetail.compareTo(BigDecimal.ZERO) > 0) {
-			BigDecimal profit = totalValuationAtRetail.subtract(totalValuationAtCost);
-			estimatedMarginPercent = profit.multiply(new BigDecimal("100"))
-					.divide(totalValuationAtRetail, 2, RoundingMode.HALF_UP);
-		}
+		BigDecimal avgGrossMargin = marginProductCount > 0
+				? totalMarginSum.divide(new BigDecimal(marginProductCount), 1, RoundingMode.HALF_UP)
+				: BigDecimal.ZERO;
 
-		Map<String, Object> summary = new LinkedHashMap<>();
+		Map<String, Object> summary = new HashMap<>();
 		summary.put("totalProducts", totalProducts);
-		summary.put("totalStockUnits", totalStockUnits);
-		summary.put("totalValuationAtCost", totalValuationAtCost.setScale(2, RoundingMode.HALF_UP));
-		summary.put("totalValuationAtRetail", totalValuationAtRetail.setScale(2, RoundingMode.HALF_UP));
-		summary.put("estimatedMarginPercent", estimatedMarginPercent);
+		summary.put("goodsCount", goodsCount);
+		summary.put("servicesCount", servicesCount);
 		summary.put("lowStockCount", lowStockCount);
 		summary.put("outOfStockCount", outOfStockCount);
-		summary.put("servicesCount", servicesCount);
-		summary.put("categoriesCount", categories.size());
-		summary.put("categories", new ArrayList<>(categories));
+		summary.put("totalRetailValue", totalRetailValue.setScale(2, RoundingMode.HALF_UP));
+		summary.put("totalCostValue", totalCostValue.setScale(2, RoundingMode.HALF_UP));
+		summary.put("averageGrossMarginPercent", avgGrossMargin);
+
 		return summary;
 	}
 }

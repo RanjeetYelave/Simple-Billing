@@ -16,8 +16,13 @@ public class NoteController {
     }
 
     @GetMapping
-    public List<Note> listAll() {
-        return noteService.getAll();
+    public List<Note> listAll(@RequestParam(value = "firmId", required = false) Long firmId,
+                              @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        Long fid = firmId != null ? firmId : firmIdHeader;
+        if (fid != null) {
+            return noteService.getByFirm(fid);
+        }
+        return java.util.Collections.emptyList();
     }
 
     @GetMapping("/firm/{firmId}")

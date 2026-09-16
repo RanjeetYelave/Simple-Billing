@@ -25,7 +25,7 @@ public class BusinessLetterController {
     }
 
     @GetMapping
-    public ResponseEntity<List<BusinessLetter>> list(
+    public ResponseEntity<?> list(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(value = "recipientType", required = false) LetterRecipientType recipientType,
@@ -33,11 +33,18 @@ public class BusinessLetterController {
             @RequestParam(value = "customerId", required = false) Long customerId,
             @RequestParam(value = "status", required = false) LetterStatus status,
             @RequestParam(value = "start", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
-            @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end) {
+            @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size) {
 
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
         if (firmId == null) {
             return ResponseEntity.badRequest().build();
+        }
+        if (page != null || size != null) {
+            org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+                    page != null ? page : 0, size != null ? size : 25, "letterDate");
+            return ResponseEntity.ok(letterService.getPaginatedLetters(firmId, pageable));
         }
         return ResponseEntity.ok(letterService.getLettersByFirm(firmId, recipientType, partyId, customerId, status, start, end));
     }
@@ -101,19 +108,28 @@ public class BusinessLetterController {
         }
     }
 
-    @PatchMapping("/{id}/status")
+    @RequestMapping(value = "/{id}/status", method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<BusinessLetter> updateStatus(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestParam(value = "status", required = false) String statusParam,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null || !body.containsKey("status")) {
+        String statusStr = null;
+        if (body != null && body.containsKey("status")) {
+            statusStr = body.get("status");
+        } else if (statusParam != null) {
+            statusStr = statusParam;
+        }
+
+        if (statusStr == null || statusStr.trim().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
+
         try {
-            LetterStatus status = LetterStatus.valueOf(body.get("status").toUpperCase());
+            LetterStatus status = LetterStatus.valueOf(statusStr.trim().toUpperCase());
             return ResponseEntity.ok(letterService.updateStatus(id, firmId, status));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -127,9 +143,6 @@ public class BusinessLetterController {
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
         Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
         try {
             letterService.deleteLetter(id, firmId);
             return ResponseEntity.noContent().build();
@@ -151,6 +164,8 @@ public class BusinessLetterController {
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Letter-" + id + ".pdf\"");
             return ResponseEntity.ok().headers(headers).body(pdfBytes);
+        } catch (IllegalArgumentException | com.billing.simple.billsoft.security.TenantSecurityException e) {
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

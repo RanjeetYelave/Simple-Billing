@@ -1,5 +1,7 @@
 package com.billing.simple.billsoft.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -12,6 +14,7 @@ public class EmployeeDocument {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "employee_id", nullable = false)
+    @JsonIgnore
     private Employee employee;
 
     @Column(nullable = false)
@@ -20,7 +23,8 @@ public class EmployeeDocument {
     @Column(nullable = false)
     private String fileName;
 
-    @Column(nullable = false, length = 16777216) // 16MB max
+    @Lob
+    @Column(columnDefinition = "CLOB")
     private String dataBase64;
 
     @Column(updatable = false)
@@ -29,8 +33,14 @@ public class EmployeeDocument {
     // Getters and Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    
+    @JsonIgnore
     public Employee getEmployee() { return employee; }
     public void setEmployee(Employee employee) { this.employee = employee; }
+    
+    @JsonProperty("employeeId")
+    public Long getEmployeeId() { return employee != null ? employee.getId() : null; }
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     public String getFileName() { return fileName; }

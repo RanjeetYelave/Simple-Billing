@@ -42,7 +42,7 @@ class InvoiceControllerTest {
     // ---------- NUMBER GENERATORS ----------
     @Test
     void testNextInvoiceNumber() throws Exception {
-        when(invoiceService.generateInvoiceNumber(anyLong())).thenReturn("INV-001");
+        when(invoiceService.peekNextInvoiceNumber(anyLong())).thenReturn("INV-001");
         mockMvc.perform(get("/api/invoices/next-invoice-number").param("firmId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("INV-001"));
@@ -50,7 +50,7 @@ class InvoiceControllerTest {
 
     @Test
     void testNextEstimateNumber() throws Exception {
-        when(invoiceService.generateEstimateNumber(anyLong())).thenReturn("EST-001");
+        when(invoiceService.peekNextEstimateNumber(anyLong())).thenReturn("EST-001");
         mockMvc.perform(get("/api/invoices/next-estimate-number").param("firmId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("EST-001"));
@@ -155,11 +155,13 @@ class InvoiceControllerTest {
         i1.setId(8L);
         Invoice i2 = new Invoice();
         i2.setId(9L);
-        when(invoiceService.getAll(any(), any())).thenReturn(Arrays.asList(i1, i2));
+        org.springframework.data.domain.Page<Invoice> page = new org.springframework.data.domain.PageImpl<>(Arrays.asList(i1, i2));
+        when(invoiceService.getPaginated(any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/invoices"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.totalElements").value(2));
     }
 
     // ---------- GET BY ID ----------

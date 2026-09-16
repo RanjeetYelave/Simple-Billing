@@ -65,6 +65,18 @@ class BackupServiceTest {
     private InboxMessageRepository inboxMessageRepo;
     @Mock
     private AppConfigRepository appConfigRepo;
+    @Mock
+    private InvoicePaymentRepository invoicePaymentRepo;
+    @Mock
+    private SalesReturnRepository salesReturnRepo;
+    @Mock
+    private SalesReturnItemRepository salesReturnItemRepo;
+    @Mock
+    private SavingRepository savingRepo;
+    @Mock
+    private GoalRepository goalRepo;
+    @Mock
+    private GoalLogRepository goalLogRepo;
 
     @InjectMocks
     private BackupService service;
@@ -99,6 +111,33 @@ class BackupServiceTest {
         assertEquals("Test Firm", result.getFirmDetails().getFirmName());
         assertNotNull(result.getMetadata());
         assertEquals("2.0", result.getMetadata().get("version"));
+        assertNotNull(result.getEmployeeDocuments());
+        assertNotNull(result.getAppConfigs());
+    }
+
+    @Test
+    void testExportAllData() {
+        FirmDetails firm = new FirmDetails();
+        firm.setId(1L);
+        firm.setFirmName("Firm 1");
+
+        when(firmDetailsRepo.findAll()).thenReturn(Collections.singletonList(firm));
+        when(customerRepo.findAll()).thenReturn(new ArrayList<>());
+        when(productRepo.findAll()).thenReturn(new ArrayList<>());
+        when(stockMovementRepo.findAll()).thenReturn(new ArrayList<>());
+        when(invoiceRepo.findAll()).thenReturn(new ArrayList<>());
+        when(invoicePaymentRepo.findAll()).thenReturn(new ArrayList<>());
+        when(partyRepo.findAll()).thenReturn(new ArrayList<>());
+        when(partyPaymentRepo.findAll()).thenReturn(new ArrayList<>());
+        when(purchaseOrderRepo.findAll()).thenReturn(new ArrayList<>());
+        when(employeeRepo.findAll()).thenReturn(new ArrayList<>());
+        when(appConfigRepo.findAll()).thenReturn(new ArrayList<>());
+
+        BackupDTO result = service.exportAllData();
+        assertNotNull(result);
+        assertEquals("FULL_SYSTEM_BACKUP", result.getMetadata().get("type"));
+        assertNotNull(result.getAllFirms());
+        assertEquals(1, result.getAllFirms().size());
     }
 
     @Test
@@ -155,6 +194,7 @@ class BackupServiceTest {
     @Test
     void testFactoryReset() {
         service.factoryReset();
+        verify(goalLogRepo, times(1)).deleteAllInBatch();
         verify(firmDetailsRepo, times(1)).deleteAllInBatch();
         verify(customerRepo, times(1)).deleteAllInBatch();
         verify(productRepo, times(1)).deleteAllInBatch();

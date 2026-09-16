@@ -24,6 +24,7 @@ import com.billing.simple.billsoft.entities.InvoiceItem;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.repo.InvoicePaymentRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
@@ -58,6 +59,8 @@ public class StatementServiceImpl implements StatementService {
     private final PartyRepository partyRepo;
     private final PartyPaymentRepository partyPaymentRepo;
     private final PurchaseOrderRepository purchaseOrderRepo;
+    private final InvoicePaymentRepository invoicePaymentRepo;
+    private final com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final DecimalFormat CURRENCY_FMT = new DecimalFormat("#,##,##0.00");
@@ -68,7 +71,9 @@ public class StatementServiceImpl implements StatementService {
             FirmDetailsRepository firmRepo,
             PartyRepository partyRepo,
             PartyPaymentRepository partyPaymentRepo,
-            PurchaseOrderRepository purchaseOrderRepo
+            PurchaseOrderRepository purchaseOrderRepo,
+            InvoicePaymentRepository invoicePaymentRepo,
+            com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo
     ) {
         this.invoiceRepo = invoiceRepo;
         this.customerRepo = customerRepo;
@@ -76,6 +81,8 @@ public class StatementServiceImpl implements StatementService {
         this.partyRepo = partyRepo;
         this.partyPaymentRepo = partyPaymentRepo;
         this.purchaseOrderRepo = purchaseOrderRepo;
+        this.invoicePaymentRepo = invoicePaymentRepo;
+        this.salesReturnRepo = salesReturnRepo;
     }
 
     /* ============================================================================
@@ -83,47 +90,147 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public CustomerStatementResponse getCustomerStatement(Long firmId, Long customerId, LocalDate from, LocalDate to) {
-        Customer customer = customerRepo.findById(customerId).orElse(null);
-        if (customer == null) throw new RuntimeException("Customer not found: " + customerId);
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+
+        Customer customer;
+        if (authoritativeFirmId != null) {
+            customer = customerRepo.findByIdAndFirmId(customerId, authoritativeFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Customer not found or unauthorized"));
+        } else {
+            customer = customerRepo.findById(customerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + customerId));
+        }
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
         List<Invoice> all;
-        if (firmId != null) {
-            all = invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customerId);
+        if (authoritativeFirmId != null) {
+            all = invoiceRepo.findByFirmIdAndCustomer_Id(authoritativeFirmId, customerId);
         } else {
             all = invoiceRepo.findByCustomer_Id(customerId);
         }
 
-        // Only Invoices (skip estimates/drafts)
+        // Only Invoices (skip estimates/drafts/cancelled)
         List<Invoice> invoices = all.stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
                 .collect(Collectors.toList());
 
-        // Opening balance = Billed - Paid before period
-        BigDecimal billedBefore = invoices.stream()
-                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
-                .map(i -> nz(i.getTotalAmount()))
+        // Fetch all payments for customer
+        List<InvoicePayment> paymentList = (authoritativeFirmId != null)
+                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(authoritativeFirmId, customerId)
+                : invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+
+        // Fetch all sales returns / credit notes for customer
+        List<SalesReturn> returnList = (authoritativeFirmId != null)
+                ? salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(authoritativeFirmId, customerId)
+                : salesReturnRepo.findByCustomerIdOrderByReturnDateAscIdAsc(customerId);
+
+        Map<Long, Invoice> invoiceById = invoices.stream().collect(Collectors.toMap(Invoice::getId, i -> i, (a, b) -> a));
+        Set<Long> invoicesWithPayments = paymentList.stream()
+                .map(InvoicePayment::getInvoiceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // Build unified list of ledger events
+        class LedgerEvent {
+            LocalDate date;
+            String type;
+            String ref;
+            String description;
+            BigDecimal debit;
+            BigDecimal credit;
+            int order; // 0 for invoice, 1 for credit note, 2 for payment
+        }
+
+        List<LedgerEvent> allEvents = new ArrayList<>();
+
+        // Add invoice debits
+        for (Invoice inv : invoices) {
+            LedgerEvent e = new LedgerEvent();
+            e.date = inv.getInvoiceDate().toLocalDate();
+            e.type = "INVOICE";
+            e.ref = inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : "INV-" + inv.getId();
+            e.description = "Invoice";
+            e.debit = nz(inv.getTotalAmount());
+            e.credit = BigDecimal.ZERO;
+            e.order = 0;
+            allEvents.add(e);
+
+            // Legacy fallback: if invoice was marked paid without InvoicePayment records
+            if (Boolean.TRUE.equals(inv.getPaid()) && !invoicesWithPayments.contains(inv.getId())) {
+                LedgerEvent pe = new LedgerEvent();
+                pe.date = inv.getInvoiceDate().toLocalDate();
+                pe.type = "PAYMENT";
+                pe.ref = inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : "INV-" + inv.getId();
+                pe.description = "Invoice Paid (Direct)";
+                pe.debit = BigDecimal.ZERO;
+                pe.credit = nz(inv.getTotalAmount());
+                pe.order = 2;
+                allEvents.add(pe);
+            }
+        }
+
+        // Add sales return / credit note credits
+        if (returnList != null) {
+            for (SalesReturn sr : returnList) {
+                LedgerEvent re = new LedgerEvent();
+                re.date = sr.getReturnDate() != null ? sr.getReturnDate() : (sr.getCreatedAt() != null ? sr.getCreatedAt().toLocalDate() : LocalDate.now());
+                re.type = "CREDIT_NOTE";
+                re.ref = sr.getReturnNumber() != null ? sr.getReturnNumber() : "CN-" + sr.getId();
+                String invNo = (sr.getInvoice() != null && sr.getInvoice().getInvoiceNumber() != null)
+                        ? " (Inv #" + sr.getInvoice().getInvoiceNumber() + ")" : "";
+                String reasonStr = (sr.getReason() != null && !sr.getReason().isBlank()) ? " - " + sr.getReason() : "";
+                re.description = "Sales Return / Credit Note" + invNo + reasonStr;
+                re.debit = BigDecimal.ZERO;
+                re.credit = nz(sr.getTotalRefundAmount());
+                re.order = 1;
+                allEvents.add(re);
+            }
+        }
+
+        // Add real payment credits
+        for (InvoicePayment p : paymentList) {
+            LedgerEvent pe = new LedgerEvent();
+            pe.date = p.getPaymentDate() != null ? p.getPaymentDate() : LocalDate.now();
+            pe.type = "PAYMENT";
+            String invNo = (p.getInvoiceId() != null && invoiceById.containsKey(p.getInvoiceId()))
+                    ? invoiceById.get(p.getInvoiceId()).getInvoiceNumber() : null;
+            pe.ref = (p.getReferenceNumber() != null && !p.getReferenceNumber().isBlank())
+                    ? p.getReferenceNumber() : (invNo != null ? invNo : "PMT-" + p.getId());
+
+            String modeStr = (p.getPaymentMode() != null && !p.getPaymentMode().isBlank()) ? p.getPaymentMode() : "Cash";
+            String noteStr = (p.getNotes() != null && !p.getNotes().isBlank()) ? " (" + p.getNotes() + ")" : "";
+            pe.description = "Payment via " + modeStr + noteStr;
+            pe.debit = BigDecimal.ZERO;
+            pe.credit = nz(p.getAmount());
+            pe.order = 2;
+            allEvents.add(pe);
+        }
+
+        // Compute opening balance before fromDate
+        BigDecimal billedBefore = allEvents.stream()
+                .filter(e -> e.date.isBefore(fromDate))
+                .map(e -> e.debit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal paidBefore = invoices.stream()
-                .filter(i -> i.getInvoiceDate().toLocalDate().isBefore(fromDate))
-                .filter(i -> Boolean.TRUE.equals(i.getPaid()))
-                .map(i -> nz(i.getTotalAmount()))
+        BigDecimal paidBefore = allEvents.stream()
+                .filter(e -> e.date.isBefore(fromDate))
+                .map(e -> e.credit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal openingBalance = billedBefore.subtract(paidBefore);
 
-        // Invoices inside range
-        List<Invoice> inRange = invoices.stream()
-                .filter(i -> {
-                    LocalDate d = i.getInvoiceDate().toLocalDate();
-                    return (!d.isBefore(fromDate) && !d.isAfter(toDate));
-                })
-                .sorted(Comparator.comparing(i -> i.getInvoiceDate().toLocalDate()))
+        // Filter inside range and sort chronologically
+        List<LedgerEvent> inRangeEvents = allEvents.stream()
+                .filter(e -> !e.date.isBefore(fromDate) && !e.date.isAfter(toDate))
+                .sorted(Comparator.comparing((LedgerEvent e) -> e.date)
+                        .thenComparingInt(e -> e.order))
                 .collect(Collectors.toList());
 
         List<StatementEntry> entries = new ArrayList<>();
@@ -131,39 +238,20 @@ public class StatementServiceImpl implements StatementService {
         BigDecimal totalBilled = BigDecimal.ZERO;
         BigDecimal totalPaid = BigDecimal.ZERO;
 
-        for (Invoice inv : inRange) {
-            LocalDate invDate = inv.getInvoiceDate().toLocalDate();
-            BigDecimal amt = nz(inv.getTotalAmount());
+        for (LedgerEvent e : inRangeEvents) {
+            balance = balance.add(e.debit).subtract(e.credit);
+            totalBilled = totalBilled.add(e.debit);
+            totalPaid = totalPaid.add(e.credit);
 
-            // Invoice row
-            StatementEntry invoiceEntry = new StatementEntry();
-            invoiceEntry.setDate(invDate);
-            invoiceEntry.setType("INVOICE");
-            invoiceEntry.setRef(inv.getInvoiceNumber());
-            invoiceEntry.setDescription("Invoice");
-            invoiceEntry.setDebit(amt.doubleValue());
-            invoiceEntry.setCredit(0.0);
-
-            balance = balance.add(amt);
-            invoiceEntry.setBalance(balance.doubleValue());
-            entries.add(invoiceEntry);
-            totalBilled = totalBilled.add(amt);
-
-            // If invoice is paid → add payment row
-            if (Boolean.TRUE.equals(inv.getPaid())) {
-                StatementEntry pay = new StatementEntry();
-                pay.setDate(invDate);
-                pay.setType("PAYMENT");
-                pay.setRef(inv.getInvoiceNumber());
-                pay.setDescription("Invoice Paid");
-                pay.setDebit(0.0);
-                pay.setCredit(amt.doubleValue());
-
-                balance = balance.subtract(amt);
-                pay.setBalance(balance.doubleValue());
-                entries.add(pay);
-                totalPaid = totalPaid.add(amt);
-            }
+            StatementEntry entry = new StatementEntry();
+            entry.setDate(e.date);
+            entry.setType(e.type);
+            entry.setRef(e.ref);
+            entry.setDescription(e.description);
+            entry.setDebit(e.debit.doubleValue());
+            entry.setCredit(e.credit.doubleValue());
+            entry.setBalance(balance.doubleValue());
+            entries.add(entry);
         }
 
         CustomerStatementResponse resp = new CustomerStatementResponse();
@@ -186,7 +274,10 @@ public class StatementServiceImpl implements StatementService {
     @Override
     public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception {
         CustomerStatementResponse data = getCustomerStatement(firmId, customerId, from, to);
-        FirmDetails firm = firmRepo.findById(firmId).orElse(null);
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -259,37 +350,30 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for firm statement");
+        }
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : null;
-        if (firm == null) {
-            List<FirmDetails> allFirms = firmRepo.findAll();
-            if (!allFirms.isEmpty()) firm = allFirms.get(0);
-        }
-        if (firm != null && firmId == null) {
-            firmId = firm.getId();
-        }
+        FirmDetails firm = firmRepo.findById(authoritativeFirmId)
+                .orElseThrow(() -> new IllegalArgumentException("Firm not found: " + authoritativeFirmId));
 
         // 1. Invoices
-        List<Invoice> invoiceList;
-        if (firmId != null) {
-            invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
-                    firmId,
-                    fromDate.atStartOfDay(),
-                    toDate.plusDays(1).atStartOfDay()
-            );
-        } else {
-            invoiceList = invoiceRepo.findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(
-                    fromDate.atStartOfDay(),
-                    toDate.plusDays(1).atStartOfDay()
-            );
-        }
+        List<Invoice> invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
+                authoritativeFirmId,
+                fromDate.atStartOfDay(),
+                toDate.plusDays(1).atStartOfDay()
+        );
         invoiceList = invoiceList.stream()
                 .filter(i -> i.getInvoiceDate() != null)
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE)
                 .filter(i -> i.getStatus() != InvoiceStatus.DRAFT)
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         BigDecimal totalBilled = invoiceList.stream()
@@ -356,11 +440,11 @@ public class StatementServiceImpl implements StatementService {
                             .build()
             );
             cas.setTransactionCount(cas.getTransactionCount() + 1);
-            cas.setTotalAmount(cas.getTotalAmount() + invTotal.doubleValue());
+            cas.setTotalAmount(round2(cas.getTotalAmount() + invTotal.doubleValue()));
             if (isPaid) {
-                cas.setTotalPaid(cas.getTotalPaid() + invTotal.doubleValue());
+                cas.setTotalPaid(round2(cas.getTotalPaid() + invTotal.doubleValue()));
             } else {
-                cas.setBalanceDue(cas.getBalanceDue() + invTotal.doubleValue());
+                cas.setBalanceDue(round2(cas.getBalanceDue() + invTotal.doubleValue()));
             }
 
             // GST aggregation from line items
@@ -377,8 +461,8 @@ public class StatementServiceImpl implements StatementService {
                         item.setGstAmount(0.0);
                         return item;
                     });
-                    gs.setTaxableValue(gs.getTaxableValue() + taxable.doubleValue());
-                    gs.setGstAmount(gs.getGstAmount() + gstAmt.doubleValue());
+                    gs.setTaxableValue(round2(gs.getTaxableValue() + taxable.doubleValue()));
+                    gs.setGstAmount(round2(gs.getGstAmount() + gstAmt.doubleValue()));
                 }
             }
 
@@ -390,7 +474,7 @@ public class StatementServiceImpl implements StatementService {
                     .entityName(custName)
                     .entityType("CUSTOMER")
                     .paymentMethod(inv.getPaymentMethod())
-                    .inflow(invTotal.doubleValue())
+                    .inflow(round2(invTotal))
                     .outflow(0.0)
                     .status(isPaid ? "PAID" : "UNPAID")
                     .notes(isPaid ? "Payment received" : "Outstanding balance")
@@ -439,9 +523,9 @@ public class StatementServiceImpl implements StatementService {
             BigDecimal poTot = nz(po.getTotalAmount());
             BigDecimal poPaid = nz(po.getPaidAmount());
             fas.setTransactionCount(fas.getTransactionCount() + 1);
-            fas.setTotalAmount(fas.getTotalAmount() + poTot.doubleValue());
-            fas.setTotalPaid(fas.getTotalPaid() + poPaid.doubleValue());
-            fas.setBalanceDue(fas.getBalanceDue() + poTot.subtract(poPaid).doubleValue());
+            fas.setTotalAmount(round2(fas.getTotalAmount() + poTot.doubleValue()));
+            fas.setTotalPaid(round2(fas.getTotalPaid() + poPaid.doubleValue()));
+            fas.setBalanceDue(round2(fas.getBalanceDue() + poTot.subtract(poPaid).doubleValue()));
 
             journalEntries.add(FirmStatementResponse.FirmJournalEntry.builder()
                     .date(po.getPoDate().atStartOfDay())
@@ -451,7 +535,7 @@ public class StatementServiceImpl implements StatementService {
                     .entityType("VENDOR")
                     .paymentMethod(po.getPaymentMethod())
                     .inflow(0.0)
-                    .outflow(poTot.doubleValue())
+                    .outflow(round2(poTot))
                     .status(po.getPaymentStatus() != null ? po.getPaymentStatus() : "ISSUED")
                     .notes(poPaid.compareTo(BigDecimal.ZERO) > 0 ? "Paid: " + CURRENCY_FMT.format(poPaid) : "Yet to pay")
                     .build()
@@ -483,12 +567,36 @@ public class StatementServiceImpl implements StatementService {
                         .entityType("VENDOR")
                         .paymentMethod(pp.getPaymentMode())
                         .inflow(0.0)
-                        .outflow(amt.doubleValue())
+                        .outflow(round2(amt))
                         .status("PAID")
                         .notes(pp.getNotes() != null ? pp.getNotes() : "Direct vendor payment")
                         .build()
                 );
             }
+        }
+
+        // 4. Sales Returns / Credit Notes
+        List<SalesReturn> firmReturns = new ArrayList<>();
+        if (firmId != null) {
+            firmReturns = salesReturnRepo.findByFirmIdAndReturnDateBetween(firmId, fromDate, toDate);
+        }
+        for (SalesReturn sr : firmReturns) {
+            BigDecimal refAmt = nz(sr.getTotalRefundAmount());
+            String cName = (sr.getCustomer() != null && sr.getCustomer().getName() != null)
+                    ? sr.getCustomer().getName() : "Customer";
+            journalEntries.add(FirmStatementResponse.FirmJournalEntry.builder()
+                    .date(sr.getReturnDate() != null ? sr.getReturnDate().atStartOfDay() : (sr.getCreatedAt() != null ? sr.getCreatedAt() : java.time.LocalDateTime.now()))
+                    .type("CREDIT_NOTE")
+                    .reference(sr.getReturnNumber() != null ? sr.getReturnNumber() : "CN-" + sr.getId())
+                    .entityName(cName)
+                    .entityType("CUSTOMER")
+                    .paymentMethod(sr.getRefundMode() != null ? sr.getRefundMode() : "CREDIT")
+                    .inflow(0.0)
+                    .outflow(round2(refAmt))
+                    .status("ISSUED")
+                    .notes(sr.getReason() != null ? sr.getReason() : "Sales Return")
+                    .build()
+            );
         }
 
         BigDecimal totalPaidToVendors = totalPaidToVendorsFromPO.add(directPayments);
@@ -526,21 +634,21 @@ public class StatementServiceImpl implements StatementService {
                 .firmPhone(firm != null ? firm.getPhone() : null)
                 .firmEmail(firm != null ? firm.getEmail() : null)
                 .firmAddress(firmAddr)
-                .totalBilled(totalBilled.doubleValue())
-                .taxableAmount(taxableAmount.doubleValue())
-                .totalTax(totalTax.doubleValue())
-                .totalDiscount(totalDiscount.doubleValue())
+                .totalBilled(round2(totalBilled))
+                .taxableAmount(round2(taxableAmount))
+                .totalTax(round2(totalTax))
+                .totalDiscount(round2(totalDiscount))
                 .invoiceCount(invoiceList.size())
                 .paidInvoicesCount(paidCount)
                 .unpaidInvoicesCount(unpaidCount)
-                .totalPaid(totalCollections.doubleValue())
-                .outstanding(outstandingReceivables.doubleValue())
-                .totalPurchases(totalPurchases.doubleValue())
+                .totalPaid(round2(totalCollections))
+                .outstanding(round2(outstandingReceivables))
+                .totalPurchases(round2(totalPurchases))
                 .purchaseOrderCount(poList.size())
-                .totalPaidToVendors(totalPaidToVendors.doubleValue())
-                .outstandingPayables(outstandingPayables.doubleValue())
-                .netCashflow(netCashflow.doubleValue())
-                .netBusinessVolume(netBusinessVolume.doubleValue())
+                .totalPaidToVendors(round2(totalPaidToVendors))
+                .outstandingPayables(round2(outstandingPayables))
+                .netCashflow(round2(netCashflow))
+                .netBusinessVolume(round2(netBusinessVolume))
                 .gstSummary(new ArrayList<>(gstMap.values()))
                 .paymentModeSummary(new ArrayList<>(modeMap.values()))
                 .topCustomers(topCustList.stream().limit(10).collect(Collectors.toList()))
@@ -556,11 +664,10 @@ public class StatementServiceImpl implements StatementService {
     public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
 
         FirmStatementResponse data = getFirmStatement(firmId, from, to);
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : null;
-        if (firm == null) {
-            List<FirmDetails> all = firmRepo.findAll();
-            if (!all.isEmpty()) firm = all.get(0);
-        }
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         Document doc = new Document(PageSize.A4, 28, 28, 32, 32);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -811,8 +918,15 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public PartyStatementResponse getPartyStatement(Long firmId, Long partyId, LocalDate from, LocalDate to) {
-        Party party = partyRepo.findByIdAndFirmId(partyId, firmId)
-                .orElseThrow(() -> new IllegalArgumentException("Party not found: " + partyId));
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for party statement");
+        }
+
+        Party party = partyRepo.findByIdAndFirmId(partyId, authoritativeFirmId)
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
@@ -823,14 +937,14 @@ public class StatementServiceImpl implements StatementService {
         BigDecimal netOpeningLiability = "ADVANCE".equals(balType) ? initialOpening.negate() : initialOpening;
 
         // Purchases before fromDate
-        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(firmId, partyId, fromDate);
+        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(authoritativeFirmId, partyId, fromDate);
         BigDecimal purchasesBefore = posBefore.stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .map(po -> nz(po.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Payments before fromDate
-        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(firmId, partyId, fromDate);
+        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(authoritativeFirmId, partyId, fromDate);
         BigDecimal paidBefore = paymentsBefore.stream()
                 .map(p -> nz(p.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -839,12 +953,12 @@ public class StatementServiceImpl implements StatementService {
 
         // In range items
         List<PurchaseOrder> posInRange = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBetweenOrderByPoDateAscIdAsc(
-                firmId, partyId, fromDate, toDate).stream()
+                authoritativeFirmId, partyId, fromDate, toDate).stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         List<PartyPayment> paymentsInRange = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
-                firmId, partyId, fromDate, toDate);
+                authoritativeFirmId, partyId, fromDate, toDate);
 
         // Merge entries
         List<StatementEntry> entries = new ArrayList<>();
@@ -864,8 +978,10 @@ public class StatementServiceImpl implements StatementService {
             StatementEntry entry = new StatementEntry();
             entry.setDate(payment.getPaymentDate());
             entry.setType("PAYMENT");
-            entry.setRef(payment.getReferenceNumber() != null ? payment.getReferenceNumber() : "PAY-" + payment.getId());
-            entry.setDescription("Payment via " + payment.getPaymentMode() + (payment.getNotes() != null && !payment.getNotes().isEmpty() ? " - " + payment.getNotes() : ""));
+            entry.setRef("PAY-" + payment.getId() + (payment.getPurchaseOrderId() != null ? "-PO-" + payment.getPurchaseOrderId() : "-ADV"));
+            String targetLabel = payment.getPurchaseOrderId() != null ? "PO #" + payment.getPurchaseOrderId() : "Advance Payment";
+            String refPart = payment.getReferenceNumber() != null && !payment.getReferenceNumber().isBlank() ? " [Ref: " + payment.getReferenceNumber() + "]" : "";
+            entry.setDescription(targetLabel + " via " + payment.getPaymentMode() + refPart + (payment.getNotes() != null && !payment.getNotes().isEmpty() ? " • " + payment.getNotes() : ""));
             entry.setDebit(0.0);
             entry.setCredit(payment.getAmount() != null ? payment.getAmount().doubleValue() : 0.0);
             entries.add(entry);
@@ -912,7 +1028,10 @@ public class StatementServiceImpl implements StatementService {
     @Override
     public byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception {
         PartyStatementResponse data = getPartyStatement(firmId, partyId, from, to);
-        FirmDetails firm = (firmId != null) ? firmRepo.findById(firmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
+        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
+                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
+                : firmId;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 28, 28, 28, 28);
@@ -1045,6 +1164,15 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private static double round2(BigDecimal v) {
+        if (v == null) return 0.0;
+        return v.setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static double round2(double v) {
+        return BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     private String fmt(Double v) {

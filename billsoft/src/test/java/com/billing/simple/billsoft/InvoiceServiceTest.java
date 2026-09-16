@@ -57,9 +57,17 @@ class InvoiceServiceTest {
     @Autowired
     private ProductRepository productRepo;
 
+    @Autowired
+    private com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo;
+
+    @Autowired
+    private com.billing.simple.billsoft.repo.InvoicePaymentRepository invoicePaymentRepo;
+
     @BeforeEach
     void setUp() {
         // Order matters due to FK constraints
+        salesReturnRepo.deleteAll();
+        invoicePaymentRepo.deleteAll();
         invoiceRepo.deleteAll();
         customerRepo.deleteAll();
         productRepo.deleteAll();
@@ -133,7 +141,7 @@ class InvoiceServiceTest {
         assertNotNull(inv.getId());
         assertNotNull(inv.getInvoiceNumber());
         assertNull(inv.getEstimateNumber());
-        assertEquals(InvoiceStatus.FINAL, inv.getStatus());
+        assertEquals(InvoiceStatus.UNPAID, inv.getStatus());
 
         // subtotal=100, gst=18, total=118
         assertEquals(bd("100.00"), inv.getSubtotalWithoutTax());
@@ -254,7 +262,7 @@ class InvoiceServiceTest {
         Invoice created = invoiceService.createInvoice(req);
 
         assertFalse(Boolean.TRUE.equals(created.getPaid()));
-        assertEquals(InvoiceStatus.FINAL, created.getStatus());
+        assertEquals(InvoiceStatus.UNPAID, created.getStatus());
 
         Invoice paid = invoiceService.updatePaidFlag(created.getId(), true);
         assertTrue(paid.getPaid());
@@ -281,7 +289,7 @@ class InvoiceServiceTest {
         Invoice converted = invoiceService.convertEstimateToInvoice(estimate.getId(), null);
 
         assertNotNull(converted.getId());
-        assertEquals(InvoiceStatus.FINAL, converted.getStatus());
+        assertEquals(InvoiceStatus.UNPAID, converted.getStatus());
         assertNotNull(converted.getInvoiceNumber());
         assertNull(converted.getEstimateNumber(), "Converted invoice should not keep estimate number");
 
@@ -487,4 +495,163 @@ class InvoiceServiceTest {
         assertEquals(bd("0.00"), inv.getTotalTax());
         assertEquals(bd("0.00"), inv.getTotalAmount());
     }
+
+    @Test
+    void testCreateAndSaveInvoiceWithManyItems() {
+        Customer c = createCustomer("ManyItemsCustomer");
+        Product p = createProduct("BulkItem", "100.00", "18.00");
+
+        List<InvoiceRequestItem> items = new ArrayList<>();
+        for (int i = 1; i <= 150; i++) {
+            InvoiceRequestItem it = new InvoiceRequestItem();
+            it.setProductId(p.getId());
+            it.setProductName("Bulk Item #" + i);
+            it.setQty(i % 5 + 1);
+            it.setUnit("pcs");
+            it.setPricePerUnit(bd("50.00"));
+            it.setDiscountValue(bd("5.00"));
+            it.setGstPercent(bd("18.00"));
+            items.add(it);
+        }
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(c.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setItems(items);
+
+        Invoice created = invoiceService.createInvoice(req);
+        assertNotNull(created.getId());
+        assertEquals(150, created.getItems().size());
+        assertTrue(created.getTotalAmount().compareTo(BigDecimal.ZERO) > 0);
+
+        // Update full with 150 items
+        InvoiceUpdateRequest updateReq = new InvoiceUpdateRequest();
+        updateReq.setCustomerId(c.getId());
+        updateReq.setItems(items);
+        Invoice updated = invoiceService.updateFullInvoice(created.getId(), updateReq);
+        assertEquals(150, updated.getItems().size());
+    }
+
+    @Test
+    void testCreateInvoiceAndQuotationWithLargeGstPercentAndManyItems() {
+        Customer c = createCustomer("LargeGstCustomer");
+        Product p = createProduct("SpecialItem", "500.00", "18.00");
+
+        List<InvoiceRequestItem> items = new ArrayList<>();
+        for (int i = 1; i <= 80; i++) {
+            InvoiceRequestItem it = new InvoiceRequestItem();
+            it.setProductId(p.getId());
+            it.setProductName("High GST Item #" + i);
+            it.setQty(2);
+            it.setUnit("pcs");
+            it.setPricePerUnit(bd("1000.00"));
+            it.setDiscountValue(bd("50.00"));
+            // Custom GST value that previously overflowed NUMERIC(5,2)
+            it.setGstPercent(bd("3423.00"));
+            items.add(it);
+        }
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(c.getId());
+        req.setStatus(InvoiceStatus.DRAFT);
+        req.setItems(items);
+
+        Invoice created = invoiceService.createInvoice(req);
+        assertNotNull(created.getId());
+        assertEquals(80, created.getItems().size());
+        assertEquals(bd("3423.00"), created.getItems().get(0).getGstPercent());
+
+        // Convert / duplicate / update
+        InvoiceUpdateRequest updateReq = new InvoiceUpdateRequest();
+        updateReq.setCustomerId(c.getId());
+        updateReq.setStatus(InvoiceStatus.FINAL);
+        updateReq.setItems(items);
+        Invoice updated = invoiceService.updateFullInvoice(created.getId(), updateReq);
+        assertEquals(80, updated.getItems().size());
+        assertEquals(InvoiceStatus.FINAL, updated.getStatus());
+    }
+
+    @Test
+    void testSalesReturnEdgeCases_FinancialCorrectnessAndAutoPaid() {
+        Customer c = createCustomer("EdgeCaseCustomer");
+        Product p = createProduct("ReturnableWidget", "100.00", "0.00");
+        p.setStockQuantity(new BigDecimal("50"));
+        productRepo.save(p);
+
+        // 1. Create invoice for 12 items @ 100 = 1200 Rs (0% GST)
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(c.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setItems(Collections.singletonList(buildItem(p, 12)));
+
+        Invoice inv = invoiceService.createInvoice(req);
+        assertEquals(bd("1200.00"), inv.getTotalAmount());
+        assertEquals(InvoiceStatus.UNPAID, inv.getStatus());
+        assertFalse(Boolean.TRUE.equals(inv.getPaid()));
+
+        // Check stock after invoice creation: 50 - 12 = 38
+        Product reloadedP = productRepo.findById(p.getId()).orElseThrow();
+        assertEquals(0, new BigDecimal("38").compareTo(reloadedP.getStockQuantity()));
+
+        // 2. Return 2 items @ 100 = 200 Rs (Credit Note)
+        com.billing.simple.billsoft.dtos.SalesReturnRequest retReq = new com.billing.simple.billsoft.dtos.SalesReturnRequest();
+        retReq.setFirmId(1L);
+        retReq.setReason("Defective batch");
+        retReq.setRefundMode("CREDIT");
+        com.billing.simple.billsoft.dtos.SalesReturnRequest.SalesReturnItemRequest retItem =
+                new com.billing.simple.billsoft.dtos.SalesReturnRequest.SalesReturnItemRequest();
+        retItem.setInvoiceItemId(inv.getItems().get(0).getId());
+        retItem.setProductId(p.getId());
+        retItem.setReturnQty(2);
+        retItem.setUnitPrice(new BigDecimal("100.00"));
+        retItem.setGstPercent(BigDecimal.ZERO);
+        retReq.setItems(List.of(retItem));
+
+        com.billing.simple.billsoft.entities.SalesReturn ret = invoiceService.createSalesReturn(inv.getId(), retReq);
+        assertEquals(bd("200.00"), ret.getTotalRefundAmount());
+
+        // Check stock after return: 38 + 2 = 40
+        reloadedP = productRepo.findById(p.getId()).orElseThrow();
+        assertEquals(0, new BigDecimal("40").compareTo(reloadedP.getStockQuantity()));
+
+        // 3. Verify Analytics before payment: Net Business = 1000, Total Pending = 1000, Total Paid = 0
+        com.billing.simple.billsoft.dtos.FirmAnalyticsResponse analyticsBefore = invoiceService.getFirmAnalytics(1L);
+        assertEquals(1000.0, analyticsBefore.getTotalBusiness());
+        assertEquals(1000.0, analyticsBefore.getTotalPending());
+        assertEquals(0.0, analyticsBefore.getTotalPaid());
+
+        // 4. Pay the legitimate net balance of 1000 Rs
+        com.billing.simple.billsoft.entities.InvoicePayment payment =
+                invoiceService.recordPayment(inv.getId(), new BigDecimal("1000.00"), LocalDate.now(), "UPI", "UPI-12345", "Settlement");
+        assertNotNull(payment);
+
+        // Verify Invoice status automatically transitions to PAID
+        Invoice settledInv = invoiceRepo.findById(inv.getId()).orElseThrow();
+        assertTrue(Boolean.TRUE.equals(settledInv.getPaid()));
+        assertEquals(InvoiceStatus.PAID, settledInv.getStatus());
+
+        // 5. Verify Analytics after payment: Net Business = 1000, Total Paid = 1000, Total Pending = 0
+        com.billing.simple.billsoft.dtos.FirmAnalyticsResponse analyticsAfter = invoiceService.getFirmAnalytics(1L);
+        assertEquals(1000.0, analyticsAfter.getTotalBusiness());
+        assertEquals(1000.0, analyticsAfter.getTotalPaid());
+        assertEquals(0.0, analyticsAfter.getTotalPending());
+
+        // Verify Customer Analytics
+        com.billing.simple.billsoft.dtos.CustomerAnalyticsResponse custAnalytics = invoiceService.getCustomerAnalytics(c.getId());
+        assertEquals(1000.0, custAnalytics.getTotalBusiness());
+        assertEquals(1000.0, custAnalytics.getTotalPaid());
+        assertEquals(0.0, custAnalytics.getTotalPending());
+
+        // 6. Test Phantom Stock Prevention on Cancellation:
+        // Cancel the invoice (which originally had 12 items, but 2 were already returned)
+        // Stock should only restore the remaining 10 unreturned items: 40 + 10 = 50 (NOT 40 + 12 = 52!)
+        invoiceService.updateStatus(inv.getId(), InvoiceStatus.CANCELLED);
+        reloadedP = productRepo.findById(p.getId()).orElseThrow();
+        assertEquals(0, new BigDecimal("50").compareTo(reloadedP.getStockQuantity()),
+                "Stock must equal original 50 without phantom duplicate restoration");
+    }
 }
+

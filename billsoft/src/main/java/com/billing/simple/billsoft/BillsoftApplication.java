@@ -11,28 +11,44 @@ import org.springframework.web.client.RestTemplate;
 public class BillsoftApplication {
 
 	public static void main(String[] args) {
-		if (System.getProperty("BILLSOFT_DATA_DIR") == null && System.getenv("BILLSOFT_DATA_DIR") == null) {
-			String os = System.getProperty("os.name").toLowerCase();
-			String dataDir;
-			if (os.contains("win")) {
-				String appData = System.getenv("APPDATA");
-				if (appData != null && !appData.isEmpty()) {
-					dataDir = appData + java.io.File.separator + "SimpleBilling";
-				} else {
-					dataDir = System.getProperty("user.home") + java.io.File.separator + ".simplebilling";
-				}
-			} else if (os.contains("mac")) {
-				dataDir = System.getProperty("user.home") + "/Library/Application Support/SimpleBilling";
-			} else {
-				dataDir = System.getProperty("user.home") + java.io.File.separator + ".simplebilling";
-			}
-			System.setProperty("BILLSOFT_DATA_DIR", dataDir);
-		}
+		String dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectoryPath();
+		System.setProperty("BILLSOFT_DATA_DIR", dataDir);
 		SpringApplication.run(BillsoftApplication.class, args);
 	}
 
 	@Bean
 	public RestTemplate restTemplate() {
 		return new RestTemplate();
+	}
+
+	@Bean
+	public org.springframework.boot.CommandLineRunner databaseSchemaMigration(javax.sql.DataSource dataSource) {
+		return args -> {
+			try (java.sql.Connection conn = dataSource.getConnection();
+				 java.sql.Statement stmt = conn.createStatement()) {
+				try {
+					stmt.execute("ALTER TABLE invoices ALTER COLUMN status VARCHAR(50)");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE notes ALTER COLUMN content CLOB");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE notes ALTER COLUMN tags VARCHAR(1000)");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS hide_prices_on_po BOOLEAN DEFAULT FALSE");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS preferred_party_id BIGINT");
+				} catch (Exception ignored) {
+				}
+			} catch (Exception e) {
+				System.err.println("Database migration note: " + e.getMessage());
+			}
+		};
 	}
 }

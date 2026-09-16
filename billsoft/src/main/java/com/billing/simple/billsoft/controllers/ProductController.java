@@ -28,7 +28,16 @@ public class ProductController {
 	}
 
 	@GetMapping
-	public ResponseEntity<List<Product>> getAll(@RequestParam(required = false) Long firmId) {
+	public ResponseEntity<?> getAll(
+			@RequestParam(required = false) Long firmId,
+			@RequestParam(required = false) String search,
+			@RequestParam(required = false) Integer page,
+			@RequestParam(required = false) Integer size) {
+		if (page != null || size != null) {
+			org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+					page != null ? page : 0, size != null ? size : 25, "name");
+			return ResponseEntity.ok(service.getPaginatedProducts(firmId, search, pageable));
+		}
 		return ResponseEntity.ok(service.getAll(firmId));
 	}
 
@@ -43,7 +52,15 @@ public class ProductController {
 	}
 
 	@GetMapping("/movements")
-	public ResponseEntity<List<StockMovement>> getAllMovements(@RequestParam(required = false) Long firmId) {
+	public ResponseEntity<?> getAllMovements(
+			@RequestParam(required = false) Long firmId,
+			@RequestParam(required = false) Integer page,
+			@RequestParam(required = false) Integer size) {
+		if (page != null || size != null) {
+			org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+					page != null ? page : 0, size != null ? size : 25, "createdAt");
+			return ResponseEntity.ok(service.getPaginatedMovements(null, firmId, pageable));
+		}
 		return ResponseEntity.ok(service.getStockMovements(null, firmId));
 	}
 
@@ -82,7 +99,16 @@ public class ProductController {
 	}
 
 	@GetMapping("/{id}/movements")
-	public ResponseEntity<List<StockMovement>> getProductMovements(@PathVariable Long id, @RequestParam(required = false) Long firmId) {
+	public ResponseEntity<?> getProductMovements(
+			@PathVariable Long id,
+			@RequestParam(required = false) Long firmId,
+			@RequestParam(required = false) Integer page,
+			@RequestParam(required = false) Integer size) {
+		if (page != null || size != null) {
+			org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
+					page != null ? page : 0, size != null ? size : 25, "createdAt");
+			return ResponseEntity.ok(service.getPaginatedMovements(id, firmId, pageable));
+		}
 		return ResponseEntity.ok(service.getStockMovements(id, firmId));
 	}
 

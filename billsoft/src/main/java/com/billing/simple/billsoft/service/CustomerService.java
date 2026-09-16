@@ -2,7 +2,9 @@ package com.billing.simple.billsoft.service;
 
 import java.util.List;
 
+import com.billing.simple.billsoft.security.TenantContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.billing.simple.billsoft.dtos.CustomerRequest;
 import com.billing.simple.billsoft.entities.Customer;
@@ -18,19 +20,35 @@ public class CustomerService {
     }
 
     public Customer create(Customer customer) {
+        Long currentFirmId = TenantContext.getCurrentFirmId();
+        if (currentFirmId != null) {
+            customer.setFirmId(currentFirmId);
+        }
         return repo.save(customer);
     }
 
     public List<Customer> getAll(Long firmId) {
-        return repo.findByFirmIdOrderByNameAsc(firmId);
+        Long targetFirmId = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        if (targetFirmId == null) {
+            return java.util.Collections.emptyList();
+        }
+        return repo.findByFirmIdOrderByNameAsc(targetFirmId);
     }
 
     public Customer getById(Long id) {
-        return repo.findById(id).orElse(null);
+        Long fid = TenantContext.getCurrentFirmId();
+        return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
     }
 
+    public Customer getById(Long id, Long firmId) {
+        Long fid = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+    }
+
+    @Transactional
     public Customer update(Long id, CustomerRequest request) {
-        Customer existing = repo.findById(id).orElse(null);
+        Long fid = TenantContext.getCurrentFirmId();
+        Customer existing = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
         if (existing == null)
             return null;
 
@@ -38,14 +56,26 @@ public class CustomerService {
         existing.setPhone(request.getPhone());
         existing.setEmail(request.getEmail());
         existing.setAddress(request.getAddress());
+        if (request.getGstin() != null) {
+            existing.setGstin(request.getGstin().trim());
+        }
 
         return repo.save(existing);
     }
 
+    @Transactional
     public boolean delete(Long id) {
-        if (!repo.existsById(id))
-            return false;
-        repo.deleteById(id);
-        return true;
+        Long fid = TenantContext.getCurrentFirmId();
+        if (fid != null) {
+            if (!repo.existsByIdAndFirmId(id, fid))
+                return false;
+            repo.deleteByIdAndFirmId(id, fid);
+            return true;
+        } else {
+            if (!repo.existsById(id))
+                return false;
+            repo.deleteById(id);
+            return true;
+        }
     }
 }

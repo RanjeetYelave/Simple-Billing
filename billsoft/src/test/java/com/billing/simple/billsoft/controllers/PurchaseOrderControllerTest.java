@@ -100,6 +100,62 @@ class PurchaseOrderControllerTest {
     }
 
     @Test
+    void testUpdateStatusWithPutAndQueryParamWithoutHeader() throws Exception {
+        PurchaseOrder po = PurchaseOrder.builder()
+                .id(1L)
+                .firmId(1L)
+                .status(PurchaseOrderStatus.CANCELLED)
+                .build();
+
+        when(service.updateStatus(eq(1L), any(), eq(PurchaseOrderStatus.CANCELLED))).thenReturn(po);
+
+        mockMvc.perform(put("/api/purchase-orders/1/status?status=CANCELLED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void testUpdateStatusWithPatchBodyWithoutFirmIdHeader() throws Exception {
+        PurchaseOrder po = PurchaseOrder.builder()
+                .id(1L)
+                .firmId(1L)
+                .status(PurchaseOrderStatus.DRAFT)
+                .build();
+
+        when(service.updateStatus(eq(1L), any(), eq(PurchaseOrderStatus.DRAFT))).thenReturn(po);
+
+        mockMvc.perform(patch("/api/purchase-orders/1/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("status", "DRAFT"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+    }
+
+    @Test
+    void testRecordPayment() throws Exception {
+        PurchaseOrder po = PurchaseOrder.builder()
+                .id(1L)
+                .firmId(1L)
+                .paidAmount(BigDecimal.valueOf(5000))
+                .paymentStatus("PARTIAL")
+                .build();
+
+        when(service.recordPoPayment(eq(1L), eq(1L), any(BigDecimal.class), any(LocalDate.class), any(), any(), any())).thenReturn(po);
+
+        mockMvc.perform(post("/api/purchase-orders/1/payments")
+                .header("X-Firm-Id", 1L)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "amount", 5000,
+                        "paymentMode", "UPI",
+                        "referenceNumber", "UPI-123456"
+                ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paidAmount").value(5000))
+                .andExpect(jsonPath("$.paymentStatus").value("PARTIAL"));
+    }
+
+    @Test
     void testDownloadPdf() throws Exception {
         when(service.generatePoPdf(1L, 1L)).thenReturn(new byte[]{1, 2, 3, 4});
 

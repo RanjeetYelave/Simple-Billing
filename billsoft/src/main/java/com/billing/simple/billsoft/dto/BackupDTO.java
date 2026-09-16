@@ -18,6 +18,8 @@ public class BackupDTO {
     private List<Reminder> reminders;
     private List<Note> notes;
     private List<Expense> expenses;
+    private List<SavingRecord> savings;
+    private List<Goal> goals;
     private List<Employee> employees;
     private List<AttendanceRecord> attendanceRecords;
     private List<LeaveRecord> leaveRecords;
@@ -26,6 +28,76 @@ public class BackupDTO {
     private List<PromotionRecord> promotions;
     private List<BusinessLetter> businessLetters;
     private List<InboxMessage> inboxMessages;
+    private List<InvoicePayment> invoicePayments;
+    private List<AppConfig> appConfigs;
+    private List<EmployeeDocument> employeeDocuments;
+    private List<FirmDetails> allFirms;
+    private List<SalesReturn> salesReturns;
+    private List<GoalLog> goalLogs;
+
+    public List<SavingRecord> getSavings() {
+        return savings;
+    }
+
+    public void setSavings(List<SavingRecord> savings) {
+        this.savings = savings;
+    }
+
+    public List<Goal> getGoals() {
+        return goals;
+    }
+
+    public void setGoals(List<Goal> goals) {
+        this.goals = goals;
+    }
+
+    public List<GoalLog> getGoalLogs() {
+        return goalLogs;
+    }
+
+    public void setGoalLogs(List<GoalLog> goalLogs) {
+        this.goalLogs = goalLogs;
+    }
+
+    public List<SalesReturn> getSalesReturns() {
+        return salesReturns;
+    }
+
+    public void setSalesReturns(List<SalesReturn> salesReturns) {
+        this.salesReturns = salesReturns;
+    }
+
+    public List<AppConfig> getAppConfigs() {
+        return appConfigs;
+    }
+
+    public void setAppConfigs(List<AppConfig> appConfigs) {
+        this.appConfigs = appConfigs;
+    }
+
+    public List<EmployeeDocument> getEmployeeDocuments() {
+        return employeeDocuments;
+    }
+
+    public void setEmployeeDocuments(List<EmployeeDocument> employeeDocuments) {
+        this.employeeDocuments = employeeDocuments;
+    }
+
+    public List<FirmDetails> getAllFirms() {
+        return allFirms;
+    }
+
+    public void setAllFirms(List<FirmDetails> allFirms) {
+        this.allFirms = allFirms;
+    }
+
+    public List<InvoicePayment> getInvoicePayments() {
+        return invoicePayments;
+    }
+
+    public void setInvoicePayments(List<InvoicePayment> invoicePayments) {
+        this.invoicePayments = invoicePayments;
+    }
 
     public Map<String, Object> getMetadata() {
         return metadata;

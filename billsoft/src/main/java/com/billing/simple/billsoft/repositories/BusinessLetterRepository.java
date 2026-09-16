@@ -3,6 +3,8 @@ package com.billing.simple.billsoft.repositories;
 import com.billing.simple.billsoft.entities.BusinessLetter;
 import com.billing.simple.billsoft.entities.LetterRecipientType;
 import com.billing.simple.billsoft.entities.LetterStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,6 +16,8 @@ import java.util.Optional;
 public interface BusinessLetterRepository extends JpaRepository<BusinessLetter, Long> {
 
     List<BusinessLetter> findByFirmIdOrderByLetterDateDescIdDesc(Long firmId);
+
+    Page<BusinessLetter> findByFirmId(Long firmId, Pageable pageable);
 
     Optional<BusinessLetter> findByIdAndFirmId(Long id, Long firmId);
 

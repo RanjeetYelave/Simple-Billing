@@ -12,7 +12,13 @@ public interface PartyRepository extends JpaRepository<Party, Long> {
 
     List<Party> findByFirmIdOrderByNameAsc(Long firmId);
 
+    org.springframework.data.domain.Page<Party> findByFirmId(Long firmId, org.springframework.data.domain.Pageable pageable);
+
     Optional<Party> findByIdAndFirmId(Long id, Long firmId);
+
+    boolean existsByIdAndFirmId(Long id, Long firmId);
+
+    void deleteByIdAndFirmId(Long id, Long firmId);
 
     List<Party> findByFirmIdAndNameContainingIgnoreCase(Long firmId, String name);
 

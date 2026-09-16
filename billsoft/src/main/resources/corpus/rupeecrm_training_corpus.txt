@@ -1,0 +1,354 @@
+# RupeeCRM Comprehensive Multilingual Training Corpus (OpenNLP MaxEnt GIS Format)
+# Format: <CAPABILITY_LABEL> <TOKENS>
+
+# ─── QH_CUSTOMER_OUTSTANDING ───
+QH_CUSTOMER_OUTSTANDING show balance
+QH_CUSTOMER_OUTSTANDING customer balance
+QH_CUSTOMER_OUTSTANDING pending payment
+QH_CUSTOMER_OUTSTANDING check outstanding
+QH_CUSTOMER_OUTSTANDING how much does customer owe
+QH_CUSTOMER_OUTSTANDING pending dues
+QH_CUSTOMER_OUTSTANDING udhari kitni hai
+QH_CUSTOMER_OUTSTANDING baki kitna hai
+QH_CUSTOMER_OUTSTANDING customer udhari
+QH_CUSTOMER_OUTSTANDING balance kitna baki hai
+QH_CUSTOMER_OUTSTANDING customer ka hisab batao
+QH_CUSTOMER_OUTSTANDING kitna paisa aana baki hai
+QH_CUSTOMER_OUTSTANDING baki amount kitna hai
+QH_CUSTOMER_OUTSTANDING kitne paise lene hai
+QH_CUSTOMER_OUTSTANDING pending udhari
+QH_CUSTOMER_OUTSTANDING customer baki
+QH_CUSTOMER_OUTSTANDING ग्राहक का बकाया कितना है
+QH_CUSTOMER_OUTSTANDING बाकी पैसे कितने हैं
+QH_CUSTOMER_OUTSTANDING उधारी किती आहे
+QH_CUSTOMER_OUTSTANDING ग्राहकाचे बाकी किती आहे
+QH_CUSTOMER_OUTSTANDING येणे बाकी किती आहे
+QH_CUSTOMER_OUTSTANDING शिल्लक बाकी दाखवा
+QH_CUSTOMER_OUTSTANDING customer outstanding balance
+QH_CUSTOMER_OUTSTANDING total customer dues
+QH_CUSTOMER_OUTSTANDING check unpaid balance
+QH_CUSTOMER_OUTSTANDING get customer ledger balance
+QH_CUSTOMER_OUTSTANDING customer remaining payment
+QH_CUSTOMER_OUTSTANDING pending receivables
+QH_CUSTOMER_OUTSTANDING credit balance check
+QH_CUSTOMER_OUTSTANDING udhar balance check
+QH_CUSTOMER_OUTSTANDING baki hisab kitna hai
+QH_CUSTOMER_OUTSTANDING pending collection amount
+QH_CUSTOMER_OUTSTANDING customer amount due
+QH_CUSTOMER_OUTSTANDING how much does customer owe us
+QH_CUSTOMER_OUTSTANDING what is customer balance
+QH_CUSTOMER_OUTSTANDING customer ki baki batao
+QH_CUSTOMER_OUTSTANDING customer cha balance sang
+QH_CUSTOMER_OUTSTANDING customer chi udhari kiti ahe
+QH_CUSTOMER_OUTSTANDING customer se kitna lena hai
+QH_CUSTOMER_OUTSTANDING customer kadun kiti ghayche
+QH_CUSTOMER_OUTSTANDING _CONCEPT_OUTSTANDING_
+QH_CUSTOMER_OUTSTANDING customer _CONCEPT_OUTSTANDING_
+QH_CUSTOMER_OUTSTANDING _CONCEPT_OUTSTANDING_ customer
+
+# ─── QH_CUSTOMER_PROFILE ───
+QH_CUSTOMER_PROFILE customer details
+QH_CUSTOMER_PROFILE show customer profile
+QH_CUSTOMER_PROFILE customer phone number
+QH_CUSTOMER_PROFILE customer address info
+QH_CUSTOMER_PROFILE find customer
+QH_CUSTOMER_PROFILE search customer details
+QH_CUSTOMER_PROFILE customer ki jankari
+QH_CUSTOMER_PROFILE customer ka address
+QH_CUSTOMER_PROFILE customer ka mobile number
+QH_CUSTOMER_PROFILE customer info dekho
+QH_CUSTOMER_PROFILE ग्राहकाची माहिती दाखवा
+QH_CUSTOMER_PROFILE ग्राहक प्रोफाइल
+QH_CUSTOMER_PROFILE ग्राहक संपर्क माहिती
+QH_CUSTOMER_PROFILE get customer contact info
+QH_CUSTOMER_PROFILE customer full profile
+QH_CUSTOMER_PROFILE lookup customer by name
+QH_CUSTOMER_PROFILE customer master data
+QH_CUSTOMER_PROFILE customer ka gst number
+QH_CUSTOMER_PROFILE details of customer
+QH_CUSTOMER_PROFILE customer contact number
+QH_CUSTOMER_PROFILE customer email address
+QH_CUSTOMER_PROFILE customer cha mobile number
+QH_CUSTOMER_PROFILE customer _CONCEPT_PROFILE_
+QH_CUSTOMER_PROFILE _CONCEPT_PROFILE_ customer
+
+# ─── QH_PARTY_OUTSTANDING ───
+QH_PARTY_OUTSTANDING vendor balance
+QH_PARTY_OUTSTANDING party balance
+QH_PARTY_OUTSTANDING supplier outstanding
+QH_PARTY_OUTSTANDING how much to pay vendor
+QH_PARTY_OUTSTANDING pending party payment
+QH_PARTY_OUTSTANDING supplier pending dues
+QH_PARTY_OUTSTANDING vendor ka balance
+QH_PARTY_OUTSTANDING party ko kitna dena hai
+QH_PARTY_OUTSTANDING supplier ka baki kitna hai
+QH_PARTY_OUTSTANDING vendor udhari kitni hai
+QH_PARTY_OUTSTANDING party payable amount
+QH_PARTY_OUTSTANDING vendor payment pending
+QH_PARTY_OUTSTANDING व्हेंडर बाकी किती आहे
+QH_PARTY_OUTSTANDING पार्टी देणे बाकी
+QH_PARTY_OUTSTANDING सप्लायर देणे किती आहे
+QH_PARTY_OUTSTANDING पार्टीचे बिल बाकी
+QH_PARTY_OUTSTANDING vendor outstanding balance
+QH_PARTY_OUTSTANDING supplier dues check
+QH_PARTY_OUTSTANDING party purchase dues
+QH_PARTY_OUTSTANDING accounts payable vendor
+QH_PARTY_OUTSTANDING amount payable to party
+QH_PARTY_OUTSTANDING how much do we owe vendor
+QH_PARTY_OUTSTANDING what do we owe the vendor
+QH_PARTY_OUTSTANDING supplier balance check
+
+# ─── QH_INVOICE_LOOKUP ───
+QH_INVOICE_LOOKUP show invoice
+QH_INVOICE_LOOKUP find bill
+QH_INVOICE_LOOKUP search invoice number
+QH_INVOICE_LOOKUP get invoice details
+QH_INVOICE_LOOKUP view sales bill
+QH_INVOICE_LOOKUP invoice search
+QH_INVOICE_LOOKUP bill dikhao
+QH_INVOICE_LOOKUP invoice check karo
+QH_INVOICE_LOOKUP purana bill nikalo
+QH_INVOICE_LOOKUP bill details dekho
+QH_INVOICE_LOOKUP बिल दाखवा
+QH_INVOICE_LOOKUP इनव्हॉइस शोधा
+QH_INVOICE_LOOKUP बिल नंबर तपशील
+QH_INVOICE_LOOKUP find invoice copy
+QH_INVOICE_LOOKUP invoice item breakdown
+QH_INVOICE_LOOKUP bill amount details
+QH_INVOICE_LOOKUP last invoice search
+QH_INVOICE_LOOKUP customer invoices
+QH_INVOICE_LOOKUP customer latest invoice
+QH_INVOICE_LOOKUP show unpaid invoices
+QH_INVOICE_LOOKUP customer pending invoices
+QH_INVOICE_LOOKUP customer last 5 invoices
+QH_INVOICE_LOOKUP _CONCEPT_INVOICE_
+
+# ─── QH_EXPENSE_SUMMARY ───
+QH_EXPENSE_SUMMARY show expenses
+QH_EXPENSE_SUMMARY total expense this month
+QH_EXPENSE_SUMMARY monthly expenses
+QH_EXPENSE_SUMMARY today expense
+QH_EXPENSE_SUMMARY business expense summary
+QH_EXPENSE_SUMMARY spending report
+QH_EXPENSE_SUMMARY kitna kharcha hua
+QH_EXPENSE_SUMMARY aaj ka kharcha
+QH_EXPENSE_SUMMARY is mahine ka kharcha
+QH_EXPENSE_SUMMARY total kharch kitna hai
+QH_EXPENSE_SUMMARY kharcha hisab
+QH_EXPENSE_SUMMARY खर्च किती झाला
+QH_EXPENSE_SUMMARY आजचा खर्च दाखवा
+QH_EXPENSE_SUMMARY चालू महिन्याचा खर्च
+QH_EXPENSE_SUMMARY एकूण खर्च रिपोर्ट
+QH_EXPENSE_SUMMARY daily expense report
+QH_EXPENSE_SUMMARY office expense total
+QH_EXPENSE_SUMMARY chai kharcha total
+QH_EXPENSE_SUMMARY rent expense check
+QH_EXPENSE_SUMMARY tea and snacks expense
+QH_EXPENSE_SUMMARY how much did we spend today
+QH_EXPENSE_SUMMARY transport expenses
+QH_EXPENSE_SUMMARY show transport spending
+QH_EXPENSE_SUMMARY _CONCEPT_EXPENSE_
+
+# ─── QH_STOCK_STATUS ───
+QH_STOCK_STATUS check stock
+QH_STOCK_STATUS product stock
+QH_STOCK_STATUS available quantity
+QH_STOCK_STATUS inventory count
+QH_STOCK_STATUS how many items in stock
+QH_STOCK_STATUS item stock level
+QH_STOCK_STATUS stock kitna baki hai
+QH_STOCK_STATUS product ka stock check karo
+QH_STOCK_STATUS godown me kitna maal hai
+QH_STOCK_STATUS item quantity kitni hai
+QH_STOCK_STATUS स्टॉक किती शिल्लक आहे
+QH_STOCK_STATUS मालाचा साठा दाखवा
+QH_STOCK_STATUS उपलब्ध संख्या किती आहे
+QH_STOCK_STATUS warehouse stock check
+QH_STOCK_STATUS low stock report
+QH_STOCK_STATUS item inventory balance
+QH_STOCK_STATUS current quantity in hand
+QH_STOCK_STATUS stock of product
+QH_STOCK_STATUS how much product is in stock
+QH_STOCK_STATUS low stock products
+QH_STOCK_STATUS products below minimum stock
+QH_STOCK_STATUS out of stock products
+QH_STOCK_STATUS _CONCEPT_STOCK_
+
+# ─── QH_EMPLOYEE_ATTENDANCE ───
+QH_EMPLOYEE_ATTENDANCE employee attendance
+QH_EMPLOYEE_ATTENDANCE staff attendance today
+QH_EMPLOYEE_ATTENDANCE present employees
+QH_EMPLOYEE_ATTENDANCE check who is present
+QH_EMPLOYEE_ATTENDANCE absent list today
+QH_EMPLOYEE_ATTENDANCE hajiri check karo
+QH_EMPLOYEE_ATTENDANCE staff ki attendance
+QH_EMPLOYEE_ATTENDANCE aaj kon aaya hai
+QH_EMPLOYEE_ATTENDANCE staff hajiri report
+QH_EMPLOYEE_ATTENDANCE कर्मचारी हजेरी दाखवा
+QH_EMPLOYEE_ATTENDANCE आज कोण उपस्थित आहे
+QH_EMPLOYEE_ATTENDANCE गैरहजर यादी
+QH_EMPLOYEE_ATTENDANCE monthly attendance sheet
+QH_EMPLOYEE_ATTENDANCE employee leave days
+QH_EMPLOYEE_ATTENDANCE working days count
+QH_EMPLOYEE_ATTENDANCE attendance of staff
+QH_EMPLOYEE_ATTENDANCE employee attendance this month
+QH_EMPLOYEE_ATTENDANCE staff ki hajiri dekho
+QH_EMPLOYEE_ATTENDANCE _CONCEPT_ATTENDANCE_
+
+# ─── QH_SALARY_STATEMENT ───
+QH_SALARY_STATEMENT employee salary
+QH_SALARY_STATEMENT staff salary statement
+QH_SALARY_STATEMENT payroll report
+QH_SALARY_STATEMENT salary advance balance
+QH_SALARY_STATEMENT staff payable salary
+QH_SALARY_STATEMENT pagar kitna baki hai
+QH_SALARY_STATEMENT salary hisab dekho
+QH_SALARY_STATEMENT staff ka advance kitna hai
+QH_SALARY_STATEMENT tankhwah kitni baki hai
+QH_SALARY_STATEMENT पगार किती बाकी आहे
+QH_SALARY_STATEMENT कर्मचाऱ्याचा पगार
+QH_SALARY_STATEMENT ॲडव्हान्स पगार तपशील
+QH_SALARY_STATEMENT monthly payroll summary
+QH_SALARY_STATEMENT staff net salary payable
+QH_SALARY_STATEMENT employee advance deductions
+QH_SALARY_STATEMENT salary of employee
+QH_SALARY_STATEMENT show employee salary
+QH_SALARY_STATEMENT what is employee salary
+QH_SALARY_STATEMENT how much salary does staff get
+QH_SALARY_STATEMENT how much does employee earn
+QH_SALARY_STATEMENT employee monthly pay
+QH_SALARY_STATEMENT employee wages
+QH_SALARY_STATEMENT employee compensation
+QH_SALARY_STATEMENT employee net salary
+QH_SALARY_STATEMENT employee cha pagar
+QH_SALARY_STATEMENT employee chi salary
+QH_SALARY_STATEMENT employee la kiti salary milte
+QH_SALARY_STATEMENT कर्मचारी वेतन
+QH_SALARY_STATEMENT _CONCEPT_SALARY_
+QH_SALARY_STATEMENT employee _CONCEPT_SALARY_
+QH_SALARY_STATEMENT _CONCEPT_SALARY_ employee
+
+# ─── QH_DAILY_SALES ───
+QH_DAILY_SALES today sales
+QH_DAILY_SALES daily sales report
+QH_DAILY_SALES total revenue today
+QH_DAILY_SALES sales this month
+QH_DAILY_SALES weekly turnover
+QH_DAILY_SALES aaj ka dhandha kitna hua
+QH_DAILY_SALES aaj ki total bikri
+QH_DAILY_SALES is mahine ka total sales
+QH_DAILY_SALES total collection today
+QH_DAILY_SALES आजची विक्री किती झाली
+QH_DAILY_SALES आजचा गल्ला किती
+QH_DAILY_SALES महिन्याची एकूण विक्री
+QH_DAILY_SALES daily cash inflow
+QH_DAILY_SALES today turnover summary
+QH_DAILY_SALES how much did we sell today
+QH_DAILY_SALES what were today sales
+QH_DAILY_SALES sales today
+QH_DAILY_SALES yesterday sales
+QH_DAILY_SALES this week sales
+QH_DAILY_SALES _CONCEPT_SALES_
+
+# ─── ACT_CREATE_INVOICE ───
+ACT_CREATE_INVOICE create invoice
+ACT_CREATE_INVOICE make invoice
+ACT_CREATE_INVOICE make invoice for customer
+ACT_CREATE_INVOICE generate sales bill
+ACT_CREATE_INVOICE naya bill banao
+ACT_CREATE_INVOICE bill generate karo
+ACT_CREATE_INVOICE naya invoice banao
+ACT_CREATE_INVOICE नवीन बिल तयार करा
+ACT_CREATE_INVOICE इनव्हॉइस बनवा
+ACT_CREATE_INVOICE start new invoice
+ACT_CREATE_INVOICE open bill creator
+ACT_CREATE_INVOICE prepare invoice for customer
+ACT_CREATE_INVOICE invoice customer
+ACT_CREATE_INVOICE create bill for customer
+ACT_CREATE_INVOICE customer ke liye bill banao
+ACT_CREATE_INVOICE customer sathi bill banva
+
+# ─── ACT_RECEIVE_PAYMENT ───
+ACT_RECEIVE_PAYMENT receive payment
+ACT_RECEIVE_PAYMENT record payment from customer
+ACT_RECEIVE_PAYMENT accept customer payment
+ACT_RECEIVE_PAYMENT payment received entry
+ACT_RECEIVE_PAYMENT payment jama karo
+ACT_RECEIVE_PAYMENT customer se paise mile
+ACT_RECEIVE_PAYMENT payment receipt banao
+ACT_RECEIVE_PAYMENT पेमेंट जमा करा
+ACT_RECEIVE_PAYMENT पावती तयार करा
+ACT_RECEIVE_PAYMENT collect customer cash
+ACT_RECEIVE_PAYMENT customer payment entry
+ACT_RECEIVE_PAYMENT collect 5000 from customer
+ACT_RECEIVE_PAYMENT customer paid 5000
+ACT_RECEIVE_PAYMENT mark 5000 received from customer
+ACT_RECEIVE_PAYMENT customer se 5000 receive karo
+
+# ─── ACT_RECORD_EXPENSE ───
+ACT_RECORD_EXPENSE record expense
+ACT_RECORD_EXPENSE add new expense
+ACT_RECORD_EXPENSE enter business expense
+ACT_RECORD_EXPENSE naya kharcha add karo
+ACT_RECORD_EXPENSE kharcha likho
+ACT_RECORD_EXPENSE kharch entry karo
+ACT_RECORD_EXPENSE नवीन खर्च नोंदवा
+ACT_RECORD_EXPENSE खर्चाची नोंद करा
+ACT_RECORD_EXPENSE log office expense
+ACT_RECORD_EXPENSE debit expense voucher
+ACT_RECORD_EXPENSE add expense of 5000
+ACT_RECORD_EXPENSE I spent 5000 on transport
+ACT_RECORD_EXPENSE add 5000 kharcha
+
+# ─── ACT_RECORD_ADVANCE ───
+ACT_RECORD_ADVANCE give employee advance
+ACT_RECORD_ADVANCE record staff advance
+ACT_RECORD_ADVANCE add salary advance
+ACT_RECORD_ADVANCE staff ko advance diya
+ACT_RECORD_ADVANCE pagar advance entry
+ACT_RECORD_ADVANCE ॲडव्हान्स पगार दिला
+ACT_RECORD_ADVANCE कर्मचारी उचल नोंद
+ACT_RECORD_ADVANCE pay advance salary
+ACT_RECORD_ADVANCE staff advance 5000
+
+# ─── SPEC_MATH_CALC ───
+SPEC_MATH_CALC calculate
+SPEC_MATH_CALC math calculation
+SPEC_MATH_CALC percentage calculation
+SPEC_MATH_CALC gst calculation
+SPEC_MATH_CALC discount calculation
+SPEC_MATH_CALC hisab karo
+SPEC_MATH_CALC pratishat nikalo
+SPEC_MATH_CALC टक्केवारी काढा
+SPEC_MATH_CALC जीएसटी हिशोब
+
+# ─── SPEC_PAY_UPI_QR ───
+SPEC_PAY_UPI_QR generate upi qr
+SPEC_PAY_UPI_QR upi payment qr code
+SPEC_PAY_UPI_QR qr code scan for payment
+SPEC_PAY_UPI_QR upi qr dikhao
+SPEC_PAY_UPI_QR payment scan code
+SPEC_PAY_UPI_QR युपीआय क्यूआर कोड
+SPEC_PAY_UPI_QR स्कॅन कोड दाखवा
+
+# ─── SPEC_NAVIGATE ───
+SPEC_NAVIGATE goto customers
+SPEC_NAVIGATE open settings
+SPEC_NAVIGATE navigate to invoices
+SPEC_NAVIGATE open reports page
+SPEC_NAVIGATE dark mode toggle
+SPEC_NAVIGATE backup database now
+SPEC_NAVIGATE settings kholo
+SPEC_NAVIGATE रिपोर्ट पेज उघडा
+
+# ─── UNKNOWN_FALLBACK ───
+UNKNOWN_FALLBACK what is the weather today
+UNKNOWN_FALLBACK write a poem for me
+UNKNOWN_FALLBACK tell me a funny joke
+UNKNOWN_FALLBACK who is elon musk
+UNKNOWN_FALLBACK what is today news
+UNKNOWN_FALLBACK what should i eat today
+UNKNOWN_FALLBACK explain quantum physics
+UNKNOWN_FALLBACK hello how are you doing
+UNKNOWN_FALLBACK asdfghjkl qwertyuiop
+UNKNOWN_FALLBACK random unstructured query text

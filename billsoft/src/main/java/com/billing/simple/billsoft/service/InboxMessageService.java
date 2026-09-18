@@ -1,8 +1,10 @@
 package com.billing.simple.billsoft.service;
 
-import com.billing.simple.billsoft.entities.InboxMessage;
-import com.billing.simple.billsoft.entities.Product;
+import com.billing.simple.billsoft.dto.NotificationRequest;
+import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.InboxMessageRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,10 @@ import java.util.List;
 @Service
 public class InboxMessageService {
     private final InboxMessageRepository repository;
+
+    @Autowired(required = false)
+    @Lazy
+    private NotificationService notificationService;
 
     public InboxMessageService(InboxMessageRepository repository) {
         this.repository = repository;
@@ -27,12 +33,32 @@ public class InboxMessageService {
         return repository.findByFirmIdOrderByCreatedAtDesc(authoritativeFirmId != null ? authoritativeFirmId : firmId);
     }
 
+    @Transactional
     public InboxMessage createMessage(InboxMessage msg) {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (firmId != null) {
             msg.setFirmId(firmId);
         }
-        return repository.save(msg);
+        InboxMessage saved = repository.save(msg);
+
+        // Sync to canonical notification store
+        if (notificationService != null) {
+            String eventKey = msg.getReminderId() != null
+                    ? "planner:reminder:" + msg.getReminderId()
+                    : "legacy:inbox:" + (msg.getFirmId() != null ? msg.getFirmId() : "0") + ":" + saved.getId();
+
+            notificationService.createOrUpdate(NotificationRequest.builder()
+                    .firmId(msg.getFirmId())
+                    .eventKey(eventKey)
+                    .category(msg.getReminderId() != null ? NotificationCategory.PLANNER : NotificationCategory.SYSTEM)
+                    .priority(NotificationPriority.NORMAL)
+                    .title(msg.getSubject() != null ? msg.getSubject() : "Message")
+                    .body(msg.getBody())
+                    .sender(msg.getSender() != null ? msg.getSender() : "System")
+                    .build());
+        }
+
+        return saved;
     }
 
     @Transactional
@@ -72,6 +98,22 @@ public class InboxMessageService {
         if (firmId == null) {
             return false;
         }
+
+        // Forward to canonical notification service with deterministic eventKey
+        if (notificationService != null) {
+            String eventKey = generateEventKeyForPrefix(firmId, subjectPrefix, fullSubject);
+            NotificationCategory cat = determineCategoryForPrefix(subjectPrefix);
+            notificationService.createOrUpdate(NotificationRequest.builder()
+                    .firmId(firmId)
+                    .eventKey(eventKey)
+                    .category(cat)
+                    .priority(NotificationPriority.HIGH)
+                    .title(fullSubject)
+                    .body(body)
+                    .sender(sender)
+                    .build());
+        }
+
         LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
         boolean exists = repository.existsByFirmIdAndSubjectStartingWithAndCreatedAtAfter(firmId, subjectPrefix, cutoff);
         if (exists) {
@@ -87,6 +129,21 @@ public class InboxMessageService {
                 .build();
         repository.save(msg);
         return true;
+    }
+
+    private String generateEventKeyForPrefix(Long firmId, String prefix, String subject) {
+        String clean = (prefix != null ? prefix : subject).toLowerCase().replaceAll("[^a-z0-9:#_-]", "");
+        return "event:" + firmId + ":" + clean;
+    }
+
+    private NotificationCategory determineCategoryForPrefix(String prefix) {
+        if (prefix == null) return NotificationCategory.SYSTEM;
+        if (prefix.contains("Invoice")) return NotificationCategory.BILLING;
+        if (prefix.contains("Inventory")) return NotificationCategory.INVENTORY;
+        if (prefix.contains("Delivery") || prefix.contains("PO")) return NotificationCategory.PURCHASE;
+        if (prefix.contains("Payroll")) return NotificationCategory.HR;
+        if (prefix.contains("Reminder") || prefix.contains("Task")) return NotificationCategory.PLANNER;
+        return NotificationCategory.SYSTEM;
     }
 
     /**
@@ -121,26 +178,15 @@ public class InboxMessageService {
         }
 
         String subject;
-        String subjectPrefix = "⚠️ Inventory Alert:";
         if (!outOfStock.isEmpty() && !lowStock.isEmpty()) {
             subject = String.format("⚠️ Inventory Alert: %d Items Require Attention (%d Out of Stock, %d Low)",
                     totalAlertItems, outOfStock.size(), lowStock.size());
         } else if (!outOfStock.isEmpty()) {
-            subjectPrefix = "🔴 Inventory Alert:";
             subject = String.format("🔴 Inventory Alert: %d %s Out of Stock",
                     outOfStock.size(), outOfStock.size() == 1 ? "Item" : "Items");
         } else {
             subject = String.format("⚠️ Inventory Alert: %d %s Low on Stock",
                     lowStock.size(), lowStock.size() == 1 ? "Item" : "Items");
-        }
-
-        // Check if an unread alert already exists with same prefix
-        List<InboxMessage> unread = repository.findByFirmIdAndIsReadFalse(firmId);
-        boolean alreadyHasUnread = unread.stream().anyMatch(m ->
-                m.getSubject() != null && (m.getSubject().startsWith("⚠️ Inventory Alert:") || m.getSubject().startsWith("🔴 Inventory Alert:")));
-
-        if (alreadyHasUnread) {
-            return;
         }
 
         StringBuilder body = new StringBuilder();
@@ -185,15 +231,40 @@ public class InboxMessageService {
 
         body.append("Action Required: Please visit the Inventory Manager to adjust counts or generate Purchase Orders to replenish supply.");
 
-        InboxMessage msg = InboxMessage.builder()
-                .firmId(firmId)
-                .subject(subject)
-                .body(body.toString())
-                .sender("Inventory System")
-                .isRead(false)
-                .createdAt(LocalDateTime.now())
-                .build();
+        // Canonical Notification with deterministic eventKey
+        if (notificationService != null) {
+            notificationService.createOrUpdate(NotificationRequest.builder()
+                    .firmId(firmId)
+                    .eventKey("inventory:low-stock:aggregate:" + firmId)
+                    .category(NotificationCategory.INVENTORY)
+                    .priority(NotificationPriority.HIGH)
+                    .title(subject)
+                    .body(body.toString())
+                    .sender("Inventory System")
+                    .primaryActionLabel("Open Inventory Catalog")
+                    .primaryActionType(NotificationActionType.NAVIGATE)
+                    .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"inventory\"}")
+                    .secondaryActionLabel("Create Purchase Order")
+                    .secondaryActionType(NotificationActionType.NAVIGATE)
+                    .secondaryActionTarget("{\"page\":\"paperwork\",\"tab\":\"orders\"}")
+                    .build());
+        }
 
-        repository.save(msg);
+        // Backward compatibility: keep legacy check
+        List<InboxMessage> unread = repository.findByFirmIdAndIsReadFalse(firmId);
+        boolean alreadyHasUnread = unread.stream().anyMatch(m ->
+                m.getSubject() != null && (m.getSubject().startsWith("⚠️ Inventory Alert:") || m.getSubject().startsWith("🔴 Inventory Alert:")));
+
+        if (!alreadyHasUnread) {
+            InboxMessage msg = InboxMessage.builder()
+                    .firmId(firmId)
+                    .subject(subject)
+                    .body(body.toString())
+                    .sender("Inventory System")
+                    .isRead(false)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            repository.save(msg);
+        }
     }
 }

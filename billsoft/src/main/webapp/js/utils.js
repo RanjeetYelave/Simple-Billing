@@ -1593,6 +1593,65 @@ const BillsoftSearchEngine = {
       window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail }));
     }, 150);
   },
+};
+
+window.dispatchNotificationAction = async function (notif, choice = 'PRIMARY') {
+  if (!notif) return;
+  const choiceUpper = (choice || 'PRIMARY').toUpperCase();
+  const notifId = notif.id || notif.messageId;
+  const actionType = choiceUpper === 'PRIMARY' ? notif.primaryActionType : notif.secondaryActionType;
+  const target = choiceUpper === 'PRIMARY' ? notif.primaryActionTarget : notif.secondaryActionTarget;
+
+  try {
+    if (API.notifications && typeof API.notifications.executeAction === 'function' && notifId) {
+      await API.notifications.executeAction(notifId, choiceUpper);
+    } else if (API.notifications && typeof API.notifications.action === 'function' && notifId) {
+      await API.notifications.action(notifId, choiceUpper);
+    }
+  } catch (err) {
+    console.warn('Notification action recording error:', err);
+  }
+
+  window.dispatchEvent(new CustomEvent('billsoft:notifications-refresh'));
+
+  if (!actionType || actionType === 'NAVIGATE') {
+    if (target) {
+      if (target.startsWith('http://') || target.startsWith('https://')) {
+        window.open(target, '_blank');
+      } else if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+        try {
+          const parsed = JSON.parse(target);
+          BillsoftSearchEngine.dispatchNavigate(parsed);
+        } catch {
+          BillsoftSearchEngine.dispatchNavigate({ page: target });
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: target } }));
+      }
+    }
+  } else if (actionType === 'MODAL') {
+    if (target) {
+      try {
+        const parsed = JSON.parse(target);
+        if (parsed.modal === 'payment' && parsed.invoiceId) {
+          if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+            BillsoftSearchEngine.dispatchNavigate({ page: 'invoices', invoiceId: parsed.invoiceId, subTab: 'invoices', openPaymentModal: true });
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent('billsoft:open-modal', { detail: parsed }));
+        }
+      } catch {
+        window.dispatchEvent(new CustomEvent('billsoft:open-modal', { detail: { modal: target } }));
+      }
+    }
+  } else if (actionType === 'API_ACTION') {
+    if (window.showToast) window.showToast('Action completed successfully', 'success');
+    window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+  }
+};
+
+window.BillsoftSearchEngine = {
+  ...BillsoftSearchEngine,
 
   // 1. Comprehensive Multilingual Action & Intent Dictionary with Precision Sub-Tab Targets & Slash Commands
   ACTIONS: [

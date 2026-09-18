@@ -35,6 +35,7 @@ public class HealthController {
 
     private final com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService;
     private final com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService;
+    private final com.billing.simple.billsoft.service.NotificationService notificationService;
 
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
@@ -42,7 +43,8 @@ public class HealthController {
                             InboxMessageService inboxMessageService,
                             DataSource dataSource,
                             com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService,
-                            com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService) {
+                            com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService,
+                            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.NotificationService notificationService) {
         this.systemMetricsService = systemMetricsService;
         this.autoBackupService = autoBackupService;
         this.apiDiagnosticsService = apiDiagnosticsService;
@@ -50,6 +52,7 @@ public class HealthController {
         this.dataSource = dataSource;
         this.tenantDataIntegrityAuditService = tenantDataIntegrityAuditService;
         this.networkReachabilityService = networkReachabilityService;
+        this.notificationService = notificationService;
     }
 
     @GetMapping("/api/health")
@@ -112,6 +115,14 @@ public class HealthController {
                 ? inboxMessageService.getMessagesByFirm(firmId)
                 : Collections.emptyList();
 
+        com.billing.simple.billsoft.dto.NotificationSummaryResponse notifSummary = null;
+        if (notificationService != null) {
+            try {
+                notifSummary = notificationService.getSummary(firmId);
+            } catch (Exception ignored) {
+            }
+        }
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "UP");
         response.put("timestamp", System.currentTimeMillis());
@@ -120,6 +131,9 @@ public class HealthController {
         response.put("diagnostics", diagData);
         response.put("network", netData);
         response.put("messages", messages);
+        if (notifSummary != null) {
+            response.put("notifications", notifSummary);
+        }
         return ResponseEntity.ok(response);
     }
 

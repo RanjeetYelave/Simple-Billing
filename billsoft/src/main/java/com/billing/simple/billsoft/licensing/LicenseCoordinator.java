@@ -40,6 +40,9 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     private final ObjectMapper mapper;
     private final ScheduledExecutorService scheduler;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.service.NotificationService notificationService;
+
     private LicensePayload activeLicense;
     private ValidationResult currentValidationResult = ValidationResult.CORRUPT_PAYLOAD;
     private Consumer<ValidationResult> statusChangeListener;
@@ -70,6 +73,10 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             t.setDaemon(true);
             return t;
         });
+    }
+
+    public void setNotificationService(com.billing.simple.billsoft.service.NotificationService notificationService) {
+        this.notificationService = notificationService;
     }
 
     /**
@@ -236,6 +243,24 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                                 msg.setRead(true);
                             }
                             validMsgs.add(msg);
+
+                            if (notificationService != null && msg.getMessageId() != null && !msg.getMessageId().isBlank()) {
+                                try {
+                                    notificationService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
+                                            .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
+                                            .eventKey("management:broadcast:" + machineId + ":" + msg.getMessageId().trim())
+                                            .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
+                                            .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
+                                            .title(msg.getTitle() != null ? msg.getTitle() : "Announcement")
+                                            .body(msg.getBody())
+                                            .sender("RupeeCRM Management")
+                                            .primaryActionLabel("Open System")
+                                            .primaryActionType(com.billing.simple.billsoft.entities.NotificationActionType.NAVIGATE)
+                                            .primaryActionTarget("settings")
+                                            .build());
+                                } catch (Exception ignored) {
+                                }
+                            }
                         }
                     }
                     licenseStorage.saveInboxMessages(machineId, validMsgs);

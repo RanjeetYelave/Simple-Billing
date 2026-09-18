@@ -156,7 +156,7 @@ public class HealthController {
         ));
         result.put("apiGateway", Map.of(
                 "status", "ONLINE",
-                "port", 8080,
+                "port", 28080,
                 "protocol", "HTTP/1.1 REST Gateway"
         ));
         result.put("securityShield", Map.of(

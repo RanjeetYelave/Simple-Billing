@@ -4679,7 +4679,7 @@ const BillsoftSearchEngine = {
     if (/^(?:api\s+status|server\s+health|server\s+status|backend\s+status)$/i.test(q)) {
       return {
         type: 'sys_health',
-        title: '🟢 API & Backend Server: ONLINE (Port 8080)',
+        title: '🟢 API & Backend Server: ONLINE (Port 28080)',
         subtitle: 'Spring Boot 3.4.0 • Active REST Controllers Ready',
         icon: '🟢',
         action: () => {

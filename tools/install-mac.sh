@@ -124,6 +124,16 @@ cp -R "$FOUND_APP" "$TARGET_APP"
 echo -e "${BLUE}ℹ${NC} Clearing Gatekeeper quarantine attributes..."
 xattr -cr "$TARGET_APP" 2>/dev/null || true
 
+# Configure local hostname mapping if not present
+if ! grep -q "management.rupeecrm.local" /etc/hosts 2>/dev/null; then
+    echo -e "${BLUE}ℹ${NC} Configuring management.rupeecrm.local in /etc/hosts..."
+    if [ -w /etc/hosts ]; then
+        echo "127.0.0.1 management.rupeecrm.local" >> /etc/hosts
+    else
+        sudo sh -c 'echo "127.0.0.1 management.rupeecrm.local" >> /etc/hosts' 2>/dev/null || true
+    fi
+fi
+
 echo -e "${GREEN}✓${NC} Installation complete!"
 echo ""
 echo -e "${BLUE}ℹ${NC} Starting RupeeCRM..."
@@ -132,7 +142,7 @@ open "$TARGET_APP"
 echo ""
 echo -e "${GREEN}${BOLD}======================================================${NC}"
 echo -e "${GREEN}${BOLD}   RupeeCRM is now active and running in background!  ${NC}"
-echo -e "${GREEN}${BOLD}   Open in Browser: http://localhost:8080/            ${NC}"
+echo -e "${GREEN}${BOLD}   Open in Browser: http://management.rupeecrm.local:28080/ ${NC}"
 echo -e "${GREEN}${BOLD}======================================================${NC}"
 echo ""
-echo -e "You can launch RupeeCRM anytime from ${BOLD}Spotlight${NC} (Cmd + Space $\to$ RupeeCRM) or ${BOLD}/Applications${NC}."
+echo -e "You can launch RupeeCRM anytime from ${BOLD}Spotlight${NC} (Cmd + Space → RupeeCRM) or ${BOLD}/Applications${NC}."

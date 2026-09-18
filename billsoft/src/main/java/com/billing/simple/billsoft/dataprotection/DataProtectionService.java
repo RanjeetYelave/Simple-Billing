@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -44,7 +43,6 @@ public class DataProtectionService {
     private final File backupDir;
     private final File statusFile;
     private final ObjectMapper mapper;
-    private final ScheduledExecutorService scheduler;
     private final AtomicBoolean uploadInProgress = new AtomicBoolean(false);
 
     private DataProtectionStatus currentStatus;
@@ -70,15 +68,9 @@ public class DataProtectionService {
         this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         this.currentStatus = loadStatus();
-
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "rupeecrm-dataprotection-daemon");
-            t.setDaemon(true);
-            return t;
-        });
-
-        // Run background check every 60 minutes with 30-second initial startup delay
-        this.scheduler.scheduleWithFixedDelay(this::performScheduledBackupCheck, 30, 3600, TimeUnit.SECONDS);
+        if (this.entitlement != null) {
+            this.entitlement.registerBackupCheckHook(this::performScheduledBackupCheck);
+        }
     }
 
     private static File resolveBackupDirectory() {
@@ -287,6 +279,6 @@ public class DataProtectionService {
     }
 
     public void shutdown() {
-        scheduler.shutdownNow();
+        // No dedicated scheduler to terminate
     }
 }

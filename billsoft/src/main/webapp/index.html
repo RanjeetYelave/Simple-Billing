@@ -27603,7 +27603,7 @@
                 ),
                 React.createElement('div', null,
                   React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'CLOUD DATA PROTECTION'),
-                  licenseInfo.dataProtectionActive ? (
+                  (licenseInfo.dataProtectionActive || licenseInfo.isDataProtectionActive) ? (
                     React.createElement('div', {
                       style: {
                         display: 'inline-flex',
@@ -27617,7 +27617,7 @@
                         fontWeight: 700,
                         fontSize: '0.80rem'
                       }
-                    }, `🛡️ FULLY PROTECTED • Active (${licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining + 'd left' : (licenseInfo.dataProtectionExpiresAt || 'Secure')})`)
+                    }, `🛡️ FULLY PROTECTED • Active (${(licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) != null ? (licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) + 'd left' : (licenseInfo.dataProtectionExpiresAt ? String(licenseInfo.dataProtectionExpiresAt).split('T')[0] : 'Secure')})`)
                   ) : (licenseInfo.dataProtectionEnabled ? (
                     React.createElement('div', {
                       style: {

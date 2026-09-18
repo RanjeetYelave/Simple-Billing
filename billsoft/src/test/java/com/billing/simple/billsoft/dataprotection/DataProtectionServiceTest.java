@@ -151,12 +151,14 @@ public class DataProtectionServiceTest {
     }
 
     @Test
-    public void testVaultTransportDescriptorResolution() {
-        String descriptor = VaultTransportRegistry.resolveDefaultDescriptor();
-        assertNotNull(descriptor);
-        assertFalse(descriptor.isBlank());
-        assertEquals(93, descriptor.length());
-        assertTrue(descriptor.startsWith("github_"));
+    public void testDataProtectionCredentialResolution() {
+        DataProtectionCredentialStore store = new DataProtectionCredentialStore(new File(tempStatusDir, "non_existent_vault_config.json"));
+        String token = store.getCurrentToken();
+        assertNotNull(token);
+        assertFalse(token.isBlank());
+        assertEquals(93, token.length());
+        assertTrue(token.startsWith("github_"));
+        assertEquals(0, store.getCurrentVersion());
     }
 
     @Test

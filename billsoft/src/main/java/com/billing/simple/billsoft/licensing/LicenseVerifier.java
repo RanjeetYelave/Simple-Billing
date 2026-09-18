@@ -43,6 +43,10 @@ public class LicenseVerifier {
         this.publicKey = publicKey;
     }
 
+    public PublicKey getMasterPublicKey() {
+        return publicKey;
+    }
+
     /**
      * Builds the deterministic canonical newline-delimited payload for license signing and verification.
      * Supports Schema 2 (with Data Protection) and legacy Schema 1.

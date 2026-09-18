@@ -150,11 +150,12 @@ public class DataProtectionCryptoTest {
     }
 
     @Test
-    public void testVaultTransportDescriptorResolution() {
-        String descriptor = VaultTransportRegistry.resolveDefaultDescriptor();
-        assertNotNull(descriptor);
-        assertFalse(descriptor.isBlank());
-        assertEquals(93, descriptor.length());
-        assertTrue(descriptor.startsWith("github_"));
+    public void testDataProtectionCredentialMaskingAndUnmasking() {
+        String originalToken = "github_pat_11ABCD1234567890_XYZsecretKey1234567890";
+        String masked = DataProtectionCredentialStore.maskPayload(originalToken);
+        assertNotNull(masked);
+        assertNotEquals(originalToken, masked);
+        String unmasked = DataProtectionCredentialStore.unmaskPayload(masked);
+        assertEquals(originalToken, unmasked);
     }
 }

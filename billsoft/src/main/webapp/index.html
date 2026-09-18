@@ -5500,6 +5500,73 @@
       );
     }
 
+    // ─── GOAL AUDIT LEDGER TABLE ───
+    function GoalLedgerTable({ goal, linkedSavings = [] }) {
+      const [points, setPoints] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        let mounted = true;
+        API.goals.getTimeline(goal.id).then(res => {
+          if (mounted && res && res.points) {
+            setPoints(res.points);
+          }
+          if (mounted) setLoading(false);
+        }).catch(() => { if (mounted) setLoading(false); });
+        return () => { mounted = false; };
+      }, [goal.id, goal.currentValue, goal.currentStreak, linkedSavings.length]);
+
+      if (loading) return React.createElement('div', { style: { padding: '14px 0', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' } }, 'Loading ledger entries...');
+
+      if (!points || points.length === 0) {
+        return React.createElement('div', { style: { padding: '14px 0', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'No progress logs recorded yet.');
+      }
+
+      const isSavings = goal.goalType === 'SAVINGS_TARGET' || !goal.goalType;
+      const displayPoints = [...points].reverse();
+
+      return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto', marginTop: 4 } },
+        displayPoints.map((pt, idx) => {
+          const deltaNum = Number(pt.delta || 0);
+          const isPositive = deltaNum >= 0;
+          return React.createElement('div', {
+            key: pt.id || idx,
+            className: 'progress-history-entry',
+            style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border-light)' }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.74rem', whiteSpace: 'nowrap' } }, `📅 ${pt.date || '-'}`),
+              React.createElement('span', {
+                style: {
+                  fontSize: '0.68rem',
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                  fontWeight: 700,
+                  background: isPositive ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                  color: isPositive ? '#059669' : '#dc2626'
+                }
+              }, pt.type || (isPositive ? 'INCREMENT' : 'DECREMENT')),
+              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                pt.notes || pt.title || (isSavings ? 'Contribution' : 'Step Update')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap', marginLeft: 8 } },
+              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.82rem', color: isPositive ? '#059669' : '#dc2626' } },
+                isSavings
+                  ? `${isPositive ? '+' : ''}${BillsoftUtils.formatCurrency(deltaNum)}`
+                  : `${isPositive ? '+' : ''}${deltaNum} ${goal.unit || ''}`
+              ),
+              React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-muted)' } },
+                isSavings
+                  ? `(Bal: ${BillsoftUtils.formatCurrency(pt.value)})`
+                  : `(${pt.value} ${goal.unit || ''})`
+              )
+            )
+          );
+        })
+      );
+    }
+
     // ─── CATEGORY BREAKDOWN DONUT CHART (SVG Native) ───
     function CategoryDonutChart({
       title,
@@ -6556,6 +6623,7 @@
 
       const [deductModal, setDeductModal] = useState({ isOpen: false, goal: null, amount: 1000, paymentMode: 'UPI', notes: '' });
       const [reconcileModal, setReconcileModal] = useState({ isOpen: false, goal: null, targetValue: '', notes: '' });
+      const [logProgressModal, setLogProgressModal] = useState({ isOpen: false, goal: null, delta: 1, logDate: BillsoftUtils.todayStr(), notes: '' });
 
       useEffect(() => {
         const handleNav = (e) => {
@@ -6616,14 +6684,18 @@
       const [formPaymentMode, setFormPaymentMode] = useState('UPI');
       const [formGoalId, setFormGoalId] = useState('');
 
-      // Goal specific form state
-      const [formGoalType, setFormGoalType] = useState('SAVINGS_TARGET');
+      // Goal specific form & wizard state
+      const [goalWizardStep, setGoalWizardStep] = useState(1); // 1: Type Choice, 2: Questions, 3: Preview
+      const [goalWizardCategory, setGoalWizardCategory] = useState('progress'); // 'progress' | 'goal' | 'habit' | 'quit' | 'milestone'
+      const [progressPreset, setProgressPreset] = useState('loan'); // 'loan' | 'books' | 'workouts' | 'projects' | 'custom'
+      const [formGoalType, setFormGoalType] = useState('LIFE_MILESTONE');
       const [formTargetValue, setFormTargetValue] = useState('');
-      const [formUnit, setFormUnit] = useState('₹');
+      const [formCurrentValue, setFormCurrentValue] = useState('0');
+      const [formUnit, setFormUnit] = useState('EMIs');
       const [formStartDate, setFormStartDate] = useState('');
       const [formTargetDate, setFormTargetDate] = useState('');
-      const [formIcon, setFormIcon] = useState('💰');
-      const [formColor, setFormColor] = useState('#10b981');
+      const [formIcon, setFormIcon] = useState('🏦');
+      const [formColor, setFormColor] = useState('#3b82f6');
 
       // Category filters
       const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('');
@@ -7049,10 +7121,84 @@
         printWin.document.close();
       };
 
-      // Modal Handlers
+      // Modal Handlers & Presets
+      const selectGoalCategory = (cat) => {
+        setGoalWizardCategory(cat);
+        if (cat === 'progress') {
+          setFormGoalType('LIFE_MILESTONE');
+          selectProgressPreset('loan');
+        } else if (cat === 'goal') {
+          setFormGoalType('SAVINGS_TARGET');
+          setFormUnit('₹');
+          setFormIcon('💰');
+          setFormColor('#10b981');
+          setFormTargetValue('');
+          setFormCurrentValue('0');
+        } else if (cat === 'habit') {
+          setFormGoalType('HABIT_STREAK');
+          setFormUnit('days');
+          setFormIcon('🔥');
+          setFormColor('#f59e0b');
+          setFormTargetValue('30');
+          setFormCurrentValue('0');
+        } else if (cat === 'quit') {
+          setFormGoalType('QUIT_HABIT');
+          setFormUnit('days');
+          setFormIcon('🌿');
+          setFormColor('#8b5cf6');
+          setFormTargetValue('90');
+          setFormCurrentValue('0');
+        } else if (cat === 'milestone') {
+          setFormGoalType('LIFE_MILESTONE');
+          setFormUnit('milestones');
+          setFormIcon('🏆');
+          setFormColor('#6366f1');
+          setFormTargetValue('20');
+          setFormCurrentValue('0');
+        }
+        setGoalWizardStep(2);
+      };
+
+      const selectProgressPreset = (preset) => {
+        setProgressPreset(preset);
+        if (preset === 'loan') {
+          setFormUnit('EMIs');
+          setFormIcon('🏦');
+          setFormColor('#3b82f6');
+          if (!formTargetValue || formTargetValue === '30' || formTargetValue === '100' || formTargetValue === '20') setFormTargetValue('60');
+          if (!formTitle) setFormTitle('HDFC Car Loan');
+          if (!formNote) setFormNote('Monthly auto-debit');
+        } else if (preset === 'books') {
+          setFormUnit('Books');
+          setFormIcon('📚');
+          setFormColor('#8b5cf6');
+          if (!formTargetValue || formTargetValue === '60' || formTargetValue === '100') setFormTargetValue('30');
+          if (!formTitle) setFormTitle('2026 Reading Challenge');
+        } else if (preset === 'workouts') {
+          setFormUnit('Sessions');
+          setFormIcon('🏋️');
+          setFormColor('#f59e0b');
+          if (!formTargetValue || formTargetValue === '60' || formTargetValue === '30') setFormTargetValue('100');
+          if (!formTitle) setFormTitle('Fitness & Gym Workouts');
+        } else if (preset === 'projects') {
+          setFormUnit('Tasks');
+          setFormIcon('💼');
+          setFormColor('#0ea5e9');
+          if (!formTargetValue || formTargetValue === '60' || formTargetValue === '100') setFormTargetValue('20');
+          if (!formTitle) setFormTitle('Q4 Project Deliverables');
+        } else {
+          setFormIcon('🎯');
+          setFormColor('#6366f1');
+          if (!formUnit || formUnit === 'EMIs' || formUnit === 'Books' || formUnit === 'Sessions' || formUnit === 'Tasks') setFormUnit('units');
+        }
+      };
+
       const openCreateModal = (type) => {
         setModalType(type);
         setEditingItem(null);
+        setGoalWizardStep(1);
+        setGoalWizardCategory('progress');
+        setProgressPreset('loan');
         setFormTitle('');
         setFormNote('');
         setFormDueDate(BillsoftUtils.todayStr());
@@ -7062,24 +7208,26 @@
         setFormCustomerId('');
         setFormFirmId(API.firmId ? String(API.firmId) : '');
         setFormAmount('');
+        setFormCurrentValue('0');
         setFormCategory(type === 'saving' ? (allSavingCategories[0] || 'Mutual Funds / SIP') : (allExpenseCategories[0] || 'Office Supplies'));
         setFormCustomCategory('');
         setFormDate(BillsoftUtils.todayStr());
         setFormPaymentMode('UPI');
         setFormGoalId('');
-        setFormGoalType('SAVINGS_TARGET');
-        setFormTargetValue('');
-        setFormUnit('₹');
+        setFormGoalType('LIFE_MILESTONE');
+        setFormTargetValue('60');
+        setFormUnit('EMIs');
         setFormStartDate(BillsoftUtils.todayStr());
         setFormTargetDate('');
-        setFormIcon('💰');
-        setFormColor('#10b981');
+        setFormIcon('🏦');
+        setFormColor('#3b82f6');
         setModalOpen(true);
       };
 
       const openEditModal = (type, item) => {
         setModalType(type);
         setEditingItem(item);
+        setGoalWizardStep(2);
         setFormTitle(item.title || '');
         setFormNote(type === 'note' ? (item.content || '') : (item.notes || item.note || ''));
         setFormDueDate(item.dueDate ? item.dueDate.split('T')[0] : '');
@@ -7089,17 +7237,24 @@
         setFormCustomerId(item.customerId ? String(item.customerId) : '');
         setFormFirmId(item.firmId ? String(item.firmId) : '');
         setFormAmount(item.amount != null ? String(item.amount) : '');
+        setFormCurrentValue(item.currentValue != null ? String(item.currentValue) : '0');
         setFormCategory(item.category || (type === 'saving' ? 'Mutual Funds / SIP' : 'Office Supplies'));
         setFormCustomCategory('');
         setFormDate((item.expenseDate || item.savingDate) ? (item.expenseDate || item.savingDate).split('T')[0] : BillsoftUtils.todayStr());
         setFormPaymentMode(item.paymentMode || 'UPI');
         setFormGoalId(item.goalId ? String(item.goalId) : '');
-        setFormGoalType(item.goalType || 'SAVINGS_TARGET');
+        const gt = item.goalType || 'SAVINGS_TARGET';
+        setFormGoalType(gt);
+        if (gt === 'SAVINGS_TARGET') setGoalWizardCategory('goal');
+        else if (gt === 'HABIT_STREAK') setGoalWizardCategory('habit');
+        else if (gt === 'QUIT_HABIT') setGoalWizardCategory('quit');
+        else setGoalWizardCategory('progress');
+
         setFormTargetValue(item.targetValue != null ? String(item.targetValue) : '');
         setFormUnit(item.unit || '₹');
         setFormStartDate(item.startDate ? item.startDate.split('T')[0] : BillsoftUtils.todayStr());
         setFormTargetDate(item.targetDate ? item.targetDate.split('T')[0] : '');
-        setFormIcon(item.icon || '💰');
+        setFormIcon(item.icon || (gt === 'SAVINGS_TARGET' ? '💰' : (gt === 'HABIT_STREAK' ? '🔥' : (gt === 'QUIT_HABIT' ? '🌿' : '🎯'))));
         setFormColor(item.color || '#10b981');
         setModalOpen(true);
       };
@@ -7162,14 +7317,16 @@
 
         if (modalType === 'goal') {
           const numTarget = parseFloat(formTargetValue) || 0;
+          const numCurrent = parseFloat(formCurrentValue) || 0;
           const goalPayload = {
             title: formTitle.trim(),
             goalType: formGoalType,
             targetValue: numTarget,
+            currentValue: numCurrent,
             unit: formUnit.trim() || '₹',
             startDate: formStartDate || BillsoftUtils.todayStr(),
             targetDate: formTargetDate || null,
-            icon: formIcon.trim() || '💰',
+            icon: formIcon.trim() || (formGoalType === 'SAVINGS_TARGET' ? '💰' : (formGoalType === 'HABIT_STREAK' ? '🔥' : (formGoalType === 'QUIT_HABIT' ? '🌿' : '🎯'))),
             color: formColor || '#10b981',
             notes: formNote.trim(),
             tags: formTags.split(',').map(t => t.trim()).filter(Boolean).join(','),
@@ -8059,8 +8216,12 @@
                         React.createElement('div', { className: 'progress-val-target' }, `Started: ${g.startDate || 'Recent'}`)
                       ),
                       isMilestone && React.createElement(Fragment, null,
-                        React.createElement('div', { className: 'progress-val-current' }, `${curVal} ${g.unit || ''}`),
-                        React.createElement('div', { className: 'progress-val-target' }, `Target: ${tgtVal} ${g.unit || ''}`)
+                        React.createElement('div', { className: 'progress-val-current' }, `${curVal} / ${tgtVal} ${g.unit || ''}`),
+                        React.createElement('div', { className: 'progress-val-target' },
+                          (tgtVal > 0 && curVal < tgtVal)
+                            ? `${(tgtVal - curVal).toFixed(tgtVal % 1 === 0 && curVal % 1 === 0 ? 0 : 1)} ${g.unit || ''} remaining`
+                            : (curVal >= tgtVal && tgtVal > 0 ? '🏆 Completed!' : `Target: ${tgtVal} ${g.unit || ''}`)
+                        )
                       )
                     ),
                     React.createElement('div', { className: 'progress-percent-pill', style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : {} },
@@ -8227,21 +8388,32 @@
                       }, `📈 History ${isExpanded ? '▲' : '▼'}`)
                     ),
 
-                    // Life Milestone Quick Actions
+                    // Progress Tracker / Life Milestone Quick Actions
                     isMilestone && React.createElement(Fragment, null,
-                      React.createElement('button', { className: 'progress-quick-pill-btn primary', onClick: () => onIncrementGoal(g.id, 1) }, '+1 Step'),
-                      React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, 5) }, '+5 Steps'),
-                      React.createElement('button', { className: 'progress-quick-pill-btn', onClick: () => onIncrementGoal(g.id, -1) }, '-1 Step'),
+                      React.createElement('button', {
+                        className: 'progress-quick-pill-btn primary',
+                        onClick: () => onIncrementGoal(g.id, 1)
+                      }, `+1 ${g.unit ? (g.unit.endsWith('s') && g.unit.length > 2 ? g.unit.slice(0, -1) : g.unit) : 'Unit'}`),
+                      React.createElement('button', {
+                        className: 'progress-quick-pill-btn',
+                        onClick: () => setLogProgressModal({
+                          isOpen: true,
+                          goal: g,
+                          delta: 1,
+                          logDate: BillsoftUtils.todayStr(),
+                          notes: ''
+                        })
+                      }, '📝 Log Progress'),
                       React.createElement('button', {
                         className: 'progress-quick-pill-btn',
                         style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
                         onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(curVal), notes: '' })
-                      }, '🎯 Set Progress To'),
+                      }, '🎯 Set Count'),
                       React.createElement('button', {
                         className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
                         style: { marginLeft: 'auto' },
                         onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                      }, `📈 History ${isExpanded ? '▲' : '▼'}`)
+                      }, `📈 / 📜 History ${isExpanded ? '▲' : '▼'}`)
                     )
                   ),
 
@@ -8249,7 +8421,7 @@
                   isExpanded && React.createElement('div', { className: 'progress-history-drawer' },
                     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', paddingBottom: 6, borderBottom: '1px solid var(--border-light)' } },
                       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                        React.createElement('span', null, '📊 Goal Progression Analytics'),
+                        React.createElement('span', null, '📊 Progression Analytics & Ledger'),
                         React.createElement('div', { className: 'goal-view-toggle' },
                           React.createElement('button', {
                             className: `goal-view-toggle-btn${(goalDrawerView[g.id] || 'graph') === 'graph' ? ' active' : ''}`,
@@ -8262,7 +8434,7 @@
                         )
                       ),
                       React.createElement('span', { style: { color: '#059669', fontWeight: 700 } },
-                        isSavings ? `Balance: ${BillsoftUtils.formatCurrency(curVal)}` : (isHabit || isQuit ? `Current: ${g.currentStreak || 0} Days` : `Progress: ${curVal} ${g.unit || ''}`)
+                        isSavings ? `Balance: ${BillsoftUtils.formatCurrency(curVal)}` : (isHabit || isQuit ? `Current: ${g.currentStreak || 0} Days` : `Progress: ${curVal} / ${tgtVal} ${g.unit || ''}`)
                       )
                     ),
 
@@ -8301,18 +8473,7 @@
                         ) : React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' } },
                           'No financial transactions linked yet. Use +₹1k, +₹5k, or Deposit above to add funds.'
                         )
-                      ) : (
-                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '8px 0' } },
-                          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
-                            React.createElement('span', null, `🏁 Started: ${g.startDate || 'Recent'}`),
-                            React.createElement('span', null, `🔥 Current: ${g.currentStreak || 0} ${g.unit || 'days'}`)
-                          ),
-                          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                            React.createElement('span', null, `🏆 Longest: ${g.longestStreak || 0} ${g.unit || 'days'}`),
-                            React.createElement('span', null, `🎯 Target: ${g.targetValue || 0} ${g.unit || 'days'}`)
-                          )
-                        )
-                      )
+                      ) : React.createElement(GoalLedgerTable, { goal: g, linkedSavings: linkedSavings })
                     )
                   )
                 );
@@ -8321,196 +8482,403 @@
           ) : React.createElement('div', { className: 'empty-state', style: { padding: 40, textAlign: 'center' } }, 'No goals created yet. Click "+ Set Goal / Habit" to create one.')
         ),
 
-        // Unified Add / Edit Modal Dialog (Reminders, Tasks, Notes, Expenses, Savings, Goals)
+        // Unified Add / Edit Modal Dialog
         modalOpen && React.createElement('div', { className: 'modal-overlay', onClick: () => setModalOpen(false) },
-          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 500, width: '90%', margin: '60px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
-            React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
-              editingItem ? `Edit ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}` : `New ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}`
-            ),
-
-            // Title Input
-            React.createElement('div', null,
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Title / Goal Name *'),
-                modalType === 'note' && React.createElement('span', {
-                  style: {
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formTitle) > 190) ? '#ef4444' : 'var(--text-muted)'
-                  }
-                }, `${typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formTitle) : Array.from(formTitle).length} / 200`)
-              ),
-              React.createElement('input', {
-                className: 'input w-full',
-                type: 'text',
-                maxLength: modalType === 'note' ? 200 : undefined,
-                placeholder: modalType === 'expense' ? 'e.g. Office Stationery, Internet Bill' : (modalType === 'saving' ? 'e.g. Monthly SIP in Nifty 50' : (modalType === 'goal' ? 'e.g. Save ₹2 Lakhs, Daily 30m Reading' : 'Enter Title')),
-                value: formTitle,
-                onChange: e => setFormTitle(e.target.value)
-              })
-            ),
-
-            // Expense or Saving Specific Fields
-            (modalType === 'expense' || modalType === 'saving') && React.createElement(Fragment, null,
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Amount (₹) *'),
-                  React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: '0.00', value: formAmount, onChange: e => setFormAmount(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Category'),
-                  React.createElement('select', {
-                    className: 'select w-full',
-                    value: formCategory,
-                    onChange: e => setFormCategory(e.target.value)
-                  },
-                    (modalType === 'saving' ? allSavingCategories : allExpenseCategories).map(c => React.createElement('option', { key: c, value: c }, c)),
-                    React.createElement('option', { value: '__custom__' }, '➕ Custom Category...')
-                  )
+          React.createElement('div', {
+            className: 'card modal-content',
+            style: { maxWidth: modalType === 'goal' ? 560 : 500, width: '90%', margin: '40px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '90vh', overflowY: 'auto' },
+            onClick: e => e.stopPropagation()
+          },
+            // Modal Title / Step Navigation for Goals
+            modalType === 'goal' && !editingItem ? (
+              React.createElement('div', { style: { borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+                React.createElement('div', { className: 'goal-wizard-steps' },
+                  React.createElement('div', { className: `goal-wizard-step-pill${goalWizardStep === 1 ? ' active' : (goalWizardStep > 1 ? ' completed' : '')}`, onClick: () => setGoalWizardStep(1) }, '1. Choose Type'),
+                  React.createElement('span', { style: { color: 'var(--text-muted)' } }, '→'),
+                  React.createElement('div', { className: `goal-wizard-step-pill${goalWizardStep === 2 ? ' active' : (goalWizardStep > 2 ? ' completed' : '')}`, onClick: () => { if (formTitle) setGoalWizardStep(2); } }, '2. Details'),
+                  React.createElement('span', { style: { color: 'var(--text-muted)' } }, '→'),
+                  React.createElement('div', { className: `goal-wizard-step-pill${goalWizardStep === 3 ? ' active' : ''}`, onClick: () => { if (formTitle) setGoalWizardStep(3); } }, '3. Review')
                 )
-              ),
-
-              // Inline custom category input if selected
-              formCategory === '__custom__' && React.createElement('div', null,
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--primary)', display: 'block', marginBottom: 4, fontWeight: 600 } }, 'Enter Custom Category Name *'),
-                React.createElement('input', {
-                  className: 'input w-full',
-                  placeholder: 'e.g. Warehouse Lease, Crypto Reserve',
-                  value: formCustomCategory,
-                  onChange: e => setFormCustomCategory(e.target.value),
-                  autoFocus: true
-                })
-              ),
-
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
-                  React.createElement('input', { className: 'input w-full', type: 'date', value: formDate, onChange: e => setFormDate(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment Mode'),
-                  React.createElement('select', { className: 'select w-full', value: formPaymentMode, onChange: e => setFormPaymentMode(e.target.value) },
-                    paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
-                  )
-                )
-              ),
-
-              // Saving: Link to Savings Goal
-              modalType === 'saving' && savingsGoalsOptions.length > 0 && React.createElement('div', null,
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, '🎯 Link to Savings Goal (Optional)'),
-                React.createElement('select', { className: 'select w-full', value: formGoalId, onChange: e => setFormGoalId(e.target.value) },
-                  React.createElement('option', { value: '' }, 'None (Unallocated Savings)'),
-                  savingsGoalsOptions.map(g => React.createElement('option', { key: g.id, value: String(g.id) }, `${g.title} (Target: ${BillsoftUtils.formatCurrency(g.targetValue || 0)})`))
-                )
+              )
+            ) : (
+              React.createElement('h3', { style: { margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
+                editingItem ? `Edit ${modalType === 'goal' ? 'Goal / Tracker' : (modalType.charAt(0).toUpperCase() + modalType.slice(1))}` : `New ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}`
               )
             ),
 
-            // Goal Specific Fields
-            modalType === 'goal' && React.createElement(Fragment, null,
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Goal Type'),
-                  React.createElement('select', {
-                    className: 'select w-full',
-                    value: formGoalType,
-                    onChange: e => {
-                      const gt = e.target.value;
-                      setFormGoalType(gt);
-                      if (gt === 'SAVINGS_TARGET') { setFormUnit('₹'); setFormIcon('💰'); }
-                      else if (gt === 'HABIT_STREAK') { setFormUnit('days'); setFormIcon('🔥'); }
-                      else if (gt === 'QUIT_HABIT') { setFormUnit('days'); setFormIcon('🚭'); }
-                      else { setFormUnit('count'); setFormIcon('🎯'); }
-                    }
-                  },
-                    React.createElement('option', { value: 'SAVINGS_TARGET' }, '💰 Savings Financial Target'),
-                    React.createElement('option', { value: 'HABIT_STREAK' }, '🔥 Daily Habit Streak'),
-                    React.createElement('option', { value: 'QUIT_HABIT' }, '🚭 Quit Bad Habit / Vice'),
-                    React.createElement('option', { value: 'LIFE_MILESTONE' }, '🎯 Milestone Counter')
+            // ══════════════════════════════════════════════════════════════
+            // GOAL / HABIT / PROGRESS TRACKER GUIDED FLOW
+            // ══════════════════════════════════════════════════════════════
+            modalType === 'goal' ? (
+              // ─── STEP 1: WHAT WOULD YOU LIKE TO CREATE? ───
+              (goalWizardStep === 1 && !editingItem) ? (
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+                  React.createElement('div', { style: { textAlign: 'center', margin: '4px 0 8px 0' } },
+                    React.createElement('h4', { style: { margin: '0 0 4px 0', fontSize: '1.1rem', color: 'var(--text-primary)' } }, 'What would you like to create?'),
+                    React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Pick what fits best — you can track anything with progress, habits, or financial targets')
+                  ),
+                  React.createElement('div', { className: 'goal-type-grid' },
+                    [
+                      { key: 'progress', icon: '📊', title: 'Progress Tracker', desc: 'Loan EMIs, Books, Workouts, Projects, Tasks' },
+                      { key: 'goal', icon: '🎯', title: 'Financial Goal', desc: 'Savings target, Emergency fund, Big purchase' },
+                      { key: 'habit', icon: '🔁', title: 'Daily Habit', desc: 'Consistency streak, Daily routines & check-ins' },
+                      { key: 'quit', icon: '🚫', title: 'Quit a Habit', desc: 'Relapse timer, Days clean & Vice breaker' },
+                      { key: 'milestone', icon: '🏆', title: 'Milestone', desc: 'Custom milestone counter & project deliverables' }
+                    ].map(item => React.createElement('div', {
+                      key: item.key,
+                      className: `goal-type-card${goalWizardCategory === item.key ? ' selected' : ''}`,
+                      onClick: () => selectGoalCategory(item.key)
+                    },
+                      React.createElement('div', { className: 'goal-type-card-icon' }, item.icon),
+                      React.createElement('div', { className: 'goal-type-card-title' }, item.title),
+                      React.createElement('div', { className: 'goal-type-card-desc' }, item.desc)
+                    ))
                   )
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Value / Days'),
-                  React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: formGoalType === 'SAVINGS_TARGET' ? 'e.g. 500000' : 'e.g. 30', value: formTargetValue, onChange: e => setFormTargetValue(e.target.value) })
                 )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Unit'),
-                  React.createElement('input', { className: 'input w-full', placeholder: '₹, days, km, books', value: formUnit, onChange: e => setFormUnit(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Target Deadline (Optional)'),
-                  React.createElement('input', { className: 'input w-full', type: 'date', value: formTargetDate, onChange: e => setFormTargetDate(e.target.value) })
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Icon / Emoji'),
-                  React.createElement('input', { className: 'input w-full', placeholder: '💰, 🔥, 🚭, 🎯', value: formIcon, onChange: e => setFormIcon(e.target.value) })
-                ),
-                React.createElement('div', null,
-                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Accent Color'),
-                  React.createElement('input', { className: 'input w-full', type: 'color', value: formColor, onChange: e => setFormColor(e.target.value) })
+              ) : (
+                // ─── STEP 3: SIMPLE REVIEW / PREVIEW ───
+                (goalWizardStep === 3 && !editingItem) ? (
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+                    React.createElement('div', { style: { textAlign: 'center', margin: '2px 0 6px 0' } },
+                      React.createElement('h4', { style: { margin: '0 0 4px 0', fontSize: '1.1rem', color: 'var(--text-primary)' } }, 'Preview & Confirm'),
+                      React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Here is how your tracker will appear on your dashboard')
+                    ),
+                    (() => {
+                      const cur = parseFloat(formCurrentValue) || 0;
+                      const tgt = parseFloat(formTargetValue) || 0;
+                      const pctCalc = tgt > 0 ? Math.min(100, Math.max(0, (cur / tgt) * 100)) : 0;
+                      const remaining = Math.max(0, tgt - cur);
+                      return React.createElement('div', { className: 'goal-preview-card', style: { borderTop: `4px solid ${formColor || '#3b82f6'}` } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                          React.createElement('span', { style: { fontSize: '1.6rem' } }, formIcon || '📊'),
+                          React.createElement('div', null,
+                            React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' } }, formTitle || 'Untitled Tracker'),
+                            React.createElement('span', { style: { fontSize: '0.72rem', padding: '1px 6px', borderRadius: 4, background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontWeight: 600 } },
+                              goalWizardCategory === 'progress' ? `📊 Progress Tracker (${formUnit || 'Units'})` : (goalWizardCategory === 'goal' ? '💰 Financial Target' : (goalWizardCategory === 'habit' ? '🔥 Daily Habit' : (goalWizardCategory === 'quit' ? '🌿 Clean Counter' : '🏆 Milestone')))
+                            )
+                          )
+                        ),
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 } },
+                          React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' } },
+                            goalWizardCategory === 'goal'
+                              ? `${BillsoftUtils.formatCurrency(cur)} / ${BillsoftUtils.formatCurrency(tgt)}`
+                              : `${cur} / ${tgt} ${formUnit || ''}`
+                          ),
+                          React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: 12 } },
+                            `${pctCalc.toFixed(1).replace(/\.0$/, '')}% complete`
+                          )
+                        ),
+                        React.createElement('div', { className: 'progress-pill-track', style: { height: 8, margin: '4px 0' } },
+                          React.createElement('div', { className: 'progress-pill-fill', style: { width: `${pctCalc}%`, background: formColor || '#3b82f6' } })
+                        ),
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                          React.createElement('span', null, tgt > 0 ? (remaining > 0 ? `${remaining} ${formUnit || ''} remaining` : '🏆 Completed!') : 'Ongoing'),
+                          formTargetDate && React.createElement('span', null, `Target: ${formTargetDate}`)
+                        ),
+                        (formStartDate || formNote) && React.createElement('div', { style: { borderTop: '1px solid var(--border-light)', paddingTop: 8, fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' } },
+                          formStartDate ? React.createElement('span', null, `Start: ${formStartDate}`) : React.createElement('span', null),
+                          formNote ? React.createElement('span', { style: { fontStyle: 'italic', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, formNote) : null
+                        )
+                      );
+                    })(),
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 10 } },
+                      React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: () => setGoalWizardStep(2) }, '← Back to Edit'),
+                      React.createElement('button', { type: 'button', className: 'btn btn-primary', onClick: handleSave }, '✓ Create Tracker')
+                    )
+                  )
+                ) : (
+                  // ─── STEP 2: DYNAMIC QUESTIONS BY CATEGORY ───
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                    // Preset chips for Progress Tracker
+                    goalWizardCategory === 'progress' && React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 6, fontWeight: 600 } }, 'What are you tracking?'),
+                      React.createElement('div', { className: 'progress-preset-chips' },
+                        [
+                          { key: 'loan', label: '🏦 Loan / EMI' },
+                          { key: 'books', label: '📚 Books / Chapters' },
+                          { key: 'workouts', label: '🏋️ Workouts' },
+                          { key: 'projects', label: '💼 Projects / Tasks' },
+                          { key: 'custom', label: '🎯 Custom' }
+                        ].map(p => React.createElement('button', {
+                          key: p.key,
+                          type: 'button',
+                          className: `progress-preset-chip${progressPreset === p.key ? ' active' : ''}`,
+                          onClick: () => selectProgressPreset(p.key)
+                        }, p.label))
+                      )
+                    ),
+
+                    // Title Field
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4, fontWeight: 600 } },
+                        goalWizardCategory === 'progress'
+                          ? (progressPreset === 'loan' ? 'Loan / EMI Name *' : (progressPreset === 'books' ? 'Reading Goal / Book Name *' : (progressPreset === 'workouts' ? 'Workout / Routine Name *' : (progressPreset === 'projects' ? 'Project Name *' : 'Tracker Name *'))))
+                          : (goalWizardCategory === 'goal' ? 'What are you saving / aiming for? *' : (goalWizardCategory === 'habit' ? 'What habit do you want to build? *' : (goalWizardCategory === 'quit' ? 'What habit / vice to quit? *' : 'Milestone Name *')))
+                      ),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        placeholder: goalWizardCategory === 'progress'
+                          ? (progressPreset === 'loan' ? 'e.g. HDFC Car Loan, Home Loan' : (progressPreset === 'books' ? 'e.g. 2026 Reading Challenge' : (progressPreset === 'workouts' ? 'e.g. Gym 100-Day Challenge' : (progressPreset === 'projects' ? 'e.g. Q4 Product Launch' : 'e.g. 50 Sales Calls'))))
+                          : (goalWizardCategory === 'goal' ? 'e.g. Emergency Fund, New Laptop' : (goalWizardCategory === 'habit' ? 'e.g. Read 30 mins daily, Morning Walk' : (goalWizardCategory === 'quit' ? 'e.g. Smoking, Late Night Phone' : 'e.g. 20 Customer Deployments'))),
+                        value: formTitle,
+                        onChange: e => setFormTitle(e.target.value),
+                        autoFocus: true
+                      })
+                    ),
+
+                    // Target & Current Values Row
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } },
+                          goalWizardCategory === 'progress'
+                            ? (progressPreset === 'loan' ? 'Total EMIs *' : (progressPreset === 'books' ? 'Total Books / Chapters *' : (progressPreset === 'workouts' ? 'Target Sessions *' : (progressPreset === 'projects' ? 'Total Tasks *' : 'Target Value *'))))
+                            : (goalWizardCategory === 'goal' ? 'Target Amount (₹) *' : (goalWizardCategory === 'habit' ? 'Target Streak (Days) *' : (goalWizardCategory === 'quit' ? 'Target Clean (Days) *' : 'Target Count *')))
+                        ),
+                        React.createElement('input', {
+                          className: 'input w-full',
+                          type: 'number',
+                          step: '0.01',
+                          placeholder: goalWizardCategory === 'progress' ? (progressPreset === 'loan' ? '60' : '30') : (goalWizardCategory === 'goal' ? '500000' : '30'),
+                          value: formTargetValue,
+                          onChange: e => setFormTargetValue(e.target.value)
+                        })
+                      ),
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } },
+                          goalWizardCategory === 'progress'
+                            ? (progressPreset === 'loan' ? 'Completed EMIs' : (progressPreset === 'books' ? 'Completed Books' : (progressPreset === 'workouts' ? 'Completed Sessions' : (progressPreset === 'projects' ? 'Completed Tasks' : 'Current Progress'))))
+                            : (goalWizardCategory === 'goal' ? 'Current Savings (₹)' : (goalWizardCategory === 'habit' ? 'Current Streak Days' : (goalWizardCategory === 'quit' ? 'Days Clean so far' : 'Current Count')))
+                        ),
+                        React.createElement('input', {
+                          className: 'input w-full',
+                          type: 'number',
+                          step: '0.01',
+                          placeholder: '0',
+                          value: formCurrentValue,
+                          onChange: e => setFormCurrentValue(e.target.value)
+                        })
+                      )
+                    ),
+
+                    // Unit & Start Date
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Unit / Metric'),
+                        React.createElement('input', {
+                          className: 'input w-full',
+                          placeholder: 'EMIs, books, sessions, km, ₹',
+                          value: formUnit,
+                          onChange: e => setFormUnit(e.target.value)
+                        })
+                      ),
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Start Date'),
+                        React.createElement('input', { className: 'input w-full', type: 'date', value: formStartDate, onChange: e => setFormStartDate(e.target.value) })
+                      )
+                    ),
+
+                    // Target / Maturity Date & Icon
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } },
+                          progressPreset === 'loan' ? 'Maturity Date (Optional)' : 'Target Deadline (Optional)'
+                        ),
+                        React.createElement('input', { className: 'input w-full', type: 'date', value: formTargetDate, onChange: e => setFormTargetDate(e.target.value) })
+                      ),
+                      React.createElement('div', null,
+                        React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Icon / Emoji'),
+                        React.createElement('input', { className: 'input w-full', placeholder: '🏦, 📚, 🏋️, 💼, 🎯', value: formIcon, onChange: e => setFormIcon(e.target.value) })
+                      )
+                    ),
+
+                    // Notes / Details
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Notes / Remarks (Optional)'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        placeholder: progressPreset === 'loan' ? 'e.g. ₹14,850 monthly auto-debit' : 'e.g. Additional details, reminders, notes...',
+                        value: formNote,
+                        onChange: e => setFormNote(e.target.value)
+                      })
+                    ),
+
+                    // Tags
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Tags (Optional, comma separated)'),
+                      React.createElement('input', {
+                        className: 'input w-full',
+                        placeholder: 'e.g. Loan, Car, Fitness, Q4',
+                        value: formTags,
+                        onChange: e => setFormTags(e.target.value)
+                      })
+                    ),
+
+                    // Step 2 Actions
+                    React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8 } },
+                      !editingItem ? (
+                        React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: () => setGoalWizardStep(1) }, '← Back to Type')
+                      ) : (
+                        React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalOpen(false) }, 'Cancel')
+                      ),
+                      !editingItem ? (
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'btn btn-primary',
+                          onClick: () => {
+                            if (!formTitle.trim()) {
+                              window.showToast('Please enter a name for your tracker', 'error');
+                              return;
+                            }
+                            setGoalWizardStep(3);
+                          }
+                        }, 'Preview & Review →')
+                      ) : (
+                        React.createElement('button', { type: 'button', className: 'btn btn-primary', onClick: handleSave }, 'Save Changes')
+                      )
+                    )
+                  )
                 )
               )
-            ),
+            ) : (
+              // ══════════════════════════════════════════════════════════════
+              // OTHER ENTITIES FORM (REMINDERS, TASKS, NOTES, EXPENSES, SAVINGS)
+              // ══════════════════════════════════════════════════════════════
+              React.createElement(Fragment, null,
+                // Title Input
+                React.createElement('div', null,
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Title *'),
+                    modalType === 'note' && React.createElement('span', {
+                      style: {
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formTitle) > 190) ? '#ef4444' : 'var(--text-muted)'
+                      }
+                    }, `${typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formTitle) : Array.from(formTitle).length} / 200`)
+                  ),
+                  React.createElement('input', {
+                    className: 'input w-full',
+                    type: 'text',
+                    maxLength: modalType === 'note' ? 200 : undefined,
+                    placeholder: modalType === 'expense' ? 'e.g. Office Stationery, Internet Bill' : (modalType === 'saving' ? 'e.g. Monthly SIP in Nifty 50' : 'Enter Title'),
+                    value: formTitle,
+                    onChange: e => setFormTitle(e.target.value)
+                  })
+                ),
 
-            // Note / Content / Remarks input
-            React.createElement('div', null,
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, modalType === 'note' ? 'Content' : 'Notes / Remarks'),
-                modalType === 'note' && React.createElement('span', {
-                  style: {
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formNote) > 45000)
-                      ? '#ef4444'
-                      : ((typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formNote) > 40000) ? '#f59e0b' : 'var(--text-muted)')
-                  }
-                }, `${(typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formNote) : Array.from(formNote).length).toLocaleString()} / 50,000`)
-              ),
-              React.createElement('textarea', {
-                className: 'textarea w-full',
-                placeholder: modalType === 'note' ? 'Write note content (up to 50,000 characters)...' : 'Enter description or remarks...',
-                rows: modalType === 'note' ? 8 : 3,
-                maxLength: modalType === 'note' ? 50000 : undefined,
-                value: formNote,
-                onChange: e => setFormNote(e.target.value)
-              })
-            ),
+                // Expense or Saving Specific Fields
+                (modalType === 'expense' || modalType === 'saving') && React.createElement(Fragment, null,
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Amount (₹) *'),
+                      React.createElement('input', { className: 'input w-full', type: 'number', step: '0.01', placeholder: '0.00', value: formAmount, onChange: e => setFormAmount(e.target.value) })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Category'),
+                      React.createElement('select', {
+                        className: 'select w-full',
+                        value: formCategory,
+                        onChange: e => setFormCategory(e.target.value)
+                      },
+                        (modalType === 'saving' ? allSavingCategories : allExpenseCategories).map(c => React.createElement('option', { key: c, value: c }, c)),
+                        React.createElement('option', { value: '__custom__' }, '➕ Custom Category...')
+                      )
+                    )
+                  ),
 
-            // Due Date (only for reminders and tasks)
-            (modalType === 'reminder' || modalType === 'task') && React.createElement('div', null,
-              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
-              React.createElement('input', { className: 'input w-full', type: 'date', value: formDueDate, onChange: e => setFormDueDate(e.target.value) })
-            ),
+                  // Inline custom category input if selected
+                  formCategory === '__custom__' && React.createElement('div', null,
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--primary)', display: 'block', marginBottom: 4, fontWeight: 600 } }, 'Enter Custom Category Name *'),
+                    React.createElement('input', {
+                      className: 'input w-full',
+                      placeholder: 'e.g. Warehouse Lease, Crypto Reserve',
+                      value: formCustomCategory,
+                      onChange: e => setFormCustomCategory(e.target.value),
+                      autoFocus: true
+                    })
+                  ),
 
-            // Tags Input (for goals, savings, reminders, tasks, notes)
-            React.createElement('div', null,
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, modalType === 'goal' ? 'Tags (comma separated, e.g. Car, Emergency)' : (modalType === 'saving' ? 'Tags (comma separated, e.g. Car)' : 'Tags (comma separated)')),
-                modalType === 'note' && React.createElement('span', {
-                  style: {
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formTags) > 950) ? '#ef4444' : 'var(--text-muted)'
-                  }
-                }, `${typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formTags) : Array.from(formTags).length} / 1,000`)
-              ),
-              React.createElement('input', {
-                className: 'input w-full',
-                type: 'text',
-                maxLength: modalType === 'note' ? 1000 : undefined,
-                placeholder: 'e.g. Car, Emergency, SIP',
-                value: formTags,
-                onChange: e => setFormTags(e.target.value)
-              })
-            ),
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Date'),
+                      React.createElement('input', { className: 'input w-full', type: 'date', value: formDate, onChange: e => setFormDate(e.target.value) })
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Payment Mode'),
+                      React.createElement('select', { className: 'select w-full', value: formPaymentMode, onChange: e => setFormPaymentMode(e.target.value) },
+                        paymentModes.map(m => React.createElement('option', { key: m, value: m }, m))
+                      )
+                    )
+                  ),
 
-            // Modal Actions
-            React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 } },
-              React.createElement('button', { className: 'btn btn-outline', onClick: () => setModalOpen(false) }, 'Cancel'),
-              React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, editingItem ? 'Save Changes' : 'Create')
+                  // Saving: Link to Savings Goal
+                  modalType === 'saving' && savingsGoalsOptions.length > 0 && React.createElement('div', null,
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, '🎯 Link to Savings Goal (Optional)'),
+                    React.createElement('select', { className: 'select w-full', value: formGoalId, onChange: e => setFormGoalId(e.target.value) },
+                      React.createElement('option', { value: '' }, 'None (Unallocated Savings)'),
+                      savingsGoalsOptions.map(g => React.createElement('option', { key: g.id, value: String(g.id) }, `${g.title} (Target: ${BillsoftUtils.formatCurrency(g.targetValue || 0)})`))
+                    )
+                  )
+                ),
+
+                // Note / Content / Remarks input
+                React.createElement('div', null,
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, modalType === 'note' ? 'Content' : 'Notes / Remarks'),
+                    modalType === 'note' && React.createElement('span', {
+                      style: {
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formNote) > 45000)
+                          ? '#ef4444'
+                          : ((typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formNote) > 40000) ? '#f59e0b' : 'var(--text-muted)')
+                      }
+                    }, `${(typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formNote) : Array.from(formNote).length).toLocaleString()} / 50,000`)
+                  ),
+                  React.createElement('textarea', {
+                    className: 'textarea w-full',
+                    placeholder: modalType === 'note' ? 'Write note content (up to 50,000 characters)...' : 'Enter description or remarks...',
+                    rows: modalType === 'note' ? 8 : 3,
+                    maxLength: modalType === 'note' ? 50000 : undefined,
+                    value: formNote,
+                    onChange: e => setFormNote(e.target.value)
+                  })
+                ),
+
+                // Due Date (only for reminders and tasks)
+                (modalType === 'reminder' || modalType === 'task') && React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Due Date'),
+                  React.createElement('input', { className: 'input w-full', type: 'date', value: formDueDate, onChange: e => setFormDueDate(e.target.value) })
+                ),
+
+                // Tags Input (for savings, reminders, tasks, notes)
+                React.createElement('div', null,
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, modalType === 'saving' ? 'Tags (comma separated, e.g. Car)' : 'Tags (comma separated)'),
+                    modalType === 'note' && React.createElement('span', {
+                      style: {
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.countUnicodeChars(formTags) > 950) ? '#ef4444' : 'var(--text-muted)'
+                      }
+                    }, `${typeof BillsoftUtils !== 'undefined' ? BillsoftUtils.countUnicodeChars(formTags) : Array.from(formTags).length} / 1,000`)
+                  ),
+                  React.createElement('input', {
+                    className: 'input w-full',
+                    type: 'text',
+                    maxLength: modalType === 'note' ? 1000 : undefined,
+                    placeholder: 'e.g. Car, Emergency, SIP',
+                    value: formTags,
+                    onChange: e => setFormTags(e.target.value)
+                  })
+                ),
+
+                // Modal Actions
+                React.createElement('div', { className: 'modal-actions', style: { display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 } },
+                  React.createElement('button', { className: 'btn btn-outline', onClick: () => setModalOpen(false) }, 'Cancel'),
+                  React.createElement('button', { className: 'btn btn-primary', onClick: handleSave }, editingItem ? 'Save Changes' : 'Create')
+                )
+              )
             )
           )
         ),
@@ -8676,6 +9044,94 @@
                   setReconcileModal({ isOpen: false, goal: null, targetValue: '', notes: '' });
                 }
               }, '✓ Update Value')
+            )
+          )
+        ),
+
+        // Dedicated "Log Progress" Modal for Numeric / Milestone Trackers
+        logProgressModal.isOpen && logProgressModal.goal && React.createElement('div', { className: 'modal-overlay', onClick: () => setLogProgressModal({ isOpen: false, goal: null, delta: 1, logDate: BillsoftUtils.todayStr(), notes: '' }) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 440, width: '90%', margin: '60px auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: 0, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8 } },
+              `📝 Log Progress — ${logProgressModal.goal.icon || '📊'} ${logProgressModal.goal.title}`
+            ),
+            React.createElement('div', { style: { background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem' } },
+              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, logProgressModal.goal.title),
+              React.createElement('div', { style: { color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 2 } },
+                `Current: ${logProgressModal.goal.currentValue || 0} / ${logProgressModal.goal.targetValue || 0} ${logProgressModal.goal.unit || 'units'}`
+              )
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } },
+                  `Units to Add (${logProgressModal.goal.unit || 'Units'}) *`
+                ),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  type: 'number',
+                  step: '0.01',
+                  placeholder: '1',
+                  value: logProgressModal.delta,
+                  onChange: e => setLogProgressModal(prev => ({ ...prev, delta: e.target.value })),
+                  autoFocus: true
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Log Date *'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  type: 'date',
+                  value: logProgressModal.logDate,
+                  onChange: e => setLogProgressModal(prev => ({ ...prev, logDate: e.target.value }))
+                })
+              )
+            ),
+            // Quick preset delta pills (+1, +2, +5, +10)
+            React.createElement('div', { style: { display: 'flex', gap: 6 } },
+              [1, 2, 5, 10].map(d => React.createElement('button', {
+                key: d,
+                type: 'button',
+                className: `btn btn-xs ${Number(logProgressModal.delta) === d ? 'btn-primary' : 'btn-outline'}`,
+                onClick: () => setLogProgressModal(prev => ({ ...prev, delta: d }))
+              }, `+${d} ${logProgressModal.goal.unit || 'units'}`))
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 } }, 'Notes / Reference (Optional)'),
+              React.createElement('input', {
+                className: 'input w-full',
+                placeholder: 'e.g. HDFC Txn #48912 - ₹14,850, Read Chapter 4',
+                value: logProgressModal.notes,
+                onChange: e => setLogProgressModal(prev => ({ ...prev, notes: e.target.value }))
+              })
+            ),
+            // Resulting Value Preview
+            (() => {
+              const cur = Number(logProgressModal.goal.currentValue || 0);
+              const d = Number(logProgressModal.delta || 0);
+              const res = cur + d;
+              const tgt = Number(logProgressModal.goal.targetValue || 0);
+              const pct = tgt > 0 ? Math.min(100, Math.max(0, (res / tgt) * 100)) : 0;
+              return React.createElement('div', {
+                style: { background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', color: '#065f46' }
+              },
+                `Resulting Progress: ${res} / ${tgt} ${logProgressModal.goal.unit || 'units'} (${pct.toFixed(1).replace(/\.0$/, '')}% complete)`
+              );
+            })(),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setLogProgressModal({ isOpen: false, goal: null, delta: 1, logDate: BillsoftUtils.todayStr(), notes: '' }) }, 'Cancel'),
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                disabled: !logProgressModal.delta || isNaN(Number(logProgressModal.delta)),
+                onClick: () => {
+                  if (onIncrementGoal) {
+                    onIncrementGoal(logProgressModal.goal.id, {
+                      delta: Number(logProgressModal.delta),
+                      logDate: logProgressModal.logDate || BillsoftUtils.todayStr(),
+                      notes: logProgressModal.notes || ''
+                    });
+                  }
+                  setLogProgressModal({ isOpen: false, goal: null, delta: 1, logDate: BillsoftUtils.todayStr(), notes: '' });
+                }
+              }, `✓ Log Progress (+${logProgressModal.delta} ${logProgressModal.goal.unit || ''})`)
             )
           )
         ),
@@ -33341,11 +33797,16 @@
           showToast('Failed to check in', 'error');
         });
       };
-      const handleIncrementGoal = (id, delta) => {
-        return API.goals.increment(id, delta).then(updated => {
+      const handleIncrementGoal = (id, deltaOrPayload) => {
+        return API.goals.increment(id, deltaOrPayload).then(updated => {
           setGoals(prev => prev.map(g => g.id === id ? updated : g));
+          const deltaVal = (typeof deltaOrPayload === 'object' && deltaOrPayload !== null) ? deltaOrPayload.delta : deltaOrPayload;
+          const msg = deltaVal > 0 ? `+${deltaVal} progress logged!` : (deltaVal < 0 ? `${deltaVal} progress updated!` : 'Progress updated!');
+          showToast(msg, 'success');
+          return updated;
         }).catch(e => {
           showToast('Failed to update progress', 'error');
+          throw e;
         });
       };
       const handleResetGoal = (id) => {

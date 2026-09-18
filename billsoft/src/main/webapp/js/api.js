@@ -534,7 +534,12 @@ const API = {
     reconcile: (id, targetValue = 0, notes = '') => API._json(`/api/goals/${id}/reconcile`, { method: 'POST', body: { targetValue, notes } }),
     getSavings: (id) => API._json(`/api/goals/${id}/savings`),
     getTimeline: (id) => API._json(`/api/goals/${id}/timeline`),
-    increment: (id, delta = 1) => API._json(API._qs(`/api/goals/${id}/increment`, { delta }), { method: 'POST' }),
+    increment: (id, payloadOrDelta = 1) => {
+      if (typeof payloadOrDelta === 'object' && payloadOrDelta !== null) {
+        return API._json(`/api/goals/${id}/increment`, { method: 'POST', body: payloadOrDelta });
+      }
+      return API._json(API._qs(`/api/goals/${id}/increment`, { delta: payloadOrDelta }), { method: 'POST' });
+    },
     reset: (id) => API._json(`/api/goals/${id}/reset`, { method: 'POST' }),
   },
 

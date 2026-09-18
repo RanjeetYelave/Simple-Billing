@@ -1731,13 +1731,13 @@
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'invoices', subTab: 'quotations' } };
       }
       if (/^\/khata\b|\bopen\s*statements\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'paperwork', tab: 'statements', statementMode: 'customer' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' } };
       }
       if (/^\/pay\b|\bopen\s*payroll\b|\btankha\s*(?:kholo|page|tab)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'hr', hrTab: 'payroll' } };
       }
       if (/^\/po\b|\bcreate\s*purchase\s*order\b|\bsupplier\s*order\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'paperwork', tab: 'orders' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'orders' } };
       }
       if (/^\/goal\b|^\/goals\b|^\/habit\b|^\/habits\b|^\/streak\b|^\/streaks\b|^\/target\b|\b(?:goals?|habits?|streaks?|targets?|lakshya|dhyey)\b/i.test(lower) && !/\d+/.test(lower) && !/\b(summary|total|report|status)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'goals' } };
@@ -2052,7 +2052,7 @@
             },
             actions: [
               { label: 'View Invoices', route: 'invoices' },
-              { label: 'View Ledger', route: 'paperwork' }
+              { label: 'View Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
             ]
           };
         }
@@ -2285,7 +2285,7 @@
               data: { customerName: c.name, balance: bal, phone: c.phone, customerId: c.id, city: c.city, gstin: c.gstin },
               actions: [
                 { label: 'View Profile', route: 'firm', tab: 'customers' },
-                { label: 'Open Ledger', route: 'paperwork', tab: 'statements' }
+                { label: 'Open Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
               ]
             };
           }
@@ -2849,7 +2849,7 @@
             subtitle: `Supplier order logs & procurement requests`,
             data: { totalPoAmount: totalPoVal, poCount: pos.length },
             actions: [
-              { label: 'Purchase Orders', route: 'paperwork', tab: 'orders' }
+              { label: 'Purchase Orders', route: 'firm', tab: 'paperwork', subTab: 'orders' }
             ]
           };
         }
@@ -2888,7 +2888,7 @@
             subtitle: `Complete debit, credit, invoice, and payment history`,
             data: { entityName, entityType: isVendor ? 'VENDOR' : 'CUSTOMER' },
             actions: [
-              { label: 'Open Statements', route: 'paperwork', tab: 'statements' }
+              { label: 'Open Statements', route: 'firm', tab: 'paperwork', subTab: 'statements' }
             ]
           };
         }
@@ -3391,6 +3391,358 @@
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 9. QUICK ACTION COMMAND PARSER (GESTURE-BASED DASHBOARD ACTIONS)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const QuickActionParser = {
+    CATEGORY_KEYWORDS: {
+      'Office Supplies': [
+        'office', 'supplies', 'stationery', 'stationary', 'paper', 'print', 'printing', 'pen', 'pens',
+        'ink', 'toner', 'courier', 'postal', 'postage', 'envelope', 'notebook', 'files', 'folder'
+      ],
+      'Rent & Facilities': [
+        'rent', 'lease', 'shop rent', 'godown rent', 'office rent', 'maintenance', 'cleaning',
+        'repair', 'repairs', 'plumbing', 'electrical repair', 'whitewash', 'painting', 'pest control'
+      ],
+      'Utilities': [
+        'electricity', 'electric', 'power', 'power bill', 'light bill', 'bijli', 'bijli bill',
+        'water', 'water bill', 'pani bill', 'wifi', 'internet', 'broadband', 'phone', 'mobile',
+        'telephone', 'recharge', 'gas', 'cylinder'
+      ],
+      'Salaries & Wages': [
+        'salary', 'salaries', 'wages', 'payout', 'staff', 'employee', 'staff salary', 'advance salary',
+        'bonus', 'incentive', 'daily wage', 'majuri', 'vetan', 'tankha'
+      ],
+      'Travel & Transport': [
+        'fuel', 'petrol', 'diesel', 'cng', 'travel', 'travelling', 'taxi', 'cab', 'uber', 'ola',
+        'auto', 'rickshaw', 'bus', 'train', 'flight', 'air ticket', 'toll', 'toll tax', 'parking',
+        'transport', 'freight', 'tempo', 'lorry', 'delivery charge'
+      ],
+      'Software & Subscriptions': [
+        'software', 'subscription', 'subscriptions', 'saas', 'hosting', 'domain', 'aws', 'google',
+        'microsoft', 'zoho', 'cloud', 'antivirus', 'tally', 'license', 'app'
+      ],
+      'Marketing': [
+        'marketing', 'ad', 'ads', 'advertising', 'facebook ad', 'google ad', 'instagram ad',
+        'pamphlet', 'pamphlets', 'banner', 'hoarding', 'promotion', 'branding', 'flyer', 'flyers', 'catalog'
+      ],
+      'Miscellaneous': [
+        'tea', 'chai', 'coffee', 'snacks', 'nashta', 'biscuit', 'water bottle', 'refreshment',
+        'food', 'lunch', 'dinner', 'swiggy', 'zomato', 'misc', 'miscellaneous', 'general', 'other'
+      ]
+    },
+
+    inferExpenseCategory(str) {
+      if (!str) return 'Office Supplies';
+      const lower = str.toLowerCase();
+      for (const [cat, keywords] of Object.entries(this.CATEGORY_KEYWORDS)) {
+        for (const kw of keywords) {
+          const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (regex.test(lower)) {
+            return cat;
+          }
+        }
+      }
+      return 'Office Supplies';
+    },
+
+    extractPaymentMode(str) {
+      if (!str) return 'UPI';
+      const lower = str.toLowerCase();
+      if (/\b(?:cash|roka|rokad|nagad)\b/i.test(lower)) return 'Cash';
+      if (/\b(?:bank\s*transfer|neft|rtgs|imps|cheque|check|wire|online\s*transfer)\b/i.test(lower)) return 'Bank Transfer';
+      if (/\b(?:card|credit\s*card|debit\s*card|pos|swipe)\b/i.test(lower)) return 'Credit/Debit Card';
+      if (/\b(?:upi|gpay|google\s*pay|phonepe|paytm|bhim|qr)\b/i.test(lower)) return 'UPI';
+      return 'UPI';
+    },
+
+    extractTags(str) {
+      if (!str) return { cleanText: str, tags: '' };
+      const tagMatches = [];
+      const clean = str.replace(/#([\w-]+)/g, (match, tag) => {
+        tagMatches.push(tag);
+        return ' ';
+      }).replace(/\s+/g, ' ').trim();
+      return { cleanText: clean, tags: tagMatches.join(',') };
+    },
+
+    parse(type, rawText, ctx = {}) {
+      if (!rawText || !rawText.trim()) {
+        return {
+          valid: false,
+          missing: ['title'],
+          error: 'Input text is required',
+          payload: null,
+          preview: null
+        };
+      }
+
+      const text = rawText.trim();
+      const activeFirmId = ctx.firmId || (typeof API !== 'undefined' && API.firmId) || null;
+      const customers = ctx.customers || [];
+
+      const { cleanText: textWithoutTags, tags } = this.extractTags(text);
+
+      let matchedCustomer = null;
+      let ambiguousCustomers = [];
+      let textWithoutCustomer = textWithoutTags;
+
+      const atMatch = textWithoutCustomer.match(/@([a-zA-Z0-9\s._-]+)/);
+      if (atMatch) {
+        const queryName = atMatch[1].trim().toLowerCase();
+        const candidateMatches = customers.filter(c => {
+          const cName = (c.name || c.customerName || '').toLowerCase();
+          return cName.includes(queryName);
+        });
+        if (candidateMatches.length === 1) {
+          matchedCustomer = candidateMatches[0];
+          textWithoutCustomer = textWithoutCustomer.replace(atMatch[0], ' ').replace(/\s+/g, ' ').trim();
+        } else if (candidateMatches.length > 1) {
+          ambiguousCustomers = candidateMatches.slice(0, 4);
+        }
+      } else if (type === 'reminder' || type === 'task') {
+        const candidateMatches = [];
+        for (const c of customers) {
+          const cFullName = (c.name || c.customerName || '').trim();
+          if (!cFullName) continue;
+          // Check full name match
+          const fullRegex = new RegExp(`\\b${cFullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (fullRegex.test(textWithoutCustomer)) {
+            candidateMatches.push(c);
+            continue;
+          }
+          // Check first name or primary token match (e.g. "Amit", "Rohan", "ABC")
+          const tokens = cFullName.split(/\s+/).filter(t => t.length >= 3 && !/^(the|and|pvt|ltd|inc|co|corp|m\/s|mr|mrs|ms|dr)\b/i.test(t));
+          if (tokens.length > 0) {
+            const firstTok = tokens[0];
+            const tokRegex = new RegExp(`\\b${firstTok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            if (tokRegex.test(textWithoutCustomer)) {
+              candidateMatches.push(c);
+            }
+          }
+        }
+        // Deduplicate matches
+        const uniqueCandidates = Array.from(new Set(candidateMatches));
+        if (uniqueCandidates.length === 1) {
+          matchedCustomer = uniqueCandidates[0];
+        } else if (uniqueCandidates.length > 1) {
+          ambiguousCustomers = uniqueCandidates.slice(0, 4);
+        }
+      }
+
+      const dt = RoleResolver.extractDateTime(textWithoutCustomer);
+      let textWithoutDate = textWithoutCustomer;
+      if (dt && dt.rawMatch) {
+        const parts = dt.rawMatch.split(/\s+/).filter(Boolean);
+        for (const p of parts) {
+          textWithoutDate = textWithoutDate.replace(new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
+        }
+        textWithoutDate = textWithoutDate.replace(/\s+/g, ' ').trim();
+      }
+
+      // EXPENSE PARSER
+      if (type === 'expense') {
+        if (/(?:^|\s)-(?:\d|₹|rs)/i.test(textWithoutTags)) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Expense amount must be positive (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+        const amounts = RoleResolver.extractAmounts(textWithoutTags);
+        if (amounts && amounts.length > 1) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Multiple amounts detected. Please specify a single amount (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+        const amount = (amounts && amounts.length > 0) ? amounts[0].val : null;
+
+        if (!amount || isNaN(amount) || amount <= 0) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Please enter an amount (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        let cleanTitle = textWithoutDate;
+        if (amounts && amounts.length > 0) {
+          for (const a of amounts) {
+            if (a.raw) {
+              cleanTitle = cleanTitle.replace(new RegExp(`\\b${a.raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
+            }
+          }
+        }
+
+        cleanTitle = cleanTitle
+          .replace(/\b(paid|spent|expense|kharcha|kharch|for|rs\.?|inr|₹|cash|upi|gpay|phonepe|card|bank transfer|neft|cheque|today|yesterday)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanTitle) {
+          cleanTitle = 'General Expense';
+        } else {
+          cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+        }
+
+        const category = this.inferExpenseCategory(textWithoutTags);
+        const paymentMode = this.extractPaymentMode(textWithoutTags);
+        const expenseDate = (dt && dt.isoDate) ? dt.isoDate : (new Date().toISOString().slice(0, 10));
+
+        const payload = {
+          title: cleanTitle,
+          amount: parseFloat(amount.toFixed(2)),
+          category: category,
+          expenseDate: expenseDate,
+          paymentMode: paymentMode,
+          notes: '',
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: cleanTitle,
+          amount: amount,
+          amountFormatted: `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          category: category,
+          paymentMode: paymentMode,
+          dateLabel: (dt && dt.dateLabel) ? dt.dateLabel : 'Today',
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      // REMINDER & TASK PARSER
+      if (type === 'reminder' || type === 'task') {
+        let cleanTitle = dt && dt.cleanTitle ? dt.cleanTitle : textWithoutDate;
+        cleanTitle = cleanTitle
+          .replace(/^(?:remind\s+me\s+to|remind\s+me|reminder\s+for|set\s+reminder|task\s+to|task\s*:|todo\s+to|todo\s*:|please)\s+/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanTitle) {
+          return {
+            valid: false,
+            missing: ['title'],
+            error: type === 'reminder' ? 'Reminder title is required' : 'Task title is required',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+
+        let dueDate = null;
+        let dateLabel = 'No due date';
+        if (dt && dt.dueDate) {
+          dueDate = dt.dueDate;
+          dateLabel = dt.timeFormatted || dt.dateLabel || 'Scheduled';
+        } else if (type === 'reminder') {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const yyyy = tomorrow.getFullYear();
+          const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+          const dd = String(tomorrow.getDate()).padStart(2, '0');
+          dueDate = `${yyyy}-${mm}-${dd}T09:00:00`;
+          dateLabel = 'Tomorrow 9:00 AM';
+        }
+
+        const payload = {
+          title: cleanTitle,
+          note: '',
+          dueDate: dueDate,
+          type: type,
+          status: 'TODO',
+          progress: 0,
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: cleanTitle,
+          dateLabel: dateLabel,
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null,
+          isScheduled: !!dt
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      // NOTE PARSER
+      if (type === 'note') {
+        let cleanText = textWithoutTags;
+        if (!cleanText) {
+          return {
+            valid: false,
+            missing: ['content'],
+            error: 'Note content is required',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        const firstLine = cleanText.split('\n')[0].trim();
+        const title = firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine;
+
+        const payload = {
+          title: title || 'Quick Note',
+          content: cleanText,
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: title,
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      return {
+        valid: false,
+        error: `Unsupported action type: ${type}`,
+        payload: null,
+        preview: null
+      };
+    }
+  };
+
   return {
     DeterministicNormalizer,
     UnitRates,
@@ -3401,6 +3753,9 @@
     CapabilityClassifier,
     QuickHelpAdapter,
     OmnibarPipeline,
+    QuickActionParser,
+    parseQuickAction: (type, text, ctx) => QuickActionParser.parse(type, text, ctx),
     processQuery: (q, ctx) => OmnibarPipeline.processQuery(q, ctx)
   };
 }));
+

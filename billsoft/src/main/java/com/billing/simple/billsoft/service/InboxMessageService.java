@@ -246,7 +246,7 @@ public class InboxMessageService {
                     .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"inventory\"}")
                     .secondaryActionLabel("Create Purchase Order")
                     .secondaryActionType(NotificationActionType.NAVIGATE)
-                    .secondaryActionTarget("{\"page\":\"paperwork\",\"tab\":\"orders\"}")
+                    .secondaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\"}")
                     .build());
         }
 

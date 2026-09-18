@@ -2149,7 +2149,7 @@
 
         if (item.itemType === 'customer') {
           BillsoftSearchEngine.dispatchNavigate({
-            page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true
+            page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true
           });
           onClose();
         } else if (item.itemType === 'invoice') {
@@ -2178,7 +2178,7 @@
           onClose();
         } else if (item.itemType === 'party') {
           BillsoftSearchEngine.dispatchNavigate({
-            page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true
+            page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true
           });
           onClose();
         } else if (item.itemType === 'staff') {
@@ -2191,7 +2191,7 @@
           onClose();
         } else if (item.itemType === 'purchase_order') {
           BillsoftSearchEngine.dispatchNavigate({
-            page: 'paperwork', tab: 'orders'
+            page: 'firm', tab: 'paperwork', subTab: 'orders'
           });
           onClose();
         } else if (item.itemType === 'expense') {
@@ -2206,7 +2206,7 @@
           onClose();
         } else if (item.itemType === 'letter') {
           BillsoftSearchEngine.dispatchNavigate({
-            page: 'paperwork', tab: 'letters'
+            page: 'firm', tab: 'paperwork', subTab: 'letters'
           });
           onClose();
         } else if (item.itemType === 'reminder') {
@@ -2907,7 +2907,7 @@
                       return;
                     }
                     if (sLower === '/khata') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements' });
                       onClose();
                       return;
                     }
@@ -2917,7 +2917,7 @@
                       return;
                     }
                     if (sLower === '/po') {
-                      BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'orders' });
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
                       onClose();
                       return;
                     }
@@ -3896,7 +3896,7 @@
                             e.stopPropagation();
                             onClose();
                             window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
-                              detail: { page: 'paperwork', tab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true }
+                              detail: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer', customerId: item.id, autoGenerate: true }
                             }));
                           }
                         }, '📊 Statement'),
@@ -3983,7 +3983,7 @@
                           onClick: (e) => {
                             e.stopPropagation();
                             onClose();
-                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'paperwork', tab: 'orders' } }));
+                            window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'firm', tab: 'paperwork', subTab: 'orders' } }));
                           }
                         }, '📋 + PO'),
                         React.createElement('button', {
@@ -3994,7 +3994,7 @@
                             e.stopPropagation();
                             onClose();
                             window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
-                              detail: { page: 'paperwork', tab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true }
+                              detail: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party', partyId: item.id, autoGenerate: true }
                             }));
                           }
                         }, '📊 Statement')
@@ -4190,7 +4190,6 @@
         { id: 'planner', label: 'Planner', icon: Icons.planner },
         { id: 'inbox', label: 'Inbox', icon: Icons.inbox },
         { id: 'hr', label: 'HR', icon: Icons.users },
-        { id: 'paperwork', label: 'Paperwork', icon: Icons.paperwork },
         { id: 'settings', label: 'Settings', icon: Icons.settings },
       ];
       const handleNav = (id) => { onNavigate(id); if (setMobileOpen) setMobileOpen(false); };
@@ -5287,10 +5286,10 @@
     }
 
     // ─── FIRM PAGE ───
-    function FirmPage({ onFirmChanged }) {
+    function FirmPage({ onFirmChanged, onEditInvoice, onEditQuotation, firms = [] }) {
       const getInitialNav = () => {
         const p = window.__billsoftPendingNav;
-        if (p && p.page === 'firm' && (Date.now() - (p.ts || 0) < 15000)) {
+        if (p && (p.page === 'firm' || p.page === 'paperwork' || p.page === 'statements') && (Date.now() - (p.ts || 0) < 15000)) {
           return p;
         }
         return null;
@@ -5298,19 +5297,24 @@
       const normalizeFirmTab = (t) => {
         if (t === 'products' || t === 'catalog' || t === 'stock') return 'inventory';
         if (t === 'vendors') return 'parties';
+        if (t === 'paperwork' || t === 'orders' || t === 'letters' || t === 'statements' || t === 'purchases') return 'paperwork';
         return t || 'inventory';
       };
       const initialNav = getInitialNav();
-      const [tab, setTab] = useState(() => normalizeFirmTab(initialNav && initialNav.tab));
+      const [tab, setTab] = useState(() => normalizeFirmTab((initialNav && (initialNav.page === 'paperwork' || initialNav.page === 'statements' ? 'paperwork' : initialNav.tab))));
 
       useEffect(() => {
         const handleNav = (e) => {
           if (!e || !e.detail) return;
-          if (e.detail.page && e.detail.page !== 'firm') return;
-          if (e.detail.tab) setTab(normalizeFirmTab(e.detail.tab));
+          if (e.detail.page === 'firm') {
+            if (e.detail.tab) setTab(normalizeFirmTab(e.detail.tab));
+          } else if (e.detail.page === 'paperwork' || e.detail.page === 'statements' || e.detail.page === 'orders' || e.detail.page === 'purchases' || e.detail.page === 'letters') {
+            setTab('paperwork');
+          }
         };
-        if (initialNav && initialNav.tab) {
-          setTab(normalizeFirmTab(initialNav.tab));
+        if (initialNav) {
+          const initTab = initialNav.page === 'paperwork' || initialNav.page === 'statements' ? 'paperwork' : initialNav.tab;
+          if (initTab) setTab(normalizeFirmTab(initTab));
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
@@ -5323,11 +5327,13 @@
           React.createElement('button', { className: `btn ${activeTab === 'inventory' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('inventory') }, '📦 Inventory'),
           React.createElement('button', { className: `btn ${activeTab === 'customers' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('customers') }, '👥 Customers'),
           React.createElement('button', { className: `btn ${activeTab === 'parties' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('parties') }, '🤝 Parties (Vendors)'),
+          React.createElement('button', { className: `btn ${activeTab === 'paperwork' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('paperwork') }, '📑 Paperwork'),
           React.createElement('button', { className: `btn ${activeTab === 'profile' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('profile') }, '🏢 Business Profile')
         ),
         activeTab === 'inventory' && React.createElement(ProductManager, { key: API.firmId }),
         activeTab === 'customers' && React.createElement(CustomerManager, { key: API.firmId }),
         activeTab === 'parties' && React.createElement(PartyManager, { key: API.firmId }),
+        activeTab === 'paperwork' && React.createElement(PaperworkHub, { key: API.firmId, globalFirms: firms }),
         activeTab === 'profile' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged })
       );
     }
@@ -9778,6 +9784,368 @@
 
 
 
+    // ─── COMPACT GESTURE-BASED QUICK ACTION PALETTE ───
+    function CompactQuickActionPalette({
+      type = 'expense',
+      onClose,
+      onSubmit,
+      onOpenDetailed,
+      customers = [],
+      firms = [],
+      initialText = ''
+    }) {
+      const [inputVal, setInputVal] = useState(initialText || '');
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [batchMode, setBatchMode] = useState(false);
+      const [microError, setMicroError] = useState('');
+      const [batchSuccessMsg, setBatchSuccessMsg] = useState('');
+      const [selectedAmbiguousCustomer, setSelectedAmbiguousCustomer] = useState(null);
+      const inputRef = useRef(null);
+      const lastSubmitTs = useRef(0);
+
+      useEffect(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, [type]);
+
+      const parsed = useMemo(() => {
+        if (typeof OmnibarPipeline !== 'undefined' && OmnibarPipeline.parseQuickAction) {
+          return OmnibarPipeline.parseQuickAction(type, inputVal, {
+            customers,
+            firmId: (typeof API !== 'undefined' && API.firmId) ? API.firmId : null
+          });
+        }
+        return { valid: false, error: 'Parser loading...', payload: null, preview: null };
+      }, [type, inputVal, customers]);
+
+      const getPlaceholder = () => {
+        switch (type) {
+          case 'reminder':
+            return 'e.g. Call Amit tomorrow 5pm #urgent';
+          case 'task':
+            return 'e.g. Send quotation to ABC Steel Friday';
+          case 'expense':
+            return 'e.g. Fuel 500 UPI  or  Tea 40 cash';
+          case 'note':
+            return 'e.g. Meeting notes with supplier about delayed shipment';
+          default:
+            return 'Type short command and press Enter...';
+        }
+      };
+
+      const getTitleLabel = () => {
+        switch (type) {
+          case 'reminder':
+            return { icon: '🔔', label: 'Quick Reminder' };
+          case 'task':
+            return { icon: '📋', label: 'Quick Task' };
+          case 'expense':
+            return { icon: '💳', label: 'Quick Expense' };
+          case 'note':
+            return { icon: '📝', label: 'Quick Note' };
+          default:
+            return { icon: '⚡', label: 'Quick Action' };
+        }
+      };
+
+      const handleExecute = async () => {
+        const now = Date.now();
+        if (now - lastSubmitTs.current < 800 || isSubmitting) return; // Guard against double submission
+
+        if (!inputVal.trim()) {
+          setMicroError('Please type a command first');
+          if (inputRef.current) inputRef.current.focus();
+          return;
+        }
+
+        if (!parsed.valid) {
+          setMicroError(parsed.error || 'Please provide required information');
+          if (inputRef.current) inputRef.current.focus();
+          return;
+        }
+
+        const effectivePayload = { ...parsed.payload };
+        if (selectedAmbiguousCustomer && selectedAmbiguousCustomer.id) {
+          effectivePayload.customerId = selectedAmbiguousCustomer.id;
+        }
+
+        lastSubmitTs.current = now;
+        setIsSubmitting(true);
+        setMicroError('');
+
+        try {
+          await onSubmit(type, effectivePayload);
+          if (batchMode) {
+            const successDesc = type === 'expense'
+              ? `Saved: ${effectivePayload.title} (₹${effectivePayload.amount})`
+              : `Saved: ${effectivePayload.title}`;
+            setBatchSuccessMsg(successDesc);
+            setInputVal('');
+            setSelectedAmbiguousCustomer(null);
+            setTimeout(() => setBatchSuccessMsg(''), 3000);
+            if (inputRef.current) inputRef.current.focus();
+          } else {
+            onClose();
+          }
+        } catch (err) {
+          console.error('Quick action failed:', err);
+          setMicroError(err && err.message ? err.message : 'Failed to save. Please try again.');
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+          return;
+        }
+        if (e.key === 'Enter') {
+          if (e.shiftKey) {
+            e.preventDefault();
+            onOpenDetailed(type, parsed && parsed.payload ? parsed.payload : { title: inputVal });
+            return;
+          }
+          e.preventDefault();
+          handleExecute();
+        }
+      };
+
+      const { icon, label } = getTitleLabel();
+
+      return React.createElement('div', {
+        className: 'modal-overlay',
+        onClick: onClose,
+        style: {
+          backdropFilter: 'blur(4px)',
+          background: 'rgba(0, 0, 0, 0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }
+      },
+        React.createElement('div', {
+          className: 'card modal-content quick-gesture-palette',
+          style: {
+            maxWidth: 540,
+            width: '92%',
+            padding: '20px 24px',
+            borderRadius: 12,
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-card, #ffffff)'
+          },
+          onClick: e => e.stopPropagation()
+        },
+          // Header
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 14
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('span', { style: { fontSize: '1.25rem' } }, icon),
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600 } }, label)
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: `btn btn-xs ${batchMode ? 'btn-primary' : 'btn-ghost'}`,
+                onClick: () => setBatchMode(!batchMode),
+                title: 'Keep open for multiple rapid entries (Batch Mode)',
+                style: { fontSize: '0.74rem', padding: '2px 8px', borderRadius: 4 }
+              }, batchMode ? '📌 Pinned (Batch)' : '📌 Pin'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-ghost btn-xs',
+                onClick: onClose,
+                style: { fontSize: '1.1rem', lineHeight: 1, padding: '2px 6px', color: 'var(--text-secondary)' }
+              }, '✕')
+            )
+          ),
+
+          // Main Command Input
+          React.createElement('div', { style: { position: 'relative' } },
+            React.createElement('input', {
+              ref: inputRef,
+              className: 'input w-full quick-gesture-input',
+              type: 'text',
+              placeholder: getPlaceholder(),
+              value: inputVal,
+              onChange: e => {
+                setInputVal(e.target.value);
+                setMicroError('');
+              },
+              onKeyDown: handleKeyDown,
+              disabled: isSubmitting,
+              style: {
+                fontSize: '1rem',
+                padding: '12px 14px',
+                borderRadius: 8,
+                border: microError ? '1.5px solid var(--danger, #ef4444)' : '1.5px solid var(--primary, #4f46e5)',
+                boxShadow: '0 0 0 3px rgba(79, 70, 229, 0.1)',
+                outline: 'none'
+              }
+            })
+          ),
+
+          // Micro Error Prompt
+          microError && React.createElement('div', {
+            style: {
+              color: 'var(--danger, #ef4444)',
+              fontSize: '0.8rem',
+              marginTop: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }
+          }, `⚠️ ${microError}`),
+
+          // Batch Success Flash
+          batchSuccessMsg && React.createElement('div', {
+            style: {
+              color: '#059669',
+              fontSize: '0.8rem',
+              marginTop: 6,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }
+          }, `✓ ${batchSuccessMsg}`),
+
+          // Ambiguous Customer Selection Micro-Chips
+          parsed && parsed.ambiguousCustomers && parsed.ambiguousCustomers.length > 0 && !selectedAmbiguousCustomer && React.createElement('div', {
+            style: {
+              marginTop: 10,
+              padding: '8px 12px',
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: 6
+            }
+          },
+            React.createElement('div', { style: { fontSize: '0.78rem', color: '#d97706', marginBottom: 6, fontWeight: 500 } }, 'Which customer did you mean?'),
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+              parsed.ambiguousCustomers.map((c, idx) => React.createElement('button', {
+                key: c.id || idx,
+                type: 'button',
+                className: 'btn btn-xs btn-outline',
+                style: { fontSize: '0.75rem', padding: '2px 8px' },
+                onClick: () => {
+                  setSelectedAmbiguousCustomer(c);
+                  if (inputRef.current) inputRef.current.focus();
+                }
+              }, `${idx + 1}. ${c.name || c.customerName}`)),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-xs btn-ghost',
+                style: { fontSize: '0.75rem' },
+                onClick: () => {
+                  setSelectedAmbiguousCustomer({ id: null, name: 'None' });
+                  if (inputRef.current) inputRef.current.focus();
+                }
+              }, 'Skip customer')
+            )
+          ),
+
+          // Live Parsed Confirmation Chips
+          parsed && parsed.valid && parsed.preview && React.createElement('div', {
+            style: {
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 12,
+              padding: '10px 12px',
+              background: 'var(--bg-secondary, rgba(0,0,0,0.03))',
+              borderRadius: 8,
+              border: '1px solid var(--border-light, rgba(0,0,0,0.06))'
+            }
+          },
+            // Title chip
+            parsed.preview.title && React.createElement('span', {
+              style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }
+            }, `"${parsed.preview.title}"`),
+
+            // Amount chip (expense)
+            parsed.preview.amountFormatted && React.createElement('span', {
+              className: 'badge badge-success',
+              style: { fontSize: '0.75rem', padding: '2px 8px', fontWeight: 600 }
+            }, `💰 ${parsed.preview.amountFormatted}`),
+
+            // Category chip (expense)
+            parsed.preview.category && React.createElement('span', {
+              className: 'badge badge-primary',
+              style: { fontSize: '0.75rem', padding: '2px 8px' }
+            }, `🏷️ ${parsed.preview.category}`),
+
+            // Payment Mode chip (expense)
+            parsed.preview.paymentMode && React.createElement('span', {
+              className: 'badge badge-outline',
+              style: { fontSize: '0.75rem', padding: '2px 8px' }
+            }, `💳 ${parsed.preview.paymentMode}`),
+
+            // Date chip
+            parsed.preview.dateLabel && React.createElement('span', {
+              className: 'badge badge-outline',
+              style: { fontSize: '0.75rem', padding: '2px 8px' }
+            }, `📅 ${parsed.preview.dateLabel}`),
+
+            // Customer chip
+            (parsed.preview.customerName || (selectedAmbiguousCustomer && selectedAmbiguousCustomer.name !== 'None')) && React.createElement('span', {
+              className: 'badge badge-warning',
+              style: { fontSize: '0.75rem', padding: '2px 8px' }
+            }, `👤 ${selectedAmbiguousCustomer ? selectedAmbiguousCustomer.name : parsed.preview.customerName}`)
+          ),
+
+          // Footer & Escape Hatches
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 16,
+              paddingTop: 12,
+              borderTop: '1px solid var(--border-light, rgba(0,0,0,0.06))',
+              fontSize: '0.78rem',
+              color: 'var(--text-secondary)'
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+              React.createElement('kbd', { style: { padding: '2px 5px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.7rem' } }, 'Enter'),
+              React.createElement('span', null, 'Save'),
+              React.createElement('span', { style: { margin: '0 4px', opacity: 0.4 } }, '•'),
+              React.createElement('kbd', { style: { padding: '2px 5px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.7rem' } }, 'Esc'),
+              React.createElement('span', null, 'Close')
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-link btn-xs',
+                onClick: () => onOpenDetailed(type, parsed && parsed.payload ? parsed.payload : { title: inputVal }),
+                style: { fontSize: '0.78rem', color: 'var(--primary)', padding: 0 }
+              }, 'Detailed Form (Shift+Enter) →'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary btn-sm',
+                onClick: handleExecute,
+                disabled: isSubmitting,
+                style: { padding: '4px 14px', fontSize: '0.82rem' }
+              }, isSubmitting ? 'Saving...' : 'Save')
+            )
+          )
+        )
+      );
+    }
+
+    const GestureCreationPalette = CompactQuickActionPalette;
+
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
@@ -9867,7 +10235,18 @@
       // Shared Note Preview Modal state
       const [previewNote, setPreviewNote] = useState(null);
 
-      // Quick Action Modal State
+      // Gesture-Based Compact Palette State
+      const [gesturePaletteOpen, setGesturePaletteOpen] = useState(false);
+      const [gesturePaletteType, setGesturePaletteType] = useState('expense');
+      const [gestureInitialText, setGestureInitialText] = useState('');
+
+      const openGesturePalette = (type, initialText = '') => {
+        setGesturePaletteType(type);
+        setGestureInitialText(initialText);
+        setGesturePaletteOpen(true);
+      };
+
+      // Full Detailed Modal State (Fallback & Saving / Goal)
       const [quickModalOpen, setQuickModalOpen] = useState(false);
       const [quickModalType, setQuickModalType] = useState('reminder'); // 'reminder' | 'task' | 'expense' | 'saving' | 'goal' | 'note'
       const [editingQuickNote, setEditingQuickNote] = useState(null);
@@ -10059,29 +10438,53 @@
         }));
       };
 
-      // Quick Modal Handlers
+      useEffect(() => {
+        const handleOpenPalette = (e) => {
+          const type = (e.detail && e.detail.type) || 'expense';
+          openGesturePalette(type);
+        };
+        window.addEventListener('billsoft:open-gesture-palette', handleOpenPalette);
+        return () => window.removeEventListener('billsoft:open-gesture-palette', handleOpenPalette);
+      }, []);
+
       const openQuickModal = (type, editItem = null) => {
         setQuickModalType(type);
-        setEditingQuickNote(editItem);
+        setEditingQuickNote(editItem && editItem.id ? editItem : null);
         setQTitle(editItem ? (editItem.title || '') : '');
-        setQNote(editItem ? (editItem.content || editItem.note || '') : '');
+        setQNote(editItem ? (editItem.content || editItem.note || editItem.notes || '') : '');
         setQDueDate(editItem && editItem.dueDate ? editItem.dueDate.split('T')[0] : BillsoftUtils.todayStr());
         setQTags(editItem ? (editItem.tags || '') : '');
         setQAmount(editItem ? (editItem.amount || '') : '');
-        setQCategory(type === 'saving' ? 'Emergency Fund' : 'Office Supplies');
+        setQCategory(editItem && editItem.category ? editItem.category : (type === 'saving' ? 'Emergency Fund' : 'Office Supplies'));
         setQCustomCategory('');
-        setQGoalId('');
+        setQGoalId(editItem && editItem.goalId ? String(editItem.goalId) : '');
         setQGoalType('SAVINGS_TARGET');
-        setQTargetValue('');
+        setQTargetValue(editItem && editItem.targetValue ? String(editItem.targetValue) : '');
         setQUnit('₹');
-        setQTargetDate('');
+        setQTargetDate(editItem && editItem.targetDate ? editItem.targetDate : '');
         setQIcon('💰');
         setQColor('#10b981');
-        setQExpenseDate(BillsoftUtils.todayStr());
-        setQPaymentMode('UPI');
-        setQCustomerId('');
-        setQFirmId(API.firmId ? String(API.firmId) : (firms && firms.length > 0 ? String(firms[0].id) : ''));
+        setQExpenseDate(editItem && editItem.expenseDate ? editItem.expenseDate : (editItem && editItem.savingDate ? editItem.savingDate : BillsoftUtils.todayStr()));
+        setQPaymentMode(editItem && editItem.paymentMode ? editItem.paymentMode : 'UPI');
+        setQCustomerId(editItem && editItem.customerId ? String(editItem.customerId) : '');
+        setQFirmId(editItem && editItem.firmId ? String(editItem.firmId) : (API.firmId ? String(API.firmId) : (firms && firms.length > 0 ? String(firms[0].id) : '')));
         setQuickModalOpen(true);
+      };
+
+      const handleGestureSubmit = async (type, payload) => {
+        if (type === 'expense') {
+          if (onCreateExpense) await onCreateExpense(payload);
+          showToast('Expense recorded successfully', 'success');
+        } else if (type === 'reminder') {
+          if (onCreateReminder) await onCreateReminder(payload);
+          showToast('Reminder created successfully', 'success');
+        } else if (type === 'task') {
+          if (onCreateTask) await onCreateTask(payload);
+          showToast('Task created successfully', 'success');
+        } else if (type === 'note') {
+          if (onCreateNote) await onCreateNote(payload);
+          showToast('Note created successfully', 'success');
+        }
       };
 
       const handleSaveQuick = () => {
@@ -10387,17 +10790,17 @@
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('reminder'),
+              onClick: () => openGesturePalette('reminder'),
               style: { gap: 6, fontSize: '0.82rem' }
             }, '🔔 + Reminder'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('task'),
+              onClick: () => openGesturePalette('task'),
               style: { gap: 6, fontSize: '0.82rem' }
             }, '📋 + Task'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('expense'),
+              onClick: () => openGesturePalette('expense'),
               style: { gap: 6, fontSize: '0.82rem' }
             }, '💳 + Expense'),
             React.createElement('button', {
@@ -10412,7 +10815,7 @@
             }, '🎯 + Goal'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('note'),
+              onClick: () => openGesturePalette('note'),
               style: { gap: 6, fontSize: '0.82rem' }
             }, '📝 + Note')
           )
@@ -10645,7 +11048,7 @@
                     React.createElement('div', { className: 'card-title' }, 'Recent Purchase Orders'),
                     React.createElement('div', { className: 'card-subtitle' }, 'Vendor procurement & supply orders')
                   ),
-                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('paperwork', 'orders') }, 'All POs →')
+                  React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' }) }, 'All POs →')
                 ),
                 purchaseOrders && purchaseOrders.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                   purchaseOrders.slice(0, 3).map((po, i) => {
@@ -10683,7 +11086,7 @@
                 ) : React.createElement('div', { style: { padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
                   'No purchase orders recorded yet.',
                   React.createElement('div', { style: { marginTop: 6 } },
-                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => navigateTo('purchaseOrders') }, '+ Create Purchase Order')
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' }) }, '+ Create Purchase Order')
                   )
                 )
               ),
@@ -10769,7 +11172,7 @@
               icon: '💸',
               type: 'expense',
               items: expenses,
-              onAction: () => openQuickModal('expense'),
+              onAction: () => openGesturePalette('expense'),
               actionLabel: '+ Expense',
               onViewAll: () => navigateTo('planner', 'expenses'),
               viewAllLabel: 'Log →',
@@ -10975,7 +11378,7 @@
                     React.createElement('div', { className: 'card-subtitle' }, 'Attention triggers & deadlines')
                   ),
                   React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('reminder') }, '+ New'),
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openGesturePalette('reminder') }, '+ New'),
                     React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'reminders') }, 'All →')
                   )
                 ),
@@ -11024,7 +11427,7 @@
                     React.createElement('div', { className: 'card-subtitle' }, 'Quick to-do items & priorities')
                   ),
                   React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('task') }, '+ Task'),
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openGesturePalette('task') }, '+ Task'),
                     React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'tasks') }, 'Board →')
                   )
                 ),
@@ -11083,7 +11486,7 @@
                     React.createElement('div', { className: 'card-subtitle' }, 'Personal & operational expenditures')
                   ),
                   React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('expense') }, '+ Expense'),
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openGesturePalette('expense') }, '+ Expense'),
                     React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'expenses') }, 'Log →')
                   )
                 ),
@@ -11165,7 +11568,7 @@
                     React.createElement('div', { className: 'card-subtitle' }, 'Fast unformatted notes & thoughts')
                   ),
                   React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openQuickModal('note') }, '+ Note'),
+                    React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => openGesturePalette('note') }, '+ Note'),
                     React.createElement('button', { className: 'btn btn-link btn-xs', onClick: () => navigateTo('planner', 'notes') }, 'Memos →')
                   )
                 ),
@@ -11449,6 +11852,20 @@
             setPreviewNote(null);
             openQuickModal('note', target);
           }
+        }),
+
+        // Compact Quick Action Palette Modal
+        gesturePaletteOpen && React.createElement(CompactQuickActionPalette, {
+          type: gesturePaletteType,
+          initialText: gestureInitialText,
+          onClose: () => setGesturePaletteOpen(false),
+          onSubmit: handleGestureSubmit,
+          onOpenDetailed: (t, item) => {
+            setGesturePaletteOpen(false);
+            openQuickModal(t, item);
+          },
+          customers: customers,
+          firms: firms
         })
       );
     }
@@ -21624,11 +22041,18 @@
 
       useEffect(() => {
         load();
+        let lastHandledPoId = null;
+        let lastHandledPoTs = 0;
         const handlePoNav = async (e) => {
           if (!e || !e.detail) return;
-          if (e.detail.page && e.detail.page !== 'paperwork' && e.detail.page !== 'purchases' && e.detail.page !== 'orders') return;
+          if (e.detail.page && e.detail.page !== 'firm' && e.detail.page !== 'paperwork' && e.detail.page !== 'purchases' && e.detail.page !== 'orders') return;
+          if (e.detail.page === 'firm' && e.detail.tab && e.detail.tab !== 'paperwork' && e.detail.tab !== 'orders') return;
           const targetPoId = e.detail.poId || e.detail.editPoId || e.detail.orderId;
+          const now = Date.now();
           if (targetPoId) {
+            if (lastHandledPoId === targetPoId && (now - lastHandledPoTs < 1000)) return;
+            lastHandledPoId = targetPoId;
+            lastHandledPoTs = now;
             try {
               const po = await API.purchaseOrders.get(targetPoId);
               if (po) {
@@ -21641,9 +22065,11 @@
         };
 
         const pending = window.__billsoftPendingNav;
-        if (pending && (pending.page === 'paperwork' || pending.page === 'purchases' || pending.page === 'orders') && (Date.now() - (pending.ts || 0) < 15000)) {
+        if (pending && ((pending.page === 'firm' && (pending.tab === 'paperwork' || pending.tab === 'orders' || pending.subTab === 'orders')) || pending.page === 'paperwork' || pending.page === 'purchases' || pending.page === 'orders') && (Date.now() - (pending.ts || 0) < 15000)) {
           if (pending.poId || pending.editPoId || pending.orderId) {
             const targetPoId = pending.poId || pending.editPoId || pending.orderId;
+            lastHandledPoId = targetPoId;
+            lastHandledPoTs = Date.now();
             API.purchaseOrders.get(targetPoId).then(po => {
               if (po) openEdit(po);
             }).catch(() => {});
@@ -24578,14 +25004,22 @@
     function PaperworkHub({ globalFirms = [] }) {
       const getInitialNav = () => {
         const p = window.__billsoftPendingNav;
-        if (p && (p.page === 'paperwork' || p.page === 'statements') && (Date.now() - (p.ts || 0) < 15000)) {
+        if (p && ((p.page === 'firm' && (p.tab === 'paperwork' || p.tab === 'orders' || p.tab === 'letters' || p.tab === 'statements')) || p.page === 'paperwork' || p.page === 'statements' || p.page === 'orders' || p.page === 'purchases' || p.page === 'letters') && (Date.now() - (p.ts || 0) < 15000)) {
           return p;
         }
         return null;
       };
+      const normalizePaperworkSubTab = (nav) => {
+        if (!nav) return 'orders';
+        if (nav.subTab) return nav.subTab;
+        if (nav.tab === 'orders' || nav.tab === 'letters' || nav.tab === 'statements') return nav.tab;
+        if (nav.page === 'statements') return 'statements';
+        if (nav.page === 'letters') return 'letters';
+        return 'orders';
+      };
       const initialNav = getInitialNav();
 
-      const [tab, setTab] = useState(() => (initialNav && initialNav.tab) || 'orders'); // 'orders' | 'letters' | 'statements'
+      const [tab, setTab] = useState(() => normalizePaperworkSubTab(initialNav)); // 'orders' | 'letters' | 'statements'
 
       // Statements Sub-Tab State
       const [statementMode, setStatementMode] = useState(() => (initialNav && initialNav.statementMode) || 'party'); // 'party' | 'customer' | 'firm'
@@ -24629,11 +25063,15 @@
       }, [loadEntityData]);
 
       useEffect(() => {
+        let lastStatementGenKey = null;
+        let lastStatementGenTs = 0;
         const handleNav = async (e) => {
           if (!e || !e.detail) return;
-          if (e.detail.page && e.detail.page !== 'paperwork' && e.detail.page !== 'statements') return;
-          const { tab: targetTab, statementMode: targetMode, customerId: targetCustId, partyId: targetPartyId, autoGenerate } = e.detail;
-          if (targetTab) setTab(targetTab);
+          if (e.detail.page && e.detail.page !== 'firm' && e.detail.page !== 'paperwork' && e.detail.page !== 'statements' && e.detail.page !== 'orders' && e.detail.page !== 'purchases' && e.detail.page !== 'letters') return;
+          if (e.detail.page === 'firm' && e.detail.tab && e.detail.tab !== 'paperwork' && e.detail.tab !== 'orders' && e.detail.tab !== 'letters' && e.detail.tab !== 'statements') return;
+          const targetSubTab = normalizePaperworkSubTab(e.detail);
+          const { statementMode: targetMode, customerId: targetCustId, partyId: targetPartyId, autoGenerate } = e.detail;
+          if (targetSubTab) setTab(targetSubTab);
           if (targetMode) setStatementMode(targetMode);
           if (targetCustId) setCustomerId(targetCustId);
           if (targetPartyId) setPartyId(targetPartyId);
@@ -24642,6 +25080,11 @@
             const effMode = targetMode || (targetCustId ? 'customer' : (targetPartyId ? 'party' : 'firm'));
             const effCustId = targetCustId || customerId;
             const effPartyId = targetPartyId || partyId;
+            const genKey = `${effMode}-${effCustId || ''}-${effPartyId || ''}`;
+            const now = Date.now();
+            if (lastStatementGenKey === genKey && (now - lastStatementGenTs < 1000)) return;
+            lastStatementGenKey = genKey;
+            lastStatementGenTs = now;
             setStatementLoading(true);
             try {
               let result = null;
@@ -35470,11 +35913,24 @@
           if (!e || !e.detail) return;
           let { page: targetPage, subTab, tab, hrTab, plannerTab, invoiceId, editInvoiceId: editInvId, quotationId, editQuotationId: editQuoteId, poId, reminderId } = e.detail;
 
-          // Alias normalizations
-          if (targetPage === 'purchases' || targetPage === 'orders') {
-            targetPage = 'paperwork';
-            if (!tab) tab = 'orders';
-            e.detail.tab = tab;
+          const legacyTab = tab;
+          // Alias normalizations into canonical routes
+          if (targetPage === 'paperwork' || targetPage === 'purchases' || targetPage === 'orders' || targetPage === 'statements' || targetPage === 'letters') {
+            targetPage = 'firm';
+            tab = 'paperwork';
+            subTab = subTab || (
+              legacyTab === 'orders' || legacyTab === 'letters' || legacyTab === 'statements'
+                ? legacyTab
+                : (e.detail.page === 'statements' ? 'statements' : (e.detail.page === 'letters' ? 'letters' : 'orders'))
+            );
+            e.detail.page = 'firm';
+            e.detail.tab = 'paperwork';
+            e.detail.subTab = subTab;
+          } else if (targetPage === 'firm' && (tab === 'orders' || tab === 'letters' || tab === 'statements')) {
+            subTab = subTab || tab;
+            tab = 'paperwork';
+            e.detail.tab = 'paperwork';
+            e.detail.subTab = subTab;
           } else if (targetPage === 'inventory' || targetPage === 'products') {
             targetPage = 'firm';
             if (!tab) tab = 'inventory';
@@ -35486,7 +35942,7 @@
             e.detail.hrTab = hrTab;
           }
 
-          window.__billsoftPendingNav = { ...e.detail, page: targetPage, ts: Date.now() };
+          window.__billsoftPendingNav = { ...e.detail, page: targetPage, tab, subTab, ts: Date.now() };
           if (targetPage) {
             setPage(targetPage);
             window.history.pushState({ page: targetPage }, '', '');
@@ -35572,7 +36028,7 @@
             quickDocType
           })
         },
-        firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation }) },
+        firm: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
         planner: {
           title: 'Planner', comp: React.createElement(PlannerPage, {
             reminders,
@@ -35610,8 +36066,8 @@
         inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },
         hr: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         employees: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
-        paperwork: { title: 'Paperwork & Orders', comp: React.createElement(PaperworkHub, { key: API.firmId, globalFirms: firms }) },
-        statements: { title: 'Paperwork & Orders', comp: React.createElement(PaperworkHub, { key: API.firmId, globalFirms: firms }) },
+        paperwork: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
+        statements: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
         settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
       };
       const current = pageComponents[page] || pageComponents.dashboard;

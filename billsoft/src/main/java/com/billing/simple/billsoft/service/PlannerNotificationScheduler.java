@@ -191,7 +191,7 @@ public class PlannerNotificationScheduler {
                         .sender("Purchase System")
                         .primaryActionLabel("View Purchase Order")
                         .primaryActionType(NotificationActionType.NAVIGATE)
-                        .primaryActionTarget("{\"page\":\"paperwork\",\"tab\":\"orders\",\"poId\":" + po.getId() + "}")
+                        .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\",\"poId\":" + po.getId() + "}")
                         .build());
             }
 

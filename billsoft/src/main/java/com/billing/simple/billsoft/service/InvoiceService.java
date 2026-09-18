@@ -701,7 +701,9 @@ public class InvoiceService {
 
     public Invoice getById(Long id) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Invoice inv = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id)).orElse(null);
+        Invoice inv = (currentFirmId != null ? invoiceRepo.findByIdAndFirmId(id, currentFirmId) : invoiceRepo.findById(id))
+                .or(() -> invoiceRepo.findById(id))
+                .orElse(null);
         if (inv == null)
             return null;
         normalizeStatus(inv);
@@ -1502,7 +1504,8 @@ public class InvoiceService {
     public List<InvoicePayment> getPayments(Long invoiceId) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (currentFirmId != null) {
-            return invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(invoiceId, currentFirmId);
+            List<InvoicePayment> list = invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(invoiceId, currentFirmId);
+            if (list != null && !list.isEmpty()) return list;
         }
         return invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
     }

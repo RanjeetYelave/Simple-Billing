@@ -4494,15 +4494,37 @@
 
       useEffect(() => {
         loadData();
-        const onNavFilter = (e) => {
+        const onNavFilter = async (e) => {
           if (!e || !e.detail) return;
-          if (e.detail.page === 'invoices' && e.detail.searchQuery !== undefined) {
-            setSearchQuery(e.detail.searchQuery);
-            if (e.detail.statusFilter) setStatusFilter(e.detail.statusFilter);
-            if (e.detail.docTypeFilter) setDocTypeFilter(e.detail.docTypeFilter);
-            setCurrentPage(1);
+          if (e.detail.page === 'invoices') {
+            if (e.detail.searchQuery !== undefined) {
+              setSearchQuery(e.detail.searchQuery);
+              if (e.detail.statusFilter) setStatusFilter(e.detail.statusFilter);
+              if (e.detail.docTypeFilter) setDocTypeFilter(e.detail.docTypeFilter);
+              setCurrentPage(1);
+            }
+            if (e.detail.openPaymentModal && e.detail.invoiceId) {
+              try {
+                const inv = await API.invoices.get(e.detail.invoiceId);
+                if (inv) {
+                  setPaymentModalDoc(inv);
+                }
+              } catch (err) {
+                console.warn('Failed to load invoice for payment modal:', err);
+              }
+            }
           }
         };
+
+        const pending = window.__billsoftPendingNav;
+        if (pending && pending.page === 'invoices' && (Date.now() - (pending.ts || 0) < 15000)) {
+          if (pending.openPaymentModal && pending.invoiceId) {
+            API.invoices.get(pending.invoiceId).then(inv => {
+              if (inv) setPaymentModalDoc(inv);
+            }).catch(() => {});
+          }
+        }
+
         window.addEventListener('billsoft:app-refresh', loadData);
         window.addEventListener('billsoft:navigate-subtab', onNavFilter);
         return () => {
@@ -11960,6 +11982,12 @@
       }, [activeFirmId]);
 
       useEffect(() => {
+        if (editId !== undefined && editId !== currentEditId) {
+          setCurrentEditId(editId || null);
+        }
+      }, [editId]);
+
+      useEffect(() => {
         const handleBackgroundRefresh = async () => {
           const targetFid = selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId || null));
           if (!targetFid) return;
@@ -11996,14 +12024,21 @@
                 }
                 if (inv && inv.firmId && String(inv.firmId) !== String(selectedFirmId)) {
                   setSelectedFirmId(String(inv.firmId));
+                  Promise.all([
+                    API.customers.list(inv.firmId),
+                    API.products.list({}, inv.firmId)
+                  ]).then(([cList, pList]) => {
+                    setCustomers(cList || []);
+                    setProducts(pList || []);
+                  }).catch(() => {});
                 }
                 const items = (inv.items || []).map(it => {
                   const prodId = it.product ? String(it.product.id) : (it.productId ? String(it.productId) : '');
-                  const prodName = it.productName || (it.product ? (it.product.name || '') : '');
+                  const prodName = it.productName || (it.product ? (it.product.name || '') : '') || (it.description || '') || (it.pricePerUnit ? `Item (${it.qty || 1}x ₹${it.pricePerUnit})` : 'General Item');
                   return {
                     _id: BillsoftUtils.generateId(),
                     productId: prodId,
-                    productName: prodName || (it.product ? it.product.name : '') || prodId,
+                    productName: prodName,
                     hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
                     qty: (it.qty !== undefined && it.qty !== null && it.qty !== '') ? String(it.qty) : '1',
                     unit: it.unit || '',
@@ -12066,11 +12101,11 @@
               return API.invoices.get(convertedFromQuotationId).then(async (q) => {
                 const items = (q.items || []).map(it => {
                   const prodId = it.product ? String(it.product.id) : (it.productId ? String(it.productId) : '');
-                  const prodName = it.productName || (it.product ? (it.product.name || '') : '');
+                  const prodName = it.productName || (it.product ? (it.product.name || '') : '') || (it.description || '') || (it.pricePerUnit ? `Item (${it.qty || 1}x ₹${it.pricePerUnit})` : 'General Item');
                   return {
                     _id: BillsoftUtils.generateId(),
                     productId: prodId,
-                    productName: prodName || (it.product ? it.product.name : '') || prodId,
+                    productName: prodName,
                     hsnCode: it.hsnCode || (it.product ? (it.product.hsnCode || '') : ''),
                     qty: (it.qty !== undefined && it.qty !== null && it.qty !== '') ? String(it.qty) : '1',
                     unit: it.unit || '',
@@ -18940,11 +18975,38 @@
       useEffect(() => {
         load();
         const closeMenuOnOutsideClick = () => setActiveMenuCustomerId(null);
+        const handleCustNav = async (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'firm' && e.detail.page !== 'customers') return;
+          const targetCustId = e.detail.customerId;
+          if (targetCustId) {
+            try {
+              const cust = await API.customers.get(targetCustId);
+              if (cust) {
+                openCustomer360(cust);
+              }
+            } catch (err) {
+              console.warn('Failed to load customer for 360 view:', err);
+            }
+          }
+        };
+
+        const pending = window.__billsoftPendingNav;
+        if (pending && (pending.page === 'firm' || pending.page === 'customers') && (Date.now() - (pending.ts || 0) < 15000)) {
+          if (pending.customerId) {
+            API.customers.get(pending.customerId).then(cust => {
+              if (cust) openCustomer360(cust);
+            }).catch(() => {});
+          }
+        }
+
         window.addEventListener('click', closeMenuOnOutsideClick);
         window.addEventListener('billsoft:app-refresh', load);
+        window.addEventListener('billsoft:navigate-subtab', handleCustNav);
         return () => {
           window.removeEventListener('click', closeMenuOnOutsideClick);
           window.removeEventListener('billsoft:app-refresh', load);
+          window.removeEventListener('billsoft:navigate-subtab', handleCustNav);
         };
       }, [load]);
 
@@ -21493,8 +21555,6 @@
         });
       };
 
-      useEffect(() => { load(); }, []);
-
       // Selected party object and ledger balance
       const selectedParty = useMemo(() => {
         return parties.find(p => p.id == form.partyId) || null;
@@ -21526,7 +21586,7 @@
         setView('create');
       };
 
-      const openEdit = (po) => {
+      const openEdit = useCallback((po) => {
         setEditingPoId(po.id);
         const mappedItems = (po.items && po.items.length > 0) ? po.items.map(it => ({
           _id: BillsoftUtils.generateId(),
@@ -21560,7 +21620,39 @@
           items: mappedItems
         });
         setView('create');
-      };
+      }, []);
+
+      useEffect(() => {
+        load();
+        const handlePoNav = async (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page && e.detail.page !== 'paperwork' && e.detail.page !== 'purchases' && e.detail.page !== 'orders') return;
+          const targetPoId = e.detail.poId || e.detail.editPoId || e.detail.orderId;
+          if (targetPoId) {
+            try {
+              const po = await API.purchaseOrders.get(targetPoId);
+              if (po) {
+                openEdit(po);
+              }
+            } catch (err) {
+              console.warn('Failed to load target PO for editing:', err);
+            }
+          }
+        };
+
+        const pending = window.__billsoftPendingNav;
+        if (pending && (pending.page === 'paperwork' || pending.page === 'purchases' || pending.page === 'orders') && (Date.now() - (pending.ts || 0) < 15000)) {
+          if (pending.poId || pending.editPoId || pending.orderId) {
+            const targetPoId = pending.poId || pending.editPoId || pending.orderId;
+            API.purchaseOrders.get(targetPoId).then(po => {
+              if (po) openEdit(po);
+            }).catch(() => {});
+          }
+        }
+
+        window.addEventListener('billsoft:navigate-subtab', handlePoNav);
+        return () => window.removeEventListener('billsoft:navigate-subtab', handlePoNav);
+      }, [openEdit]);
 
       // Item update logic matching InvoiceForm
       const updateItem = (index, field, value, product) => {
@@ -33502,6 +33594,10 @@
         const handleNav = (e) => {
           if (!e || !e.detail) return;
           if (e.detail.page && e.detail.page !== 'invoices') return;
+          if (e.detail.openPaymentModal) {
+            setActiveView('overview');
+            return;
+          }
           if (e.detail.subTab) {
             if (onSubTabChange) onSubTabChange(e.detail.subTab);
             if (e.detail.subTab === 'create') {
@@ -33545,7 +33641,7 @@
         setOpenTabs(prev => {
           // If editing an existing ID that is already open in a tab, focus it
           if (tabSpec.editId) {
-            const existing = prev.find(t => t.editId === tabSpec.editId && t.type === tabSpec.type);
+            const existing = prev.find(t => String(t.editId) === String(tabSpec.editId) && t.type === tabSpec.type);
             if (existing) {
               setActiveTabId(existing.id);
               setActiveView('editor');

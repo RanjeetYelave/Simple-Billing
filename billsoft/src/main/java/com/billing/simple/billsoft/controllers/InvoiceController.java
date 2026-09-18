@@ -228,4 +228,11 @@ public class InvoiceController {
     public ResponseEntity<List<com.billing.simple.billsoft.entities.InvoicePayment>> getPayments(@PathVariable Long id) {
         return ResponseEntity.ok(service.getPayments(id));
     }
+
+    @DeleteMapping("/payments/{paymentId}")
+    public ResponseEntity<Void> deletePayment(@PathVariable Long paymentId) {
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        boolean ok = service.deletePayment(paymentId);
+        return ok ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    }
 }

@@ -139,6 +139,11 @@ const API = {
     },
     update: (id, data) => API._json(`/api/customers/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/customers/${id}`, { method: 'DELETE' }),
+    get360: (id) => API._json(`/api/customers/${id}/360`),
+    outstandingInvoices: (id) => API._json(`/api/customers/${id}/outstanding-invoices`),
+    payments: (id) => API._json(`/api/customers/${id}/payments`),
+    settle: (id, data) => API._json(`/api/customers/${id}/settle`, { method: 'POST', body: data }),
+    deletePayment: (paymentId) => API._request(`/api/customers/payments/${paymentId}`, { method: 'DELETE' }),
   },
 
   // ── Parties (Vendors / Suppliers) ──
@@ -357,6 +362,7 @@ const API = {
     },
     analyticsByCustomer: (id) => API._json(`/api/invoices/analytics/customer/${id}`),
     analyticsSearch: (name) => API._json(`/api/invoices/analytics/search?name=${encodeURIComponent(name)}`),
+    deletePayment: (paymentId) => API._request(`/api/invoices/payments/${paymentId}`, { method: 'DELETE' }),
   },
 
   // ── Sales Returns (Credit Notes) ──

@@ -4494,8 +4494,21 @@
 
       useEffect(() => {
         loadData();
+        const onNavFilter = (e) => {
+          if (!e || !e.detail) return;
+          if (e.detail.page === 'invoices' && e.detail.searchQuery !== undefined) {
+            setSearchQuery(e.detail.searchQuery);
+            if (e.detail.statusFilter) setStatusFilter(e.detail.statusFilter);
+            if (e.detail.docTypeFilter) setDocTypeFilter(e.detail.docTypeFilter);
+            setCurrentPage(1);
+          }
+        };
         window.addEventListener('billsoft:app-refresh', loadData);
-        return () => window.removeEventListener('billsoft:app-refresh', loadData);
+        window.addEventListener('billsoft:navigate-subtab', onNavFilter);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', loadData);
+          window.removeEventListener('billsoft:navigate-subtab', onNavFilter);
+        };
       }, [loadData]);
 
       const formatLocalDate = (d) => {
@@ -12095,17 +12108,51 @@
                 });
               });
             } else {
+              let prefillCustId = null;
+              try {
+                prefillCustId = localStorage.getItem('billsoft_selected_customer_id');
+                if (prefillCustId) {
+                  localStorage.removeItem('billsoft_selected_customer_id');
+                  localStorage.removeItem('billsoft_selected_customer_name');
+                }
+              } catch (e) { }
+
+              let matchedCust = null;
+              if (prefillCustId && Array.isArray(custs)) {
+                matchedCust = custs.find(c => String(c.id) === String(prefillCustId));
+              }
+
               if (isEstimate) {
                 API.invoices.nextEstimateNumber(targetFid).then(n => {
                   const numStr = (typeof n === 'object' && n !== null) ? (n.estimateNumber || n.number || '') : String(n || '');
-                  setForm(f => ({ ...f, estimateNumber: numStr }));
+                  setForm(f => ({
+                    ...f,
+                    estimateNumber: numStr,
+                    ...(matchedCust ? {
+                      customerId: String(matchedCust.id),
+                      customerName: matchedCust.name || '',
+                      customerPhone: matchedCust.phone || '',
+                      customerAddress: matchedCust.address || '',
+                      customerEmail: matchedCust.email || '',
+                      customerGstin: matchedCust.gstin || ''
+                    } : {})
+                  }));
                 }).catch(() => { });
               } else {
                 API.invoices.nextInvoiceNumber(targetFid).then(res => {
                   const numStr = (typeof res === 'object' && res !== null) ? (res.invoiceNumber || res.number || '') : String(res || '');
-                  if (numStr) {
-                    setForm(f => ({ ...f, invoiceNumber: numStr }));
-                  }
+                  setForm(f => ({
+                    ...f,
+                    ...(numStr ? { invoiceNumber: numStr } : {}),
+                    ...(matchedCust ? {
+                      customerId: String(matchedCust.id),
+                      customerName: matchedCust.name || '',
+                      customerPhone: matchedCust.phone || '',
+                      customerAddress: matchedCust.address || '',
+                      customerEmail: matchedCust.email || '',
+                      customerGstin: matchedCust.gstin || ''
+                    } : {})
+                  }));
                 }).catch(() => { });
               }
             }
@@ -18087,6 +18134,770 @@
       );
     }
 
+    const getInitials = (name) => {
+      if (!name) return 'C';
+      const parts = name.trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 0) return 'C';
+      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
+
+    // ─── CUSTOMER 360 QUICK VIEW MODAL / DRAWER ───
+    function Customer360Modal({ customer, initialTab = 'outstanding', onClose, onBill, onSettle, onStatement, onRemind, onOpenInvoice }) {
+      const [activeTab, setActiveTab] = useState(initialTab);
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [selectedInvoices, setSelectedInvoices] = useState({});
+
+      const load = useCallback(async () => {
+        if (!customer || !customer.id) return;
+        setLoading(true);
+        try {
+          const res = await API.customers.get360(customer.id);
+          setData(res);
+        } catch (err) {
+          showToast('Failed to load Customer 360 overview', 'error');
+        } finally {
+          setLoading(false);
+        }
+      }, [customer]);
+
+      useEffect(() => {
+        load();
+      }, [load]);
+
+      const toggleInvoiceSelect = (invId) => {
+        setSelectedInvoices(prev => ({ ...prev, [invId]: !prev[invId] }));
+      };
+
+      const selectAllOutstanding = () => {
+        if (!data || !data.outstandingInvoices) return;
+        const all = {};
+        data.outstandingInvoices.forEach(inv => { all[inv.invoiceId] = true; });
+        setSelectedInvoices(all);
+      };
+
+      const clearSelection = () => {
+        setSelectedInvoices({});
+      };
+
+      const selectedCount = Object.values(selectedInvoices).filter(Boolean).length;
+      const selectedTotal = (data?.outstandingInvoices || [])
+        .filter(inv => selectedInvoices[inv.invoiceId])
+        .reduce((sum, inv) => sum + (parseFloat(inv.outstandingAmount) || 0), 0);
+
+      const handleDeletePayment = async (pmtId) => {
+        if (!confirm('Are you sure you want to reverse / delete this payment record? This will restore the invoice balance and update the customer ledger.')) return;
+        try {
+          await API.customers.deletePayment(pmtId);
+          showToast('Payment record reversed successfully', 'success');
+          load();
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+        } catch (e) {
+          showToast('Failed to reverse payment', 'error');
+        }
+      };
+
+      const handleSettleSelected = () => {
+        const selIds = Object.entries(selectedInvoices).filter(([_, v]) => v).map(([k, _]) => parseInt(k, 10));
+        if (onSettle) onSettle(customer, selIds);
+      };
+
+      const handleNavigateAllInvoices = () => {
+        if (onClose) onClose();
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+          detail: {
+            page: 'invoices',
+            subTab: 'overview',
+            searchQuery: customer.name || ''
+          }
+        }));
+      };
+
+      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+        React.createElement('div', {
+          className: 'card modal-content',
+          style: { maxWidth: 840, width: '96%', margin: '30px auto', padding: 24, borderRadius: 14, maxHeight: '92vh', overflowY: 'auto' },
+          onClick: e => e.stopPropagation()
+        },
+          // Header
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+              React.createElement('div', { className: 'cust-avatar-badge', style: { width: 48, height: 48, fontSize: '1.2rem' } }, getInitials(customer.name)),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 } },
+                  customer.name,
+                  React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 500, padding: '2px 8px', background: 'var(--bg-hover)', borderRadius: 12, color: 'var(--text-secondary)' } }, `ID: #${customer.id}`)
+                ),
+                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 } },
+                  customer.phone && React.createElement('span', null, `📞 ${customer.phone}`),
+                  customer.gstin && React.createElement('span', null, `🏢 GSTIN: ${customer.gstin}`),
+                  customer.email && React.createElement('span', null, `✉️ ${customer.email}`),
+                  customer.address && React.createElement('span', null, `📍 ${customer.address}`)
+                )
+              )
+            ),
+            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: onClose, title: 'Close' }, '✕')
+          ),
+
+          // Loading State
+          loading ? React.createElement('div', { style: { padding: 40, textAlign: 'center' } }, React.createElement('div', { className: 'spinner' })) :
+            React.createElement('div', null,
+              // Financial KPI Cards
+              React.createElement('div', { className: 'c360-kpi-grid' },
+                React.createElement('div', { className: `c360-kpi-card ${(data?.netBalance || 0) > 0 ? 'highlight-due' : (data?.netBalance || 0) < 0 ? 'highlight-credit' : ''}` },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, '💰 Net Outstanding'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: (data?.netBalance || 0) > 0 ? '#dc2626' : (data?.netBalance || 0) < 0 ? '#2563eb' : '#059669' } },
+                    (data?.netBalance || 0) > 0 ? `⚠️ ${BillsoftUtils.formatCurrency(data.netBalance)}` : (data?.netBalance || 0) < 0 ? `₹ ${BillsoftUtils.formatCurrency(Math.abs(data.netBalance))} Adv` : '✓ Settled'
+                  )
+                ),
+                React.createElement('div', { className: 'c360-kpi-card' },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, '⏳ Overdue Amount'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: (data?.overdueAmount || 0) > 0 ? '#dc2626' : 'var(--text)' } },
+                    BillsoftUtils.formatCurrency(data?.overdueAmount || 0)
+                  ),
+                  (data?.overdueInvoiceCount || 0) > 0 && React.createElement('div', { style: { fontSize: '0.70rem', color: '#dc2626', marginTop: 2 } }, `${data.overdueInvoiceCount} overdue invoice(s)`)
+                ),
+                React.createElement('div', { className: 'c360-kpi-card' },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, '💳 Unallocated Credit'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: '#059669' } },
+                    BillsoftUtils.formatCurrency(data?.unallocatedCredit || 0)
+                  )
+                ),
+                React.createElement('div', { className: 'c360-kpi-card' },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, '📊 Total Invoiced'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: 'var(--primary, #4f46e5)' } },
+                    BillsoftUtils.formatCurrency(data?.totalBilled || 0)
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 2 } }, `${data?.invoiceCount || 0} invoice(s)`)
+                ),
+                React.createElement('div', { className: 'c360-kpi-card' },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, '💵 Total Received'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', color: '#059669' } },
+                    BillsoftUtils.formatCurrency(data?.totalPaid || 0)
+                  )
+                )
+              ),
+
+              // Action Toolbar
+              React.createElement('div', { style: { display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center', background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: 10 } },
+                React.createElement('button', {
+                  className: 'btn btn-primary btn-sm',
+                  onClick: () => { onClose(); if (onBill) onBill(customer); }
+                }, '📄 + New Invoice'),
+                React.createElement('button', {
+                  className: 'btn btn-sm',
+                  style: { background: '#059669', color: '#ffffff', borderColor: '#059669', fontWeight: 600 },
+                  onClick: () => { if (onSettle) onSettle(customer); }
+                }, '💳 Settle Invoices'),
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  onClick: () => { if (onStatement) onStatement(customer); }
+                }, '📜 Full Statement'),
+                (data?.netBalance || 0) > 0 && React.createElement('button', {
+                  className: 'btn btn-whatsapp-outline btn-sm',
+                  onClick: () => { if (onRemind) onRemind(customer); }
+                }, Icons.whatsapp || '💬', ' WhatsApp Reminder')
+              ),
+
+              // Tab Bar
+              React.createElement('div', { style: { display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16 } },
+                React.createElement('button', {
+                  className: `c360-tab-btn ${activeTab === 'outstanding' ? 'active' : ''}`,
+                  onClick: () => setActiveTab('outstanding')
+                }, `⏳ Outstanding Invoices (${data?.outstandingInvoices?.length || 0})`),
+                React.createElement('button', {
+                  className: `c360-tab-btn ${activeTab === 'invoices' ? 'active' : ''}`,
+                  onClick: () => setActiveTab('invoices')
+                }, `📋 Recent Invoices (${data?.recentInvoices?.length || 0})`),
+                React.createElement('button', {
+                  className: `c360-tab-btn ${activeTab === 'payments' ? 'active' : ''}`,
+                  onClick: () => setActiveTab('payments')
+                }, `💳 Payments & Credits (${data?.recentPayments?.length || 0})`)
+              ),
+
+              // TAB 1: Outstanding Invoices
+              activeTab === 'outstanding' && React.createElement('div', null,
+                (!data?.outstandingInvoices || data.outstandingInvoices.length === 0) ?
+                  React.createElement('div', { style: { padding: '36px 20px', textAlign: 'center', color: '#059669', background: 'rgba(16, 185, 129, 0.06)', borderRadius: 10, border: '1px dashed rgba(16, 185, 129, 0.3)' } },
+                    React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '🎉'),
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '1rem' } }, 'All Invoices Fully Settled!'),
+                    React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 } }, 'This customer has zero outstanding receivables.')
+                  ) :
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 } },
+                      React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                        'Select invoices to batch-settle:'
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                        React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { fontSize: '0.76rem', padding: '2px 8px' }, onClick: selectAllOutstanding }, 'Select All'),
+                        React.createElement('button', { className: 'btn btn-ghost btn-sm', style: { fontSize: '0.76rem', padding: '2px 8px' }, onClick: clearSelection }, 'Clear')
+                      )
+                    ),
+                    React.createElement('div', { className: 'table-container', style: { maxHeight: 320, overflowY: 'auto' } },
+                      React.createElement('table', null,
+                        React.createElement('thead', null,
+                          React.createElement('tr', null,
+                            React.createElement('th', { style: { width: 36 } }, ''),
+                            React.createElement('th', null, 'Invoice #'),
+                            React.createElement('th', null, 'Date & Due'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Total'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Paid'),
+                            React.createElement('th', { style: { textAlign: 'right' } }, 'Outstanding'),
+                            React.createElement('th', { style: { textAlign: 'center' } }, 'Status'),
+                            React.createElement('th', { style: { textAlign: 'center', width: 90 } }, 'Action')
+                          )
+                        ),
+                        React.createElement('tbody', null,
+                          data.outstandingInvoices.map(inv => {
+                            const isSelected = !!selectedInvoices[inv.invoiceId];
+                            return React.createElement('tr', {
+                              key: inv.invoiceId,
+                              style: { background: isSelected ? 'rgba(79, 70, 229, 0.05)' : 'transparent' }
+                            },
+                              React.createElement('td', null,
+                                React.createElement('input', {
+                                  type: 'checkbox',
+                                  checked: isSelected,
+                                  onChange: () => toggleInvoiceSelect(inv.invoiceId)
+                                })
+                              ),
+                              React.createElement('td', null,
+                                React.createElement('div', { style: { fontWeight: 600, color: 'var(--primary)' } }, inv.invoiceNumber)
+                              ),
+                              React.createElement('td', null,
+                                React.createElement('div', { style: { fontSize: '0.82rem' } }, inv.invoiceDate ? BillsoftUtils.formatDate(inv.invoiceDate) : '—'),
+                                inv.dueDate && React.createElement('div', { style: { fontSize: '0.74rem', color: inv.isOverdue ? '#dc2626' : 'var(--text-secondary)', fontWeight: inv.isOverdue ? 600 : 400 } },
+                                  inv.isOverdue ? `⚠️ Due ${BillsoftUtils.formatDate(inv.dueDate)}` : `Due ${BillsoftUtils.formatDate(inv.dueDate)}`
+                                )
+                              ),
+                              React.createElement('td', { style: { textAlign: 'right', color: 'var(--text)' } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
+                              React.createElement('td', { style: { textAlign: 'right', color: '#059669' } }, BillsoftUtils.formatCurrency(inv.paidAmount)),
+                              React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: '#dc2626' } }, BillsoftUtils.formatCurrency(inv.outstandingAmount)),
+                              React.createElement('td', { style: { textAlign: 'center' } },
+                                React.createElement('span', { className: `status-badge ${inv.isOverdue ? 'status-overdue' : 'status-unpaid'}` },
+                                  inv.isOverdue ? 'Overdue' : 'Unpaid'
+                                )
+                              ),
+                              React.createElement('td', { style: { textAlign: 'center' } },
+                                React.createElement('button', {
+                                  className: 'btn btn-primary btn-sm',
+                                  style: { padding: '3px 8px', fontSize: '0.76rem' },
+                                  onClick: () => { if (onSettle) onSettle(customer, [inv.invoiceId]); }
+                                }, 'Settle')
+                              )
+                            );
+                          })
+                        )
+                      )
+                    ),
+                    // Multi-Select Settle Bar
+                    selectedCount > 0 && React.createElement('div', {
+                      style: {
+                        marginTop: 14,
+                        padding: '10px 16px',
+                        background: 'rgba(79, 70, 229, 0.08)',
+                        borderRadius: 10,
+                        border: '1px solid rgba(79, 70, 229, 0.25)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10
+                      }
+                    },
+                      React.createElement('div', { style: { fontSize: '0.86rem', fontWeight: 600, color: 'var(--primary)' } },
+                        `✓ ${selectedCount} invoice(s) selected • Total: ${BillsoftUtils.formatCurrency(selectedTotal)}`
+                      ),
+                      React.createElement('button', {
+                        className: 'btn btn-primary btn-sm',
+                        style: { fontWeight: 600 },
+                        onClick: handleSettleSelected
+                      }, '💳 Settle Selected Invoices ➔')
+                    )
+                  )
+              ),
+
+              // TAB 2: All / Recent Invoices
+              activeTab === 'invoices' && React.createElement('div', null,
+                React.createElement('div', { className: 'table-container', style: { maxHeight: 320, overflowY: 'auto', marginBottom: 14 } },
+                  React.createElement('table', null,
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', null, 'Invoice #'),
+                        React.createElement('th', null, 'Date'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Total Amount'),
+                        React.createElement('th', { style: { textAlign: 'center' } }, 'Settlement Status'),
+                        React.createElement('th', { style: { textAlign: 'center', width: 90 } }, 'Action')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      (!data?.recentInvoices || data.recentInvoices.length === 0) ?
+                        React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { textAlign: 'center', padding: 24, color: 'var(--text-secondary)' } }, 'No invoices created yet')) :
+                        data.recentInvoices.map(inv =>
+                          React.createElement('tr', { key: inv.invoiceId },
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontWeight: 600 } }, inv.invoiceNumber || `#${inv.invoiceId}`)
+                            ),
+                            React.createElement('td', null, inv.invoiceDate ? BillsoftUtils.formatDate(inv.invoiceDate) : '—'),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(inv.totalAmount)),
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('span', { className: `status-badge ${inv.paid ? 'status-paid' : 'status-unpaid'}` },
+                                inv.paid ? '✓ Paid' : '⏳ Pending'
+                              )
+                            ),
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('button', {
+                                className: 'btn btn-ghost btn-sm',
+                                style: { padding: '3px 8px', fontSize: '0.76rem' },
+                                onClick: () => {
+                                  if (onClose) onClose();
+                                  window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                                    detail: { page: 'invoices', invoiceId: inv.invoiceId }
+                                  }));
+                                }
+                              }, 'Open ➔')
+                            )
+                          )
+                        )
+                    )
+                  )
+                ),
+                React.createElement('div', { style: { textAlign: 'right' } },
+                  React.createElement('button', {
+                    className: 'btn btn-outline btn-sm',
+                    onClick: handleNavigateAllInvoices
+                  }, '📋 Open Full Invoices Hub Filtered to Customer ➔')
+                )
+              ),
+
+              // TAB 3: Payments & Advance Credits
+              activeTab === 'payments' && React.createElement('div', null,
+                (!data?.recentPayments || data.recentPayments.length === 0) ?
+                  React.createElement('tr', null, React.createElement('div', { style: { padding: 32, textAlign: 'center', color: 'var(--text-secondary)' } }, 'No payment transactions recorded yet')) :
+                  React.createElement('div', { className: 'table-container', style: { maxHeight: 320, overflowY: 'auto' } },
+                    React.createElement('table', null,
+                      React.createElement('thead', null,
+                        React.createElement('tr', null,
+                          React.createElement('th', null, 'Date'),
+                          React.createElement('th', null, 'Mode / Ref'),
+                          React.createElement('th', null, 'Allocation Target'),
+                          React.createElement('th', { style: { textAlign: 'right' } }, 'Amount'),
+                          React.createElement('th', null, 'Notes'),
+                          React.createElement('th', { style: { textAlign: 'center', width: 70 } }, 'Action')
+                        )
+                      ),
+                      React.createElement('tbody', null,
+                        data.recentPayments.map(pmt =>
+                          React.createElement('tr', { key: pmt.id },
+                            React.createElement('td', null, pmt.paymentDate ? BillsoftUtils.formatDate(pmt.paymentDate) : '—'),
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontWeight: 500 } }, pmt.paymentMode || 'Cash'),
+                              pmt.referenceNumber && React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, `#${pmt.referenceNumber}`)
+                            ),
+                            React.createElement('td', null,
+                              pmt.invoiceId ?
+                                React.createElement('span', { style: { fontWeight: 600, color: 'var(--primary)' } }, `Invoice #${pmt.invoiceId}`) :
+                                React.createElement('span', { className: 'cust-balance-pill credit', style: { fontSize: '0.74rem' } }, '🌟 Advance Credit')
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: '#059669' } }, BillsoftUtils.formatCurrency(pmt.amount)),
+                            React.createElement('td', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, pmt.notes || '—'),
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('button', {
+                                className: 'btn btn-ghost btn-sm',
+                                style: { color: 'var(--danger)', padding: 3 },
+                                onClick: () => handleDeletePayment(pmt.id),
+                                title: 'Reverse / Delete Payment Record'
+                              }, Icons.trash || '🗑️')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+              )
+            ),
+
+          // Modal Footer
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 18 } },
+            React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: onClose }, 'Close')
+          )
+        )
+      );
+    }
+
+    // ─── CUSTOMER MULTI-INVOICE SETTLEMENT & ALLOCATION MODAL ───
+    function CustomerSettlementModal({ customer, initialSelectedInvoiceIds = [], onClose, onSuccess }) {
+      const [loading, setLoading] = useState(true);
+      const [submitting, setSubmitting] = useState(false);
+      const [outstandingInvoices, setOutstandingInvoices] = useState([]);
+      const [c360Data, setC360Data] = useState(null);
+
+      const [allocState, setAllocState] = useState({});
+      const [paymentAmount, setPaymentAmount] = useState('');
+      const [paymentMode, setPaymentMode] = useState('Cash');
+      const [paymentDate, setPaymentDate] = useState(BillsoftUtils.todayStr());
+      const [referenceNumber, setReferenceNumber] = useState('');
+      const [notes, setNotes] = useState('');
+
+      useEffect(() => {
+        if (!customer || !customer.id) return;
+        setLoading(true);
+        Promise.all([
+          API.customers.outstandingInvoices(customer.id).catch(() => []),
+          API.customers.get360(customer.id).catch(() => null)
+        ]).then(([invs, c360]) => {
+          setOutstandingInvoices(invs || []);
+          setC360Data(c360);
+
+          const initMap = {};
+          let initialSum = 0;
+          (invs || []).forEach(inv => {
+            const isPreselected = initialSelectedInvoiceIds.length === 0 || initialSelectedInvoiceIds.includes(inv.invoiceId);
+            const outAmt = parseFloat(inv.outstandingAmount) || 0;
+            initMap[inv.invoiceId] = {
+              selected: isPreselected,
+              amount: isPreselected ? outAmt.toFixed(2) : ''
+            };
+            if (isPreselected) initialSum += outAmt;
+          });
+          setAllocState(initMap);
+          setPaymentAmount(initialSum > 0 ? initialSum.toFixed(2) : '');
+          setLoading(false);
+        }).catch(() => setLoading(false));
+      }, [customer, initialSelectedInvoiceIds]);
+
+      const handleToggleSelect = (invId) => {
+        setAllocState(prev => {
+          const cur = prev[invId] || {};
+          const inv = outstandingInvoices.find(i => i.invoiceId === invId);
+          const outAmt = inv ? parseFloat(inv.outstandingAmount) || 0 : 0;
+          const nextSelected = !cur.selected;
+          const nextMap = {
+            ...prev,
+            [invId]: {
+              selected: nextSelected,
+              amount: nextSelected ? (cur.amount || outAmt.toFixed(2)) : ''
+            }
+          };
+          const newTotal = Object.entries(nextMap)
+            .filter(([_, v]) => v.selected)
+            .reduce((sum, [_, v]) => sum + (parseFloat(v.amount) || 0), 0);
+          setPaymentAmount(newTotal > 0 ? newTotal.toFixed(2) : '');
+          return nextMap;
+        });
+      };
+
+      const handleAllocationAmountChange = (invId, val) => {
+        setAllocState(prev => ({
+          ...prev,
+          [invId]: {
+            selected: true,
+            amount: val
+          }
+        }));
+      };
+
+      const handleAutoAllocate = () => {
+        const totalPmt = parseFloat(paymentAmount) || 0;
+        if (totalPmt <= 0) {
+          showToast('Please enter a payment amount to allocate', 'info');
+          return;
+        }
+        let remaining = totalPmt;
+        const nextMap = {};
+        outstandingInvoices.forEach(inv => {
+          const outAmt = parseFloat(inv.outstandingAmount) || 0;
+          if (remaining > 0) {
+            const toAlloc = Math.min(remaining, outAmt);
+            nextMap[inv.invoiceId] = {
+              selected: toAlloc > 0,
+              amount: toAlloc > 0 ? toAlloc.toFixed(2) : ''
+            };
+            remaining -= toAlloc;
+          } else {
+            nextMap[inv.invoiceId] = { selected: false, amount: '' };
+          }
+        });
+        setAllocState(nextMap);
+      };
+
+      const handleSelectAll = () => {
+        const nextMap = {};
+        let total = 0;
+        outstandingInvoices.forEach(inv => {
+          const outAmt = parseFloat(inv.outstandingAmount) || 0;
+          nextMap[inv.invoiceId] = { selected: true, amount: outAmt.toFixed(2) };
+          total += outAmt;
+        });
+        setAllocState(nextMap);
+        setPaymentAmount(total.toFixed(2));
+      };
+
+      const handleClearSelection = () => {
+        const nextMap = {};
+        outstandingInvoices.forEach(inv => {
+          nextMap[inv.invoiceId] = { selected: false, amount: '' };
+        });
+        setAllocState(nextMap);
+        setPaymentAmount('');
+      };
+
+      const totalAllocated = Object.entries(allocState)
+        .filter(([_, v]) => v.selected)
+        .reduce((sum, [_, v]) => sum + (parseFloat(v.amount) || 0), 0);
+
+      const parsedPayment = parseFloat(paymentAmount) || 0;
+      const unallocatedRemainder = Math.max(0, parsedPayment - totalAllocated);
+
+      const handleSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (parsedPayment <= 0) {
+          showToast('Payment amount must be greater than 0', 'error');
+          return;
+        }
+
+        const allocations = Object.entries(allocState)
+          .filter(([_, v]) => v.selected && parseFloat(v.amount) > 0)
+          .map(([invId, v]) => ({
+            invoiceId: parseInt(invId, 10),
+            amount: parseFloat(v.amount)
+          }));
+
+        if (allocations.length === 0 && unallocatedRemainder <= 0) {
+          showToast('Please select at least one invoice to allocate or enter advance amount', 'error');
+          return;
+        }
+
+        setSubmitting(true);
+        try {
+          const payload = {
+            amount: parsedPayment,
+            paymentDate,
+            paymentMode,
+            referenceNumber: referenceNumber.trim() || undefined,
+            notes: notes.trim() || undefined,
+            allocations
+          };
+
+          await API.customers.settle(customer.id, payload);
+          showToast(`Settlement of ${BillsoftUtils.formatCurrency(parsedPayment)} recorded successfully!`, 'success');
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+          if (onSuccess) onSuccess();
+          if (onClose) onClose();
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || 'Settlement failed', 'error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+        React.createElement('div', {
+          className: 'card modal-content',
+          style: { maxWidth: 680, width: '95%', margin: '40px auto', padding: 24, borderRadius: 14, maxHeight: '90vh', overflowY: 'auto' },
+          onClick: e => e.stopPropagation()
+        },
+          // Header
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 16 } },
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', color: 'var(--text)' } }, `💳 Settle Invoices — ${customer.name}`),
+              React.createElement('div', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                `Total Outstanding: ${BillsoftUtils.formatCurrency(c360Data?.netBalance || 0)}`
+              )
+            ),
+            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: onClose }, '✕')
+          ),
+
+          loading ? React.createElement('div', { style: { padding: 40, textAlign: 'center' } }, React.createElement('div', { className: 'spinner' })) :
+            React.createElement('form', { onSubmit: handleSubmit },
+              // Invoices Checklist
+              React.createElement('div', { style: { marginBottom: 18 } },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+                  React.createElement('label', { style: { fontSize: '0.84rem', fontWeight: 600, color: 'var(--text)' } }, 'Outstanding Invoices & Allocation:'),
+                  React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                    React.createElement('button', { type: 'button', className: 'btn btn-ghost btn-sm', style: { fontSize: '0.74rem', padding: '2px 6px' }, onClick: handleSelectAll }, 'Select All'),
+                    React.createElement('button', { type: 'button', className: 'btn btn-ghost btn-sm', style: { fontSize: '0.74rem', padding: '2px 6px' }, onClick: handleClearSelection }, 'Clear')
+                  )
+                ),
+
+                outstandingInvoices.length === 0 ?
+                  React.createElement('div', { style: { padding: 20, textAlign: 'center', background: 'var(--bg-hover)', borderRadius: 8, color: 'var(--text-secondary)', fontSize: '0.85rem' } },
+                    'No open unpaid invoices. You can record an unallocated advance payment below.'
+                  ) :
+                  React.createElement('div', { className: 'table-container', style: { maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 } },
+                    React.createElement('table', null,
+                      React.createElement('thead', null,
+                        React.createElement('tr', null,
+                          React.createElement('th', { style: { width: 32 } }, ''),
+                          React.createElement('th', null, 'Doc #'),
+                          React.createElement('th', { style: { textAlign: 'right' } }, 'Outstanding'),
+                          React.createElement('th', { style: { width: 130, textAlign: 'right' } }, 'Allocate (₹)')
+                        )
+                      ),
+                      React.createElement('tbody', null,
+                        outstandingInvoices.map(inv => {
+                          const state = allocState[inv.invoiceId] || {};
+                          return React.createElement('tr', { key: inv.invoiceId },
+                            React.createElement('td', null,
+                              React.createElement('input', {
+                                type: 'checkbox',
+                                checked: !!state.selected,
+                                onChange: () => handleToggleSelect(inv.invoiceId)
+                              })
+                            ),
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontWeight: 600 } }, inv.invoiceNumber),
+                              React.createElement('div', { style: { fontSize: '0.72rem', color: inv.isOverdue ? '#dc2626' : 'var(--text-secondary)' } },
+                                inv.isOverdue ? `⚠️ Overdue (${inv.dueDate})` : `Date: ${inv.invoiceDate ? BillsoftUtils.formatDate(inv.invoiceDate) : '—'}`
+                              )
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: '#dc2626' } },
+                              BillsoftUtils.formatCurrency(inv.outstandingAmount)
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right' } },
+                              React.createElement('input', {
+                                className: 'input',
+                                type: 'number',
+                                step: '0.01',
+                                min: '0',
+                                max: String(inv.outstandingAmount),
+                                placeholder: '0.00',
+                                style: { width: '100%', textAlign: 'right', padding: '4px 8px', fontSize: '0.85rem' },
+                                value: state.amount || '',
+                                onChange: (e) => handleAllocationAmountChange(inv.invoiceId, e.target.value)
+                              })
+                            )
+                          );
+                        })
+                      )
+                    )
+                  )
+              ),
+
+              // Payment Details Grid
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 } },
+                React.createElement('div', null,
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text)' } }, 'Total Payment Amount (₹) *'),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-ghost btn-sm',
+                      style: { fontSize: '0.72rem', padding: '1px 6px', color: 'var(--primary)' },
+                      onClick: handleAutoAllocate,
+                      title: 'Auto-fill allocations from oldest to newest'
+                    }, '⚡ Auto Allocate')
+                  ),
+                  React.createElement('input', {
+                    className: 'input',
+                    type: 'number',
+                    step: '0.01',
+                    placeholder: '0.00',
+                    value: paymentAmount,
+                    onChange: e => setPaymentAmount(e.target.value),
+                    required: true,
+                    style: { fontWeight: 700, fontSize: '1rem' }
+                  })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Payment Mode'),
+                  React.createElement('select', {
+                    className: 'input',
+                    value: paymentMode,
+                    onChange: e => setPaymentMode(e.target.value)
+                  },
+                    React.createElement('option', { value: 'Cash' }, '💵 Cash'),
+                    React.createElement('option', { value: 'UPI' }, '📱 UPI / QR'),
+                    React.createElement('option', { value: 'Bank Transfer' }, '🏦 Bank Transfer / NEFT'),
+                    React.createElement('option', { value: 'Card' }, '💳 Debit / Credit Card'),
+                    React.createElement('option', { value: 'Cheque' }, '🧾 Cheque'),
+                    React.createElement('option', { value: 'Other' }, '🔄 Other')
+                  )
+                )
+              ),
+
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 } },
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Payment Date'),
+                  React.createElement('input', {
+                    className: 'input',
+                    type: 'date',
+                    value: paymentDate,
+                    onChange: e => setPaymentDate(e.target.value)
+                  })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Reference / Txn #'),
+                  React.createElement('input', {
+                    className: 'input',
+                    placeholder: 'e.g. UTR123456 / Chq 0012',
+                    value: referenceNumber,
+                    onChange: e => setReferenceNumber(e.target.value)
+                  })
+                )
+              ),
+
+              React.createElement('div', { style: { marginBottom: 16 } },
+                React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Notes / Memo'),
+                React.createElement('input', {
+                  className: 'input',
+                  placeholder: 'Optional payment notes...',
+                  value: notes,
+                  onChange: e => setNotes(e.target.value)
+                })
+              ),
+
+              // Live Allocation Breakdown Card
+              React.createElement('div', {
+                style: {
+                  padding: '12px 16px',
+                  background: 'var(--bg-hover)',
+                  borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  marginBottom: 18,
+                  fontSize: '0.84rem'
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Total Payment Received:'),
+                  React.createElement('span', { style: { fontWeight: 700 } }, BillsoftUtils.formatCurrency(parsedPayment))
+                ),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Allocated to Invoices:'),
+                  React.createElement('span', { style: { fontWeight: 700, color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(totalAllocated))
+                ),
+                unallocatedRemainder > 0 && React.createElement('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: 6,
+                    paddingTop: 6,
+                    borderTop: '1px dashed var(--border)',
+                    color: '#059669',
+                    fontWeight: 600
+                  }
+                },
+                  React.createElement('span', null, '🌟 Unallocated Advance Credit:'),
+                  React.createElement('span', null, BillsoftUtils.formatCurrency(unallocatedRemainder))
+                )
+              ),
+
+              // Footer
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+                React.createElement('button', { type: 'button', className: 'btn btn-outline', onClick: onClose, disabled: submitting }, 'Cancel'),
+                React.createElement('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: submitting || parsedPayment <= 0,
+                  style: { fontWeight: 600 }
+                }, submitting ? 'Processing Settlement...' : '✓ Record & Settle')
+              )
+            )
+        )
+      );
+    }
+
     // ─── MODERN CUSTOMER MANAGER & RECEIVABLES COCKPIT ───
     function CustomerManager() {
       const [customers, setCustomers] = useState([]);
@@ -18103,6 +18914,11 @@
       const [statementLoading, setStatementLoading] = useState(false);
       const [statementPreset, setStatementPreset] = useState('ALL_TIME');
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+      const [c360Customer, setC360Customer] = useState(null);
+      const [c360InitialTab, setC360InitialTab] = useState('outstanding');
+      const [settleCustomer, setSettleCustomer] = useState(null);
+      const [settleInitialInvoices, setSettleInitialInvoices] = useState([]);
+      const [activeMenuCustomerId, setActiveMenuCustomerId] = useState(null);
       const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', gstin: '' });
 
       const load = useCallback(async () => {
@@ -18123,8 +18939,13 @@
 
       useEffect(() => {
         load();
+        const closeMenuOnOutsideClick = () => setActiveMenuCustomerId(null);
+        window.addEventListener('click', closeMenuOnOutsideClick);
         window.addEventListener('billsoft:app-refresh', load);
-        return () => window.removeEventListener('billsoft:app-refresh', load);
+        return () => {
+          window.removeEventListener('click', closeMenuOnOutsideClick);
+          window.removeEventListener('billsoft:app-refresh', load);
+        };
       }, [load]);
 
       // Debtor & customer KPI lookup maps
@@ -18296,6 +19117,29 @@
         }));
       };
 
+      // Customer 360 Open Handler
+      const openCustomer360 = (c, tab = 'outstanding') => {
+        setC360Customer(c);
+        setC360InitialTab(tab);
+      };
+
+      // Settle Invoices Open Handler
+      const openSettle = (c, initialInvoiceIds = []) => {
+        setSettleCustomer(c);
+        setSettleInitialInvoices(initialInvoiceIds);
+      };
+
+      // View All Invoices for Customer in Invoices Page
+      const handleViewAllInvoices = (c) => {
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+          detail: {
+            page: 'invoices',
+            subTab: 'overview',
+            searchQuery: c.name || ''
+          }
+        }));
+      };
+
       // 1-Click WhatsApp Reminder
       const handleWhatsAppReminder = async (c) => {
         let firmObj = { firmName: 'Our Business' };
@@ -18359,21 +19203,21 @@
             `"${(c.name || '').replace(/"/g, '""')}"`,
             `"${(c.phone || '').replace(/"/g, '""')}"`,
             `"${(c.email || '').replace(/"/g, '""')}"`,
-            `"${(c.gstin || '').replace(/"/g, '""')}"`,
+            `"${(c.gstIN || c.gstin || '').replace(/"/g, '""')}"`,
             `"${(c.address || '').replace(/"/g, '""')}"`,
             dues.toFixed(2),
-            dues > 0 ? 'DUE' : 'SETTLED'
-          ];
+            dues > 0 ? 'Pending Dues' : dues < 0 ? 'Advance Credit' : 'Settled'
+          ].join(',');
         });
-        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement('a');
         link.setAttribute('href', encodedUri);
-        link.setAttribute('download', `Customer_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.setAttribute('download', `RupeeCRM_Customers_${new Date().toISOString().substring(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        showToast(`Exported ${filteredCustomers.length} customers to CSV`, 'success');
+        showToast('Exported customer directory to CSV', 'success');
       };
 
       // Helper for Initials
@@ -18384,120 +19228,95 @@
         return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
       };
 
-      return React.createElement('div', { className: 'customer-cockpit', style: { display: 'flex', flexDirection: 'column', gap: 20 } },
-        // ── 1. TOP-LEVEL KPI CARDS ──
-        React.createElement('div', {
-          style: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 16
-          }
-        },
-          // Card 1: Total Customers
-          React.createElement('div', { className: 'card', style: { padding: 18, borderLeft: '4px solid var(--primary, #6366f1)', position: 'relative' } },
-            React.createElement('div', { style: { fontSize: '0.78rem', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: 0.5 } }, '👥 Total Customers'),
-            React.createElement('div', { style: { fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', marginTop: 4 } }, metrics.totalCust),
-            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
-              `${metrics.settledCount} fully settled • ${metrics.debtorCount} with balance`
+      return React.createElement('div', { className: 'customer-cockpit-container' },
+        // ── 1. TOP STATS BAR ──
+        React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
+          React.createElement('div', { className: 'kpi-card kpi-blue' },
+            React.createElement('div', { className: 'kpi-label' }, '👥 Total Customers'),
+            React.createElement('div', { className: 'kpi-value' }, metrics.totalCust),
+            React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+              `${metrics.debtorCount} pending • ${metrics.settledCount} settled`
             )
           ),
-
-          // Card 2: Pending Receivables (Udhari)
-          React.createElement('div', { className: 'card', style: { padding: 18, borderLeft: '4px solid #ef4444', position: 'relative' } },
-            React.createElement('div', { style: { fontSize: '0.78rem', textTransform: 'uppercase', color: '#dc2626', fontWeight: 600, letterSpacing: 0.5 } }, '⏳ Pending Receivables (Udhari)'),
-            React.createElement('div', { style: { fontSize: '1.75rem', fontWeight: 700, color: '#dc2626', marginTop: 4 } },
+          React.createElement('div', { className: 'kpi-card kpi-amber' },
+            React.createElement('div', { className: 'kpi-label' }, '⏳ Total Receivables (Dues)'),
+            React.createElement('div', { className: 'kpi-value', style: { color: metrics.totalReceivables > 0 ? '#d97706' : '#059669' } },
               BillsoftUtils.formatCurrency(metrics.totalReceivables)
             ),
-            React.createElement('div', { style: { fontSize: '0.78rem', color: '#dc2626', marginTop: 4, fontWeight: 500 } },
-              metrics.debtorCount > 0 ? `⚠️ ${metrics.debtorCount} customer${metrics.debtorCount !== 1 ? 's' : ''} have unpaid dues` : '✨ All customer dues are cleared!'
+            React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+              `Across ${metrics.debtorCount} customer accounts`
             )
           ),
-
-          // Card 3: Realized Collections
-          React.createElement('div', { className: 'card', style: { padding: 18, borderLeft: '4px solid #10b981', position: 'relative' } },
-            React.createElement('div', { style: { fontSize: '0.78rem', textTransform: 'uppercase', color: '#059669', fontWeight: 600, letterSpacing: 0.5 } }, '💵 Realized Collections'),
-            React.createElement('div', { style: { fontSize: '1.75rem', fontWeight: 700, color: '#059669', marginTop: 4 } },
+          React.createElement('div', { className: 'kpi-card kpi-green' },
+            React.createElement('div', { className: 'kpi-label' }, '💵 Realized Collections'),
+            React.createElement('div', { className: 'kpi-value', style: { color: '#059669' } },
               BillsoftUtils.formatCurrency(metrics.realizedCollections)
             ),
-            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
-              'Total paid volume to date'
+            React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+              'Lifetime recorded payments'
             )
           ),
-
-          // Card 4: Lifetime Turnover
-          React.createElement('div', { className: 'card', style: { padding: 18, borderLeft: '4px solid #3b82f6', position: 'relative' } },
-            React.createElement('div', { style: { fontSize: '0.78rem', textTransform: 'uppercase', color: '#2563eb', fontWeight: 600, letterSpacing: 0.5 } }, '📊 Lifetime Billed Volume'),
-            React.createElement('div', { style: { fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', marginTop: 4 } },
+          React.createElement('div', { className: 'kpi-card kpi-purple' },
+            React.createElement('div', { className: 'kpi-label' }, '📈 Lifetime Turnover'),
+            React.createElement('div', { className: 'kpi-value', style: { color: '#7c3aed' } },
               BillsoftUtils.formatCurrency(metrics.lifetimeTurnover)
             ),
-            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
-              'Gross invoice billing volume'
+            React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+              'Total invoiced business'
             )
           )
         ),
 
-        // ── 2. CONTROLS BAR: SEARCH, SMART CHIPS, SORT & ACTIONS ──
-        React.createElement('div', {
-          className: 'card',
-          style: {
-            padding: '14px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12
-          }
-        },
-          // Top Row: Search Input + Action Buttons
-          React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' } },
-            React.createElement('div', { style: { display: 'flex', gap: 10, flex: '1 1 320px', minWidth: 260 } },
+        // ── 2. ACTIONS & FILTERS ROW ──
+        React.createElement('div', { className: 'card', style: { marginBottom: 16, padding: '14px 18px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+            // Search Input
+            React.createElement('div', { style: { position: 'relative', flex: '1 1 280px', maxWidth: 420 } },
               React.createElement('input', {
                 className: 'input',
-                placeholder: '🔍 Search by name, phone, email, GSTIN, address...',
+                style: { paddingLeft: 36, width: '100%' },
+                placeholder: 'Search customer name, phone, GSTIN, city...',
                 value: search,
-                onChange: e => setSearch(e.target.value),
-                style: { width: '100%' }
-              })
+                onChange: e => setSearch(e.target.value)
+              }),
+              React.createElement('span', { style: { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 } }, '🔍')
             ),
-            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+
+            // Top Buttons Suite
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
               // Sort dropdown
               React.createElement('select', {
-                className: 'select select-sm',
+                className: 'input',
+                style: { width: 'auto', padding: '6px 12px', fontSize: '0.84rem' },
                 value: sortBy,
-                onChange: e => setSortBy(e.target.value),
-                style: { width: 170 }
+                onChange: e => setSortBy(e.target.value)
               },
-                React.createElement('option', { value: 'dues_desc' }, '🔻 Highest Dues First'),
-                React.createElement('option', { value: 'name_asc' }, '🔤 Name (A to Z)'),
-                React.createElement('option', { value: 'name_desc' }, '🔤 Name (Z to A)'),
-                React.createElement('option', { value: 'business_desc' }, '📈 Highest Billed'),
-                React.createElement('option', { value: 'id_desc' }, '🕒 Newest Added')
+                React.createElement('option', { value: 'dues_desc' }, '⚠️ Sort: Highest Dues First'),
+                React.createElement('option', { value: 'name_asc' }, '🔤 Sort: Name (A-Z)'),
+                React.createElement('option', { value: 'name_desc' }, '🔤 Sort: Name (Z-A)'),
+                React.createElement('option', { value: 'business_desc' }, '💰 Sort: Highest Turnover'),
+                React.createElement('option', { value: 'id_desc' }, '🆕 Sort: Recently Added')
               ),
-              // Export CSV
               React.createElement('button', {
-                className: 'btn btn-outline btn-sm',
+                className: 'btn btn-outline',
+                style: { fontSize: '0.84rem' },
                 onClick: handleExportCsv,
-                title: 'Export active customer list to CSV'
+                title: 'Export active customers to CSV'
               }, '📥 Export CSV'),
-              // Add Customer Primary Action
               React.createElement('button', {
-                className: 'btn btn-primary btn-sm',
+                className: 'btn btn-primary',
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 },
                 onClick: openCreate
-              }, '👤 + Add Customer'),
-              // Refresh
-              React.createElement('button', {
-                className: 'btn btn-ghost btn-sm',
-                onClick: load,
-                title: 'Refresh Customer Directory'
-              }, Icons.refresh)
+              }, '+ Add Customer')
             )
           ),
 
-          // Bottom Row: Smart Filter Chips
-          React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
-            React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, marginRight: 4 } }, 'Filter:'),
+          // Filter Chips Row
+          React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' } },
             React.createElement('button', {
               className: `cust-filter-chip ${filterChip === 'ALL' ? 'active' : ''}`,
               onClick: () => setFilterChip('ALL')
-            }, `All Customers (${customers.length})`),
+            }, `All Customers (${metrics.totalCust})`),
             React.createElement('button', {
               className: `cust-filter-chip ${filterChip === 'WITH_DUES' ? 'active' : ''}`,
               onClick: () => setFilterChip('WITH_DUES'),
@@ -18525,8 +19344,8 @@
 
         // ── 3. DATA TABLE ──
         loading ? React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' })) :
-          React.createElement('div', { className: 'card', style: { overflow: 'hidden' } },
-            React.createElement('div', { className: 'table-container' },
+          React.createElement('div', { className: 'card', style: { overflow: 'visible' } },
+            React.createElement('div', { className: 'table-container', style: { overflow: 'visible' } },
               React.createElement('table', null,
                 React.createElement('thead', null,
                   React.createElement('tr', null,
@@ -18534,7 +19353,7 @@
                     React.createElement('th', null, 'Customer Name & Identity'),
                     React.createElement('th', null, 'Contact & Tax Info'),
                     React.createElement('th', { style: { textAlign: 'right' } }, 'Outstanding Balance'),
-                    React.createElement('th', { style: { textAlign: 'center', width: 260 } }, 'Actions')
+                    React.createElement('th', { style: { textAlign: 'center', width: 280 } }, 'Actions')
                   )
                 ),
                 React.createElement('tbody', null,
@@ -18553,11 +19372,20 @@
                       },
                         // Avatar
                         React.createElement('td', { style: { paddingRight: 0 } },
-                          React.createElement('div', { className: 'cust-avatar-badge' }, getInitials(c.name))
+                          React.createElement('div', {
+                            className: 'cust-avatar-badge',
+                            style: { cursor: 'pointer' },
+                            onClick: () => openCustomer360(c, 'outstanding'),
+                            title: 'Open Customer 360'
+                          }, getInitials(c.name))
                         ),
                         // Customer Name & City
                         React.createElement('td', null,
-                          React.createElement('div', { style: { fontWeight: 600, color: 'var(--text)', fontSize: '0.92rem' } }, c.name),
+                          React.createElement('div', {
+                            style: { fontWeight: 600, color: 'var(--text)', fontSize: '0.92rem', cursor: 'pointer' },
+                            onClick: () => openCustomer360(c, 'outstanding'),
+                            title: 'Open Customer 360'
+                          }, c.name),
                           c.address ? React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 } },
                             '📍 ', c.address.length > 40 ? `${c.address.substring(0, 40)}...` : c.address
                           ) : React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }, 'No address specified')
@@ -18574,19 +19402,21 @@
                             c.email && React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }, c.email)
                           )
                         ),
-                        // Outstanding Balance Pill
+                        // Outstanding Balance Pill (Clickable ➔ Customer 360 / Outstanding)
                         React.createElement('td', { style: { textAlign: 'right' } },
-                          dues > 0 ? React.createElement('span', { className: 'cust-balance-pill due' },
-                            '⚠️ ', BillsoftUtils.formatCurrency(dues)
-                          ) : dues < 0 ? React.createElement('span', { className: 'cust-balance-pill credit' },
-                            '₹ ', BillsoftUtils.formatCurrency(Math.abs(dues)), ' Adv'
-                          ) : React.createElement('span', { className: 'cust-balance-pill settled' },
+                          React.createElement('span', {
+                            className: `cust-balance-pill clickable ${dues > 0 ? 'due' : dues < 0 ? 'credit' : 'settled'}`,
+                            onClick: () => openCustomer360(c, dues > 0 ? 'outstanding' : 'overview'),
+                            title: 'Click to open Customer 360 & Outstanding Invoices'
+                          },
+                            dues > 0 ? `⚠️ ${BillsoftUtils.formatCurrency(dues)}` :
+                            dues < 0 ? `₹ ${BillsoftUtils.formatCurrency(Math.abs(dues))} Adv` :
                             '✓ Settled'
                           )
                         ),
-                        // Actions Suite
-                        React.createElement('td', { style: { textAlign: 'center' } },
-                          React.createElement('div', { style: { display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' } },
+                        // Actions Suite (Compact: [ + Bill ] [ Settle ] [ Statement ] [ ⋮ ])
+                        React.createElement('td', { style: { textAlign: 'center', position: 'relative' } },
+                          React.createElement('div', { style: { display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' } },
                             // 1-Click + Bill
                             React.createElement('button', {
                               className: 'cust-action-btn',
@@ -18594,33 +19424,65 @@
                               onClick: () => handleCreateBill(c),
                               title: `Create new invoice for ${c.name}`
                             }, '📄 + Bill'),
+                            // 1-Click Settle
+                            React.createElement('button', {
+                              className: 'cust-action-btn',
+                              style: { color: '#059669', borderColor: '#10b981' },
+                              onClick: () => openSettle(c),
+                              title: `Settle invoices for ${c.name}`
+                            }, '💳 Settle'),
                             // 1-Click Statement
                             React.createElement('button', {
                               className: 'cust-action-btn',
                               onClick: () => openStatementModal(c),
                               title: `View statement & khata ledger for ${c.name}`
                             }, '📜 Statement'),
-                            // WhatsApp Reminder (if dues exist)
-                            dues > 0 && React.createElement('button', {
-                              className: 'cust-action-btn',
-                              style: { color: '#059669', borderColor: '#10b981' },
-                              onClick: () => handleWhatsAppReminder(c),
-                              title: `Send WhatsApp payment reminder to ${c.name}`
-                            }, Icons.whatsapp || '💬', ' Remind'),
-                            // Edit
-                            React.createElement('button', {
-                              className: 'btn btn-ghost btn-sm',
-                              style: { padding: 4 },
-                              onClick: () => openEdit(c),
-                              title: 'Edit Customer'
-                            }, Icons.edit),
-                            // Delete
-                            React.createElement('button', {
-                              className: 'btn btn-ghost btn-sm',
-                              style: { padding: 4, color: 'var(--danger, #ef4444)' },
-                              onClick: () => setDeleteCustomerId(c.id),
-                              title: 'Delete Customer'
-                            }, Icons.trash)
+                            // Overflow Dropdown
+                            React.createElement('div', { style: { position: 'relative' } },
+                              React.createElement('button', {
+                                className: 'btn btn-ghost btn-sm',
+                                style: { padding: '4px 8px', fontSize: '1rem', fontWeight: 700 },
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuCustomerId(activeMenuCustomerId === c.id ? null : c.id);
+                                },
+                                title: 'More actions'
+                              }, '⋮'),
+                              activeMenuCustomerId === c.id && React.createElement('div', {
+                                className: 'cust-menu-dropdown',
+                                onClick: (e) => e.stopPropagation()
+                              },
+                                React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); openCustomer360(c, 'overview'); }
+                                }, '👁️ View Customer 360'),
+                                React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); handleViewAllInvoices(c); }
+                                }, '📋 All Invoices'),
+                                React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); openCustomer360(c, 'outstanding'); }
+                                }, '⏳ Outstanding Invoices'),
+                                React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); openCustomer360(c, 'payments'); }
+                                }, '💳 Payment History'),
+                                dues > 0 && React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); handleWhatsAppReminder(c); }
+                                }, Icons.whatsapp || '💬', ' Send WhatsApp Reminder'),
+                                React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '4px 0' } }),
+                                React.createElement('button', {
+                                  className: 'cust-menu-item',
+                                  onClick: () => { setActiveMenuCustomerId(null); openEdit(c); }
+                                }, Icons.edit || '✏️', ' Edit Profile'),
+                                React.createElement('button', {
+                                  className: 'cust-menu-item danger',
+                                  onClick: () => { setActiveMenuCustomerId(null); setDeleteCustomerId(c.id); }
+                                }, Icons.trash || '🗑️', ' Delete Customer')
+                              )
+                            )
                           )
                         )
                       );
@@ -18630,7 +19492,26 @@
             )
           ),
 
-        // ── 4. CUSTOMER STATEMENT & KHATA MODAL ──
+        // ── 4. CUSTOMER 360 MODAL / DRAWER ──
+        c360Customer && React.createElement(Customer360Modal, {
+          customer: c360Customer,
+          initialTab: c360InitialTab,
+          onClose: () => setC360Customer(null),
+          onBill: handleCreateBill,
+          onSettle: (cust, invIds) => { setC360Customer(null); openSettle(cust, invIds); },
+          onStatement: (cust) => { setC360Customer(null); openStatementModal(cust); },
+          onRemind: handleWhatsAppReminder
+        }),
+
+        // ── 5. CUSTOMER SETTLEMENT & ALLOCATION MODAL ──
+        settleCustomer && React.createElement(CustomerSettlementModal, {
+          customer: settleCustomer,
+          initialSelectedInvoiceIds: settleInitialInvoices,
+          onClose: () => { setSettleCustomer(null); setSettleInitialInvoices([]); },
+          onSuccess: () => { load(); }
+        }),
+
+        // ── 6. CUSTOMER STATEMENT & KHATA MODAL ──
         statementCustomer && React.createElement('div', { className: 'modal-overlay', onClick: () => setStatementCustomer(null) },
           React.createElement('div', {
             className: 'card modal-content',
@@ -18734,7 +19615,7 @@
           )
         ),
 
-        // ── 5. ADD / EDIT CUSTOMER MODAL ──
+        // ── 7. ADD / EDIT CUSTOMER MODAL ──
         showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
           React.createElement('div', { className: 'modal', style: { maxWidth: 500 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
@@ -32625,6 +33506,13 @@
             if (onSubTabChange) onSubTabChange(e.detail.subTab);
             if (e.detail.subTab === 'create') {
               setActiveView('editor');
+              if (e.detail.customerId) {
+                try {
+                  localStorage.setItem('billsoft_selected_customer_id', String(e.detail.customerId));
+                  if (e.detail.customerName) localStorage.setItem('billsoft_selected_customer_name', e.detail.customerName);
+                } catch (err) { }
+              }
+              openDocTab({ type: e.detail.quickDocType || 'invoice', title: e.detail.customerName ? `Bill: ${e.detail.customerName}` : 'New Invoice' });
             } else {
               setActiveView('overview');
             }

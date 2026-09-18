@@ -46,6 +46,14 @@ public class BillsoftApplication {
 					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS preferred_party_id BIGINT");
 				} catch (Exception ignored) {
 				}
+				try {
+					stmt.execute("ALTER TABLE invoice_payments ALTER COLUMN invoice_id DROP NOT NULL");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE invoice_payments ALTER COLUMN invoice_id SET NULL");
+				} catch (Exception ignored) {
+				}
 			} catch (Exception e) {
 				System.err.println("Database migration note: " + e.getMessage());
 			}

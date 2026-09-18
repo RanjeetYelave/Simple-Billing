@@ -1507,6 +1507,62 @@ public class InvoiceService {
         return invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deletePayment(Long paymentId) {
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        InvoicePayment payment = (currentFirmId != null)
+                ? invoicePaymentRepo.findByIdAndFirmId(paymentId, currentFirmId).orElse(null)
+                : invoicePaymentRepo.findById(paymentId).orElse(null);
+
+        if (payment == null) {
+            return false;
+        }
+
+        Long invoiceId = payment.getInvoiceId();
+        invoicePaymentRepo.delete(payment);
+
+        if (invoiceId != null) {
+            Invoice invoice = (currentFirmId != null)
+                    ? invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId).orElse(null)
+                    : invoiceRepo.findById(invoiceId).orElse(null);
+
+            if (invoice != null) {
+                List<InvoicePayment> allPayments = (currentFirmId != null)
+                        ? invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(invoiceId, currentFirmId)
+                        : invoicePaymentRepo.findByInvoiceIdOrderByPaymentDateAscIdAsc(invoiceId);
+                BigDecimal totalPaid = allPayments.stream()
+                        .map(InvoicePayment::getAmount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                List<SalesReturn> returns = (currentFirmId != null)
+                        ? salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(invoiceId, currentFirmId)
+                        : salesReturnRepo.findByInvoiceIdOrderByCreatedAtDesc(invoiceId);
+                BigDecimal totalReturned = returns.stream()
+                        .map(SalesReturn::getTotalRefundAmount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal invoiceTotal = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
+                BigDecimal effectiveReceivable = invoiceTotal.subtract(totalReturned);
+                if (effectiveReceivable.compareTo(BigDecimal.ZERO) < 0) {
+                    effectiveReceivable = BigDecimal.ZERO;
+                }
+
+                boolean isFullyPaid = (totalPaid.compareTo(effectiveReceivable) >= 0 && effectiveReceivable.compareTo(BigDecimal.ZERO) > 0)
+                        || (effectiveReceivable.compareTo(BigDecimal.ZERO) == 0 && invoiceTotal.compareTo(BigDecimal.ZERO) > 0);
+
+                invoice.setPaid(isFullyPaid);
+                if (!isFullyPaid && invoice.getStatus() == InvoiceStatus.PAID) {
+                    invoice.setStatus(InvoiceStatus.UNPAID);
+                }
+                invoiceRepo.save(invoice);
+            }
+        }
+
+        return true;
+    }
+
     // -------------------------
     // SALES RETURNS / CREDIT NOTES
     // -------------------------

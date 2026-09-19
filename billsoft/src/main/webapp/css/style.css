@@ -2253,6 +2253,12 @@ input:checked+.slider:before {
 
 @media (max-width: 768px) {
   .topbar-search-pill {
+    min-width: 0;
+    max-width: 130px;
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+  .topbar-search-pill kbd {
     display: none;
   }
 }
@@ -8106,4 +8112,99 @@ body.dark-mode .wa-target-btn.active {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* ============================================================
+   CASIO-STYLE CALCULATOR & TOPBAR LAUNCHER STYLES
+   ============================================================ */
+
+.topbar-calc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.2;
+  transition: all 0.2s ease;
+  user-select: none;
+  white-space: nowrap;
+  outline: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.topbar-calc-button:hover {
+  background: var(--bg-card, #ffffff);
+  border-color: var(--primary, #4f46e5);
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.12);
+  color: var(--text, #1e293b);
+}
+
+.topbar-calc-button:active {
+  transform: translateY(1px);
+}
+
+.topbar-calc-button svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease, stroke 0.2s ease;
+}
+
+.topbar-calc-button:hover svg {
+  opacity: 1;
+  stroke: var(--primary, #4f46e5);
+}
+
+:root.dark-1 .topbar-calc-button,
+:root[data-theme='dark'] .topbar-calc-button {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+:root.dark-1 .topbar-calc-button:hover,
+:root[data-theme='dark'] .topbar-calc-button:hover {
+  background: #0f172a;
+  border-color: #6366f1;
+  color: #f8fafc;
+}
+
+:root.dark-1 .topbar-calc-button:hover svg,
+:root[data-theme='dark'] .topbar-calc-button:hover svg {
+  stroke: #818cf8;
+}
+
+@media (max-width: 768px) {
+  .topbar-calc-button {
+    padding: 6px 10px;
+  }
+}
+
+/* Casio Keypad Animation & Focus Highlights */
+.casio-btn:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}
+
+.casio-calc-window {
+  animation: casioFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes casioFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }

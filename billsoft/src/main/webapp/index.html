@@ -28519,84 +28519,99 @@
       );
     }
 
-    // ── Wizard layout helpers ─────────────────────────────────────────────────────
+    // ── Wizard layout helpers & Vector Icons ─────────────────────────────────────
     const NEW_FIRM_STEPS = ['Firm Details', 'Address & Banking', 'Security', 'Activation'];
     const NEW_STEPS = NEW_FIRM_STEPS;
     const RESTORE_STEPS = ['Upload & Inspect', 'Select Firms', 'Activation'];
 
-    const WizardContainer = ({ children, title, subtitle }) =>
-      React.createElement('div', {
-        style: {
-          minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px',
-          fontFamily: "'Inter', -apple-system, sans-serif"
-        }
-      },
+    const OnboardingIcons = {
+      building: React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('rect', { x: 4, y: 2, width: 16, height: 20, rx: 2, ry: 2 }),
+        React.createElement('line', { x1: 9, y1: 22, x2: 9, y2: 22.01 }),
+        React.createElement('line', { x1: 15, y1: 22, x2: 15, y2: 22.01 }),
+        React.createElement('line', { x1: 9, y1: 6, x2: 9, y2: 6.01 }),
+        React.createElement('line', { x1: 15, y1: 6, x2: 15, y2: 6.01 }),
+        React.createElement('line', { x1: 9, y1: 10, x2: 9, y2: 10.01 }),
+        React.createElement('line', { x1: 15, y1: 10, x2: 15, y2: 10.01 }),
+        React.createElement('line', { x1: 9, y1: 14, x2: 9, y2: 14.01 }),
+        React.createElement('line', { x1: 15, y1: 14, x2: 15, y2: 14.01 })
+      ),
+      folder: React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }),
+        React.createElement('polyline', { points: '12 11 12 17' }),
+        React.createElement('polyline', { points: '9 14 12 11 15 14' })
+      ),
+      bolt: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polygon', { points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2' })
+      ),
+      lock: React.createElement('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('rect', { x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+        React.createElement('path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' })
+      ),
+      clock: React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+        React.createElement('polyline', { points: '12 6 12 12 16 14' })
+      ),
+      key: React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M21 2l-2 2m-1.5 1.5L12 11' }),
+        React.createElement('circle', { cx: 7.5, cy: 16.5, r: 4.5 }),
+        React.createElement('path', { d: 'M15 7l3 3' }),
+        React.createElement('path', { d: 'M18 4l3 3' })
+      ),
+      check: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '20 6 9 17 4 12' })
+      ),
+      arrowRight: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '9 18 15 12 9 6' })
+      ),
+      shield: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' })
+      ),
+      database: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('ellipse', { cx: 12, cy: 5, rx: 9, ry: 3 }),
+        React.createElement('path', { d: 'M21 12c0 1.66-4 3-9 3s-9-1.34-9-3' }),
+        React.createElement('path', { d: 'M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5' })
+      ),
+      upload: React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+        React.createElement('polyline', { points: '17 8 12 3 7 8' }),
+        React.createElement('line', { x1: 12, y1: 3, x2: 12, y2: 15 })
+      )
+    };
+
+    const WizardContainer = ({ children, title, subtitle, isWelcome }) =>
+      React.createElement('div', { className: 'onboarding-backdrop' },
         React.createElement('div', {
-          style: {
-            width: '100%', maxWidth: 620,
-            background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20,
-            boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
-            overflow: 'hidden'
-          }
+          className: `onboarding-card ${isWelcome ? 'welcome-mode' : 'step-mode'}`
         },
-          // Header band
-          React.createElement('div', {
-            style: {
-              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-              padding: '28px 32px 24px', textAlign: 'center'
-            }
-          },
-            React.createElement('div', {
-              style: {
-                width: 52, height: 52, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.2)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.4rem', fontWeight: 800, color: '#fff',
-                margin: '0 auto 12px', letterSpacing: '-1px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
-              }
-            }, 'B'),
-            React.createElement('h1', { style: { color: '#fff', fontSize: '1.4rem', fontWeight: 700, margin: '0 0 4px' } }, title),
-            React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0 } }, subtitle)
+          !isWelcome && React.createElement('div', { className: 'onboarding-header with-border' },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 4 } },
+              React.createElement(RupeeCRMLogo, { size: 24, showWordmark: false, isDarkBg: true }),
+              React.createElement('h1', { className: 'onboarding-title' }, title)
+            ),
+            subtitle && React.createElement('p', { className: 'onboarding-subtitle' }, subtitle)
           ),
-          // Card body
-          React.createElement('div', { style: { padding: '28px 32px 32px' } }, children)
+          React.createElement('div', { className: 'onboarding-body' }, children)
         )
       );
 
     const StepIndicator = ({ steps, current }) =>
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 } },
+      React.createElement('div', { className: 'onboarding-stepper' },
         steps.map((label, i) => {
           const idx = i + 1;
           const done = idx < current;
           const active = idx === current;
           return React.createElement(Fragment, { key: idx },
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 } },
+            React.createElement('div', { className: 'onboarding-step-item' },
               React.createElement('div', {
-                style: {
-                  width: 32, height: 32, borderRadius: '50%', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700,
-                  background: done ? '#22c55e' : active ? '#6366f1' : 'rgba(255,255,255,0.08)',
-                  color: done || active ? '#fff' : 'rgba(255,255,255,0.4)',
-                  border: active ? '2px solid #a5b4fc' : done ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
-                  transition: 'all 0.3s ease', boxShadow: active ? '0 0 0 4px rgba(99,102,241,0.25)' : 'none'
-                }
-              }, done ? '✓' : idx),
+                className: `onboarding-step-badge ${active ? 'active' : done ? 'done' : ''}`
+              }, done ? OnboardingIcons.check : idx),
               React.createElement('span', {
-                style: {
-                  fontSize: '0.65rem', marginTop: 5, color: active ? '#a5b4fc' : done ? '#86efac' : 'rgba(255,255,255,0.35)',
-                  fontWeight: active ? 700 : 500, textAlign: 'center', maxWidth: 70, lineHeight: 1.2
-                }
+                className: `onboarding-step-label ${active ? 'active' : done ? 'done' : ''}`
               }, label)
             ),
             i < steps.length - 1 && React.createElement('div', {
-              style: {
-                flex: 1, height: 2, marginBottom: 22,
-                background: done ? '#22c55e' : 'rgba(255,255,255,0.1)',
-                transition: 'background 0.3s ease'
-              }
+              className: `onboarding-step-connector ${done ? 'done' : ''}`
             })
           );
         })
@@ -28605,7 +28620,7 @@
     const FieldGroup = ({ label, children, required }) =>
       React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
         React.createElement('label', {
-          style: { fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+          style: { fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }
         }, label, required && React.createElement('span', { style: { color: '#f87171', marginLeft: 3 } }, '*')),
         children
       );
@@ -28614,9 +28629,9 @@
       React.createElement('input', {
         ...props,
         style: {
-          width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '0.9rem', boxSizing: 'border-box',
-          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-          color: '#fff', outline: 'none', transition: 'border-color 0.2s',
+          width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: '0.875rem', boxSizing: 'border-box',
+          background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+          color: '#ffffff', outline: 'none', transition: 'border-color 0.2s, box-shadow 0.2s',
           ...(props.style || {})
         },
         onFocus: e => { e.target.style.borderColor = '#6366f1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.2)'; },
@@ -28629,31 +28644,32 @@
           ? React.createElement('button', {
             type: 'button', onClick: onBack,
             style: {
-              padding: '10px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
-              background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
-              fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+              padding: '10px 22px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)', cursor: 'pointer',
+              fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6
             },
-            onMouseOver: e => e.target.style.background = 'rgba(255,255,255,0.08)',
-            onMouseOut: e => e.target.style.background = 'transparent'
+            onMouseOver: e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)',
+            onMouseOut: e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
           }, '← Back')
           : React.createElement('div', null),
         React.createElement('button', {
           type: 'button', onClick: onNext, disabled: loading || nextDisabled,
           style: {
-            padding: '10px 28px', borderRadius: 10, border: 'none',
+            padding: '10px 26px', borderRadius: 8, border: 'none',
             background: loading || nextDisabled ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
             color: '#fff', cursor: loading || nextDisabled ? 'not-allowed' : 'pointer',
-            fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-            transition: 'all 0.2s', letterSpacing: '0.01em'
+            fontWeight: 700, fontSize: '0.875rem', boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
+            transition: 'all 0.2s', letterSpacing: '0.01em', display: 'flex', alignItems: 'center', gap: 8
           }
-        }, loading ? '⏳ Please wait...' : nextLabel || 'Next →')
+        }, loading ? 'Please wait...' : nextLabel || 'Next →')
       );
 
     const ErrorBox = ({ msg }) => msg
       ? React.createElement('div', {
         style: {
           background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-          color: '#fca5a5', padding: '10px 14px', borderRadius: 10, fontSize: '0.85rem', marginBottom: 16
+          color: '#fca5a5', padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem', marginBottom: 16,
+          display: 'flex', alignItems: 'center', gap: 8
         }
       }, '⚠ ', msg)
       : null;
@@ -28792,62 +28808,68 @@
       };
       const handleNextStep = () => { if (validateNewStep(step)) goNext(); };
 
-      // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
+      // ── WELCOME SCREEN (OPTION A: EXECUTIVE DUAL-CARD CHOOSER) ────────────────────
       if (!wizardMode) {
         return React.createElement(WizardContainer, {
-          title: '', subtitle: ''
+          isWelcome: true
         },
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 } },
-            React.createElement(RupeeCRMLogo, { size: 58, showWordmark: true, showTagline: true, isDarkBg: true })
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 } },
+            React.createElement(RupeeCRMLogo, { size: 52, showWordmark: true, showTagline: true, isDarkBg: true })
           ),
           React.createElement('p', {
-            style: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }
+            style: { color: '#94a3b8', textAlign: 'center', fontSize: '0.875rem', marginBottom: 24, lineHeight: 1.55 }
           }, 'Get started in minutes. Set up your business profile or restore an existing backup to continue where you left off.'),
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
-            React.createElement('button', {
+          React.createElement('div', { className: 'onboarding-choice-grid' },
+            // Choice Card 1: Set Up New Business
+            React.createElement('div', {
+              className: 'onboarding-choice-card primary-choice',
+              tabIndex: 0,
+              role: 'button',
+              'aria-label': 'Set Up New Business',
               onClick: () => startMode('new'),
-              style: {
-                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(99,102,241,0.4)',
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))',
-                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                display: 'flex', alignItems: 'center', gap: 16
-              },
-              onMouseOver: e => e.currentTarget.style.borderColor = '#6366f1',
-              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'
+              onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startMode('new'); } }
             },
-              React.createElement('div', {
-                style: {
-                  width: 44, height: 44, borderRadius: 12, background: 'rgba(99,102,241,0.3)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
-                }
-              }, '🏢'),
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Set Up New Firm'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Create your firm profile and start fresh')
+              React.createElement('div', { className: 'onboarding-choice-icon-wrap primary' },
+                OnboardingIcons.building
+              ),
+              React.createElement('div', { className: 'onboarding-choice-title' },
+                'Set Up New Business'
+              ),
+              React.createElement('div', { className: 'onboarding-choice-desc' },
+                'Create your firm profile, GST details, banking & invoice preferences from scratch.'
+              ),
+              React.createElement('div', { className: 'onboarding-choice-cta' },
+                React.createElement('span', null, 'Start Setup'),
+                OnboardingIcons.arrowRight
               )
             ),
-            React.createElement('button', {
+            // Choice Card 2: Restore from Backup
+            React.createElement('div', {
+              className: 'onboarding-choice-card secondary-choice',
+              tabIndex: 0,
+              role: 'button',
+              'aria-label': 'Restore from Backup',
               onClick: () => startMode('restore'),
-              style: {
-                padding: '18px 24px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(255,255,255,0.04)',
-                color: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                display: 'flex', alignItems: 'center', gap: 16
-              },
-              onMouseOver: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)',
-              onMouseOut: e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+              onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startMode('restore'); } }
             },
-              React.createElement('div', {
-                style: {
-                  width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.08)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
-                }
-              }, '📂'),
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', marginBottom: 3 } }, 'Restore from Backup'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' } }, 'Restore firms, invoices, products & settings from a backup file')
+              React.createElement('div', { className: 'onboarding-choice-icon-wrap secondary' },
+                OnboardingIcons.folder
+              ),
+              React.createElement('div', { className: 'onboarding-choice-title' },
+                'Restore from Backup'
+              ),
+              React.createElement('div', { className: 'onboarding-choice-desc' },
+                'Restore firms, invoices, product catalog & settings from an existing backup archive.'
+              ),
+              React.createElement('div', { className: 'onboarding-choice-cta' },
+                React.createElement('span', null, 'Select Backup'),
+                OnboardingIcons.arrowRight
               )
             )
+          ),
+          React.createElement('div', { className: 'onboarding-footer-note' },
+            React.createElement('span', null, OnboardingIcons.shield, ' 100% Offline & Local Data'),
+            React.createElement('span', null, OnboardingIcons.database, ' Instant Multi-Firm Capability')
           )
         );
       }
@@ -28866,7 +28888,7 @@
             React.createElement(FieldGroup, { label: 'Firm / Business Name', required: true },
               React.createElement(WizardInput, { placeholder: 'e.g. Acme Enterprise Pvt Ltd', value: firmName, onChange: e => setFirmName(e.target.value), autoFocus: true })
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+            React.createElement('div', { className: 'onboarding-grid-2' },
               React.createElement(FieldGroup, { label: 'Owner / Contact Person' },
                 React.createElement(WizardInput, { placeholder: 'e.g. John Doe', value: ownerName, onChange: e => setOwnerName(e.target.value) })
               ),
@@ -28874,7 +28896,7 @@
                 React.createElement(WizardInput, { placeholder: 'e.g. 9876543210', value: phone, onChange: e => setPhone(e.target.value) })
               )
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+            React.createElement('div', { className: 'onboarding-grid-2' },
               React.createElement(FieldGroup, { label: 'Email Address' },
                 React.createElement(WizardInput, { type: 'email', placeholder: 'e.g. billing@acme.com', value: email, onChange: e => setEmail(e.target.value) })
               ),
@@ -28893,7 +28915,7 @@
             React.createElement(FieldGroup, { label: 'Address Line 2' },
               React.createElement(WizardInput, { placeholder: 'Area / Landmark', value: address2, onChange: e => setAddress2(e.target.value) })
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+            React.createElement('div', { className: 'onboarding-grid-3' },
               React.createElement(FieldGroup, { label: 'City' },
                 React.createElement(WizardInput, { placeholder: 'e.g. Mumbai', value: city, onChange: e => setCity(e.target.value) })
               ),
@@ -28904,7 +28926,7 @@
                 React.createElement(WizardInput, { placeholder: 'e.g. 400001', value: pincode, onChange: e => setPincode(e.target.value) })
               )
             ),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+            React.createElement('div', { className: 'onboarding-grid-3' },
               React.createElement(FieldGroup, { label: 'Bank Name' },
                 React.createElement(WizardInput, { placeholder: 'e.g. HDFC Bank', value: bankName, onChange: e => setBankName(e.target.value) })
               ),
@@ -28915,7 +28937,7 @@
                 React.createElement(WizardInput, { placeholder: 'e.g. HDFC0001234', value: bankIfsc, onChange: e => setBankIfsc(e.target.value) })
               )
             ),
-            React.createElement(FieldGroup, { label: '📱 UPI ID / VPA for Dynamic Invoice Payment QR' },
+            React.createElement(FieldGroup, { label: 'UPI ID / VPA for Dynamic Invoice Payment QR' },
               React.createElement(WizardInput, {
                 placeholder: 'e.g. merchant@okaxis, yourname@icici or 9876543210@paytm',
                 value: upiId,
@@ -28930,22 +28952,23 @@
             React.createElement('div', {
               style: {
                 padding: '16px 20px', background: 'rgba(99,102,241,0.1)', borderRadius: 12,
-                border: '1px solid rgba(99,102,241,0.25)', marginBottom: 6
+                border: '1px solid rgba(99,102,241,0.25)', marginBottom: 6, display: 'flex', gap: 12, alignItems: 'flex-start'
               }
             },
-              React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
-                '🔒 You can optionally set a PIN/password to lock the application. This adds an extra layer of security when the app is opened.')
+              React.createElement('div', { style: { color: '#a5b4fc', flexShrink: 0, marginTop: 2 } }, OnboardingIcons.lock),
+              React.createElement('p', { style: { color: '#cbd5e1', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+                'You can optionally set a PIN/password to lock the application. This adds an extra layer of security when the app is opened.')
             ),
             React.createElement('label', {
-              style: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: 10 }
+              style: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '12px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)' }
             },
               React.createElement('input', {
                 type: 'checkbox', checked: enableLock, onChange: e => setEnableLock(e.target.checked),
                 style: { width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }
               }),
-              React.createElement('span', { style: { fontWeight: 600, color: '#fff', fontSize: '0.9rem' } }, 'Enable access lock / PIN protection'),
+              React.createElement('span', { style: { fontWeight: 600, color: '#fff', fontSize: '0.9rem' } }, 'Enable access lock / PIN protection')
             ),
-            enableLock && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+            enableLock && React.createElement('div', { className: 'onboarding-grid-2' },
               React.createElement(FieldGroup, { label: 'Lock Password', required: true },
                 React.createElement(WizardInput, { type: 'password', placeholder: '••••••', value: password, onChange: e => setPassword(e.target.value) })
               ),
@@ -28958,20 +28981,16 @@
 
           // Step 4 – Software License & Trial
           step === 4 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
-            React.createElement('div', {
-              style: {
-                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 2
-              }
-            },
+            React.createElement('div', { className: 'onboarding-grid-2', style: { marginBottom: 2 } },
               React.createElement('div', {
                 style: {
                   padding: '14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12,
                   border: '1px solid rgba(251,191,36,0.3)', textAlign: 'center'
                 }
               },
-                React.createElement('div', { style: { fontSize: '1.6rem', marginBottom: 4 } }, '⏳'),
+                React.createElement('div', { style: { color: '#fbbf24', display: 'flex', justifyContent: 'center', marginBottom: 6 } }, OnboardingIcons.clock),
                 React.createElement('div', { style: { fontWeight: 700, color: '#fbbf24', fontSize: '0.88rem', marginBottom: 2 } }, '30-Day Free Trial'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', lineHeight: 1.4 } }, 'Start immediately with a fully featured 30-day evaluation trial')
+                React.createElement('div', { style: { color: '#94a3b8', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Start immediately with a fully featured 30-day evaluation trial')
               ),
               React.createElement('div', {
                 style: {
@@ -28979,16 +28998,16 @@
                   border: '1px solid rgba(99,102,241,0.3)', textAlign: 'center'
                 }
               },
-                React.createElement('div', { style: { fontSize: '1.6rem', marginBottom: 4 } }, '🔑'),
+                React.createElement('div', { style: { color: '#a5b4fc', display: 'flex', justifyContent: 'center', marginBottom: 6 } }, OnboardingIcons.key),
                 React.createElement('div', { style: { fontWeight: 700, color: '#a5b4fc', fontSize: '0.88rem', marginBottom: 2 } }, 'Activate License'),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', lineHeight: 1.4 } }, 'Scan QR or share Machine ID with your salesman for activation')
+                React.createElement('div', { style: { color: '#94a3b8', fontSize: '0.75rem', lineHeight: 1.4 } }, 'Scan QR or share Machine ID with your salesman for activation')
               )
             ),
 
             // Machine ID & QR Card
             React.createElement('div', {
               style: {
-                padding: '14px', background: 'rgba(255,255,255,0.04)', borderRadius: 12,
+                padding: '14px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 12,
                 border: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 14, alignItems: 'center'
               }
             },
@@ -28996,9 +29015,9 @@
                 src: `/api/omnisearch/qr?size=140&data=${encodeURIComponent(qrDataStr)}`,
                 alt: 'License Activation QR',
                 style: { width: 96, height: 96, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
-              }) : React.createElement('div', { style: { width: 96, height: 96, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '📷'),
+              }) : React.createElement('div', { style: { width: 96, height: 96, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' } }, OnboardingIcons.clock),
               React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-                React.createElement('div', { style: { fontSize: '0.70rem', color: 'rgba(255,255,255,0.5)', marginBottom: 2, fontWeight: 600 } }, 'MACHINE IDENTITY'),
+                React.createElement('div', { style: { fontSize: '0.70rem', color: '#94a3b8', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' } }, 'MACHINE IDENTITY'),
                 React.createElement('div', {
                   style: {
                     fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem', color: '#fff',
@@ -29014,13 +29033,13 @@
                       window.showToast && window.showToast('Machine ID copied to clipboard!', 'success');
                     }
                   },
-                  style: { padding: '5px 10px', fontSize: '0.75rem' }
-                }, '📋 Copy Machine ID')
+                  style: { padding: '5px 12px', fontSize: '0.75rem', borderRadius: 6 }
+                }, 'Copy Machine ID')
               )
             ),
 
             // Nav & Action Buttons
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, gap: 10 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, gap: 10, flexWrap: 'wrap' } },
               React.createElement('button', {
                 type: 'button',
                 className: 'btn btn-ghost',
@@ -29059,7 +29078,7 @@
                     }
                   },
                   style: { padding: '10px 14px', fontWeight: 600, fontSize: '0.85rem' }
-                }, checkingOnline ? 'Checking Online...' : '🔍 Check Online Activation'),
+                }, checkingOnline ? 'Checking Online...' : 'Check Online Activation'),
                 React.createElement('button', {
                   type: 'button',
                   className: 'btn btn-primary',
@@ -29085,8 +29104,8 @@
                       setLoading(false);
                     }
                   },
-                  style: { padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem' }
-                }, loading ? 'Setting up...' : '🚀 Start 30-Day Free Trial →')
+                  style: { padding: '10px 18px', fontWeight: 600, fontSize: '0.85rem' }
+                }, loading ? 'Setting up...' : 'Start 30-Day Free Trial →')
               )
             )
           )
@@ -29122,17 +29141,17 @@
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
               React.createElement('div', {
                 style: {
-                  width: 42, height: 42, borderRadius: 10,
+                  width: 40, height: 40, borderRadius: 10,
                   background: 'rgba(16, 185, 129, 0.25)', color: '#10b981',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem'
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }
-              }, '⚡'),
+              }, OnboardingIcons.bolt),
               React.createElement('div', null,
                 React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 } },
                   'Restore Latest System Auto-Backup',
-                  React.createElement('span', { style: { fontSize: '0.7rem', background: '#059669', color: '#fff', padding: '1px 6px', borderRadius: 4 } }, 'RECOMMENDED')
+                  React.createElement('span', { style: { fontSize: '0.7rem', background: '#059669', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 } }, 'RECOMMENDED')
                 ),
-                React.createElement('div', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 3 } },
+                React.createElement('div', { style: { color: '#94a3b8', fontSize: '0.78rem', marginTop: 3 } },
                   `Found: ${autoStatus.lastModifiedFormatted || autoStatus.lastBackupFormatted || 'Dated Today'} • External AppData Storage`
                 )
               )
@@ -29144,11 +29163,11 @@
                 background: isAutoRestore ? '#10b981' : 'rgba(16,185,129,0.3)',
                 color: '#fff', border: '1px solid #10b981', fontWeight: 600, fontSize: '0.8rem'
               }
-            }, restoreInspecting && isAutoRestore ? '🔍 Inspecting...' : isAutoRestore ? '✓ Selected' : 'Use Auto-Backup')
+            }, restoreInspecting && isAutoRestore ? 'Inspecting...' : isAutoRestore ? '✓ Selected' : 'Use Auto-Backup')
           ),
 
           autoStatus && (autoStatus.fileExists || autoStatus.status === 'HEALTHY' || autoStatus.status === 'SUCCESS') && React.createElement('div', {
-            style: { textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em' }
+            style: { textAlign: 'center', color: '#64748b', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em' }
           }, '── OR UPLOAD CUSTOM BACKUP FILE ──'),
 
           // Option B: Custom File Upload
@@ -29161,18 +29180,21 @@
               transition: 'all 0.2s', cursor: 'pointer'
             }
           },
-            React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, restoreInspecting && !isAutoRestore ? '🔍' : backupFile && !isAutoRestore ? '✅' : '📂'),
-            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', margin: '0 0 10px', fontSize: '0.88rem' } },
-              restoreInspecting && !isAutoRestore ? 'Inspecting backup contents...' : backupFile && !isAutoRestore ? `Selected: ${backupFile.name}` : 'Click to select custom backup JSON file'
+            React.createElement('div', { style: { color: backupFile && !isAutoRestore ? '#818cf8' : '#6366f1', display: 'flex', justifyContent: 'center', marginBottom: 8 } },
+              OnboardingIcons.upload
+            ),
+            React.createElement('p', { style: { color: '#cbd5e1', margin: '0 0 10px', fontSize: '0.88rem' } },
+              restoreInspecting && !isAutoRestore ? 'Inspecting backup contents...' : backupFile && !isAutoRestore ? `Selected: ${backupFile.name}` : 'Select a custom backup JSON file'
             ),
             React.createElement('label', {
               style: {
-                display: 'inline-block', padding: '7px 18px', borderRadius: 8,
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 18px', borderRadius: 8,
                 background: 'rgba(99,102,241,0.3)', color: '#fff', cursor: 'pointer',
                 fontSize: '0.82rem', fontWeight: 600, border: '1px solid rgba(99,102,241,0.5)'
               }
             },
-              backupFile && !isAutoRestore ? '📁 Change File' : '📁 Browse File',
+              OnboardingIcons.folder,
+              React.createElement('span', null, backupFile && !isAutoRestore ? 'Change File' : 'Browse File'),
               React.createElement('input', {
                 type: 'file', accept: '.json',
                 style: { display: 'none' },
@@ -29190,13 +29212,13 @@
           },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('span', { style: { fontWeight: 700, fontSize: '0.88rem', color: restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? '#a5b4fc' : '#86efac' } },
-                isAutoRestore ? '⚡ System Auto-Backup' : (restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? '🌐 Multi-Firm Backup' : '🏢 Single Firm Backup')
+                isAutoRestore ? '⚡ System Auto-Backup' : (restoreInspection.backupType === 'FULL_SYSTEM_BACKUP' ? 'Multi-Firm Backup' : 'Single Firm Backup')
               ),
-              React.createElement('span', { style: { fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' } },
+              React.createElement('span', { style: { fontSize: '0.78rem', color: '#94a3b8' } },
                 `${restoreInspection.firms ? restoreInspection.firms.length : 0} Firm(s) Available`
               )
             ),
-            restoreInspection.exportDate && React.createElement('div', { style: { fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' } },
+            restoreInspection.exportDate && React.createElement('div', { style: { fontSize: '0.75rem', color: '#64748b' } },
               `Exported on: ${new Date(restoreInspection.exportDate).toLocaleString()}`
             )
           ),
@@ -29217,7 +29239,7 @@
         step === 2 && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
           restoreInspection && React.createElement('div', null,
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
-              React.createElement('span', { style: { fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 } }, 'Choose firms to restore:'),
+              React.createElement('span', { style: { fontSize: '0.85rem', color: '#94a3b8', fontWeight: 600 } }, 'Choose firms to restore:'),
               restoreInspection.firms && restoreInspection.firms.length > 1 && React.createElement('button', {
                 type: 'button',
                 onClick: toggleRestoreSelectAll,
@@ -29251,14 +29273,14 @@
                       firm.gstin && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(255,255,255,0.15)', padding: '1px 6px', borderRadius: 4, color: '#e2e8f0' } }, firm.gstin)
                     ),
                     React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 } },
-                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(99,102,241,0.25)', color: '#c7d2fe', padding: '2px 7px', borderRadius: 6 } }, `📄 ${firm.invoiceCount || 0} Invoices`),
-                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.25)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `👥 ${firm.customerCount || 0} Customers`),
-                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(245,158,11,0.25)', color: '#fde68a', padding: '2px 7px', borderRadius: 6 } }, `📦 ${firm.productCount || 0} Products`),
-                      (firm.goalCount > 0 || firm.goalLogCount > 0) && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.3)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `🎯 ${firm.goalCount || 0} Goals (${firm.goalLogCount || 0} Logs)`),
-                      firm.savingCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(249,115,22,0.25)', color: '#fed7aa', padding: '2px 7px', borderRadius: 6 } }, `💰 ${firm.savingCount} Savings`),
-                      firm.expenseCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', padding: '2px 7px', borderRadius: 6 } }, `💳 ${firm.expenseCount} Expenses`),
-                      firm.employeeCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(139,92,246,0.25)', color: '#ddd6fe', padding: '2px 7px', borderRadius: 6 } }, `👔 ${firm.employeeCount} Staff`),
-                      firm.purchaseOrderCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(14,165,233,0.25)', color: '#bae6fd', padding: '2px 7px', borderRadius: 6 } }, `🛒 ${firm.purchaseOrderCount} Orders`)
+                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(99,102,241,0.25)', color: '#c7d2fe', padding: '2px 7px', borderRadius: 6 } }, `${firm.invoiceCount || 0} Invoices`),
+                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.25)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `${firm.customerCount || 0} Customers`),
+                      React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(245,158,11,0.25)', color: '#fde68a', padding: '2px 7px', borderRadius: 6 } }, `${firm.productCount || 0} Products`),
+                      (firm.goalCount > 0 || firm.goalLogCount > 0) && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(16,185,129,0.3)', color: '#a7f3d0', padding: '2px 7px', borderRadius: 6 } }, `${firm.goalCount || 0} Goals`),
+                      firm.savingCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(249,115,22,0.25)', color: '#fed7aa', padding: '2px 7px', borderRadius: 6 } }, `${firm.savingCount} Savings`),
+                      firm.expenseCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', padding: '2px 7px', borderRadius: 6 } }, `${firm.expenseCount} Expenses`),
+                      firm.employeeCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(139,92,246,0.25)', color: '#ddd6fe', padding: '2px 7px', borderRadius: 6 } }, `${firm.employeeCount} Staff`),
+                      firm.purchaseOrderCount > 0 && React.createElement('span', { style: { fontSize: '0.72rem', background: 'rgba(14,165,233,0.25)', color: '#bae6fd', padding: '2px 7px', borderRadius: 6 } }, `${firm.purchaseOrderCount} Orders`)
                     )
                   )
                 );
@@ -29284,7 +29306,7 @@
           React.createElement('div', {
             style: { padding: '14px 18px', background: 'rgba(255,255,255,0.05)', borderRadius: 10, marginBottom: 4 }
           },
-            React.createElement('p', { style: { color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
+            React.createElement('p', { style: { color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 } },
               'Ready to restore ', React.createElement('strong', { style: { color: '#a5b4fc' } }, `${restoreSelectedFirms.size} firm(s)`),
               ' from ', React.createElement('strong', { style: { color: '#fff' } }, isAutoRestore ? 'System Auto-Backup (autobackup_latest.json)' : (backupFile && backupFile.name))
             )
@@ -29314,7 +29336,7 @@
                 setRestoreLoading(false);
               }
             },
-            nextLabel: '🚀 Complete Restore & Launch',
+            nextLabel: 'Complete Restore & Launch',
             loading: restoreLoading
           })
         )

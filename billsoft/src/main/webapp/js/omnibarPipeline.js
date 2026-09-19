@@ -74,10 +74,10 @@
       s = s.replace(/(\d+(?:\.\d+)?)\s*(percent)\b/gi, '$1 percent');
       // Number + % + Word: "18%gst" -> "18% gst"
       s = s.replace(/(\d+(?:\.\d+)?)\s*(%)\s*(gst|tax|vat|discount|margin|interest)\b/gi, '$1$2 $3');
-      // Number + Unit/Word: "30mm" -> "30 mm", "500upi" -> "500 upi", "10000rs" -> "10000 rs"
-      s = s.replace(/(\d+(?:\.\d+)?)\s*(mm|cm|m|mtr|meter|meters|km|in|inch|inches|ft|feet|foot|yd|yard|yards|sqft|sqm|sqyd|guntha|bigha|acre|hectare|brass|g|gram|grams|gm|gms|kg|kgs|kilo|kilos|quintal|qtl|tonne|ton|t|tola|carat|ml|l|ltr|liter|liters|gal|gallon|usd|eur|gbp|aed|cad|aud|inr|rs|rupees|rupee|upi|k|lakh|lakhs|lac|lacs|cr|crore|crores|hazar|hazaar|haz)\b/gi, '$1 $2');
+      // Number + Unit/Word/Currency
+      s = s.replace(/(\d+(?:\.\d+)?)\s*(mm|cm|m|mtr|meter|meters|km|in|inch|inches|ft|feet|foot|yd|yard|yards|sqft|sqm|sqyd|sqkm|sqmi|guntha|bigha|acre|hectare|brass|g|gram|grams|gm|gms|kg|kgs|kilo|kilos|quintal|qtl|tonne|ton|t|tola|carat|ml|l|ltr|liter|liters|gal|gallon|floz|cup|pint|quart|usd|eur|gbp|aed|cad|aud|nzd|sgd|hkd|sar|qar|kwd|bhd|omr|myr|thb|idr|php|krw|zar|rub|try|brl|mxn|sek|nok|dkk|pln|czk|huf|ils|egp|ngn|bdt|pkr|lkr|npr|vnd|btc|eth|usdt|inr|rs|rupees|rupee|upi|k|lakh|lakhs|lac|lacs|cr|crore|crores|hazar|hazaar|haz|c|f|kelvin|celsius|fahrenheit|kmh|kph|mph|mps|knot|knots|kb|kib|mb|mib|gb|gib|tb|tib|pb|bytes|sec|second|seconds|min|minute|minutes|hr|hrs|hour|hours|day|days|week|weeks|month|months|year|years)\b/gi, '$1 $2');
       // Currency Symbol + Number: "rs500" -> "rs 500", "$100" -> "$ 100", "₹1200" -> "₹ 1200"
-      s = s.replace(/([₹$€£]|rs\.?|inr)\s*(\d+(?:\.\d+)?)/gi, '$1 $2');
+      s = s.replace(/([₹$€£¥₩₽₺฿₱₪₦৳₫]|rs\.?|inr)\s*(\d+(?:\.\d+)?)/gi, '$1 $2');
       return s.replace(/\s+/g, ' ').trim();
     },
 
@@ -107,22 +107,104 @@
       return corrected.join(' ');
     },
 
+    // Transliterates Devanagari numerals and maps vernacular/Devanagari business keywords to canonical concepts
+    transliterateVernacular(str) {
+      if (!str) return '';
+      let s = str;
+      // 1. Devanagari Numerals -> Arabic Digits
+      const devanagariDigits = {
+        '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+        '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+      };
+      s = s.replace(/[०-९]/g, d => devanagariDigits[d] || d);
+
+      // 2. Devanagari & Marathi/Hindi Canonical Words Mapping
+      const devDict = [
+        // Arithmetic & Math
+        [/(?:^|\s|[0-9])(?:बेरीज|जोड़|अधिक)(?:\s|$|[0-9])/gi, ' + '],
+        [/(?:^|\s|[0-9])(?:वजा|घटाओ|मायनस)(?:\s|$|[0-9])/gi, ' - '],
+        [/(?:^|\s|[0-9])(?:गुणा|गुणिले|गुणाकार)(?:\s|$|[0-9])/gi, ' * '],
+        [/(?:^|\s|[0-9])(?:भाग|भागाकार|भागिले)(?:\s|$|[0-9])/gi, ' / '],
+        [/(?:^|\s|[0-9])(?:टक्के|प्रतिशत)(?:\s|$|[0-9])/gi, ' % '],
+
+        // Number words
+        [/(?:^|\s)(?:शंभर|सौ)(?=\s|$)/gi, ' 100 '],
+        [/(?:^|\s)(?:हजार|हज़ार)(?=\s|$)/gi, ' 1000 '],
+        [/(?:^|\s)(?:लाख|लाखा)(?=\s|$)/gi, ' lakh '],
+        [/(?:^|\s)(?:करोड|कोटी)(?=\s|$)/gi, ' crore '],
+        [/(?:^|\s)(?:दीड|डेढ)(?=\s|$)/gi, ' dedh '],
+        [/(?:^|\s)(?:अडीच|ढाई)(?=\s|$)/gi, ' dhai '],
+        [/(?:^|\s)(?:सव्वा|सवा)(?=\s|$)/gi, ' sawa '],
+        [/(?:^|\s)(?:पावणे|पौने)(?=\s|$)/gi, ' paune '],
+        [/(?:^|\s)(?:अर्धा|आधा)(?=\s|$)/gi, ' aadha '],
+
+        // Units
+        [/(?:^|\s|[0-9])(?:किलो|किग्रॅ)(?=\s|$)/gi, ' kg '],
+        [/(?:^|\s|[0-9])(?:ग्राम|ग्रॅम)(?=\s|$)/gi, ' g '],
+        [/(?:^|\s|[0-9])(?:मीटर|मिटर)(?=\s|$)/gi, ' meter '],
+        [/(?:^|\s|[0-9])(?:फूट|फुट)(?=\s|$)/gi, ' feet '],
+        [/(?:^|\s|[0-9])(?:लिटर|लीटर)(?=\s|$)/gi, ' liter '],
+        [/(?:^|\s|[0-9])(?:तोल|तोळा)(?=\s|$)/gi, ' tola '],
+        [/(?:^|\s|[0-9])(?:क्विंटल|क्विंटाल)(?=\s|$)/gi, ' quintal '],
+        [/(?:^|\s|[0-9])(?:टन)(?=\s|$)/gi, ' ton '],
+        [/(?:^|\s|[0-9])(?:गुंठा|गुंठे)(?=\s|$)/gi, ' guntha '],
+        [/(?:^|\s|[0-9])(?:एकर)(?=\s|$)/gi, ' acre '],
+        [/(?:^|\s|[0-9])(?:ब्रास)(?=\s|$)/gi, ' brass '],
+        [/(?:^|\s|[0-9])(?:रुपये|रुपया|रु)(?=\s|$)/gi, ' rs '],
+
+        // Dates & Periods
+        [/(?:^|\s)(?:आज|आजची|आजचा|आजचे)(?=\s|$)/gi, ' today '],
+        [/(?:^|\s)(?:कल\s*(?:का|की|के)|बीता\s*कल|काल|कालची|कालचा|कालचे)(?=\s|$)/gi, ' yesterday '],
+        [/(?:^|\s)(?:आने\s*वाला\s*कल|उद्या)(?=\s|$)/gi, ' tomorrow '],
+        [/(?:^|\s)(?:कल)(?=\s|$)/gi, ' yesterday '],
+        [/(?:^|\s)(?:परवा|परसों)(?=\s|$)/gi, ' day after tomorrow '],
+        [/(?:^|\s)(?:महिना|महिन्याचा|महिने)(?=\s|$)/gi, ' month '],
+        [/(?:^|\s)(?:आठवडा|हफ्ता)(?=\s|$)/gi, ' week '],
+        [/(?:^|\s)(?:वर्ष|साल)(?=\s|$)/gi, ' year '],
+
+        // Business Terms
+        [/(?:^|\s)(?:ग्राहक|गिर्हाईक|गिऱ्हाईक)(?=\s|$)/gi, ' customer '],
+        [/(?:^|\s)(?:व्यापारी|विक्रेता|सप्लायर)(?=\s|$)/gi, ' party '],
+        [/(?:^|\s)(?:पावती|बिल|चलन)(?=\s|$)/gi, ' invoice '],
+        [/(?:^|\s)(?:अंदाज\s*पत्रक|कोटेशन)(?=\s|$)/gi, ' quotation '],
+        [/(?:^|\s)(?:खर्च|खर्चा|व्यय)(?=\s|$)/gi, ' expense '],
+        [/(?:^|\s)(?:पगार|वेतन|मानधन)(?=\s|$)/gi, ' salary '],
+        [/(?:^|\s)(?:हजेरी|उपस्थिती|हाजरी)(?=\s|$)/gi, ' attendance '],
+        [/(?:^|\s)(?:उधारी|बाकी|शिल्लक|येणे)(?=\s|$)/gi, ' outstanding '],
+        [/(?:^|\s)(?:विक्री|सेल|खप)(?=\s|$)/gi, ' sales '],
+        [/(?:^|\s)(?:नफा|फायदा|मुनाफा)(?=\s|$)/gi, ' profit '],
+        [/(?:^|\s)(?:तोटा|नुकसान)(?=\s|$)/gi, ' loss '],
+        [/(?:^|\s)(?:साठा|स्टॉक|माल)(?=\s|$)/gi, ' stock '],
+        [/(?:^|\s)(?:सूट|सवलत|छूट)(?=\s|$)/gi, ' discount '],
+        [/(?:^|\s)(?:व्याज|ब्याज)(?=\s|$)/gi, ' interest '],
+        [/(?:^|\s)(?:रोकड|कॅश|नगद)(?=\s|$)/gi, ' cash ']
+      ];
+
+      for (const [pattern, replacement] of devDict) {
+        s = s.replace(pattern, replacement);
+      }
+      return s;
+    },
+
     // Full 9-stage normalizer
     normalize(raw) {
       const rawTrimmed = (raw || '').trim();
-      // 1. Unicode & punctuation cleanup
-      let cleanPunct = rawTrimmed.replace(/['"`]/g, '').replace(/[?!;]+/g, ' ');
-      // 2. Glued tokens decoupling
+      // 1. Vernacular & Devanagari transliteration
+      let transliterated = this.transliterateVernacular(rawTrimmed);
+      // 2. Unicode & punctuation cleanup
+      let cleanPunct = transliterated.replace(/['"`]/g, '').replace(/[?!;]+/g, ' ');
+      // 3. Glued tokens decoupling
       let decoupled = this.splitGluedTokens(cleanPunct);
-      // 3. Typo corrections
+      // 4. Typo corrections
       let typoFixed = this.correctTypos(decoupled);
-      // 4. Case normalization
+      // 5. Case normalization
       let lower = typoFixed.toLowerCase();
-      // 5. Clean fillers
+      // 6. Clean fillers
       let cleaned = this.cleanFillers(lower);
 
       return {
         raw: rawTrimmed,
+        transliterated,
         decoupled,
         typoFixed,
         lower,
@@ -138,72 +220,439 @@
     // Length (base = meter)
     'mm': { base: 'length', toBase: 0.001, name: 'Millimeter' },
     'millimeter': { base: 'length', toBase: 0.001, name: 'Millimeter' },
+    'millimeters': { base: 'length', toBase: 0.001, name: 'Millimeters' },
     'cm': { base: 'length', toBase: 0.01, name: 'Centimeter' },
     'centimeter': { base: 'length', toBase: 0.01, name: 'Centimeter' },
+    'centimeters': { base: 'length', toBase: 0.01, name: 'Centimeters' },
     'm': { base: 'length', toBase: 1, name: 'Meter' },
     'mtr': { base: 'length', toBase: 1, name: 'Meter' },
     'meter': { base: 'length', toBase: 1, name: 'Meter' },
     'meters': { base: 'length', toBase: 1, name: 'Meter' },
     'km': { base: 'length', toBase: 1000, name: 'Kilometer' },
     'kilometer': { base: 'length', toBase: 1000, name: 'Kilometer' },
+    'kilometers': { base: 'length', toBase: 1000, name: 'Kilometers' },
     'in': { base: 'length', toBase: 0.0254, name: 'Inch' },
     'inch': { base: 'length', toBase: 0.0254, name: 'Inch' },
-    'inches': { base: 'length', toBase: 0.0254, name: 'Inch' },
+    'inches': { base: 'length', toBase: 0.0254, name: 'Inches' },
     'ft': { base: 'length', toBase: 0.3048, name: 'Foot' },
-    'feet': { base: 'length', toBase: 0.3048, name: 'Foot' },
+    'feet': { base: 'length', toBase: 0.3048, name: 'Feet' },
     'foot': { base: 'length', toBase: 0.3048, name: 'Foot' },
     'yd': { base: 'length', toBase: 0.9144, name: 'Yard' },
     'yard': { base: 'length', toBase: 0.9144, name: 'Yard' },
-    'yards': { base: 'length', toBase: 0.9144, name: 'Yard' },
+    'yards': { base: 'length', toBase: 0.9144, name: 'Yards' },
+    'mile': { base: 'length', toBase: 1609.344, name: 'Mile' },
+    'miles': { base: 'length', toBase: 1609.344, name: 'Miles' },
+    'mi': { base: 'length', toBase: 1609.344, name: 'Mile' },
+    'nm': { base: 'length', toBase: 1852, name: 'Nautical Mile' },
+    'nmi': { base: 'length', toBase: 1852, name: 'Nautical Mile' },
     'gaj': { base: 'length', toBase: 0.9144, name: 'Gaj (Yard)' },
 
     // Area (base = sqft)
     'sqft': { base: 'area', toBase: 1, name: 'Square Feet' },
     'sqm': { base: 'area', toBase: 10.7639, name: 'Square Meter' },
     'sqyd': { base: 'area', toBase: 9, name: 'Square Yard' },
+    'sqkm': { base: 'area', toBase: 10763910.4, name: 'Square Kilometer' },
+    'sqmi': { base: 'area', toBase: 27878400, name: 'Square Mile' },
     'guntha': { base: 'area', toBase: 1089, name: 'Guntha' },
     'bigha': { base: 'area', toBase: 27225, name: 'Bigha' },
     'acre': { base: 'area', toBase: 43560, name: 'Acre' },
+    'acres': { base: 'area', toBase: 43560, name: 'Acres' },
     'hectare': { base: 'area', toBase: 107639, name: 'Hectare' },
+    'hectares': { base: 'area', toBase: 107639, name: 'Hectares' },
     'brass': { base: 'area', toBase: 100, name: 'Brass (100 sqft / 100 cuft)' },
 
     // Weight (base = gram)
     'mg': { base: 'weight', toBase: 0.001, name: 'Milligram' },
+    'milligram': { base: 'weight', toBase: 0.001, name: 'Milligram' },
+    'milligrams': { base: 'weight', toBase: 0.001, name: 'Milligrams' },
     'g': { base: 'weight', toBase: 1, name: 'Gram' },
     'gram': { base: 'weight', toBase: 1, name: 'Gram' },
-    'grams': { base: 'weight', toBase: 1, name: 'Gram' },
+    'grams': { base: 'weight', toBase: 1, name: 'Grams' },
     'gm': { base: 'weight', toBase: 1, name: 'Gram' },
-    'gms': { base: 'weight', toBase: 1, name: 'Gram' },
+    'gms': { base: 'weight', toBase: 1, name: 'Grams' },
     'kg': { base: 'weight', toBase: 1000, name: 'Kilogram' },
-    'kgs': { base: 'weight', toBase: 1000, name: 'Kilogram' },
+    'kgs': { base: 'weight', toBase: 1000, name: 'Kilograms' },
     'kilo': { base: 'weight', toBase: 1000, name: 'Kilogram' },
+    'kilos': { base: 'weight', toBase: 1000, name: 'Kilograms' },
     'quintal': { base: 'weight', toBase: 100000, name: 'Quintal (100 kg)' },
     'qtl': { base: 'weight', toBase: 100000, name: 'Quintal' },
     'tonne': { base: 'weight', toBase: 1000000, name: 'Tonne (1000 kg)' },
     'ton': { base: 'weight', toBase: 1000000, name: 'Tonne' },
+    'tons': { base: 'weight', toBase: 1000000, name: 'Tonnes' },
     't': { base: 'weight', toBase: 1000000, name: 'Tonne' },
     'tola': { base: 'weight', toBase: 11.6638, name: 'Tola' },
     'carat': { base: 'weight', toBase: 0.2, name: 'Carat' },
+    'carats': { base: 'weight', toBase: 0.2, name: 'Carats' },
+    'lb': { base: 'weight', toBase: 453.592, name: 'Pound' },
+    'lbs': { base: 'weight', toBase: 453.592, name: 'Pounds' },
+    'pound': { base: 'weight', toBase: 453.592, name: 'Pound' },
+    'pounds': { base: 'weight', toBase: 453.592, name: 'Pounds' },
+    'oz': { base: 'weight', toBase: 28.3495, name: 'Ounce' },
+    'ounce': { base: 'weight', toBase: 28.3495, name: 'Ounce' },
+    'ounces': { base: 'weight', toBase: 28.3495, name: 'Ounces' },
+    'stone': { base: 'weight', toBase: 6350.29, name: 'Stone' },
 
     // Volume (base = liter)
     'ml': { base: 'volume', toBase: 0.001, name: 'Milliliter' },
+    'milliliter': { base: 'volume', toBase: 0.001, name: 'Milliliter' },
+    'milliliters': { base: 'volume', toBase: 0.001, name: 'Milliliters' },
     'l': { base: 'volume', toBase: 1, name: 'Liter' },
     'ltr': { base: 'volume', toBase: 1, name: 'Liter' },
     'liter': { base: 'volume', toBase: 1, name: 'Liter' },
-    'liters': { base: 'volume', toBase: 1, name: 'Liter' },
+    'liters': { base: 'volume', toBase: 1, name: 'Liters' },
     'gal': { base: 'volume', toBase: 3.78541, name: 'Gallon (US)' },
     'gallon': { base: 'volume', toBase: 3.78541, name: 'Gallon (US)' },
+    'gallons': { base: 'volume', toBase: 3.78541, name: 'Gallons (US)' },
+    'floz': { base: 'volume', toBase: 0.0295735, name: 'Fluid Ounce' },
+    'cup': { base: 'volume', toBase: 0.236588, name: 'Cup' },
+    'cups': { base: 'volume', toBase: 0.236588, name: 'Cups' },
+    'pint': { base: 'volume', toBase: 0.473176, name: 'Pint' },
+    'pints': { base: 'volume', toBase: 0.473176, name: 'Pints' },
+    'quart': { base: 'volume', toBase: 0.946353, name: 'Quart' },
+    'quarts': { base: 'volume', toBase: 0.946353, name: 'Quarts' },
 
-    // Currency (approx base = INR)
-    'inr': { base: 'currency', toBase: 1, name: 'Indian Rupee' },
-    'rs': { base: 'currency', toBase: 1, name: 'Indian Rupee' },
-    'rupees': { base: 'currency', toBase: 1, name: 'Indian Rupee' },
-    'usd': { base: 'currency', toBase: 86.50, name: 'US Dollar' },
-    'eur': { base: 'currency', toBase: 91.20, name: 'Euro' },
-    'gbp': { base: 'currency', toBase: 109.80, name: 'British Pound' },
-    'aed': { base: 'currency', toBase: 23.55, name: 'UAE Dirham' },
-    'cad': { base: 'currency', toBase: 61.20, name: 'Canadian Dollar' },
-    'aud': { base: 'currency', toBase: 55.40, name: 'Australian Dollar' }
+    // Temperature (base = celsius) - Affine conversions
+    'c': { base: 'temperature', toBase: x => x, fromBase: x => x, name: '°C (Celsius)' },
+    'celsius': { base: 'temperature', toBase: x => x, fromBase: x => x, name: '°C (Celsius)' },
+    'centigrade': { base: 'temperature', toBase: x => x, fromBase: x => x, name: '°C (Centigrade)' },
+    'f': { base: 'temperature', toBase: x => (x - 32) * 5 / 9, fromBase: x => (x * 9 / 5) + 32, name: '°F (Fahrenheit)' },
+    'fahrenheit': { base: 'temperature', toBase: x => (x - 32) * 5 / 9, fromBase: x => (x * 9 / 5) + 32, name: '°F (Fahrenheit)' },
+    'k': { base: 'temperature', toBase: x => x - 273.15, fromBase: x => x + 273.15, name: 'K (Kelvin)' },
+    'kelvin': { base: 'temperature', toBase: x => x - 273.15, fromBase: x => x + 273.15, name: 'K (Kelvin)' },
+
+    // Speed (base = km/h)
+    'kmh': { base: 'speed', toBase: 1, name: 'km/h' },
+    'kph': { base: 'speed', toBase: 1, name: 'km/h' },
+    'km/h': { base: 'speed', toBase: 1, name: 'km/h' },
+    'mph': { base: 'speed', toBase: 1.609344, name: 'mph' },
+    'mi/h': { base: 'speed', toBase: 1.609344, name: 'mph' },
+    'mps': { base: 'speed', toBase: 3.6, name: 'm/s' },
+    'm/s': { base: 'speed', toBase: 3.6, name: 'm/s' },
+    'knot': { base: 'speed', toBase: 1.852, name: 'Knot' },
+    'knots': { base: 'speed', toBase: 1.852, name: 'Knots' },
+    'kt': { base: 'speed', toBase: 1.852, name: 'Knot' },
+    'fps': { base: 'speed', toBase: 1.09728, name: 'ft/s' },
+    'ft/s': { base: 'speed', toBase: 1.09728, name: 'ft/s' },
+
+    // Data / Storage (base = byte)
+    'b': { base: 'storage', toBase: 1, name: 'Bytes' },
+    'byte': { base: 'storage', toBase: 1, name: 'Bytes' },
+    'bytes': { base: 'storage', toBase: 1, name: 'Bytes' },
+    'kb': { base: 'storage', toBase: 1024, name: 'KB' },
+    'kib': { base: 'storage', toBase: 1024, name: 'KiB' },
+    'kilobyte': { base: 'storage', toBase: 1024, name: 'Kilobytes' },
+    'kilobytes': { base: 'storage', toBase: 1024, name: 'Kilobytes' },
+    'mb': { base: 'storage', toBase: 1048576, name: 'MB' },
+    'mib': { base: 'storage', toBase: 1048576, name: 'MiB' },
+    'megabyte': { base: 'storage', toBase: 1048576, name: 'Megabytes' },
+    'megabytes': { base: 'storage', toBase: 1048576, name: 'Megabytes' },
+    'gb': { base: 'storage', toBase: 1073741824, name: 'GB' },
+    'gib': { base: 'storage', toBase: 1073741824, name: 'GiB' },
+    'gigabyte': { base: 'storage', toBase: 1073741824, name: 'Gigabytes' },
+    'gigabytes': { base: 'storage', toBase: 1073741824, name: 'Gigabytes' },
+    'tb': { base: 'storage', toBase: 1099511627776, name: 'TB' },
+    'tib': { base: 'storage', toBase: 1099511627776, name: 'TiB' },
+    'terabyte': { base: 'storage', toBase: 1099511627776, name: 'Terabytes' },
+    'terabytes': { base: 'storage', toBase: 1099511627776, name: 'Terabytes' },
+    'pb': { base: 'storage', toBase: 1125899906842624, name: 'PB' },
+    'petabyte': { base: 'storage', toBase: 1125899906842624, name: 'Petabytes' },
+
+    // Time (base = second)
+    'ms': { base: 'time', toBase: 0.001, name: 'Millisecond' },
+    'millisecond': { base: 'time', toBase: 0.001, name: 'Millisecond' },
+    'milliseconds': { base: 'time', toBase: 0.001, name: 'Milliseconds' },
+    's': { base: 'time', toBase: 1, name: 'Second' },
+    'sec': { base: 'time', toBase: 1, name: 'Second' },
+    'second': { base: 'time', toBase: 1, name: 'Second' },
+    'seconds': { base: 'time', toBase: 1, name: 'Seconds' },
+    'min': { base: 'time', toBase: 60, name: 'Minute' },
+    'minute': { base: 'time', toBase: 60, name: 'Minute' },
+    'minutes': { base: 'time', toBase: 60, name: 'Minutes' },
+    'hr': { base: 'time', toBase: 3600, name: 'Hour' },
+    'hrs': { base: 'time', toBase: 3600, name: 'Hours' },
+    'hour': { base: 'time', toBase: 3600, name: 'Hour' },
+    'hours': { base: 'time', toBase: 3600, name: 'Hours' },
+    'd': { base: 'time', toBase: 86400, name: 'Day' },
+    'day': { base: 'time', toBase: 86400, name: 'Day' },
+    'days': { base: 'time', toBase: 86400, name: 'Days' },
+    'wk': { base: 'time', toBase: 604800, name: 'Week' },
+    'wks': { base: 'time', toBase: 604800, name: 'Weeks' },
+    'week': { base: 'time', toBase: 604800, name: 'Week' },
+    'weeks': { base: 'time', toBase: 604800, name: 'Weeks' },
+    'mo': { base: 'time', toBase: 2592000, name: 'Month (30d)' },
+    'month': { base: 'time', toBase: 2592000, name: 'Month' },
+    'months': { base: 'time', toBase: 2592000, name: 'Months' },
+    'yr': { base: 'time', toBase: 31536000, name: 'Year (365d)' },
+    'yrs': { base: 'time', toBase: 31536000, name: 'Years' },
+    'year': { base: 'time', toBase: 31536000, name: 'Year' },
+    'years': { base: 'time', toBase: 31536000, name: 'Years' },
+
+    // Currencies (base = INR, reference exchange rates as of September 2026)
+    // INR
+    'inr': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    'rs': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    'rupee': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    'rupees': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    'rupya': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    'rupaye': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+    '₹': { base: 'currency', toBase: 1, name: 'Indian Rupee', code: 'INR', symbol: '₹' },
+
+    // USD
+    'usd': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    'dollar': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    'dollars': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    'bucks': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    'us dollar': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    'us dollars': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+    '$': { base: 'currency', toBase: 86.50, name: 'US Dollar', code: 'USD', symbol: '$' },
+
+    // EUR
+    'eur': { base: 'currency', toBase: 91.20, name: 'Euro', code: 'EUR', symbol: '€' },
+    'euro': { base: 'currency', toBase: 91.20, name: 'Euro', code: 'EUR', symbol: '€' },
+    'euros': { base: 'currency', toBase: 91.20, name: 'Euro', code: 'EUR', symbol: '€' },
+    '€': { base: 'currency', toBase: 91.20, name: 'Euro', code: 'EUR', symbol: '€' },
+
+    // GBP
+    'gbp': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    'pound': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    'pounds': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    'sterling': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    'british pound': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    'british pounds': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+    '£': { base: 'currency', toBase: 109.80, name: 'British Pound', code: 'GBP', symbol: '£' },
+
+    // JPY
+    'jpy': { base: 'currency', toBase: 0.58, name: 'Japanese Yen', code: 'JPY', symbol: '¥' },
+    'yen': { base: 'currency', toBase: 0.58, name: 'Japanese Yen', code: 'JPY', symbol: '¥' },
+    'japanese yen': { base: 'currency', toBase: 0.58, name: 'Japanese Yen', code: 'JPY', symbol: '¥' },
+    '¥': { base: 'currency', toBase: 0.58, name: 'Japanese Yen', code: 'JPY', symbol: '¥' },
+
+    // CNY
+    'cny': { base: 'currency', toBase: 11.90, name: 'Chinese Yuan', code: 'CNY', symbol: '¥' },
+    'yuan': { base: 'currency', toBase: 11.90, name: 'Chinese Yuan', code: 'CNY', symbol: '¥' },
+    'rmb': { base: 'currency', toBase: 11.90, name: 'Chinese Yuan (RMB)', code: 'CNY', symbol: '¥' },
+    'renminbi': { base: 'currency', toBase: 11.90, name: 'Chinese Yuan (RMB)', code: 'CNY', symbol: '¥' },
+    'chinese yuan': { base: 'currency', toBase: 11.90, name: 'Chinese Yuan', code: 'CNY', symbol: '¥' },
+
+    // CHF
+    'chf': { base: 'currency', toBase: 97.40, name: 'Swiss Franc', code: 'CHF', symbol: 'CHF' },
+    'franc': { base: 'currency', toBase: 97.40, name: 'Swiss Franc', code: 'CHF', symbol: 'CHF' },
+    'francs': { base: 'currency', toBase: 97.40, name: 'Swiss Franc', code: 'CHF', symbol: 'CHF' },
+    'swiss franc': { base: 'currency', toBase: 97.40, name: 'Swiss Franc', code: 'CHF', symbol: 'CHF' },
+    'swiss francs': { base: 'currency', toBase: 97.40, name: 'Swiss Franc', code: 'CHF', symbol: 'CHF' },
+
+    // CAD
+    'cad': { base: 'currency', toBase: 61.20, name: 'Canadian Dollar', code: 'CAD', symbol: 'C$' },
+    'canadian dollar': { base: 'currency', toBase: 61.20, name: 'Canadian Dollar', code: 'CAD', symbol: 'C$' },
+    'canadian dollars': { base: 'currency', toBase: 61.20, name: 'Canadian Dollar', code: 'CAD', symbol: 'C$' },
+
+    // AUD
+    'aud': { base: 'currency', toBase: 55.40, name: 'Australian Dollar', code: 'AUD', symbol: 'A$' },
+    'australian dollar': { base: 'currency', toBase: 55.40, name: 'Australian Dollar', code: 'AUD', symbol: 'A$' },
+    'australian dollars': { base: 'currency', toBase: 55.40, name: 'Australian Dollar', code: 'AUD', symbol: 'A$' },
+
+    // NZD
+    'nzd': { base: 'currency', toBase: 50.80, name: 'New Zealand Dollar', code: 'NZD', symbol: 'NZ$' },
+    'new zealand dollar': { base: 'currency', toBase: 50.80, name: 'New Zealand Dollar', code: 'NZD', symbol: 'NZ$' },
+    'new zealand dollars': { base: 'currency', toBase: 50.80, name: 'New Zealand Dollar', code: 'NZD', symbol: 'NZ$' },
+    'kiwi dollar': { base: 'currency', toBase: 50.80, name: 'New Zealand Dollar', code: 'NZD', symbol: 'NZ$' },
+
+    // SGD
+    'sgd': { base: 'currency', toBase: 64.80, name: 'Singapore Dollar', code: 'SGD', symbol: 'S$' },
+    'singapore dollar': { base: 'currency', toBase: 64.80, name: 'Singapore Dollar', code: 'SGD', symbol: 'S$' },
+    'singapore dollars': { base: 'currency', toBase: 64.80, name: 'Singapore Dollar', code: 'SGD', symbol: 'S$' },
+
+    // HKD
+    'hkd': { base: 'currency', toBase: 11.10, name: 'Hong Kong Dollar', code: 'HKD', symbol: 'HK$' },
+    'hong kong dollar': { base: 'currency', toBase: 11.10, name: 'Hong Kong Dollar', code: 'HKD', symbol: 'HK$' },
+    'hong kong dollars': { base: 'currency', toBase: 11.10, name: 'Hong Kong Dollar', code: 'HKD', symbol: 'HK$' },
+
+    // AED
+    'aed': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+    'dirham': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+    'dirhams': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+    'uae dirham': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+    'uae dirhams': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+    'dhs': { base: 'currency', toBase: 23.55, name: 'UAE Dirham', code: 'AED', symbol: 'AED' },
+
+    // SAR
+    'sar': { base: 'currency', toBase: 23.05, name: 'Saudi Riyal', code: 'SAR', symbol: 'SAR' },
+    'riyal': { base: 'currency', toBase: 23.05, name: 'Saudi Riyal', code: 'SAR', symbol: 'SAR' },
+    'riyals': { base: 'currency', toBase: 23.05, name: 'Saudi Riyal', code: 'SAR', symbol: 'SAR' },
+    'saudi riyal': { base: 'currency', toBase: 23.05, name: 'Saudi Riyal', code: 'SAR', symbol: 'SAR' },
+    'saudi riyals': { base: 'currency', toBase: 23.05, name: 'Saudi Riyal', code: 'SAR', symbol: 'SAR' },
+
+    // QAR
+    'qar': { base: 'currency', toBase: 23.75, name: 'Qatari Riyal', code: 'QAR', symbol: 'QAR' },
+    'qatari riyal': { base: 'currency', toBase: 23.75, name: 'Qatari Riyal', code: 'QAR', symbol: 'QAR' },
+    'qatari riyals': { base: 'currency', toBase: 23.75, name: 'Qatari Riyal', code: 'QAR', symbol: 'QAR' },
+
+    // KWD
+    'kwd': { base: 'currency', toBase: 281.50, name: 'Kuwaiti Dinar', code: 'KWD', symbol: 'KWD' },
+    'kuwaiti dinar': { base: 'currency', toBase: 281.50, name: 'Kuwaiti Dinar', code: 'KWD', symbol: 'KWD' },
+    'kuwaiti dinars': { base: 'currency', toBase: 281.50, name: 'Kuwaiti Dinar', code: 'KWD', symbol: 'KWD' },
+    'kd': { base: 'currency', toBase: 281.50, name: 'Kuwaiti Dinar', code: 'KWD', symbol: 'KWD' },
+
+    // BHD
+    'bhd': { base: 'currency', toBase: 229.40, name: 'Bahraini Dinar', code: 'BHD', symbol: 'BHD' },
+    'bahraini dinar': { base: 'currency', toBase: 229.40, name: 'Bahraini Dinar', code: 'BHD', symbol: 'BHD' },
+    'bahraini dinars': { base: 'currency', toBase: 229.40, name: 'Bahraini Dinar', code: 'BHD', symbol: 'BHD' },
+    'bd': { base: 'currency', toBase: 229.40, name: 'Bahraini Dinar', code: 'BHD', symbol: 'BHD' },
+
+    // OMR
+    'omr': { base: 'currency', toBase: 224.70, name: 'Omani Rial', code: 'OMR', symbol: 'OMR' },
+    'omani rial': { base: 'currency', toBase: 224.70, name: 'Omani Rial', code: 'OMR', symbol: 'OMR' },
+    'omani rials': { base: 'currency', toBase: 224.70, name: 'Omani Rial', code: 'OMR', symbol: 'OMR' },
+    'ro': { base: 'currency', toBase: 224.70, name: 'Omani Rial', code: 'OMR', symbol: 'OMR' },
+
+    // MYR
+    'myr': { base: 'currency', toBase: 19.80, name: 'Malaysian Ringgit', code: 'MYR', symbol: 'RM' },
+    'ringgit': { base: 'currency', toBase: 19.80, name: 'Malaysian Ringgit', code: 'MYR', symbol: 'RM' },
+    'malaysian ringgit': { base: 'currency', toBase: 19.80, name: 'Malaysian Ringgit', code: 'MYR', symbol: 'RM' },
+    'rm': { base: 'currency', toBase: 19.80, name: 'Malaysian Ringgit', code: 'MYR', symbol: 'RM' },
+
+    // THB
+    'thb': { base: 'currency', toBase: 2.52, name: 'Thai Baht', code: 'THB', symbol: '฿' },
+    'baht': { base: 'currency', toBase: 2.52, name: 'Thai Baht', code: 'THB', symbol: '฿' },
+    'thai baht': { base: 'currency', toBase: 2.52, name: 'Thai Baht', code: 'THB', symbol: '฿' },
+    '฿': { base: 'currency', toBase: 2.52, name: 'Thai Baht', code: 'THB', symbol: '฿' },
+
+    // IDR
+    'idr': { base: 'currency', toBase: 0.0053, name: 'Indonesian Rupiah', code: 'IDR', symbol: 'Rp' },
+    'rupiah': { base: 'currency', toBase: 0.0053, name: 'Indonesian Rupiah', code: 'IDR', symbol: 'Rp' },
+    'indonesian rupiah': { base: 'currency', toBase: 0.0053, name: 'Indonesian Rupiah', code: 'IDR', symbol: 'Rp' },
+    'rp': { base: 'currency', toBase: 0.0053, name: 'Indonesian Rupiah', code: 'IDR', symbol: 'Rp' },
+
+    // PHP
+    'php': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+    'philippine peso': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+    'philippine pesos': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+    'peso': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+    'pesos': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+    '₱': { base: 'currency', toBase: 1.48, name: 'Philippine Peso', code: 'PHP', symbol: '₱' },
+
+    // KRW
+    'krw': { base: 'currency', toBase: 0.062, name: 'South Korean Won', code: 'KRW', symbol: '₩' },
+    'won': { base: 'currency', toBase: 0.062, name: 'South Korean Won', code: 'KRW', symbol: '₩' },
+    'korean won': { base: 'currency', toBase: 0.062, name: 'South Korean Won', code: 'KRW', symbol: '₩' },
+    'south korean won': { base: 'currency', toBase: 0.062, name: 'South Korean Won', code: 'KRW', symbol: '₩' },
+    '₩': { base: 'currency', toBase: 0.062, name: 'South Korean Won', code: 'KRW', symbol: '₩' },
+
+    // ZAR
+    'zar': { base: 'currency', toBase: 4.85, name: 'South African Rand', code: 'ZAR', symbol: 'R' },
+    'rand': { base: 'currency', toBase: 4.85, name: 'South African Rand', code: 'ZAR', symbol: 'R' },
+    'south african rand': { base: 'currency', toBase: 4.85, name: 'South African Rand', code: 'ZAR', symbol: 'R' },
+
+    // RUB
+    'rub': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    'ruble': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    'rubles': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    'rouble': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    'roubles': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    'russian ruble': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+    '₽': { base: 'currency', toBase: 0.94, name: 'Russian Ruble', code: 'RUB', symbol: '₽' },
+
+    // TRY
+    'try': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+    'lira': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+    'liras': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+    'turkish lira': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+    'tl': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+    '₺': { base: 'currency', toBase: 2.45, name: 'Turkish Lira', code: 'TRY', symbol: '₺' },
+
+    // BRL
+    'brl': { base: 'currency', toBase: 15.20, name: 'Brazilian Real', code: 'BRL', symbol: 'R$' },
+    'real': { base: 'currency', toBase: 15.20, name: 'Brazilian Real', code: 'BRL', symbol: 'R$' },
+    'reais': { base: 'currency', toBase: 15.20, name: 'Brazilian Real', code: 'BRL', symbol: 'R$' },
+    'brazilian real': { base: 'currency', toBase: 15.20, name: 'Brazilian Real', code: 'BRL', symbol: 'R$' },
+    'r$': { base: 'currency', toBase: 15.20, name: 'Brazilian Real', code: 'BRL', symbol: 'R$' },
+
+    // MXN
+    'mxn': { base: 'currency', toBase: 4.35, name: 'Mexican Peso', code: 'MXN', symbol: 'Mex$' },
+    'mexican peso': { base: 'currency', toBase: 4.35, name: 'Mexican Peso', code: 'MXN', symbol: 'Mex$' },
+    'mexican pesos': { base: 'currency', toBase: 4.35, name: 'Mexican Peso', code: 'MXN', symbol: 'Mex$' },
+
+    // SEK
+    'sek': { base: 'currency', toBase: 8.25, name: 'Swedish Krona', code: 'SEK', symbol: 'kr' },
+    'krona': { base: 'currency', toBase: 8.25, name: 'Swedish Krona', code: 'SEK', symbol: 'kr' },
+    'kronor': { base: 'currency', toBase: 8.25, name: 'Swedish Krona', code: 'SEK', symbol: 'kr' },
+    'swedish krona': { base: 'currency', toBase: 8.25, name: 'Swedish Krona', code: 'SEK', symbol: 'kr' },
+
+    // NOK
+    'nok': { base: 'currency', toBase: 8.05, name: 'Norwegian Krone', code: 'NOK', symbol: 'kr' },
+    'krone': { base: 'currency', toBase: 8.05, name: 'Norwegian Krone', code: 'NOK', symbol: 'kr' },
+    'kroner': { base: 'currency', toBase: 8.05, name: 'Norwegian Krone', code: 'NOK', symbol: 'kr' },
+    'norwegian krone': { base: 'currency', toBase: 8.05, name: 'Norwegian Krone', code: 'NOK', symbol: 'kr' },
+
+    // DKK
+    'dkk': { base: 'currency', toBase: 12.20, name: 'Danish Krone', code: 'DKK', symbol: 'kr' },
+    'danish krone': { base: 'currency', toBase: 12.20, name: 'Danish Krone', code: 'DKK', symbol: 'kr' },
+    'danish kroner': { base: 'currency', toBase: 12.20, name: 'Danish Krone', code: 'DKK', symbol: 'kr' },
+
+    // PLN
+    'pln': { base: 'currency', toBase: 21.40, name: 'Polish Zloty', code: 'PLN', symbol: 'zł' },
+    'zloty': { base: 'currency', toBase: 21.40, name: 'Polish Zloty', code: 'PLN', symbol: 'zł' },
+    'zlotys': { base: 'currency', toBase: 21.40, name: 'Polish Zloty', code: 'PLN', symbol: 'zł' },
+    'polish zloty': { base: 'currency', toBase: 21.40, name: 'Polish Zloty', code: 'PLN', symbol: 'zł' },
+    'zł': { base: 'currency', toBase: 21.40, name: 'Polish Zloty', code: 'PLN', symbol: 'zł' },
+
+    // CZK
+    'czk': { base: 'currency', toBase: 3.65, name: 'Czech Koruna', code: 'CZK', symbol: 'Kč' },
+    'koruna': { base: 'currency', toBase: 3.65, name: 'Czech Koruna', code: 'CZK', symbol: 'Kč' },
+    'korunas': { base: 'currency', toBase: 3.65, name: 'Czech Koruna', code: 'CZK', symbol: 'Kč' },
+    'czech koruna': { base: 'currency', toBase: 3.65, name: 'Czech Koruna', code: 'CZK', symbol: 'Kč' },
+    'kč': { base: 'currency', toBase: 3.65, name: 'Czech Koruna', code: 'CZK', symbol: 'Kč' },
+
+    // HUF
+    'huf': { base: 'currency', toBase: 0.23, name: 'Hungarian Forint', code: 'HUF', symbol: 'Ft' },
+    'forint': { base: 'currency', toBase: 0.23, name: 'Hungarian Forint', code: 'HUF', symbol: 'Ft' },
+    'hungarian forint': { base: 'currency', toBase: 0.23, name: 'Hungarian Forint', code: 'HUF', symbol: 'Ft' },
+
+    // ILS
+    'ils': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+    'shekel': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+    'shekels': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+    'israeli shekel': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+    'nis': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+    '₪': { base: 'currency', toBase: 23.40, name: 'Israeli Shekel', code: 'ILS', symbol: '₪' },
+
+    // EGP
+    'egp': { base: 'currency', toBase: 1.78, name: 'Egyptian Pound', code: 'EGP', symbol: 'E£' },
+    'egyptian pound': { base: 'currency', toBase: 1.78, name: 'Egyptian Pound', code: 'EGP', symbol: 'E£' },
+    'egyptian pounds': { base: 'currency', toBase: 1.78, name: 'Egyptian Pound', code: 'EGP', symbol: 'E£' },
+
+    // NGN
+    'ngn': { base: 'currency', toBase: 0.054, name: 'Nigerian Naira', code: 'NGN', symbol: '₦' },
+    'naira': { base: 'currency', toBase: 0.054, name: 'Nigerian Naira', code: 'NGN', symbol: '₦' },
+    'nigerian naira': { base: 'currency', toBase: 0.054, name: 'Nigerian Naira', code: 'NGN', symbol: '₦' },
+    '₦': { base: 'currency', toBase: 0.054, name: 'Nigerian Naira', code: 'NGN', symbol: '₦' },
+
+    // BDT
+    'bdt': { base: 'currency', toBase: 0.72, name: 'Bangladeshi Taka', code: 'BDT', symbol: '৳' },
+    'taka': { base: 'currency', toBase: 0.72, name: 'Bangladeshi Taka', code: 'BDT', symbol: '৳' },
+    'bangladeshi taka': { base: 'currency', toBase: 0.72, name: 'Bangladeshi Taka', code: 'BDT', symbol: '৳' },
+    '৳': { base: 'currency', toBase: 0.72, name: 'Bangladeshi Taka', code: 'BDT', symbol: '৳' },
+
+    // PKR
+    'pkr': { base: 'currency', toBase: 0.31, name: 'Pakistani Rupee', code: 'PKR', symbol: 'PKR' },
+    'pakistani rupee': { base: 'currency', toBase: 0.31, name: 'Pakistani Rupee', code: 'PKR', symbol: 'PKR' },
+    'pakistani rupees': { base: 'currency', toBase: 0.31, name: 'Pakistani Rupee', code: 'PKR', symbol: 'PKR' },
+
+    // LKR
+    'lkr': { base: 'currency', toBase: 0.29, name: 'Sri Lankan Rupee', code: 'LKR', symbol: 'LKR' },
+    'sri lankan rupee': { base: 'currency', toBase: 0.29, name: 'Sri Lankan Rupee', code: 'LKR', symbol: 'LKR' },
+    'sri lankan rupees': { base: 'currency', toBase: 0.29, name: 'Sri Lankan Rupee', code: 'LKR', symbol: 'LKR' },
+
+    // NPR
+    'npr': { base: 'currency', toBase: 0.625, name: 'Nepalese Rupee', code: 'NPR', symbol: 'NPR' },
+    'nepalese rupee': { base: 'currency', toBase: 0.625, name: 'Nepalese Rupee', code: 'NPR', symbol: 'NPR' },
+    'nepalese rupees': { base: 'currency', toBase: 0.625, name: 'Nepalese Rupee', code: 'NPR', symbol: 'NPR' },
+
+    // VND
+    'vnd': { base: 'currency', toBase: 0.0034, name: 'Vietnamese Dong', code: 'VND', symbol: '₫' },
+    'dong': { base: 'currency', toBase: 0.0034, name: 'Vietnamese Dong', code: 'VND', symbol: '₫' },
+    'vietnamese dong': { base: 'currency', toBase: 0.0034, name: 'Vietnamese Dong', code: 'VND', symbol: '₫' },
+    '₫': { base: 'currency', toBase: 0.0034, name: 'Vietnamese Dong', code: 'VND', symbol: '₫' }
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -247,6 +696,44 @@
       return `${parts.join(' ')} Rupees Only`;
     },
 
+    convertColloquialQuantifiers(str) {
+      if (!str || typeof str !== 'string') return '';
+      let s = str;
+      const compoundPatterns = [
+        [/\b(?:dedh\s+hazar|dedh\s+hajar)\b/gi, '1500'],
+        [/\b(?:dhai\s+hazar|adhai\s+hazar)\b/gi, '2500'],
+        [/\b(?:sawa\s+hazar|sawa\s+hajar)\b/gi, '1250'],
+        [/\b(?:paune\s+hazar|paune\s+hajar)\b/gi, '750'],
+        [/\b(?:sawa\s+do\s+hazar)\b/gi, '2250'],
+        [/\b(?:paune\s+do\s+hazar)\b/gi, '1750'],
+        [/\b(?:sawa\s+teen\s+hazar)\b/gi, '3250'],
+        [/\b(?:paune\s+teen\s+hazar)\b/gi, '2750'],
+        [/\b(?:dedh\s+lakh|dedh\s+lac)\b/gi, '150000'],
+        [/\b(?:dhai\s+lakh|adhai\s+lakh)\b/gi, '250000'],
+        [/\b(?:sawa\s+lakh|sawa\s+lac)\b/gi, '125000'],
+        [/\b(?:paune\s+lakh|paune\s+lac)\b/gi, '75000'],
+        [/\b(?:aadha\s+lakh|aadha\s+lac|adha\s+lakh)\b/gi, '50000'],
+        [/\b(?:sawa\s+do\s+lakh)\b/gi, '225000'],
+        [/\b(?:paune\s+do\s+lakh)\b/gi, '175000'],
+        [/\b(?:sawa\s+teen\s+lakh)\b/gi, '325000'],
+        [/\b(?:paune\s+teen\s+lakh)\b/gi, '275000'],
+        [/\b(?:sawa\s+char\s+lakh)\b/gi, '425000'],
+        [/\b(?:paune\s+char\s+lakh)\b/gi, '375000'],
+        [/\b(?:dedh\s+crore|dedh\s+cr)\b/gi, '15000000'],
+        [/\b(?:dhai\s+crore|adhai\s+crore)\b/gi, '25000000'],
+        [/\b(?:sawa\s+crore|sawa\s+cr)\b/gi, '12500000'],
+        [/\b(?:paune\s+crore|paune\s+cr)\b/gi, '7500000'],
+        [/\b(?:aadha\s+crore|aadha\s+cr|adha\s+crore)\b/gi, '5000000'],
+        [/\b(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)\b/gi, (m, n) => `${parseFloat(n) * 100000}`],
+        [/\b(\d+(?:\.\d+)?)\s*(?:crore|crores|cr)\b/gi, (m, n) => `${parseFloat(n) * 10000000}`],
+        [/\b(\d+(?:\.\d+)?)\s*(?:hazar|hazaar|haz|k)\b/gi, (m, n) => `${parseFloat(n) * 1000}`]
+      ];
+      for (const [re, repl] of compoundPatterns) {
+        s = s.replace(re, repl);
+      }
+      return s;
+    },
+
     wordsToNumber(str) {
       if (!str || typeof str !== 'string') return null;
       const s = str.toLowerCase().trim();
@@ -263,10 +750,26 @@
 
       if (s.includes('dedh hazar') || s.includes('dedh hajar')) return 1500;
       if (s.includes('dhai hazar') || s.includes('adhai hazar')) return 2500;
+      if (s.includes('sawa hazar') || s.includes('sawa hajar')) return 1250;
+      if (s.includes('paune hazar') || s.includes('paune hajar')) return 750;
+      if (s.includes('sawa do hazar')) return 2250;
+      if (s.includes('paune do hazar')) return 1750;
+      if (s.includes('sawa teen hazar')) return 3250;
+      if (s.includes('paune teen hazar')) return 2750;
       if (s.includes('dedh lakh') || s.includes('dedh lac')) return 150000;
       if (s.includes('dhai lakh') || s.includes('adhai lakh')) return 250000;
+      if (s.includes('sawa lakh') || s.includes('sawa lac')) return 125000;
+      if (s.includes('paune lakh') || s.includes('paune lac')) return 75000;
+      if (s.includes('aadha lakh') || s.includes('aadha lac') || s.includes('adha lakh')) return 50000;
+      if (s.includes('sawa do lakh')) return 225000;
+      if (s.includes('paune do lakh')) return 175000;
+      if (s.includes('sawa teen lakh')) return 325000;
+      if (s.includes('paune teen lakh')) return 275000;
       if (s.includes('dedh crore') || s.includes('dedh cr')) return 15000000;
       if (s.includes('dhai crore') || s.includes('adhai crore')) return 25000000;
+      if (s.includes('sawa crore') || s.includes('sawa cr')) return 12500000;
+      if (s.includes('paune crore') || s.includes('paune cr')) return 7500000;
+      if (s.includes('aadha crore') || s.includes('aadha cr') || s.includes('adha crore')) return 5000000;
 
       const words = s.split(/[\s-]+/).filter(Boolean);
       let total = 0;
@@ -303,6 +806,76 @@
         return total;
       }
       return null;
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 3.5 SESSION CONTEXT & MULTI-INTENT QUERY SEGMENTATION
+  // ─────────────────────────────────────────────────────────────────────────────
+  const SessionContextManager = {
+    _firmContexts: {},
+
+    getContext(firmId = 'default') {
+      const fKey = String(firmId != null ? firmId : 'default');
+      if (!this._firmContexts[fKey]) {
+        this._firmContexts[fKey] = {
+          lastEntity: null,
+          lastCustomer: null,
+          lastParty: null,
+          lastStaff: null,
+          lastProduct: null,
+          lastCalculation: null,
+          ans: 0
+        };
+      }
+      return this._firmContexts[fKey];
+    },
+
+    setContext(firmId = 'default', update = {}) {
+      const fKey = String(firmId != null ? firmId : 'default');
+      const cur = this.getContext(fKey);
+      this._firmContexts[fKey] = { ...cur, ...update };
+      return this._firmContexts[fKey];
+    },
+
+    clearContext(firmId) {
+      if (firmId != null) {
+        delete this._firmContexts[String(firmId)];
+      } else {
+        this._firmContexts = {};
+      }
+    }
+  };
+
+  const QuerySegmenter = {
+    // Segments compound queries across conjunction boundaries
+    segment(rawQuery) {
+      if (!rawQuery) return [rawQuery];
+      const trimmed = rawQuery.trim();
+
+      // Guard 1: Date interval / range comparisons "between X and Y", "days between X and Y"
+      if (/\b(?:between|from|gap\s+between|days\s+between|time\s+between|duration\s+between)\b.*?\b(?:and|to)\b/i.test(trimmed)) {
+        return [trimmed];
+      }
+
+      // Guard 2: Pure arithmetic words "100 and 50", "add 100 and 50"
+      if (/^(?:add\s+)?\d+(?:\.\d+)?\s+(?:and|aur|ani)\s+\d+(?:\.\d+)?$/i.test(trimmed)) {
+        return [trimmed];
+      }
+
+      // Guard 3: ISO Date range "2026-03-01 and 2026-03-20"
+      if (/\d{4}[-/]\d{2}[-/]\d{2}\s+(?:and|to)\s+\d{4}[-/]\d{2}[-/]\d{2}/i.test(trimmed)) {
+        return [trimmed];
+      }
+
+      // Compound connectors: ' and then ', ' then ', ' aur phir ', ' aur ', ' ani mag ', ' ani ', ' and ', ';'
+      const conjunctionRegex = /\s+(?:and\s+then|then|aur\s+phir|aur|ani\s+mag|ani|and)\s+|\s*;\s*/i;
+      if (!conjunctionRegex.test(trimmed)) {
+        return [trimmed];
+      }
+
+      const parts = trimmed.split(conjunctionRegex).map(s => s.trim()).filter(Boolean);
+      return parts.length > 1 ? parts : [trimmed];
     }
   };
 
@@ -733,19 +1306,50 @@
         }
       }
 
+      // 3. Pronoun / Anaphora Resolution via Session Context
+      if (entities.matchingCandidates.length === 0) {
+        const pronounMatch = /\b(his|her|their|him|unka|unki|unke|uske|uski|iske|iski|tyanche|tyancha|tyanchi|tyala)\b/i.test(raw) ||
+                             /\b(his|her|their|him|unka|unki|unke|uske|uski|iske|iski|tyanche|tyancha|tyanchi|tyala)\b/i.test(normalized.transliterated || normalized.lower);
+        if (pronounMatch) {
+          const firmId = ctx.activeFirmId || ctx.firmId || (ctx.firm && ctx.firm.id) || 'default';
+          const sessionCtx = ctx.sessionContext || SessionContextManager.getContext(firmId);
+          if (sessionCtx && sessionCtx.lastCustomer) {
+            const lastCust = sessionCtx.lastCustomer;
+            entities.targetName = lastCust.name || lastCust.customerName;
+            entities.customerName = lastCust.name || lastCust.customerName;
+            entities.matchedCustomer = lastCust;
+            entities.matchedEntity = { name: lastCust.name || lastCust.customerName, type: 'CUSTOMER', id: lastCust.id, raw: lastCust };
+            entities.matchingCandidates.push(entities.matchedEntity);
+          } else if (sessionCtx && sessionCtx.lastEntity) {
+            const lastEnt = sessionCtx.lastEntity;
+            entities.targetName = lastEnt.name;
+            entities.matchedEntity = lastEnt;
+            entities.matchingCandidates.push(lastEnt);
+            if (lastEnt.type === 'CUSTOMER') {
+              entities.matchedCustomer = lastEnt.raw || lastEnt;
+              entities.customerName = lastEnt.name;
+            }
+            if (lastEnt.type === 'VENDOR') entities.matchedParty = lastEnt.raw || lastEnt;
+          }
+        }
+      }
+
       if (entities.matchingCandidates.length === 1) {
         const ent = entities.matchingCandidates[0];
         entities.targetName = ent.name;
         entities.matchedEntity = ent;
-        if (ent.type === 'CUSTOMER') entities.matchedCustomer = ent.raw;
-        if (ent.type === 'VENDOR') entities.matchedParty = ent.raw;
+        if (ent.type === 'CUSTOMER') {
+          entities.matchedCustomer = ent.raw || ent;
+          entities.customerName = ent.name;
+        }
+        if (ent.type === 'VENDOR') entities.matchedParty = ent.raw || ent;
         if (ent.type === 'STAFF') {
           entities.staffName = ent.name;
-          entities.matchedStaff = ent.raw;
+          entities.matchedStaff = ent.raw || ent;
         }
         if (ent.type === 'PRODUCT') {
           entities.productName = ent.name;
-          entities.matchedProduct = ent.raw;
+          entities.matchedProduct = ent.raw || ent;
         }
       } else if (entities.matchingCandidates.length > 1) {
         entities.isAmbiguous = true;
@@ -831,10 +1435,181 @@
       } else {
         const cleanTask = decoupled.replace(/\b(kharcha|expense|todo|task|remind|reminder|note|add|record|for|towards|create|set)\b/gi, '')
           .replace(/\b\d+(?:\.\d+)?\b/g, '').replace(/\s+/g, ' ').trim();
-        entities.title = cleanTask ? (cleanTask.charAt(0).toUpperCase() + cleanTask.slice(1)) : 'Business Item';
+      }
+
+      // Extract limit for Top/Bottom queries
+      const limitMatch = raw.match(/\b(?:top|bottom|best|least|first|last)\s+(\d+)\b/i) || raw.match(/\b(\d+)\s+(?:top|bottom|best|items?|customers?|products?)\b/i);
+      if (limitMatch) {
+        entities.limit = parseInt(limitMatch[1], 10);
+      }
+
+      // Extract Threshold and Operator (e.g., "invoices over 50000", "bills above 10000", "dues > 5000")
+      const gtMatch = raw.match(/\b(?:over|above|greater\s*than|more\s*than|>|>=)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\b/i);
+      const ltMatch = raw.match(/\b(?:under|below|less\s*than|<|<=)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\b/i);
+      if (gtMatch) {
+        entities.threshold = parseFloat(gtMatch[1].replace(/,/g, ''));
+        entities.thresholdOp = 'GT';
+      } else if (ltMatch) {
+        entities.threshold = parseFloat(ltMatch[1].replace(/,/g, ''));
+        entities.thresholdOp = 'LT';
+      }
+
+      // Extract Aging Days
+      const agingMatch = raw.match(/\b(?:older\s*than|more\s*than|>)\s*(\d+)\s*days?\b/i);
+      if (agingMatch) {
+        entities.agingDays = parseInt(agingMatch[1], 10);
       }
 
       return entities;
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 4.2 DETERMINISTIC DATE ARITHMETIC & CALENDAR CALCULATOR ENGINE
+  // ─────────────────────────────────────────────────────────────────────────────
+  const DateMathEngine = {
+    formatDate(d) {
+      if (!d || isNaN(d.getTime())) return { formatted: '', iso: '' };
+      const day = d.getDate();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const mStr = monthNames[d.getMonth()];
+      const yStr = d.getFullYear();
+      const dayName = dayNames[d.getDay()];
+      const yyyymmdd = `${yStr}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return {
+        formatted: `${day} ${mStr} ${yStr} (${dayName})`,
+        iso: yyyymmdd,
+        dateObj: d,
+        dayName,
+        day,
+        month: mStr,
+        year: yStr
+      };
+    },
+
+    evaluate(raw, refDate = new Date()) {
+      if (!raw) return null;
+      const q = raw.trim().toLowerCase();
+
+      // 1. Days between two dates: "days between 1 Jan and 15 Jan", "days from 10 Oct to 25 Dec", "difference between 2026-05-01 and 2026-05-20"
+      const betweenMatch = /(?:days\s+between|days\s+from|difference\s+between|how\s+many\s+days\s+(?:between|from))\s+(.+?)\s+(?:and|to)\s+(.+)/i.exec(q);
+      if (betweenMatch) {
+        const d1 = RoleResolver.extractDateTime(betweenMatch[1], refDate);
+        const d2 = RoleResolver.extractDateTime(betweenMatch[2], refDate);
+        if (d1 && d2) {
+          const diffTime = Math.abs(d2.targetDate.getTime() - d1.targetDate.getTime());
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+          const f1 = this.formatDate(d1.targetDate);
+          const f2 = this.formatDate(d2.targetDate);
+          return {
+            type: 'DATE_DIFF',
+            days: diffDays,
+            from: f1.formatted,
+            to: f2.formatted,
+            result: diffDays,
+            summaryText: `${diffDays} days between ${f1.formatted} and ${f2.formatted}`
+          };
+        }
+      }
+
+      // 2. Calendar / Fiscal Period Anchors: "end of month", "end of current quarter", "q1 end", "q2 end", "fy end"
+      if (/\b(?:end\s+of\s+(?:this\s+)?month|month\s+end)\b/i.test(q)) {
+        const endOfMonth = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0);
+        const f = this.formatDate(endOfMonth);
+        return {
+          type: 'DATE_ANCHOR',
+          date: f.formatted,
+          iso: f.iso,
+          result: f.iso,
+          summaryText: `End of Month: ${f.formatted}`
+        };
+      }
+      if (/\b(?:end\s+of\s+(?:current\s+|this\s+)?quarter|quarter\s+end|q[1-4]\s+end)\b/i.test(q)) {
+        let curQuarter = Math.floor(refDate.getMonth() / 3);
+        const qMatch = q.match(/\bq([1-4])\s+end\b/i);
+        if (qMatch) {
+          curQuarter = parseInt(qMatch[1], 10) - 1;
+        }
+        const endOfQuarter = new Date(refDate.getFullYear(), (curQuarter + 1) * 3, 0);
+        const f = this.formatDate(endOfQuarter);
+        return {
+          type: 'DATE_ANCHOR',
+          date: f.formatted,
+          iso: f.iso,
+          result: f.iso,
+          summaryText: `End of Q${curQuarter + 1}: ${f.formatted}`
+        };
+      }
+      if (/\b(?:financial\s*year\s*end|fy\s*end)\b/i.test(q)) {
+        const year = refDate.getMonth() >= 2 ? refDate.getFullYear() + 1 : refDate.getFullYear();
+        const endOfFy = new Date(year, 2, 31); // 31st March
+        const f = this.formatDate(endOfFy);
+        return {
+          type: 'DATE_ANCHOR',
+          date: f.formatted,
+          iso: f.iso,
+          result: f.iso,
+          summaryText: `Financial Year End (FY ${year - 1}-${String(year).slice(-2)}): ${f.formatted}`
+        };
+      }
+
+      // 3. Date + / - offsets: "today + 15 days", "15 Aug + 30 days", "today - 7 days", "due in 30 days"
+      const dateOpMatch = /(.+?)\s*([\+\-])\s*(\d+)\s*(days?|din|weeks?|hafta|months?|mahine?|years?|saal)\b/i.exec(q) ||
+                          /(?:due\s+in|after|in)\s+(\d+)\s*(days?|din|weeks?|hafta|months?|mahine?)\b/i.exec(q) ||
+                          /(\d+)\s*(days?|din|weeks?|hafta|months?|mahine?)\s*(?:from\s+today|after\s+today|ago|before\s+today)\b/i.exec(q);
+
+      if (dateOpMatch) {
+        let baseDate = new Date(refDate.getTime());
+        let op = '+';
+        let num = 0;
+        let unit = 'days';
+
+        if (dateOpMatch[2] === '+' || dateOpMatch[2] === '-') {
+          const datePart = dateOpMatch[1].trim();
+          const parsed = RoleResolver.extractDateTime(datePart, refDate);
+          if (parsed) baseDate = parsed.targetDate;
+          op = dateOpMatch[2];
+          num = parseInt(dateOpMatch[3], 10);
+          unit = dateOpMatch[4].toLowerCase();
+        } else if (/due|after|in/.test(dateOpMatch[0])) {
+          num = parseInt(dateOpMatch[1], 10);
+          unit = dateOpMatch[2].toLowerCase();
+          op = '+';
+        } else if (/ago|before/.test(dateOpMatch[0])) {
+          num = parseInt(dateOpMatch[1], 10);
+          unit = dateOpMatch[2].toLowerCase();
+          op = '-';
+        } else {
+          num = parseInt(dateOpMatch[1], 10);
+          unit = dateOpMatch[2].toLowerCase();
+          op = '+';
+        }
+
+        const multiplier = op === '-' ? -1 : 1;
+        const target = new Date(baseDate.getTime());
+        if (/days?|din/.test(unit)) {
+          target.setDate(target.getDate() + num * multiplier);
+        } else if (/weeks?|hafta/.test(unit)) {
+          target.setDate(target.getDate() + num * 7 * multiplier);
+        } else if (/months?|mahine?/.test(unit)) {
+          target.setMonth(target.getMonth() + num * multiplier);
+        } else if (/years?|saal/.test(unit)) {
+          target.setFullYear(target.getFullYear() + num * multiplier);
+        }
+
+        const f = this.formatDate(target);
+        return {
+          type: 'DATE_CALC',
+          date: f.formatted,
+          iso: f.iso,
+          days: num,
+          result: f.iso,
+          summaryText: `${f.formatted} (${op === '+' ? '+' : '-'}${num} ${unit})`
+        };
+      }
+
+      return null;
     }
   };
 
@@ -871,20 +1646,53 @@
     },
 
     // Tokenizer for mathematical expression
-    tokenize(exprStr) {
+    tokenize(exprStr, ctx = {}) {
       if (!exprStr) return null;
       let s = exprStr.trim();
+
+      // Pre-normalize ans / previous result tokens from session context
+      const firmId = ctx.activeFirmId || ctx.firmId || (ctx.firm && ctx.firm.id) || 'default';
+      const sessionCtx = ctx.sessionContext || SessionContextManager.getContext(firmId);
+      const ansVal = (sessionCtx && sessionCtx.ans != null) ? sessionCtx.ans : 0;
+      s = s.replace(/\bans\b/gi, String(ansVal));
 
       // Pre-normalize currency symbols, Indian commas, and unicode operators
       s = s.replace(/,/g, '');
       s = s.replace(/[₹$€£]|(?:rs\.?|inr)\s*/gi, '');
       s = s.replace(/×/g, '*').replace(/÷/g, '/').replace(/\*\*/g, '^');
 
+      // Pre-normalize Devanagari digits
+      const devDigits = { '०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9' };
+      s = s.replace(/[०-९]/g, d => devDigits[d] || d);
+
       // Replace word numbers (e.g. "dedh lakh" -> "150000")
-      s = s.replace(/\bdedh\s*(?:lakh|lac)\b/gi, '150000')
-           .replace(/\bdhai\s*(?:lakh|lac)\b/gi, '250000')
-           .replace(/\bdedh\s*hazar\b/gi, '1500')
-           .replace(/\bdhai\s*hazar\b/gi, '2500')
+      s = s.replace(/\bdedh\s*(?:lakh|lakhs|lac|lacs)\b/gi, '150000')
+           .replace(/\bdhai\s*(?:lakh|lakhs|lac|lacs)\b/gi, '250000')
+           .replace(/\bsawa\s*(?:lakh|lakhs|lac|lacs)\b/gi, '125000')
+           .replace(/\bpaune\s*(?:lakh|lakhs|lac|lacs)\b/gi, '75000')
+           .replace(/\baadha\s*(?:lakh|lakhs|lac|lacs)\b/gi, '50000')
+           .replace(/\bsawa\s*do\s*(?:lakh|lakhs|lac|lacs)\b/gi, '225000')
+           .replace(/\bpaune\s*do\s*(?:lakh|lakhs|lac|lacs)\b/gi, '175000')
+           .replace(/\bsawa\s*teen\s*(?:lakh|lakhs|lac|lacs)\b/gi, '325000')
+           .replace(/\bpaune\s*teen\s*(?:lakh|lakhs|lac|lacs)\b/gi, '275000')
+           .replace(/\bsawa\s*char\s*(?:lakh|lakhs|lac|lacs)\b/gi, '425000')
+           .replace(/\bpaune\s*char\s*(?:lakh|lakhs|lac|lacs)\b/gi, '375000')
+           .replace(/\bdedh\s*(?:crore|cr|crores)\b/gi, '15000000')
+           .replace(/\bdhai\s*(?:crore|cr|crores)\b/gi, '25000000')
+           .replace(/\bsawa\s*(?:crore|cr|crores)\b/gi, '12500000')
+           .replace(/\bpaune\s*(?:crore|cr|crores)\b/gi, '7500000')
+           .replace(/\baadha\s*(?:crore|cr|crores)\b/gi, '5000000')
+           .replace(/\bdedh\s*(?:hazar|hazaar|haz|thousand)\b/gi, '1500')
+           .replace(/\bdhai\s*(?:hazar|hazaar|haz|thousand)\b/gi, '2500')
+           .replace(/\bsawa\s*(?:hazar|hazaar|haz|thousand)\b/gi, '1250')
+           .replace(/\bpaune\s*(?:hazar|hazaar|haz|thousand)\b/gi, '750')
+           .replace(/\bsawa\s*do\s*(?:hazar|hazaar|haz|thousand)\b/gi, '2250')
+           .replace(/\bpaune\s*do\s*(?:hazar|hazaar|haz|thousand)\b/gi, '1750')
+           .replace(/\bsawa\s*teen\s*(?:hazar|hazaar|haz|thousand)\b/gi, '3250')
+           .replace(/\bpaune\s*teen\s*(?:hazar|hazaar|haz|thousand)\b/gi, '2750')
+           // Compound patterns like "2 lakh 50 thousand" or "5 crore 20 lakh"
+           .replace(/\b(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)\s*(\d+(?:\.\d+)?)\s*(?:hazar|hazaar|haz|thousand|k)\b/gi, (m, v1, v2) => String(parseFloat(v1) * 100000 + parseFloat(v2) * 1000))
+           .replace(/\b(\d+(?:\.\d+)?)\s*(?:cr|crore|crores)\s*(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)\b/gi, (m, v1, v2) => String(parseFloat(v1) * 10000000 + parseFloat(v2) * 100000))
            .replace(/\b(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)\b/gi, (m, v) => String(parseFloat(v) * 100000))
            .replace(/\b(\d+(?:\.\d+)?)\s*(?:cr|crore|crores)\b/gi, (m, v) => String(parseFloat(v) * 10000000))
            .replace(/\b(\d+(?:\.\d+)?)\s*(?:k|hazar|hazaar)\b/gi, (m, v) => String(parseFloat(v) * 1000))
@@ -1133,9 +1941,15 @@
     },
 
     // Evaluates natural language queries & pattern expressions
-    evaluate(rawQuery) {
+    evaluate(rawQuery, ctx = {}) {
       if (!rawQuery || typeof rawQuery !== 'string') return null;
       let q = rawQuery.trim();
+
+      // Pre-substitute ans from session context
+      const firmId = ctx.activeFirmId || ctx.firmId || (ctx.firm && ctx.firm.id) || 'default';
+      const sessionCtx = ctx.sessionContext || SessionContextManager.getContext(firmId);
+      const ansVal = (sessionCtx && sessionCtx.ans != null) ? sessionCtx.ans : 0;
+      q = q.replace(/\bans\b/gi, String(ansVal));
 
       // 1. Strip natural language query triggers
       q = q.replace(/^(?:what is the|what is|whats|how much is|calculate|compute|solve|find the|find|eval|value of|result of|batao|sanga|sang|mala sanga|kitna hoga|kitna hai)\s+/gi, '').trim();
@@ -1404,14 +2218,14 @@
       }
 
       // 7. General Expression Parsing via Safe Shunting-Yard AST
-      const tokens = this.tokenize(q);
+      const tokens = this.tokenize(q, ctx);
       if (tokens && tokens.length > 0) {
         // Need at least one operator or function or expression to be a calculation (avoid bare numbers matching CRM IDs)
         const hasOp = tokens.some(t => t.type === 'OP' || t.type === 'PERCENT' || t.type === 'SQRT' || t.type === 'OF');
         if (hasOp) {
           const res = this.evaluateTokens(tokens);
           if (res !== null) {
-            const rounded = Math.round(res * 100) / 100;
+            const rounded = Math.round((res + Number.EPSILON) * 1000000) / 1000000;
             return {
               calculationType: 'EXPRESSION',
               result: rounded,
@@ -1431,14 +2245,16 @@
   // 5. DETERMINISTIC MATHEMATICAL & FINANCIAL EVALUATORS
   // ─────────────────────────────────────────────────────────────────────────────
   const CalculationEvaluator = {
-    evaluateArithmetic(rawQuery) {
-      return SafeArithmeticEngine.evaluate(rawQuery);
+    evaluateArithmetic(rawQuery, ctx = {}) {
+      return SafeArithmeticEngine.evaluate(rawQuery, ctx);
     },
 
-    evaluateGST(entities, raw) {
-      const amt = entities.amount || 0;
-      const rate = entities.rate != null ? entities.rate : 18;
-      const isInclusive = /\b(inclusive|reverse|included|with tax|shamil)\b/i.test(raw);
+    evaluateGST(entities, raw, ctx = {}) {
+      const firmId = ctx.activeFirmId || ctx.firmId || (ctx.firm && ctx.firm.id) || 'default';
+      const sessionCtx = ctx.sessionContext || SessionContextManager.getContext(firmId);
+      const amt = (entities && entities.amount != null) ? entities.amount : (/\bans\b/i.test(raw) ? (sessionCtx && sessionCtx.ans != null ? sessionCtx.ans : 0) : 0);
+      const rate = (entities && entities.rate != null) ? entities.rate : 18;
+      const isInclusive = /\b(inclusive|reverse|included|with tax|with\s*(?:\d+%)?\s*gst|with\s*(?:\d+%)?\s*tax|shamil|incl|inc)\b/i.test(raw);
 
       let base, tax, total;
       if (isInclusive) {
@@ -1532,9 +2348,27 @@
       return null;
     },
 
-    evaluateDiscount(entities) {
+    evaluateDiscount(entities, raw = '') {
       const amt = entities.amount || 0;
-      const rate = entities.rate != null ? entities.rate : 0;
+      let rate = entities.rate != null ? entities.rate : 0;
+      // Check for flat amount discount: "discount 500 on 5000"
+      const flatMatch = /(?:discount|chut|off|rebate)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s+(?:on|from|in)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)/i.exec(raw);
+      if (flatMatch) {
+        const flatDisc = parseFloat(flatMatch[1]);
+        const origAmt = parseFloat(flatMatch[2]);
+        const finalAmt = origAmt - flatDisc;
+        const effPct = origAmt > 0 ? Math.round(((flatDisc / origAmt) * 100) * 100) / 100 : 0;
+        return {
+          amount: origAmt,
+          rate: effPct,
+          discount: flatDisc,
+          finalAmount: finalAmt,
+          netTotal: finalAmt,
+          result: finalAmt,
+          summaryText: `₹${origAmt.toLocaleString('en-IN')} less ₹${flatDisc.toLocaleString('en-IN')} discount (${effPct}%) = ₹${finalAmt.toLocaleString('en-IN')} (Saved: ₹${flatDisc.toLocaleString('en-IN')})`
+        };
+      }
+
       const discVal = (amt * rate) / 100;
       const finalAmt = amt - discVal;
       return {
@@ -1548,24 +2382,59 @@
       };
     },
 
-    evaluateMargin(entities, raw) {
+    evaluateMarkup(entities, raw = '') {
+      const amt = entities.amount || 0;
+      const rate = entities.rate != null ? entities.rate : 0;
+      const markupVal = (amt * rate) / 100;
+      const sellingPrice = amt + markupVal;
+      return {
+        cost: amt,
+        rate,
+        markup: markupVal,
+        sellingPrice,
+        result: sellingPrice,
+        summaryText: `Cost: ₹${amt.toLocaleString('en-IN')} + ${rate}% Markup = ₹${sellingPrice.toLocaleString('en-IN')} (Markup Profit: ₹${markupVal.toLocaleString('en-IN')})`
+      };
+    },
+
+    evaluateMargin(entities, raw = '') {
+      // Check if query specifically requests markup
+      if (/\bmarkup\b/i.test(raw)) {
+        return this.evaluateMarkup(entities, raw);
+      }
+
       const amounts = entities.amounts.map(a => a.val);
       if (amounts.length >= 2) {
         const cost = Math.min(amounts[0], amounts[1]);
         const selling = Math.max(amounts[0], amounts[1]);
         const profit = selling - cost;
         const marginPct = Math.round(((profit / selling) * 100) * 100) / 100;
-        const markupPct = Math.round(((profit / cost) * 100) * 100) / 100;
+        const markupPct = cost > 0 ? Math.round(((profit / cost) * 100) * 100) / 100 : 0;
         return {
           cost, selling, profit,
           marginPercentage: marginPct,
           marginPercent: marginPct,
           markupPercentage: markupPct,
           markupPercent: markupPct,
+          result: profit,
           summaryText: `Cost: ₹${cost.toLocaleString('en-IN')}, Selling: ₹${selling.toLocaleString('en-IN')} ➔ Profit: ₹${profit.toLocaleString('en-IN')} (${marginPct}% margin, ${markupPct}% markup)`
         };
       }
-      return null;
+
+      const sp = entities.amount || 0;
+      const rate = entities.rate != null ? entities.rate : 0;
+      const profit = (sp * rate) / 100;
+      const cost = sp - profit;
+      const markup = cost > 0 ? Math.round(((profit / cost) * 100) * 100) / 100 : 0;
+      return {
+        selling: sp,
+        cost,
+        profit,
+        marginPercentage: rate,
+        markupPercentage: markup,
+        result: cost,
+        summaryText: `Selling: ₹${sp.toLocaleString('en-IN')} with ${rate}% Margin ➔ Cost: ₹${cost.toLocaleString('en-IN')}, Profit: ₹${profit.toLocaleString('en-IN')} (${markup}% markup)`
+      };
     },
 
     evaluateLoanEmi(entities, raw) {
@@ -1595,22 +2464,29 @@
     },
 
     evaluateUnitConversion(raw) {
-      const regex = /(\d+(?:\.\d+)?)\s*([a-zA-Z]+)\s*(?:to|in|into|madhe|se|mein|ko)\s*([a-zA-Z]+)/i;
+      const regex = /(?:convert\s+)?(\d+(?:\.\d+)?)\s*([a-zA-Z/0-9_°℃℉]+)\s*(?:to|in|into|madhe|se|mein|ko)\s*([a-zA-Z/0-9_°℃℉]+)/i;
       const m = regex.exec(raw);
       if (!m) return null;
       const val = parseFloat(m[1]);
-      const fromKey = m[2].toLowerCase();
-      const toKey = m[3].toLowerCase();
+      let fromKey = m[2].toLowerCase().replace(/°|deg/g, '');
+      let toKey = m[3].toLowerCase().replace(/°|deg/g, '');
 
-      const fromUnit = UnitRates[fromKey];
-      const toUnit = UnitRates[toKey];
+      const fromUnit = UnitRates[fromKey] || UnitRates[m[2].toLowerCase()];
+      const toUnit = UnitRates[toKey] || UnitRates[m[3].toLowerCase()];
 
       if (!fromUnit || !toUnit || fromUnit.base !== toUnit.base) {
         return null;
       }
 
-      const inBase = val * fromUnit.toBase;
-      const converted = inBase / toUnit.toBase;
+      let converted;
+      if (typeof fromUnit.toBase === 'function') {
+        const inBase = fromUnit.toBase(val);
+        converted = typeof toUnit.fromBase === 'function' ? toUnit.fromBase(inBase) : inBase;
+      } else {
+        const inBase = val * fromUnit.toBase;
+        converted = inBase / toUnit.toBase;
+      }
+
       const rounded = Math.round(converted * 1000) / 1000;
 
       return {
@@ -1620,6 +2496,151 @@
         result: rounded,
         summaryText: `${val} ${fromUnit.name} = ${rounded.toLocaleString('en-IN')} ${toUnit.name}`
       };
+    },
+
+    evaluateSimpleInterest(entities, raw = '') {
+      const p = entities.amount || 0;
+      const r = entities.rate != null ? entities.rate : 10;
+      const tenureMatch = /(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|saal|varsh|months?|mahine)/i.exec(raw);
+      let t = 1;
+      if (tenureMatch) {
+        t = parseFloat(tenureMatch[1]);
+        if (/months?|mahine/i.test(tenureMatch[0])) {
+          t = t / 12;
+        }
+      }
+      const si = (p * r * t) / 100;
+      const total = p + si;
+      return {
+        principal: p,
+        rate: r,
+        time: t,
+        interest: Math.round(si * 100) / 100,
+        total: Math.round(total * 100) / 100,
+        result: Math.round(si * 100) / 100,
+        summaryText: `Simple Interest on ₹${p.toLocaleString('en-IN')} @ ${r}% for ${tenureMatch ? tenureMatch[0] : '1 yr'} = ₹${Math.round(si).toLocaleString('en-IN')} (Total: ₹${Math.round(total).toLocaleString('en-IN')})`
+      };
+    },
+
+    evaluateCompoundInterest(entities, raw = '') {
+      const p = entities.amount || 0;
+      const r = entities.rate != null ? entities.rate : 10;
+      const tenureMatch = /(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|saal|varsh)/i.exec(raw);
+      const t = tenureMatch ? parseFloat(tenureMatch[1]) : 1;
+      const n = 1; // compounded annually
+      const amount = p * Math.pow(1 + (r / (100 * n)), n * t);
+      const ci = amount - p;
+      return {
+        principal: p,
+        rate: r,
+        years: t,
+        interest: Math.round(ci * 100) / 100,
+        total: Math.round(amount * 100) / 100,
+        result: Math.round(ci * 100) / 100,
+        summaryText: `Compound Interest on ₹${p.toLocaleString('en-IN')} @ ${r}% for ${t} yr(s) = ₹${Math.round(ci).toLocaleString('en-IN')} (Total: ₹${Math.round(amount).toLocaleString('en-IN')})`
+      };
+    },
+
+    evaluateSIP(entities, raw = '') {
+      const p = entities.amount || 5000;
+      const r = entities.rate != null ? entities.rate : 12;
+      const tenureMatch = /(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|saal|varsh)/i.exec(raw);
+      const years = tenureMatch ? parseFloat(tenureMatch[1]) : 5;
+      const n = years * 12; // total monthly installments
+      const i = (r / 100) / 12; // monthly rate
+      const futureValue = i > 0 ? p * ((Math.pow(1 + i, n) - 1) / i) * (1 + i) : p * n;
+      const invested = p * n;
+      const wealthGain = futureValue - invested;
+      return {
+        monthlyDeposit: p,
+        rate: r,
+        years,
+        invested: Math.round(invested),
+        wealthGain: Math.round(wealthGain),
+        totalValue: Math.round(futureValue),
+        result: Math.round(futureValue),
+        summaryText: `SIP ₹${p.toLocaleString('en-IN')}/mo @ ${r}% for ${years} yrs ➔ Total Maturity: ₹${Math.round(futureValue).toLocaleString('en-IN')} (Invested: ₹${Math.round(invested).toLocaleString('en-IN')}, Gain: ₹${Math.round(wealthGain).toLocaleString('en-IN')})`
+      };
+    },
+
+    evaluateTDS(entities, raw = '') {
+      const amt = entities.amount || 0;
+      const rate = entities.rate != null ? entities.rate : 10;
+      const tdsVal = (amt * rate) / 100;
+      const netPayable = amt - tdsVal;
+      const roundedTds = Math.round(tdsVal * 100) / 100;
+      const roundedNet = Math.round(netPayable * 100) / 100;
+      return {
+        grossAmount: amt,
+        rate,
+        tdsAmount: roundedTds,
+        netPayable: roundedNet,
+        netAmount: roundedNet,
+        result: roundedTds,
+        summaryText: `TDS @ ${rate}% on ₹${amt.toLocaleString('en-IN')} = ₹${Math.round(tdsVal).toLocaleString('en-IN')} (Net Payable: ₹${Math.round(netPayable).toLocaleString('en-IN')})`
+      };
+    },
+
+    evaluateCurrency(raw) {
+      if (!raw || typeof raw !== 'string') return null;
+      let s = raw.trim();
+
+      // Strip natural language triggers
+      s = s.replace(/^(?:convert|calculate|compute|how\s+much\s+is|what\s+is|whats|batao|kitna\s+hoga|kitna\s+hai|sang|sanga)\s+/gi, '').trim();
+
+      // Normalize Indian number words (e.g., 1 lakh INR to USD, dedh lakh in USD)
+      s = WordsEngine.convertColloquialQuantifiers(s);
+
+      // Decouple currency symbols and amounts (e.g., $100 to INR, €50 in USD, ₹5000 in AED)
+      s = s.replace(/([$€£¥₩₽₺฿₱₪₦৳₫])\s*(\d+(?:\.\d+)?)/g, (match, sym, num) => {
+        const symMap = { '$': 'usd', '€': 'eur', '£': 'gbp', '¥': 'jpy', '₩': 'krw', '₽': 'rub', '₺': 'try', '฿': 'thb', '₱': 'php', '₪': 'ils', '₦': 'ngn', '৳': 'bdt', '₫': 'vnd', '₹': 'inr' };
+        return `${num} ${symMap[sym] || sym}`;
+      });
+      s = s.replace(/(\d+(?:\.\d+)?)\s*([$€£¥₩₽₺฿₱₪₦৳₫])/g, (match, num, sym) => {
+        const symMap = { '$': 'usd', '€': 'eur', '£': 'gbp', '¥': 'jpy', '₩': 'krw', '₽': 'rub', '₺': 'try', '฿': 'thb', '₱': 'php', '₪': 'ils', '₦': 'ngn', '৳': 'bdt', '₫': 'vnd', '₹': 'inr' };
+        return `${num} ${symMap[sym] || sym}`;
+      });
+
+      // Match pattern: <amount> <fromUnit> (to|in|into|madhe|se|mein|ko|converted to|=) <toUnit>
+      const regex = /^(\d+(?:,\d+)*(?:\.\d+)?)\s+([a-zA-Z\s$€£¥₩₽₺฿₱₪₦৳₫]+?)\s+(?:to|in|into|madhe|se|mein|ko|converted\s+to|=)\s+([a-zA-Z\s$€£¥₩₽₺฿₱₪₦৳₫]+?)(?:\s*(?:approx|please|karo|kara))?$/i;
+      const m = regex.exec(s);
+      if (!m) return null;
+
+      const rawVal = parseFloat(m[1].replace(/,/g, ''));
+      if (isNaN(rawVal) || rawVal < 0) return null;
+
+      const fromStr = m[2].toLowerCase().trim();
+      const toStr = m[3].toLowerCase().trim();
+
+      const fromUnit = UnitRates[fromStr] || UnitRates[fromStr.replace(/s$/, '')];
+      const toUnit = UnitRates[toStr] || UnitRates[toStr.replace(/s$/, '')];
+
+      if (!fromUnit || !toUnit || fromUnit.base !== 'currency' || toUnit.base !== 'currency') {
+        return null;
+      }
+
+      const inBaseInr = rawVal * fromUnit.toBase;
+      const converted = inBaseInr / toUnit.toBase;
+      const rounded = Math.round(converted * 100) / 100;
+      const exchangeRate = toUnit.toBase > 0 ? (fromUnit.toBase / toUnit.toBase) : 0;
+
+      return {
+        amount: rawVal,
+        fromCurrency: fromUnit.name,
+        toCurrency: toUnit.name,
+        fromCode: fromUnit.code || fromStr.toUpperCase(),
+        toCode: toUnit.code || toStr.toUpperCase(),
+        result: rounded,
+        rate: rounded > 0 ? Math.round(exchangeRate * 10000) / 10000 : 0,
+        isStaticRate: true,
+        asOfDate: 'September 2026',
+        disclaimer: 'Static reference rate (as of September 2026). Live exchange rates may vary.',
+        summaryText: `${rawVal.toLocaleString('en-IN')} ${fromUnit.name} ≈ ${rounded.toLocaleString('en-IN')} ${toUnit.name} (Reference Rate as of Sep 2026)`
+      };
+    },
+
+    evaluateDateMath(raw, refDate = new Date()) {
+      return DateMathEngine.evaluate(raw, refDate);
     }
   };
 
@@ -1677,8 +2698,8 @@
       }
 
       // 5. Commercial GST Math
-      if (/\b(gst|tax|vat)\b/i.test(lower) && /\d+/.test(lower)) {
-        const isInclusive = /\b(inclusive|reverse|included|with tax|shamil)\b/i.test(lower);
+      if (/\b(gst|tax|vat)\b/i.test(lower) && (/\d+/.test(lower) || /\bans\b/i.test(lower))) {
+        const isInclusive = /\b(inclusive|reverse|included|with tax|with\s*(?:\d+%)?\s*gst|with\s*(?:\d+%)?\s*tax|shamil|incl|inc)\b/i.test(lower);
         return {
           category: 'SPECIAL',
           capabilityId: isInclusive ? 'SPEC_MATH_GST_INCL' : 'SPEC_MATH_GST_EXCL',
@@ -1692,20 +2713,46 @@
       }
 
       // 7. Discounts & Margins
-      if (/\b(discount|chut|off|rebate)\b/i.test(lower) && /\d+/.test(lower)) {
+      if (/\b(discount|chut|off|rebate)\b/i.test(lower) && (/\d+/.test(lower) || /\bans\b/i.test(lower))) {
         return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_DISCOUNT', confidence: 0.98 };
       }
-      if (/\b(margin|markup|munafa)\b/i.test(lower) && /\d+/.test(lower)) {
+      if (/\b(margin|markup|munafa)\b/i.test(lower) && (/\d+/.test(lower) || /\bans\b/i.test(lower))) {
         return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_MARGIN', confidence: 0.97 };
       }
 
+      // 7.5 Financial Math: SI, CI, SIP, TDS
+      if (/\b(?:simple\s*interest|si\s+on)\b/i.test(lower) && /\d+/.test(lower)) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_SI', confidence: 0.98 };
+      }
+      if (/\b(?:compound\s*interest|ci\s+on)\b/i.test(lower) && /\d+/.test(lower)) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_CI', confidence: 0.98 };
+      }
+      if (/\b(?:sip|systematic\s*investment)\b/i.test(lower) && /\d+/.test(lower)) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_SIP', confidence: 0.98 };
+      }
+      if (/\b(?:tds|tax\s*deducted\s*at\s*source)\b/i.test(lower) && /\d+/.test(lower)) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_TDS', confidence: 0.98 };
+      }
+
       // 8. Loan EMI & Interest
-      if (/\b(emi|loan|simple\s*interest|compound\s*interest|byaj|vyaj)\b/i.test(lower) && /\d+/.test(lower)) {
+      if (/\b(emi|loan|byaj|vyaj)\b/i.test(lower) && /\d+/.test(lower)) {
         return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_EMI', confidence: 0.97 };
       }
 
+      // 8.5 Deterministic Date Math
+      const dateEval = DateMathEngine.evaluate(raw) || DateMathEngine.evaluate(lower);
+      if (dateEval) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_MATH_DATE', confidence: 0.98, data: dateEval };
+      }
+
+      // 8.6 Currency Conversion
+      const currEval = CalculationEvaluator.evaluateCurrency(raw) || CalculationEvaluator.evaluateCurrency(lower) || CalculationEvaluator.evaluateCurrency(normalized.transliterated);
+      if (currEval) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_CONV_CURRENCY', confidence: 0.99, data: currEval };
+      }
+
       // 9. Broad Deterministic NLP & Safe Expression Arithmetic Engine
-      const mathEval = SafeArithmeticEngine.evaluate(lower) || SafeArithmeticEngine.evaluate(raw);
+      const mathEval = SafeArithmeticEngine.evaluate(lower, ctx) || SafeArithmeticEngine.evaluate(raw, ctx) || SafeArithmeticEngine.evaluate(normalized.transliterated, ctx);
       if (mathEval) {
         return {
           category: 'SPECIAL',
@@ -1716,8 +2763,10 @@
       }
 
       // 10. Unit Conversions
-      if (/\d+\s*[a-z]+\s+\b(?:to|in|into|madhe|se|mein|ko)\b\s+[a-z]+/i.test(lower)) {
-        return { category: 'SPECIAL', capabilityId: 'SPEC_CONV_UNIT', confidence: 0.97 };
+      if (/(?:convert\s+)?\d+(?:\.\d+)?\s*[a-z/0-9_°℃℉]+\s+\b(?:to|in|into|madhe|se|mein|ko)\b\s+[a-z/0-9_°℃℉]+/i.test(lower) ||
+          /(?:convert\s+)\d+(?:\.\d+)?\s*[a-z/0-9_°℃℉]+/i.test(lower) ||
+          /(?:convert\s+)?\d+(?:\.\d+)?\s*[a-z/0-9_°℃℉]+\s+\b(?:to|in|into|madhe|se|mein|ko)\b\s+[a-z/0-9_°℃℉]+/i.test(normalized.transliterated)) {
+        return { category: 'SPECIAL', capabilityId: 'SPEC_CONV_UNIT', confidence: 0.98 };
       }
 
       // ─────────────────────────────────────────────────────────
@@ -1731,13 +2780,13 @@
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'invoices', subTab: 'quotations' } };
       }
       if (/^\/khata\b|\bopen\s*statements\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'paperwork', tab: 'statements', statementMode: 'customer' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' } };
       }
       if (/^\/pay\b|\bopen\s*payroll\b|\btankha\s*(?:kholo|page|tab)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'hr', hrTab: 'payroll' } };
       }
       if (/^\/po\b|\bcreate\s*purchase\s*order\b|\bsupplier\s*order\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'paperwork', tab: 'orders' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'orders' } };
       }
       if (/^\/goal\b|^\/goals\b|^\/habit\b|^\/habits\b|^\/streak\b|^\/streaks\b|^\/target\b|\b(?:goals?|habits?|streaks?|targets?|lakshya|dhyey)\b/i.test(lower) && !/\d+/.test(lower) && !/\b(summary|total|report|status)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'goals' } };
@@ -1799,7 +2848,8 @@
       }
       if (/^(?:mark\s+attendance|mark\s+present|mark\s+absent|record\s+attendance)\b/i.test(lower) ||
           /\b(?:mark|record)\b.*\b(present|absent|half\s*day|hazri|attendance)\b/i.test(lower) ||
-          (/\b(present|absent|half\s*day)\b/i.test(lower) && /\b(attendance|hazri)\b/i.test(lower) && !/\b(today|kal|who|summary|report|list)\b/i.test(lower))) {
+          (/\b(present|absent|half\s*day)\b/i.test(lower) && /\b(attendance|hazri)\b/i.test(lower) && !/\b(today|kal|who|summary|report|list)\b/i.test(lower)) ||
+          (/\b(attendance|hazri)\b/i.test(lower) && !/\b(today|kal|who|summary|report|list|kitne|kiti)\b/i.test(lower))) {
         return { category: 'ACTION', capabilityId: 'ACT_MARK_ATTENDANCE', executionType: 'CONFIRM' };
       }
       if (/\b(advance|advance\s*salary|salary\s*advance)\b/i.test(lower) && /\d+/.test(lower)) {
@@ -1822,10 +2872,12 @@
       }
 
       // 2. Aggregate Sales Queries
-      if (/\b(yesterday('?s)?\s*sales?|yesterday('?s)?\s*revenue|kal\s*ka\s*sale|kalchi\s*bikri)\b/i.test(lower)) {
+      if (/\b(yesterday('?s)?\s*sales?|yesterday('?s)?\s*revenue|kal\s*ka\s*sale|kal\s*ki\s*sale|kalchi\s*bikri|kalchi\s*sale)\b/i.test(lower) ||
+          /\b(yesterday('?s)?\s*sales?|yesterday('?s)?\s*revenue|kal\s*ka\s*sale|kal\s*ki\s*sale|kalchi\s*bikri|kalchi\s*sale)\b/i.test(normalized.transliterated)) {
         return { category: 'QUICK_HELP', capabilityId: 'QH_SALES_YESTERDAY', type: 'AGGREGATE' };
       }
-      if (/\b(today('?s)?\s*sales?|today('?s)?\s*revenue|how\s*much\s*(?:did\s*we\s*sell|have\s*we\s*sold)|aaj\s*ka\s*sale|aaj\s*ka\s*dhanda|aajchi\s*sale|aajchi\s*bikri|today\s*sales?)\b/i.test(lower)) {
+      if (/\b(today('?s)?\s*sales?|today('?s)?\s*revenue|how\s*much\s*(?:did\s*we\s*sell|have\s*we\s*sold)|aaj\s*ka\s*sale|aaj\s*ka\s*dhanda|aajchi\s*sale|aajchi\s*bikri|today\s*sales?|total\s*sales?\s*today|today\s*total\s*sales?)\b/i.test(lower) ||
+          /\b(today('?s)?\s*sales?|today('?s)?\s*revenue|aaj\s*ka\s*sale|aaj\s*ka\s*dhanda|aajchi\s*sale|aajchi\s*bikri|today\s*sales?|total\s*sales?\s*today|today\s*total\s*sales?)\b/i.test(normalized.transliterated)) {
         return { category: 'QUICK_HELP', capabilityId: 'QH_SALES_TODAY', type: 'AGGREGATE' };
       }
       if (/\b((?:this\s*)?week('?s)?\s*sales?|weekly\s*revenue|hfte\s*ka\s*sale|this\s*week\s*sales?)\b/i.test(lower)) {
@@ -1846,11 +2898,57 @@
       if (/\b(total\s*sales?|overall\s*sales?|total\s*business|total\s*revenue|all\s*time\s*sales)\b/i.test(lower)) {
         return { category: 'QUICK_HELP', capabilityId: 'QH_SALES_TOTAL', type: 'AGGREGATE' };
       }
-      if (/\b(top\s*customers?|best\s*clients?|major\s*customers?|top\s*buyers?)\b/i.test(lower)) {
+
+      // Period Comparisons
+      if (/\b(?:sales?|revenue)\s*(?:this\s*month\s*vs\s*last\s*month|vs\s*last\s*month|compared\s*to\s*last\s*month|month\s*over\s*month|mom)\b/i.test(lower) ||
+          /\b(?:this\s*month\s*vs\s*last\s*month|pichle\s*mahine\s*se\s*tulna)\b/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_SALES_COMPARISON', type: 'AGGREGATE' };
+      }
+      if (/\b(?:sales?|revenue)\s*(?:today\s*vs\s*yesterday|vs\s*yesterday|today\s*aur\s*kal)\b/i.test(lower) ||
+          /\b(?:today\s*vs\s*yesterday|aaj\s*aur\s*kal\s*ka\s*sale)\b/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_SALES_TODAY_VS_YESTERDAY', type: 'AGGREGATE' };
+      }
+
+      // Top / Bottom N Rankings
+      if (/\b(?:top|bottom)\s*(\d+)?\s*(?:debtors?|defaulters?|udhari\s*wale|pending\s*dues?)\b/i.test(lower) ||
+          /\b(?:top\s*udhari\s*wale|top\s*debtors?)\b/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_TOP_DEBTORS', type: 'AGGREGATE' };
+      }
+      if (/\b(?:top|best)\s*(\d+)?\s*(?:customers?|clients?|buyers?|giraik|grahak)\b/i.test(lower) ||
+          /\b(top\s*customers?|best\s*clients?|major\s*customers?|top\s*buyers?)\b/i.test(lower)) {
         return { category: 'QUICK_HELP', capabilityId: 'QH_TOP_CUSTOMERS', type: 'AGGREGATE' };
       }
-      if (/\b(top\s*products?|best\s*selling\s*items?|most\s*sold|fast\s*moving\s*items?)\b/i.test(lower)) {
+      if (/\b(?:bottom|least|worst|slow(?:est)?\s*moving)\s*(\d+)?\s*(?:products?|items?|selling|sold)?\b/i.test(lower) ||
+          /\b(least\s*sold|bottom\s*selling|slow\s*moving\s*items?)\b/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_BOTTOM_PRODUCTS', type: 'AGGREGATE' };
+      }
+      if (/\b(?:top|best)\s*(\d+)?\s*(?:products?|items?|selling|most\s*sold)\b/i.test(lower) ||
+          /\b(top\s*products?|best\s*selling\s*items?|most\s*sold|fast\s*moving\s*items?|sabse\s*zyada\s*bikne\s*wale)\b/i.test(lower)) {
         return { category: 'QUICK_HELP', capabilityId: 'QH_TOP_PRODUCTS', type: 'AGGREGATE' };
+      }
+
+      // Threshold / Filter Queries
+      if (/\b(?:invoices?|bills?)\s*(?:over|above|greater\s*than|more\s*than|>|>=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower) ||
+          /\b(?:sales?|invoices?|bills?)\s*(?:above|over|>|>=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_INVOICES_FILTER_ABOVE', type: 'AGGREGATE' };
+      }
+      if (/\b(?:invoices?|bills?)\s*(?:under|below|less\s*than|<|<=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_INVOICES_FILTER_BELOW', type: 'AGGREGATE' };
+      }
+      if (/\b(?:customers?|grahak)\s*(?:owing|dues?|balance|pending)\s*(?:over|above|greater\s*than|more\s*than|>|>=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower) ||
+          /\b(?:pending\s*dues?|udhari)\s*(?:over|above|>|>=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_CUSTOMERS_FILTER_DUE', type: 'AGGREGATE' };
+      }
+      if (/\b(?:expenses?|kharcha)\s*(?:over|above|greater\s*than|more\s*than|>|>=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_EXPENSES_FILTER_ABOVE', type: 'AGGREGATE' };
+      }
+      if (/\b(?:expenses?|kharcha)\s*(?:under|below|less\s*than|<|<=)\s*(?:₹|rs\.?|inr)?\s*\d+/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_EXPENSES_FILTER_BELOW', type: 'AGGREGATE' };
+      }
+
+      // Aging Analysis
+      if (/\b(?:aging\s*(?:summary|report|analysis)|dues?\s*older\s*than\s*\d+\s*days?|overdue\s*aging|aging\s*buckets?)\b/i.test(lower)) {
+        return { category: 'QUICK_HELP', capabilityId: 'QH_AGING_SUMMARY', type: 'AGGREGATE' };
       }
 
       // 3. Aggregate Receivables / Outstandings
@@ -2052,7 +3150,7 @@
             },
             actions: [
               { label: 'View Invoices', route: 'invoices' },
-              { label: 'View Ledger', route: 'paperwork' }
+              { label: 'View Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
             ]
           };
         }
@@ -2177,13 +3275,69 @@
           };
         }
 
+        // Period Comparisons (Month-over-Month & Day-over-Day)
+        case 'QH_SALES_COMPARISON': {
+          let thisMonthSales = 0, lastMonthSales = 0;
+          invoices.forEach(inv => {
+            const d = (inv.invoiceDate || inv.date || inv.createdAt || '');
+            const amt = parseFloat(inv.netTotal || inv.totalAmount || inv.grandTotal) || 0;
+            if (d.startsWith(curMonth)) thisMonthSales += amt;
+            else if (d.startsWith(lastMonthStr)) lastMonthSales += amt;
+          });
+          const delta = thisMonthSales - lastMonthSales;
+          const growthPct = lastMonthSales > 0 ? (delta / lastMonthSales) * 100 : 0;
+          const growthSign = growthPct >= 0 ? '+' : '';
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_SALES_COMPARISON',
+            domain: 'SALES',
+            apiEndpoint: '/api/omnisearch/sales',
+            apiParams: { compare: 'MOM' },
+            title: `📊 Sales Comparison: This Month vs Last Month`,
+            subtitle: `This Month: ₹${thisMonthSales.toLocaleString('en-IN')} • Last Month: ₹${lastMonthSales.toLocaleString('en-IN')} (${growthSign}${growthPct.toFixed(1)}%)`,
+            data: { thisMonth: thisMonthSales, lastMonth: lastMonthSales, delta, growthPct }
+          };
+        }
+
+        case 'QH_SALES_TODAY_VS_YESTERDAY': {
+          let todaySales = 0, yesterdaySales = 0;
+          invoices.forEach(inv => {
+            const d = (inv.invoiceDate || inv.date || inv.createdAt || '').slice(0, 10);
+            const amt = parseFloat(inv.netTotal || inv.totalAmount || inv.grandTotal) || 0;
+            if (d === todayStr) todaySales += amt;
+            else if (d === yesterdayStr) yesterdaySales += amt;
+          });
+          const delta = todaySales - yesterdaySales;
+          const growthPct = yesterdaySales > 0 ? (delta / yesterdaySales) * 100 : 0;
+          const growthSign = growthPct >= 0 ? '+' : '';
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_SALES_TODAY_VS_YESTERDAY',
+            domain: 'SALES',
+            apiEndpoint: '/api/omnisearch/sales',
+            apiParams: { compare: 'DOD' },
+            title: `📊 Sales Comparison: Today vs Yesterday`,
+            subtitle: `Today: ₹${todaySales.toLocaleString('en-IN')} • Yesterday: ₹${yesterdaySales.toLocaleString('en-IN')} (${growthSign}${growthPct.toFixed(1)}%)`,
+            data: { todaySales, yesterdaySales, delta, growthPct }
+          };
+        }
+
+        // Top / Bottom N Rankings
         case 'QH_TOP_CUSTOMERS': {
+          const limit = entities.limit || 5;
           const custMap = {};
           invoices.forEach(inv => {
             const cName = inv.customerName || (inv.customer && inv.customer.name) || 'Other';
-            custMap[cName] = (custMap[cName] || 0) + (parseFloat(inv.netTotal || inv.totalAmount) || 0);
+            custMap[cName] = (custMap[cName] || 0) + (parseFloat(inv.netTotal || inv.totalAmount || inv.grandTotal) || 0);
           });
-          const sorted = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          if (Object.keys(custMap).length === 0 && customers.length > 0) {
+            customers.forEach(c => {
+              custMap[c.name || c.customerName] = parseFloat(c.totalSpend || c.balance || 0);
+            });
+          }
+          const sorted = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, limit);
           const summaryStr = sorted.map(([name, amt]) => `${name}: ₹${amt.toLocaleString('en-IN')}`).join(' • ');
           return {
             status: 'ANSWER',
@@ -2191,14 +3345,37 @@
             capabilityId: 'QH_TOP_CUSTOMERS',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { groupBy: 'CUSTOMER' },
-            title: `🏆 Top Customers by Revenue`,
+            apiParams: { groupBy: 'CUSTOMER', limit },
+            title: `🏆 Top ${limit} Customers by Revenue`,
             subtitle: summaryStr || 'No sales records found',
-            data: { topCustomers: sorted }
+            data: { topCustomers: sorted, limit }
+          };
+        }
+
+        case 'QH_TOP_DEBTORS': {
+          const limit = entities.limit || 5;
+          const sorted = customers
+            .map(c => ({ name: c.name || c.customerName, balance: parseFloat(c.balance || c.openingBalance) || 0, id: c.id, phone: c.phone }))
+            .filter(c => c.balance > 0)
+            .sort((a, b) => b.balance - a.balance)
+            .slice(0, limit);
+          const totalDue = sorted.reduce((acc, c) => acc + c.balance, 0);
+          const summaryStr = sorted.map(c => `${c.name}: ₹${c.balance.toLocaleString('en-IN')}`).join(' • ');
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_TOP_DEBTORS',
+            domain: 'CUSTOMER',
+            apiEndpoint: '/api/omnisearch/customer',
+            apiParams: { filter: 'DEBTORS', limit },
+            title: `⚠️ Top ${limit} Outstanding Debtors (₹${totalDue.toLocaleString('en-IN')})`,
+            subtitle: summaryStr || 'No outstanding debtor records found',
+            data: { debtors: sorted, totalDue, limit }
           };
         }
 
         case 'QH_TOP_PRODUCTS': {
+          const limit = entities.limit || 5;
           const prodMap = {};
           invoices.forEach(inv => {
             (inv.items || []).forEach(it => {
@@ -2206,7 +3383,12 @@
               prodMap[pName] = (prodMap[pName] || 0) + (parseFloat(it.quantity || it.qty) || 1);
             });
           });
-          const sorted = Object.entries(prodMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          if (Object.keys(prodMap).length === 0 && products.length > 0) {
+            products.forEach(p => {
+              prodMap[p.name || p.productName] = parseFloat(p.salesVolume || p.price || 0);
+            });
+          }
+          const sorted = Object.entries(prodMap).sort((a, b) => b[1] - a[1]).slice(0, limit);
           const summaryStr = sorted.map(([name, qty]) => `${name} (${qty} units)`).join(' • ');
           return {
             status: 'ANSWER',
@@ -2214,10 +3396,138 @@
             capabilityId: 'QH_TOP_PRODUCTS',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { groupBy: 'PRODUCT' },
-            title: `📦 Top Selling Products`,
+            apiParams: { groupBy: 'PRODUCT', limit },
+            title: `📦 Top ${limit} Selling Products`,
             subtitle: summaryStr || 'No item sales history found',
-            data: { topProducts: sorted }
+            data: { topProducts: sorted, limit }
+          };
+        }
+
+        case 'QH_BOTTOM_PRODUCTS': {
+          const limit = entities.limit || 5;
+          const prodMap = {};
+          products.forEach(p => {
+            prodMap[p.name || p.productName] = 0;
+          });
+          invoices.forEach(inv => {
+            (inv.items || []).forEach(it => {
+              const pName = it.name || it.productName || 'Item';
+              prodMap[pName] = (prodMap[pName] || 0) + (parseFloat(it.quantity || it.qty) || 1);
+            });
+          });
+          const sorted = Object.entries(prodMap).sort((a, b) => a[1] - b[1]).slice(0, limit);
+          const summaryStr = sorted.map(([name, qty]) => `${name} (${qty} units)`).join(' • ');
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_BOTTOM_PRODUCTS',
+            domain: 'SALES',
+            apiEndpoint: '/api/omnisearch/sales',
+            apiParams: { groupBy: 'PRODUCT', order: 'ASC', limit },
+            title: `📦 Bottom ${limit} Selling Items`,
+            subtitle: summaryStr || 'No product catalog found',
+            data: { bottomProducts: sorted, limit }
+          };
+        }
+
+        // Threshold Filters
+        case 'QH_INVOICES_FILTER_ABOVE':
+        case 'QH_INVOICES_FILTER_BELOW': {
+          const threshold = entities.threshold || 0;
+          const isAbove = capabilityId === 'QH_INVOICES_FILTER_ABOVE';
+          const filtered = invoices.filter(inv => {
+            const amt = parseFloat(inv.grandTotal || inv.netTotal || inv.totalAmount) || 0;
+            return isAbove ? amt >= threshold : amt <= threshold;
+          });
+          const totalAmt = filtered.reduce((acc, inv) => acc + (parseFloat(inv.grandTotal || inv.netTotal || inv.totalAmount) || 0), 0);
+          const opLabel = isAbove ? 'Above' : 'Below';
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId,
+            domain: 'INVOICE',
+            apiEndpoint: '/api/omnisearch/invoice',
+            apiParams: { threshold, op: isAbove ? 'GTE' : 'LTE' },
+            title: `🧾 ${filtered.length} Invoice(s) ${opLabel} ₹${threshold.toLocaleString('en-IN')} (Total: ₹${totalAmt.toLocaleString('en-IN')})`,
+            subtitle: filtered.slice(0, 3).map(inv => `#${inv.invoiceNumber || inv.id || 'INV'}: ₹${(parseFloat(inv.grandTotal || inv.netTotal || 0)).toLocaleString('en-IN')}`).join(' • ') || `No invoices ${opLabel.toLowerCase()} ₹${threshold.toLocaleString('en-IN')}`,
+            data: { invoices: filtered, count: filtered.length, totalAmount: totalAmt, threshold }
+          };
+        }
+
+        case 'QH_CUSTOMERS_FILTER_DUE': {
+          const threshold = entities.threshold || 0;
+          const filtered = customers.filter(c => (parseFloat(c.balance || c.openingBalance) || 0) >= threshold);
+          const totalDue = filtered.reduce((acc, c) => acc + (parseFloat(c.balance || c.openingBalance) || 0), 0);
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_CUSTOMERS_FILTER_DUE',
+            domain: 'CUSTOMER',
+            apiEndpoint: '/api/omnisearch/customer',
+            apiParams: { minDue: threshold },
+            title: `👥 ${filtered.length} Customer(s) Owing Over ₹${threshold.toLocaleString('en-IN')} (Total: ₹${totalDue.toLocaleString('en-IN')})`,
+            subtitle: filtered.slice(0, 3).map(c => `${c.name}: ₹${(parseFloat(c.balance || 0)).toLocaleString('en-IN')}`).join(' • ') || `No customers owing over ₹${threshold.toLocaleString('en-IN')}`,
+            data: { customers: filtered, count: filtered.length, totalDue, threshold }
+          };
+        }
+
+        case 'QH_EXPENSES_FILTER_ABOVE':
+        case 'QH_EXPENSES_FILTER_BELOW': {
+          const threshold = entities.threshold || 0;
+          const isAbove = capabilityId === 'QH_EXPENSES_FILTER_ABOVE';
+          const filtered = expenses.filter(e => {
+            const amt = parseFloat(e.amount) || 0;
+            return isAbove ? amt >= threshold : amt <= threshold;
+          });
+          const totalAmt = filtered.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
+          const opLabel = isAbove ? 'Above' : 'Below';
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId,
+            domain: 'EXPENSE',
+            apiEndpoint: '/api/omnisearch/expense',
+            apiParams: { threshold, op: isAbove ? 'GTE' : 'LTE' },
+            title: `💸 ${filtered.length} Expense(s) ${opLabel} ₹${threshold.toLocaleString('en-IN')} (Total: ₹${totalAmt.toLocaleString('en-IN')})`,
+            subtitle: filtered.slice(0, 3).map(e => `${e.title || e.category || 'Expense'}: ₹${(parseFloat(e.amount || 0)).toLocaleString('en-IN')}`).join(' • ') || `No expenses ${opLabel.toLowerCase()} ₹${threshold.toLocaleString('en-IN')}`,
+            data: { expenses: filtered, count: filtered.length, totalAmount: totalAmt, threshold }
+          };
+        }
+
+        case 'QH_AGING_SUMMARY': {
+          let b0_30 = 0, b31_60 = 0, b61_90 = 0, b90plus = 0;
+          const nowMs = Date.now();
+          invoices.forEach(inv => {
+            const bal = parseFloat(inv.balanceAmount || inv.netTotal || 0);
+            if (bal > 0 && inv.status !== 'PAID') {
+              const invDate = new Date(inv.invoiceDate || inv.date || inv.createdAt || nowMs);
+              const diffDays = Math.floor((nowMs - invDate.getTime()) / (86400000));
+              if (diffDays <= 30) b0_30 += bal;
+              else if (diffDays <= 60) b31_60 += bal;
+              else if (diffDays <= 90) b61_90 += bal;
+              else b90plus += bal;
+            }
+          });
+          if (b0_30 === 0 && b31_60 === 0 && b61_90 === 0 && b90plus === 0 && customers.length > 0) {
+            customers.forEach(c => {
+              const bal = parseFloat(c.balance || c.openingBalance) || 0;
+              if (bal > 0) b0_30 += bal;
+            });
+          }
+          const totalDue = b0_30 + b31_60 + b61_90 + b90plus;
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_AGING_SUMMARY',
+            domain: 'CUSTOMER',
+            apiEndpoint: '/api/omnisearch/aging',
+            apiParams: {},
+            title: `⏳ Accounts Receivable Aging (Total Due: ₹${totalDue.toLocaleString('en-IN')})`,
+            subtitle: `0-30d: ₹${b0_30.toLocaleString('en-IN')} • 31-60d: ₹${b31_60.toLocaleString('en-IN')} • 61-90d: ₹${b61_90.toLocaleString('en-IN')} • 90d+: ₹${b90plus.toLocaleString('en-IN')}`,
+            data: {
+              buckets: { '0-30': b0_30, '31-60': b31_60, '61-90': b61_90, '90+': b90plus },
+              totalDue
+            }
           };
         }
 
@@ -2285,7 +3595,7 @@
               data: { customerName: c.name, balance: bal, phone: c.phone, customerId: c.id, city: c.city, gstin: c.gstin },
               actions: [
                 { label: 'View Profile', route: 'firm', tab: 'customers' },
-                { label: 'Open Ledger', route: 'paperwork', tab: 'statements' }
+                { label: 'Open Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
               ]
             };
           }
@@ -2849,7 +4159,7 @@
             subtitle: `Supplier order logs & procurement requests`,
             data: { totalPoAmount: totalPoVal, poCount: pos.length },
             actions: [
-              { label: 'Purchase Orders', route: 'paperwork', tab: 'orders' }
+              { label: 'Purchase Orders', route: 'firm', tab: 'paperwork', subTab: 'orders' }
             ]
           };
         }
@@ -2888,7 +4198,7 @@
             subtitle: `Complete debit, credit, invoice, and payment history`,
             data: { entityName, entityType: isVendor ? 'VENDOR' : 'CUSTOMER' },
             actions: [
-              { label: 'Open Statements', route: 'paperwork', tab: 'statements' }
+              { label: 'Open Statements', route: 'firm', tab: 'paperwork', subTab: 'statements' }
             ]
           };
         }
@@ -2958,6 +4268,75 @@
         return { status: 'NO_MATCH', category: 'SEARCH', message: '' };
       }
 
+      // 1. Check for compound queries across conjunction boundaries
+      const segments = QuerySegmenter.segment(rawQuery);
+      if (segments.length > 1) {
+        return this.processCompoundQuery(segments, rawQuery, ctx);
+      }
+
+      return this.processSingleQuery(rawQuery, ctx);
+    },
+
+    processCompoundQuery(segments, rawQuery, ctx = {}) {
+      const results = [];
+      let currentCtx = { ...ctx };
+
+      for (const seg of segments) {
+        const res = this.processSingleQuery(seg, currentCtx);
+        results.push(res);
+
+        // Propagate entity or calculation outcomes to subsequent segments
+        const firmId = currentCtx.activeFirmId || currentCtx.firmId || (currentCtx.firm && currentCtx.firm.id) || 'default';
+        if (res && res.data) {
+          if (res.data.customerName || res.data.customer || res.data.customerId) {
+            const custObj = res.data.customer || { name: res.data.customerName, id: res.data.customerId, balance: res.data.balance };
+            currentCtx.sessionContext = {
+              ...currentCtx.sessionContext,
+              lastCustomer: custObj,
+              lastEntity: custObj
+            };
+            SessionContextManager.setContext(firmId, {
+              lastCustomer: custObj,
+              lastEntity: custObj
+            });
+          }
+          if (res.data.result != null || res.data.total != null) {
+            const val = res.data.result != null ? res.data.result : res.data.total;
+            currentCtx.sessionContext = {
+              ...currentCtx.sessionContext,
+              ans: val
+            };
+            SessionContextManager.setContext(firmId, {
+              ans: val
+            });
+          }
+        }
+      }
+
+      const primary = results[0];
+      const secondary = results[1] || results[0];
+
+      return {
+        status: 'COMPOSITE',
+        category: 'COMPOSITE',
+        capabilityId: 'COMP_MULTI_INTENT',
+        title: results.map(r => r.title || r.capabilityId || 'Result').join(' ➔ '),
+        subtitle: `Compound Multi-Intent: ${results.map((r, i) => `(${i + 1}) ${r.category || 'Action'}`).join(' • ')}`,
+        primary,
+        secondary,
+        segments: results,
+        data: {
+          segments: results,
+          segmentCount: results.length
+        }
+      };
+    },
+
+    processSingleQuery(rawQuery, ctx = {}) {
+      if (!rawQuery || !rawQuery.trim()) {
+        return { status: 'NO_MATCH', category: 'SEARCH', message: '' };
+      }
+
       // 1. Deterministic NLP Normalization
       const normalized = DeterministicNormalizer.normalize(rawQuery);
 
@@ -2967,7 +4346,38 @@
       // 3. Entity & Role Extraction
       const entities = RoleResolver.extractEntities(normalized, ctx);
 
-      // 4. Disambiguation Check
+      // 4. Core Query Execution
+      const res = this._executeSingleQuery(normalized, classification, entities, ctx);
+
+      // 5. Unconditional Session Context Persistence (Entity & Calculation memory)
+      const firmId = ctx.activeFirmId || ctx.firmId || (ctx.firm && ctx.firm.id) || 'default';
+      if (entities.matchedCustomer) {
+        SessionContextManager.setContext(firmId, {
+          lastCustomer: entities.matchedCustomer,
+          lastEntity: entities.matchedCustomer
+        });
+      }
+      if (res && res.data) {
+        if (res.data.customerName || res.data.customer || res.data.customerId) {
+          const custObj = res.data.customer || { name: res.data.customerName, id: res.data.customerId, balance: res.data.balance };
+          SessionContextManager.setContext(firmId, {
+            lastCustomer: custObj,
+            lastEntity: custObj
+          });
+        }
+        if (res.data.result != null || res.data.total != null) {
+          const val = res.data.result != null ? res.data.result : res.data.total;
+          SessionContextManager.setContext(firmId, {
+            ans: val,
+            lastCalculation: res.data
+          });
+        }
+      }
+      return res;
+    },
+
+    _executeSingleQuery(normalized, classification, entities, ctx = {}) {
+      // Disambiguation Check
       if (entities.isAmbiguous && entities.matchingCandidates.length > 1) {
         return {
           status: 'AMBIGUOUS',
@@ -3044,7 +4454,7 @@
 
           case 'SPEC_MATH_GST_EXCL':
           case 'SPEC_MATH_GST_INCL': {
-            const gstData = CalculationEvaluator.evaluateGST(entities, normalized.raw);
+            const gstData = CalculationEvaluator.evaluateGST(entities, normalized.raw, ctx);
             return {
               status: 'ANSWER',
               category: 'SPECIAL',
@@ -3086,7 +4496,7 @@
           }
 
           case 'SPEC_MATH_DISCOUNT': {
-            const discData = CalculationEvaluator.evaluateDiscount(entities);
+            const discData = CalculationEvaluator.evaluateDiscount(entities, normalized.raw, ctx);
             if (discData) {
               return {
                 status: 'ANSWER',
@@ -3101,14 +4511,16 @@
           }
 
           case 'SPEC_MATH_MARGIN': {
-            const marginData = CalculationEvaluator.evaluateMargin(entities, normalized.raw);
+            const marginData = CalculationEvaluator.evaluateMargin(entities, normalized.raw, ctx);
             if (marginData) {
+              const costVal = marginData.cost != null ? marginData.cost : marginData.result;
+              const sellVal = marginData.selling != null ? marginData.selling : marginData.sellingPrice;
               return {
                 status: 'ANSWER',
                 category: 'SPECIAL',
                 capabilityId: 'SPEC_MATH_MARGIN',
                 title: `📈 ${marginData.summaryText}`,
-                subtitle: `Cost: ₹${marginData.cost.toLocaleString('en-IN')} • Selling: ₹${marginData.selling.toLocaleString('en-IN')}`,
+                subtitle: `Cost: ₹${(costVal || 0).toLocaleString('en-IN')} • Selling: ₹${(sellVal || 0).toLocaleString('en-IN')}`,
                 data: marginData
               };
             }
@@ -3116,7 +4528,7 @@
           }
 
           case 'SPEC_MATH_EMI': {
-            const emiData = CalculationEvaluator.evaluateLoanEmi(entities, normalized.raw);
+            const emiData = CalculationEvaluator.evaluateLoanEmi(entities, normalized.raw, ctx);
             if (emiData) {
               return {
                 status: 'ANSWER',
@@ -3130,8 +4542,98 @@
             break;
           }
 
+          case 'SPEC_MATH_SI': {
+            const siData = CalculationEvaluator.evaluateSimpleInterest(entities, normalized.raw, ctx);
+            if (siData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_MATH_SI',
+                title: `🏦 ${siData.summaryText}`,
+                subtitle: `Principal: ₹${siData.principal.toLocaleString('en-IN')} • Rate: ${siData.rate}% • Total: ₹${siData.total.toLocaleString('en-IN')}`,
+                data: siData
+              };
+            }
+            break;
+          }
+
+          case 'SPEC_MATH_CI': {
+            const ciData = CalculationEvaluator.evaluateCompoundInterest(entities, normalized.raw, ctx);
+            if (ciData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_MATH_CI',
+                title: `🏦 ${ciData.summaryText}`,
+                subtitle: `Principal: ₹${ciData.principal.toLocaleString('en-IN')} • Rate: ${ciData.rate}% • Total Maturity: ₹${ciData.total.toLocaleString('en-IN')}`,
+                data: ciData
+              };
+            }
+            break;
+          }
+
+          case 'SPEC_MATH_SIP': {
+            const sipData = CalculationEvaluator.evaluateSIP(entities, normalized.raw, ctx);
+            if (sipData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_MATH_SIP',
+                title: `📈 ${sipData.summaryText}`,
+                subtitle: `Monthly: ₹${sipData.monthlyDeposit.toLocaleString('en-IN')} • Rate: ${sipData.rate}% • Tenure: ${sipData.years} yrs`,
+                data: sipData
+              };
+            }
+            break;
+          }
+
+          case 'SPEC_MATH_TDS': {
+            const tdsData = CalculationEvaluator.evaluateTDS(entities, normalized.raw, ctx);
+            if (tdsData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_MATH_TDS',
+                title: `📋 ${tdsData.summaryText}`,
+                subtitle: `Gross: ₹${tdsData.grossAmount.toLocaleString('en-IN')} • TDS (${tdsData.rate}%): ₹${tdsData.tdsAmount.toLocaleString('en-IN')} • Net: ₹${tdsData.netAmount.toLocaleString('en-IN')}`,
+                data: tdsData
+              };
+            }
+            break;
+          }
+
+          case 'SPEC_MATH_DATE': {
+            const dateData = classification.data || CalculationEvaluator.evaluateDateMath(normalized.raw) || CalculationEvaluator.evaluateDateMath(normalized.lower);
+            if (dateData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_MATH_DATE',
+                title: `📅 ${dateData.summaryText}`,
+                subtitle: dateData.type === 'DATE_DIFF' ? `Duration: ${dateData.days} Days` : `Calendar Calculation: ${dateData.date || dateData.iso}`,
+                data: dateData
+              };
+            }
+            break;
+          }
+
+          case 'SPEC_CONV_CURRENCY': {
+            const curData = classification.data || CalculationEvaluator.evaluateCurrency(normalized.raw) || CalculationEvaluator.evaluateCurrency(normalized.transliterated || normalized.lower);
+            if (curData) {
+              return {
+                status: 'ANSWER',
+                category: 'SPECIAL',
+                capabilityId: 'SPEC_CONV_CURRENCY',
+                title: `💱 ${curData.summaryText}`,
+                subtitle: `${curData.disclaimer}`,
+                data: curData
+              };
+            }
+            break;
+          }
+
           case 'SPEC_CONV_UNIT': {
-            const convData = CalculationEvaluator.evaluateUnitConversion(normalized.raw);
+            const convData = CalculationEvaluator.evaluateUnitConversion(normalized.raw) || CalculationEvaluator.evaluateUnitConversion(normalized.transliterated || normalized.lower);
             if (convData) {
               return {
                 status: 'ANSWER',
@@ -3146,7 +4648,7 @@
           }
 
           case 'SPEC_MATH_ARITH': {
-            const arithData = classification.data || CalculationEvaluator.evaluateArithmetic(normalized.raw) || CalculationEvaluator.evaluateArithmetic(normalized.lower);
+            const arithData = classification.data || CalculationEvaluator.evaluateArithmetic(normalized.raw) || CalculationEvaluator.evaluateArithmetic(normalized.transliterated || normalized.lower);
             if (arithData) {
               const resFormatted = arithData.formattedResult || arithData.formatted || String(arithData.result);
               return {
@@ -3391,8 +4893,362 @@
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 9. QUICK ACTION COMMAND PARSER (GESTURE-BASED DASHBOARD ACTIONS)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const QuickActionParser = {
+    CATEGORY_KEYWORDS: {
+      'Office Supplies': [
+        'office', 'supplies', 'stationery', 'stationary', 'paper', 'print', 'printing', 'pen', 'pens',
+        'ink', 'toner', 'courier', 'postal', 'postage', 'envelope', 'notebook', 'files', 'folder'
+      ],
+      'Rent & Facilities': [
+        'rent', 'lease', 'shop rent', 'godown rent', 'office rent', 'maintenance', 'cleaning',
+        'repair', 'repairs', 'plumbing', 'electrical repair', 'whitewash', 'painting', 'pest control'
+      ],
+      'Utilities': [
+        'electricity', 'electric', 'power', 'power bill', 'light bill', 'bijli', 'bijli bill',
+        'water', 'water bill', 'pani bill', 'wifi', 'internet', 'broadband', 'phone', 'mobile',
+        'telephone', 'recharge', 'gas', 'cylinder'
+      ],
+      'Salaries & Wages': [
+        'salary', 'salaries', 'wages', 'payout', 'staff', 'employee', 'staff salary', 'advance salary',
+        'bonus', 'incentive', 'daily wage', 'majuri', 'vetan', 'tankha'
+      ],
+      'Travel & Transport': [
+        'fuel', 'petrol', 'diesel', 'cng', 'travel', 'travelling', 'taxi', 'cab', 'uber', 'ola',
+        'auto', 'rickshaw', 'bus', 'train', 'flight', 'air ticket', 'toll', 'toll tax', 'parking',
+        'transport', 'freight', 'tempo', 'lorry', 'delivery charge'
+      ],
+      'Taxes & Legal': [
+        'gst', 'tax', 'tds', 'income tax', 'advance tax', 'professional tax', 'pt', 'audit',
+        'ca fee', 'advocate', 'legal', 'license', 'licence', 'challan', 'penalty', 'fine', 'stamp'
+      ],
+      'Marketing & Ads': [
+        'marketing', 'ad', 'ads', 'advertising', 'facebook ad', 'google ad', 'instagram ad',
+        'banner', 'pamphlet', 'leaflet', 'hoarding', 'promotion', 'sms marketing', 'whatsapp campaign'
+      ],
+      'Miscellaneous': [
+        'chai', 'tea', 'coffee', 'water jar', 'biscuits', 'snacks', 'refreshment', 'puja', 'mandir',
+        'donation', 'dan', 'tip', 'general', 'misc', 'other'
+      ]
+    },
+
+    inferExpenseCategory(str) {
+      if (!str) return 'Miscellaneous';
+      const lower = str.toLowerCase();
+      for (const [cat, keywords] of Object.entries(this.CATEGORY_KEYWORDS)) {
+        for (const kw of keywords) {
+          const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (regex.test(lower)) {
+            return cat;
+          }
+        }
+      }
+      return 'Miscellaneous';
+    },
+
+    extractPaymentMode(str) {
+      if (!str) return 'UPI';
+      const lower = str.toLowerCase();
+      if (/\b(?:cash|roka|rokad|nagad)\b/i.test(lower)) return 'Cash';
+      if (/\b(?:bank\s*transfer|neft|rtgs|imps|cheque|check|wire|online\s*transfer)\b/i.test(lower)) return 'Bank Transfer';
+      if (/\b(?:card|credit\s*card|debit\s*card|pos|swipe)\b/i.test(lower)) return 'Credit/Debit Card';
+      if (/\b(?:upi|gpay|google\s*pay|phonepe|paytm|bhim|qr)\b/i.test(lower)) return 'UPI';
+      return 'UPI';
+    },
+
+    extractTags(str) {
+      if (!str) return { cleanText: str, tags: [] };
+      const tagMatches = [];
+      const clean = str.replace(/#([\w-]+)/g, (match, tag) => {
+        tagMatches.push(tag);
+        return ' ';
+      }).replace(/\s+/g, ' ').trim();
+      return { cleanText: clean, tags: tagMatches };
+    },
+
+    parse(type, rawText, ctx = {}) {
+      const activeFirmId = ctx.activeFirmId || (ctx.firm && ctx.firm.id) || 1;
+      const customers = ctx.customers || [];
+      const text = (rawText || '').trim();
+
+      // Extract explicit @customer tag
+      let explicitCustomerName = null;
+      let textWithoutTags = text.replace(/@([a-zA-Z0-9_\s]+?)(?=\s+#|\s+\d|\s*$)/g, (match, p1) => {
+        explicitCustomerName = p1.trim();
+        return '';
+      }).trim();
+
+      // Extract hashtags
+      const tags = [];
+      textWithoutTags = textWithoutTags.replace(/#([a-zA-Z0-9_]+)/g, (match, p1) => {
+        tags.push(p1);
+        return '';
+      }).trim();
+
+      // Match Customer Entity
+      let matchedCustomer = null;
+      let ambiguousCustomers = [];
+      let textWithoutCustomer = textWithoutTags;
+
+      const atMatch = textWithoutCustomer.match(/@([a-zA-Z0-9\s._-]+)/);
+      if (atMatch) {
+        const queryName = atMatch[1].trim().toLowerCase();
+        const candidateMatches = customers.filter(c => {
+          const cName = (c.name || c.customerName || '').toLowerCase();
+          return cName.includes(queryName);
+        });
+        if (candidateMatches.length === 1) {
+          matchedCustomer = candidateMatches[0];
+          textWithoutCustomer = textWithoutCustomer.replace(atMatch[0], ' ').replace(/\s+/g, ' ').trim();
+        } else if (candidateMatches.length > 1) {
+          ambiguousCustomers = candidateMatches.slice(0, 4);
+        }
+      } else if (type === 'reminder' || type === 'task') {
+        const candidateMatches = [];
+        for (const c of customers) {
+          const cFullName = (c.name || c.customerName || '').trim();
+          if (!cFullName) continue;
+          const fullRegex = new RegExp(`\\b${cFullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (fullRegex.test(textWithoutCustomer)) {
+            candidateMatches.push(c);
+            continue;
+          }
+          const tokens = cFullName.split(/\s+/).filter(t => t.length >= 3 && !/^(the|and|pvt|ltd|inc|co|corp|m\/s|mr|mrs|ms|dr)\b/i.test(t));
+          if (tokens.length > 0) {
+            const firstTok = tokens[0];
+            const tokRegex = new RegExp(`\\b${firstTok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            if (tokRegex.test(textWithoutCustomer)) {
+              candidateMatches.push(c);
+            }
+          }
+        }
+        const uniqueCandidates = Array.from(new Set(candidateMatches));
+        if (uniqueCandidates.length === 1) {
+          matchedCustomer = uniqueCandidates[0];
+        } else if (uniqueCandidates.length > 1) {
+          ambiguousCustomers = uniqueCandidates.slice(0, 4);
+        }
+      }
+
+      const dt = RoleResolver.extractDateTime(textWithoutCustomer);
+      let textWithoutDate = textWithoutCustomer;
+      if (dt && dt.rawMatch) {
+        const parts = dt.rawMatch.split(/\s+/).filter(Boolean);
+        for (const p of parts) {
+          textWithoutDate = textWithoutDate.replace(new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
+        }
+        textWithoutDate = textWithoutDate.replace(/\s+/g, ' ').trim();
+      }
+
+      // EXPENSE PARSER
+      if (type === 'expense') {
+        if (/(?:^|\s)-(?:\d|₹|rs)/i.test(textWithoutTags)) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Expense amount must be positive (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+        const amounts = RoleResolver.extractAmounts(textWithoutTags);
+        if (amounts && amounts.length > 1) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Multiple amounts detected. Please specify a single amount (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+        const amount = (amounts && amounts.length > 0) ? amounts[0].val : null;
+
+        if (!amount || isNaN(amount) || amount <= 0) {
+          return {
+            valid: false,
+            missing: ['amount'],
+            error: 'Please enter an amount (e.g. "Fuel 500")',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        let cleanTitle = textWithoutDate;
+        if (amounts && amounts.length > 0) {
+          for (const a of amounts) {
+            if (a.raw) {
+              cleanTitle = cleanTitle.replace(new RegExp(`\\b${a.raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
+            }
+          }
+        }
+
+        cleanTitle = cleanTitle
+          .replace(/\b(paid|spent|expense|kharcha|kharch|for|rs\.?|inr|₹|cash|upi|gpay|phonepe|card|bank transfer|neft|cheque|today|yesterday)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanTitle) {
+          cleanTitle = 'General Expense';
+        } else {
+          cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+        }
+
+        const category = this.inferExpenseCategory(textWithoutTags);
+        const paymentMode = this.extractPaymentMode(textWithoutTags);
+        const expenseDate = (dt && dt.isoDate) ? dt.isoDate : (new Date().toISOString().slice(0, 10));
+
+        const payload = {
+          title: cleanTitle,
+          amount: parseFloat(amount.toFixed(2)),
+          category: category,
+          expenseDate: expenseDate,
+          paymentMode: paymentMode,
+          notes: '',
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: cleanTitle,
+          amount: amount,
+          amountFormatted: `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          category: category,
+          paymentMode: paymentMode,
+          dateLabel: (dt && dt.dateLabel) ? dt.dateLabel : 'Today',
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      // REMINDER & TASK PARSER
+      if (type === 'reminder' || type === 'task') {
+        let cleanTitle = dt && dt.cleanTitle ? dt.cleanTitle : textWithoutDate;
+        cleanTitle = cleanTitle
+          .replace(/^(?:remind\s+me\s+to|remind\s+me|reminder\s+for|set\s+reminder|task\s+to|task\s*:|todo\s+to|todo\s*:|please)\s+/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanTitle) {
+          return {
+            valid: false,
+            missing: ['title'],
+            error: type === 'reminder' ? 'Reminder title is required' : 'Task title is required',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+
+        let dueDate = null;
+        let dateLabel = 'No due date';
+        if (dt && dt.dueDate) {
+          dueDate = dt.dueDate;
+          dateLabel = dt.timeFormatted || dt.dateLabel || 'Scheduled';
+        } else if (type === 'reminder') {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const yyyy = tomorrow.getFullYear();
+          const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+          const dd = String(tomorrow.getDate()).padStart(2, '0');
+          dueDate = `${yyyy}-${mm}-${dd}T09:00:00`;
+          dateLabel = 'Tomorrow 9:00 AM';
+        }
+
+        const payload = {
+          title: cleanTitle,
+          note: '',
+          dueDate: dueDate,
+          type: type,
+          status: 'TODO',
+          progress: 0,
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: cleanTitle,
+          dateLabel: dateLabel,
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null,
+          isScheduled: !!dt
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      // NOTE PARSER
+      if (type === 'note') {
+        let cleanText = textWithoutTags;
+        if (!cleanText) {
+          return {
+            valid: false,
+            missing: ['content'],
+            error: 'Note content is required',
+            payload: null,
+            preview: null,
+            ambiguousCustomers
+          };
+        }
+
+        const firstLine = cleanText.split('\n')[0].trim();
+        const title = firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine;
+
+        const payload = {
+          title: title || 'Quick Note',
+          content: cleanText,
+          tags: tags,
+          firmId: activeFirmId,
+          customerId: matchedCustomer ? matchedCustomer.id : null
+        };
+
+        const preview = {
+          title: title,
+          customerName: matchedCustomer ? (matchedCustomer.name || matchedCustomer.customerName) : null
+        };
+
+        return {
+          valid: true,
+          missing: [],
+          payload,
+          preview,
+          ambiguousCustomers
+        };
+      }
+
+      return {
+        valid: false,
+        error: `Unsupported action type: ${type}`,
+        payload: null,
+        preview: null
+      };
+    }
+  };
+
   return {
     DeterministicNormalizer,
+    SessionContextManager,
+    QuerySegmenter,
     UnitRates,
     WordsEngine,
     RoleResolver,
@@ -3401,6 +5257,12 @@
     CapabilityClassifier,
     QuickHelpAdapter,
     OmnibarPipeline,
-    processQuery: (q, ctx) => OmnibarPipeline.processQuery(q, ctx)
+    QuickActionParser,
+    parseQuickAction: (type, text, ctx) => QuickActionParser.parse(type, text, ctx),
+    processQuery: (q, ctx) => OmnibarPipeline.processQuery(q, ctx),
+    setFirmContext: (firmId, ctx) => SessionContextManager.setContext(firmId, ctx),
+    getFirmContext: (firmId) => SessionContextManager.getContext(firmId),
+    clearFirmContext: (firmId) => SessionContextManager.clearContext(firmId)
   };
 }));
+

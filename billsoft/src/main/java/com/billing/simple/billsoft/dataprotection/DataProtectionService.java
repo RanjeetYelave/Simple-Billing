@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -37,6 +36,7 @@ public class DataProtectionService {
     private static final String LATEST_BACKUP_NAME = "autobackup_latest.json";
     private static final String STATUS_FILE_NAME = "data_protection_status.json";
     private static final long WEEKLY_INTERVAL_DAYS = 7;
+    private static final long MAX_DETERMINISTIC_JITTER_SECONDS = 24 * 3600; // up to 24 hours spread across the weekly interval
 
     private final DataProtectionEntitlement entitlement;
     private final BackupStorageProvider storageProvider;
@@ -44,7 +44,6 @@ public class DataProtectionService {
     private final File backupDir;
     private final File statusFile;
     private final ObjectMapper mapper;
-    private final ScheduledExecutorService scheduler;
     private final AtomicBoolean uploadInProgress = new AtomicBoolean(false);
 
     private DataProtectionStatus currentStatus;
@@ -70,15 +69,9 @@ public class DataProtectionService {
         this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         this.currentStatus = loadStatus();
-
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "rupeecrm-dataprotection-daemon");
-            t.setDaemon(true);
-            return t;
-        });
-
-        // Run background check every 60 minutes with 30-second initial startup delay
-        this.scheduler.scheduleWithFixedDelay(this::performScheduledBackupCheck, 30, 3600, TimeUnit.SECONDS);
+        if (this.entitlement != null) {
+            this.entitlement.registerBackupCheckHook(this::performScheduledBackupCheck);
+        }
     }
 
     private static File resolveBackupDirectory() {
@@ -118,8 +111,22 @@ public class DataProtectionService {
     }
 
     /**
+     * Computes a deterministic, stable jitter offset in seconds [0, 86399] based on the unique Machine ID.
+     * Guarantees that thousands of machines with DP enabled do not upload at the exact same hour,
+     * while preserving an effective ~7-day backup cadence and 0 extra network calls.
+     */
+    public static long calculateDeterministicJitterSeconds(String machineId) {
+        if (machineId == null || machineId.isBlank()) {
+            return 0;
+        }
+        int hash = machineId.trim().hashCode();
+        return (hash & 0x7fffffff) % MAX_DETERMINISTIC_JITTER_SECONDS;
+    }
+
+    /**
      * Periodic scheduled check (Hourly).
-     * Local-only decision: Checks if DP is enabled and >= 7 days elapsed. Zero network calls if not due.
+     * Local-only decision: Checks if DP is enabled and >= 7 days + deterministic machine jitter elapsed.
+     * Zero network calls if not due.
      */
     public void performScheduledBackupCheck() {
         try {
@@ -129,9 +136,11 @@ public class DataProtectionService {
 
             Instant lastSuccess = currentStatus.getLastSuccessfulCloudBackupAt();
             if (lastSuccess != null) {
-                long daysSince = Duration.between(lastSuccess, Instant.now()).toDays();
-                if (daysSince < WEEKLY_INTERVAL_DAYS) {
-                    return; // Not due yet (< 7 days). 0 remote calls.
+                long jitterSeconds = calculateDeterministicJitterSeconds(entitlement.getMachineId());
+                long requiredIntervalSeconds = (WEEKLY_INTERVAL_DAYS * 86400L) + jitterSeconds;
+                long elapsedSeconds = Duration.between(lastSuccess, Instant.now()).toSeconds();
+                if (elapsedSeconds < requiredIntervalSeconds) {
+                    return; // Not due yet (7 days + machine-specific jitter). 0 remote calls.
                 }
             }
 
@@ -287,6 +296,6 @@ public class DataProtectionService {
     }
 
     public void shutdown() {
-        scheduler.shutdownNow();
+        // No dedicated scheduler to terminate
     }
 }

@@ -1,6 +1,8 @@
 package com.billing.simple.billsoft.licensing;
 
+import com.billing.simple.billsoft.dataprotection.DataProtectionCredentialStore;
 import com.billing.simple.billsoft.licensing.model.*;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
@@ -34,33 +36,47 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     private final LicenseVerifier licenseVerifier;
     private final LicenseStorage licenseStorage;
     private final SnoozeManager snoozeManager;
+    private final DataProtectionCredentialStore credentialStore;
     private final ObjectMapper mapper;
     private final ScheduledExecutorService scheduler;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.service.NotificationService notificationService;
 
     private LicensePayload activeLicense;
     private ValidationResult currentValidationResult = ValidationResult.CORRUPT_PAYLOAD;
     private Consumer<ValidationResult> statusChangeListener;
+    private volatile Runnable backupCheckHook;
     private boolean dailySyncScheduled = false;
 
     public LicenseCoordinator() {
-        this(new MachineIdentity(), new LicenseVerifier(), new LicenseStorage(), new SnoozeManager());
+        this(new MachineIdentity(), new LicenseVerifier(), new LicenseStorage(), new SnoozeManager(), new DataProtectionCredentialStore());
     }
 
     public LicenseCoordinator(MachineIdentity machineIdentity, LicenseVerifier licenseVerifier, LicenseStorage licenseStorage) {
-        this(machineIdentity, licenseVerifier, licenseStorage, new SnoozeManager());
+        this(machineIdentity, licenseVerifier, licenseStorage, new SnoozeManager(), new DataProtectionCredentialStore());
     }
 
     public LicenseCoordinator(MachineIdentity machineIdentity, LicenseVerifier licenseVerifier, LicenseStorage licenseStorage, SnoozeManager snoozeManager) {
+        this(machineIdentity, licenseVerifier, licenseStorage, snoozeManager, new DataProtectionCredentialStore());
+    }
+
+    public LicenseCoordinator(MachineIdentity machineIdentity, LicenseVerifier licenseVerifier, LicenseStorage licenseStorage, SnoozeManager snoozeManager, DataProtectionCredentialStore credentialStore) {
         this.machineIdentity = machineIdentity;
         this.licenseVerifier = licenseVerifier;
         this.licenseStorage = licenseStorage;
         this.snoozeManager = snoozeManager;
+        this.credentialStore = credentialStore != null ? credentialStore : new DataProtectionCredentialStore();
         this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "rupeecrm-license-sync");
             t.setDaemon(true);
             return t;
         });
+    }
+
+    public void setNotificationService(com.billing.simple.billsoft.service.NotificationService notificationService) {
+        this.notificationService = notificationService;
     }
 
     /**
@@ -83,9 +99,11 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             return false;
         }
 
-        // 2. Rollback check against highest recorded revision
+        // 2. Rollback check against highest recorded revision for THIS license ID
         int highestSeen = licenseStorage.getHighestRevision();
-        if (activeLicense.getRevision() < highestSeen) {
+        String recordedId = licenseStorage.getRecordedLicenseId();
+        boolean sameLicense = (recordedId == null || recordedId.equals(activeLicense.getLicenseId()));
+        if (sameLicense && activeLicense.getRevision() < highestSeen) {
             currentValidationResult = ValidationResult.INVALID_SIGNATURE;
             return false;
         }
@@ -162,14 +180,19 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
 
                 if (remoteVerify.isValid() || remoteVerify == ValidationResult.SUSPENDED || remoteVerify == ValidationResult.REVOKED) {
                     int localHighest = licenseStorage.getHighestRevision();
+                    String localLicId = licenseStorage.getRecordedLicenseId();
+                    if (localLicId == null && activeLicense != null) {
+                        localLicId = activeLicense.getLicenseId();
+                    }
+                    boolean isNewLicenseId = (localLicId == null || !localLicId.equals(remoteLicense.getLicenseId()));
 
-                    // Reject rollback attempts
-                    if (remoteLicense.getRevision() >= localHighest) {
+                    // Reject rollback attempts for the same license ID
+                    if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
                         // Mark today as successfully checked!
-                        licenseStorage.updateSyncState(today, remoteLicense.getRevision());
+                        licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
 
-                        // Update local license if remote is newer
-                        if (activeLicense == null || remoteLicense.getRevision() > activeLicense.getRevision()) {
+                        // Update local license if remote is newer or newly issued license
+                        if (activeLicense == null || isNewLicenseId || remoteLicense.getRevision() > activeLicense.getRevision()) {
                             licenseStorage.saveLocalLicense(remoteLicense);
                             this.activeLicense = remoteLicense;
                         }
@@ -220,6 +243,24 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                                 msg.setRead(true);
                             }
                             validMsgs.add(msg);
+
+                            if (notificationService != null && msg.getMessageId() != null && !msg.getMessageId().isBlank()) {
+                                try {
+                                    notificationService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
+                                            .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
+                                            .eventKey("management:broadcast:" + machineId + ":" + msg.getMessageId().trim())
+                                            .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
+                                            .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
+                                            .title(msg.getTitle() != null ? msg.getTitle() : "Announcement")
+                                            .body(msg.getBody())
+                                            .sender("RupeeCRM Management")
+                                            .primaryActionLabel("Open System")
+                                            .primaryActionType(com.billing.simple.billsoft.entities.NotificationActionType.NAVIGATE)
+                                            .primaryActionTarget("settings")
+                                            .build());
+                                } catch (Exception ignored) {
+                                }
+                            }
                         }
                     }
                     licenseStorage.saveInboxMessages(machineId, validMsgs);
@@ -227,24 +268,47 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             }
         } catch (Exception ignored) {
         }
+
+        // 3. Fetch versioned Data Protection configuration
+        try {
+            String vaultConfigBody = fetchRegistryFile("config/vault-config.json");
+            if (vaultConfigBody != null && !vaultConfigBody.isBlank()) {
+                JsonNode root = mapper.readTree(vaultConfigBody);
+                if (root.has("version") && root.has("protectedPayload") && root.has("signature")) {
+                    int ver = root.get("version").asInt();
+                    String payload = root.get("protectedPayload").asText();
+                    String sig = root.get("signature").asText();
+                    credentialStore.updateCredential(ver, payload, sig, licenseVerifier.getMasterPublicKey());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 4. Opportunistic Data Protection backup check (Single scheduled cycle)
+        if (backupCheckHook != null) {
+            try {
+                backupCheckHook.run();
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     /**
      * Fetches file content from the remote registry using dual strategy:
-     * 1. GitHub REST API contents endpoint with raw header (fast, resilient against ISP routing blocks).
-     * 2. Static raw.githubusercontent.com fallback.
+     * 1. Static raw.githubusercontent.com (CDN-cached, high rate-limit tolerance, fast).
+     * 2. GitHub REST API contents endpoint fallback (resilient against ISP routing blocks).
      */
     private String fetchRegistryFile(String subPath) {
-        // Strategy 1: GitHub API
-        String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
-        String result = fetchHttpText(apiBase + "/" + subPath);
+        // Strategy 1: Raw CDN endpoint (Primary)
+        String rawBase = LicensingConfig.getRegistryBaseUrl();
+        String result = fetchHttpText(rawBase + "/" + subPath);
         if (result != null && !result.isBlank()) {
             return result;
         }
 
-        // Strategy 2: Raw fallback
-        String rawBase = LicensingConfig.getRegistryBaseUrl();
-        return fetchHttpText(rawBase + "/" + subPath);
+        // Strategy 2: GitHub REST API fallback
+        String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
+        return fetchHttpText(apiBase + "/" + subPath);
     }
 
     private String fetchHttpText(String urlStr) {
@@ -284,7 +348,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         }
         try {
             licenseStorage.saveLocalLicense(license);
-            licenseStorage.updateSyncState(LocalDate.now(DEFAULT_ZONE).toString(), license.getRevision());
+            licenseStorage.updateSyncState(LocalDate.now(DEFAULT_ZONE).toString(), license.getRevision(), license.getLicenseId());
             this.activeLicense = license;
             this.currentValidationResult = ValidationResult.VALID;
             scheduleDailySync();
@@ -351,6 +415,15 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     @Override
     public String getMachineId() {
         return machineIdentity.getMachineId();
+    }
+
+    @Override
+    public void registerBackupCheckHook(Runnable hook) {
+        this.backupCheckHook = hook;
+    }
+
+    public DataProtectionCredentialStore getCredentialStore() {
+        return credentialStore;
     }
 
     // --- Expiry Days Calculation Helpers ---

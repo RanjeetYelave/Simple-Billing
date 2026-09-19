@@ -413,7 +413,7 @@ public class OmnisearchQuickHelpService {
         summary.put("poCount", dto.getTotalPurchaseOrderCount());
         response.setSummary(summary);
 
-        response.getDeepLinks().add(new QuickHelpAction("📋 View POs", "📦", "NAVIGATE", Map.of("page", "paperwork", "tab", "orders", "partyId", party.getId())));
+        response.getDeepLinks().add(new QuickHelpAction("📋 View POs", "📦", "NAVIGATE", Map.of("page", "firm", "tab", "paperwork", "subTab", "orders", "partyId", party.getId())));
 
         return response;
     }

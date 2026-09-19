@@ -139,6 +139,11 @@ const API = {
     },
     update: (id, data) => API._json(`/api/customers/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/customers/${id}`, { method: 'DELETE' }),
+    get360: (id) => API._json(`/api/customers/${id}/360`),
+    outstandingInvoices: (id) => API._json(`/api/customers/${id}/outstanding-invoices`),
+    payments: (id) => API._json(`/api/customers/${id}/payments`),
+    settle: (id, data) => API._json(`/api/customers/${id}/settle`, { method: 'POST', body: data }),
+    deletePayment: (paymentId) => API._request(`/api/customers/payments/${paymentId}`, { method: 'DELETE' }),
   },
 
   // ── Parties (Vendors / Suppliers) ──
@@ -357,6 +362,7 @@ const API = {
     },
     analyticsByCustomer: (id) => API._json(`/api/invoices/analytics/customer/${id}`),
     analyticsSearch: (name) => API._json(`/api/invoices/analytics/search?name=${encodeURIComponent(name)}`),
+    deletePayment: (paymentId) => API._request(`/api/invoices/payments/${paymentId}`, { method: 'DELETE' }),
   },
 
   // ── Sales Returns (Credit Notes) ──
@@ -534,7 +540,12 @@ const API = {
     reconcile: (id, targetValue = 0, notes = '') => API._json(`/api/goals/${id}/reconcile`, { method: 'POST', body: { targetValue, notes } }),
     getSavings: (id) => API._json(`/api/goals/${id}/savings`),
     getTimeline: (id) => API._json(`/api/goals/${id}/timeline`),
-    increment: (id, delta = 1) => API._json(API._qs(`/api/goals/${id}/increment`, { delta }), { method: 'POST' }),
+    increment: (id, payloadOrDelta = 1) => {
+      if (typeof payloadOrDelta === 'object' && payloadOrDelta !== null) {
+        return API._json(`/api/goals/${id}/increment`, { method: 'POST', body: payloadOrDelta });
+      }
+      return API._json(API._qs(`/api/goals/${id}/increment`, { delta: payloadOrDelta }), { method: 'POST' });
+    },
     reset: (id) => API._json(`/api/goals/${id}/reset`, { method: 'POST' }),
   },
 
@@ -890,5 +901,20 @@ const API = {
     backupNow: () => API._json('/api/dataprotection/backup-now', { method: 'POST' }),
     inspectCloud: (machineId, licenseId) => API._json('/api/dataprotection/inspect-cloud', { method: 'POST', body: { machineId, licenseId } }),
     restoreCloud: (params) => API._json(API._qs('/api/dataprotection/restore-cloud', params), { method: 'POST' })
+  },
+
+  // ─── Canonical Notifications (Bell + Inbox + Preferences) ───
+  notifications: {
+    summary: (firmId) => API._json(API._qs('/api/notifications/summary', { firmId })),
+    list: (params = {}) => API._json(API._qs('/api/notifications', params)),
+    get: (id) => API._json(`/api/notifications/${id}`),
+    markRead: (id) => API._json(`/api/notifications/${id}/read`, { method: 'POST' }),
+    markAllRead: (firmId) => API._json(API._qs('/api/notifications/read-all', { firmId }), { method: 'POST' }),
+    snooze: (id, duration = '1d') => API._json(`/api/notifications/${id}/snooze`, { method: 'POST', body: { duration } }),
+    dismiss: (id) => API._json(`/api/notifications/${id}/dismiss`, { method: 'POST' }),
+    executeAction: (id, actionChoice = 'PRIMARY', payload = null) => API._json(`/api/notifications/${id}/action`, { method: 'POST', body: { actionChoice, payload } }),
+    action: (id, actionChoice = 'PRIMARY', payload = null) => API._json(`/api/notifications/${id}/action`, { method: 'POST', body: { actionChoice, payload } }),
+    getPreferences: (firmId) => API._json(API._qs('/api/notifications/preferences', { firmId })),
+    savePreferences: (prefs, firmId) => API._json(API._qs('/api/notifications/preferences', { firmId }), { method: 'PUT', body: prefs })
   }
 };

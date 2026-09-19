@@ -32,4 +32,9 @@ public interface DataProtectionEntitlement {
      * Machine identifier for off-device backup naming.
      */
     String getMachineId();
+
+    /**
+     * Registers a periodic/opportunistic backup check hook with the primary sync cycle.
+     */
+    default void registerBackupCheckHook(Runnable hook) {}
 }

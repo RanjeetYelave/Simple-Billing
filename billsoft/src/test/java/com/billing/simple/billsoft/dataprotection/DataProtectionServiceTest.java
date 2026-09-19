@@ -151,11 +151,14 @@ public class DataProtectionServiceTest {
     }
 
     @Test
-    public void testVaultTransportRegistryDeobfuscation() {
-        String pat = VaultTransportRegistry.resolveDefaultDescriptor();
-        assertNotNull(pat);
-        assertEquals("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", pat);
-        assertTrue(pat.startsWith("github_pat_"));
+    public void testDataProtectionCredentialResolution() {
+        DataProtectionCredentialStore store = new DataProtectionCredentialStore(new File(tempStatusDir, "non_existent_vault_config.json"));
+        String token = store.getCurrentToken();
+        assertNotNull(token);
+        assertFalse(token.isBlank());
+        assertEquals(93, token.length());
+        assertTrue(token.startsWith("github_"));
+        assertEquals(0, store.getCurrentVersion());
     }
 
     @Test
@@ -186,5 +189,25 @@ public class DataProtectionServiceTest {
 
         // Zero remote calls
         verify(mockStorageProvider, never()).uploadBackup(any(), any(), any());
+    }
+
+    @Test
+    public void testDeterministicJitterStabilityAndBounds() {
+        String mid1 = "RKGM-GH4X-6YX1-VVN8";
+        String mid2 = "ABCD-1234-EFGH-5678";
+
+        long jitter1a = DataProtectionService.calculateDeterministicJitterSeconds(mid1);
+        long jitter1b = DataProtectionService.calculateDeterministicJitterSeconds(mid1);
+        long jitter2 = DataProtectionService.calculateDeterministicJitterSeconds(mid2);
+
+        // Strict stability across invocations
+        assertEquals(jitter1a, jitter1b);
+        assertTrue(jitter1a >= 0 && jitter1a < 24 * 3600);
+        assertTrue(jitter2 >= 0 && jitter2 < 24 * 3600);
+        assertNotEquals(jitter1a, jitter2);
+
+        // Null and blank safety
+        assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds(null));
+        assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds("   "));
     }
 }

@@ -24,9 +24,11 @@ import com.billing.simple.billsoft.service.CustomerService;
 public class CustomerController {
 
 	private final CustomerService service;
+	private final com.billing.simple.billsoft.service.CustomerSettlementService settlementService;
 
-	public CustomerController(CustomerService service) {
+	public CustomerController(CustomerService service, com.billing.simple.billsoft.service.CustomerSettlementService settlementService) {
 		this.service = service;
+		this.settlementService = settlementService;
 	}
 
 	@PostMapping
@@ -73,5 +75,35 @@ public class CustomerController {
 		if (!removed)
 			return ResponseEntity.notFound().build();
 		return ResponseEntity.noContent().build();
+	}
+
+	// ── Customer 360 & Operational Financial Endpoints ──
+
+	@GetMapping("/{id}/360")
+	public ResponseEntity<com.billing.simple.billsoft.dtos.Customer360Response> getCustomer360(@PathVariable Long id) {
+		return ResponseEntity.ok(settlementService.getCustomer360(id));
+	}
+
+	@GetMapping("/{id}/outstanding-invoices")
+	public ResponseEntity<List<com.billing.simple.billsoft.dtos.CustomerOutstandingInvoiceDto>> getOutstandingInvoices(@PathVariable Long id) {
+		return ResponseEntity.ok(settlementService.getOutstandingInvoices(id));
+	}
+
+	@GetMapping("/{id}/payments")
+	public ResponseEntity<List<com.billing.simple.billsoft.entities.InvoicePayment>> getPayments(@PathVariable Long id) {
+		return ResponseEntity.ok(settlementService.getCustomerPayments(id));
+	}
+
+	@PostMapping("/{id}/settle")
+	public ResponseEntity<com.billing.simple.billsoft.dtos.CustomerSettlementResponse> settleInvoices(
+			@PathVariable Long id,
+			@RequestBody com.billing.simple.billsoft.dtos.CustomerSettlementRequest request) {
+		return ResponseEntity.ok(settlementService.settleInvoices(id, request));
+	}
+
+	@DeleteMapping("/payments/{paymentId}")
+	public ResponseEntity<Void> deletePayment(@PathVariable Long paymentId) {
+		boolean ok = settlementService.deletePayment(paymentId);
+		return ok ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
 	}
 }

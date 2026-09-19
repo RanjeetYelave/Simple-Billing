@@ -1,0 +1,17 @@
+{
+  "name": "rupeecrm-ui-regression",
+  "version": "1.0.0",
+  "description": "Comprehensive Real-Browser UI Regression Suite for RupeeCRM",
+  "scripts": {
+    "test": "playwright test",
+    "test:p0": "playwright test tests/p0-app-shell.spec.ts",
+    "test:p1": "playwright test tests/p1-*.spec.ts",
+    "test:p2": "playwright test tests/p2-*.spec.ts",
+    "test:p3": "playwright test tests/p3-*.spec.ts",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "typescript": "^5.7.3"
+  }
+}

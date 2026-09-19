@@ -30,16 +30,26 @@ public class GitHubStorageProvider implements BackupStorageProvider {
     private static final String API_BASE = "https://api.github.com";
 
     private final String repo;
-    private final String authToken;
+    private final DataProtectionCredentialStore credentialStore;
+    private final String explicitAuthToken;
     private final ObjectMapper mapper;
 
     public GitHubStorageProvider() {
-        this(resolveRepo(), resolveToken());
+        this(new DataProtectionCredentialStore());
+    }
+
+    public GitHubStorageProvider(DataProtectionCredentialStore credentialStore) {
+        this(resolveRepo(), null, credentialStore);
     }
 
     public GitHubStorageProvider(String repo, String authToken) {
-        this.repo = repo;
-        this.authToken = authToken;
+        this(repo, authToken, null);
+    }
+
+    public GitHubStorageProvider(String repo, String explicitAuthToken, DataProtectionCredentialStore credentialStore) {
+        this.repo = (repo != null && !repo.isBlank()) ? repo.trim() : resolveRepo();
+        this.explicitAuthToken = explicitAuthToken;
+        this.credentialStore = (credentialStore != null) ? credentialStore : new DataProtectionCredentialStore();
         this.mapper = new ObjectMapper();
     }
 
@@ -51,12 +61,11 @@ public class GitHubStorageProvider implements BackupStorageProvider {
         return DEFAULT_REPO;
     }
 
-    private static String resolveToken() {
-        String prop = System.getProperty("rupeecrm.dataprotection.token");
-        if (prop != null && !prop.isBlank()) return prop.trim();
-        String env = System.getenv("RUPEECRM_DATA_PROTECTION_TOKEN");
-        if (env != null && !env.isBlank()) return env.trim();
-        return VaultTransportRegistry.resolveDefaultDescriptor();
+    private String getAuthToken() {
+        if (explicitAuthToken != null && !explicitAuthToken.isBlank()) {
+            return explicitAuthToken.trim();
+        }
+        return credentialStore.getCurrentToken();
     }
 
     @Override
@@ -79,12 +88,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             return result;
         }
 
-        // Bounded retry (max 1) on 409 Conflict
-        if (result.getStatusCode() == 409) {
+        // Bounded retry (max 1) on 409 Conflict OR 422 Unprocessable Entity
+        if (result.getStatusCode() == 409 || result.getStatusCode() == 422) {
             String freshSha = fetchFileSha(path);
-            if (freshSha != null) {
-                return executePutContent(path, encryptedData, freshSha, machineId);
-            }
+            return executePutContent(path, encryptedData, freshSha, machineId);
         }
 
         return result;
@@ -105,8 +112,9 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/vnd.github.v3.raw");
-            if (authToken != null && !authToken.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            String token = getAuthToken();
+            if (token != null && !token.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
             }
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
@@ -137,8 +145,9 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/json");
-            if (authToken != null && !authToken.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            String token = getAuthToken();
+            if (token != null && !token.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
             }
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
@@ -170,8 +179,9 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Content-Type", "application/json");
-            if (authToken != null && !authToken.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            String token = getAuthToken();
+            if (token != null && !token.isBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
             }
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);

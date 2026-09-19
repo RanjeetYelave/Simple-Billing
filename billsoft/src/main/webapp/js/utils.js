@@ -2,6 +2,14 @@
  * Billsoft Utility Functions
  */
 const BillsoftUtils = {
+  getInitials(name) {
+    if (!name || typeof name !== 'string') return '??';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '??';
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  },
+
   formatCurrency(amount) {
     if (amount == null || isNaN(amount)) return '₹0.00';
     return new Intl.NumberFormat('en-IN', {
@@ -1584,13 +1592,27 @@ const BillsoftSearchEngine = {
   // Helper to dispatch precision subtab navigation
   dispatchNavigate(detail) {
     if (!detail || !detail.page) return;
-    window.__billsoftPendingNav = { ...detail, ts: Date.now() };
-    window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail }));
+    let target = { ...detail };
+    const legacyTab = target.tab;
+    if (target.page === 'paperwork' || target.page === 'purchases' || target.page === 'orders' || target.page === 'statements' || target.page === 'letters') {
+      target.page = 'firm';
+      target.tab = 'paperwork';
+      target.subTab = target.subTab || (
+        legacyTab === 'orders' || legacyTab === 'letters' || legacyTab === 'statements'
+          ? legacyTab
+          : (detail.page === 'statements' ? 'statements' : (detail.page === 'letters' ? 'letters' : 'orders'))
+      );
+    } else if (target.page === 'firm' && (target.tab === 'orders' || target.tab === 'letters' || target.tab === 'statements')) {
+      target.subTab = target.subTab || target.tab;
+      target.tab = 'paperwork';
+    }
+    window.__billsoftPendingNav = { ...target, ts: Date.now() };
+    window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: target }));
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail }));
+      window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: target }));
     }, 40);
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail }));
+      window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: target }));
     }, 150);
   },
 
@@ -1731,7 +1753,7 @@ const BillsoftSearchEngine = {
       icon: '📊',
       badge: 'Ledger',
       slashCommand: '/khata',
-      target: { page: 'paperwork', tab: 'statements', statementMode: 'customer' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' },
       keywords: [
         // Slash commands & Shorthands
         '/khata', '/due', '/debt', '/custstat', '/ledger', '/vasooli', '/udhari', '/receivables', 'khata', 'due', 'debt', 'custstat', 'ledger', 'vasooli', 'udhari',
@@ -1745,7 +1767,7 @@ const BillsoftSearchEngine = {
         'statment', 'stetement', 'statemnt', 'hisabkitab', 'hisabb', 'udharii', 'udhari list', 'clint statement', 'ledgr', 'legder', 'baaki list', 'khata book', 'hisaab kitaab', 'hisab ktab', 'hisab kithab', 'khta'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements', statementMode: 'customer' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' });
       }
     },
     {
@@ -1756,7 +1778,7 @@ const BillsoftSearchEngine = {
       icon: '🏭',
       badge: 'Vendor Khata',
       slashCommand: '/venstat',
-      target: { page: 'paperwork', tab: 'statements', statementMode: 'party' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party' },
       keywords: [
         // Slash commands & Shorthands
         '/venstat', '/suppstat', '/payables', '/supplierkhata', '/partykhata', '/creditors', 'venstat', 'suppstat', 'payables', 'creditors',
@@ -1770,7 +1792,7 @@ const BillsoftSearchEngine = {
         'suplier statment', 'vendr ledger', 'puravatha hisab', 'party statment', 'deena baki', 'vender hisab'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements', statementMode: 'party' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party' });
       }
     },
     {
@@ -1781,7 +1803,7 @@ const BillsoftSearchEngine = {
       icon: '📑',
       badge: 'Audit Journal',
       slashCommand: '/daybook',
-      target: { page: 'paperwork', tab: 'statements', statementMode: 'firm' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'firm' },
       keywords: [
         // Slash commands & Shorthands
         '/daybook', '/journal', '/rojnamcha', '/audit', '/cashbook', '/masterledger', 'daybook', 'journal', 'rojnamcha', 'cashbook',
@@ -1795,18 +1817,18 @@ const BillsoftSearchEngine = {
         'jornal', 'rozkird', 'rojnamchaa', 'daybook', 'cashbok', 'rojkirdh'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements', statementMode: 'firm' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'firm' });
       }
     },
     {
-      id: 'create_po',
-      title: 'Create Purchase Order (PO)',
+      id: 'create_purchase_order',
+      title: 'Create Purchase Order (Supplier PO)',
       subtitle: 'Order stock & raw materials from suppliers',
       category: 'actions',
       icon: '📋',
       badge: 'Procurement',
       slashCommand: '/po',
-      target: { page: 'paperwork', tab: 'orders' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'orders' },
       keywords: [
         // Slash commands & Shorthands
         '/po', '/buy', '/order', '/procure', '/purchaseorder', '/newpo', 'po', 'buy', 'purchase',
@@ -1820,7 +1842,7 @@ const BillsoftSearchEngine = {
         'purchas', 'purhase', 'prchase', 'purchse', 'purcahse', 'puchase order', 'purches', 'po ordr', 'po order', 'kharedi ordr', 'purchese'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'orders' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
       }
     },
     {
@@ -1831,7 +1853,7 @@ const BillsoftSearchEngine = {
       icon: '📦',
       badge: 'Procurement',
       slashCommand: '/allpo',
-      target: { page: 'paperwork', tab: 'orders' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'orders' },
       keywords: [
         '/allpo', '/orders', '/purchases', '/polist', 'allpo', 'orders', 'purchases',
         'all purchase orders', 'po list', 'view po', 'inward orders', 'supplier orders list', 'purchases log',
@@ -1839,7 +1861,7 @@ const BillsoftSearchEngine = {
         'sarva kharedi', 'kharedi yadi', 'puravatha orders yadi', 'सर्व खरेदी ऑर्डर', 'खरेदी नोंद'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'orders' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
       }
     },
     {
@@ -1850,7 +1872,7 @@ const BillsoftSearchEngine = {
       icon: '✉️',
       badge: 'Letters',
       slashCommand: '/letter',
-      target: { page: 'paperwork', tab: 'letters' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'letters' },
       keywords: [
         // Slash commands & Shorthands
         '/letter', '/notice', '/chithi', '/memo', '/letterhead', '/certificate', 'letter', 'notice', 'memo',
@@ -1864,7 +1886,7 @@ const BillsoftSearchEngine = {
         'letr', 'leter', 'lettar', 'letrhead', 'letrpad', 'offical letter', 'lettr', 'patrr', 'leterhead'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'letters' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'letters' });
       }
     },
     {
@@ -1875,7 +1897,7 @@ const BillsoftSearchEngine = {
       icon: '📁',
       badge: 'Letters',
       slashCommand: '/letters',
-      target: { page: 'paperwork', tab: 'letters' },
+      target: { page: 'firm', tab: 'paperwork', subTab: 'letters' },
       keywords: [
         '/letters', '/notices', '/allletters', '/patravyavahar', 'letters', 'notices',
         'all letters', 'view letters', 'saved letters', 'letter history', 'notice register',
@@ -1883,7 +1905,7 @@ const BillsoftSearchEngine = {
         'sarva patre', 'patravyavahar nond', 'सर्व पत्रे', 'कागदपत्रे यादी'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'letters' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'letters' });
       }
     },
     {
@@ -4679,7 +4701,7 @@ const BillsoftSearchEngine = {
     if (/^(?:api\s+status|server\s+health|server\s+status|backend\s+status)$/i.test(q)) {
       return {
         type: 'sys_health',
-        title: '🟢 API & Backend Server: ONLINE (Port 8080)',
+        title: '🟢 API & Backend Server: ONLINE (Port 28080)',
         subtitle: 'Spring Boot 3.4.0 • Active REST Controllers Ready',
         icon: '🟢',
         action: () => {
@@ -5837,7 +5859,7 @@ const BillsoftSearchEngine = {
           icon: '💰',
           badge: 'Outstanding Dues',
           action: () => {
-            BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'statements', statementMode: 'customer' });
+            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' });
           }
         });
       } else if (bizMetrics.type === 'low_stock') {
@@ -5848,7 +5870,7 @@ const BillsoftSearchEngine = {
           icon: '⚠️',
           badge: 'Inventory Alert',
           action: () => {
-            BillsoftSearchEngine.dispatchNavigate({ page: 'paperwork', tab: 'orders' });
+            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
           }
         });
       }
@@ -6065,12 +6087,224 @@ const BillsoftSearchEngine = {
   }
 };
 
+window.dispatchNotificationAction = async function (notif, choice = 'PRIMARY') {
+  if (!notif) return;
+  const choiceUpper = (choice || 'PRIMARY').toUpperCase();
+  const notifId = notif.id || notif.messageId;
+  const actionType = choiceUpper === 'PRIMARY' ? notif.primaryActionType : notif.secondaryActionType;
+  const target = choiceUpper === 'PRIMARY' ? notif.primaryActionTarget : notif.secondaryActionTarget;
+
+  try {
+    if (typeof API !== 'undefined' && API.notifications && typeof API.notifications.executeAction === 'function' && notifId) {
+      await API.notifications.executeAction(notifId, choiceUpper);
+    } else if (typeof API !== 'undefined' && API.notifications && typeof API.notifications.action === 'function' && notifId) {
+      await API.notifications.action(notifId, choiceUpper);
+    }
+  } catch (err) {
+    console.warn('Notification action recording error:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('billsoft:notifications-refresh'));
+  }
+
+  if (!actionType || actionType === 'NAVIGATE') {
+    if (target) {
+      if (target.startsWith('http://') || target.startsWith('https://')) {
+        if (typeof window !== 'undefined') window.open(target, '_blank');
+      } else if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+        try {
+          const parsed = JSON.parse(target);
+          BillsoftSearchEngine.dispatchNavigate(parsed);
+        } catch {
+          BillsoftSearchEngine.dispatchNavigate({ page: target });
+        }
+      } else if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: target } }));
+      }
+    }
+  } else if (actionType === 'MODAL') {
+    if (target) {
+      try {
+        const parsed = JSON.parse(target);
+        if (parsed.modal === 'payment' && parsed.invoiceId) {
+          if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+            BillsoftSearchEngine.dispatchNavigate({ page: 'invoices', invoiceId: parsed.invoiceId, subTab: 'invoices', openPaymentModal: true });
+          }
+        } else if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('billsoft:open-modal', { detail: parsed }));
+        }
+      } catch {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('billsoft:open-modal', { detail: { modal: target } }));
+        }
+      }
+    }
+  } else if (actionType === 'API_ACTION') {
+    if (typeof window !== 'undefined' && window.showToast) window.showToast('Action completed successfully', 'success');
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+  }
+};
+
+// ─── RUPEECRM EULA SERVICE ───
+const EULA_CURRENT_VERSION = '1.0.0';
+const EULA_STORAGE_KEYS = {
+  STATUS: 'rupeecrm_eula_status', // 'ACCEPTED' | 'REVOKED' | 'PENDING'
+  VERSION: 'rupeecrm_eula_version',
+  ACCEPTED_AT: 'rupeecrm_eula_accepted_at',
+  REVOKED_AT: 'rupeecrm_eula_revoked_at'
+};
+
+const EulaService = {
+  getCurrentVersion() {
+    return EULA_CURRENT_VERSION;
+  },
+
+  getStatus() {
+    try {
+      if (typeof localStorage === 'undefined') {
+        return { status: 'PENDING', version: null, acceptedAt: null, revokedAt: null };
+      }
+      const status = localStorage.getItem(EULA_STORAGE_KEYS.STATUS) || 'PENDING';
+      const version = localStorage.getItem(EULA_STORAGE_KEYS.VERSION) || null;
+      const acceptedAt = localStorage.getItem(EULA_STORAGE_KEYS.ACCEPTED_AT) || null;
+      const revokedAt = localStorage.getItem(EULA_STORAGE_KEYS.REVOKED_AT) || null;
+      return { status, version, acceptedAt, revokedAt };
+    } catch (e) {
+      return { status: 'PENDING', version: null, acceptedAt: null, revokedAt: null };
+    }
+  },
+
+  isAccepted() {
+    const s = this.getStatus();
+    return s.status === 'ACCEPTED' && s.version === EULA_CURRENT_VERSION;
+  },
+
+  accept(version = EULA_CURRENT_VERSION) {
+    const now = new Date().toISOString();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(EULA_STORAGE_KEYS.STATUS, 'ACCEPTED');
+        localStorage.setItem(EULA_STORAGE_KEYS.VERSION, version);
+        localStorage.setItem(EULA_STORAGE_KEYS.ACCEPTED_AT, now);
+        localStorage.removeItem(EULA_STORAGE_KEYS.REVOKED_AT);
+      }
+    } catch (e) { }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billsoft:eula-status-changed', {
+        detail: { status: 'ACCEPTED', version, acceptedAt: now }
+      }));
+    }
+    return { status: 'ACCEPTED', version, acceptedAt: now };
+  },
+
+  revoke() {
+    const now = new Date().toISOString();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(EULA_STORAGE_KEYS.STATUS, 'REVOKED');
+        localStorage.setItem(EULA_STORAGE_KEYS.REVOKED_AT, now);
+      }
+    } catch (e) { }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billsoft:eula-status-changed', {
+        detail: { status: 'REVOKED', revokedAt: now }
+      }));
+    }
+    return { status: 'REVOKED', revokedAt: now };
+  },
+
+  getContent() {
+    return {
+      title: 'RupeeCRM End User License Agreement (EULA)',
+      version: EULA_CURRENT_VERSION,
+      effectiveDate: 'January 1, 2026',
+      developer: 'Ranjeet Yelave (Independent Software Developer)',
+      sections: [
+        {
+          id: 'grant',
+          title: '1. Software License Grant',
+          text: 'Subject to the terms of this Agreement and valid commercial licensing, the Licensor (Ranjeet Yelave) grants you a non-exclusive, non-transferable, revocable license to install, access, and use RupeeCRM solely for your internal business management, billing, inventory, and accounting operations on designated devices.'
+        },
+        {
+          id: 'authorized_use',
+          title: '2. Authorized Use & Restrictions',
+          text: 'You agree not to: (a) reverse engineer, decompile, disassemble, or derive source code from the software; (b) modify, adapt, translate, or create derivative works; (c) rent, lease, sublicense, resell, or distribute RupeeCRM to any third party; (d) circumvent, disable, or tamper with software licensing mechanisms, machine ID binding, cryptographic signature validations, or security measures.'
+        },
+        {
+          id: 'licensing',
+          title: '3. Commercial Licensing, Activation & Machine Binding',
+          text: 'RupeeCRM uses offline-first Ed25519 cryptographic license verification bound to your device machine identity. A valid commercial license key is required for continued operation beyond trial terms. Commercial license tiers (Silver, Gold, Platinum) grant specific operational entitlements as specified at purchase.'
+        },
+        {
+          id: 'data_ownership',
+          title: '4. Business Data Ownership & Local/Offline Privacy',
+          text: 'You retain 100% full and exclusive ownership of all customer records, invoices, quotations, inventory items, payroll, financial ledger entries, and business data entered into RupeeCRM. RupeeCRM operates on an offline-first architecture; your operational database is stored locally on your device. The Licensor does not inspect, sell, access, or monetize your private business data.'
+        },
+        {
+          id: 'backup_responsibility',
+          title: '5. Backup & Data-Loss Responsibility',
+          text: 'You are solely responsible for maintaining regular, verified backups of your local RupeeCRM database and exported records. The Licensor is not responsible for data loss caused by hardware failure, operating system corruption, unauthorized local access, or failure to maintain backups.'
+        },
+        {
+          id: 'cloud_services',
+          title: '6. Optional Cloud & Data Protection Add-on Services',
+          text: 'If you subscribe to the optional Off-Device Cloud Data Protection vault, encrypted backups are synced to secure remote storage according to your subscription tier. Cloud sync features operate only while an active subscription is maintained. The Data Protection service is an add-on disaster recovery assistance feature operating on a best-effort basis; it does not guarantee that 100% full data recovery is possible under all catastrophe, corruption, encryption key loss, or disaster scenarios. You remain solely responsible for maintaining your own independent regular local backups and manual export files.'
+        },
+        {
+          id: 'third_party',
+          title: '7. Third-Party Services & Integrations',
+          text: 'RupeeCRM may facilitate integration with third-party payment gateways (UPI), messaging channels (WhatsApp), or hardware peripherals (thermal receipt printers). Use of third-party services is governed by their respective terms and policies.'
+        },
+        {
+          id: 'updates',
+          title: '8. Software Updates & Improvements',
+          text: 'The Licensor may from time to time release updates, patches, bug fixes, or enhancements. Updates may be downloaded and applied via the built-in software update manager in accordance with your license agreement.'
+        },
+        {
+          id: 'acceptance_revocation',
+          title: '9. Voluntary Acceptance & Revocation',
+          text: 'Acceptance of this EULA is mandatory to access and operate RupeeCRM. You may voluntarily revoke your acceptance at any time via Settings → Legal & EULA. Upon revocation, application access is immediately locked until re-accepted. Revocation does NOT delete your local business data or cancel existing commercial license keys.'
+        },
+        {
+          id: 'warranty_disclaimer',
+          title: '10. Disclaimer of Warranties',
+          text: 'TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, RUPEECRM IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TAX COMPLIANCE ACCURACY, OR NON-INFRINGEMENT.'
+        },
+        {
+          id: 'limitation_liability',
+          title: '11. Limitation of Liability',
+          text: 'IN NO EVENT SHALL THE LICENSOR (RANJEET YELAVE) BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, REVENUE, DATA, OR BUSINESS INTERRUPTION ARISING FROM THE USE OR INABILITY TO USE RUPEECRM.'
+        },
+        {
+          id: 'support',
+          title: '12. Technical Support',
+          text: 'Technical assistance is provided by the developer via official helpdesk channels (yelaveranjeet@gmail.com) subject to the support scope associated with your commercial license tier.'
+        },
+        {
+          id: 'governing_law',
+          title: '13. Governing Law & Jurisdiction',
+          text: 'This Agreement shall be governed by and construed in accordance with the applicable laws of India. Any legal proceedings arising out of this Agreement shall be subject to the exclusive jurisdiction of the competent courts in the Developer\'s jurisdiction.'
+        },
+        {
+          id: 'contact',
+          title: '14. Contact & Notices',
+          text: 'For legal notices, licensing inquiries, or agreement questions, contact:\nRanjeet Yelave (Independent Software Developer)\nEmail: yelaveranjeet@gmail.com\nWebsite: RupeeCRM Official'
+        }
+      ]
+    };
+  }
+};
+
 if (typeof window !== 'undefined') {
   window.BillsoftUtils = typeof BillsoftUtils !== 'undefined' ? BillsoftUtils : (window.BillsoftUtils || {});
   window.BillsoftSearchEngine = BillsoftSearchEngine;
   window.BillsoftUtils.searchEngine = BillsoftSearchEngine;
+  window.EulaService = EulaService;
+  window.BillsoftUtils.eulaService = EulaService;
+  window.getInitials = BillsoftUtils.getInitials;
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { BillsoftUtils, BillsoftSearchEngine };
+  module.exports = { BillsoftUtils, BillsoftSearchEngine, EulaService, getInitials: BillsoftUtils.getInitials };
 }
 

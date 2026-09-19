@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.dto.NotificationRequest;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.*;
 import com.billing.simple.billsoft.repositories.PurchaseOrderRepository;
@@ -25,6 +26,9 @@ public class PlannerNotificationScheduler {
 
     @Autowired
     private InboxMessageService inboxMessageService;
+
+    @Autowired
+    private NotificationService notificationService;
 
     @Autowired
     private EmployeeRepository employeeRepository;
@@ -54,18 +58,40 @@ public class PlannerNotificationScheduler {
             String subject = typeStr + " Due: " + item.getTitle();
             String body = "The following " + typeStr.toLowerCase() + " is now due:\n\n" +
                     "Title: " + item.getTitle() + "\n" +
-                    "Due Date: " + item.getDueDate().toString().replace("T", " ") + "\n\n" +
+                    "Due Date: " + (item.getDueDate() != null ? item.getDueDate().toString().replace("T", " ") : "Now") + "\n\n" +
                     "Notes:\n" + (item.getNote() != null ? item.getNote() : "No notes provided.");
 
+            Long firmId = item.getFirmId() != null ? item.getFirmId() : 1L;
+
+            // 1. Emit to canonical NotificationService
+            if (notificationService != null) {
+                String eventKey = "planner:" + ("task".equalsIgnoreCase(item.getType()) ? "task" : "reminder") + ":" + item.getId();
+                notificationService.createOrUpdate(NotificationRequest.builder()
+                        .firmId(firmId)
+                        .eventKey(eventKey)
+                        .category(NotificationCategory.PLANNER)
+                        .priority(NotificationPriority.HIGH)
+                        .title(subject)
+                        .body(body)
+                        .sender("System (Planner)")
+                        .primaryActionLabel("Open in Planner")
+                        .primaryActionType(NotificationActionType.NAVIGATE)
+                        .primaryActionTarget("{\"page\":\"planner\",\"plannerTab\":\"board\"}")
+                        .secondaryActionLabel("Mark Done")
+                        .secondaryActionType(NotificationActionType.API_ACTION)
+                        .secondaryActionTarget("MARK_TASK_DONE")
+                        .build());
+            }
+
+            // 2. Backward compatibility for legacy inbox table
             InboxMessage msg = new InboxMessage();
-            msg.setFirmId(item.getFirmId() != null ? item.getFirmId() : 1L);
+            msg.setFirmId(firmId);
             msg.setSubject(subject);
             msg.setBody(body);
             msg.setSender("System (Planner)");
             msg.setRead(false);
             msg.setReminderId(item.getId());
             msg.setCreatedAt(LocalDateTime.now());
-
             inboxMessageRepository.save(msg);
 
             item.setInboxNotified(true);
@@ -95,7 +121,6 @@ public class PlannerNotificationScheduler {
         List<Invoice> invoices = invoiceRepository.findOverdueInvoices(today);
         for (Invoice inv : invoices) {
             String custName = inv.getCustomer() != null ? inv.getCustomer().getName() : "Customer";
-            String prefix = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber();
             String subject = "⏰ Overdue Invoice: #" + inv.getInvoiceNumber() + " (" + custName + ")";
             String invDateStr = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate().toString() : "N/A";
             String body = "An issued invoice has passed its payment due date and remains unpaid!\n\n" +
@@ -106,9 +131,30 @@ public class PlannerNotificationScheduler {
                     "• Total Outstanding: ₹" + (inv.getTotalAmount() != null ? inv.getTotalAmount() : "0.00") + "\n\n" +
                     "Action Required: Please follow up with the customer or issue a payment reminder notice.";
 
+            Long firmId = inv.getFirmId() != null ? inv.getFirmId() : 1L;
+
+            if (notificationService != null) {
+                notificationService.createOrUpdate(NotificationRequest.builder()
+                        .firmId(firmId)
+                        .eventKey("billing:invoice:overdue:" + inv.getId())
+                        .category(NotificationCategory.BILLING)
+                        .priority(NotificationPriority.HIGH)
+                        .title(subject)
+                        .body(body)
+                        .sender("Billing System")
+                        .primaryActionLabel("View Invoice")
+                        .primaryActionType(NotificationActionType.NAVIGATE)
+                        .primaryActionTarget("{\"page\":\"invoices\",\"invoiceId\":" + inv.getId() + "}")
+                        .secondaryActionLabel("Record Payment")
+                        .secondaryActionType(NotificationActionType.MODAL)
+                        .secondaryActionTarget("{\"modal\":\"payment\",\"invoiceId\":" + inv.getId() + "}")
+                        .build());
+            }
+
+            // Legacy backward-compat check
             inboxMessageService.sendNotificationIfAbsent(
-                    inv.getFirmId() != null ? inv.getFirmId() : 1L,
-                    prefix,
+                    firmId,
+                    "⏰ Overdue Invoice: #" + inv.getInvoiceNumber(),
                     subject,
                     body,
                     "Billing System"
@@ -123,7 +169,6 @@ public class PlannerNotificationScheduler {
         List<PurchaseOrder> pos = purchaseOrderRepository.findPendingDeliveries(today);
         for (PurchaseOrder po : pos) {
             String partyName = po.getPartyName() != null ? po.getPartyName() : (po.getParty() != null ? po.getParty().getName() : "Vendor");
-            String prefix = "📦 Expected Delivery: PO #" + po.getPoNumber();
             String subject = "📦 Expected Delivery: PO #" + po.getPoNumber() + " (" + partyName + ")";
             String body = "A vendor purchase order is due for delivery today or overdue!\n\n" +
                     "• PO Number: " + po.getPoNumber() + "\n" +
@@ -133,9 +178,27 @@ public class PlannerNotificationScheduler {
                     "• Total Amount: ₹" + (po.getTotalAmount() != null ? po.getTotalAmount() : "0.00") + "\n\n" +
                     "Action Required: Check with vendor and mark PO as 'RECEIVED' upon goods arrival to update stock counts.";
 
+            Long firmId = po.getFirmId() != null ? po.getFirmId() : 1L;
+
+            if (notificationService != null) {
+                notificationService.createOrUpdate(NotificationRequest.builder()
+                        .firmId(firmId)
+                        .eventKey("purchase:po:delivery:" + po.getId())
+                        .category(NotificationCategory.PURCHASE)
+                        .priority(NotificationPriority.NORMAL)
+                        .title(subject)
+                        .body(body)
+                        .sender("Purchase System")
+                        .primaryActionLabel("View Purchase Order")
+                        .primaryActionType(NotificationActionType.NAVIGATE)
+                        .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\",\"poId\":" + po.getId() + "}")
+                        .build());
+            }
+
+            // Legacy backward-compat check
             inboxMessageService.sendNotificationIfAbsent(
-                    po.getFirmId() != null ? po.getFirmId() : 1L,
-                    prefix,
+                    firmId,
+                    "📦 Expected Delivery: PO #" + po.getPoNumber(),
                     subject,
                     body,
                     "Purchase System"
@@ -160,6 +223,14 @@ public class PlannerNotificationScheduler {
                     checkAndSendPayrollReminderForFirm(firm.getId(), monthNameFormatted, monthYear, now);
                 }
             }
+        }
+    }
+
+    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds to reconcile expired snoozes
+    @Transactional
+    public void reconcileSnoozedNotifications() {
+        if (notificationService != null) {
+            notificationService.reconcileExpiredSnoozes();
         }
     }
 
@@ -190,14 +261,6 @@ public class PlannerNotificationScheduler {
         }
 
         String subjectPrefix = "💰 Monthly Payroll Reminder — " + monthNameFormatted + " " + now.getYear();
-        List<InboxMessage> existingMsgs = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId);
-        boolean alreadySent = existingMsgs.stream()
-                .anyMatch(m -> m.getSubject() != null && m.getSubject().startsWith(subjectPrefix));
-
-        if (alreadySent) {
-            return;
-        }
-
         String subject = subjectPrefix + " (" + pendingEmployees.size() + " Pending)";
 
         StringBuilder bodyBuilder = new StringBuilder();
@@ -213,14 +276,36 @@ public class PlannerNotificationScheduler {
 
         bodyBuilder.append("\nPlease visit the HR module -> Monthly Payroll section to calculate final salary disbursals, review leaves, and generate payslip PDFs.");
 
-        InboxMessage msg = new InboxMessage();
-        msg.setFirmId(firmId);
-        msg.setSubject(subject);
-        msg.setBody(bodyBuilder.toString());
-        msg.setSender("HR System");
-        msg.setRead(false);
-        msg.setCreatedAt(now);
+        // 1. Emit to canonical NotificationService with deterministic monthly key
+        if (notificationService != null) {
+            notificationService.createOrUpdate(NotificationRequest.builder()
+                    .firmId(firmId)
+                    .eventKey("hr:payroll:" + firmId + ":" + monthYear)
+                    .category(NotificationCategory.HR)
+                    .priority(NotificationPriority.HIGH)
+                    .title(subject)
+                    .body(bodyBuilder.toString())
+                    .sender("HR System")
+                    .primaryActionLabel("Process Payroll")
+                    .primaryActionType(NotificationActionType.NAVIGATE)
+                    .primaryActionTarget("{\"page\":\"hr\",\"tab\":\"payroll\"}")
+                    .build());
+        }
 
-        inboxMessageRepository.save(msg);
+        // 2. Legacy check
+        List<InboxMessage> existingMsgs = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId);
+        boolean alreadySent = existingMsgs.stream()
+                .anyMatch(m -> m.getSubject() != null && m.getSubject().startsWith(subjectPrefix));
+
+        if (!alreadySent) {
+            InboxMessage msg = new InboxMessage();
+            msg.setFirmId(firmId);
+            msg.setSubject(subject);
+            msg.setBody(bodyBuilder.toString());
+            msg.setSender("HR System");
+            msg.setRead(false);
+            msg.setCreatedAt(now);
+            inboxMessageRepository.save(msg);
+        }
     }
 }

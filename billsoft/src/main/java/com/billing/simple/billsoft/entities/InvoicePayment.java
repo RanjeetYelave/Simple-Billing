@@ -22,7 +22,6 @@ public class InvoicePayment {
     @Column(nullable = false)
     private Long firmId;
 
-    @Column(nullable = false)
     private Long invoiceId;
 
     private Long customerId;

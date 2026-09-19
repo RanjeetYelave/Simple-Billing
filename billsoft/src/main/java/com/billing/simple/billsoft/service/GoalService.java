@@ -254,6 +254,11 @@ public class GoalService {
 
     @Transactional
     public Goal incrementProgress(Long id, BigDecimal delta) {
+        return incrementProgress(id, delta, null, null);
+    }
+
+    @Transactional
+    public Goal incrementProgress(Long id, BigDecimal delta, LocalDate logDate, String notes) {
         Long firmId = TenantContext.getCurrentFirmId();
         Goal existing = (firmId != null)
                 ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
@@ -268,10 +273,15 @@ public class GoalService {
         if (existing.getTargetValue() != null && existing.getTargetValue().compareTo(BigDecimal.ZERO) > 0) {
             if (next.compareTo(existing.getTargetValue()) >= 0) {
                 existing.setStatus("ACHIEVED");
+            } else if ("ACHIEVED".equalsIgnoreCase(existing.getStatus())) {
+                existing.setStatus("ACTIVE");
             }
         }
 
         Goal saved = goalRepository.save(existing);
+
+        String defaultNote = "Milestone Step " + (delta.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + delta;
+        String finalNote = (notes != null && !notes.isBlank()) ? notes.trim() : defaultNote;
 
         GoalLog log = GoalLog.builder()
                 .firmId(saved.getFirmId())
@@ -279,8 +289,8 @@ public class GoalService {
                 .actionType(delta.compareTo(BigDecimal.ZERO) >= 0 ? "INCREMENT" : "DECREMENT")
                 .deltaValue(delta)
                 .resultingValue(next)
-                .logDate(LocalDate.now())
-                .notes("Milestone Step " + (delta.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + delta)
+                .logDate(logDate != null ? logDate : LocalDate.now())
+                .notes(finalNote)
                 .build();
         goalLogRepository.save(log);
 

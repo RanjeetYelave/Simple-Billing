@@ -25,11 +25,15 @@ public class DataProtectionController {
 
     private final DataProtectionService dataProtectionService;
     private final BackupService backupService;
+    private final com.billing.simple.billsoft.service.AutoBackupService autoBackupService;
     private final ObjectMapper mapper;
 
-    public DataProtectionController(DataProtectionService dataProtectionService, BackupService backupService) {
+    public DataProtectionController(DataProtectionService dataProtectionService,
+                                  BackupService backupService,
+                                  com.billing.simple.billsoft.service.AutoBackupService autoBackupService) {
         this.dataProtectionService = dataProtectionService;
         this.backupService = backupService;
+        this.autoBackupService = autoBackupService;
         this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     }
 
@@ -40,6 +44,12 @@ public class DataProtectionController {
 
     @PostMapping("/backup-now")
     public ResponseEntity<Map<String, Object>> runBackupNow() {
+        if (autoBackupService != null) {
+            try {
+                autoBackupService.runAutoBackup();
+            } catch (Exception ignored) {
+            }
+        }
         Map<String, Object> result = dataProtectionService.triggerBackupNow(true);
         return ResponseEntity.ok(result);
     }

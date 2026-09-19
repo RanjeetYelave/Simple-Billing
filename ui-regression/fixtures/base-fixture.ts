@@ -12,7 +12,8 @@ export class RupeeCRMAppHelper {
   async gotoApp(ensureEulaAccepted = true) {
     if (ensureEulaAccepted) {
       await this.page.addInitScript(() => {
-        if (!localStorage.getItem('rupeecrm_eula_status')) {
+        if (!sessionStorage.getItem('__eula_initialized')) {
+          sessionStorage.setItem('__eula_initialized', 'true');
           localStorage.setItem('rupeecrm_eula_status', 'ACCEPTED');
           localStorage.setItem('rupeecrm_eula_version', '1.0.0');
           localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());

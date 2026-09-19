@@ -166,7 +166,14 @@ try {
     if (-not $ExpectedSha256 -and $ChecksumUrl) {
         Write-Step "Fetching SHA-256 release checksum..."
         try {
-            Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ShaPath -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+            if ($ChecksumUrl -like "file://*") {
+                $uri = [System.Uri]$ChecksumUrl
+                Copy-Item -Path $uri.LocalPath -Destination $ShaPath -Force
+            } elseif (Test-Path $ChecksumUrl -PathType Leaf) {
+                Copy-Item -Path $ChecksumUrl -Destination $ShaPath -Force
+            } else {
+                Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ShaPath -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+            }
             if (Test-Path $ShaPath) {
                 $shaContent = (Get-Content -Path $ShaPath -Raw).Trim()
                 if ($shaContent -match "([a-fA-F0-9]{64})") {
@@ -181,7 +188,14 @@ try {
     # 3b. Download Main ZIP Archive
     Write-Step "Downloading RupeeCRM package ($AssetName)..."
     try {
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -TimeoutSec 300 -UseBasicParsing -ErrorAction Stop
+        if ($DownloadUrl -like "file://*") {
+            $uri = [System.Uri]$DownloadUrl
+            Copy-Item -Path $uri.LocalPath -Destination $ZipPath -Force
+        } elseif (Test-Path $DownloadUrl -PathType Leaf) {
+            Copy-Item -Path $DownloadUrl -Destination $ZipPath -Force
+        } else {
+            Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -TimeoutSec 300 -UseBasicParsing -ErrorAction Stop
+        }
     } catch {
         Write-FatalError "Failed to download $DownloadUrl : $($_.Exception.Message)"
     }

@@ -12,6 +12,7 @@
   <script src="js/api.js?v=20260914_licensing_v2"></script>
   <script src="js/utils.js?v=20260910_markpaid_v4"></script>
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
+  <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
@@ -1635,6 +1636,13 @@
       const [showGuide, setShowGuide] = useState(false);
       const [guideCategory, setGuideCategory] = useState('all');
       const [guideSearchText, setGuideSearchText] = useState('');
+      const [expandedCapabilities, setExpandedCapabilities] = useState({});
+      const [shuffledPrompts, setShuffledPrompts] = useState(() => {
+        if (typeof OmnisearchCapabilitiesRegistry !== 'undefined' && OmnisearchCapabilitiesRegistry.getRandomizedQueries) {
+          return OmnisearchCapabilitiesRegistry.getRandomizedQueries(12);
+        }
+        return ['show today\'s sales', '1 guntha in sq ft', 'calculate 18% GST on 50000', 'top 5 customers by revenue', 'sales this month vs last month'];
+      });
       const [highlightedIndex, setHighlightedIndex] = useState(0);
 
       // In-Place Quick Payment Modal State
@@ -2757,7 +2765,12 @@
                 type: 'button',
                 className: `btn btn-xs ${showGuide ? 'btn-primary' : 'btn-outline'}`,
                 style: { fontSize: '0.74rem', padding: '4px 10px', fontWeight: 700, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 },
-                onClick: () => setShowGuide(!showGuide),
+                onClick: () => {
+                  if (!showGuide && typeof OmnisearchCapabilitiesRegistry !== 'undefined' && OmnisearchCapabilitiesRegistry.getRandomizedQueries) {
+                    setShuffledPrompts(OmnisearchCapabilitiesRegistry.getRandomizedQueries(12));
+                  }
+                  setShowGuide(!showGuide);
+                },
                 title: showGuide ? 'Back to Search' : 'Full Command Guide (?)'
               }, showGuide ? '← Search' : 'ℹ️ Guide'),
               React.createElement('button', {
@@ -2798,215 +2811,29 @@
                   firm: firmProfile || firm || {}
                 })
               ) : showGuide ? (
-                // Full Comprehensive List-Based OmniSearch Guide with Dynamic Real DB Data
+                // Full Comprehensive Interactive Omnisearch Guide (Registry-Driven & Actionable)
                 (() => {
-                  const sampleCustomer1 = (customers && customers[0] && (customers[0].name || customers[0].customerName)) || 'Rahul Patil';
-                  const sampleCustomer2 = (customers && customers[1] && (customers[1].name || customers[1].customerName)) || 'Gauri Shinde';
-                  const sampleVendor1 = (parties && parties[0] && (parties[0].name || parties[0].partyName)) || 'ABC Steel Traders';
-                  const sampleVendor2 = (parties && parties[1] && (parties[1].name || parties[1].partyName)) || 'Kalyan Suppliers';
-                  const sampleProduct1 = (products && products[0] && (products[0].name || products[0].productName)) || 'UltraTech Cement 50kg';
-                  const sampleProduct2 = (products && products[1] && (products[1].name || products[1].productName)) || 'Asian Paints 20L';
-                  const sampleStaff1 = (staff && staff[0] && (staff[0].name || staff[0].staffName)) || 'Sachin Kamble';
-                  const sampleStaff2 = (staff && staff[1] && (staff[1].name || staff[1].staffName)) || 'Pooja Verma';
-                  const sampleInvoice1 = (invoices && invoices[0] && (invoices[0].invoiceNumber || `INV-${invoices[0].id}`)) || 'INV-1001';
-                  const sampleInvoice2 = (invoices && invoices[1] && (invoices[1].invoiceNumber || `INV-${invoices[1].id}`)) || 'INV-1002';
-
-                  const guideSections = [
-                    {
-                      id: 'dues',
-                      title: 'Business Receivables & Dues (Live DB)',
-                      icon: '📊',
-                      badge: 'Authoritative',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: 'total udhari', desc: 'Authoritative accounts receivable total dues across all customers', icon: '💰' },
-                        { syntax: `${sampleCustomer1} udhari`, desc: `Realtime unpaid invoice balance for ${sampleCustomer1}`, icon: '👤' },
-                        { syntax: `balance of ${sampleCustomer2}`, desc: `Live customer ledger balance & payment status for ${sampleCustomer2}`, icon: '👤' },
-                        { syntax: `statement of ${sampleCustomer1}`, desc: `Full transaction history, bills & payment records for ${sampleCustomer1}`, icon: '📑' },
-                        { syntax: 'top debtors', desc: 'Ranked list of top accounts with highest outstanding market dues', icon: '📉' },
-                        { syntax: 'total payables', desc: 'Total accounts payable balance owed across all suppliers & vendors', icon: '💳' },
-                        { syntax: `payable to ${sampleVendor1}`, desc: `Outstanding purchase balance owed to ${sampleVendor1}`, icon: '🏢' },
-                        { syntax: 'top creditors', desc: 'Ranked list of suppliers owed highest pending payouts', icon: '🏢' },
-                        { syntax: 'bank details', desc: 'Registered company bank account, IFSC code, UPI ID & GSTIN', icon: '🏛️' }
-                      ]
-                    },
-                    {
-                      id: 'sales',
-                      title: 'Sales, Revenue & Profit (Live DB)',
-                      icon: '📈',
-                      badge: 'Real-Time',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: 'today sales', desc: 'Live sales revenue, invoice count & paid/unpaid split today', icon: '📈' },
-                        { syntax: 'yesterday sales', desc: 'Authoritative sales volume and invoices logged yesterday', icon: '📅' },
-                        { syntax: 'this week sales', desc: 'Cumulative weekly turnover and invoice summary', icon: '📊' },
-                        { syntax: 'this month sales', desc: 'Monthly sales turnover and total collection metrics', icon: '💰' },
-                        { syntax: 'this year revenue', desc: 'Financial year sales total and invoice volume', icon: '🗓️' },
-                        { syntax: 'this month profit', desc: 'Net profit calculation (Gross Revenue - Purchases - Expenses)', icon: '💹' },
-                        { syntax: 'top customers', desc: 'Highest grossing client accounts by total billed volume', icon: '🏆' },
-                        { syntax: 'gst report', desc: 'Tax summary breakdown (Taxable value, CGST, SGST, Total tax)', icon: '📑' },
-                        { syntax: 'total collections', desc: 'Total cash and bank payment receipts collected this period', icon: '💵' }
-                      ]
-                    },
-                    {
-                      id: 'expenses',
-                      title: 'Expenses & Business Outflows (Live DB)',
-                      icon: '💸',
-                      badge: 'Real-Time',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: 'today expenses', desc: 'Total expense outflow logged today with category breakdown', icon: '💸' },
-                        { syntax: 'this month expenses', desc: 'Monthly cumulative operating expenses & payment mode split', icon: '📊' },
-                        { syntax: 'expense category breakdown', desc: 'Category-wise expense breakdown (Rent, Utilities, Travel, Tea)', icon: '🏷️' },
-                        { syntax: 'kharcha 120 chai nashta', desc: 'Instantly logs ₹120 tea/snack expense without page switch', icon: '☕' },
-                        { syntax: 'kharcha 500 petrol delivery', desc: 'Instantly logs ₹500 travel/fuel expense to records', icon: '⛽' }
-                      ]
-                    },
-                    {
-                      id: 'hr',
-                      title: 'Staff, Attendance & Payroll (Live DB)',
-                      icon: '👥',
-                      badge: 'HR Engine',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: `salary of ${sampleStaff1}`, desc: `Salary structure, advances & net payable for ${sampleStaff1}`, icon: '🧑‍💼' },
-                        { syntax: 'salaries summary', desc: 'Firm-wide salary ledger, total monthly payroll & pending payouts', icon: '💼' },
-                        { syntax: `attendance of ${sampleStaff1}`, desc: `Monthly attendance log & present days for ${sampleStaff1}`, icon: '📅' },
-                        { syntax: `attendance ${sampleStaff1} present today`, desc: `Marks attendance for ${sampleStaff1} with one click`, icon: '✅' },
-                        { syntax: `advance of ${sampleStaff1}`, desc: `Current advance balance and repayment ledger for ${sampleStaff1}`, icon: '💵' },
-                        { syntax: `advance ${sampleStaff1} 2000`, desc: `Records salary advance of ₹2,000 for ${sampleStaff1}`, icon: '💵' },
-                        { syntax: 'staff advances', desc: 'Firm-wide employee advance balances and outstanding loans', icon: '📋' }
-                      ]
-                    },
-                    {
-                      id: 'inventory',
-                      title: 'Warehouse Inventory & Stock (Live DB)',
-                      icon: '📦',
-                      badge: 'Live Stock',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: `stock of ${sampleProduct1}`, desc: `Live warehouse inventory quantity & valuation of ${sampleProduct1}`, icon: '📦' },
-                        { syntax: 'low stock', desc: 'Critical inventory shortage alert below minimum stock levels', icon: '⚠️' },
-                        { syntax: 'stock movements', desc: 'Recent inventory inward / outward movements and adjustments', icon: '🔄' },
-                        { syntax: 'top selling products', desc: 'Highest velocity inventory items ranked by sales volume', icon: '🔥' },
-                        { syntax: 'inventory valuation', desc: 'Total warehouse asset value (Cost price & Selling price)', icon: '💎' }
-                      ]
-                    },
-                    {
-                      id: 'documents',
-                      title: 'Invoices, Estimates, Returns & Orders',
-                      icon: '🧾',
-                      badge: 'Documents',
-                      badgeClass: 'omni-badge-live',
-                      items: [
-                        { syntax: `invoice ${sampleInvoice1}`, desc: 'Instant breakdown of line items, taxes, payments & balance', icon: '📄' },
-                        { syntax: 'invoice list', desc: 'List recent billing invoices with payment status and totals', icon: '📑' },
-                        { syntax: 'unpaid invoices', desc: 'Filter all overdue and unpaid customer bills', icon: '⏳' },
-                        { syntax: `estimate ${sampleInvoice2}`, desc: 'Instant breakdown of quotation items and estimated totals', icon: '📝' },
-                        { syntax: 'estimate list', desc: 'List recent quotations and estimates issued to clients', icon: '📋' },
-                        { syntax: 'sales returns', desc: 'Sales return credit notes and refund amounts summary', icon: '↩️' },
-                        { syntax: `returns of ${sampleCustomer1}`, desc: `Credit notes and returned goods ledger for ${sampleCustomer1}`, icon: '🔄' },
-                        { syntax: 'purchase orders', desc: 'Vendor purchase orders list, pending deliveries and amounts', icon: '📦' },
-                        { syntax: 'vendor payouts', desc: 'Vendor payment payout history and settled supplier invoices', icon: '💳' }
-                      ]
-                    },
-                    {
-                      id: 'actions',
-                      title: 'Smart Fast Actions & Tools',
-                      icon: '⚡',
-                      badge: 'Instant Save',
-                      badgeClass: 'omni-badge-smart',
-                      items: [
-                        { syntax: 'customer Manoj 9822113344 Kolhapur', desc: 'Registers new customer in-place with name, phone and city', icon: '👤' },
-                        { syntax: `todo call ${sampleCustomer1} 4pm`, desc: `Pins interactive sticky task for ${sampleCustomer1} to Planner`, icon: '📌' },
-                        { syntax: 'upi 500', desc: 'Generates live dynamic on-screen UPI QR code for ₹500', icon: '📱' },
-                        { syntax: 'note client requested bulk discount', desc: 'Pins a quick business note to the dashboard scratchpad', icon: '📝' },
-                        { syntax: `remind ${sampleCustomer1}`, desc: `Opens WhatsApp draft with payment due link for ${sampleCustomer1}`, icon: '💬' }
-                      ]
-                    },
-                    {
-                      id: 'math',
-                      title: 'Spotlight Arithmetic Engine',
-                      icon: '🧮',
-                      badge: 'Safe Math',
-                      badgeClass: 'omni-badge-tools',
-                      items: [
-                        { syntax: '17% of 5633', desc: 'Base percentage calculation (= ₹957.61)', icon: '🧮' },
-                        { syntax: '5633 + 17%', desc: 'Direct percentage markup / addition (= ₹6,590.61)', icon: '📈' },
-                        { syntax: 'reduce 5633 by 17%', desc: 'Direct percentage discount / decrease (= ₹4,675.39)', icon: '🏷️' },
-                        { syntax: '(450 * 12) + 2500', desc: 'Nested parenthesized expressions with operator precedence (= 7,900)', icon: '🔢' },
-                        { syntax: 'divide 10000 by 4', desc: 'Natural English division (= 2,500)', icon: '➗' },
-                        { syntax: 'multiply 250 by 12', desc: 'Natural English multiplication (= 3,000)', icon: '✖️' },
-                        { syntax: '5000 less 750', desc: 'Natural subtraction expression (= 4,250)', icon: '➖' },
-                        { syntax: 'square of 25', desc: 'Exponent / power calculation (= 625)', icon: '📐' },
-                        { syntax: 'sqrt 144', desc: 'Square root calculation (= 12)', icon: '🍰' },
-                        { syntax: 'half of 15000', desc: 'Fractional math calculation (= 7,500)', icon: '🍰' }
-                      ]
-                    },
-                    {
-                      id: 'commercial',
-                      title: 'Commercial & Cashier Math',
-                      icon: '🏛️',
-                      badge: 'Financial',
-                      badgeClass: 'omni-badge-finance',
-                      items: [
-                        { syntax: 'gst 18% on 5000', desc: 'Base ₹5000 + CGST 9% (₹450) + SGST 9% (₹450) = ₹5,900', icon: '💰' },
-                        { syntax: 'gst 18% inclusive 5900', desc: 'Reverse GST: calculates ₹5,000 net base + ₹900 tax breakdown', icon: '🏷️' },
-                        { syntax: 'change for 2000 bill 1435', desc: 'Cash register change calculation with exact currency notes breakdown', icon: '💵' },
-                        { syntax: 'split 4500 by 4', desc: 'Divides bill evenly (₹1,125 per person)', icon: '👥' },
-                        { syntax: 'split 10000 in 2:3:5', desc: 'Divides amount by ratio (₹2000 : ₹3000 : ₹5000)', icon: '⚖️' },
-                        { syntax: '10% discount on 5000', desc: 'Calculates discounted total ₹4,500 and ₹500 savings', icon: '🏷️' },
-                        { syntax: 'margin cost 800 price 1200', desc: 'Gross margin: 33.3% margin, 50% markup, ₹400 profit', icon: '📈' },
-                        { syntax: 'emi 500000 at 9.5% for 5 years', desc: 'Monthly loan EMI, total payable, and interest breakdown', icon: '🏦' },
-                        { syntax: 'words 125000', desc: 'Converts number to English words for official bank cheques', icon: '✍️' }
-                      ]
-                    },
-                    {
-                      id: 'desi',
-                      title: 'Multilingual (Hindi, Marathi, Hinglish)',
-                      icon: '🌐',
-                      badge: 'Desi Speech',
-                      badgeClass: 'omni-badge-utils',
-                      items: [
-                        { syntax: '5000 ka 10 percent', desc: 'Hindi percentage calculation (= ₹500)', icon: '🇮🇳' },
-                        { syntax: '5000 mein 10% add karo', desc: 'Hinglish percentage increase / markup (= ₹5,500)', icon: '➕' },
-                        { syntax: '5000 se 10% kam karo', desc: 'Hinglish percentage discount / deduction (= ₹4,500)', icon: '➖' },
-                        { syntax: '5000 मध्ये 10% वाढ', desc: 'Marathi percentage increase (= ₹5,500)', icon: '🚩' },
-                        { syntax: '5000 madhun 10% kami', desc: 'Marathi percentage decrease (= ₹4,500)', icon: '🚩' },
-                        { syntax: '1.5 lakh + 50 hazar', desc: 'Indian number denomination arithmetic (= ₹2,00,000)', icon: '🔢' },
-                        { syntax: 'karmachari tankha', desc: 'Hindi resolution for employee payroll & salaries summary', icon: '🧑‍💼' },
-                        { syntax: 'vetan suchi', desc: 'Marathi resolution for employee payroll ledger', icon: '📋' },
-                        { syntax: 'mal wapas', desc: 'Hindi resolution for sales return credit notes', icon: '↩️' },
-                        { syntax: 'aaj ka dhanda', desc: 'Hindi resolution for today live sales & collection', icon: '📈' },
-                        { syntax: 'aajchi bikri', desc: 'Marathi resolution for today sales turnover', icon: '📈' },
-                        { syntax: 'jama rakkam', desc: 'Hindi resolution for payment receipts & collections', icon: '💵' },
-                        { syntax: `khata book ${sampleCustomer1}`, desc: `Hinglish resolution for ${sampleCustomer1} customer ledger`, icon: '📑' }
-                      ]
-                    },
-                    {
-                      id: 'shortcuts',
-                      title: 'System, Theme & Slash Shortcuts',
-                      icon: '⚡',
-                      badge: 'Routing & Tools',
-                      badgeClass: 'omni-badge-routing',
-                      items: [
-                        { syntax: '/theme', desc: 'Toggles light and dark UI themes instantly', icon: '🎨' },
-                        { syntax: 'dark mode', desc: 'Switches application theme to sleek dark mode', icon: '🌙' },
-                        { syntax: 'light mode', desc: 'Switches application theme to clean light mode', icon: '☀️' },
-                        { syntax: '/lock', desc: 'Locks active screen session into PIN-protected Safe Mode', icon: '🔒' },
-                        { syntax: '/inv', desc: 'Opens New Tax Invoice billing creator modal', icon: '📄' },
-                        { syntax: '/quo', desc: 'Opens New Estimate / Quotation creator', icon: '📝' },
-                        { syntax: '/khata', desc: 'Direct access to Customer Ledger & Statements', icon: '📊' },
-                        { syntax: '/pay', desc: 'Opens Staff Payroll, Attendance & Salary manager', icon: '🧑‍💼' },
-                        { syntax: '/po', desc: 'Opens Purchase Order desk for vendor orders', icon: '📦' },
-                        { syntax: '/party', desc: 'Opens Vendor & Supplier directory', icon: '🏢' },
-                        { syntax: '/stock', desc: 'Opens Inventory & Product master catalog', icon: '🏷️' },
-                        { syntax: '5 kg in grams', desc: 'Weight & trade unit conversion (= 5,000 g)', icon: '⚖️' },
-                        { syntax: '100 sqft in sqm', desc: 'Area unit conversion (= 9.29 sq m)', icon: '📐' },
-                        { syntax: '100 usd in inr', desc: 'Currency exchange calculation', icon: '💵' }
-                      ]
-                    }
+                  const registry = typeof OmnisearchCapabilitiesRegistry !== 'undefined' ? OmnisearchCapabilitiesRegistry : null;
+                  const groups = registry ? registry.getGroups() : [
+                    { id: 'all', label: 'All Capabilities', icon: '✨', badgeClass: 'omni-group-all' },
+                    { id: 'search_nav', label: 'Search & Navigation', icon: '🔍', badgeClass: 'omni-group-nav' },
+                    { id: 'money_calc', label: 'Money & Calculations', icon: '💰', badgeClass: 'omni-group-math' },
+                    { id: 'dates_conv', label: 'Dates & Conversions', icon: '📐', badgeClass: 'omni-group-conv' },
+                    { id: 'biz_reports', label: 'Business & Reports', icon: '📊', badgeClass: 'omni-group-biz' },
+                    { id: 'cust_prod_staff', label: 'Customers, Products & Staff', icon: '👥', badgeClass: 'omni-group-cust' },
+                    { id: 'smart_lang', label: 'Language & Smart Queries', icon: '🌐', badgeClass: 'omni-group-lang' }
                   ];
+
+                  const matchedCapabilities = registry ? registry.searchCapabilities(guideSearchText, guideCategory) : [];
+                  const totalMatchingActions = matchedCapabilities.reduce((acc, c) => acc + (c.allExamples ? c.allExamples.length : (c.quickExamples ? c.quickExamples.length : 1)), 0);
+
+                  const toggleCapabilityExpanded = (capId, e) => {
+                    if (e) e.stopPropagation();
+                    setExpandedCapabilities(prev => ({
+                      ...prev,
+                      [capId]: !prev[capId]
+                    }));
+                  };
 
                   const runGuideQuery = (syntax) => {
                     saveHistory(syntax);
@@ -3037,7 +2864,7 @@
                       onClose();
                       return;
                     }
-                    if (sLower === '/lock') {
+                    if (sLower === '/lock' || sLower === 'lock app') {
                       sessionStorage.setItem('isSessionLocked', 'true');
                       window.dispatchEvent(new CustomEvent('billsoft:lock-screen'));
                       if (window.showToast) window.showToast('🔒 Screen locked in Safe Mode', 'info');
@@ -3079,8 +2906,38 @@
                       onClose();
                       return;
                     }
+                    if (sLower === '/goal') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'goals' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/save') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'savings' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/todo') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'planner', plannerTab: 'board' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/personal') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'dashboard', dashboardSegment: 'personal' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/biz') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'dashboard', dashboardSegment: 'business' });
+                      onClose();
+                      return;
+                    }
+                    if (sLower === '/backup') {
+                      BillsoftSearchEngine.dispatchNavigate({ page: 'settings', tab: 'backup' });
+                      onClose();
+                      return;
+                    }
 
-                    // 2. Interactive Action Previews (kharcha, todo, customer, advance, upi)
+                    // 2. Interactive Action Previews (kharcha, todo, customer, advance, upi, remind)
                     try {
                       if (typeof OmnibarPipeline !== 'undefined' && OmnibarPipeline.processQuery) {
                         const pRes = OmnibarPipeline.processQuery(sClean, { firm: firmProfile || firm || {} });
@@ -3115,58 +2972,42 @@
                     }, 40);
                   };
 
-                  const filteredSections = guideSections.map(sec => {
-                    if (guideCategory !== 'all' && sec.id !== guideCategory) return null;
-                    const filteredItems = sec.items.filter(it => {
-                      if (!guideSearchText.trim()) return true;
-                      const s = guideSearchText.toLowerCase();
-                      return it.syntax.toLowerCase().includes(s) || it.desc.toLowerCase().includes(s);
-                    });
-                    if (filteredItems.length === 0) return null;
-                    return { ...sec, items: filteredItems };
-                  }).filter(Boolean);
-
-                  const totalMatchingQueries = filteredSections.reduce((acc, s) => acc + s.items.length, 0);
-
-                  const categoryTabs = [
-                    { id: 'all', label: 'All Commands' },
-                    { id: 'dues', label: '📊 Dues & Ledger' },
-                    { id: 'sales', label: '📈 Sales & Revenue' },
-                    { id: 'expenses', label: '💸 Expenses' },
-                    { id: 'hr', label: '👥 Staff & HR' },
-                    { id: 'inventory', label: '📦 Inventory' },
-                    { id: 'documents', label: '🧾 Invoices & PO' },
-                    { id: 'actions', label: '⚡ Fast Actions' },
-                    { id: 'math', label: '🧮 Math Engine' },
-                    { id: 'commercial', label: '🏛️ GST & Cashier' },
-                    { id: 'desi', label: '🌐 Multilingual' },
-                    { id: 'shortcuts', label: '⚡ Shortcuts & Theme' }
-                  ];
-
                   return React.createElement('div', { className: 'omni-power-guide-container' },
                     // 1. Sleek Modern Header Bar
                     React.createElement('div', { className: 'omni-guide-header-bar' },
                       React.createElement('div', { className: 'omni-guide-top-title-row' },
                         React.createElement('div', { className: 'omni-guide-title-wrap' },
-                          React.createElement('span', { style: { fontSize: '1.1rem' } }, '✨'),
-                          React.createElement('h4', { className: 'omni-guide-main-heading' }, 'OmniSearch Command Cheat Sheet'),
-                          React.createElement('span', { className: 'omni-guide-count-pill' }, `${totalMatchingQueries} Available`)
+                          React.createElement('span', { style: { fontSize: '1.2rem' } }, '✨'),
+                          React.createElement('h4', { className: 'omni-guide-main-heading' }, 'What can I ask Omnisearch?'),
+                          React.createElement('span', { className: 'omni-guide-count-pill' }, `${matchedCapabilities.length} Capabilities • ${totalMatchingActions} Examples`)
                         ),
-                        React.createElement('button', {
-                          type: 'button',
-                          className: 'omni-guide-action-btn',
-                          onClick: () => setShowGuide(false),
-                          style: { padding: '4px 10px', fontSize: '0.74rem' }
-                        }, '← Back to Search')
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'omni-guide-action-btn',
+                            onClick: () => {
+                              if (registry && registry.getRandomizedQueries) {
+                                setShuffledPrompts(registry.getRandomizedQueries(12));
+                              }
+                            },
+                            title: 'Shuffle and view completely random query suggestions across all capabilities'
+                          }, '🎲 Shuffle Suggestions'),
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'omni-guide-action-btn primary',
+                            onClick: () => setShowGuide(false),
+                            style: { padding: '4px 10px', fontSize: '0.74rem' }
+                          }, '← Back to Search')
+                        )
                       ),
 
-                      // 2. Search Filter Input
+                      // 2. Search Filter Input (Searches across all fields)
                       React.createElement('div', { className: 'omni-guide-search-wrap' },
                         React.createElement('span', { className: 'omni-guide-search-icon' }, '🔍'),
                         React.createElement('input', {
                           type: 'text',
                           className: 'omni-guide-search-input',
-                          placeholder: 'Filter commands (e.g. udhari, invoice, stock, gst, salary, dark mode)...',
+                          placeholder: 'Search any capability, unit (guntha, tola), currency (USD, AED), formula (GST, EMI), or phrase (udhari, kharcha)...',
                           value: guideSearchText,
                           onChange: (e) => setGuideSearchText(e.target.value)
                         }),
@@ -3177,64 +3018,163 @@
                         }, '✕')
                       ),
 
-                      // 3. Category Filter Tabs
-                      React.createElement('div', { className: 'omni-guide-category-pills' },
-                        categoryTabs.map(tab => React.createElement('button', {
-                          key: tab.id,
+                      // 3. Shuffled / Randomized Suggestions Row
+                      shuffledPrompts && shuffledPrompts.length > 0 && React.createElement('div', { className: 'omni-guide-prompt-chips' },
+                        React.createElement('span', { className: 'omni-guide-prompt-label' }, '💡 Try asking:'),
+                        shuffledPrompts.slice(0, 6).map((prompt, pIdx) => React.createElement('button', {
+                          key: pIdx,
                           type: 'button',
-                          className: `omni-guide-pill ${guideCategory === tab.id ? 'active' : ''}`,
-                          onClick: () => setGuideCategory(tab.id)
-                        }, tab.label))
+                          className: 'omni-guide-prompt-chip',
+                          onClick: () => runGuideQuery(prompt),
+                          title: `Click to try "${prompt}"`
+                        }, `${prompt} →`))
+                      ),
+
+                      // 4. 6 Broad Discovery Area Filters
+                      React.createElement('div', { className: 'omni-guide-category-pills' },
+                        groups.map(group => {
+                          const isAct = guideCategory === group.id;
+                          return React.createElement('button', {
+                            key: group.id,
+                            type: 'button',
+                            className: `omni-guide-pill ${isAct ? 'active' : ''}`,
+                            onClick: () => setGuideCategory(group.id)
+                          },
+                            React.createElement('span', null, group.icon),
+                            React.createElement('span', null, group.label)
+                          );
+                        })
                       )
                     ),
 
-                    // 4. Clean List-Based Scrollable Command Rows
+                    // 5. Progressive Disclosure Capabilities List
                     React.createElement('div', { className: 'omni-guide-list-container' },
-                      filteredSections.length === 0 ? (
-                        React.createElement('div', { style: { padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' } },
-                          'No command matching your filter. Try searching for "udhari", "sales", "salary", or "gst".'
+                      matchedCapabilities.length === 0 ? (
+                        React.createElement('div', { style: { padding: '36px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.86rem' } },
+                          React.createElement('p', { style: { fontWeight: 600, marginBottom: 6 } }, 'No capabilities matching your search filter.'),
+                          React.createElement('p', { style: { fontSize: '0.78rem' } }, 'Try searching for concepts like "guntha", "GST", "udhari", "USD", "EMI", "salary", or "top customers".')
                         )
                       ) : (
-                        filteredSections.map(sec => React.createElement('div', { key: sec.id, className: 'omni-guide-category-section' },
-                          React.createElement('div', { className: 'omni-guide-section-header' },
-                            React.createElement('div', { className: 'omni-guide-section-title' },
-                              React.createElement('span', null, sec.icon),
-                              React.createElement('span', null, sec.title)
-                            ),
-                            React.createElement('span', { className: `omni-guide-card-badge ${sec.badgeClass}` }, sec.badge)
-                          ),
-                          React.createElement('div', { className: 'omni-guide-list-rows' },
-                            sec.items.map((item, idx) => React.createElement('div', {
-                              key: idx,
-                              className: 'omni-guide-list-item',
-                              onClick: () => runGuideQuery(item.syntax),
-                              title: `Click to execute "${item.syntax}"`
-                            },
-                              React.createElement('div', { className: 'omni-guide-item-left' },
-                                React.createElement('span', { className: 'omni-guide-item-icon' }, item.icon),
-                                React.createElement('span', { className: 'omni-guide-syntax-badge' }, item.syntax),
-                                React.createElement('span', { className: 'omni-guide-desc-text' }, item.desc)
+                        matchedCapabilities.map(cap => {
+                          const isExpanded = !!expandedCapabilities[cap.id];
+                          const groupMeta = groups.find(g => g.id === cap.group) || {};
+
+                          return React.createElement('div', { key: cap.id, className: 'omni-capability-card' },
+                            // Card Header
+                            React.createElement('div', { className: 'omni-capability-header' },
+                              React.createElement('div', { className: 'omni-capability-title-group' },
+                                React.createElement('span', { className: 'omni-capability-icon' }, cap.icon),
+                                React.createElement('span', { className: 'omni-capability-name' }, cap.name)
                               ),
-                              React.createElement('div', { className: 'omni-guide-item-actions' },
-                                React.createElement('button', {
+                              React.createElement('span', { className: `omni-group-badge ${groupMeta.badgeClass || ''}` }, groupMeta.label || cap.group)
+                            ),
+
+                            // Short Explanation
+                            React.createElement('p', { className: 'omni-capability-desc' }, cap.shortDesc),
+
+                            // Quick 2-3 Examples Row with Try It buttons & Expand Toggle
+                            React.createElement('div', { className: 'omni-capability-quick-row' },
+                              React.createElement('div', { className: 'omni-capability-examples-chips' },
+                                (cap.quickExamples || []).map((ex, exIdx) => React.createElement('button', {
+                                  key: exIdx,
                                   type: 'button',
-                                  className: 'omni-guide-action-btn',
-                                  onClick: (e) => fillGuideQuery(item.syntax, e),
-                                  title: 'Insert into search input'
-                                }, 'Fill ✎'),
-                                React.createElement('button', {
-                                  type: 'button',
-                                  className: 'omni-guide-action-btn primary',
-                                  onClick: (e) => {
-                                    e.stopPropagation();
-                                    runGuideQuery(item.syntax);
-                                  },
-                                  title: 'Run command now'
-                                }, 'Run ↵')
+                                  className: 'omni-quick-example-chip',
+                                  onClick: () => runGuideQuery(ex),
+                                  title: `Click to execute "${ex}"`
+                                },
+                                  React.createElement('span', null, ex),
+                                  React.createElement('span', { className: 'omni-quick-example-arrow' }, 'Try it →')
+                                ))
+                              ),
+                              React.createElement('button', {
+                                type: 'button',
+                                className: 'omni-expand-toggle-btn',
+                                onClick: (e) => toggleCapabilityExpanded(cap.id, e)
+                              }, isExpanded ? 'Collapse ▴' : 'Details & Full Syntax ▾')
+                            ),
+
+                            // Expanded Progressive Disclosure Panel
+                            isExpanded && React.createElement('div', { className: 'omni-capability-expanded-panel' },
+                              // Detailed Description & Formulas
+                              cap.detailedDesc && React.createElement('div', null,
+                                React.createElement('div', { className: 'omni-expanded-section-title' }, '📖 Detailed Guide & Calculation Formula'),
+                                React.createElement('p', { style: { margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)' } }, cap.detailedDesc)
+                              ),
+
+                              // All Supported Syntax / Examples
+                              cap.allExamples && cap.allExamples.length > 0 && React.createElement('div', null,
+                                React.createElement('div', { className: 'omni-expanded-section-title' }, '🎯 Supported Syntax & Actionable Examples'),
+                                React.createElement('div', { className: 'omni-expanded-examples-table' },
+                                  cap.allExamples.map((exObj, i) => React.createElement('div', { key: i, className: 'omni-expanded-example-row' },
+                                    React.createElement('div', { className: 'omni-example-row-left' },
+                                      React.createElement('span', { className: 'omni-example-code-pill' }, exObj.query),
+                                      exObj.note && React.createElement('span', { className: 'omni-example-note-text' }, `— ${exObj.note}`)
+                                    ),
+                                    React.createElement('div', { className: 'omni-example-actions' },
+                                      React.createElement('button', {
+                                        type: 'button',
+                                        className: 'omni-guide-action-btn',
+                                        onClick: (e) => fillGuideQuery(exObj.query, e),
+                                        title: 'Insert into search input'
+                                      }, 'Fill ✎'),
+                                      React.createElement('button', {
+                                        type: 'button',
+                                        className: 'omni-guide-action-btn primary',
+                                        onClick: (e) => {
+                                          e.stopPropagation();
+                                          runGuideQuery(exObj.query);
+                                        },
+                                        title: 'Run command now'
+                                      }, 'Try it →')
+                                    )
+                                  ))
+                                )
+                              ),
+
+                              // Supported Units or Currencies or Variants
+                              ((cap.supportedUnits && cap.supportedUnits.length > 0) || (cap.supportedCurrencies && cap.supportedCurrencies.length > 0) || (cap.supportedVariants && cap.supportedVariants.length > 0)) && React.createElement('div', null,
+                                React.createElement('div', { className: 'omni-expanded-section-title' },
+                                  cap.supportedUnits ? '⚖️ Supported Measurement Units' : (cap.supportedCurrencies ? '💱 Supported World Currencies (Sept 2026 Reference Rates)' : '⚡ Supported Command Variants')
+                                ),
+                                React.createElement('div', { className: 'omni-tags-row' },
+                                  (cap.supportedUnits || cap.supportedCurrencies || cap.supportedVariants || []).map((u, uIdx) => React.createElement('span', { key: uIdx, className: 'omni-unit-tag' }, u))
+                                )
+                              ),
+
+                              // Aliases & Search Keywords
+                              cap.aliases && cap.aliases.length > 0 && React.createElement('div', null,
+                                React.createElement('div', { className: 'omni-expanded-section-title' }, '🔍 Recognized Synonyms & Vernacular Keywords'),
+                                React.createElement('div', { className: 'omni-tags-row' },
+                                  cap.aliases.slice(0, 15).map((a, aIdx) => React.createElement('span', { key: aIdx, className: 'omni-unit-tag' }, a))
+                                )
+                              ),
+
+                              // Related Capabilities
+                              cap.relatedCapabilities && cap.relatedCapabilities.length > 0 && React.createElement('div', null,
+                                React.createElement('div', { className: 'omni-expanded-section-title' }, '🔗 Related Capabilities'),
+                                React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                                  cap.relatedCapabilities.map((relId, rIdx) => {
+                                    const relCap = registry ? registry.getCapabilityById(relId) : null;
+                                    return relCap ? React.createElement('button', {
+                                      key: rIdx,
+                                      type: 'button',
+                                      className: 'omni-related-chip',
+                                      onClick: () => {
+                                        setGuideSearchText(relCap.name.split(' ')[0]);
+                                      }
+                                    }, `${relCap.icon} ${relCap.name}`) : null;
+                                  })
+                                )
+                              ),
+
+                              // Limitations / Notes
+                              cap.limitations && React.createElement('div', { className: 'omni-limitations-box' },
+                                React.createElement('strong', null, 'Note: '),
+                                cap.limitations
                               )
-                            ))
-                          )
-                        ))
+                            )
+                          );
+                        })
                       )
                     )
                   );

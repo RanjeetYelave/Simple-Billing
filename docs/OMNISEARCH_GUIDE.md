@@ -330,6 +330,8 @@ The engine normalizes multilingual inputs in **Marathi**, **Hindi**, **Hinglish*
 | `/khata` | Customer Statements / Ledger | Firm ➔ Paperwork ➔ Statements |
 | `/pay` | Payroll Hub | HR ➔ Payroll Management |
 | `/po` | Create Purchase Order | Firm ➔ Paperwork ➔ Orders |
+| `/party` | Vendors & Suppliers Directory | Customers ➔ Suppliers Tab |
+| `/stock` | Warehouse Stock & Inventory | Inventory ➔ Master Catalog |
 | `/goal` | Goal Setting | Planner ➔ Goals Tab |
 | `/save` | Savings Tracker | Planner ➔ Savings Tab |
 | `/todo` | Kanban Board | Planner ➔ Board Tab |
@@ -341,8 +343,23 @@ The engine normalizes multilingual inputs in **Marathi**, **Hindi**, **Hinglish*
 
 ---
 
-## 11. Security, Resilience & Quality Assurance
+## 11. In-App Interactive Capabilities Guide & Single Source of Truth
+
+The in-app Omnisearch Guide (accessible via the `?` button next to the Omnisearch bar or keyboard shortcut) is driven by an authoritative, unified capability registry:
+- **Registry File**: `billsoft/src/main/webapp/js/omnisearchCapabilities.js` (`OmnisearchCapabilitiesRegistry`)
+- **Single Source of Truth**: Houses 22+ comprehensive capability definitions, 8 unit families (32+ units), 40+ fiat currencies, financial formulas, vernacular synonyms, parameter badges, and 120+ live interactive query examples.
+- **Search-First Progressive Disclosure**:
+  - **Category Filters**: 6 broad discovery areas (`search_nav`, `money_calc`, `dates_conv`, `biz_reports`, `cust_prod_staff`, `smart_lang`).
+  - **Deep Instant Search**: Multi-token full-text search indexing capability IDs, names, descriptions, parameters, supported units, currencies, and synonyms.
+  - **Actionable Buttons**: Every example card features instant `Try it →` (direct execution) and `Fill ✎` (prefill for editing).
+  - **Randomized Suggestion Pool**: Dynamic Fisher-Yates shuffled prompt chips (`getRandomizedQueries`) representing all supported capabilities to guide user exploration without overwhelming them.
+- **Cross-Platform Compatibility**: Loaded via universal module definition (UMD) for synchronous client-side execution and automated test harnesses (Playwright / Node.js).
+
+---
+
+## 12. Security, Resilience & Quality Assurance
 - **Zero Unsafe `eval()`**: All mathematical expressions are parsed into an Abstract Syntax Tree (AST) using a token-based Shunting-Yard parser.
 - **Zero Cloud AI / External API Callout**: 100% locally evaluated in under 2ms without network connectivity.
 - **Input Sanitization**: Injection payloads (XSS, SQL, Prototype Pollution) are safely treated as plaintext search queries without execution.
-- **Deterministic Regression Testing**: Over 79 automated Playwright UI tests and 598 Maven backend tests guarantee strict stability across releases.
+- **Deterministic Regression Testing**: Automated Playwright UI test suites and 598+ Maven backend tests guarantee strict stability across releases.
+

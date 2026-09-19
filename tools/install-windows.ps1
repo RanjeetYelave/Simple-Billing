@@ -166,11 +166,11 @@ try {
     if (-not $ExpectedSha256 -and $ChecksumUrl) {
         Write-Step "Fetching SHA-256 release checksum..."
         try {
-            if ($ChecksumUrl -like "file://*") {
+            if (Test-Path $ChecksumUrl -PathType Leaf) {
+                Copy-Item -Path $ChecksumUrl -Destination $ShaPath -Force
+            } elseif ($ChecksumUrl -like "file://*") {
                 $uri = [System.Uri]$ChecksumUrl
                 Copy-Item -Path $uri.LocalPath -Destination $ShaPath -Force
-            } elseif (Test-Path $ChecksumUrl -PathType Leaf) {
-                Copy-Item -Path $ChecksumUrl -Destination $ShaPath -Force
             } else {
                 Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ShaPath -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
             }
@@ -188,11 +188,11 @@ try {
     # 3b. Download Main ZIP Archive
     Write-Step "Downloading RupeeCRM package ($AssetName)..."
     try {
-        if ($DownloadUrl -like "file://*") {
+        if (Test-Path $DownloadUrl -PathType Leaf) {
+            Copy-Item -Path $DownloadUrl -Destination $ZipPath -Force
+        } elseif ($DownloadUrl -like "file://*") {
             $uri = [System.Uri]$DownloadUrl
             Copy-Item -Path $uri.LocalPath -Destination $ZipPath -Force
-        } elseif (Test-Path $DownloadUrl -PathType Leaf) {
-            Copy-Item -Path $DownloadUrl -Destination $ZipPath -Force
         } else {
             Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -TimeoutSec 300 -UseBasicParsing -ErrorAction Stop
         }
@@ -208,24 +208,22 @@ try {
     # 4. SHA-256 Integrity Verification
     # --------------------------------------------------------------------------
     Write-Step "Verifying package integrity (SHA-256)..."
-    $calculatedHash = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLower()
+
+    $ActualSha256 = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLower()
 
     if ($ExpectedSha256) {
-        if ($calculatedHash -ne $ExpectedSha256.ToLower()) {
-            Write-Host ""
-            Write-Host "Expected SHA-256: $ExpectedSha256" -ForegroundColor Yellow
-            Write-Host "Computed SHA-256: $calculatedHash" -ForegroundColor Red
-            Write-FatalError "SHA-256 checksum mismatch! The downloaded archive may be corrupted or tampered with."
+        if ($ActualSha256 -ne $ExpectedSha256.ToLower()) {
+            Write-FatalError "SHA-256 Checksum verification failed!`r`n  Expected: $ExpectedSha256`r`n  Actual:   $ActualSha256"
         }
-        Write-Success "SHA-256 verified successfully: $calculatedHash"
+        Write-Success "SHA-256 verification passed ($ActualSha256)"
     } else {
-        Write-Success "Computed package SHA-256: $calculatedHash"
+        Write-WarnMsg "No reference checksum available. Package hash: $ActualSha256"
     }
 
     # --------------------------------------------------------------------------
-    # 5. Extract to Staging Directory
+    # 5. Extract Package Archive
     # --------------------------------------------------------------------------
-    Write-Step "Extracting release archive..."
+    Write-Step "Extracting installation files..."
     $StagingDir = Join-Path $TempDir "staging"
     New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
 
@@ -300,8 +298,12 @@ try {
         }
     }
 
+    if (-not (Test-Path $InstallDir)) {
+        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    }
+
     try {
-        Copy-Item -Path $SourceDir -Destination $InstallDir -Recurse -Force
+        Copy-Item -Path (Join-Path $SourceDir "*") -Destination $InstallDir -Recurse -Force
         # Remove old backup if replacement succeeded
         if (Test-Path $BackupOldDir) {
             Remove-Item -Path $BackupOldDir -Recurse -Force -ErrorAction SilentlyContinue

@@ -12,7 +12,6 @@ test.describe('P4-CALC: Unified Casio Calculator & Omnisearch NLP Engine', () =>
     const topbarBtn = page.locator('#topbar-calculator-btn');
     await expect(topbarBtn).toBeVisible();
     await expect(topbarBtn).toContainText('Calculator');
-    await page.screenshot({ path: '/Users/afk/.gemini/antigravity-ide/brain/3b76a3a9-de93-4de4-bf70-b6353f78dcbc/topbar_refined_calculator_button.png' });
     await topbarBtn.click();
 
     await expect(calcWindow).toBeVisible();

@@ -77,8 +77,6 @@ test.describe('P7-ONB: Fresh Start / First-Time Setup UI/UX Redesign Suite', () 
     await expect(footerNote).toContainText('100% Offline & Local Data');
     await expect(footerNote).toContainText('Instant Multi-Firm Capability');
 
-    await page.screenshot({ path: '/Users/afk/.gemini/antigravity-ide/brain/3b76a3a9-de93-4de4-bf70-b6353f78dcbc/fresh_start_welcome_desktop.png' });
-
     await errorGate.assertZeroErrors(page, 'Fresh Start Mounting');
   });
 
@@ -94,8 +92,6 @@ test.describe('P7-ONB: Fresh Start / First-Time Setup UI/UX Redesign Suite', () 
     await expect(stepCard).toBeVisible();
     await expect(page.locator('.onboarding-title')).toContainText('Set Up Your Business');
     await expect(page.locator('.onboarding-subtitle')).toContainText('Step 1 of 4');
-
-    await page.screenshot({ path: '/Users/afk/.gemini/antigravity-ide/brain/3b76a3a9-de93-4de4-bf70-b6353f78dcbc/fresh_start_step1_identity.png' });
 
     // Step 1: Validation failure when submitting empty firm name
     const nextBtn = page.locator('button:has-text("Next")');
@@ -236,18 +232,10 @@ test.describe('P7-ONB: Fresh Start / First-Time Setup UI/UX Redesign Suite', () 
       });
       expect(overflowWelcome).toBe(false);
 
-      if (vp.width === 390) {
-        await page.screenshot({ path: '/Users/afk/.gemini/antigravity-ide/brain/3b76a3a9-de93-4de4-bf70-b6353f78dcbc/fresh_start_mobile_390.png' });
-      }
-
       // Navigate to Step 2 (dense form)
       await page.locator('.onboarding-choice-card.primary-choice').click();
       await page.locator('input[placeholder*="Acme"]').fill('Responsive Test Firm');
       await page.locator('button:has-text("Next")').click();
-
-      if (vp.width === 390) {
-        await page.screenshot({ path: '/Users/afk/.gemini/antigravity-ide/brain/3b76a3a9-de93-4de4-bf70-b6353f78dcbc/fresh_start_mobile_step2.png' });
-      }
 
       // Verify Step 2 grid fields wrap nicely without overflow
       const overflowForm = await page.evaluate(() => {

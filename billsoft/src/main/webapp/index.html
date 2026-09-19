@@ -1671,6 +1671,19 @@
       });
       const [historyIndex, setHistoryIndex] = useState(-1);
 
+      const saveHistory = (text) => {
+        if (!text || typeof text !== 'string') return;
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        setHistoryIndex(-1);
+        setHistory(prev => {
+          const filtered = prev.filter(h => (typeof h === 'string' ? h : (h && (h.title || h.text))) !== trimmed);
+          const updated = [trimmed, ...filtered].slice(0, 30);
+          try { localStorage.setItem('billsoft_omni_history', JSON.stringify(updated)); } catch (e) { }
+          return updated;
+        });
+      };
+
       // Clipboard auto-detected snippet
       const [clipboardSnippet, setClipboardSnippet] = useState(null);
 

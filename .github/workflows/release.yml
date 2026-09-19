@@ -109,6 +109,7 @@ jobs:
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type app-image `
+                   --icon tools/assets/RupeeCRM.ico `
                    --dest dist-pkg `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
@@ -116,8 +117,11 @@ jobs:
 
           "@echo off`r`nstart `"`" `"%~dp0RupeeCRM.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/RupeeCRM/Start-RupeeCRM.bat
           Copy-Item deleteall.bat dist-pkg/RupeeCRM/deleteall.bat
+          Copy-Item tools/assets/RupeeCRM.ico dist-pkg/RupeeCRM/RupeeCRM.ico -ErrorAction SilentlyContinue
+          Copy-Item tools/uninstall-windows.ps1 dist-pkg/RupeeCRM/uninstall-windows.ps1 -ErrorAction SilentlyContinue
 
           Compress-Archive -Path dist-pkg/RupeeCRM/* -DestinationPath RupeeCRM-Windows-x64.zip
+          (Get-FileHash -Algorithm SHA256 RupeeCRM-Windows-x64.zip).Hash.ToLower() | Out-File -Encoding ASCII -FilePath RupeeCRM-Windows-x64.zip.sha256
 
       - name: Package Windows Installer (MSI)
         shell: pwsh
@@ -128,6 +132,7 @@ jobs:
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type msi `
+                   --icon tools/assets/RupeeCRM.ico `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
                    --win-dir-chooser `
@@ -154,6 +159,7 @@ jobs:
                        --main-jar launcher.jar `
                        --main-class com.billing.simple.launcher.LauncherMain `
                        --type msi `
+                       --icon tools/assets/RupeeCRM.ico `
                        --app-version 1.0.${{ github.run_number }} `
                        --vendor "RupeeCRM" `
                        --win-dir-chooser `
@@ -166,12 +172,62 @@ jobs:
 
           Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
 
+      - name: Validate Windows Installer & Uninstaller Lifecycle
+        shell: pwsh
+        run: |
+          $zipPath = (Resolve-Path "RupeeCRM-Windows-x64.zip").Path
+          $checksum = (Get-Content "RupeeCRM-Windows-x64.zip.sha256").Trim()
+
+          Write-Host "==> Testing tools/install-windows.ps1 with packaged artifact..."
+          $fileUri = "file:///" + ($zipPath.Replace('\', '/'))
+          & ./tools/install-windows.ps1 -CustomDownloadUrl $fileUri -CustomChecksum $checksum -SkipLaunch
+
+          # 1. Verify binaries installed
+          $installedExe = "$env:LOCALAPPDATA\Programs\RupeeCRM\RupeeCRM.exe"
+          if (-not (Test-Path $installedExe)) {
+              throw "Validation failed: RupeeCRM.exe was not installed to $installedExe"
+          }
+          Write-Host "✓ Installed executable verified at $installedExe"
+
+          # 2. Verify Desktop and Start Menu shortcuts
+          $desktopLnk = "$env:USERPROFILE\Desktop\RupeeCRM.lnk"
+          $menuLnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\RupeeCRM\RupeeCRM.lnk"
+          if (Test-Path $desktopLnk) { Write-Host "✓ Desktop shortcut verified at $desktopLnk" }
+          if (Test-Path $menuLnk) { Write-Host "✓ Start Menu shortcut verified at $menuLnk" }
+
+          # 3. Verify Auto-Start Registry entry
+          $regVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -ErrorAction SilentlyContinue).RupeeCRMService
+          if (-not $regVal) {
+              throw "Validation failed: HKCU Run auto-start key was not set"
+          }
+          Write-Host "✓ Auto-start registry key verified: $regVal"
+
+          # 4. Create dummy customer database to verify data preservation
+          $dataDir = "$env:APPDATA\SimpleBilling"
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+          $dummyDb = "$dataDir\database.mv.db"
+          "DUMMY_DATABASE_CONTENT" | Out-File -FilePath $dummyDb
+
+          # 5. Test Uninstall
+          Write-Host "==> Testing tools/uninstall-windows.ps1..."
+          & ./tools/uninstall-windows.ps1 -Quiet
+
+          if (Test-Path "$env:LOCALAPPDATA\Programs\RupeeCRM") {
+              throw "Validation failed: Programs\RupeeCRM was not removed after uninstall"
+          }
+          if (-not (Test-Path $dummyDb)) {
+              throw "CRITICAL FAILURE: Customer database was deleted during uninstall!"
+          }
+          Write-Host "✓ Customer data safely preserved after uninstall"
+          Write-Host "✓ Windows installer & uninstaller lifecycle validation passed!"
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-distribution
           path: |
             RupeeCRM-Windows-x64.zip
+            RupeeCRM-Windows-x64.zip.sha256
             RupeeCRM-Setup.msi
           if-no-files-found: error
 
@@ -293,6 +349,7 @@ jobs:
             dist/billsoft.war
             dist/billsoft.war.sha256
             dist/RupeeCRM-Windows-x64.zip
+            dist/RupeeCRM-Windows-x64.zip.sha256
             dist/RupeeCRM-Setup.msi
             dist/RupeeCRM-macOS-arm64.tar.gz
             dist/Regression-Test-Coverage-Report.zip

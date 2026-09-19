@@ -264,17 +264,134 @@
       );
     }
 
-    // ─── Toast System ───
+    // ─── Modern Sonner-Style 3D Floating Toast Dock ───
     function Toast({ toasts, removeToast }) {
-      if (!toasts.length) return null;
+      const [isHovered, setIsHovered] = useState(false);
+      if (!toasts || !toasts.length) return null;
+
+      const reversedToasts = [...toasts].reverse();
+      const visibleCount = reversedToasts.length;
+
+      const getIcon = (type) => {
+        const normType = (type || 'info').toLowerCase();
+        switch (normType) {
+          case 'success':
+            return React.createElement('svg', {
+              width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+              strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+            },
+              React.createElement('polyline', { points: '20 6 9 17 4 12' })
+            );
+          case 'error':
+          case 'danger':
+            return React.createElement('svg', {
+              width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+              strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+            },
+              React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+              React.createElement('line', { x1: 15, y1: 9, x2: 9, y2: 15 }),
+              React.createElement('line', { x1: 9, y1: 9, x2: 15, y2: 15 })
+            );
+          case 'warning':
+            return React.createElement('svg', {
+              width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+              strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+            },
+              React.createElement('path', { d: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' }),
+              React.createElement('line', { x1: 12, y1: 9, x2: 12, y2: 13 }),
+              React.createElement('line', { x1: 12, y1: 17, x2: 12.01, y2: 17 })
+            );
+          case 'info':
+          default:
+            return React.createElement('svg', {
+              width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+              strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+            },
+              React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+              React.createElement('line', { x1: 12, y1: 16, x2: 12, y2: 12 }),
+              React.createElement('line', { x1: 12, y1: 8, x2: 12.01, y2: 8 })
+            );
+        }
+      };
+
       return ReactDOM.createPortal(
-        React.createElement('div', { className: 'toast-container' },
-          toasts.map(t =>
-            React.createElement('div', { key: t.id, className: `toast toast-${t.type}` },
-              React.createElement('span', null, t.message),
-              React.createElement('button', { className: 'toast-close', onClick: () => removeToast(t.id) }, '✕')
-            )
-          )
+        React.createElement('div', {
+          className: `toast-dock ${isHovered ? 'is-expanded' : 'is-stacked'}`,
+          style: isHovered ? { pointerEvents: 'auto', minHeight: `${visibleCount * 60 + 20}px` } : {},
+          onMouseEnter: () => setIsHovered(true),
+          onMouseLeave: () => setIsHovered(false),
+          'aria-live': 'polite',
+          'aria-label': 'Notifications'
+        },
+          !isHovered && visibleCount > 1 && React.createElement('div', {
+            className: 'toast-stack-badge',
+            onClick: () => setIsHovered(true),
+            title: `${visibleCount} active notifications. Click or hover to expand.`
+          }, `+${visibleCount - 1} more`),
+
+          reversedToasts.map((t, index) => {
+            const isHidden = !isHovered && index > 2;
+            const stackOffset = index * 10;
+            const stackScale = 1 - (index * 0.05);
+            const stackOpacity = 1 - (index * 0.18);
+            const normType = (t.type || 'info').toLowerCase() === 'danger' ? 'error' : (t.type || 'info').toLowerCase();
+
+            const cardStyle = isHovered
+              ? {
+                  transform: `translateY(-${index * 58}px) scale(1)`,
+                  opacity: 1,
+                  pointerEvents: 'auto',
+                  zIndex: 2003 - index
+                }
+              : {
+                  transform: `translateY(-${stackOffset}px) scale(${stackScale})`,
+                  opacity: isHidden ? 0 : Math.max(0, stackOpacity),
+                  pointerEvents: index === 0 ? 'auto' : 'none',
+                  zIndex: 2003 - index
+                };
+
+            return React.createElement('div', {
+              key: t.id,
+              className: `toast-card toast-${normType} toast-card--${normType} ${index === 0 ? 'toast-card--front is-front' : 'toast-card--stacked is-behind'} ${t.isPulsing ? 'toast-pulse' : ''}`,
+              style: cardStyle,
+              role: 'status'
+            },
+              React.createElement('div', { className: `toast-icon-badge toast-icon-${normType}` },
+                getIcon(normType)
+              ),
+              React.createElement('div', { className: 'toast-content' },
+                React.createElement('div', { className: 'toast-message' }, t.message),
+                t.duplicateCount && t.duplicateCount > 1 ? React.createElement('span', { className: 'toast-count-pill' }, `×${t.duplicateCount}`) : null
+              ),
+              t.action && t.action.label && React.createElement('button', {
+                className: 'toast-action-btn',
+                onClick: (e) => {
+                  e.stopPropagation();
+                  if (typeof t.action.onClick === 'function') t.action.onClick();
+                  removeToast(t.id);
+                }
+              }, t.action.label),
+              React.createElement('button', {
+                className: 'toast-close-btn toast-close',
+                onClick: (e) => {
+                  e.stopPropagation();
+                  removeToast(t.id);
+                },
+                'aria-label': 'Dismiss notification',
+                title: 'Dismiss'
+              },
+                React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                  React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                )
+              ),
+              index === 0 && React.createElement('div', {
+                key: `prog_${t.id}_${t.expiresAt || 0}`,
+                className: 'toast-progress-bar',
+                style: { animationDuration: `${t.duration || 4000}ms` }
+              })
+            );
+          })
         ),
         document.body
       );
@@ -4520,7 +4637,7 @@
           if (pending.openPaymentModal && pending.invoiceId) {
             API.invoices.get(pending.invoiceId).then(inv => {
               if (inv) setPaymentModalDoc(inv);
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
 
@@ -9731,27 +9848,29 @@
             React.createElement('p', { style: { margin: 0, fontSize: '0.85rem' } }, 'Choose an item from the list to view its full details and execute actions.')
           )
         ),
-        React.createElement(ComposeMessageModal, { isOpen: composeOpen, onClose: () => setComposeOpen(false), onSend: async (payload) => {
-          try {
-            if (API.notifications && typeof API.notifications.createOrUpdate === 'function') {
-              await API.notifications.createOrUpdate({
-                firmId: API.firmId,
-                eventKey: 'user:composed:' + Date.now(),
-                category: 'SYSTEM',
-                priority: 'NORMAL',
-                title: payload.subject,
-                body: payload.body,
-                sender: payload.sender || 'User'
-              });
-            } else if (onSendMessage) {
-              onSendMessage(payload);
+        React.createElement(ComposeMessageModal, {
+          isOpen: composeOpen, onClose: () => setComposeOpen(false), onSend: async (payload) => {
+            try {
+              if (API.notifications && typeof API.notifications.createOrUpdate === 'function') {
+                await API.notifications.createOrUpdate({
+                  firmId: API.firmId,
+                  eventKey: 'user:composed:' + Date.now(),
+                  category: 'SYSTEM',
+                  priority: 'NORMAL',
+                  title: payload.subject,
+                  body: payload.body,
+                  sender: payload.sender || 'User'
+                });
+              } else if (onSendMessage) {
+                onSendMessage(payload);
+              }
+              loadNotifications();
+              if (window.showToast) window.showToast('Message sent successfully', 'success');
+            } catch (e) {
+              if (window.showToast) window.showToast('Failed to send message: ' + e.message, 'error');
             }
-            loadNotifications();
-            if (window.showToast) window.showToast('Message sent successfully', 'success');
-          } catch (e) {
-            if (window.showToast) window.showToast('Failed to send message: ' + e.message, 'error');
           }
-        } })
+        })
       );
     }
 
@@ -12447,7 +12566,7 @@
                   ]).then(([cList, pList]) => {
                     setCustomers(cList || []);
                     setProducts(pList || []);
-                  }).catch(() => {});
+                  }).catch(() => { });
                 }
                 const items = (inv.items || []).map(it => {
                   const prodId = it.product ? String(it.product.id) : (it.productId ? String(it.productId) : '');
@@ -19413,7 +19532,7 @@
           if (pending.customerId) {
             API.customers.get(pending.customerId).then(cust => {
               if (cust) openCustomer360(cust);
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
 
@@ -19889,8 +20008,8 @@
                             title: 'Click to open Customer 360 & Outstanding Invoices'
                           },
                             dues > 0 ? `⚠️ ${BillsoftUtils.formatCurrency(dues)}` :
-                            dues < 0 ? `₹ ${BillsoftUtils.formatCurrency(Math.abs(dues))} Adv` :
-                            '✓ Settled'
+                              dues < 0 ? `₹ ${BillsoftUtils.formatCurrency(Math.abs(dues))} Adv` :
+                                '✓ Settled'
                           )
                         ),
                         // Actions Suite (Compact: [ + Bill ] [ Settle ] [ Statement ] [ ⋮ ])
@@ -22072,7 +22191,7 @@
             lastHandledPoTs = Date.now();
             API.purchaseOrders.get(targetPoId).then(po => {
               if (po) openEdit(po);
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
 
@@ -30467,7 +30586,7 @@
                 categories: Array.isArray(res.categories) ? res.categories : ['BILLING', 'INVENTORY', 'PURCHASE', 'PLANNER', 'HR', 'LICENSING', 'SYSTEM']
               });
             }
-          }).catch(() => {}).finally(() => setLoading(false));
+          }).catch(() => { }).finally(() => setLoading(false));
         } else {
           setLoading(false);
         }
@@ -35218,10 +35337,64 @@
         }
       };
 
-      window.showToast = (message, type = 'info') => {
-        const id = BillsoftUtils.generateId();
-        setToasts(t => [...t, { id, message, type }]);
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+      window.showToast = (messageOrObj, type = 'info', duration = 4000) => {
+        if (!messageOrObj) return;
+        let message = '';
+        let toastType = type || 'info';
+        let dur = typeof duration === 'number' ? duration : 4000;
+        let action = null;
+
+        if (typeof messageOrObj === 'object' && messageOrObj !== null && !(messageOrObj instanceof Error)) {
+          message = messageOrObj.message || messageOrObj.text || '';
+          if (messageOrObj.type) toastType = messageOrObj.type;
+          if (typeof messageOrObj.duration === 'number') dur = messageOrObj.duration;
+          if (messageOrObj.action) action = messageOrObj.action;
+        } else {
+          message = String(messageOrObj.message || messageOrObj);
+        }
+
+        const msgStr = String(message).trim();
+        if (!msgStr) return;
+
+        const normType = (toastType || 'info').toLowerCase() === 'danger' ? 'error' : (toastType || 'info').toLowerCase();
+        const dedupKey = normType + ':' + msgStr.replace(/\s+/g, ' ');
+        const toastId = BillsoftUtils.generateId ? BillsoftUtils.generateId() : ('t_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4));
+        const now = Date.now();
+        const expiresAt = now + dur;
+
+        setToasts(prev => {
+          const existingIdx = prev.findIndex(t => (t.key === dedupKey || (t.message === msgStr && (t.type === normType || (t.type === 'danger' && normType === 'error')))) && (now - (t.createdAt || 0) < 300));
+          if (existingIdx !== -1) {
+            const updated = [...prev];
+            const item = { ...updated[existingIdx] };
+            item.duplicateCount = (item.duplicateCount || 1) + 1;
+            item.expiresAt = expiresAt;
+            item.isPulsing = true;
+            item.duration = dur;
+            if (action) item.action = action;
+            updated.splice(existingIdx, 1);
+            updated.push(item);
+            return updated;
+          }
+          const newItem = {
+            id: toastId,
+            key: dedupKey,
+            message: msgStr,
+            type: normType,
+            duration: dur,
+            createdAt: now,
+            expiresAt: expiresAt,
+            duplicateCount: 1,
+            action: action,
+            isPulsing: false
+          };
+          const next = [...prev, newItem];
+          return next.length > 8 ? next.slice(-8) : next;
+        });
+
+        setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== toastId && (!t.expiresAt || t.expiresAt > Date.now())));
+        }, dur + 50);
       };
       const removeToast = (id) => setToasts(t => t.filter(x => x.id !== id));
       const loadFirms = () => {
@@ -35382,7 +35555,7 @@
               setNotificationSummary(sum);
               if (Array.isArray(sum.items)) setInboxMessages(sum.items);
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }, [isAuthenticated]);
 

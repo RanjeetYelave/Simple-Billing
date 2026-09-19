@@ -1,0 +1,436 @@
+{
+  "application": "RupeeCRM",
+  "version": "1.0.0",
+  "totalDiscoveredHubs": 7,
+  "totalDiscoveredSubtabs": 24,
+  "totalDiscoveredModals": 14,
+  "totalDiscoveredWorkflows": 48,
+  "summary": {
+    "discovered": 48,
+    "covered": 46,
+    "partiallyCovered": 2,
+    "intentionallyExcluded": 0
+  },
+  "coverageMatrix": [
+    {
+      "id": "shell.mount",
+      "area": "App Shell",
+      "description": "Mounts application shell with sidebar, topbar, branding, and zero JS runtime errors",
+      "priority": "P0",
+      "testFile": "tests/p0-app-shell.spec.ts",
+      "testName": "P0-01: App Mounts cleanly with Topbar, Sidebar and Zero JS Errors",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "shell.omnisearch.open",
+      "area": "Search",
+      "description": "Opens Global Search omnibar via trigger or keyboard shortcut",
+      "priority": "P0",
+      "testFile": "tests/p0-app-shell.spec.ts",
+      "testName": "P0-02: Global Search / Omnibar Opens and Searches without TypeError",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "shell.omnisearch.query",
+      "area": "Search",
+      "description": "Executes search query against BillsoftSearchEngine without runtime TypeError",
+      "priority": "P0",
+      "testFile": "tests/p0-app-shell.spec.ts",
+      "testName": "P0-02: Global Search / Omnibar Opens and Searches without TypeError",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "shell.navigation.hubs",
+      "area": "Navigation",
+      "description": "Traverses through all 7 destination hubs (Dashboard, Invoices, Firm, Planner, Inbox, HR, Settings)",
+      "priority": "P0",
+      "testFile": "tests/p0-app-shell.spec.ts",
+      "testName": "P0-03: Primary Navigation Traversals Render All Destination Hubs",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "shell.keyboard.shortcuts",
+      "area": "Navigation",
+      "description": "Keyboard Tab traversal, Cmd+K search shortcut, and Escape modal dismiss",
+      "priority": "P0",
+      "testFile": "tests/p0-app-shell.spec.ts",
+      "testName": "P0-04: Keyboard Navigation and Global Shortcut Triggers",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "invoice.create",
+      "area": "Invoices",
+      "description": "Creates invoice with customer selection, line items, price, quantity, and GST calculations",
+      "priority": "P1",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-01: Invoice Creation, Line Items Addition & Total Calculation",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "invoice.hydrate",
+      "area": "Invoices",
+      "description": "Loads existing invoice into editor and ensures zero blank line-item hydration drops",
+      "priority": "P1",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-02: Existing Invoice Hydration Guards against Empty Line Items",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "invoice.payment.record",
+      "area": "Invoices",
+      "description": "Opens payment modal, records payment settlement, and updates status",
+      "priority": "P1",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-03: Payment Settlement Modal Launches and Validates Amount",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "invoice.filter.search",
+      "area": "Invoices",
+      "description": "Filters invoice directory by status (All, Draft, Final, Paid) and search terms",
+      "priority": "P1",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-04: Document Status Filtering & Date Range Controls",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "invoice.form.validation",
+      "area": "Invoices",
+      "description": "Validates invoice form constraints (required customer, positive amounts, valid numbers)",
+      "priority": "P1",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-05: Form Validation on Invoice Creation (Missing Required Fields)",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "quotation.hub.render",
+      "area": "Quotations",
+      "description": "Renders Quotation hub, subtabs, and quote creation form",
+      "priority": "P1",
+      "testFile": "tests/p1-quotations.spec.ts",
+      "testName": "P1-QT-01: Quotation Hub, Tab Switching & Creation Form",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "quotation.convert.invoice",
+      "area": "Quotations",
+      "description": "Converts approved quotation into final active invoice with line item preservation",
+      "priority": "P1",
+      "testFile": "tests/p1-quotations.spec.ts",
+      "testName": "P1-QT-02: Quotation to Invoice Conversion Pipeline",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "quotation.search.filter",
+      "area": "Quotations",
+      "description": "Searches quotations and applies lifecycle status filters",
+      "priority": "P1",
+      "testFile": "tests/p1-quotations.spec.ts",
+      "testName": "P1-QT-03: Quotation Search and Status Filter",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "customer.directory.search",
+      "area": "Customers",
+      "description": "Renders customer management table and tests live search and filters",
+      "priority": "P1",
+      "testFile": "tests/p1-customers.spec.ts",
+      "testName": "P1-CUST-01: Customer Management Directory and Search",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "customer.crud.create",
+      "area": "Customers",
+      "description": "Opens customer modal, fills name/phone details, and exercises form validation",
+      "priority": "P1",
+      "testFile": "tests/p1-customers.spec.ts",
+      "testName": "P1-CUST-02: Customer CRUD Creation & Form Validation",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "customer.360.drawer",
+      "area": "Customers",
+      "description": "Opens Customer 360 drawer, renders ledger, outstanding balances, and historical invoices",
+      "priority": "P1",
+      "testFile": "tests/p1-customers.spec.ts",
+      "testName": "P1-CUST-03: Customer 360 Modal and Ledger Launch",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "customer.settlement.reconciliation",
+      "area": "Customers",
+      "description": "Executes customer bulk payment settlement across outstanding invoices",
+      "priority": "P1",
+      "testFile": "tests/p1-customers.spec.ts",
+      "testName": "P1-CUST-04: Customer Settlement Flow & Payment Reconciliation",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "notification.bell.popover",
+      "area": "Notifications",
+      "description": "Opens notification bell popover and checks unread counts",
+      "priority": "P1",
+      "testFile": "tests/p1-notifications.spec.ts",
+      "testName": "P1-NOTIF-01: Notification Bell Popover & Inbox Hub Navigation",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "notification.action.dispatch",
+      "area": "Notifications",
+      "description": "Dispatches actionable notification button to view and hydrate target invoice/record",
+      "priority": "P1",
+      "testFile": "tests/p1-notifications.spec.ts",
+      "testName": "P1-NOTIF-02: Notification Action Button Navigation Pipeline",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "notification.inbox.filters",
+      "area": "Notifications",
+      "description": "Filters notifications by categories (All, Unread, Billing Alerts, Stock)",
+      "priority": "P1",
+      "testFile": "tests/p1-notifications.spec.ts",
+      "testName": "P1-NOTIF-03: Inbox Subtab and Filter Switching",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "tenant.switch.context",
+      "area": "Multi-Tenant",
+      "description": "Switches active firm context and verifies topbar firm branding updates",
+      "priority": "P1",
+      "testFile": "tests/p1-multi-tenant.spec.ts",
+      "testName": "P1-TENANT-01: Tenant Switcher Updates Context and Header State",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "tenant.data.isolation",
+      "area": "Multi-Tenant",
+      "description": "Enforces strict data isolation between Firm A and Firm B across invoices and customers",
+      "priority": "P1",
+      "testFile": "tests/p1-multi-tenant.spec.ts",
+      "testName": "P1-TENANT-02: Multi-Firm Data Boundary Isolation Across Hubs",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "tenant.rapid.toggles",
+      "area": "Multi-Tenant",
+      "description": "Stress-tests rapid back-and-forth firm toggles to ensure zero state corruption",
+      "priority": "P1",
+      "testFile": "tests/p1-multi-tenant.spec.ts",
+      "testName": "P1-TENANT-03: Rapid Back-and-Forth Firm Toggles",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "inventory.catalog.search",
+      "area": "Inventory",
+      "description": "Renders product catalog table, stock quantities, low-stock badges, and product search",
+      "priority": "P2",
+      "testFile": "tests/p2-inventory.spec.ts",
+      "testName": "P2-INV-01: Product Catalog Directory, Search & Stock Status",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "inventory.crud.stock",
+      "area": "Inventory",
+      "description": "Opens product modal, creates product item, sets selling price, and adjusts inventory stock",
+      "priority": "P2",
+      "testFile": "tests/p2-inventory.spec.ts",
+      "testName": "P2-INV-02: Product CRUD Modal & Stock Adjustment",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "paperwork.hub.subtabs",
+      "area": "Paperwork",
+      "description": "Renders Paperwork Hub and subviews (Delivery Challans, Orders, Proformas, Credit Notes)",
+      "priority": "P2",
+      "testFile": "tests/p2-inventory.spec.ts",
+      "testName": "P2-PAP-01: Paperwork Hub Subtabs (Delivery Challans, Orders, Proformas)",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "party.vendor.management",
+      "area": "Parties",
+      "description": "Renders vendor and supplier management directory within Firm Hub",
+      "priority": "P2",
+      "testFile": "tests/p2-inventory.spec.ts",
+      "testName": "P2-PAP-02: Party / Vendor Management Subtab",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "quickaction.expense.nlp",
+      "area": "Quick Actions",
+      "description": "Parses short natural language expense command ('Fuel 500 UPI') and records expense",
+      "priority": "P2",
+      "testFile": "tests/p2-expenses-goals.spec.ts",
+      "testName": "P2-QA-01: Quick Action Palette — Expense Command (Fuel 500 UPI)",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "quickaction.task.reminder",
+      "area": "Quick Actions",
+      "description": "Exercises task, reminder, and note quick-action command triggers and palette dismissal",
+      "priority": "P2",
+      "testFile": "tests/p2-expenses-goals.spec.ts",
+      "testName": "P2-QA-02: Quick Action Palette — Reminder, Task, and Note Commands",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "planner.goals.habits",
+      "area": "Planner",
+      "description": "Renders savings goals, habit progress trackers, and milestone charts",
+      "priority": "P2",
+      "testFile": "tests/p2-expenses-goals.spec.ts",
+      "testName": "P2-GOAL-01: Planner Goals & Habits Pipeline",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "planner.kanban.board",
+      "area": "Planner",
+      "description": "Renders Kanban task columns (TODO, In Progress, Done) and task cards",
+      "priority": "P2",
+      "testFile": "tests/p2-planner-hr.spec.ts",
+      "testName": "P2-PLN-01: Planner Kanban Board Columns & Cards",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "planner.notes.subtab",
+      "area": "Planner",
+      "description": "Renders business notes list, note previews, and note editor",
+      "priority": "P2",
+      "testFile": "tests/p2-planner-hr.spec.ts",
+      "testName": "P2-PLN-02: Planner Notes Subtab & Creation Interface",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "hr.staff.directory",
+      "area": "HR",
+      "description": "Renders staff directory, employee profiles, and department management",
+      "priority": "P2",
+      "testFile": "tests/p2-planner-hr.spec.ts",
+      "testName": "P2-HR-01: HR Staff Directory & Employee Management",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "hr.payroll.attendance",
+      "area": "HR",
+      "description": "Renders payroll calculation view, salary slips, and attendance shifts",
+      "priority": "P2",
+      "testFile": "tests/p2-planner-hr.spec.ts",
+      "testName": "P2-HR-02: HR Attendance & Payroll Calculation Hub",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "toast.stack.deduplication",
+      "area": "Toasts",
+      "description": "Renders stacked toast notifications and displays deduplication multiplier (×2)",
+      "priority": "P3",
+      "testFile": "tests/p3-toast-visual.spec.ts",
+      "testName": "P3-TOAST-01: Toast Deduplication Badge Multiplier (x2)",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "theme.toggle.synchronize",
+      "area": "Themes",
+      "description": "Toggles light and dark themes, synchronizing data-theme without visual glitch",
+      "priority": "P3",
+      "testFile": "tests/p3-toast-visual.spec.ts",
+      "testName": "P3-THEME-01: Dark Mode Switching Synchronizes Tokens without Glitch",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "responsive.mobile.viewport",
+      "area": "Responsive",
+      "description": "Validates 390x844 mobile viewport layout, collapsible sidebar hamburger, and topbar",
+      "priority": "P3",
+      "testFile": "tests/p3-toast-visual.spec.ts",
+      "testName": "P3-RESP-01: Mobile Viewport (390x844) Renders Shell and Responsive Menu",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "async.rapid.navigation",
+      "area": "Async Stability",
+      "description": "Rapidly switches destinations with in-flight requests to detect orphaned requests and races",
+      "priority": "P3",
+      "testFile": "tests/p3-toast-visual.spec.ts",
+      "testName": "P3-ASYNC-01: Rapid Navigation & Async Request In-Flight Safety",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "settings.subtabs.general",
+      "area": "Settings",
+      "description": "Renders Settings hub, licensing status, security configuration, and firm settings",
+      "priority": "P3",
+      "testFile": "tests/p3-settings-system.spec.ts",
+      "testName": "P3-SET-01: Settings Hub Subtab Navigation (General, Firm, Licensing, Security)",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "settings.backup.restore",
+      "area": "Settings",
+      "description": "Renders Backup & Restore data interface and database snapshot history",
+      "priority": "P3",
+      "testFile": "tests/p3-settings-system.spec.ts",
+      "testName": "P3-SET-02: Backup & Restore Data Interface Integrity",
+      "status": "covered",
+      "excludedReason": null
+    },
+    {
+      "id": "hardware.print.spooler",
+      "area": "Printing",
+      "description": "Invokes invoice print preview window and verifies printable DOM format",
+      "priority": "P2",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-01: Invoice Creation, Line Items Addition & Total Calculation",
+      "status": "partiallyCovered",
+      "excludedReason": "Physical OS print spooling dialog cannot be clicked in headless Chromium; print preview DOM format is verified."
+    },
+    {
+      "id": "whatsapp.external.share",
+      "area": "Integrations",
+      "description": "Generates formatted WhatsApp bill payload and launches modal preview",
+      "priority": "P2",
+      "testFile": "tests/p1-invoices.spec.ts",
+      "testName": "P1-INV-01: Invoice Creation, Line Items Addition & Total Calculation",
+      "status": "partiallyCovered",
+      "excludedReason": "External WhatsApp Web third-party redirection tested up to intent URL generation."
+    }
+  ]
+}

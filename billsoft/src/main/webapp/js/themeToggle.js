@@ -79,6 +79,15 @@
     const root = document.documentElement;
     ALL_THEME_CLASSES.forEach(c => root.classList.remove(c));
     root.classList.add(activeClass);
+    if (activeIsDark) {
+      root.setAttribute('data-theme', 'dark');
+      root.classList.add('dark', 'dark-mode');
+      if (document.body) document.body.classList.add('dark', 'dark-mode');
+    } else {
+      root.setAttribute('data-theme', 'light');
+      root.classList.remove('dark', 'dark-mode');
+      if (document.body) document.body.classList.remove('dark', 'dark-mode');
+    }
     localStorage.setItem('themeBase', activeClass);
 
     if (notify) {

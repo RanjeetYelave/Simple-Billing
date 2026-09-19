@@ -6146,13 +6146,165 @@ window.dispatchNotificationAction = async function (notif, choice = 'PRIMARY') {
   }
 };
 
+// ─── RUPEECRM EULA SERVICE ───
+const EULA_CURRENT_VERSION = '1.0.0';
+const EULA_STORAGE_KEYS = {
+  STATUS: 'rupeecrm_eula_status', // 'ACCEPTED' | 'REVOKED' | 'PENDING'
+  VERSION: 'rupeecrm_eula_version',
+  ACCEPTED_AT: 'rupeecrm_eula_accepted_at',
+  REVOKED_AT: 'rupeecrm_eula_revoked_at'
+};
+
+const EulaService = {
+  getCurrentVersion() {
+    return EULA_CURRENT_VERSION;
+  },
+
+  getStatus() {
+    try {
+      if (typeof localStorage === 'undefined') {
+        return { status: 'PENDING', version: null, acceptedAt: null, revokedAt: null };
+      }
+      const status = localStorage.getItem(EULA_STORAGE_KEYS.STATUS) || 'PENDING';
+      const version = localStorage.getItem(EULA_STORAGE_KEYS.VERSION) || null;
+      const acceptedAt = localStorage.getItem(EULA_STORAGE_KEYS.ACCEPTED_AT) || null;
+      const revokedAt = localStorage.getItem(EULA_STORAGE_KEYS.REVOKED_AT) || null;
+      return { status, version, acceptedAt, revokedAt };
+    } catch (e) {
+      return { status: 'PENDING', version: null, acceptedAt: null, revokedAt: null };
+    }
+  },
+
+  isAccepted() {
+    const s = this.getStatus();
+    return s.status === 'ACCEPTED' && s.version === EULA_CURRENT_VERSION;
+  },
+
+  accept(version = EULA_CURRENT_VERSION) {
+    const now = new Date().toISOString();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(EULA_STORAGE_KEYS.STATUS, 'ACCEPTED');
+        localStorage.setItem(EULA_STORAGE_KEYS.VERSION, version);
+        localStorage.setItem(EULA_STORAGE_KEYS.ACCEPTED_AT, now);
+        localStorage.removeItem(EULA_STORAGE_KEYS.REVOKED_AT);
+      }
+    } catch (e) { }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billsoft:eula-status-changed', {
+        detail: { status: 'ACCEPTED', version, acceptedAt: now }
+      }));
+    }
+    return { status: 'ACCEPTED', version, acceptedAt: now };
+  },
+
+  revoke() {
+    const now = new Date().toISOString();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(EULA_STORAGE_KEYS.STATUS, 'REVOKED');
+        localStorage.setItem(EULA_STORAGE_KEYS.REVOKED_AT, now);
+      }
+    } catch (e) { }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billsoft:eula-status-changed', {
+        detail: { status: 'REVOKED', revokedAt: now }
+      }));
+    }
+    return { status: 'REVOKED', revokedAt: now };
+  },
+
+  getContent() {
+    return {
+      title: 'RupeeCRM End User License Agreement (EULA)',
+      version: EULA_CURRENT_VERSION,
+      effectiveDate: 'January 1, 2026',
+      developer: 'Ranjeet Yelave (Independent Software Developer)',
+      sections: [
+        {
+          id: 'grant',
+          title: '1. Software License Grant',
+          text: 'Subject to the terms of this Agreement and valid commercial licensing, the Licensor (Ranjeet Yelave) grants you a non-exclusive, non-transferable, revocable license to install, access, and use RupeeCRM solely for your internal business management, billing, inventory, and accounting operations on designated devices.'
+        },
+        {
+          id: 'authorized_use',
+          title: '2. Authorized Use & Restrictions',
+          text: 'You agree not to: (a) reverse engineer, decompile, disassemble, or derive source code from the software; (b) modify, adapt, translate, or create derivative works; (c) rent, lease, sublicense, resell, or distribute RupeeCRM to any third party; (d) circumvent, disable, or tamper with software licensing mechanisms, machine ID binding, cryptographic signature validations, or security measures.'
+        },
+        {
+          id: 'licensing',
+          title: '3. Commercial Licensing, Activation & Machine Binding',
+          text: 'RupeeCRM uses offline-first Ed25519 cryptographic license verification bound to your device machine identity. A valid commercial license key is required for continued operation beyond trial terms. Commercial license tiers (Silver, Gold, Platinum) grant specific operational entitlements as specified at purchase.'
+        },
+        {
+          id: 'data_ownership',
+          title: '4. Business Data Ownership & Local/Offline Privacy',
+          text: 'You retain 100% full and exclusive ownership of all customer records, invoices, quotations, inventory items, payroll, financial ledger entries, and business data entered into RupeeCRM. RupeeCRM operates on an offline-first architecture; your operational database is stored locally on your device. The Licensor does not inspect, sell, access, or monetize your private business data.'
+        },
+        {
+          id: 'backup_responsibility',
+          title: '5. Backup & Data-Loss Responsibility',
+          text: 'You are solely responsible for maintaining regular, verified backups of your local RupeeCRM database and exported records. The Licensor is not responsible for data loss caused by hardware failure, operating system corruption, unauthorized local access, or failure to maintain backups.'
+        },
+        {
+          id: 'cloud_services',
+          title: '6. Optional Cloud & Data Protection Add-on Services',
+          text: 'If you subscribe to the optional Off-Device Cloud Data Protection vault, encrypted backups are synced to secure remote storage according to your subscription tier. Cloud sync features operate only while an active subscription is maintained.'
+        },
+        {
+          id: 'third_party',
+          title: '7. Third-Party Services & Integrations',
+          text: 'RupeeCRM may facilitate integration with third-party payment gateways (UPI), messaging channels (WhatsApp), or hardware peripherals (thermal receipt printers). Use of third-party services is governed by their respective terms and policies.'
+        },
+        {
+          id: 'updates',
+          title: '8. Software Updates & Improvements',
+          text: 'The Licensor may from time to time release updates, patches, bug fixes, or enhancements. Updates may be downloaded and applied via the built-in software update manager in accordance with your license agreement.'
+        },
+        {
+          id: 'acceptance_revocation',
+          title: '9. Voluntary Acceptance & Revocation',
+          text: 'Acceptance of this EULA is mandatory to access and operate RupeeCRM. You may voluntarily revoke your acceptance at any time via Settings → Legal & EULA. Upon revocation, application access is immediately locked until re-accepted. Revocation does NOT delete your local business data or cancel existing commercial license keys.'
+        },
+        {
+          id: 'warranty_disclaimer',
+          title: '10. Disclaimer of Warranties',
+          text: 'TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, RUPEECRM IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TAX COMPLIANCE ACCURACY, OR NON-INFRINGEMENT.'
+        },
+        {
+          id: 'limitation_liability',
+          title: '11. Limitation of Liability',
+          text: 'IN NO EVENT SHALL THE LICENSOR (RANJEET YELAVE) BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, REVENUE, DATA, OR BUSINESS INTERRUPTION ARISING FROM THE USE OR INABILITY TO USE RUPEECRM.'
+        },
+        {
+          id: 'support',
+          title: '12. Technical Support',
+          text: 'Technical assistance is provided by the developer via official helpdesk channels (yelaveranjeet@gmail.com) subject to the support scope associated with your commercial license tier.'
+        },
+        {
+          id: 'governing_law',
+          title: '13. Governing Law & Jurisdiction',
+          text: 'This Agreement shall be governed by and construed in accordance with the applicable laws of India. Any legal proceedings arising out of this Agreement shall be subject to the exclusive jurisdiction of the competent courts in the Developer\'s jurisdiction.'
+        },
+        {
+          id: 'contact',
+          title: '14. Contact & Notices',
+          text: 'For legal notices, licensing inquiries, or agreement questions, contact:\nRanjeet Yelave (Independent Software Developer)\nEmail: yelaveranjeet@gmail.com\nWebsite: RupeeCRM Official'
+        }
+      ]
+    };
+  }
+};
+
 if (typeof window !== 'undefined') {
   window.BillsoftUtils = typeof BillsoftUtils !== 'undefined' ? BillsoftUtils : (window.BillsoftUtils || {});
   window.BillsoftSearchEngine = BillsoftSearchEngine;
   window.BillsoftUtils.searchEngine = BillsoftSearchEngine;
+  window.EulaService = EulaService;
+  window.BillsoftUtils.eulaService = EulaService;
   window.getInitials = BillsoftUtils.getInitials;
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { BillsoftUtils, BillsoftSearchEngine, getInitials: BillsoftUtils.getInitials };
+  module.exports = { BillsoftUtils, BillsoftSearchEngine, EulaService, getInitials: BillsoftUtils.getInitials };
 }
 

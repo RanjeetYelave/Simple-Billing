@@ -71,14 +71,14 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 Write-Step "Checking Windows environment..."
 
-$isWindows = $false
+$isWindowsEnvironment = $false
 if ($PSVersionTable.PSEdition -eq "Core") {
-    $isWindows = $IsWindows
+    $isWindowsEnvironment = [bool]$IsWindows
 } else {
-    $isWindows = ($env:OS -eq "Windows_NT")
+    $isWindowsEnvironment = ($env:OS -eq "Windows_NT")
 }
 
-if (-not $isWindows) {
+if (-not $isWindowsEnvironment) {
     Write-FatalError "This installer is intended for Microsoft Windows only."
 }
 

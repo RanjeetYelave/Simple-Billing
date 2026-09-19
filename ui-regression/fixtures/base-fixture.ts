@@ -9,7 +9,16 @@ export type TestFixtures = {
 export class RupeeCRMAppHelper {
   constructor(public page: Page, public errorGate: ErrorGate) {}
 
-  async gotoApp() {
+  async gotoApp(ensureEulaAccepted = true) {
+    if (ensureEulaAccepted) {
+      await this.page.addInitScript(() => {
+        if (!localStorage.getItem('rupeecrm_eula_status')) {
+          localStorage.setItem('rupeecrm_eula_status', 'ACCEPTED');
+          localStorage.setItem('rupeecrm_eula_version', '1.0.0');
+          localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
+        }
+      });
+    }
     await this.page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await this.page.waitForSelector('#root', { timeout: 15000 });
     // Wait for initial firm and status sync

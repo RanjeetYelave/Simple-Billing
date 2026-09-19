@@ -1458,11 +1458,12 @@ tbody tr:hover {
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
-  pointer-events: none;
+  pointer-events: auto;
   font-family: inherit;
   width: auto;
   min-width: 340px;
   max-width: 420px;
+  min-height: 60px;
 }
 
 .toast-stack-badge {
@@ -7997,4 +7998,112 @@ body.dark-mode .wa-target-btn.active {
 :root[data-theme='dark'] .c360-kpi-card {
   background: var(--bg-card, #1e293b);
   border-color: var(--border, #334155);
+}
+
+/* ─── EULA MODAL & GATE STYLES ─── */
+.eula-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.eula-modal-card {
+  background: var(--bg-card, #ffffff);
+  color: var(--text-primary, #0f172a);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 16px;
+  max-width: 780px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  animation: eulaFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes eulaFadeIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.eula-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--bg-secondary, #f8fafc);
+}
+
+.eula-scroll-box {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  max-height: 48vh;
+  min-height: 280px;
+  background: var(--bg-primary, #ffffff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+
+.eula-section {
+  margin-bottom: 20px;
+}
+
+.eula-section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin-bottom: 6px;
+}
+
+.eula-section-text {
+  color: var(--text-secondary, #475569);
+  white-space: pre-line;
+}
+
+.eula-footer {
+  padding: 18px 24px;
+  background: var(--bg-secondary, #f8fafc);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eula-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  user-select: none;
+}
+
+.eula-checkbox-label input {
+  margin-top: 3px;
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--primary, #4f46e5);
+}
+
+.eula-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }

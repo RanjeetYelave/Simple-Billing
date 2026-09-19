@@ -317,7 +317,10 @@
       return ReactDOM.createPortal(
         React.createElement('div', {
           className: `toast-dock ${isHovered ? 'is-expanded' : 'is-stacked'}`,
-          style: isHovered ? { pointerEvents: 'auto', minHeight: `${visibleCount * 60 + 20}px` } : {},
+          style: {
+            minHeight: `${isHovered ? (visibleCount * 58 + 10) : 60}px`,
+            pointerEvents: 'auto'
+          },
           onMouseEnter: () => setIsHovered(true),
           onMouseLeave: () => setIsHovered(false),
           'aria-live': 'polite',
@@ -30419,6 +30422,333 @@
       );
     }
 
+    // ─── EULA GATE MODAL (Startup Gate & View Modal) ───
+    function EulaGateModal({ isOpen, isRevoked, onAccept, onDecline, readOnly = false, onClose }) {
+      const [agreed, setAgreed] = useState(false);
+      const [isDeclinedView, setIsDeclinedView] = useState(false);
+
+      if (!isOpen) return null;
+
+      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : {
+        title: 'RupeeCRM End User License Agreement (EULA)',
+        version: '1.0.0',
+        effectiveDate: 'January 1, 2026',
+        developer: 'Ranjeet Yelave (Independent Software Developer)',
+        sections: []
+      };
+
+      const handleAccept = () => {
+        if (!agreed && !readOnly) return;
+        if (typeof onAccept === 'function') onAccept();
+      };
+
+      const handleDeclineClick = () => {
+        setIsDeclinedView(true);
+        if (typeof onDecline === 'function') onDecline();
+      };
+
+      const modalContent = React.createElement('div', {
+        id: 'eula-gate-overlay',
+        className: 'eula-gate-overlay',
+        onClick: (e) => {
+          if (readOnly && onClose) onClose();
+          e.stopPropagation();
+        }
+      },
+        React.createElement('div', {
+          id: 'eula-modal-card',
+          className: 'eula-modal-card',
+          onClick: e => e.stopPropagation()
+        },
+            // Header
+            React.createElement('div', { className: 'eula-header' },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, showTagline: false, isDarkBg: false }),
+                React.createElement('div', null,
+                  React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' } }, content.title),
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                    `Version ${content.version} • Effective ${content.effectiveDate} • Dev: ${content.developer}`
+                  )
+                )
+              ),
+              readOnly && React.createElement('button', {
+                id: 'eula-close-top-btn',
+                className: 'btn btn-ghost btn-sm',
+                onClick: onClose,
+                style: { fontSize: '1.2rem', padding: '2px 8px' }
+              }, '✕')
+            ),
+
+            // Declined State View
+            isDeclinedView ? (
+              React.createElement('div', { style: { padding: '40px 30px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
+                React.createElement('div', { style: { fontSize: '3rem' } }, '⛔'),
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.3rem', fontWeight: 700, color: '#ef4444' } }, 'EULA Acceptance Required'),
+                React.createElement('p', { style: { maxWidth: 480, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 } },
+                  'Access to RupeeCRM requires acceptance of the End User License Agreement. Because the agreement was declined, application features remain locked. Your local business data remains completely safe.'
+                ),
+                React.createElement('div', { style: { display: 'flex', gap: 12, marginTop: 12 } },
+                  React.createElement('button', {
+                    id: 'eula-review-again-btn',
+                    className: 'btn btn-primary',
+                    onClick: () => setIsDeclinedView(false),
+                    style: { fontWeight: 700 }
+                  }, '← Review & Accept EULA')
+                )
+              )
+            ) : (
+              // Normal Agreement Scrollable Content
+              React.createElement(React.Fragment, null,
+                // Notice banner
+                !readOnly && React.createElement('div', {
+                  id: 'eula-notice-banner',
+                  style: {
+                    padding: '10px 24px',
+                    background: isRevoked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(99, 102, 241, 0.08)',
+                    borderBottom: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    color: isRevoked ? '#dc2626' : 'var(--primary)',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }
+                },
+                  isRevoked
+                    ? '⚠️ Access Locked: EULA acceptance was previously revoked. Accept below to resume application access.'
+                    : '📋 Please review and accept the RupeeCRM End User License Agreement to proceed.'
+                ),
+
+                // Scrollable Terms Container
+                React.createElement('div', { id: 'eula-scroll-box', className: 'eula-scroll-box' },
+                  (content.sections || []).map((sec, idx) => React.createElement('div', { key: sec.id || idx, className: 'eula-section' },
+                    React.createElement('div', { className: 'eula-section-title' }, sec.title),
+                    React.createElement('div', { className: 'eula-section-text' }, sec.text)
+                  ))
+                ),
+
+                // Footer Actions
+                React.createElement('div', { className: 'eula-footer' },
+                  !readOnly ? (
+                    React.createElement(React.Fragment, null,
+                      React.createElement('label', { className: 'eula-checkbox-label' },
+                        React.createElement('input', {
+                          id: 'eula-agree-checkbox',
+                          type: 'checkbox',
+                          checked: agreed,
+                          onChange: e => setAgreed(e.target.checked)
+                        }),
+                        React.createElement('span', null,
+                          'I have read, understood, and agree to the ',
+                          React.createElement('strong', null, 'RupeeCRM End User License Agreement'),
+                          '.'
+                        )
+                      ),
+                      React.createElement('div', { className: 'eula-actions-row' },
+                        React.createElement('button', {
+                          id: 'eula-decline-btn',
+                          type: 'button',
+                          className: 'btn btn-ghost btn-sm',
+                          onClick: handleDeclineClick,
+                          style: { color: 'var(--text-secondary)', fontWeight: 600 }
+                        }, 'Decline'),
+                        React.createElement('button', {
+                          id: 'eula-accept-btn',
+                          type: 'button',
+                          className: 'btn btn-primary',
+                          disabled: !agreed,
+                          onClick: handleAccept,
+                          style: { padding: '8px 24px', fontWeight: 700 }
+                        }, 'Accept & Continue →')
+                      )
+                    )
+                  ) : (
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+                      React.createElement('button', {
+                        id: 'eula-close-view-btn',
+                        type: 'button',
+                        className: 'btn btn-primary btn-sm',
+                        onClick: onClose,
+                        style: { padding: '6px 20px', fontWeight: 600 }
+                      }, 'Close')
+                    )
+                  )
+                )
+              )
+            )
+        )
+      );
+
+      if (readOnly) {
+        return ReactDOM.createPortal(modalContent, document.body);
+      }
+      return modalContent;
+    }
+
+    // ─── SETTINGS LEGAL & EULA COMPONENT ───
+    function SettingsLegalEula() {
+      const [eulaStatus, setEulaStatus] = useState(() => {
+        return typeof EulaService !== 'undefined' ? EulaService.getStatus() : { status: 'PENDING', version: '1.0.0' };
+      });
+      const [showFullEulaModal, setShowFullEulaModal] = useState(false);
+      const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+
+      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : { title: 'RupeeCRM End User License Agreement', version: '1.0.0', sections: [] };
+
+      const handleRevokeConfirm = () => {
+        if (typeof EulaService !== 'undefined') {
+          EulaService.revoke();
+          setEulaStatus(EulaService.getStatus());
+          setShowRevokeConfirm(false);
+          window.showToast && window.showToast('EULA acceptance has been revoked. Application locked.', 'info');
+        }
+      };
+
+      const isAccepted = eulaStatus.status === 'ACCEPTED';
+
+      return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
+        // Main Agreement Card
+        React.createElement('div', { className: 'card', style: { padding: '28px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' } }, '📜'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'End User License Agreement (EULA)'),
+                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Legal terms, authorized commercial use, data ownership, and permissions.')
+              )
+            ),
+            React.createElement('span', {
+              id: 'eula-status-badge',
+              className: `badge ${isAccepted ? 'badge-success' : 'badge-warning'}`,
+              style: {
+                background: isAccepted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                color: isAccepted ? '#10b981' : '#ef4444',
+                border: `1px solid ${isAccepted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                padding: '6px 14px', borderRadius: 20, fontWeight: 700, fontSize: '0.82rem'
+              }
+            }, isAccepted ? '✅ ACCEPTED' : (eulaStatus.status === 'REVOKED' ? '⚠️ REVOKED' : '⏳ PENDING'))
+          ),
+
+          // Status & Details Grid
+          React.createElement('div', {
+            style: {
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14,
+              padding: '16px 18px', background: 'var(--bg-secondary, #f8fafc)', borderRadius: 12,
+              border: '1px solid var(--border, #e2e8f0)', marginBottom: 20
+            }
+          },
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'CURRENT EULA VERSION'),
+              React.createElement('div', { id: 'eula-version-text', style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' } }, `Version ${content.version || '1.0.0'} (2026)`)
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'ACCEPTANCE STATUS'),
+              React.createElement('div', { id: 'eula-status-text', style: { fontWeight: 700, fontSize: '0.95rem', color: isAccepted ? '#10b981' : '#ef4444' } }, isAccepted ? 'Active & Accepted' : (eulaStatus.status === 'REVOKED' ? 'Revoked by User' : 'Pending Acceptance'))
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, isAccepted ? 'DATE ACCEPTED' : 'DATE REVOKED'),
+              React.createElement('div', { id: 'eula-date-text', style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text)' } },
+                isAccepted && eulaStatus.acceptedAt ? new Date(eulaStatus.acceptedAt).toLocaleString() : (eulaStatus.revokedAt ? new Date(eulaStatus.revokedAt).toLocaleString() : '—')
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'LICENSOR / DEVELOPER'),
+              React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' } }, 'Ranjeet Yelave (Indie Dev)')
+            )
+          ),
+
+          // Action Buttons
+          React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+            React.createElement('button', {
+              id: 'view-eula-btn',
+              type: 'button',
+              className: 'btn btn-primary btn-sm',
+              onClick: () => setShowFullEulaModal(true),
+              style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+            }, '👁️ View Complete EULA'),
+            isAccepted && React.createElement('button', {
+              id: 'revoke-eula-btn',
+              type: 'button',
+              className: 'btn btn-outline btn-sm',
+              onClick: () => setShowRevokeConfirm(true),
+              style: { display: 'flex', alignItems: 'center', gap: 6, borderColor: '#ef4444', color: '#ef4444', fontWeight: 600 }
+            }, '⚠️ Revoke EULA Acceptance')
+          )
+        ),
+
+        // Data Ownership & Architecture Notice Card
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            React.createElement('div', { style: { fontSize: '1.4rem' } }, '🛡️'),
+            React.createElement('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Data Sovereignty & Commercial License Independence')
+          ),
+          React.createElement('div', { style: { fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 } },
+            React.createElement('p', { style: { margin: 0 } },
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, '100% Local Data Ownership: '),
+              'Your customer lists, bills, financial books, and inventory remain strictly stored on your local device. Revoking your EULA permission immediately halts software usage but will never delete your business records.'
+            ),
+            React.createElement('p', { style: { margin: 0 } },
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, 'License Separation: '),
+              'Your commercial machine license and optional Cloud Data Protection subscriptions remain intact upon EULA revocation and can be resumed immediately upon re-acceptance.'
+            )
+          )
+        ),
+
+        // Read-only EULA Modal
+        showFullEulaModal && React.createElement(EulaGateModal, {
+          isOpen: true,
+          readOnly: true,
+          onClose: () => setShowFullEulaModal(false)
+        }),
+
+        // Strong Revocation Confirmation Modal
+        showRevokeConfirm && React.createElement('div', {
+          id: 'revoke-eula-modal',
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
+          onClick: () => setShowRevokeConfirm(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { maxWidth: 520, width: '92%', background: 'var(--bg-card, #fff)', color: 'var(--text)', borderRadius: 16, padding: 26, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+              React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' } }, '⚠️'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#ef4444' } }, 'Revoke EULA Acceptance?'),
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Mandatory Access Permission')
+              )
+            ),
+            React.createElement('div', {
+              id: 'revoke-warning-text',
+              style: {
+                background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: 10, padding: '14px 16px', marginBottom: 18, fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.5
+              }
+            },
+              'Revoking your EULA acceptance will immediately prevent access to RupeeCRM until the EULA is accepted again. Your locally stored business data will not be deleted.'
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', {
+                id: 'cancel-revoke-btn',
+                type: 'button',
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => setShowRevokeConfirm(false)
+              }, 'Cancel'),
+              React.createElement('button', {
+                id: 'confirm-revoke-btn',
+                type: 'button',
+                className: 'btn btn-sm',
+                onClick: handleRevokeConfirm,
+                style: { background: '#ef4444', color: '#fff', borderColor: '#dc2626', fontWeight: 700 }
+              }, 'Confirm & Revoke Access')
+            )
+          )
+        )
+      );
+    }
+
     // ─── CREDITS & HELPDESK ───
     function CreditsHelpdesk() {
       const [copied, setCopied] = useState(false);
@@ -30749,6 +31079,7 @@
         if (low === 'firm' || low === 'profile' || low === 'branding' || low === 'business') return 'firm';
         if (low === 'backup' || low === 'restore' || low === 'vault') return 'backup';
         if (low === 'updates' || low === 'update' || low === 'software' || low === 'network') return 'updates';
+        if (low === 'legal' || low === 'eula' || low === 'terms' || low === 'agreement') return 'legal';
         if (low === 'credits' || low === 'help' || low === 'about' || low === 'support') return 'credits';
         return 'appearance';
       };
@@ -30783,6 +31114,7 @@
           React.createElement('button', { className: `btn ${activeTab === 'appearance' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('appearance') }, '🎨 Appearance'),
           React.createElement('button', { className: `btn ${activeTab === 'notifications' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('notifications') }, '🔔 Notifications'),
           React.createElement('button', { className: `btn ${activeTab === 'license' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('license') }, '🔑 Licensing'),
+          React.createElement('button', { id: 'settings-tab-legal', className: `btn ${activeTab === 'legal' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('legal') }, '📜 Legal & EULA'),
           React.createElement('button', { className: `btn ${activeTab === 'security' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('security') }, '🔒 Security & Lock'),
           React.createElement('button', { className: `btn ${activeTab === 'firm' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('firm') }, '🏢 Firm Branding'),
           React.createElement('button', { className: `btn ${activeTab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, '💾 Backup & Vault'),
@@ -30792,6 +31124,7 @@
         activeTab === 'appearance' && React.createElement(SettingsAppearance, null),
         activeTab === 'notifications' && React.createElement(SettingsNotifications, null),
         activeTab === 'license' && React.createElement(SettingsLicensing, null),
+        activeTab === 'legal' && React.createElement(SettingsLegalEula, null),
         activeTab === 'security' && React.createElement(SettingsSecurity, null),
         activeTab === 'firm' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
         activeTab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
@@ -34897,6 +35230,21 @@
 
     // ─── MAIN APP ───
     function App() {
+      const [eulaStatus, setEulaStatus] = useState(() => {
+        return typeof EulaService !== 'undefined' ? EulaService.getStatus() : { status: 'PENDING' };
+      });
+      const isEulaAccepted = eulaStatus.status === 'ACCEPTED' && eulaStatus.version === (typeof EulaService !== 'undefined' ? EulaService.getCurrentVersion() : '1.0.0');
+
+      useEffect(() => {
+        const handleEulaChange = (e) => {
+          if (e && e.detail) {
+            setEulaStatus(typeof EulaService !== 'undefined' ? EulaService.getStatus() : { status: e.detail.status });
+          }
+        };
+        window.addEventListener('billsoft:eula-status-changed', handleEulaChange);
+        return () => window.removeEventListener('billsoft:eula-status-changed', handleEulaChange);
+      }, []);
+
       const [isAuthenticated, setIsAuthenticated] = useState(() => {
         const hasToken = !!(localStorage.getItem('billsoft_auth_token') || sessionStorage.getItem('billsoft_auth_token'));
         const isAuth = (localStorage.getItem('isAuthenticated') === 'true' || sessionStorage.getItem('isAuthenticated') === 'true');
@@ -36272,6 +36620,7 @@
         return () => window.removeEventListener('billsoft:statusbar-toggle', handler);
       }, []);
 
+      if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
       if (licenseStatus === 'expired' || licenseStatus === 'EXPIRED' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));

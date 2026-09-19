@@ -190,4 +190,24 @@ public class DataProtectionServiceTest {
         // Zero remote calls
         verify(mockStorageProvider, never()).uploadBackup(any(), any(), any());
     }
+
+    @Test
+    public void testDeterministicJitterStabilityAndBounds() {
+        String mid1 = "RKGM-GH4X-6YX1-VVN8";
+        String mid2 = "ABCD-1234-EFGH-5678";
+
+        long jitter1a = DataProtectionService.calculateDeterministicJitterSeconds(mid1);
+        long jitter1b = DataProtectionService.calculateDeterministicJitterSeconds(mid1);
+        long jitter2 = DataProtectionService.calculateDeterministicJitterSeconds(mid2);
+
+        // Strict stability across invocations
+        assertEquals(jitter1a, jitter1b);
+        assertTrue(jitter1a >= 0 && jitter1a < 24 * 3600);
+        assertTrue(jitter2 >= 0 && jitter2 < 24 * 3600);
+        assertNotEquals(jitter1a, jitter2);
+
+        // Null and blank safety
+        assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds(null));
+        assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds("   "));
+    }
 }

@@ -12,13 +12,13 @@ test.describe('Toast Notification Hover & Stack Deck Behavior', () => {
       await page.waitForTimeout(500);
     }
 
-    // Trigger 5 sequential toast notifications with same message spaced 600ms apart
+    // Trigger 5 sequential toast notifications with same message spaced 400ms apart
     // (Simulating user clicking quick save / add EMI 5 times)
     for (let i = 1; i <= 5; i++) {
       await page.evaluate(() => {
         (window as any).showToast('₹1,000 added to goal savings!', 'success');
       });
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(400);
     }
 
     // Verify toast dock exists and has stacked cards

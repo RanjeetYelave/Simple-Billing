@@ -29771,8 +29771,9 @@
       );
     }
 
-    // ─── SOFTWARE LICENSING & ACTIVATION ───
-    function SettingsLicensing() {
+    // ─── SOFTWARE LICENSING & EULA UNIFIED TAB ───
+    function SettingsLicensingEula() {
+      // 1. Licensing State
       const [licenseInfo, setLicenseInfo] = useState(null);
       const [qrDataStr, setQrDataStr] = useState('');
       const [checkingOnline, setCheckingOnline] = useState(false);
@@ -29807,8 +29808,28 @@
         }
       };
 
+      // 2. EULA State
+      const [eulaStatus, setEulaStatus] = useState(() => {
+        return typeof EulaService !== 'undefined' ? EulaService.getStatus() : { status: 'PENDING', version: '1.0.0' };
+      });
+      const [showFullEulaModal, setShowFullEulaModal] = useState(false);
+      const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+
+      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : { title: 'RupeeCRM End User License Agreement', version: '1.0.0', sections: [] };
+
+      const handleRevokeConfirm = () => {
+        if (typeof EulaService !== 'undefined') {
+          EulaService.revoke();
+          setEulaStatus(EulaService.getStatus());
+          setShowRevokeConfirm(false);
+          window.showToast && window.showToast('EULA acceptance has been revoked. Application locked.', 'info');
+        }
+      };
+
+      const isAccepted = eulaStatus.status === 'ACCEPTED';
+
       return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
-        // Software Licensing & Activation Card
+        // ── Card 1: Software Licensing & Entitlements ──
         React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
@@ -30003,10 +30024,152 @@
               )
             )
           )
+        ),
+
+        // ── Card 2: End User License Agreement (EULA) ──
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '📜'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'End User License Agreement (EULA)'),
+                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Legal terms, authorized commercial use, data ownership, and permissions.')
+              )
+            ),
+            React.createElement('span', {
+              id: 'eula-status-badge',
+              className: `badge ${isAccepted ? 'badge-success' : 'badge-warning'}`,
+              style: {
+                background: isAccepted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                color: isAccepted ? '#10b981' : '#ef4444',
+                border: `1px solid ${isAccepted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                padding: '6px 14px', borderRadius: 20, fontWeight: 700, fontSize: '0.82rem'
+              }
+            }, isAccepted ? '✅ ACCEPTED' : (eulaStatus.status === 'REVOKED' ? '⚠️ REVOKED' : '⏳ PENDING'))
+          ),
+
+          // Status & Details Grid
+          React.createElement('div', {
+            style: {
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14,
+              padding: '16px 18px', background: 'var(--bg-secondary, #f8fafc)', borderRadius: 12,
+              border: '1px solid var(--border, #e2e8f0)', marginBottom: 20
+            }
+          },
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'CURRENT EULA VERSION'),
+              React.createElement('div', { id: 'eula-version-text', style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' } }, `Version ${content.version || '1.0.0'} (2026)`)
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'ACCEPTANCE STATUS'),
+              React.createElement('div', { id: 'eula-status-text', style: { fontWeight: 700, fontSize: '0.95rem', color: isAccepted ? '#10b981' : '#ef4444' } }, isAccepted ? 'Active & Accepted' : (eulaStatus.status === 'REVOKED' ? 'Revoked by User' : 'Pending Acceptance'))
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, isAccepted ? 'DATE ACCEPTED' : 'DATE REVOKED'),
+              React.createElement('div', { id: 'eula-date-text', style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text)' } },
+                isAccepted && eulaStatus.acceptedAt ? new Date(eulaStatus.acceptedAt).toLocaleString() : (eulaStatus.revokedAt ? new Date(eulaStatus.revokedAt).toLocaleString() : '—')
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'LICENSOR / DEVELOPER'),
+              React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' } }, 'Ranjeet Yelave (Indie Dev)')
+            )
+          ),
+
+          // Action Buttons
+          React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+            React.createElement('button', {
+              id: 'view-eula-btn',
+              type: 'button',
+              className: 'btn btn-primary btn-sm',
+              onClick: () => setShowFullEulaModal(true),
+              style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+            }, '👁️ View Complete EULA'),
+            isAccepted && React.createElement('button', {
+              id: 'revoke-eula-btn',
+              type: 'button',
+              className: 'btn btn-outline btn-sm',
+              onClick: () => setShowRevokeConfirm(true),
+              style: { display: 'flex', alignItems: 'center', gap: 6, borderColor: '#ef4444', color: '#ef4444', fontWeight: 600 }
+            }, '⚠️ Revoke EULA Acceptance')
+          )
+        ),
+
+        // ── Card 3: Data Ownership & Architecture Notice ──
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            React.createElement('div', { style: { fontSize: '1.4rem' } }, '🛡️'),
+            React.createElement('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Data Sovereignty & Commercial License Independence')
+          ),
+          React.createElement('div', { style: { fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 } },
+            React.createElement('p', { style: { margin: 0 } },
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, '100% Local Data Ownership: '),
+              'Your customer lists, bills, financial books, and inventory remain strictly stored on your local device. Revoking your EULA permission immediately halts software usage but will never delete your business records.'
+            ),
+            React.createElement('p', { style: { margin: 0 } },
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, 'License Separation: '),
+              'Your commercial machine license and optional Cloud Data Protection subscriptions remain intact upon EULA revocation and can be resumed immediately upon re-acceptance.'
+            )
+          )
+        ),
+
+        // Read-only EULA Modal
+        showFullEulaModal && React.createElement(EulaGateModal, {
+          isOpen: true,
+          readOnly: true,
+          onClose: () => setShowFullEulaModal(false)
+        }),
+
+        // Strong Revocation Confirmation Modal
+        showRevokeConfirm && React.createElement('div', {
+          id: 'revoke-eula-modal',
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
+          onClick: () => setShowRevokeConfirm(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { maxWidth: 520, width: '92%', background: 'var(--bg-card, #fff)', color: 'var(--text)', borderRadius: 16, padding: 26, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+              React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' } }, '⚠️'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#ef4444' } }, 'Revoke EULA Acceptance?'),
+                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Mandatory Access Permission')
+              )
+            ),
+            React.createElement('div', {
+              id: 'revoke-warning-text',
+              style: {
+                background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: 10, padding: '14px 16px', marginBottom: 18, fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.5
+              }
+            },
+              'Revoking your EULA acceptance will immediately prevent access to RupeeCRM until the EULA is accepted again. Your locally stored business data will not be deleted.'
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', {
+                id: 'cancel-revoke-btn',
+                type: 'button',
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => setShowRevokeConfirm(false)
+              }, 'Cancel'),
+              React.createElement('button', {
+                id: 'confirm-revoke-btn',
+                type: 'button',
+                className: 'btn btn-sm',
+                onClick: handleRevokeConfirm,
+                style: { background: '#ef4444', color: '#fff', borderColor: '#dc2626', fontWeight: 700 }
+              }, 'Confirm & Revoke Access')
+            )
+          )
         )
       );
     }
 
+    const SettingsLicensing = SettingsLicensingEula;
+    const SettingsLegalEula = SettingsLicensingEula;
     const SettingsGeneral = SettingsAppearance;
 
     // ─── SECURITY & ACCESS CONTROL ───
@@ -30607,169 +30770,7 @@
       return modalContent;
     }
 
-    // ─── SETTINGS LEGAL & EULA COMPONENT ───
-    function SettingsLegalEula() {
-      const [eulaStatus, setEulaStatus] = useState(() => {
-        return typeof EulaService !== 'undefined' ? EulaService.getStatus() : { status: 'PENDING', version: '1.0.0' };
-      });
-      const [showFullEulaModal, setShowFullEulaModal] = useState(false);
-      const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
-
-      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : { title: 'RupeeCRM End User License Agreement', version: '1.0.0', sections: [] };
-
-      const handleRevokeConfirm = () => {
-        if (typeof EulaService !== 'undefined') {
-          EulaService.revoke();
-          setEulaStatus(EulaService.getStatus());
-          setShowRevokeConfirm(false);
-          window.showToast && window.showToast('EULA acceptance has been revoked. Application locked.', 'info');
-        }
-      };
-
-      const isAccepted = eulaStatus.status === 'ACCEPTED';
-
-      return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
-        // Main Agreement Card
-        React.createElement('div', { className: 'card', style: { padding: '28px' } },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-              React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' } }, '📜'),
-              React.createElement('div', null,
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'End User License Agreement (EULA)'),
-                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Legal terms, authorized commercial use, data ownership, and permissions.')
-              )
-            ),
-            React.createElement('span', {
-              id: 'eula-status-badge',
-              className: `badge ${isAccepted ? 'badge-success' : 'badge-warning'}`,
-              style: {
-                background: isAccepted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                color: isAccepted ? '#10b981' : '#ef4444',
-                border: `1px solid ${isAccepted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
-                padding: '6px 14px', borderRadius: 20, fontWeight: 700, fontSize: '0.82rem'
-              }
-            }, isAccepted ? '✅ ACCEPTED' : (eulaStatus.status === 'REVOKED' ? '⚠️ REVOKED' : '⏳ PENDING'))
-          ),
-
-          // Status & Details Grid
-          React.createElement('div', {
-            style: {
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14,
-              padding: '16px 18px', background: 'var(--bg-secondary, #f8fafc)', borderRadius: 12,
-              border: '1px solid var(--border, #e2e8f0)', marginBottom: 20
-            }
-          },
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'CURRENT EULA VERSION'),
-              React.createElement('div', { id: 'eula-version-text', style: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' } }, `Version ${content.version || '1.0.0'} (2026)`)
-            ),
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'ACCEPTANCE STATUS'),
-              React.createElement('div', { id: 'eula-status-text', style: { fontWeight: 700, fontSize: '0.95rem', color: isAccepted ? '#10b981' : '#ef4444' } }, isAccepted ? 'Active & Accepted' : (eulaStatus.status === 'REVOKED' ? 'Revoked by User' : 'Pending Acceptance'))
-            ),
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, isAccepted ? 'DATE ACCEPTED' : 'DATE REVOKED'),
-              React.createElement('div', { id: 'eula-date-text', style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text)' } },
-                isAccepted && eulaStatus.acceptedAt ? new Date(eulaStatus.acceptedAt).toLocaleString() : (eulaStatus.revokedAt ? new Date(eulaStatus.revokedAt).toLocaleString() : '—')
-              )
-            ),
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'LICENSOR / DEVELOPER'),
-              React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' } }, 'Ranjeet Yelave (Indie Dev)')
-            )
-          ),
-
-          // Action Buttons
-          React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
-            React.createElement('button', {
-              id: 'view-eula-btn',
-              type: 'button',
-              className: 'btn btn-primary btn-sm',
-              onClick: () => setShowFullEulaModal(true),
-              style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
-            }, '👁️ View Complete EULA'),
-            isAccepted && React.createElement('button', {
-              id: 'revoke-eula-btn',
-              type: 'button',
-              className: 'btn btn-outline btn-sm',
-              onClick: () => setShowRevokeConfirm(true),
-              style: { display: 'flex', alignItems: 'center', gap: 6, borderColor: '#ef4444', color: '#ef4444', fontWeight: 600 }
-            }, '⚠️ Revoke EULA Acceptance')
-          )
-        ),
-
-        // Data Ownership & Architecture Notice Card
-        React.createElement('div', { className: 'card', style: { padding: '24px 28px', borderRadius: 16 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
-            React.createElement('div', { style: { fontSize: '1.4rem' } }, '🛡️'),
-            React.createElement('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Data Sovereignty & Commercial License Independence')
-          ),
-          React.createElement('div', { style: { fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 } },
-            React.createElement('p', { style: { margin: 0 } },
-              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, '100% Local Data Ownership: '),
-              'Your customer lists, bills, financial books, and inventory remain strictly stored on your local device. Revoking your EULA permission immediately halts software usage but will never delete your business records.'
-            ),
-            React.createElement('p', { style: { margin: 0 } },
-              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, 'License Separation: '),
-              'Your commercial machine license and optional Cloud Data Protection subscriptions remain intact upon EULA revocation and can be resumed immediately upon re-acceptance.'
-            )
-          )
-        ),
-
-        // Read-only EULA Modal
-        showFullEulaModal && React.createElement(EulaGateModal, {
-          isOpen: true,
-          readOnly: true,
-          onClose: () => setShowFullEulaModal(false)
-        }),
-
-        // Strong Revocation Confirmation Modal
-        showRevokeConfirm && React.createElement('div', {
-          id: 'revoke-eula-modal',
-          className: 'modal-overlay',
-          style: { position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
-          onClick: () => setShowRevokeConfirm(false)
-        },
-          React.createElement('div', {
-            className: 'modal-card',
-            style: { maxWidth: 520, width: '92%', background: 'var(--bg-card, #fff)', color: 'var(--text)', borderRadius: 16, padding: 26, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' },
-            onClick: e => e.stopPropagation()
-          },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
-              React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' } }, '⚠️'),
-              React.createElement('div', null,
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#ef4444' } }, 'Revoke EULA Acceptance?'),
-                React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Mandatory Access Permission')
-              )
-            ),
-            React.createElement('div', {
-              id: 'revoke-warning-text',
-              style: {
-                background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
-                borderRadius: 10, padding: '14px 16px', marginBottom: 18, fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.5
-              }
-            },
-              'Revoking your EULA acceptance will immediately prevent access to RupeeCRM until the EULA is accepted again. Your locally stored business data will not be deleted.'
-            ),
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
-              React.createElement('button', {
-                id: 'cancel-revoke-btn',
-                type: 'button',
-                className: 'btn btn-ghost btn-sm',
-                onClick: () => setShowRevokeConfirm(false)
-              }, 'Cancel'),
-              React.createElement('button', {
-                id: 'confirm-revoke-btn',
-                type: 'button',
-                className: 'btn btn-sm',
-                onClick: handleRevokeConfirm,
-                style: { background: '#ef4444', color: '#fff', borderColor: '#dc2626', fontWeight: 700 }
-              }, 'Confirm & Revoke Access')
-            )
-          )
-        )
-      );
-    }
+    // Note: SettingsLegalEula is unified with SettingsLicensingEula above.
 
     // ─── CREDITS & HELPDESK ───
     function CreditsHelpdesk() {
@@ -30992,101 +30993,103 @@
         { id: 'SYSTEM', icon: '⚙️', title: 'System & Diagnostics', desc: 'Database health, update notifications, background sync' }
       ];
 
-      return React.createElement('div', { className: 'card', style: { padding: 24, maxWidth: 720 } },
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 } },
-          React.createElement('div', null,
-            React.createElement('h3', { style: { margin: '0 0 4px 0', fontSize: '1.2rem', fontWeight: 700 } }, '🔔 Notification & Alert Preferences'),
-            React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Control delivery channels, active alert categories, and snooze durations.')
+      return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 } },
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: '0 0 4px 0', fontSize: '1.2rem', fontWeight: 700 } }, '🔔 Notification & Alert Preferences'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Control delivery channels, active alert categories, and snooze durations.')
+            ),
+            React.createElement('button', {
+              className: 'btn btn-primary btn-sm',
+              onClick: handleSave,
+              disabled: saving || loading
+            }, saving ? 'Saving...' : '💾 Save Preferences')
           ),
-          React.createElement('button', {
-            className: 'btn btn-primary btn-sm',
-            onClick: handleSave,
-            disabled: saving || loading
-          }, saving ? 'Saving...' : '💾 Save Preferences')
-        ),
-        loading ? React.createElement('div', { style: { padding: 30, textAlign: 'center', color: 'var(--text-secondary)' } }, 'Loading preferences...')
-          : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
-            // Master & Channel Toggles
-            React.createElement('div', { style: { background: 'var(--bg-hover)', padding: 16, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 } },
-              React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontWeight: 600, fontSize: '0.92rem' } },
-                React.createElement('span', null, 'Enable Notification System'),
-                React.createElement('input', {
-                  type: 'checkbox',
-                  checked: prefs.enabled,
-                  onChange: e => setPrefs(p => ({ ...p, enabled: e.target.checked }))
-                })
+          loading ? React.createElement('div', { style: { padding: 30, textAlign: 'center', color: 'var(--text-secondary)' } }, 'Loading preferences...')
+            : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
+              // Master & Channel Toggles
+              React.createElement('div', { style: { background: 'var(--bg-hover)', padding: 16, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 } },
+                React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontWeight: 600, fontSize: '0.92rem' } },
+                  React.createElement('span', null, 'Enable Notification System'),
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    checked: prefs.enabled,
+                    onChange: e => setPrefs(p => ({ ...p, enabled: e.target.checked }))
+                  })
+                ),
+                React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.88rem' } },
+                  React.createElement('span', null, '🔔 Show Topbar Bell Alerts & Badges'),
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    checked: prefs.bellEnabled,
+                    disabled: !prefs.enabled,
+                    onChange: e => setPrefs(p => ({ ...p, bellEnabled: e.target.checked }))
+                  })
+                ),
+                React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.88rem' } },
+                  React.createElement('span', null, '📬 Show Notifications in Unified Inbox'),
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    checked: prefs.inboxEnabled,
+                    disabled: !prefs.enabled,
+                    onChange: e => setPrefs(p => ({ ...p, inboxEnabled: e.target.checked }))
+                  })
+                ),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--border)' } },
+                  React.createElement('span', { style: { fontSize: '0.88rem', fontWeight: 600 } }, 'Default Snooze Interval:'),
+                  React.createElement('select', {
+                    className: 'select select-sm',
+                    value: prefs.defaultSnooze || '1d',
+                    disabled: !prefs.enabled,
+                    onChange: e => setPrefs(p => ({ ...p, defaultSnooze: e.target.value })),
+                    style: { width: 140, fontSize: '0.85rem' }
+                  },
+                    React.createElement('option', { value: '1h' }, '1 Hour'),
+                    React.createElement('option', { value: '4h' }, '4 Hours'),
+                    React.createElement('option', { value: '1d' }, '1 Day (Default)'),
+                    React.createElement('option', { value: '3d' }, '3 Days'),
+                    React.createElement('option', { value: '7d' }, '1 Week')
+                  )
+                )
               ),
-              React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.88rem' } },
-                React.createElement('span', null, '🔔 Show Topbar Bell Alerts & Badges'),
-                React.createElement('input', {
-                  type: 'checkbox',
-                  checked: prefs.bellEnabled,
-                  disabled: !prefs.enabled,
-                  onChange: e => setPrefs(p => ({ ...p, bellEnabled: e.target.checked }))
-                })
-              ),
-              React.createElement('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.88rem' } },
-                React.createElement('span', null, '📬 Show Notifications in Unified Inbox'),
-                React.createElement('input', {
-                  type: 'checkbox',
-                  checked: prefs.inboxEnabled,
-                  disabled: !prefs.enabled,
-                  onChange: e => setPrefs(p => ({ ...p, inboxEnabled: e.target.checked }))
-                })
-              ),
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--border)' } },
-                React.createElement('span', { style: { fontSize: '0.88rem', fontWeight: 600 } }, 'Default Snooze Interval:'),
-                React.createElement('select', {
-                  className: 'select select-sm',
-                  value: prefs.defaultSnooze || '1d',
-                  disabled: !prefs.enabled,
-                  onChange: e => setPrefs(p => ({ ...p, defaultSnooze: e.target.value })),
-                  style: { width: 140, fontSize: '0.85rem' }
-                },
-                  React.createElement('option', { value: '1h' }, '1 Hour'),
-                  React.createElement('option', { value: '4h' }, '4 Hours'),
-                  React.createElement('option', { value: '1d' }, '1 Day (Default)'),
-                  React.createElement('option', { value: '3d' }, '3 Days'),
-                  React.createElement('option', { value: '7d' }, '1 Week')
+              // Category Controls
+              React.createElement('div', null,
+                React.createElement('h4', { style: { margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 600 } }, 'Subscribed Alert Categories'),
+                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 } },
+                  categoryList.map(cat => {
+                    const isChecked = (prefs.categories || []).includes(cat.id);
+                    return React.createElement('label', {
+                      key: cat.id,
+                      style: {
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        padding: 12,
+                        borderRadius: 8,
+                        border: isChecked ? '1px solid var(--primary)' : '1px solid var(--border)',
+                        backgroundColor: isChecked ? 'var(--primary-light)' : 'transparent',
+                        cursor: prefs.enabled ? 'pointer' : 'not-allowed',
+                        opacity: prefs.enabled ? 1 : 0.6
+                      }
+                    },
+                      React.createElement('input', {
+                        type: 'checkbox',
+                        checked: isChecked,
+                        disabled: !prefs.enabled,
+                        onChange: () => toggleCategory(cat.id),
+                        style: { marginTop: 3 }
+                      }),
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, `${cat.icon} ${cat.title}`),
+                        React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } }, cat.desc)
+                      )
+                    );
+                  })
                 )
               )
-            ),
-            // Category Controls
-            React.createElement('div', null,
-              React.createElement('h4', { style: { margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 600 } }, 'Subscribed Alert Categories'),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 } },
-                categoryList.map(cat => {
-                  const isChecked = (prefs.categories || []).includes(cat.id);
-                  return React.createElement('label', {
-                    key: cat.id,
-                    style: {
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 10,
-                      padding: 12,
-                      borderRadius: 8,
-                      border: isChecked ? '1px solid var(--primary)' : '1px solid var(--border)',
-                      backgroundColor: isChecked ? 'var(--primary-light)' : 'transparent',
-                      cursor: prefs.enabled ? 'pointer' : 'not-allowed',
-                      opacity: prefs.enabled ? 1 : 0.6
-                    }
-                  },
-                    React.createElement('input', {
-                      type: 'checkbox',
-                      checked: isChecked,
-                      disabled: !prefs.enabled,
-                      onChange: () => toggleCategory(cat.id),
-                      style: { marginTop: 3 }
-                    }),
-                    React.createElement('div', null,
-                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, `${cat.icon} ${cat.title}`),
-                      React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } }, cat.desc)
-                    )
-                  );
-                })
-              )
             )
-          )
+        )
       );
     }
 
@@ -31096,12 +31099,11 @@
         const low = String(t).toLowerCase();
         if (low === 'general' || low === 'appearance' || low === 'theme' || low === 'display') return 'appearance';
         if (low === 'notifications' || low === 'alerts' || low === 'notification') return 'notifications';
-        if (low === 'license' || low === 'licensing' || low === 'activation') return 'license';
+        if (low === 'license' || low === 'licensing' || low === 'activation' || low === 'legal' || low === 'eula' || low === 'terms' || low === 'agreement') return 'license';
         if (low === 'security' || low === 'lock' || low === 'password') return 'security';
         if (low === 'firm' || low === 'profile' || low === 'branding' || low === 'business') return 'firm';
         if (low === 'backup' || low === 'restore' || low === 'vault') return 'backup';
         if (low === 'updates' || low === 'update' || low === 'software' || low === 'network') return 'updates';
-        if (low === 'legal' || low === 'eula' || low === 'terms' || low === 'agreement') return 'legal';
         if (low === 'credits' || low === 'help' || low === 'about' || low === 'support') return 'credits';
         return 'appearance';
       };
@@ -31135,8 +31137,7 @@
         React.createElement('div', { className: 'sub-tabs-bar', style: { display: 'flex', gap: 10, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' } },
           React.createElement('button', { className: `btn ${activeTab === 'appearance' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('appearance') }, '🎨 Appearance'),
           React.createElement('button', { className: `btn ${activeTab === 'notifications' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('notifications') }, '🔔 Notifications'),
-          React.createElement('button', { className: `btn ${activeTab === 'license' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('license') }, '🔑 Licensing'),
-          React.createElement('button', { id: 'settings-tab-legal', className: `btn ${activeTab === 'legal' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('legal') }, '📜 Legal & EULA'),
+          React.createElement('button', { id: 'settings-tab-legal', className: `btn ${activeTab === 'license' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('license') }, '🔑 Licensing & EULA'),
           React.createElement('button', { className: `btn ${activeTab === 'security' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('security') }, '🔒 Security & Lock'),
           React.createElement('button', { className: `btn ${activeTab === 'firm' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('firm') }, '🏢 Firm Branding'),
           React.createElement('button', { className: `btn ${activeTab === 'backup' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setTab('backup') }, '💾 Backup & Vault'),
@@ -31145,8 +31146,7 @@
         ),
         activeTab === 'appearance' && React.createElement(SettingsAppearance, null),
         activeTab === 'notifications' && React.createElement(SettingsNotifications, null),
-        activeTab === 'license' && React.createElement(SettingsLicensing, null),
-        activeTab === 'legal' && React.createElement(SettingsLegalEula, null),
+        activeTab === 'license' && React.createElement(SettingsLicensingEula, null),
         activeTab === 'security' && React.createElement(SettingsSecurity, null),
         activeTab === 'firm' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
         activeTab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
@@ -35720,11 +35720,11 @@
         }
       };
 
-      window.showToast = (messageOrObj, type = 'info', duration = 4000) => {
+      window.showToast = (messageOrObj, type = 'info', duration = 5000) => {
         if (!messageOrObj) return;
         let message = '';
         let toastType = type || 'info';
-        let dur = typeof duration === 'number' ? duration : 4000;
+        let dur = typeof duration === 'number' ? duration : 5000;
         let action = null;
 
         if (typeof messageOrObj === 'object' && messageOrObj !== null && !(messageOrObj instanceof Error)) {

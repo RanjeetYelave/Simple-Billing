@@ -295,20 +295,20 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
 
     /**
      * Fetches file content from the remote registry using dual strategy:
-     * 1. GitHub REST API contents endpoint with raw header (fast, resilient against ISP routing blocks).
-     * 2. Static raw.githubusercontent.com fallback.
+     * 1. Static raw.githubusercontent.com (CDN-cached, high rate-limit tolerance, fast).
+     * 2. GitHub REST API contents endpoint fallback (resilient against ISP routing blocks).
      */
     private String fetchRegistryFile(String subPath) {
-        // Strategy 1: GitHub API
-        String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
-        String result = fetchHttpText(apiBase + "/" + subPath);
+        // Strategy 1: Raw CDN endpoint (Primary)
+        String rawBase = LicensingConfig.getRegistryBaseUrl();
+        String result = fetchHttpText(rawBase + "/" + subPath);
         if (result != null && !result.isBlank()) {
             return result;
         }
 
-        // Strategy 2: Raw fallback
-        String rawBase = LicensingConfig.getRegistryBaseUrl();
-        return fetchHttpText(rawBase + "/" + subPath);
+        // Strategy 2: GitHub REST API fallback
+        String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
+        return fetchHttpText(apiBase + "/" + subPath);
     }
 
     private String fetchHttpText(String urlStr) {

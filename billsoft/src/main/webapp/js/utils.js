@@ -6249,7 +6249,7 @@ const EulaService = {
         {
           id: 'cloud_services',
           title: '6. Optional Cloud & Data Protection Add-on Services',
-          text: 'If you subscribe to the optional Off-Device Cloud Data Protection vault, encrypted backups are synced to secure remote storage according to your subscription tier. Cloud sync features operate only while an active subscription is maintained.'
+          text: 'If you subscribe to the optional Off-Device Cloud Data Protection vault, encrypted backups are synced to secure remote storage according to your subscription tier. Cloud sync features operate only while an active subscription is maintained. The Data Protection service is an add-on disaster recovery assistance feature operating on a best-effort basis; it does not guarantee that 100% full data recovery is possible under all catastrophe, corruption, encryption key loss, or disaster scenarios. You remain solely responsible for maintaining your own independent regular local backups and manual export files.'
         },
         {
           id: 'third_party',

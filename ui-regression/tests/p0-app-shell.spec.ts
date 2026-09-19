@@ -43,18 +43,18 @@ test.describe('P0: Application Shell, Navigation & Omnisearch Gate', () => {
 
     const omniInput = page.locator('.omni-search-input, input.omni-input, input[placeholder*="search" i]').first();
     if (await omniInput.isVisible()) {
-      await omniInput.fill('Invoice');
+      await omniInput.fill('goal');
       await page.waitForTimeout(400);
 
       const resultsContainer = page.locator('.omni-results-body, .omni-items-list, .omni-guide-container').first();
       await expect(resultsContainer).toBeVisible();
+
+      // Press Enter to select the top result
+      await omniInput.press('Enter');
+      await expect(omniModal).toBeHidden({ timeout: 5000 });
     }
 
-    // Close via Escape
-    await page.keyboard.press('Escape');
-    await expect(omniModal).toBeHidden({ timeout: 5000 });
-
-    await errorGate.assertZeroErrors(page, 'Omnisearch Query Execution');
+    await errorGate.assertZeroErrors(page, 'Omnisearch Query Execution and Enter Selection');
   });
 
   test('P0-03: Primary Navigation Traversals Render All Destination Hubs', async ({ page, app, errorGate }) => {

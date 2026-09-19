@@ -26576,6 +26576,28 @@
                 }, badgeText)
               ),
 
+              React.createElement('div', {
+                style: {
+                  background: 'rgba(59, 130, 246, 0.05)',
+                  border: '1px solid rgba(59, 130, 246, 0.18)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  marginBottom: 12,
+                  fontSize: '0.78rem',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  lineHeight: 1.45
+                }
+              },
+                React.createElement('span', { style: { fontSize: '1.05rem', flexShrink: 0 } }, 'ℹ️'),
+                React.createElement('span', null,
+                  React.createElement('strong', { style: { color: 'var(--text-primary)' } }, 'Best-Effort Recovery Notice: '),
+                  'Cloud Data Protection is an add-on service providing offsite disaster recovery synchronization on a best-effort basis. While designed for maximum resilience, 100% full recovery is not guaranteed under all catastrophe, corruption, key-loss, or disaster scenarios. Always maintain regular independent local backup exports.'
+                )
+              ),
+
               !isDpActive && !isDpEnabled && React.createElement('div', {
                 style: {
                   background: 'rgba(239, 68, 68, 0.08)',

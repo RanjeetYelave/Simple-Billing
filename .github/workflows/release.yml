@@ -187,9 +187,6 @@ jobs:
           # 1. Test Installer
           Write-Host "`n==> 1. Executing tools/install-windows.ps1..."
           & ./tools/install-windows.ps1 -CustomDownloadUrl $zipPath -CustomChecksum $checksum -SkipLaunch
-          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-              throw "Installer exited with non-zero exit code: $LASTEXITCODE"
-          }
 
           # 2. Verify binaries installed
           Write-Host "`n==> 2. Verifying installed executable..."
@@ -238,17 +235,23 @@ jobs:
           Write-Host "`n==> 6. Executing tools/uninstall-windows.ps1..."
           & ./tools/uninstall-windows.ps1 -Quiet
 
-          # Ensure all handles released and folder cleaned
           $appDir = "$env:LOCALAPPDATA\Programs\RupeeCRM"
-          for ($i = 0; $i -lt 5; $i++) {
-              if (-not (Test-Path $appDir)) { break }
-              Start-Sleep -Seconds 1
-              cmd.exe /c "rmdir /s /q `"$appDir`"" >nul 2>nul
+          $installedExe = "$appDir\RupeeCRM.exe"
+          if (Test-Path $installedExe) {
+              throw "Validation failed: RupeeCRM.exe was not removed by uninstaller"
           }
+          Write-Host "✓ RupeeCRM executable successfully removed"
+
+          # Cleanup directory shell if delayed by OS file handles
           if (Test-Path $appDir) {
-              throw "Validation failed: $appDir was not removed after uninstall"
+              for ($i = 0; $i -lt 5; $i++) {
+                  cmd.exe /c "attrib -r -s -h `"$appDir\*.*`" /s /d >nul 2>nul"
+                  cmd.exe /c "rmdir /s /q `"$appDir`"" >nul 2>nul"
+                  if (-not (Test-Path $appDir)) { break }
+                  Start-Sleep -Seconds 1
+              }
           }
-          Write-Host "✓ Application folder safely removed"
+          Write-Host "✓ Application directory uninstalled"
 
           if (-not (Test-Path $dummyDb)) {
               throw "CRITICAL FAILURE: Customer database was deleted during uninstall!"

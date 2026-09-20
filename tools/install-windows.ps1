@@ -384,12 +384,9 @@ try {
     # --------------------------------------------------------------------------
     Write-Step "Configuring background auto-start..."
     try {
+        $RegKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
         $RegValue = "`"$TargetExe`" --background"
-        # Primary: Use native reg.exe for 100% reliability across PowerShell 5.1/7.x & CI
-        reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" /t REG_SZ /d $RegValue /f | Out-Null
-        if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run") {
-            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -Value $RegValue -Force -ErrorAction SilentlyContinue
-        }
+        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value $RegValue -Force
         Write-Success "Auto-start registered in Windows Registry (HKCU Run)"
     } catch {
         Write-WarnMsg "Could not set registry run key: $($_.Exception.Message)"

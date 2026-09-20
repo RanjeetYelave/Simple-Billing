@@ -197,14 +197,9 @@ jobs:
           # 3. Verify Auto-Start Registry entry
           $regVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -ErrorAction SilentlyContinue).RupeeCRMService
           if (-not $regVal) {
-              $regQuery = reg.exe query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" 2>&1
-              if ($regQuery -notmatch "RupeeCRMService") {
-                  throw "Validation failed: HKCU Run auto-start key was not set"
-              }
-              Write-Host "✓ Auto-start registry key verified via reg.exe: $regQuery"
-          } else {
-              Write-Host "✓ Auto-start registry key verified: $regVal"
+              throw "Validation failed: HKCU Run auto-start key was not set"
           }
+          Write-Host "✓ Auto-start registry key verified: $regVal"
 
           # 4. Create dummy customer database to verify data preservation
           $dataDir = "$env:APPDATA\SimpleBilling"

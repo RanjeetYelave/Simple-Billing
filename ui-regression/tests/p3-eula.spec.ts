@@ -1,56 +1,67 @@
 import { test, expect } from '../fixtures/base-fixture';
 
 test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate Enforcement', () => {
-  test('P3-EULA-01: Fresh Installation Mounts Mandatory EULA Gate with Checkbox Requirement', async ({ page, errorGate }) => {
-    // 1. Fresh launch without pre-accepted EULA
-    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#root', { timeout: 15000 });
 
-    const gateOverlay = page.locator('#eula-gate-overlay');
-    await expect(gateOverlay).toBeVisible({ timeout: 5000 });
+  // ── P3-EULA-01 ──────────────────────────────────────────────────────────────
+  // Requires a genuinely clean BrowserContext — no pre-accepted EULA state.
+  // Uses eulaMode: 'first-launch' so the fixture does NOT inject acceptance.
+  test(
+    'P3-EULA-01: Fresh Installation Mounts Mandatory EULA Gate with Checkbox Requirement',
+    { tag: '@eula' },
+    async ({ page, errorGate }) => {
+      // 1. Fresh launch without pre-accepted EULA — navigate directly via page,
+      //    bypassing the app fixture's automatic acceptance injection.
+      await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root', { timeout: 15000 });
 
-    // Check header and content
-    const title = page.locator('#eula-modal-card h3');
-    await expect(title).toContainText('End User License Agreement');
+      const gateOverlay = page.locator('#eula-gate-overlay');
+      await expect(gateOverlay).toBeVisible({ timeout: 5000 });
 
-    const scrollBox = page.locator('#eula-scroll-box');
-    await expect(scrollBox).toBeVisible();
-    await expect(scrollBox).toContainText('Software License Grant');
-    await expect(scrollBox).toContainText('Ranjeet Yelave');
+      // Check header and content
+      const title = page.locator('#eula-modal-card h3');
+      await expect(title).toContainText('End User License Agreement');
 
-    // 2. Accept button must remain disabled until checkbox is checked
-    const acceptBtn = page.locator('#eula-accept-btn');
-    await expect(acceptBtn).toBeDisabled();
+      const scrollBox = page.locator('#eula-scroll-box');
+      await expect(scrollBox).toBeVisible();
+      await expect(scrollBox).toContainText('Software License Grant');
+      await expect(scrollBox).toContainText('Ranjeet Yelave');
 
-    // 3. Test Decline button
-    const declineBtn = page.locator('#eula-decline-btn');
-    await declineBtn.click();
+      // 2. Accept button must remain disabled until checkbox is checked
+      const acceptBtn = page.locator('#eula-accept-btn');
+      await expect(acceptBtn).toBeDisabled();
 
-    await expect(page.locator(':text("EULA Acceptance Required")').first()).toBeVisible();
-    await expect(page.locator('.sidebar-container')).toBeHidden();
+      // 3. Test Decline button
+      const declineBtn = page.locator('#eula-decline-btn');
+      await declineBtn.click();
 
-    // Click review again
-    const reviewBtn = page.locator('#eula-review-again-btn');
-    await reviewBtn.click();
-    await expect(scrollBox).toBeVisible();
+      await expect(page.locator(':text("EULA Acceptance Required")').first()).toBeVisible();
+      await expect(page.locator('.sidebar-container')).toBeHidden();
 
-    // 4. Check checkbox and accept
-    const agreeCheckbox = page.locator('#eula-agree-checkbox');
-    await agreeCheckbox.check();
-    await expect(acceptBtn).toBeEnabled();
+      // Click review again
+      const reviewBtn = page.locator('#eula-review-again-btn');
+      await reviewBtn.click();
+      await expect(scrollBox).toBeVisible();
 
-    await acceptBtn.click();
+      // 4. Check checkbox and accept
+      const agreeCheckbox = page.locator('#eula-agree-checkbox');
+      await agreeCheckbox.check();
+      await expect(acceptBtn).toBeEnabled();
 
-    // 5. Gate disappears and app shell becomes accessible
-    await expect(gateOverlay).toBeHidden({ timeout: 5000 });
-    const topbar = page.locator('.topbar');
-    await expect(topbar).toBeVisible();
+      await acceptBtn.click();
 
-    await errorGate.assertZeroErrors(page, 'EULA Acceptance Flow');
-  });
+      // 5. Gate disappears and app shell becomes accessible
+      await expect(gateOverlay).toBeHidden({ timeout: 5000 });
+      const topbar = page.locator('.topbar');
+      await expect(topbar).toBeVisible();
 
+      await errorGate.assertZeroErrors(page, 'EULA Acceptance Flow');
+    }
+  );
+
+  // ── P3-EULA-02 ──────────────────────────────────────────────────────────────
+  // Uses the default eulaMode: 'accepted' — fixture pre-seeds acceptance.
   test('P3-EULA-02: Restart After Acceptance Keeps Application Accessible', async ({ page, app, errorGate }) => {
-    // 1. Launch with pre-accepted EULA
+    // 1. Launch with pre-accepted EULA (fixture has already seeded the state)
     await app.gotoApp(true);
 
     const gateOverlay = page.locator('#eula-gate-overlay');
@@ -59,7 +70,7 @@ test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate
     const topbar = page.locator('.topbar');
     await expect(topbar).toBeVisible();
 
-    // Reload page to simulate restart
+    // Reload page to simulate restart — addInitScript persists across reloads
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 15000 });
 
@@ -69,6 +80,7 @@ test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate
     await errorGate.assertZeroErrors(page, 'Restart After EULA Acceptance');
   });
 
+  // ── P3-EULA-03 ──────────────────────────────────────────────────────────────
   test('P3-EULA-03: Settings Legal & EULA Hub Displays Version, Status, and View Agreement Modal', async ({ page, app, errorGate }) => {
     await app.gotoApp(true);
 
@@ -107,6 +119,7 @@ test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate
     await errorGate.assertZeroErrors(page, 'Settings Legal & EULA Hub');
   });
 
+  // ── P3-EULA-04 ──────────────────────────────────────────────────────────────
   test('P3-EULA-04: Voluntarily Revoke EULA Acceptance Immediately Blocks Application Access and Persists', async ({ page, app, errorGate }) => {
     await app.gotoApp(true);
 
@@ -141,7 +154,10 @@ test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate
     await expect(gateOverlay).toBeVisible();
     await expect(page.locator('.sidebar-container')).toBeHidden();
 
-    // 7. Reload page (Restart after revocation) -> Gate must appear immediately
+    // 7. Reload page (Restart after revocation) -> Gate must appear immediately.
+    //    After revocation, localStorage contains REVOKED status. The addInitScript
+    //    guard (`if (!localStorage.getItem(statusKey))`) does NOT overwrite an
+    //    already-present EULA state, so the REVOKED state persists correctly.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 15000 });
     await expect(gateOverlay).toBeVisible({ timeout: 5000 });

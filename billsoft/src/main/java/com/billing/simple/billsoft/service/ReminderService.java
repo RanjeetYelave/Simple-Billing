@@ -2,6 +2,8 @@ package com.billing.simple.billsoft.service;
 
 import com.billing.simple.billsoft.entities.Reminder;
 import com.billing.simple.billsoft.repo.ReminderRepository;
+import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -13,43 +15,56 @@ public class ReminderService {
 
     private final com.billing.simple.billsoft.repo.CustomerRepository customerRepository;
 
-    public ReminderService(ReminderRepository reminderRepository, com.billing.simple.billsoft.repo.CustomerRepository customerRepository) {
+    public ReminderService(ReminderRepository reminderRepository,
+            com.billing.simple.billsoft.repo.CustomerRepository customerRepository) {
         this.reminderRepository = reminderRepository;
         this.customerRepository = customerRepository;
     }
 
-    public List<Reminder> getAll() {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            return reminderRepository.findByFirmId(firmId);
+    private Long resolveFirmId(Long explicitFirmId) {
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && explicitFirmId != null && !authoritativeFirmId.equals(explicitFirmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
         }
-        return reminderRepository.findAll();
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : explicitFirmId;
+        if (target == null || target <= 0) {
+            throw new TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
+    public List<Reminder> getAll() {
+        Long firmId = TenantContext.getCurrentFirmId();
+        return firmId != null ? reminderRepository.findByFirmId(firmId) : reminderRepository.findAll();
     }
 
     public List<Reminder> getByFirm(Long firmId) {
-        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && !authoritativeFirmId.equals(firmId)) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
         }
-        return reminderRepository.findByFirmId(authoritativeFirmId != null ? authoritativeFirmId : firmId);
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        return target != null ? reminderRepository.findByFirmId(target) : reminderRepository.findAll();
     }
 
     public List<Reminder> getActiveByFirm(Long firmId) {
-        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && !authoritativeFirmId.equals(firmId)) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
         }
-        return reminderRepository.findByFirmIdAndCompletedFalse(authoritativeFirmId != null ? authoritativeFirmId : firmId);
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        return target != null ? reminderRepository.findByFirmIdAndCompletedFalse(target) : reminderRepository.findByCompletedFalse();
     }
 
     public Reminder create(Reminder reminder) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = reminder.getFirmId() != null ? reminder.getFirmId() : TenantContext.getCurrentFirmId();
         if (firmId != null) {
             reminder.setFirmId(firmId);
-        }
-        if (reminder.getCustomerId() != null && reminder.getFirmId() != null) {
-            if (!customerRepository.existsByIdAndFirmId(reminder.getCustomerId(), reminder.getFirmId())) {
-                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced customer does not belong to the current firm");
+            if (reminder.getCustomerId() != null) {
+                if (!customerRepository.existsByIdAndFirmId(reminder.getCustomerId(), firmId)) {
+                    throw new TenantSecurityException(
+                            "Referenced customer does not belong to the current firm");
+                }
             }
         }
         return reminderRepository.save(reminder);
@@ -57,30 +72,18 @@ public class ReminderService {
 
     @Transactional
     public Reminder update(Long id, Reminder updated) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Reminder r = null;
-        if (firmId != null) {
-            r = reminderRepository.findByIdAndFirmId(id, firmId).orElse(null);
-            if (r == null) {
-                Reminder fallback = reminderRepository.findById(id).orElse(null);
-                if (fallback != null && (fallback.getFirmId() == null || fallback.getFirmId().equals(firmId))) {
-                    r = fallback;
-                    r.setFirmId(firmId);
-                }
-            }
-        } else {
-            r = reminderRepository.findById(id).orElse(null);
-        }
-        if (r == null) {
-            throw new IllegalArgumentException("Reminder not found");
-        }
+        Long firmId = TenantContext.getCurrentFirmId();
+        Reminder r = (firmId != null ? reminderRepository.findByIdAndFirmId(id, firmId) : reminderRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
 
-        if (updated.getCustomerId() != null && r.getFirmId() != null) {
-            if (!customerRepository.existsByIdAndFirmId(updated.getCustomerId(), r.getFirmId())) {
-                throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced customer does not belong to the current firm");
+        if (updated.getCustomerId() != null) {
+            Long targetFid = r.getFirmId() != null ? r.getFirmId() : firmId;
+            if (targetFid != null && !customerRepository.existsByIdAndFirmId(updated.getCustomerId(), targetFid)) {
+                throw new TenantSecurityException(
+                        "Referenced customer does not belong to the current firm");
             }
             r.setCustomerId(updated.getCustomerId());
-        } else if (updated.getCustomerId() == null) {
+        } else {
             r.setCustomerId(null);
         }
 
@@ -109,42 +112,25 @@ public class ReminderService {
 
     @Transactional
     public boolean delete(Long id) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = TenantContext.getCurrentFirmId();
         if (firmId != null) {
-            if (reminderRepository.existsByIdAndFirmId(id, firmId)) {
-                reminderRepository.deleteByIdAndFirmId(id, firmId);
-                return true;
-            }
-            if (reminderRepository.existsById(id)) {
-                reminderRepository.deleteById(id);
-                return true;
-            }
-            return false;
+            if (!reminderRepository.existsByIdAndFirmId(id, firmId))
+                return false;
+            reminderRepository.deleteByIdAndFirmId(id, firmId);
+            return true;
+        } else {
+            if (!reminderRepository.existsById(id))
+                return false;
+            reminderRepository.deleteById(id);
+            return true;
         }
-        if (!reminderRepository.existsById(id)) return false;
-        reminderRepository.deleteById(id);
-        return true;
     }
 
     @Transactional
     public Reminder markDone(Long id) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Reminder r = null;
-        if (firmId != null) {
-            r = reminderRepository.findByIdAndFirmId(id, firmId).orElse(null);
-            if (r == null) {
-                Reminder fallback = reminderRepository.findById(id).orElse(null);
-                if (fallback != null && (fallback.getFirmId() == null || fallback.getFirmId().equals(firmId))) {
-                    r = fallback;
-                    r.setFirmId(firmId);
-                }
-            }
-        } else {
-            r = reminderRepository.findById(id).orElse(null);
-        }
-        if (r == null) {
-            throw new IllegalArgumentException("Reminder not found");
-        }
+        Long firmId = TenantContext.getCurrentFirmId();
+        Reminder r = (firmId != null ? reminderRepository.findByIdAndFirmId(id, firmId) : reminderRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
         r.setCompleted(true);
         r.setCompletedAt(LocalDateTime.now());
         r.setStatus("DONE");

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -99,8 +100,27 @@ public class GoalController {
     }
 
     @PostMapping("/{id}/increment")
-    public Goal increment(@PathVariable Long id, @RequestParam(required = false) BigDecimal delta) {
-        return service.incrementProgress(id, delta);
+    public Goal increment(
+            @PathVariable Long id,
+            @RequestParam(required = false) BigDecimal delta,
+            @RequestBody(required = false) Map<String, Object> payload) {
+        BigDecimal effectiveDelta = delta;
+        LocalDate logDate = null;
+        String notes = null;
+        if (payload != null) {
+            if (payload.containsKey("delta") && payload.get("delta") != null) {
+                effectiveDelta = BigDecimal.valueOf(Double.parseDouble(payload.get("delta").toString()));
+            }
+            if (payload.containsKey("logDate") && payload.get("logDate") != null && !payload.get("logDate").toString().isBlank()) {
+                try {
+                    logDate = LocalDate.parse(payload.get("logDate").toString());
+                } catch (Exception ignored) {}
+            }
+            if (payload.containsKey("notes") && payload.get("notes") != null) {
+                notes = payload.get("notes").toString();
+            }
+        }
+        return service.incrementProgress(id, effectiveDelta, logDate, notes);
     }
 
     @PostMapping("/{id}/reset")

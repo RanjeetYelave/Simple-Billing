@@ -27,6 +27,8 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.HashMap;
@@ -144,17 +146,21 @@ public class EmployeeController {
         }
         List<Employee> employees = employeeRepo.findByFirmId(authoritativeFirmId);
         int activeCount = 0;
-        double totalPayroll = 0;
-        double totalAdvances = 0;
+        BigDecimal totalPayroll = BigDecimal.ZERO;
+        BigDecimal totalAdvances = BigDecimal.ZERO;
         int totalSalaryThisMonth = 0;
-        double totalPaidThisMonth = 0;
+        BigDecimal totalPaidThisMonth = BigDecimal.ZERO;
 
         for (Employee e : employees) {
-            if (e.getIsActive()) {
+            if (Boolean.TRUE.equals(e.getIsActive())) {
                 activeCount++;
-                totalPayroll += e.getMonthlyBaseSalary() != null ? e.getMonthlyBaseSalary() : 0;
+                if (e.getMonthlyBaseSalary() != null) {
+                    totalPayroll = totalPayroll.add(BigDecimal.valueOf(e.getMonthlyBaseSalary()));
+                }
             }
-            totalAdvances += e.getCurrentAdvanceBalance() != null ? e.getCurrentAdvanceBalance() : 0;
+            if (e.getCurrentAdvanceBalance() != null) {
+                totalAdvances = totalAdvances.add(BigDecimal.valueOf(e.getCurrentAdvanceBalance()));
+            }
         }
 
         // Current month salary records
@@ -165,7 +171,9 @@ public class EmployeeController {
             for (SalaryRecord s : sals) {
                 if (monthYear.equals(s.getMonthYear())) {
                     totalSalaryThisMonth++;
-                    totalPaidThisMonth += s.getNetPaid() != null ? s.getNetPaid() : 0;
+                    if (s.getNetPaid() != null) {
+                        totalPaidThisMonth = totalPaidThisMonth.add(BigDecimal.valueOf(s.getNetPaid()));
+                    }
                 }
             }
         }
@@ -174,10 +182,10 @@ public class EmployeeController {
         result.put("activeEmployees", activeCount);
         result.put("inactiveEmployees", employees.size() - activeCount);
         result.put("totalEmployees", employees.size());
-        result.put("totalMonthlyPayroll", Math.round(totalPayroll * 100.0) / 100.0);
-        result.put("totalOutstandingAdvances", Math.round(totalAdvances * 100.0) / 100.0);
+        result.put("totalMonthlyPayroll", totalPayroll.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        result.put("totalOutstandingAdvances", totalAdvances.setScale(2, RoundingMode.HALF_UP).doubleValue());
         result.put("salariesThisMonth", totalSalaryThisMonth);
-        result.put("totalPaidThisMonth", Math.round(totalPaidThisMonth * 100.0) / 100.0);
+        result.put("totalPaidThisMonth", totalPaidThisMonth.setScale(2, RoundingMode.HALF_UP).doubleValue());
         return ResponseEntity.ok(result);
     }
 
@@ -334,20 +342,24 @@ public class EmployeeController {
             return ResponseEntity.badRequest().body(Map.of("error", "Advance amount must be positive"));
         }
 
-        // FIX B4: Enforce max advance limit (3x monthly salary)
-        double maxAdvance = emp.getMonthlyBaseSalary() * MAX_ADVANCE_MULTIPLIER;
-        if (advance.getAmount() > maxAdvance) {
+        BigDecimal advAmount = BigDecimal.valueOf(advance.getAmount()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal monthlySalary = BigDecimal.valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
+        BigDecimal maxAdvance = monthlySalary.multiply(BigDecimal.valueOf(MAX_ADVANCE_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
+
+        if (advAmount.compareTo(maxAdvance) > 0) {
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Advance amount (" + String.format("%.2f", advance.getAmount()) +
-                            ") exceeds maximum limit of " + String.format("%.2f", maxAdvance) +
+                    "error", "Advance amount (" + String.format("%.2f", advAmount.doubleValue()) +
+                            ") exceeds maximum limit of " + String.format("%.2f", maxAdvance.doubleValue()) +
                             " (3x monthly salary)"
             ));
         }
 
-        // Update balance
-        emp.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance() + advance.getAmount());
+        BigDecimal currentBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0);
+        BigDecimal newBal = currentBal.add(advAmount).setScale(2, RoundingMode.HALF_UP);
+        emp.setCurrentAdvanceBalance(newBal.doubleValue());
         employeeRepo.save(emp);
 
+        advance.setAmount(advAmount.doubleValue());
         return ResponseEntity.ok(advanceRepo.save(advance));
     }
 
@@ -375,39 +387,46 @@ public class EmployeeController {
             ));
         }
 
-        // --- BACKEND VALIDATION ---
+        // --- BACKEND VALIDATION & COMPUTATION WITH BIGDECIMAL ---
+        BigDecimal advDeducted = BigDecimal.valueOf(record.getAdvanceDeducted() != null ? record.getAdvanceDeducted() : 0.0).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal currentAdvBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0).setScale(2, RoundingMode.HALF_UP);
+
         if (record.getAdvanceDeducted() != null) {
-            if (record.getAdvanceDeducted() < 0) {
+            if (advDeducted.compareTo(BigDecimal.ZERO) < 0) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "Advance deduction cannot be negative"
                 ));
             }
-            if (record.getAdvanceDeducted() > emp.getCurrentAdvanceBalance()) {
+            if (advDeducted.compareTo(currentAdvBal) > 0) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "Advance deduction amount (" + record.getAdvanceDeducted() +
                                 ") exceeds current advance balance (" + emp.getCurrentAdvanceBalance() + ")"
                 ));
             }
-            if (record.getAdvanceDeducted() > 0) {
+            if (advDeducted.compareTo(BigDecimal.ZERO) > 0) {
                 EmployeeAdvance deduction = new EmployeeAdvance();
                 deduction.setEmployee(emp);
                 deduction.setDate(record.getPaymentDate());
-                deduction.setAmount(-record.getAdvanceDeducted());
+                deduction.setAmount(-advDeducted.doubleValue());
                 deduction.setDescription("Salary Deduction for " + record.getMonthYear());
                 advanceRepo.save(deduction);
 
-                emp.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance() - record.getAdvanceDeducted());
+                BigDecimal updatedBal = currentAdvBal.subtract(advDeducted).setScale(2, RoundingMode.HALF_UP);
+                emp.setCurrentAdvanceBalance(updatedBal.doubleValue());
                 employeeRepo.save(emp);
             }
         }
 
-        // FIX B1: Server-side net salary computation (ignore client-provided netPaid)
-        double baseSal = record.getBaseSalaryAtTime() != null ? record.getBaseSalaryAtTime() : 0.0;
-        double bonusAmt = record.getBonusAmount() != null ? record.getBonusAmount() : 0.0;
-        double leaveDed = record.getLeaveDeductionAmount() != null ? record.getLeaveDeductionAmount() : 0.0;
-        double advDed = record.getAdvanceDeducted() != null ? record.getAdvanceDeducted() : 0.0;
-        double calculatedNet = baseSal + bonusAmt - leaveDed - advDed;
-        record.setNetPaid(Math.max(0, Math.round(calculatedNet * 100.0) / 100.0));
+        // Server-side net salary computation using BigDecimal (ignore client-provided netPaid)
+        BigDecimal baseSal = BigDecimal.valueOf(record.getBaseSalaryAtTime() != null ? record.getBaseSalaryAtTime() : 0.0);
+        BigDecimal bonusAmt = BigDecimal.valueOf(record.getBonusAmount() != null ? record.getBonusAmount() : 0.0);
+        BigDecimal leaveDed = BigDecimal.valueOf(record.getLeaveDeductionAmount() != null ? record.getLeaveDeductionAmount() : 0.0);
+        
+        BigDecimal calculatedNet = baseSal.add(bonusAmt).subtract(leaveDed).subtract(advDeducted).setScale(2, RoundingMode.HALF_UP);
+        if (calculatedNet.compareTo(BigDecimal.ZERO) < 0) {
+            calculatedNet = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        record.setNetPaid(calculatedNet.doubleValue());
 
         return ResponseEntity.ok(salaryRepo.save(record));
     }
@@ -461,40 +480,50 @@ public class EmployeeController {
                 }
             } catch (Exception ignored) {}
 
-            double perDaySalary = daysInMonth > 0 ? emp.getMonthlyBaseSalary() / daysInMonth : 0;
-            int unpaidLeaves = Math.max(0, daysAbsent - emp.getAllowedPaidLeavesPerMonth());
-            int paidLeavesUsed = Math.min(daysAbsent, emp.getAllowedPaidLeavesPerMonth());
-            double leaveDeduction = unpaidLeaves * perDaySalary;
+            BigDecimal monthlyBase = BigDecimal.valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
+            BigDecimal perDaySalary = daysInMonth > 0
+                    ? monthlyBase.divide(BigDecimal.valueOf(daysInMonth), 4, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
 
-            // Cap advance deduction
-            double actualAdvDed = Math.min(advanceDeduct, emp.getCurrentAdvanceBalance());
+            int unpaidLeaves = Math.max(0, daysAbsent - (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
+            int paidLeavesUsed = Math.min(daysAbsent, (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
+            BigDecimal leaveDeduction = perDaySalary.multiply(BigDecimal.valueOf(unpaidLeaves)).setScale(2, RoundingMode.HALF_UP);
 
-            double netPaid = emp.getMonthlyBaseSalary() + bonusAmount - leaveDeduction - actualAdvDed;
+            BigDecimal requestedAdvDed = BigDecimal.valueOf(advanceDeduct).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal curAdvBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal actualAdvDed = requestedAdvDed.min(curAdvBal);
+
+            BigDecimal bonusBd = BigDecimal.valueOf(bonusAmount).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal netPaidBd = monthlyBase.add(bonusBd).subtract(leaveDeduction).subtract(actualAdvDed).setScale(2, RoundingMode.HALF_UP);
+            if (netPaidBd.compareTo(BigDecimal.ZERO) < 0) {
+                netPaidBd = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
 
             SalaryRecord record = new SalaryRecord();
             record.setEmployee(emp);
             record.setMonthYear(monthYear);
-            record.setBaseSalaryAtTime(emp.getMonthlyBaseSalary());
+            record.setBaseSalaryAtTime(monthlyBase.setScale(2, RoundingMode.HALF_UP).doubleValue());
             record.setDaysAbsent(daysAbsent);
             record.setPaidLeavesUsed(paidLeavesUsed);
             record.setUnpaidLeaves(unpaidLeaves);
-            record.setLeaveDeductionAmount(Math.max(0, leaveDeduction));
-            record.setBonusAmount(bonusAmount);
-            record.setAdvanceDeducted(actualAdvDed);
-            record.setNetPaid(Math.max(0, Math.round(netPaid * 100.0) / 100.0));
+            record.setLeaveDeductionAmount(leaveDeduction.doubleValue());
+            record.setBonusAmount(bonusBd.doubleValue());
+            record.setAdvanceDeducted(actualAdvDed.doubleValue());
+            record.setNetPaid(netPaidBd.doubleValue());
             record.setPaymentDate(paymentDate);
 
             salaryRepo.save(record);
 
             // Handle advance deduction
-            if (actualAdvDed > 0) {
+            if (actualAdvDed.compareTo(BigDecimal.ZERO) > 0) {
                 EmployeeAdvance deduction = new EmployeeAdvance();
                 deduction.setEmployee(emp);
                 deduction.setDate(paymentDate);
-                deduction.setAmount(-actualAdvDed);
+                deduction.setAmount(-actualAdvDed.doubleValue());
                 deduction.setDescription("Salary Deduction for " + monthYear);
                 advanceRepo.save(deduction);
-                emp.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance() - actualAdvDed);
+                BigDecimal updatedBal = curAdvBal.subtract(actualAdvDed).setScale(2, RoundingMode.HALF_UP);
+                emp.setCurrentAdvanceBalance(updatedBal.doubleValue());
                 employeeRepo.save(emp);
             }
 
@@ -565,10 +594,10 @@ public class EmployeeController {
         List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
         int currentYear = LocalDate.now().getYear();
 
-        double ytdGross = 0;
-        double ytdBonus = 0;
-        double ytdDeductions = 0;
-        double ytdNet = 0;
+        BigDecimal ytdGross = BigDecimal.ZERO;
+        BigDecimal ytdBonus = BigDecimal.ZERO;
+        BigDecimal ytdDeductions = BigDecimal.ZERO;
+        BigDecimal ytdNet = BigDecimal.ZERO;
         int salaryCount = 0;
 
         for (SalaryRecord s : salaries) {
@@ -579,12 +608,16 @@ public class EmployeeController {
                     if (parts.length != 2) continue;
                     int yearPart = Integer.parseInt(parts[1].trim());
                     if (yearPart == currentYear) {
-                        ytdGross += (s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0)
-                                  + (s.getBonusAmount() != null ? s.getBonusAmount() : 0);
-                        ytdBonus += s.getBonusAmount() != null ? s.getBonusAmount() : 0;
-                        ytdDeductions += (s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0)
-                                        + (s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0);
-                        ytdNet += s.getNetPaid() != null ? s.getNetPaid() : 0;
+                        BigDecimal base = BigDecimal.valueOf(s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0.0);
+                        BigDecimal bonus = BigDecimal.valueOf(s.getBonusAmount() != null ? s.getBonusAmount() : 0.0);
+                        BigDecimal leave = BigDecimal.valueOf(s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0.0);
+                        BigDecimal adv = BigDecimal.valueOf(s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0.0);
+                        BigDecimal net = BigDecimal.valueOf(s.getNetPaid() != null ? s.getNetPaid() : 0.0);
+
+                        ytdGross = ytdGross.add(base).add(bonus);
+                        ytdBonus = ytdBonus.add(bonus);
+                        ytdDeductions = ytdDeductions.add(leave).add(adv);
+                        ytdNet = ytdNet.add(net);
                         salaryCount++;
                     }
                 } catch (NumberFormatException ignored) {}
@@ -594,10 +627,10 @@ public class EmployeeController {
         Map<String, Object> result = new HashMap<>();
         result.put("year", currentYear);
         result.put("salaryCount", salaryCount);
-        result.put("ytdGross", Math.round(ytdGross * 100.0) / 100.0);
-        result.put("ytdBonus", Math.round(ytdBonus * 100.0) / 100.0);
-        result.put("ytdDeductions", Math.round(ytdDeductions * 100.0) / 100.0);
-        result.put("ytdNet", Math.round(ytdNet * 100.0) / 100.0);
+        result.put("ytdGross", ytdGross.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        result.put("ytdBonus", ytdBonus.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        result.put("ytdDeductions", ytdDeductions.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        result.put("ytdNet", ytdNet.setScale(2, RoundingMode.HALF_UP).doubleValue());
         return ResponseEntity.ok(result);
     }
 

@@ -28,9 +28,9 @@ import javax.swing.border.EmptyBorder;
  */
 public class LauncherMain {
 
-    public static final String APP_URL = "http://localhost:8080/";
-    public static final String HEALTH_URL = "http://localhost:8080/api/health";
-    public static final int PORT = 8080;
+    public static final String APP_URL = "http://management.rupeecrm.local:28080/";
+    public static final String HEALTH_URL = "http://127.0.0.1:28080/api/health";
+    public static final int PORT = 28080;
 
     private Process backendProcess;
     private TrayIcon trayIcon;
@@ -84,6 +84,9 @@ public class LauncherMain {
 
         // Setup shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
+
+        // Auto-configure local hostname mapping if writable
+        setupLocalHostname();
 
         // Auto-register Windows Startup on first run (Registry + Startup Folder VBS) on Windows only
         if (System.getProperty("os.name").toLowerCase().contains("win")) {
@@ -218,7 +221,7 @@ public class LauncherMain {
                 JPanel buttonsGrid = new JPanel(new GridLayout(2, 2, 10, 10));
                 buttonsGrid.setOpaque(false);
 
-                openBrowserBtn = createStyledButton("🌐 Open in Browser (localhost:8080)", new Color(79, 70, 229), Color.WHITE);
+                openBrowserBtn = createStyledButton("🌐 Open in Browser (Port 28080)", new Color(79, 70, 229), Color.WHITE);
                 openBrowserBtn.addActionListener(e -> openBrowser(APP_URL));
 
                 minimizeTrayBtn = createStyledButton("📌 Minimize to System Tray", new Color(30, 41, 59), new Color(226, 232, 240));
@@ -391,7 +394,7 @@ public class LauncherMain {
     private void updateStatusToHealthy() {
         EventQueue.invokeLater(() -> {
             if (statusBadge != null) {
-                statusBadge.setText("  🟢 Active & Healthy (Port 8080)  ");
+                statusBadge.setText("  🟢 Active & Healthy (Port 28080)  ");
                 statusBadge.setBackground(new Color(6, 78, 59)); // Emerald 900
                 statusBadge.setForeground(new Color(52, 211, 153)); // Emerald 400
                 statusBadge.setBorder(BorderFactory.createCompoundBorder(
@@ -606,7 +609,7 @@ public class LauncherMain {
         command.add("-jar");
         command.add(warFile.getAbsolutePath());
         command.add("--server.port=" + PORT);
-        command.add("--server.address=0.0.0.0");
+        command.add("--server.address=127.0.0.1");
 
         ProcessBuilder pb = new ProcessBuilder(command);
         if (warFile.getParentFile() != null && warFile.getParentFile().exists()) {
@@ -924,23 +927,22 @@ public class LauncherMain {
                 }
             }
         }
-        killProcessOnPort(PORT);
     }
 
-    private void killProcessOnPort(int port) {
+    public static void setupLocalHostname() {
         try {
             String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("win")) {
-                Process p = Runtime.getRuntime().exec(new String[]{
-                    "cmd.exe", "/c",
-                    "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :" + port + " ^| findstr LISTENING') do taskkill /f /pid %a"
-                });
-                p.waitFor(3, TimeUnit.SECONDS);
-            } else {
-                Process p = Runtime.getRuntime().exec(new String[]{
-                    "/bin/sh", "-c", "lsof -ti :" + port + " | xargs kill -9 2>/dev/null || true"
-                });
-                p.waitFor(3, TimeUnit.SECONDS);
+            Path hostsPath = os.contains("win")
+                    ? Paths.get(System.getenv("SystemRoot") != null ? System.getenv("SystemRoot") : "C:\\Windows", "System32", "drivers", "etc", "hosts")
+                    : Paths.get("/etc/hosts");
+
+            if (Files.exists(hostsPath) && Files.isWritable(hostsPath)) {
+                String content = Files.readString(hostsPath);
+                if (!content.contains("management.rupeecrm.local")) {
+                    String entry = (content.endsWith("\n") ? "" : "\n") + "127.0.0.1 management.rupeecrm.local\n";
+                    Files.writeString(hostsPath, entry, java.nio.file.StandardOpenOption.APPEND);
+                    System.out.println("Configured management.rupeecrm.local in hosts file.");
+                }
             }
         } catch (Exception ignored) {}
     }

@@ -87,6 +87,15 @@ public class LicenseStorage {
     }
 
     /**
+     * Reads the license ID associated with the recorded revision.
+     */
+    public synchronized String getRecordedLicenseId() {
+        Map<String, Object> state = loadSyncState();
+        Object id = state.get("licenseId");
+        return id != null ? id.toString() : null;
+    }
+
+    /**
      * Gets the last successful authenticated check date (YYYY-MM-DD).
      */
     public synchronized String getLastSuccessfulCheckDate() {
@@ -99,13 +108,25 @@ public class LicenseStorage {
      * Updates the sync state after a successful authenticated server check.
      */
     public synchronized void updateSyncState(String lastCheckDate, int revision) {
+        updateSyncState(lastCheckDate, revision, null);
+    }
+
+    /**
+     * Updates the sync state and associates highestRevision with the specific licenseId.
+     */
+    public synchronized void updateSyncState(String lastCheckDate, int revision, String licenseId) {
         Map<String, Object> state = loadSyncState();
         if (lastCheckDate != null) {
             state.put("lastSuccessfulCheckDate", lastCheckDate);
         }
+        String currentLicenseId = getRecordedLicenseId();
+        boolean isNewLicenseId = (licenseId != null && !licenseId.equals(currentLicenseId));
         int currentHighest = getHighestRevision();
-        if (revision > currentHighest) {
+        if (isNewLicenseId || revision > currentHighest) {
             state.put("highestRevision", revision);
+        }
+        if (licenseId != null) {
+            state.put("licenseId", licenseId);
         }
         saveSyncState(state);
     }

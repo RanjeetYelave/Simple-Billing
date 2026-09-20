@@ -104,3 +104,22 @@ uploads/
 temp/
 .cache/
 /.metadata/
+
+###############################################################
+# PLAYWRIGHT / UI REGRESSION TEST ARTIFACTS
+###############################################################
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+blob-report/
+**/blob-report/
+playwright/.cache/
+**/playwright/.cache/
+.network
+###############################################################
+# STANDALONE OPERATOR TOOLS
+###############################################################
+tools/SoftwareManagementTool.html
+SoftwareManagementTool.html
+

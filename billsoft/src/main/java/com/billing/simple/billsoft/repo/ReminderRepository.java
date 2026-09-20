@@ -14,6 +14,8 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
     List<Reminder> findByFirmIdAndCompletedFalse(Long firmId);
 
+    List<Reminder> findByCompletedFalse();
+
     List<Reminder> findByCompletedTrue();
 
     Optional<Reminder> findByIdAndFirmId(Long id, Long firmId);

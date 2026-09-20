@@ -17,6 +17,15 @@
     <name>Launcher</name>
     <description>Tiny cross-platform launcher and updater for Simple Billing.</description>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.3</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>

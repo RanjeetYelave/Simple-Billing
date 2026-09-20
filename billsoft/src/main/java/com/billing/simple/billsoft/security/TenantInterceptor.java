@@ -25,8 +25,10 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/diagnostics",
             "/api/update",
             "/api/license",
+            "/api/licensing",
             "/api/backup",
-            "/api/omnisearch"
+            "/api/omnisearch",
+            "/api/announcements"
     );
 
     public TenantInterceptor(FirmDetailsRepository firmDetailsRepo) {

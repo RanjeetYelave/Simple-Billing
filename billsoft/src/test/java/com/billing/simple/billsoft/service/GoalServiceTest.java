@@ -142,6 +142,37 @@ class GoalServiceTest {
     }
 
     @Test
+    void testIncrementProgressWithDateAndNotes() {
+        Goal tracker = Goal.builder()
+                .id(25L)
+                .firmId(1L)
+                .title("HDFC Car Loan")
+                .goalType(GoalType.LIFE_MILESTONE)
+                .currentValue(new BigDecimal("11.00"))
+                .targetValue(new BigDecimal("60.00"))
+                .unit("EMIs")
+                .status("ACTIVE")
+                .build();
+
+        when(goalRepository.findByIdAndFirmId(25L, 1L)).thenReturn(Optional.of(tracker));
+        when(goalRepository.save(any(Goal.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        LocalDate customDate = LocalDate.of(2026, 10, 10);
+        Goal updated = goalService.incrementProgress(25L, new BigDecimal("1.00"), customDate, "HDFC Txn #48912 - ₹14,850");
+
+        assertNotNull(updated);
+        assertEquals(new BigDecimal("12.00"), updated.getCurrentValue());
+        assertEquals("ACTIVE", updated.getStatus());
+        verify(goalLogRepository, times(1)).save(argThat(log ->
+                log.getGoalId().equals(25L) &&
+                log.getDeltaValue().compareTo(new BigDecimal("1.00")) == 0 &&
+                log.getResultingValue().compareTo(new BigDecimal("12.00")) == 0 &&
+                log.getLogDate().equals(customDate) &&
+                "HDFC Txn #48912 - ₹14,850".equals(log.getNotes())
+        ));
+    }
+
+    @Test
     void testResetQuitHabit() {
         Goal quitGoal = Goal.builder()
                 .id(30L)

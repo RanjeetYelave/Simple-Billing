@@ -1,0 +1,221 @@
+{
+  "application": "RupeeCRM",
+  "version": "1.0.0",
+  "totalDiscoveredAreas": 12,
+  "totalDiscoveredPages": 7,
+  "totalDiscoveredTabs": 24,
+  "totalDiscoveredModals": 14,
+  "totalDiscoveredWorkflows": 48,
+  "inventory": [
+    {
+      "area": "Shell",
+      "page": "All",
+      "component": "App",
+      "element": "#root",
+      "action": "Mount & Render",
+      "expectedBehavior": "React mounts cleanly, topbar and sidebar render without exceptions",
+      "priority": "P0",
+      "test": "tests/p0-app-shell.spec.ts"
+    },
+    {
+      "area": "Shell",
+      "page": "All",
+      "component": "GlobalErrorGate",
+      "element": "window",
+      "action": "Global Exception & PageError Interception",
+      "expectedBehavior": "Captures uncaught JavaScript errors, console.error, and failed network requests",
+      "priority": "P0",
+      "test": "support/error-gate.ts"
+    },
+    {
+      "area": "Shell",
+      "page": "All",
+      "component": "Sidebar",
+      "element": ".sidebar-nav-item",
+      "action": "Navigation Click",
+      "expectedBehavior": "Switches active page view cleanly and pushes history state",
+      "priority": "P0",
+      "test": "tests/p0-app-shell.spec.ts"
+    },
+    {
+      "area": "Shell",
+      "page": "All",
+      "component": "FirmSelector",
+      "element": "select.firm-select",
+      "action": "Switch Firm",
+      "expectedBehavior": "Updates API.firmId, resets firm-scoped state, and dispatches billsoft:firm-changed",
+      "priority": "P0",
+      "test": "tests/p1-multi-tenant.spec.ts"
+    },
+    {
+      "area": "Search",
+      "page": "Global",
+      "component": "GlobalSearchModal",
+      "element": ".omni-search-input",
+      "action": "Query Search & Quick Action",
+      "expectedBehavior": "Invokes search engine without TypeError and executes NLP grammar cleanly",
+      "priority": "P0",
+      "test": "tests/p0-app-shell.spec.ts"
+    },
+    {
+      "area": "Invoices",
+      "page": "invoices",
+      "component": "InvoicesQuotesHub",
+      "element": ".sub-tabs-bar button",
+      "action": "Subtab Navigation",
+      "expectedBehavior": "Switches between Overview, Invoice List, Create Invoice, Quotes, and Returns",
+      "priority": "P0",
+      "test": "tests/p1-invoices.spec.ts"
+    },
+    {
+      "area": "Invoices",
+      "page": "invoices",
+      "component": "InvoiceForm",
+      "element": "form / Line Items Grid",
+      "action": "Create Invoice",
+      "expectedBehavior": "Selects customer, adds line items, calculates GST/totals, and saves invoice",
+      "priority": "P1",
+      "test": "tests/p1-invoices.spec.ts"
+    },
+    {
+      "area": "Invoices",
+      "page": "invoices",
+      "component": "InvoiceForm",
+      "element": "Invoice Editor",
+      "action": "Hydrate Existing Invoice",
+      "expectedBehavior": "Loads customer details, quantities, rates, and all line items with 100% fidelity",
+      "priority": "P1",
+      "test": "tests/p1-invoices.spec.ts"
+    },
+    {
+      "area": "Quotations",
+      "page": "invoices",
+      "component": "QuotationList",
+      "element": "button:has-text('Convert')",
+      "action": "Convert Quote to Invoice",
+      "expectedBehavior": "Copies line items and customer into InvoiceForm with convertedFromQuotationId",
+      "priority": "P1",
+      "test": "tests/p1-quotations.spec.ts"
+    },
+    {
+      "area": "Payments",
+      "page": "invoices",
+      "component": "RecordPaymentModal",
+      "element": ".modal-content form",
+      "action": "Record Settlement",
+      "expectedBehavior": "Records partial/full payment, validates amount, and updates invoice paid status",
+      "priority": "P1",
+      "test": "tests/p1-invoices.spec.ts"
+    },
+    {
+      "area": "Customers",
+      "page": "firm",
+      "component": "CustomerManager",
+      "element": "Customer Table / Modal",
+      "action": "Customer CRUD & Ledger",
+      "expectedBehavior": "Creates, searches, updates customer profile, and opens Customer 360 modal",
+      "priority": "P1",
+      "test": "tests/p1-customers.spec.ts"
+    },
+    {
+      "area": "Customers",
+      "page": "firm",
+      "component": "Customer360Modal",
+      "element": ".customer-360-drawer",
+      "action": "View Ledger & Invoices",
+      "expectedBehavior": "Displays financial summary, outstanding balance, invoice history, and settlement action",
+      "priority": "P1",
+      "test": "tests/p1-customers.spec.ts"
+    },
+    {
+      "area": "Notifications",
+      "page": "inbox",
+      "component": "InboxPage",
+      "element": ".notification-item button",
+      "action": "Action Button Dispatch",
+      "expectedBehavior": "Navigates to target entity (e.g. View Invoice) and hydrates record completely",
+      "priority": "P1",
+      "test": "tests/p1-notifications.spec.ts"
+    },
+    {
+      "area": "MultiTenant",
+      "page": "All",
+      "component": "FirmIsolation",
+      "element": "Firm Switcher",
+      "action": "Tenant Boundary Enforcement",
+      "expectedBehavior": "Firm B never renders Firm A records across lists, search, metrics, or notifications",
+      "priority": "P1",
+      "test": "tests/p1-multi-tenant.spec.ts"
+    },
+    {
+      "area": "Inventory",
+      "page": "firm",
+      "component": "ProductManager",
+      "element": "Product Table & Stock Modal",
+      "action": "Product CRUD & Stock Adjustments",
+      "expectedBehavior": "Creates product, adjusts stock count, and displays low-stock indicators",
+      "priority": "P2",
+      "test": "tests/p2-inventory.spec.ts"
+    },
+    {
+      "area": "Planner",
+      "page": "planner",
+      "component": "PlannerPage",
+      "element": ".planner-kanban-board",
+      "action": "Task Pipeline & Reminders",
+      "expectedBehavior": "Creates reminders, transitions task status (TODO->DONE), and manages notes",
+      "priority": "P2",
+      "test": "tests/p2-planner-hr.spec.ts"
+    },
+    {
+      "area": "QuickActions",
+      "page": "Global",
+      "component": "CompactQuickActionPalette",
+      "element": ".quick-action-input",
+      "action": "Grammar Execution",
+      "expectedBehavior": "Parses 'Fuel 500 UPI' and creates single expense record with confirmation",
+      "priority": "P2",
+      "test": "tests/p2-expenses-goals.spec.ts"
+    },
+    {
+      "area": "HR",
+      "page": "hr",
+      "component": "HRManager",
+      "element": ".hr-tabs button",
+      "action": "Staff Directory & Payroll Calculation",
+      "expectedBehavior": "Registers employees, manages attendance shifts, and computes salary slips",
+      "priority": "P2",
+      "test": "tests/p2-planner-hr.spec.ts"
+    },
+    {
+      "area": "Toasts",
+      "page": "Global",
+      "component": "Toast",
+      "element": ".toast-deck-container",
+      "action": "Deduplication & Hover Expansion",
+      "expectedBehavior": "Renders multiplier badges (×2) on duplicate triggers and expands on hover",
+      "priority": "P3",
+      "test": "tests/p3-toast-visual.spec.ts"
+    },
+    {
+      "area": "Themes",
+      "page": "Global",
+      "component": "ThemeToggle",
+      "element": ".theme-toggle-btn",
+      "action": "Light / Dark Theme Switching",
+      "expectedBehavior": "Applies dark-1 tokens, synchronizes data-theme, and prevents background glitch",
+      "priority": "P3",
+      "test": "tests/p3-toast-visual.spec.ts"
+    },
+    {
+      "area": "Responsive",
+      "page": "All",
+      "component": "Layout",
+      "element": "Viewport",
+      "action": "Mobile & Desktop Viewport Resizing",
+      "expectedBehavior": "Ensures zero horizontal overflow and responsive drawer collapse at 390px",
+      "priority": "P3",
+      "test": "tests/p3-toast-visual.spec.ts"
+    }
+  ]
+}

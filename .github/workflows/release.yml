@@ -109,6 +109,7 @@ jobs:
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type app-image `
+                   --icon tools/assets/RupeeCRM.ico `
                    --dest dist-pkg `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
@@ -116,8 +117,11 @@ jobs:
 
           "@echo off`r`nstart `"`" `"%~dp0RupeeCRM.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/RupeeCRM/Start-RupeeCRM.bat
           Copy-Item deleteall.bat dist-pkg/RupeeCRM/deleteall.bat
+          Copy-Item tools/assets/RupeeCRM.ico dist-pkg/RupeeCRM/RupeeCRM.ico -ErrorAction SilentlyContinue
+          Copy-Item tools/uninstall-windows.ps1 dist-pkg/RupeeCRM/uninstall-windows.ps1 -ErrorAction SilentlyContinue
 
           Compress-Archive -Path dist-pkg/RupeeCRM/* -DestinationPath RupeeCRM-Windows-x64.zip
+          (Get-FileHash -Algorithm SHA256 RupeeCRM-Windows-x64.zip).Hash.ToLower() | Out-File -Encoding ASCII -FilePath RupeeCRM-Windows-x64.zip.sha256
 
       - name: Package Windows Installer (MSI)
         shell: pwsh
@@ -128,6 +132,7 @@ jobs:
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type msi `
+                   --icon tools/assets/RupeeCRM.ico `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
                    --win-dir-chooser `
@@ -154,6 +159,7 @@ jobs:
                        --main-jar launcher.jar `
                        --main-class com.billing.simple.launcher.LauncherMain `
                        --type msi `
+                       --icon tools/assets/RupeeCRM.ico `
                        --app-version 1.0.${{ github.run_number }} `
                        --vendor "RupeeCRM" `
                        --win-dir-chooser `
@@ -166,12 +172,21 @@ jobs:
 
           Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
 
+      - name: Verify PowerShell Script Syntax
+        shell: pwsh
+        run: ./tools/check-powershell-syntax.ps1
+
+      - name: Validate Windows Installer & Uninstaller Lifecycle
+        shell: pwsh
+        run: ./tools/validate-windows-lifecycle.ps1
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-distribution
           path: |
             RupeeCRM-Windows-x64.zip
+            RupeeCRM-Windows-x64.zip.sha256
             RupeeCRM-Setup.msi
           if-no-files-found: error
 
@@ -293,6 +308,7 @@ jobs:
             dist/billsoft.war
             dist/billsoft.war.sha256
             dist/RupeeCRM-Windows-x64.zip
+            dist/RupeeCRM-Windows-x64.zip.sha256
             dist/RupeeCRM-Setup.msi
             dist/RupeeCRM-macOS-arm64.tar.gz
             dist/Regression-Test-Coverage-Report.zip

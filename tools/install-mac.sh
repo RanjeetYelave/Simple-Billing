@@ -3,7 +3,7 @@
 # RupeeCRM macOS 1-Line Quick Installer
 # ==============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-mac.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overhaul/tools/install-mac.sh | bash
 #
 # This installer:
 # 1. Downloads the latest native RupeeCRM.app bundle directly via curl.
@@ -65,13 +65,46 @@ cleanup() {
 }
 trap cleanup EXIT
 
-curl -fSL --progress-bar "$DOWNLOAD_URL" -o "${TMP_DIR}/RupeeCRM-macOS-arm64.tar.gz"
-
 echo -e "${BLUE}ℹ${NC} Extracting application bundle..."
-tar -xzf "${TMP_DIR}/RupeeCRM-macOS-arm64.tar.gz" -C "$TMP_DIR"
 
-if [ ! -d "${TMP_DIR}/RupeeCRM.app" ]; then
+ARCHIVE_FILE="${TMP_DIR}/download_artifact"
+curl -fSL --progress-bar "$DOWNLOAD_URL" -o "$ARCHIVE_FILE"
+
+EXTRACT_DIR="${TMP_DIR}/extracted"
+mkdir -p "$EXTRACT_DIR"
+
+FOUND_APP=""
+
+# 1. Try tar extraction
+if tar -xzf "$ARCHIVE_FILE" -C "$EXTRACT_DIR" 2>/dev/null; then
+    FOUND_APP="$(find "$EXTRACT_DIR" -name "*.app" -maxdepth 3 | head -n 1)"
+fi
+
+# 2. Try unzip extraction if tar didn't yield an .app
+if [ -z "$FOUND_APP" ]; then
+    if unzip -q -o "$ARCHIVE_FILE" -d "$EXTRACT_DIR" 2>/dev/null; then
+        FOUND_APP="$(find "$EXTRACT_DIR" -name "*.app" -maxdepth 3 | head -n 1)"
+    fi
+fi
+
+# 3. Try DMG mount if it is a disk image
+if [ -z "$FOUND_APP" ]; then
+    MOUNT_DIR="${TMP_DIR}/mount"
+    mkdir -p "$MOUNT_DIR"
+    if hdiutil attach "$ARCHIVE_FILE" -mountpoint "$MOUNT_DIR" -nobrowse -quiet 2>/dev/null; then
+        DMG_APP="$(find "$MOUNT_DIR" -name "*.app" -maxdepth 2 | head -n 1)"
+        if [ -n "$DMG_APP" ]; then
+            cp -R "$DMG_APP" "$EXTRACT_DIR/"
+            FOUND_APP="$(find "$EXTRACT_DIR" -name "*.app" -maxdepth 3 | head -n 1)"
+        fi
+        hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+    fi
+fi
+
+if [ -z "$FOUND_APP" ] || [ ! -d "$FOUND_APP" ]; then
     echo -e "${RED}Error: RupeeCRM.app not found in download archive.${NC}"
+    echo -e "Contents of extracted directory:"
+    ls -la "$EXTRACT_DIR" 2>/dev/null || true
     exit 1
 fi
 
@@ -86,10 +119,20 @@ fi
 
 echo -e "${BLUE}ℹ${NC} Installing to ${BOLD}${TARGET_APP}${NC}..."
 rm -rf "$TARGET_APP"
-cp -R "${TMP_DIR}/RupeeCRM.app" /Applications/
+cp -R "$FOUND_APP" "$TARGET_APP"
 
 echo -e "${BLUE}ℹ${NC} Clearing Gatekeeper quarantine attributes..."
 xattr -cr "$TARGET_APP" 2>/dev/null || true
+
+# Configure local hostname mapping if not present
+if ! grep -q "management.rupeecrm.local" /etc/hosts 2>/dev/null; then
+    echo -e "${BLUE}ℹ${NC} Configuring management.rupeecrm.local in /etc/hosts..."
+    if [ -w /etc/hosts ]; then
+        echo "127.0.0.1 management.rupeecrm.local" >> /etc/hosts
+    else
+        sudo sh -c 'echo "127.0.0.1 management.rupeecrm.local" >> /etc/hosts' 2>/dev/null || true
+    fi
+fi
 
 echo -e "${GREEN}✓${NC} Installation complete!"
 echo ""
@@ -99,7 +142,7 @@ open "$TARGET_APP"
 echo ""
 echo -e "${GREEN}${BOLD}======================================================${NC}"
 echo -e "${GREEN}${BOLD}   RupeeCRM is now active and running in background!  ${NC}"
-echo -e "${GREEN}${BOLD}   Open in Browser: http://localhost:8080/            ${NC}"
+echo -e "${GREEN}${BOLD}   Open in Browser: http://management.rupeecrm.local:28080/ ${NC}"
 echo -e "${GREEN}${BOLD}======================================================${NC}"
 echo ""
-echo -e "You can launch RupeeCRM anytime from ${BOLD}Spotlight${NC} (Cmd + Space $\to$ RupeeCRM) or ${BOLD}/Applications${NC}."
+echo -e "You can launch RupeeCRM anytime from ${BOLD}Spotlight${NC} (Cmd + Space → RupeeCRM) or ${BOLD}/Applications${NC}."

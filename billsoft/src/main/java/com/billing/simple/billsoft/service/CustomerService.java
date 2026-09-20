@@ -3,6 +3,7 @@ package com.billing.simple.billsoft.service;
 import java.util.List;
 
 import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,9 +21,9 @@ public class CustomerService {
     }
 
     public Customer create(Customer customer) {
-        Long currentFirmId = TenantContext.getCurrentFirmId();
-        if (currentFirmId != null) {
-            customer.setFirmId(currentFirmId);
+        Long targetFirmId = customer.getFirmId() != null ? customer.getFirmId() : TenantContext.getCurrentFirmId();
+        if (targetFirmId != null) {
+            customer.setFirmId(targetFirmId);
         }
         return repo.save(customer);
     }
@@ -37,12 +38,12 @@ public class CustomerService {
 
     public Customer getById(Long id) {
         Long fid = TenantContext.getCurrentFirmId();
-        return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+        return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
     }
 
     public Customer getById(Long id, Long firmId) {
         Long fid = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+        return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
     }
 
     @Transactional
@@ -52,7 +53,8 @@ public class CustomerService {
         if (existing == null)
             return null;
 
-        if (request.getName() != null) existing.setName(request.getName().trim());
+        if (request.getName() != null)
+            existing.setName(request.getName().trim());
         existing.setPhone(request.getPhone());
         existing.setEmail(request.getEmail());
         existing.setAddress(request.getAddress());

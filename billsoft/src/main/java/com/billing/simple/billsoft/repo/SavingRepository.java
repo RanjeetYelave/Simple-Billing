@@ -26,6 +26,8 @@ public interface SavingRepository extends JpaRepository<SavingRecord, Long> {
 
     List<SavingRecord> findByFirmIdAndGoalId(Long firmId, Long goalId);
 
+    List<SavingRecord> findByGoalId(Long goalId);
+
     List<SavingRecord> findTop10ByFirmIdOrderBySavingDateDescIdDesc(Long firmId);
 
     Optional<SavingRecord> findByIdAndFirmId(Long id, Long firmId);

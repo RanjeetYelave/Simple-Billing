@@ -3,6 +3,8 @@ package com.billing.simple.billsoft.service;
 import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.Expense;
 import com.billing.simple.billsoft.repo.ExpenseRepository;
+import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -13,7 +15,6 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class ExpenseService {
@@ -24,31 +25,30 @@ public class ExpenseService {
     }
 
     public List<Expense> getExpensesByFirm(Long firmId) {
-        return repository.findByFirmIdOrderByExpenseDateDescIdDesc(firmId);
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        if (target == null) return Collections.emptyList();
+        return repository.findByFirmIdOrderByExpenseDateDescIdDesc(target);
     }
 
     public PageResponse<Expense> getPaginatedExpenses(Long firmId, LocalDate from, LocalDate to, Pageable pageable) {
-        if (firmId == null) {
-            return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
-        }
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        if (target == null) return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
         Page<Expense> page;
         if (from != null && to != null) {
-            page = repository.findByFirmIdAndExpenseDateBetween(firmId, from, to, pageable);
+            page = repository.findByFirmIdAndExpenseDateBetween(target, from, to, pageable);
         } else {
-            page = repository.findByFirmId(firmId, pageable);
+            page = repository.findByFirmId(target, pageable);
         }
         return PageResponse.of(page);
     }
 
     public Expense getExpenseById(Long id, Long firmId) {
-        if (firmId != null) {
-            return repository.findByIdAndFirmId(id, firmId).orElse(null);
-        }
-        return repository.findById(id).orElse(null);
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        return (target != null ? repository.findByIdAndFirmId(id, target) : repository.findById(id)).orElse(null);
     }
 
     public Expense createExpense(Expense expense) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = expense.getFirmId() != null ? expense.getFirmId() : TenantContext.getCurrentFirmId();
         if (firmId != null) {
             expense.setFirmId(firmId);
         }
@@ -63,10 +63,9 @@ public class ExpenseService {
 
     @Transactional
     public Expense updateExpense(Long id, Expense updated) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Expense existing = (firmId != null)
-                ? repository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Expense not found"))
-                : repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Expense not found"));
+        Long firmId = TenantContext.getCurrentFirmId();
+        Expense existing = (firmId != null ? repository.findByIdAndFirmId(id, firmId) : repository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Expense not found"));
         existing.setTitle(updated.getTitle());
         if (updated.getAmount() != null) {
             existing.setAmount(updated.getAmount().setScale(2, RoundingMode.HALF_UP));
@@ -81,15 +80,18 @@ public class ExpenseService {
 
     @Transactional
     public boolean deleteExpense(Long id) {
-        Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = TenantContext.getCurrentFirmId();
         if (firmId != null) {
-            if (!repository.existsByIdAndFirmId(id, firmId)) return false;
+            if (!repository.existsByIdAndFirmId(id, firmId))
+                return false;
             repository.deleteByIdAndFirmId(id, firmId);
             return true;
+        } else {
+            if (!repository.existsById(id))
+                return false;
+            repository.deleteById(id);
+            return true;
         }
-        if (!repository.existsById(id)) return false;
-        repository.deleteById(id);
-        return true;
     }
 
     public static final List<String> DEFAULT_CATEGORIES = List.of(
@@ -104,17 +106,16 @@ public class ExpenseService {
             "Packaging & Shipping",
             "Legal & Professional Fees",
             "Taxes & Government Dues",
-            "Miscellaneous"
-    );
+            "Miscellaneous");
 
     public List<String> getCategoriesByFirm(Long firmId) {
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        if (target == null) return new ArrayList<>(DEFAULT_CATEGORIES);
         Set<String> categories = new LinkedHashSet<>(DEFAULT_CATEGORIES);
-        if (firmId != null) {
-            List<Expense> list = repository.findByFirmIdOrderByExpenseDateDescIdDesc(firmId);
-            for (Expense e : list) {
-                if (e.getCategory() != null && !e.getCategory().trim().isBlank()) {
-                    categories.add(e.getCategory().trim());
-                }
+        List<Expense> list = repository.findByFirmIdOrderByExpenseDateDescIdDesc(target);
+        for (Expense e : list) {
+            if (e.getCategory() != null && !e.getCategory().trim().isBlank()) {
+                categories.add(e.getCategory().trim());
             }
         }
         return new ArrayList<>(categories);
@@ -144,7 +145,8 @@ public class ExpenseService {
             if (e.getCategory() != null && !e.getCategory().trim().isEmpty()) {
                 String cat = e.getCategory().trim();
                 BigDecimal amt = e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO;
-                categoryTotals.put(cat, categoryTotals.getOrDefault(cat, BigDecimal.ZERO).add(amt).setScale(2, RoundingMode.HALF_UP));
+                categoryTotals.put(cat,
+                        categoryTotals.getOrDefault(cat, BigDecimal.ZERO).add(amt).setScale(2, RoundingMode.HALF_UP));
             }
         }
 

@@ -115,6 +115,8 @@ public class LicensingController {
             resp.put("dataProtectionEnabled", dpEnabled);
             resp.put("dataProtectionExpiresAt", license.getDataProtectionExpiresAt());
             resp.put("dataProtectionDaysRemaining", dpDaysRemaining);
+            resp.put("dpDaysRemaining", dpDaysRemaining);
+            resp.put("dataProtectionActive", dpActive);
             resp.put("isDataProtectionActive", dpActive);
 
             // Snooze state
@@ -141,6 +143,8 @@ public class LicensingController {
             resp.put("dataProtectionEnabled", false);
             resp.put("dataProtectionExpiresAt", null);
             resp.put("dataProtectionDaysRemaining", null);
+            resp.put("dpDaysRemaining", null);
+            resp.put("dataProtectionActive", false);
             resp.put("isDataProtectionActive", false);
             resp.put("licenseSnoozed", false);
             resp.put("dpSnoozed", false);

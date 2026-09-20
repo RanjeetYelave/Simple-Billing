@@ -87,6 +87,9 @@ jobs:
           java -jar ../billsoft/target/billsoft-0.0.1-SNAPSHOT.war &
           SERVER_PID=$!
 
+          # Guarantee server shutdown on step completion/failure
+          trap 'echo "Stopping RupeeCRM server (PID $SERVER_PID)..."; kill $SERVER_PID 2>/dev/null || true' EXIT
+
           echo "Waiting for RupeeCRM server to be healthy on port 28080..."
           TIMEOUT=60
           READY=0
@@ -101,16 +104,17 @@ jobs:
 
           if [ $READY -ne 1 ]; then
             echo "ERROR: RupeeCRM failed to start within ${TIMEOUT}s!"
-            kill $SERVER_PID 2>/dev/null || true
             exit 1
           fi
 
-          echo "Executing 39+ Playwright UI regression tests..."
+          echo "Seeding default business firm for full UI regression test coverage..."
+          curl -s -X POST http://127.0.0.1:28080/api/firm \
+            -H "Content-Type: application/json" \
+            -d '{"firmName":"RupeeCRM Demo Enterprise","ownerName":"Ranjeet Yelave","contactNumber":"9876543210","email":"contact@rupeecrm.local","address":"Pune, Maharashtra, India","gstin":"27AAAAA0000A1Z5"}' || true
+
+          echo "Executing Playwright UI regression tests..."
           npm test
           TEST_EXIT_CODE=$?
-
-          echo "Stopping RupeeCRM server (PID $SERVER_PID)..."
-          kill $SERVER_PID 2>/dev/null || true
 
           exit $TEST_EXIT_CODE
 

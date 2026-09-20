@@ -383,23 +383,31 @@ try {
     # 10. Configure User Auto-Start (Registry + Startup VBS)
     # --------------------------------------------------------------------------
     Write-Step "Configuring background auto-start..."
+    $regSuccess = $false
     try {
+        # 1. Direct .NET Registry API (Guaranteed to work across all PowerShell editions without quote issues)
+        $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
+        if ($runKeyObj) {
+            $runKeyObj.SetValue("RupeeCRMService", "`"$TargetExe`" --background")
+            $runKeyObj.Close()
+            $regSuccess = $true
+        }
+    } catch {}
+
+    try {
+        # 2. PowerShell PSDrive provider
         $RegKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-        $RegValue = "`"$TargetExe`" --background"
         if (-not (Test-Path $RegKey)) {
             New-Item -Path $RegKey -Force | Out-Null
         }
-        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value $RegValue -Force
-        # Also execute reg.exe to guarantee persistence across all Windows CI shells and versions
-        reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" /t REG_SZ /d $RegValue /f | Out-Null
+        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value "`"$TargetExe`" --background" -Force
+        $regSuccess = $true
+    } catch {}
+
+    if ($regSuccess) {
         Write-Success "Auto-start registered in Windows Registry (HKCU Run)"
-    } catch {
-        try {
-            reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" /t REG_SZ /d "`"$TargetExe`" --background" /f | Out-Null
-            Write-Success "Auto-start registered in Windows Registry via reg.exe"
-        } catch {
-            Write-WarnMsg "Could not set registry run key: $($_.Exception.Message)"
-        }
+    } else {
+        Write-WarnMsg "Could not set registry run key automatically"
     }
 
     try {

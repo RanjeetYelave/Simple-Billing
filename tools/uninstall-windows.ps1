@@ -72,12 +72,18 @@ if ($processes) {
 Write-Step "Removing Windows auto-start registrations..."
 
 # 2a. HKCU Registry
-$runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 foreach ($val in @("RupeeCRMService", "BillsoftService")) {
-    if (Test-Path $runKey) {
-        if (Get-ItemProperty -Path $runKey -Name $val -ErrorAction SilentlyContinue) {
-            Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
+    try {
+        $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run", $true)
+        if ($runKeyObj) {
+            $runKeyObj.DeleteValue($val, $false)
+            $runKeyObj.Close()
         }
+    } catch {}
+
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    if (Test-Path $runKey) {
+        Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
     }
     reg.exe delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v $val /f 2>$null | Out-Null
     Write-Success "Removed registry auto-start value: $val"
@@ -100,7 +106,10 @@ Write-Step "Removing shortcuts..."
 
 # 3a. Desktop shortcuts
 $desktopPath = [Environment]::GetFolderPath("Desktop")
-if ($desktopPath) {
+if (-not $desktopPath -or -not (Test-Path $desktopPath)) {
+    $desktopPath = Join-Path $env:USERPROFILE "Desktop"
+}
+if ($desktopPath -and (Test-Path $desktopPath)) {
     foreach ($lnk in @("RupeeCRM.lnk", "Billsoft.lnk")) {
         $lnkPath = Join-Path $desktopPath $lnk
         if (Test-Path $lnkPath) {
@@ -133,11 +142,20 @@ $installDirs = @(
 
 foreach ($dir in $installDirs) {
     if (Test-Path $dir) {
-        try {
-            Remove-Item -Path $dir -Recurse -Force -ErrorAction Stop
+        for ($i = 0; $i -lt 5; $i++) {
+            try {
+                Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
+                if (-not (Test-Path $dir)) { break }
+            } catch {}
+            Start-Sleep -Milliseconds 300
+        }
+        if (Test-Path $dir) {
+            cmd.exe /c "rmdir /s /q `"$dir`"" 2>$null | Out-Null
+        }
+        if (-not (Test-Path $dir)) {
             Write-Success "Removed application files from $dir"
-        } catch {
-            Write-WarnMsg "Could not remove some files in $dir (may be in use or locked): $($_.Exception.Message)"
+        } else {
+            Write-WarnMsg "Could not remove some files in $dir (may be in use or locked)"
         }
     }
 }

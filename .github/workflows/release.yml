@@ -195,15 +195,24 @@ jobs:
           if (Test-Path $menuLnk) { Write-Host "✓ Start Menu shortcut verified at $menuLnk" }
 
           # 3. Verify Auto-Start Registry entry
+          $netRegVal = $null
+          try {
+              $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
+              if ($runKeyObj) {
+                  $netRegVal = $runKeyObj.GetValue("RupeeCRMService")
+                  $runKeyObj.Close()
+              }
+          } catch {}
           $regVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -ErrorAction SilentlyContinue).RupeeCRMService
-          if (-not $regVal) {
+          if (-not $regVal -and -not $netRegVal) {
               $regQuery = reg.exe query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" 2>&1
               if ($regQuery -notmatch "RupeeCRMService") {
                   throw "Validation failed: HKCU Run auto-start key was not set"
               }
               Write-Host "✓ Auto-start registry key verified via reg.exe: $regQuery"
           } else {
-              Write-Host "✓ Auto-start registry key verified: $regVal"
+              $displayVal = if ($regVal) { $regVal } else { $netRegVal }
+              Write-Host "✓ Auto-start registry key verified: $displayVal"
           }
 
           # 4. Create dummy customer database to verify data preservation

@@ -29,7 +29,7 @@ param(
     [switch]$Background = $false
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 
 # Enforce TLS 1.2 for secure GitHub downloads across Windows PowerShell 5.1+
 try {
@@ -387,40 +387,20 @@ try {
     }
 
     # --------------------------------------------------------------------------
-    # 10. Configure User Auto-Start (Registry + Startup VBS)
+    # 10. Configure User Auto-Start (Authoritative .NET Registry API)
     # --------------------------------------------------------------------------
     Write-Step "Configuring background auto-start..."
-    $regSuccess = $false
     try {
-        # 1. Direct .NET Registry API (Guaranteed across all PowerShell versions)
-        $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
-        if ($runKeyObj) {
-            $runKeyObj.SetValue("RupeeCRMService", "`"$TargetExe`" --background")
-            $runKeyObj.Close()
-            $regSuccess = $true
+        $runKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
+        if ($runKey) {
+            $runKey.SetValue("RupeeCRMService", "`"$TargetExe`" --background")
+            $runKey.Close()
+            Write-Success "Auto-start registered in Windows Registry (HKCU Run)"
+        } else {
+            throw "Unable to open or create HKCU Software\Microsoft\Windows\CurrentVersion\Run"
         }
-    } catch {}
-
-    try {
-        # 2. PowerShell PSDrive provider
-        $RegKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-        if (-not (Test-Path $RegKey)) {
-            New-Item -Path $RegKey -Force | Out-Null
-        }
-        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value "`"$TargetExe`" --background" -Force -ErrorAction SilentlyContinue
-        $regSuccess = $true
-    } catch {}
-
-    try {
-        # 3. Native reg.exe via cmd.exe
-        cmd.exe /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"RupeeCRMService`" /t REG_SZ /d `"\`"$TargetExe\`" --background`" /f >nul 2>nul"
-        $regSuccess = $true
-    } catch {}
-
-    if ($regSuccess) {
-        Write-Success "Auto-start registered in Windows Registry (HKCU Run)"
-    } else {
-        Write-WarnMsg "Could not set registry run key automatically"
+    } catch {
+        Write-FatalError "Failed to configure auto-start registry key: $($_.Exception.Message)"
     }
 
     try {
@@ -432,7 +412,7 @@ try {
             Write-Success "Startup script configured: $VbsPath"
         }
     } catch {
-        Write-WarnMsg "Could not write startup VBS script: $($_.Exception.Message)"
+        Write-WarnMsg "Could not write optional startup VBS script: $($_.Exception.Message)"
     }
 
     # --------------------------------------------------------------------------

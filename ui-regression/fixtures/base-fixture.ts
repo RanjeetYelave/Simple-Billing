@@ -155,10 +155,10 @@ export class RupeeCRMAppHelper {
 
 // ─── COMBINED FIXTURE EXTENSION ──────────────────────────────────────────────
 
-export const test = base.extend<TestOptions & TestFixtures>({
+export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void }>({
   // ── Option: eulaMode ────────────────────────────────────────────────────────
   // Default to 'accepted' so every ordinary test automatically receives a
-  // deterministic, pre-accepted EULA state.  Only EULA-specific tests should
+  // deterministic, pre-accepted EULA state. Only EULA-specific tests should
   // override this to 'first-launch'.
   eulaMode: ['accepted', { option: true }],
 
@@ -171,16 +171,9 @@ export const test = base.extend<TestOptions & TestFixtures>({
     await gate.assertZeroErrors(page, 'Test Teardown Zero-Error Gate');
   },
 
-  // ── Fixture: app ────────────────────────────────────────────────────────────
-  app: async ({ page, errorGate, eulaMode }, use) => {
-    // ── Step 1: EULA isolation ─────────────────────────────────────────────
-    // Seed accepted EULA state BEFORE the application's first JS execution.
-    // addInitScript fires on every navigation, so this covers the initial load
-    // as well as any subsequent reload() within the same test.
-    //
-    // When eulaMode is 'first-launch' we do NOT inject anything — the app will
-    // start with a completely clean localStorage (no EULA state) and display
-    // the real first-launch EULA gate.
+  // ── Automatic Preconditions Fixture (Runs for EVERY test) ───────────────────
+  _autoSetup: [async ({ page, eulaMode }, use) => {
+    // 1. EULA deterministic pre-seeding
     if (eulaMode === 'accepted') {
       await page.addInitScript(
         ({ statusKey, versionKey, acceptedAtKey, version }) => {
@@ -199,56 +192,30 @@ export const test = base.extend<TestOptions & TestFixtures>({
       );
     }
 
-    // ── Step 2: Firm & License seed (CI / fresh-DB isolation) ─────────────
-    // On CI the Spring Boot backend starts with an empty database.
-    // The production App component calls GET /api/firm on startup; when the
-    // response is an empty array it sets firstTimeSetup=true and renders the
-    // Onboarding screen instead of the main application shell.
-    //
-    // Strategy: FETCH-THROUGH with fallback.
-    //   • Always let the real request go to the backend first.
-    //   • If the backend returns an empty firm list (CI cold-start), respond
-    //     with our seed stub so the app boots into the main shell.
-    //   • If the backend returns real firms (local dev), pass the real response
-    //     through unchanged — no interference with local IDs.
-    //
-    // This means the SAME fixture works identically on both local and CI:
-    //   Local: real data passes through, no 404 on GET /api/firm/:realId
-    //   CI:    seed firm is used, and GET /api/firm/0 is also stubbed below
-    //
-    // We also stub GET /api/firm/:id for the seed firm ID to prevent the app
-    // from producing a 404 when it fetches the individual seeded firm.
+    // 2. Firm & License seed (CI cold-start isolation)
     await page.route('**/api/firm', async (route) => {
       const method = route.request().method().toUpperCase();
       if (method !== 'GET') {
-        // Let mutations (POST, PUT, DELETE) pass through unmodified.
         await route.continue();
         return;
       }
 
-      // Fetch the real backend response first.
       const response = await route.fetch();
       const text = await response.text();
       let firms: any[] = [];
-      try { firms = JSON.parse(text); } catch { /* ignore parse error */ }
+      try { firms = JSON.parse(text); } catch {}
 
       if (Array.isArray(firms) && firms.length === 0) {
-        // Backend has no firms (CI cold-start): substitute the seed firm.
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(TEST_FIRM_SEED),
         });
       } else {
-        // Backend has real firms: pass the real response through.
         await route.fulfill({ response });
       }
     });
 
-    // Stub GET /api/firm/0 (the seed firm's individual lookup) so the app
-    // doesn't receive a 404 when it fetches firm details by the seeded ID.
-    // This route only fires on CI where the seed firm is used; on local the
-    // real backend firm ID is served by the pass-through above.
     await page.route(`**/api/firm/${TEST_FIRM_SEED_ID}`, async (route) => {
       await route.fulfill({
         status: 200,
@@ -257,34 +224,24 @@ export const test = base.extend<TestOptions & TestFixtures>({
       });
     });
 
-    // Similarly, seed the license/status so the app never shows the
-    // "TrialExpired" gate on CI (where hasFirm is false in a fresh DB).
-    // Same fetch-through approach: only override when hasFirm is false.
     await page.route('**/api/license/status', async (route) => {
       const response = await route.fetch();
       const text = await response.text();
       let lic: any = {};
-      try { lic = JSON.parse(text); } catch { /* ignore */ }
+      try { lic = JSON.parse(text); } catch {}
 
       if (lic.hasFirm === false) {
-        // CI: no firm in DB — send a valid trial stub with hasFirm:true.
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(TEST_LICENSE_SEED),
         });
       } else {
-        // Local (or CI once firm exists): pass real response through.
         await route.fulfill({ response });
       }
     });
 
-    // ── Step 3: Announcement isolation ────────────────────────────────────
-    // Route all announcement API calls to return an empty list so that the
-    // real GitHub-backed announcement source never affects ordinary regression
-    // tests.  Individual announcement tests override this route with their own
-    // mock data BEFORE calling app.gotoApp(), so the per-test route takes
-    // precedence (Playwright applies the most-recently-registered handler).
+    // 3. Announcement isolation
     await page.route('**/api/announcements*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -293,6 +250,11 @@ export const test = base.extend<TestOptions & TestFixtures>({
       });
     });
 
+    await use();
+  }, { auto: true }],
+
+  // ── Fixture: app ────────────────────────────────────────────────────────────
+  app: async ({ page, errorGate }, use) => {
     const helper = new RupeeCRMAppHelper(page, errorGate);
     await use(helper);
   },

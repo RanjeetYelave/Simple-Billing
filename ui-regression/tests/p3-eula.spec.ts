@@ -5,58 +5,62 @@ test.describe('P3-EULA: End User License Agreement Acceptance, Revocation & Gate
   // ── P3-EULA-01 ──────────────────────────────────────────────────────────────
   // Requires a genuinely clean BrowserContext — no pre-accepted EULA state.
   // Uses eulaMode: 'first-launch' so the fixture does NOT inject acceptance.
-  test(
-    'P3-EULA-01: Fresh Installation Mounts Mandatory EULA Gate with Checkbox Requirement',
-    { tag: '@eula' },
-    async ({ page, errorGate }) => {
-      // 1. Fresh launch without pre-accepted EULA — navigate directly via page,
-      //    bypassing the app fixture's automatic acceptance injection.
-      await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('#root', { timeout: 15000 });
+  test.describe('P3-EULA-01: Fresh Installation Gate', () => {
+    test.use({ eulaMode: 'first-launch' });
 
-      const gateOverlay = page.locator('#eula-gate-overlay');
-      await expect(gateOverlay).toBeVisible({ timeout: 5000 });
+    test(
+      'P3-EULA-01: Fresh Installation Mounts Mandatory EULA Gate with Checkbox Requirement',
+      { tag: '@eula' },
+      async ({ page, errorGate }) => {
+        // 1. Fresh launch without pre-accepted EULA — navigate directly via page,
+        //    bypassing the app fixture's automatic acceptance injection.
+        await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#root', { timeout: 15000 });
 
-      // Check header and content
-      const title = page.locator('#eula-modal-card h3');
-      await expect(title).toContainText('End User License Agreement');
+        const gateOverlay = page.locator('#eula-gate-overlay');
+        await expect(gateOverlay).toBeVisible({ timeout: 5000 });
 
-      const scrollBox = page.locator('#eula-scroll-box');
-      await expect(scrollBox).toBeVisible();
-      await expect(scrollBox).toContainText('Software License Grant');
-      await expect(scrollBox).toContainText('Ranjeet Yelave');
+        // Check header and content
+        const title = page.locator('#eula-modal-card h3');
+        await expect(title).toContainText('End User License Agreement');
 
-      // 2. Accept button must remain disabled until checkbox is checked
-      const acceptBtn = page.locator('#eula-accept-btn');
-      await expect(acceptBtn).toBeDisabled();
+        const scrollBox = page.locator('#eula-scroll-box');
+        await expect(scrollBox).toBeVisible();
+        await expect(scrollBox).toContainText('Software License Grant');
+        await expect(scrollBox).toContainText('Ranjeet Yelave');
 
-      // 3. Test Decline button
-      const declineBtn = page.locator('#eula-decline-btn');
-      await declineBtn.click();
+        // 2. Accept button must remain disabled until checkbox is checked
+        const acceptBtn = page.locator('#eula-accept-btn');
+        await expect(acceptBtn).toBeDisabled();
 
-      await expect(page.locator(':text("EULA Acceptance Required")').first()).toBeVisible();
-      await expect(page.locator('.sidebar-container')).toBeHidden();
+        // 3. Test Decline button
+        const declineBtn = page.locator('#eula-decline-btn');
+        await declineBtn.click();
 
-      // Click review again
-      const reviewBtn = page.locator('#eula-review-again-btn');
-      await reviewBtn.click();
-      await expect(scrollBox).toBeVisible();
+        await expect(page.locator(':text("EULA Acceptance Required")').first()).toBeVisible();
+        await expect(page.locator('.sidebar-container')).toBeHidden();
 
-      // 4. Check checkbox and accept
-      const agreeCheckbox = page.locator('#eula-agree-checkbox');
-      await agreeCheckbox.check();
-      await expect(acceptBtn).toBeEnabled();
+        // Click review again
+        const reviewBtn = page.locator('#eula-review-again-btn');
+        await reviewBtn.click();
+        await expect(scrollBox).toBeVisible();
 
-      await acceptBtn.click();
+        // 4. Check checkbox and accept
+        const agreeCheckbox = page.locator('#eula-agree-checkbox');
+        await agreeCheckbox.check();
+        await expect(acceptBtn).toBeEnabled();
 
-      // 5. Gate disappears and app shell becomes accessible
-      await expect(gateOverlay).toBeHidden({ timeout: 5000 });
-      const topbar = page.locator('.topbar');
-      await expect(topbar).toBeVisible();
+        await acceptBtn.click();
 
-      await errorGate.assertZeroErrors(page, 'EULA Acceptance Flow');
-    }
-  );
+        // 5. Gate disappears and app shell becomes accessible
+        await expect(gateOverlay).toBeHidden({ timeout: 5000 });
+        const topbar = page.locator('.topbar');
+        await expect(topbar).toBeVisible();
+
+        await errorGate.assertZeroErrors(page, 'EULA Acceptance Flow');
+      }
+    );
+  });
 
   // ── P3-EULA-02 ──────────────────────────────────────────────────────────────
   // Uses the default eulaMode: 'accepted' — fixture pre-seeds acceptance.

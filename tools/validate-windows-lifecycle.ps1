@@ -45,26 +45,19 @@ if (Test-Path $menuLnk) {
     Write-Host "[INFO] Start Menu shortcut skipped in headless CI"
 }
 
-# 4. Verify Auto-Start Registry entry
+# 4. Verify Auto-Start Registry entry (Authoritative .NET Registry Assertion)
 Write-Host ""
 Write-Host "==> 4. Verifying Auto-Start Registry..."
-$netRegVal = $null
-try {
-    $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
-    if ($runKeyObj) {
-        $netRegVal = $runKeyObj.GetValue("RupeeCRMService")
-        $runKeyObj.Close()
-    }
-} catch {}
-$regVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -ErrorAction SilentlyContinue).RupeeCRMService
-$regQuery = (cmd.exe /c "reg query `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"RupeeCRMService`"" 2>&1) -join "`n"
+$runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
+$regVal = if ($runKeyObj) { $val = $runKeyObj.GetValue("RupeeCRMService"); $runKeyObj.Close(); $val } else { $null }
 
-if ($netRegVal -or $regVal -or ($regQuery -match "RupeeCRMService")) {
-    $displayVal = if ($netRegVal) { $netRegVal } elseif ($regVal) { $regVal } else { "Verified via reg query" }
-    Write-Host "[OK] Auto-start registry key verified: $displayVal"
-} else {
+if (-not $regVal) {
     throw "Validation failed: HKCU Run auto-start key was not set"
 }
+if ($regVal -notmatch "RupeeCRM.*--background") {
+    throw "Validation failed: HKCU Run auto-start command format invalid ($regVal)"
+}
+Write-Host "[OK] Auto-start registry key verified: $regVal"
 
 # 5. Create dummy customer database to verify zero data loss
 Write-Host ""
@@ -86,6 +79,14 @@ if (Test-Path $installedExe) {
     throw "Validation failed: RupeeCRM.exe was not removed by uninstaller"
 }
 Write-Host "[OK] RupeeCRM executable successfully removed"
+
+# Verify HKCU Run was removed
+$runKeyPost = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
+$regValPost = if ($runKeyPost) { $val = $runKeyPost.GetValue("RupeeCRMService"); $runKeyPost.Close(); $val } else { $null }
+if ($regValPost) {
+    throw "Validation failed: HKCU Run auto-start key was NOT removed after uninstall"
+}
+Write-Host "[OK] Auto-start registry key successfully removed"
 
 # Cleanup directory shell if delayed by OS file handles
 if (Test-Path $appDir) {

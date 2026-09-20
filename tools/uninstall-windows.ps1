@@ -76,22 +76,18 @@ if ($processes) {
 # ------------------------------------------------------------------------------
 Write-Step "Removing Windows auto-start registrations..."
 
-# 2a. HKCU Registry
-foreach ($val in @("RupeeCRMService", "BillsoftService")) {
-    try {
-        $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run", $true)
-        if ($runKeyObj) {
-            $runKeyObj.DeleteValue($val, $false)
-            $runKeyObj.Close()
+# 2a. HKCU Registry (Authoritative .NET Registry API)
+try {
+    $runKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run", $true)
+    if ($runKey) {
+        foreach ($val in @("RupeeCRMService", "BillsoftService")) {
+            $runKey.DeleteValue($val, $false)
         }
-    } catch {}
-
-    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-    if (Test-Path $runKey) {
-        Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
+        $runKey.Close()
+        Write-Success "Removed registry auto-start registrations"
     }
-    cmd.exe /c "reg.exe delete `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"$val`" /f >nul 2>nul"
-    Write-Success "Removed registry auto-start value: $val"
+} catch {
+    Write-WarnMsg "Registry removal note: $($_.Exception.Message)"
 }
 
 # 2b. Startup Folder Scripts

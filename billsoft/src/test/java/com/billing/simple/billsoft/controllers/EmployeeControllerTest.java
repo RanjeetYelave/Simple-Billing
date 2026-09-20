@@ -182,4 +182,52 @@ public class EmployeeControllerTest {
         assertThat(updated.getRole()).isEqualTo("Lead Dev");
         assertThat(updated.getMonthlyBaseSalary()).isEqualTo(25000.0);
     }
+
+    @Test
+    void testPayrollPaisaPrecision_addAdvance_and_processSalary() throws Exception {
+        // Create employee with decimal base salary
+        Employee emp = new Employee();
+        emp.setFirmId(1L);
+        emp.setName("Precision Worker");
+        emp.setMonthlyBaseSalary(25000.33);
+        emp.setCurrentAdvanceBalance(0.0);
+        emp.setIsActive(true);
+        emp.setDateOfJoining(LocalDate.now());
+        emp = employeeRepo.save(emp);
+
+        // 1. Add Advance of 5000.55
+        String advanceJson = "{\"amount\":5000.55,\"description\":\"Festival Advance\"}";
+        mockMvc.perform(post("/api/employees/" + emp.getId() + "/advances")
+                .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(advanceJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(5000.55));
+
+        Employee reloadedEmp = employeeRepo.findById(emp.getId()).get();
+        assertThat(reloadedEmp.getCurrentAdvanceBalance()).isEqualTo(5000.55);
+
+        // 2. Process Salary: Base=25000.33, Bonus=1234.56, LeaveDed=500.12, AdvDed=2000.44
+        // Expected Net: 25000.33 + 1234.56 - 500.12 - 2000.44 = 23734.33
+        String salaryJson = "{" +
+                "\"monthYear\":\"09-2026\"," +
+                "\"baseSalaryAtTime\":25000.33," +
+                "\"bonusAmount\":1234.56," +
+                "\"leaveDeductionAmount\":500.12," +
+                "\"advanceDeducted\":2000.44" +
+                "}";
+
+        mockMvc.perform(post("/api/employees/" + emp.getId() + "/salaries")
+                .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(salaryJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.netPaid").value(23734.33))
+                .andExpect(jsonPath("$.advanceDeducted").value(2000.44));
+
+        reloadedEmp = employeeRepo.findById(emp.getId()).get();
+        assertThat(reloadedEmp.getCurrentAdvanceBalance()).isEqualTo(3000.11);
+    }
 }

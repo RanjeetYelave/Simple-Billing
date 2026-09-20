@@ -42,11 +42,19 @@ public class ProductService {
 		}
 	}
 
+	private Long resolveFirmId(Long explicitFirmId) {
+		Long target = explicitFirmId != null ? explicitFirmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (target == null || target <= 0) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+		}
+		return target;
+	}
+
 	@Transactional
 	public Product create(Product product) {
-		Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (currentFirmId != null) {
-			product.setFirmId(currentFirmId);
+		Long targetFirmId = product.getFirmId() != null ? product.getFirmId() : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (targetFirmId != null) {
+			product.setFirmId(targetFirmId);
 		}
 		if (product.getStockQuantity() == null || product.getStockQuantity().compareTo(BigDecimal.ZERO) < 0) {
 			product.setStockQuantity(BigDecimal.ZERO);
@@ -64,7 +72,8 @@ public class ProductService {
 		Product saved = repo.save(product);
 
 		// Record initial opening stock ledger if > 0
-		if (saved.getStockQuantity() != null && saved.getStockQuantity().compareTo(BigDecimal.ZERO) > 0 && !"SERVICE".equalsIgnoreCase(saved.getItemType())) {
+		if (saved.getStockQuantity() != null && saved.getStockQuantity().compareTo(BigDecimal.ZERO) > 0
+				&& !"SERVICE".equalsIgnoreCase(saved.getItemType())) {
 			StockMovement movement = StockMovement.builder()
 					.productId(saved.getId())
 					.productName(saved.getName())
@@ -108,18 +117,18 @@ public class ProductService {
 
 	public Product getById(Long id) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
 	}
 
 	public Product getById(Long id, Long firmId) {
 		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		return fid != null ? repo.findByIdAndFirmId(id, fid).orElse(null) : repo.findById(id).orElse(null);
+		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
 	}
 
 	@Transactional
 	public Product update(Long id, Product updated) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		Optional<Product> opt = fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
+		Optional<Product> opt = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id));
 		if (opt.isEmpty())
 			return null;
 		Product existing = opt.get();
@@ -133,10 +142,14 @@ public class ProductService {
 		existing.setBarcode(updated.getBarcode());
 		existing.setCategory(updated.getCategory());
 		existing.setItemType(updated.getItemType() != null ? updated.getItemType() : "GOODS");
-		existing.setMinStockLevel(updated.getMinStockLevel() != null && updated.getMinStockLevel().compareTo(BigDecimal.ZERO) >= 0 ? updated.getMinStockLevel() : new BigDecimal("5.000"));
+		existing.setMinStockLevel(
+				updated.getMinStockLevel() != null && updated.getMinStockLevel().compareTo(BigDecimal.ZERO) >= 0
+						? updated.getMinStockLevel()
+						: new BigDecimal("5.000"));
 		existing.setDescription(updated.getDescription());
 		if (updated.getStockQuantity() != null) {
-			existing.setStockQuantity(updated.getStockQuantity().compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : updated.getStockQuantity());
+			existing.setStockQuantity(updated.getStockQuantity().compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO
+					: updated.getStockQuantity());
 		}
 		return repo.save(existing);
 	}
@@ -157,24 +170,17 @@ public class ProductService {
 		}
 	}
 
-
 	/**
 	 * Adjusts stock directly from inventory manager (Add / Deduct / Set).
 	 */
 	@Transactional
 	public Product adjustStock(Long id, BigDecimal quantity, String mode, String note) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		Optional<Product> opt;
-		if (fid != null) {
-			opt = repo.findByIdAndFirmId(id, fid);
-			if (opt.isEmpty()) {
-				throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized for firm: " + fid);
-			}
-		} else {
-			opt = repo.findById(id);
+		Optional<Product> opt = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id));
+		if (opt.isEmpty()) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Product not found or unauthorized for firm: " + fid);
 		}
-		if (opt.isEmpty())
-			return null;
 
 		Product product = opt.get();
 		BigDecimal prevStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
@@ -228,12 +234,14 @@ public class ProductService {
 	 * Programmatic stock ledger update for Invoices, Purchase Orders, and Returns.
 	 */
 	@Transactional
-	public void recordStockMovement(Long productId, Long firmId, String movementType, BigDecimal quantityChange, String referenceType, String referenceId, String note) {
+	public void recordStockMovement(Long productId, Long firmId, String movementType, BigDecimal quantityChange,
+			String referenceType, String referenceId, String note) {
 		if (productId == null || quantityChange == null || quantityChange.compareTo(BigDecimal.ZERO) == 0) {
 			return;
 		}
 
-		Optional<Product> opt = (firmId != null) ? repo.findByIdAndFirmId(productId, firmId) : repo.findById(productId);
+		Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt = (targetFirmId != null) ? repo.findByIdAndFirmId(productId, targetFirmId) : repo.findById(productId);
 		if (opt.isEmpty()) {
 			return;
 		}
@@ -258,7 +266,7 @@ public class ProductService {
 		StockMovement movement = StockMovement.builder()
 				.productId(product.getId())
 				.productName(product.getName())
-				.firmId(firmId != null ? firmId : product.getFirmId())
+				.firmId(targetFirmId)
 				.movementType(movementType)
 				.quantityChange(quantityChange)
 				.previousStock(prevStock)
@@ -272,20 +280,16 @@ public class ProductService {
 	}
 
 	public List<StockMovement> getStockMovements(Long productId, Long firmId) {
-		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid != null && productId != null) {
+		Long fid = resolveFirmId(firmId);
+		if (productId != null) {
 			return stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, fid);
-		} else if (fid != null) {
+		} else {
 			return stockMovementRepo.findByFirmIdOrderByCreatedAtDesc(fid);
 		}
-		return Collections.emptyList();
 	}
 
 	public PageResponse<StockMovement> getPaginatedMovements(Long productId, Long firmId, Pageable pageable) {
-		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid == null) {
-			return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
-		}
+		Long fid = resolveFirmId(firmId);
 		Page<StockMovement> page;
 		if (productId != null) {
 			page = stockMovementRepo.findByProductIdAndFirmId(productId, fid, pageable);
@@ -295,26 +299,13 @@ public class ProductService {
 		return PageResponse.of(page);
 	}
 
-
 	public List<String> getCategories(Long firmId) {
-		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		return fid != null ? repo.findDistinctCategoriesByFirmId(fid) : Collections.emptyList();
+		Long fid = resolveFirmId(firmId);
+		return repo.findDistinctCategoriesByFirmId(fid);
 	}
 
 	public Map<String, Object> getInventorySummary(Long firmId) {
-		Long fid = firmId != null ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid == null) {
-			Map<String, Object> emptySummary = new HashMap<>();
-			emptySummary.put("totalProducts", 0L);
-			emptySummary.put("goodsCount", 0L);
-			emptySummary.put("servicesCount", 0L);
-			emptySummary.put("lowStockCount", 0L);
-			emptySummary.put("outOfStockCount", 0L);
-			emptySummary.put("totalRetailValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-			emptySummary.put("totalCostValue", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-			emptySummary.put("averageGrossMarginPercent", BigDecimal.ZERO);
-			return emptySummary;
-		}
+		Long fid = resolveFirmId(firmId);
 		List<Product> list = repo.findByFirmId(fid);
 
 		long totalProducts = list.size();
@@ -353,7 +344,8 @@ public class ProductService {
 			}
 
 			if (price.compareTo(BigDecimal.ZERO) > 0 && cost.compareTo(BigDecimal.ZERO) > 0) {
-				BigDecimal margin = price.subtract(cost).divide(price, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+				BigDecimal margin = price.subtract(cost).divide(price, 4, RoundingMode.HALF_UP)
+						.multiply(new BigDecimal("100"));
 				totalMarginSum = totalMarginSum.add(margin);
 				marginProductCount++;
 			}

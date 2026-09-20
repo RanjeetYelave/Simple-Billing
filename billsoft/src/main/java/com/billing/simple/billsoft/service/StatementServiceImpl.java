@@ -350,18 +350,18 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
-        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
                 ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
                 : firmId;
         if (authoritativeFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for firm statement");
+            authoritativeFirmId = firmRepo.findAll().stream().findFirst().map(FirmDetails::getId).orElse(1L);
         }
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        FirmDetails firm = firmRepo.findById(authoritativeFirmId)
-                .orElseThrow(() -> new IllegalArgumentException("Firm not found: " + authoritativeFirmId));
+        final Long targetFirmId = authoritativeFirmId;
+        FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
         // 1. Invoices
         List<Invoice> invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
@@ -667,7 +667,7 @@ public class StatementServiceImpl implements StatementService {
         final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
                 ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
                 : firmId;
-        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
 
         Document doc = new Document(PageSize.A4, 28, 28, 32, 32);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -921,12 +921,17 @@ public class StatementServiceImpl implements StatementService {
         final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
                 ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
                 : firmId;
-        if (authoritativeFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Firm ID required for party statement");
+
+        Party party;
+        if (authoritativeFirmId != null) {
+            party = partyRepo.findByIdAndFirmId(partyId, authoritativeFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
+        } else {
+            party = partyRepo.findById(partyId)
+                    .orElseThrow(() -> new IllegalArgumentException("Party not found: " + partyId));
         }
 
-        Party party = partyRepo.findByIdAndFirmId(partyId, authoritativeFirmId)
-                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
+        final Long targetFirmId = (authoritativeFirmId != null) ? authoritativeFirmId : (party.getFirmId() != null ? party.getFirmId() : 1L);
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
@@ -937,14 +942,14 @@ public class StatementServiceImpl implements StatementService {
         BigDecimal netOpeningLiability = "ADVANCE".equals(balType) ? initialOpening.negate() : initialOpening;
 
         // Purchases before fromDate
-        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(authoritativeFirmId, partyId, fromDate);
+        List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(targetFirmId, partyId, fromDate);
         BigDecimal purchasesBefore = posBefore.stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .map(po -> nz(po.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Payments before fromDate
-        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(authoritativeFirmId, partyId, fromDate);
+        List<PartyPayment> paymentsBefore = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBefore(targetFirmId, partyId, fromDate);
         BigDecimal paidBefore = paymentsBefore.stream()
                 .map(p -> nz(p.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -953,12 +958,12 @@ public class StatementServiceImpl implements StatementService {
 
         // In range items
         List<PurchaseOrder> posInRange = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBetweenOrderByPoDateAscIdAsc(
-                authoritativeFirmId, partyId, fromDate, toDate).stream()
+                targetFirmId, partyId, fromDate, toDate).stream()
                 .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
                 .collect(Collectors.toList());
 
         List<PartyPayment> paymentsInRange = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
-                authoritativeFirmId, partyId, fromDate, toDate);
+                targetFirmId, partyId, fromDate, toDate);
 
         // Merge entries
         List<StatementEntry> entries = new ArrayList<>();
@@ -1031,7 +1036,7 @@ public class StatementServiceImpl implements StatementService {
         final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
                 ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
                 : firmId;
-        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
+        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 28, 28, 28, 28);

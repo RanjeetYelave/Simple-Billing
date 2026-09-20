@@ -33,14 +33,26 @@ public class GoalService {
         this.goalLogRepository = goalLogRepository;
     }
 
+    private Long resolveFirmId(Long explicitFirmId) {
+        Long target = explicitFirmId != null ? explicitFirmId : TenantContext.getCurrentFirmId();
+        if (target == null || target <= 0) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
     public List<Goal> getGoalsByFirm(Long firmId) {
-        List<Goal> list = goalRepository.findByFirmIdOrderByCreatedAtDesc(firmId);
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        if (target == null) return Collections.emptyList();
+        List<Goal> list = goalRepository.findByFirmIdOrderByCreatedAtDesc(target);
         // Auto-update QUIT_HABIT streak days dynamically if active
         LocalDate today = LocalDate.now();
         for (Goal g : list) {
-            if (g.getGoalType() == GoalType.QUIT_HABIT && "ACTIVE".equalsIgnoreCase(g.getStatus()) && g.getStartDate() != null) {
+            if (g.getGoalType() == GoalType.QUIT_HABIT && "ACTIVE".equalsIgnoreCase(g.getStatus())
+                    && g.getStartDate() != null) {
                 long days = ChronoUnit.DAYS.between(g.getStartDate(), today);
-                if (days < 0) days = 0;
+                if (days < 0)
+                    days = 0;
                 g.setCurrentStreak((int) days);
                 if (g.getLongestStreak() == null || days > g.getLongestStreak()) {
                     g.setLongestStreak((int) days);
@@ -51,15 +63,13 @@ public class GoalService {
     }
 
     public Goal getGoalById(Long id, Long firmId) {
-        if (firmId != null) {
-            return goalRepository.findByIdAndFirmId(id, firmId).orElse(null);
-        }
-        return goalRepository.findById(id).orElse(null);
+        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        return (target != null ? goalRepository.findByIdAndFirmId(id, target) : goalRepository.findById(id)).orElse(null);
     }
 
     @Transactional
     public Goal createGoal(Goal goal) {
-        Long firmId = TenantContext.getCurrentFirmId();
+        Long firmId = goal.getFirmId() != null ? goal.getFirmId() : TenantContext.getCurrentFirmId();
         if (firmId != null) {
             goal.setFirmId(firmId);
         }
@@ -82,15 +92,17 @@ public class GoalService {
             goal.setLongestStreak(0);
         }
         Goal saved = goalRepository.save(goal);
-        if (saved.getGoalType() == GoalType.SAVINGS_TARGET && saved.getFirmId() != null) {
-            recalculateSavingsGoal(saved.getFirmId(), saved.getId());
-            saved = goalRepository.findById(saved.getId()).orElse(saved);
+        Long effFirmId = saved.getFirmId() != null ? saved.getFirmId() : firmId;
+        if (saved.getGoalType() == GoalType.SAVINGS_TARGET && effFirmId != null) {
+            recalculateSavingsGoal(effFirmId, saved.getId());
+            saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
         }
 
         // Write initial baseline log
-        BigDecimal initialVal = saved.getGoalType() == GoalType.SAVINGS_TARGET || saved.getGoalType() == GoalType.LIFE_MILESTONE
-                ? (saved.getCurrentValue() != null ? saved.getCurrentValue() : BigDecimal.ZERO)
-                : BigDecimal.valueOf(saved.getCurrentStreak() != null ? saved.getCurrentStreak() : 0);
+        BigDecimal initialVal = saved.getGoalType() == GoalType.SAVINGS_TARGET
+                || saved.getGoalType() == GoalType.LIFE_MILESTONE
+                        ? (saved.getCurrentValue() != null ? saved.getCurrentValue() : BigDecimal.ZERO)
+                        : BigDecimal.valueOf(saved.getCurrentStreak() != null ? saved.getCurrentStreak() : 0);
 
         GoalLog initialLog = GoalLog.builder()
                 .firmId(saved.getFirmId())
@@ -109,9 +121,8 @@ public class GoalService {
     @Transactional
     public Goal updateGoal(Long id, Goal updated) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         existing.setTitle(updated.getTitle());
         if (updated.getGoalType() != null) {
@@ -135,9 +146,10 @@ public class GoalService {
         existing.setTags(updated.getTags());
 
         Goal saved = goalRepository.save(existing);
-        if (saved.getGoalType() == GoalType.SAVINGS_TARGET && firmId != null) {
-            recalculateSavingsGoal(firmId, saved.getId());
-            saved = goalRepository.findById(saved.getId()).orElse(saved);
+        Long effFirmId = saved.getFirmId() != null ? saved.getFirmId() : firmId;
+        if (saved.getGoalType() == GoalType.SAVINGS_TARGET && effFirmId != null) {
+            recalculateSavingsGoal(effFirmId, saved.getId());
+            saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
         }
         return saved;
     }
@@ -162,9 +174,8 @@ public class GoalService {
     @Transactional
     public Goal checkInHabit(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         LocalDate today = LocalDate.now();
         LocalDate lastCheckIn = existing.getLastCheckInDate();
@@ -216,11 +227,11 @@ public class GoalService {
     @Transactional
     public Goal addStreakDays(Long id, int days) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
-        if (days <= 0) days = 1;
+        if (days <= 0)
+            days = 1;
         int currentStreak = (existing.getCurrentStreak() != null ? existing.getCurrentStreak() : 0) + days;
         existing.setCurrentStreak(currentStreak);
 
@@ -260,14 +271,15 @@ public class GoalService {
     @Transactional
     public Goal incrementProgress(Long id, BigDecimal delta, LocalDate logDate, String notes) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
-        if (delta == null) delta = BigDecimal.ONE;
+        if (delta == null)
+            delta = BigDecimal.ONE;
         BigDecimal current = existing.getCurrentValue() != null ? existing.getCurrentValue() : BigDecimal.ZERO;
         BigDecimal next = current.add(delta);
-        if (next.compareTo(BigDecimal.ZERO) < 0) next = BigDecimal.ZERO;
+        if (next.compareTo(BigDecimal.ZERO) < 0)
+            next = BigDecimal.ZERO;
         existing.setCurrentValue(next.setScale(2, RoundingMode.HALF_UP));
 
         if (existing.getTargetValue() != null && existing.getTargetValue().compareTo(BigDecimal.ZERO) > 0) {
@@ -300,9 +312,8 @@ public class GoalService {
     @Transactional
     public Goal resetQuitHabit(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(id, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         int prevStreak = existing.getCurrentStreak() != null ? existing.getCurrentStreak() : 0;
         existing.setStartDate(LocalDate.now());
@@ -329,9 +340,8 @@ public class GoalService {
     @Transactional
     public Goal addSavingsToGoal(Long goalId, BigDecimal amount, String paymentMode, String notes) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goalId, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(goalId).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Valid saving amount is required");
@@ -350,11 +360,11 @@ public class GoalService {
                 .build();
 
         savingRepository.save(record);
-        recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+        if (goal.getFirmId() != null) {
+            recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+        }
 
-        Goal updatedGoal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal)
-                : goalRepository.findById(goal.getId()).orElse(goal);
+        Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
 
         GoalLog log = GoalLog.builder()
                 .firmId(updatedGoal.getFirmId())
@@ -373,9 +383,8 @@ public class GoalService {
     @Transactional
     public Goal deductSavingsFromGoal(Long goalId, BigDecimal amount, String paymentMode, String notes) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goalId, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(goalId).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Valid deduction amount is required");
@@ -396,11 +405,11 @@ public class GoalService {
                 .build();
 
         savingRepository.save(record);
-        recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+        if (goal.getFirmId() != null) {
+            recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+        }
 
-        Goal updatedGoal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal)
-                : goalRepository.findById(goal.getId()).orElse(goal);
+        Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
 
         GoalLog log = GoalLog.builder()
                 .firmId(updatedGoal.getFirmId())
@@ -419,9 +428,8 @@ public class GoalService {
     @Transactional
     public Goal reconcileGoalBalance(Long goalId, BigDecimal targetValue, String notes) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goalId, firmId).orElseThrow(() -> new IllegalArgumentException("Goal not found"))
-                : goalRepository.findById(goalId).orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (targetValue == null || targetValue.compareTo(BigDecimal.ZERO) < 0) {
             targetValue = BigDecimal.ZERO;
@@ -442,19 +450,20 @@ public class GoalService {
                         .paymentMode("Adjustment")
                         .goalId(goal.getId())
                         .tags(goal.getTags())
-                        .notes(notes != null && !notes.isBlank() ? notes.trim() : "Reconciled balance directly to " + targetValue)
+                        .notes(notes != null && !notes.isBlank() ? notes.trim()
+                                : "Reconciled balance directly to " + targetValue)
                         .build();
 
                 savingRepository.save(record);
-                recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+                if (goal.getFirmId() != null) {
+                    recalculateSavingsGoal(goal.getFirmId(), goal.getId());
+                }
             } else {
                 goal.setCurrentValue(targetValue);
                 goalRepository.save(goal);
             }
 
-            Goal updatedGoal = (firmId != null)
-                    ? goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal)
-                    : goalRepository.findById(goal.getId()).orElse(goal);
+            Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
 
             GoalLog log = GoalLog.builder()
                     .firmId(updatedGoal.getFirmId())
@@ -502,7 +511,8 @@ public class GoalService {
                     .deltaValue(delta)
                     .resultingValue(targetValue)
                     .logDate(LocalDate.now())
-                    .notes(notes != null && !notes.isBlank() ? notes.trim() : "Value updated directly to " + targetValue)
+                    .notes(notes != null && !notes.isBlank() ? notes.trim()
+                            : "Value updated directly to " + targetValue)
                     .build();
             goalLogRepository.save(log);
 
@@ -512,15 +522,14 @@ public class GoalService {
 
     public List<SavingRecord> getLinkedSavingsForGoal(Long goalId) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null || goalId == null) return List.of();
-        return savingRepository.findByFirmIdAndGoalId(firmId, goalId);
+        if (goalId == null)
+            return List.of();
+        return firmId != null ? savingRepository.findByFirmIdAndGoalId(firmId, goalId) : savingRepository.findByGoalId(goalId);
     }
 
     public Map<String, Object> getGoalTimeline(Long goalId) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null)
-                ? goalRepository.findByIdAndFirmId(goalId, firmId).orElse(null)
-                : goalRepository.findById(goalId).orElse(null);
+        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId)).orElse(null);
 
         if (goal == null) {
             return Map.of("points", List.of());
@@ -530,17 +539,17 @@ public class GoalService {
 
         if (goal.getGoalType() == GoalType.SAVINGS_TARGET) {
             // Strictly financial: build chronological ledger from SavingRecord
-            List<SavingRecord> records = (firmId != null)
-                    ? savingRepository.findByFirmIdAndGoalId(firmId, goalId)
-                    : List.of();
+            List<SavingRecord> records = (firmId != null ? savingRepository.findByFirmIdAndGoalId(firmId, goalId) : savingRepository.findByGoalId(goalId));
 
             // Sort by savingDate ASC, id ASC
             records = new ArrayList<>(records);
-            records.sort(Comparator.comparing(SavingRecord::getSavingDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(SavingRecord::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            records.sort(
+                    Comparator.comparing(SavingRecord::getSavingDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(SavingRecord::getId, Comparator.nullsLast(Comparator.naturalOrder())));
 
             // Baseline origin
-            LocalDate startDate = goal.getStartDate() != null ? goal.getStartDate() : (records.isEmpty() ? LocalDate.now() : records.get(0).getSavingDate());
+            LocalDate startDate = goal.getStartDate() != null ? goal.getStartDate()
+                    : (records.isEmpty() ? LocalDate.now() : records.get(0).getSavingDate());
             BigDecimal runningSum = BigDecimal.ZERO;
 
             if (records.isEmpty() || startDate.isBefore(records.get(0).getSavingDate())) {
@@ -549,14 +558,14 @@ public class GoalService {
                         "delta", BigDecimal.ZERO,
                         "value", BigDecimal.ZERO,
                         "type", "INITIAL",
-                        "notes", "Goal Started"
-                ));
+                        "notes", "Goal Started"));
             }
 
             for (SavingRecord r : records) {
                 BigDecimal amt = r.getAmount() != null ? r.getAmount() : BigDecimal.ZERO;
                 runningSum = runningSum.add(amt);
-                if (runningSum.compareTo(BigDecimal.ZERO) < 0) runningSum = BigDecimal.ZERO;
+                if (runningSum.compareTo(BigDecimal.ZERO) < 0)
+                    runningSum = BigDecimal.ZERO;
 
                 String type = amt.compareTo(BigDecimal.ZERO) >= 0 ? "DEPOSIT" : "DEDUCTION";
                 if ("Adjustment".equalsIgnoreCase(r.getPaymentMode())) {
@@ -591,8 +600,7 @@ public class GoalService {
                         "delta", currentVal,
                         "value", currentVal,
                         "type", "INITIAL",
-                        "notes", "Goal Created"
-                ));
+                        "notes", "Goal Created"));
             } else {
                 for (GoalLog log : logs) {
                     Map<String, Object> pt = new HashMap<>();
@@ -624,9 +632,11 @@ public class GoalService {
 
     @Transactional
     public void recalculateSavingsGoal(Long firmId, Long goalId) {
-        if (goalId == null || firmId == null) return;
+        if (goalId == null || firmId == null)
+            return;
         Goal goal = goalRepository.findByIdAndFirmId(goalId, firmId).orElse(null);
-        if (goal == null || goal.getGoalType() != GoalType.SAVINGS_TARGET) return;
+        if (goal == null || goal.getGoalType() != GoalType.SAVINGS_TARGET)
+            return;
 
         List<SavingRecord> linkedSavings = savingRepository.findByFirmIdAndGoalId(firmId, goalId);
         BigDecimal totalSaved = linkedSavings.stream()
@@ -634,7 +644,8 @@ public class GoalService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        if (totalSaved.compareTo(BigDecimal.ZERO) < 0) totalSaved = BigDecimal.ZERO;
+        if (totalSaved.compareTo(BigDecimal.ZERO) < 0)
+            totalSaved = BigDecimal.ZERO;
 
         goal.setCurrentValue(totalSaved);
         if (goal.getTargetValue() != null && goal.getTargetValue().compareTo(BigDecimal.ZERO) > 0) {

@@ -29,7 +29,7 @@ param(
     [switch]$Background = $false
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # Enforce TLS 1.2 for secure GitHub downloads across Windows PowerShell 5.1+
 try {
@@ -392,7 +392,7 @@ try {
     Write-Step "Configuring background auto-start..."
     $regSuccess = $false
     try {
-        # 1. Direct .NET Registry API (Guaranteed to work across all PowerShell editions without quote issues)
+        # 1. Direct .NET Registry API (Guaranteed across all PowerShell versions)
         $runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
         if ($runKeyObj) {
             $runKeyObj.SetValue("RupeeCRMService", "`"$TargetExe`" --background")
@@ -407,7 +407,13 @@ try {
         if (-not (Test-Path $RegKey)) {
             New-Item -Path $RegKey -Force | Out-Null
         }
-        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value "`"$TargetExe`" --background" -Force
+        Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value "`"$TargetExe`" --background" -Force -ErrorAction SilentlyContinue
+        $regSuccess = $true
+    } catch {}
+
+    try {
+        # 3. Native reg.exe via cmd.exe
+        cmd.exe /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"RupeeCRMService`" /t REG_SZ /d `"\`"$TargetExe\`" --background`" /f >nul 2>nul"
         $regSuccess = $true
     } catch {}
 

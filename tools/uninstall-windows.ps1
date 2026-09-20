@@ -44,23 +44,28 @@ Write-Host ""
 # 1. Stop Running Processes
 # ------------------------------------------------------------------------------
 Write-Step "Checking for running RupeeCRM processes..."
-$processes = Get-Process -Name "RupeeCRM", "Billsoft" -ErrorAction SilentlyContinue
+$installPrefix = Join-Path $env:LOCALAPPDATA "Programs\RupeeCRM"
+$processes = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -in @("RupeeCRM", "Billsoft") -or (
+        try { $_.Path -and $_.Path.StartsWith($installPrefix, [System.StringComparison]::OrdinalIgnoreCase) } catch { $false }
+    )
+}
 
 if ($processes) {
     Write-Step "Stopping running RupeeCRM processes..."
     foreach ($p in $processes) {
         try {
             $p.CloseMainWindow() | Out-Null
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 200
             if (-not $p.HasExited) {
                 $p.Kill()
-                $p.WaitForExit(3000)
+                $p.WaitForExit(2000)
             }
         } catch {
             Write-WarnMsg "Process termination note: $($_.Exception.Message)"
         }
     }
-    Start-Sleep -Seconds 1
+    Start-Sleep -Milliseconds 500
     Write-Success "RupeeCRM processes stopped."
 } else {
     Write-Success "No active RupeeCRM processes found."

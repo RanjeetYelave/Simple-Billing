@@ -21710,14 +21710,16 @@
         // ── 3. Main Workspace: Form Tabs & Live Invoice Header Preview ──
         data && React.createElement('div', {
           className: 'firm-profile-layout',
-          style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 20, alignItems: 'start' }
+          style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(320px, 1fr)', gap: 20, alignItems: 'start' }
         },
           // Left Column: Interactive Settings Cards
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', { className: 'firm-profile-left-col', style: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 } },
             // Sub-Navigation Tabs
             React.createElement('div', {
+              className: 'firm-subnav-tabs',
               style: {
                 display: 'flex',
+                flexWrap: 'wrap',
                 gap: 6,
                 background: 'var(--bg-secondary)',
                 padding: 4,
@@ -21736,7 +21738,7 @@
                 type: 'button',
                 onClick: () => setActiveTab(t.id),
                 className: `btn btn-sm ${activeTab === t.id ? 'btn-primary' : 'btn-ghost'}`,
-                style: { flex: 1, fontSize: '0.78rem', padding: '6px 10px', borderRadius: 8 }
+                style: { flex: '1 1 auto', fontSize: '0.78rem', padding: '6px 10px', borderRadius: 8, whiteSpace: 'nowrap' }
               }, t.label))
             ),
 

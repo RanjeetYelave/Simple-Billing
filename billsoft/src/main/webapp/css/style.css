@@ -5361,6 +5361,38 @@ th.sortable svg {
   background: var(--primary-light);
 }
 
+.firm-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.firm-profile-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.firm-subnav-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: var(--bg-secondary);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.firm-subnav-tabs .btn {
+  flex: 1 1 auto;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
 .firm-invoice-preview-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -5369,6 +5401,7 @@ th.sortable svg {
   box-shadow: var(--shadow);
   position: sticky;
   top: 80px;
+  min-width: 0;
 }
 
 .firm-invoice-preview-paper {
@@ -5402,7 +5435,7 @@ th.sortable svg {
   border-bottom-color: #334155;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .firm-profile-layout {
     grid-template-columns: 1fr !important;
   }

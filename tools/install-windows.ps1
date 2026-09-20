@@ -345,42 +345,46 @@ try {
     # 9. Create Desktop & Start Menu Shortcuts
     # --------------------------------------------------------------------------
     Write-Step "Creating Desktop and Start Menu shortcuts..."
-    $WshShell = New-Object -ComObject WScript.Shell
+    try {
+        $WshShell = New-Object -ComObject WScript.Shell
 
-    $IconPath = Join-Path $InstallDir "RupeeCRM.ico"
-    if (-not (Test-Path $IconPath)) {
-        $IconPath = "$TargetExe,0"
-    }
+        $IconPath = Join-Path $InstallDir "RupeeCRM.ico"
+        if (-not (Test-Path $IconPath)) {
+            $IconPath = "$TargetExe,0"
+        }
 
-    # 9a. Desktop Shortcut
-    $DesktopPath = [Environment]::GetFolderPath("Desktop")
-    if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
-        $DesktopPath = Join-Path $env:USERPROFILE "Desktop"
-    }
-    if ($DesktopPath -and (Test-Path $DesktopPath)) {
-        $DesktopShortcutPath = Join-Path $DesktopPath "RupeeCRM.lnk"
-        $Shortcut = $WshShell.CreateShortcut($DesktopShortcutPath)
-        $Shortcut.TargetPath = $TargetExe
-        $Shortcut.WorkingDirectory = $InstallDir
-        $Shortcut.Description = "RupeeCRM Billing & Management"
-        $Shortcut.IconLocation = $IconPath
-        $Shortcut.Save()
-        Write-Success "Desktop shortcut created: $DesktopShortcutPath"
-    }
+        # 9a. Desktop Shortcut
+        $DesktopPath = [Environment]::GetFolderPath("Desktop")
+        if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
+            $DesktopPath = Join-Path $env:USERPROFILE "Desktop"
+        }
+        if ($DesktopPath -and (Test-Path $DesktopPath)) {
+            $DesktopShortcutPath = Join-Path $DesktopPath "RupeeCRM.lnk"
+            $Shortcut = $WshShell.CreateShortcut($DesktopShortcutPath)
+            $Shortcut.TargetPath = $TargetExe
+            $Shortcut.WorkingDirectory = $InstallDir
+            $Shortcut.Description = "RupeeCRM Billing & Management"
+            $Shortcut.IconLocation = $IconPath
+            $Shortcut.Save()
+            Write-Success "Desktop shortcut created: $DesktopShortcutPath"
+        }
 
-    # 9b. Start Menu Shortcut
-    $StartMenuPrograms = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\RupeeCRM"
-    if (-not (Test-Path $StartMenuPrograms)) {
-        New-Item -ItemType Directory -Path $StartMenuPrograms -Force | Out-Null
+        # 9b. Start Menu Shortcut
+        $StartMenuPrograms = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\RupeeCRM"
+        if (-not (Test-Path $StartMenuPrograms)) {
+            New-Item -ItemType Directory -Path $StartMenuPrograms -Force | Out-Null
+        }
+        $StartMenuShortcutPath = Join-Path $StartMenuPrograms "RupeeCRM.lnk"
+        $MenuShortcut = $WshShell.CreateShortcut($StartMenuShortcutPath)
+        $MenuShortcut.TargetPath = $TargetExe
+        $MenuShortcut.WorkingDirectory = $InstallDir
+        $MenuShortcut.Description = "RupeeCRM Billing & Management"
+        $MenuShortcut.IconLocation = $IconPath
+        $MenuShortcut.Save()
+        Write-Success "Start Menu shortcut created: $StartMenuShortcutPath"
+    } catch {
+        Write-WarnMsg "Shortcut creation note (skipped in non-interactive environment): $($_.Exception.Message)"
     }
-    $StartMenuShortcutPath = Join-Path $StartMenuPrograms "RupeeCRM.lnk"
-    $MenuShortcut = $WshShell.CreateShortcut($StartMenuShortcutPath)
-    $MenuShortcut.TargetPath = $TargetExe
-    $MenuShortcut.WorkingDirectory = $InstallDir
-    $MenuShortcut.Description = "RupeeCRM Billing & Management"
-    $MenuShortcut.IconLocation = $IconPath
-    $MenuShortcut.Save()
-    Write-Success "Start Menu shortcut created: $StartMenuShortcutPath"
 
     # --------------------------------------------------------------------------
     # 10. Configure User Auto-Start (Registry + Startup VBS)

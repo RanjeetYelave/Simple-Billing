@@ -50,7 +50,7 @@ CATEGORIES = [
         "AutoBackupService", "BackupAndReset", "PaginationBoundary", "AllApiEndpoints",
         "PersistenceAndDataDurability", "NoteSize", "HealthHeartbeat", "UpdateService",
         "UpdateController", "ApiDiagnostics", "NetworkReachability", "FirmDetails",
-        "DataDirectoryResolver", "FlexibleLocalDateTime", "BillsoftApplication"
+        "DataDirectoryResolver", "FlexibleLocalDateTime", "BillsoftApplication", "Announcement"
     ])
 ]
 

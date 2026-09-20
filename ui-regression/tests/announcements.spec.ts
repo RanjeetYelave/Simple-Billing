@@ -3,7 +3,7 @@ import { test, expect } from '../fixtures/base-fixture';
 test.describe('Announcements Feature Gate & Isolation', () => {
   test('ANN-01: Displays announcements card with multiple items when present', async ({ page, app, errorGate }) => {
     // Intercept announcements endpoint with sample items
-    await page.route('**/api/announcements', async route => {
+    await page.route('**/api/announcements*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -18,8 +18,11 @@ test.describe('Announcements Feature Gate & Isolation', () => {
 
     // Acknowledge startup modal if visible
     const okBtn = page.locator('#btn-acknowledge-announcements');
-    if (await okBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    try {
+      await okBtn.waitFor({ state: 'visible', timeout: 3000 });
       await okBtn.click();
+    } catch {
+      // Modal not displayed or already dismissed
     }
 
     const card = page.locator('#dashboard-announcements-card');
@@ -39,7 +42,7 @@ test.describe('Announcements Feature Gate & Isolation', () => {
   });
 
   test('ANN-02: Completely hides announcements card when empty', async ({ page, app, errorGate }) => {
-    await page.route('**/api/announcements', async route => {
+    await page.route('**/api/announcements*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -57,7 +60,7 @@ test.describe('Announcements Feature Gate & Isolation', () => {
 
   test('ANN-03: Dashboard renders independently without waiting on slow announcements', async ({ page, app, errorGate }) => {
     // Delay announcements response by 1.2 seconds
-    await page.route('**/api/announcements', async route => {
+    await page.route('**/api/announcements*', async route => {
       await new Promise(r => setTimeout(r, 1200));
       await route.fulfill({
         status: 200,
@@ -72,7 +75,16 @@ test.describe('Announcements Feature Gate & Isolation', () => {
     const dashboardHeader = page.getByRole('heading', { name: 'Dashboard' }).first();
     await expect(dashboardHeader).toBeVisible({ timeout: 3000 });
 
-    // After delay, announcement card or modal is loaded
+    // Acknowledge startup modal once it arrives
+    const okBtn = page.locator('#btn-acknowledge-announcements');
+    try {
+      await okBtn.waitFor({ state: 'visible', timeout: 3000 });
+      await okBtn.click();
+    } catch {
+      // Modal not displayed
+    }
+
+    // After delay, announcement card is loaded
     await expect(page.locator('#dashboard-announcements-card')).toBeVisible({ timeout: 5000 });
 
     await errorGate.assertZeroErrors(page, 'Announcements Non-blocking Async Loading');
@@ -80,7 +92,7 @@ test.describe('Announcements Feature Gate & Isolation', () => {
 
   test('ANN-04: Gracefully handles empty / offline fallback without crashing or throwing', async ({ page, app, errorGate }) => {
     // Return empty list representing offline cached fallback
-    await page.route('**/api/announcements', async route => {
+    await page.route('**/api/announcements*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -101,7 +113,7 @@ test.describe('Announcements Feature Gate & Isolation', () => {
   });
 
   test('ANN-05: Plain text announcements safely escape HTML and script tags (No XSS)', async ({ page, app, errorGate }) => {
-    await page.route('**/api/announcements', async route => {
+    await page.route('**/api/announcements*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -115,8 +127,11 @@ test.describe('Announcements Feature Gate & Isolation', () => {
 
     // Acknowledge modal if open
     const okBtn = page.locator('#btn-acknowledge-announcements');
-    if (await okBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    try {
+      await okBtn.waitFor({ state: 'visible', timeout: 3000 });
       await okBtn.click();
+    } catch {
+      // Modal not displayed
     }
 
     const card = page.locator('#dashboard-announcements-card');
@@ -147,8 +162,11 @@ test.describe('Announcements Feature Gate & Isolation', () => {
 
     // Dismiss startup modal if open before navigating to settings
     const okBtn = page.locator('#btn-acknowledge-announcements');
-    if (await okBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    try {
+      await okBtn.waitFor({ state: 'visible', timeout: 3000 });
       await okBtn.click();
+    } catch {
+      // Modal not displayed
     }
 
     await app.navigateTo('Settings');

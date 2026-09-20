@@ -386,10 +386,20 @@ try {
     try {
         $RegKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
         $RegValue = "`"$TargetExe`" --background"
+        if (-not (Test-Path $RegKey)) {
+            New-Item -Path $RegKey -Force | Out-Null
+        }
         Set-ItemProperty -Path $RegKey -Name "RupeeCRMService" -Value $RegValue -Force
+        # Also execute reg.exe to guarantee persistence across all Windows CI shells and versions
+        reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" /t REG_SZ /d $RegValue /f | Out-Null
         Write-Success "Auto-start registered in Windows Registry (HKCU Run)"
     } catch {
-        Write-WarnMsg "Could not set registry run key: $($_.Exception.Message)"
+        try {
+            reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" /t REG_SZ /d "`"$TargetExe`" --background" /f | Out-Null
+            Write-Success "Auto-start registered in Windows Registry via reg.exe"
+        } catch {
+            Write-WarnMsg "Could not set registry run key: $($_.Exception.Message)"
+        }
     }
 
     try {

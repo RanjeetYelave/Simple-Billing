@@ -117,5 +117,9 @@ blob-report/
 playwright/.cache/
 **/playwright/.cache/
 .network
-*.network
+###############################################################
+# STANDALONE OPERATOR TOOLS
+###############################################################
+tools/SoftwareManagementTool.html
+SoftwareManagementTool.html
 

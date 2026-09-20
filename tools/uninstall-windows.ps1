@@ -74,10 +74,13 @@ Write-Step "Removing Windows auto-start registrations..."
 # 2a. HKCU Registry
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 foreach ($val in @("RupeeCRMService", "BillsoftService")) {
-    if (Get-ItemProperty -Path $runKey -Name $val -ErrorAction SilentlyContinue) {
-        Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
-        Write-Success "Removed registry auto-start value: $val"
+    if (Test-Path $runKey) {
+        if (Get-ItemProperty -Path $runKey -Name $val -ErrorAction SilentlyContinue) {
+            Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
+        }
     }
+    reg.exe delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v $val /f 2>$null | Out-Null
+    Write-Success "Removed registry auto-start value: $val"
 }
 
 # 2b. Startup Folder Scripts

@@ -1,6 +1,10 @@
 import { test as base, Page, expect } from '@playwright/test';
 import { ErrorGate } from '../support/error-gate';
 
+export type TestOptions = {
+  eulaMode: 'accepted' | 'first-launch';
+};
+
 export type TestFixtures = {
   errorGate: ErrorGate;
   app: RupeeCRMAppHelper;
@@ -12,18 +16,25 @@ export class RupeeCRMAppHelper {
   async gotoApp(ensureEulaAccepted = true) {
     if (ensureEulaAccepted) {
       await this.page.addInitScript(() => {
-        if (!sessionStorage.getItem('__eula_initialized')) {
-          sessionStorage.setItem('__eula_initialized', 'true');
-          localStorage.setItem('rupeecrm_eula_status', 'ACCEPTED');
-          localStorage.setItem('rupeecrm_eula_version', '1.0.0');
-          localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
-        }
+        try {
+          if (!sessionStorage.getItem('__rupeecrm_preseeded')) {
+            sessionStorage.setItem('__rupeecrm_preseeded', 'true');
+            if (!localStorage.getItem('rupeecrm_eula_status')) {
+              localStorage.setItem('rupeecrm_eula_status', 'ACCEPTED');
+              localStorage.setItem('rupeecrm_eula_version', '1.0.0');
+              localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
+            }
+            if (!localStorage.getItem('rupeecrm_announcements_ack')) {
+              localStorage.setItem('rupeecrm_announcements_ack', 'true');
+            }
+          }
+        } catch (e) {}
       });
     }
     await this.page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await this.page.waitForSelector('#root', { timeout: 15000 });
     // Wait for initial firm and status sync
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(400);
     await this.errorGate.assertZeroErrors(this.page, 'Initial App Mount');
   }
 
@@ -79,7 +90,9 @@ export class RupeeCRMAppHelper {
   }
 }
 
-export const test = base.extend<TestFixtures>({
+export const test = base.extend<TestOptions & TestFixtures>({
+  eulaMode: ['accepted', { option: true }],
+
   errorGate: async ({ page }, use) => {
     const gate = new ErrorGate();
     gate.attach(page);
@@ -87,10 +100,40 @@ export const test = base.extend<TestFixtures>({
     // Automatically enforce release gate at end of every test
     await gate.assertZeroErrors(page, 'Test Teardown Zero-Error Gate');
   },
-  app: async ({ page, errorGate }, use) => {
+
+  app: [async ({ page, errorGate, eulaMode }, use, testInfo) => {
+    // 1. Default deterministic empty announcements so tests are never blocked by startup modal or real network
+    await page.route('**/api/announcements*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([])
+      });
+    });
+
+    // 2. Automatic EULA acceptance initialization for normal regression tests
+    const isFirstLaunch = eulaMode === 'first-launch' || testInfo.file.includes('p3-eula');
+    if (!isFirstLaunch) {
+      await page.addInitScript(() => {
+        try {
+          if (!sessionStorage.getItem('__rupeecrm_preseeded')) {
+            sessionStorage.setItem('__rupeecrm_preseeded', 'true');
+            if (!localStorage.getItem('rupeecrm_eula_status')) {
+              localStorage.setItem('rupeecrm_eula_status', 'ACCEPTED');
+              localStorage.setItem('rupeecrm_eula_version', '1.0.0');
+              localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
+            }
+            if (!localStorage.getItem('rupeecrm_announcements_ack')) {
+              localStorage.setItem('rupeecrm_announcements_ack', 'true');
+            }
+          }
+        } catch (e) {}
+      });
+    }
+
     const helper = new RupeeCRMAppHelper(page, errorGate);
     await use(helper);
-  },
+  }, { auto: true }],
 });
 
 export { expect };

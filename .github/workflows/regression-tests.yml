@@ -87,6 +87,9 @@ jobs:
           java -jar ../billsoft/target/billsoft-0.0.1-SNAPSHOT.war &
           SERVER_PID=$!
 
+          # Trap EXIT to guarantee process cleanup regardless of test outcome
+          trap 'echo "Cleaning up RupeeCRM backend process (PID $SERVER_PID)..."; kill $SERVER_PID 2>/dev/null || true; pkill -f billsoft-0.0.1-SNAPSHOT.war 2>/dev/null || true' EXIT
+
           echo "Waiting for RupeeCRM server to be healthy on port 28080..."
           TIMEOUT=60
           READY=0
@@ -101,18 +104,11 @@ jobs:
 
           if [ $READY -ne 1 ]; then
             echo "ERROR: RupeeCRM failed to start within ${TIMEOUT}s!"
-            kill $SERVER_PID 2>/dev/null || true
             exit 1
           fi
 
-          echo "Executing 39+ Playwright UI regression tests..."
+          echo "Executing Playwright UI regression tests..."
           npm test
-          TEST_EXIT_CODE=$?
-
-          echo "Stopping RupeeCRM server (PID $SERVER_PID)..."
-          kill $SERVER_PID 2>/dev/null || true
-
-          exit $TEST_EXIT_CODE
 
       - name: Upload Playwright Test Report & Artifacts
         if: always()

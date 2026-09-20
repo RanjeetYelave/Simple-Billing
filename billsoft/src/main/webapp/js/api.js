@@ -916,5 +916,10 @@ const API = {
     action: (id, actionChoice = 'PRIMARY', payload = null) => API._json(`/api/notifications/${id}/action`, { method: 'POST', body: { actionChoice, payload } }),
     getPreferences: (firmId) => API._json(API._qs('/api/notifications/preferences', { firmId })),
     savePreferences: (prefs, firmId) => API._json(API._qs('/api/notifications/preferences', { firmId }), { method: 'PUT', body: prefs })
+  },
+
+  // ─── Global Announcements ───
+  announcements: {
+    get: (force = false) => API._json(force ? '/api/announcements?force=true' : '/api/announcements')
   }
 };

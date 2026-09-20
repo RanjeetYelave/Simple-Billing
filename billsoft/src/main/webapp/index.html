@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RupeeCRM - Business Billing & Management</title>
-  <link rel="stylesheet" href="css/style.css?v=20260910_theme_sync_v10" />
+  <link rel="stylesheet" href="css/style.css?v=20260920_header_opt_a_v1" />
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
 
@@ -10305,7 +10305,7 @@
       const [empAnalytics, setEmpAnalytics] = useState(null);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
-      const [updateInfo, setUpdateInfo] = useState(null);
+       const [updateInfo, setUpdateInfo] = useState(null);
       const [updateDismissed, setUpdateDismissed] = useState(false);
       const [dismissedIds, setDismissedIds] = useState([]);
       const [dashGoalTab, setDashGoalTab] = useState('ALL'); // 'ALL' | 'SAVINGS' | 'HABITS'
@@ -10411,11 +10411,61 @@
         });
       }, []);
 
+      const [announcements, setAnnouncements] = useState([]);
+      const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+
+      const getAnnouncementsKey = (list) => {
+        if (!Array.isArray(list) || list.length === 0) return '';
+        return list.join('||');
+      };
+
+      const loadAnnouncements = useCallback(() => {
+        if (API.announcements && API.announcements.get) {
+          API.announcements.get()
+            .then(res => {
+              if (Array.isArray(res) && res.length > 0) {
+                setAnnouncements(res);
+                const currentKey = getAnnouncementsKey(res);
+                try {
+                  const acknowledgedKey = localStorage.getItem('rupeecrm_announcements_ack');
+                  if (acknowledgedKey !== currentKey) {
+                    setShowAnnouncementModal(true);
+                  }
+                } catch (e) {}
+              } else {
+                setAnnouncements([]);
+                setShowAnnouncementModal(false);
+              }
+            })
+            .catch(() => {});
+        }
+      }, []);
+
+      const handleAcknowledgeAnnouncements = () => {
+        try {
+          const currentKey = getAnnouncementsKey(announcements);
+          if (currentKey) {
+            localStorage.setItem('rupeecrm_announcements_ack', currentKey);
+          }
+        } catch (e) {}
+        setShowAnnouncementModal(false);
+        if (window.showToast) {
+          window.showToast('Announcements acknowledged — saved to bottom of Dashboard', 'info', 3000);
+        }
+      };
+
       useEffect(() => {
         loadDashboardData();
+        loadAnnouncements();
         window.addEventListener('billsoft:app-refresh', loadDashboardData);
-        return () => window.removeEventListener('billsoft:app-refresh', loadDashboardData);
-      }, [loadDashboardData]);
+        window.addEventListener('billsoft:app-refresh', loadAnnouncements);
+        window.addEventListener('billsoft:announcements-refresh', loadAnnouncements);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', loadDashboardData);
+          window.removeEventListener('billsoft:app-refresh', loadAnnouncements);
+          window.removeEventListener('billsoft:announcements-refresh', loadAnnouncements);
+        };
+      }, [loadDashboardData, loadAnnouncements]);
 
       const handleSearch = useCallback(BillsoftUtils.debounce((name) => {
         if (!name || name.trim().length < 2) { setSearchResults(null); return; }
@@ -11689,6 +11739,156 @@
                   ))
                 ) : React.createElement('div', { style: { padding: '12px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' } }, 'Scratchpad is empty.')
               )
+            )
+          )
+        ),
+
+        // ── Announcements Card (Permanent Bottom Reference) ──
+        Array.isArray(announcements) && announcements.length > 0 && React.createElement('div', {
+          id: 'dashboard-announcements-card',
+          className: 'announcements-card'
+        },
+          React.createElement('div', { className: 'announcements-card-header' },
+            React.createElement('div', { className: 'announcements-card-title' },
+              React.createElement('span', { style: { fontSize: '1.1rem' } }, '📢'),
+              React.createElement('span', null, 'Announcements'),
+              React.createElement('span', {
+                className: 'badge badge-info',
+                style: { fontSize: '0.70rem', padding: '2px 6px', fontWeight: 600 }
+              }, announcements.length)
+            ),
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-xs btn-ghost',
+              style: { fontSize: '0.75rem', gap: 4, display: 'inline-flex', alignItems: 'center' },
+              onClick: () => setShowAnnouncementModal(true),
+              title: 'View announcement popup'
+            }, '🔍 Pop-up View')
+          ),
+          React.createElement('div', { className: 'announcements-list' },
+            announcements.map((ann, idx) => React.createElement('div', {
+              key: idx,
+              className: 'announcement-item'
+            },
+              React.createElement('span', { className: 'announcement-item-dot' }, '•'),
+              React.createElement('div', { className: 'announcement-item-text' }, ann)
+            ))
+          )
+        ),
+
+        // ════════════════════════════════════════════════════════════════════════
+        // ANNOUNCEMENTS POP-UP MODAL (OPTION 4: STARTUP NOTICE)
+        // ════════════════════════════════════════════════════════════════════════
+        showAnnouncementModal && Array.isArray(announcements) && announcements.length > 0 && React.createElement('div', {
+          id: 'announcements-startup-modal-overlay',
+          className: 'modal-overlay',
+          style: { zIndex: 1050, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)' },
+          onClick: handleAcknowledgeAnnouncements
+        },
+          React.createElement('div', {
+            id: 'announcements-startup-modal',
+            className: 'card modal-content',
+            style: {
+              maxWidth: 540,
+              width: '92%',
+              padding: '24px 28px',
+              borderRadius: 16,
+              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+              border: '1px solid var(--border)',
+              animation: 'fadeIn 0.2s ease-out'
+            },
+            onClick: e => e.stopPropagation()
+          },
+            // Header
+            React.createElement('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 16,
+                paddingBottom: 12,
+                borderBottom: '1px solid var(--border)'
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('div', {
+                  style: {
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.25rem'
+                  }
+                }, '📢'),
+                React.createElement('div', null,
+                  React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text)' } }, 'System Announcements'),
+                  React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)' } },
+                    `${announcements.length} new update${announcements.length > 1 ? 's' : ''} from software operator`
+                  )
+                )
+              ),
+              React.createElement('span', {
+                className: 'badge badge-info',
+                style: { fontSize: '0.75rem', padding: '3px 8px', fontWeight: 600 }
+              }, `${announcements.length} New`)
+            ),
+
+            // Announcements Body
+            React.createElement('div', {
+              style: {
+                maxHeight: '320px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                marginBottom: 20,
+                paddingRight: 4
+              }
+            },
+              announcements.map((ann, idx) => React.createElement('div', {
+                key: idx,
+                style: {
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  fontSize: '0.90rem',
+                  lineHeight: 1.55,
+                  color: 'var(--text)'
+                }
+              },
+                React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 'bold', fontSize: '1rem', marginTop: 1 } }, '•'),
+                React.createElement('div', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 } }, ann)
+              ))
+            ),
+
+            // Footer / Okay Button
+            React.createElement('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: 12,
+                paddingTop: 14,
+                borderTop: '1px solid var(--border)'
+              }
+            },
+              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginRight: 'auto' } },
+                'You can review these anytime at the bottom of Dashboard'
+              ),
+              React.createElement('button', {
+                id: 'btn-acknowledge-announcements',
+                type: 'button',
+                className: 'btn btn-primary',
+                style: { padding: '10px 20px', fontSize: '0.92rem', fontWeight: 600, borderRadius: 8 },
+                onClick: handleAcknowledgeAnnouncements
+              }, '✓ Okay, Understood')
             )
           )
         ),
@@ -31993,6 +32193,23 @@
       const [lastChecked, setLastChecked] = useState(null);
       const [netData, setNetData] = useState(null);
       const [netTesting, setNetTesting] = useState(false);
+      const [checkingAnnouncements, setCheckingAnnouncements] = useState(false);
+
+      const handleCheckAnnouncements = async () => {
+        setCheckingAnnouncements(true);
+        try {
+          const list = await API.announcements.get(true);
+          window.dispatchEvent(new CustomEvent('billsoft:announcements-refresh'));
+          const count = Array.isArray(list) ? list.length : 0;
+          if (window.showToast) {
+            window.showToast(count > 0 ? `Synced ${count} active announcement(s)` : 'No active announcements found on GitHub', count > 0 ? 'success' : 'info');
+          }
+        } catch (e) {
+          if (window.showToast) window.showToast('Failed to check announcements', 'error');
+        } finally {
+          setCheckingAnnouncements(false);
+        }
+      };
 
       const fetchUpdateInfo = () => {
         setLoading(true);
@@ -32312,19 +32529,33 @@
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
             fontSize: '0.8rem',
             color: 'var(--text-secondary)'
           }
         },
           React.createElement('span', null, lastChecked ? `Last checked: ${lastChecked}` : ''),
-          React.createElement('button', {
-            className: 'btn btn-ghost btn-sm',
-            style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' },
-            disabled: loading,
-            onClick: fetchUpdateInfo
-          },
-            React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh),
-            loading ? 'Checking...' : 'Check for Updates'
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-outline btn-sm',
+              style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' },
+              disabled: checkingAnnouncements,
+              onClick: handleCheckAnnouncements
+            },
+              React.createElement('span', { style: { animation: checkingAnnouncements ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, '📢'),
+              checkingAnnouncements ? 'Checking Announcements...' : 'Check for Announcements'
+            ),
+            React.createElement('button', {
+              className: 'btn btn-ghost btn-sm',
+              style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' },
+              disabled: loading,
+              onClick: fetchUpdateInfo
+            },
+              React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh),
+              loading ? 'Checking...' : 'Check for Updates'
+            )
           )
         )
       );
@@ -36707,66 +36938,43 @@
                       return React.createElement('div', {
                         className: 'topbar-gold-badge',
                         title: 'RupeeCRM Gold Lifetime License Active (Click for Licensing)',
-                        onClick: openLicense,
-                        style: {
-                          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.25))',
-                          border: '1px solid rgba(245, 158, 11, 0.5)',
-                          color: '#b45309'
-                        }
+                        onClick: openLicense
                       }, '🥇 GOLD');
                     } else if (membershipPlan === 'SILVER') {
                       return React.createElement('div', {
                         className: 'topbar-silver-badge',
                         title: 'RupeeCRM Silver (3-Year) License Active (Click for Licensing)',
-                        onClick: openLicense,
-                        style: {
-                          background: 'linear-gradient(135deg, rgba(148, 163, 184, 0.15), rgba(100, 116, 139, 0.25))',
-                          border: '1px solid rgba(148, 163, 184, 0.5)',
-                          color: '#475569'
-                        }
+                        onClick: openLicense
                       }, '🥈 SILVER');
                     } else if (membershipPlan === 'BRONZE') {
                       return React.createElement('div', {
                         className: 'topbar-bronze-badge',
                         title: 'RupeeCRM Bronze (1-Year) License Active (Click for Licensing)',
-                        onClick: openLicense,
-                        style: {
-                          background: 'linear-gradient(135deg, rgba(180, 83, 9, 0.12), rgba(146, 64, 14, 0.2))',
-                          border: '1px solid rgba(180, 83, 9, 0.4)',
-                          color: '#92400e'
-                        }
+                        onClick: openLicense
                       }, '🥉 BRONZE');
                     }
                     return React.createElement('div', {
                       className: 'topbar-premium-badge',
                       title: 'RupeeCRM Active License (Click for Licensing)',
-                      onClick: openLicense,
-                      style: {
-                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.18))',
-                        border: '1px solid rgba(168, 85, 247, 0.4)',
-                        color: '#7c3aed'
-                      }
+                      onClick: openLicense
                     }, '✓ ACTIVE');
                   } else if (licenseStatus === 'SUSPENDED') {
                     return React.createElement('div', {
                       className: 'topbar-suspended-badge',
                       title: 'License Suspended (Click for Licensing)',
-                      onClick: openLicense,
-                      style: { background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#dc2626' }
+                      onClick: openLicense
                     }, '⚠️ SUSPENDED');
                   } else if (licenseStatus === 'REVOKED') {
                     return React.createElement('div', {
                       className: 'topbar-revoked-badge',
                       title: 'License Revoked (Click for Licensing)',
-                      onClick: openLicense,
-                      style: { background: 'rgba(185, 28, 28, 0.15)', border: '1px solid rgba(185, 28, 28, 0.5)', color: '#991b1b' }
+                      onClick: openLicense
                     }, '🚫 REVOKED');
                   } else if (licenseStatus === 'trial') {
                     return React.createElement('div', {
                       className: 'topbar-trial-badge',
                       title: 'Evaluation Trial Active (Click for Licensing)',
-                      onClick: openLicense,
-                      style: { background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706' }
+                      onClick: openLicense
                     }, `⏳ ${trialDaysRemaining}d Trial`);
                   }
                   return null;

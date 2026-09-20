@@ -172,6 +172,10 @@ jobs:
 
           Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
 
+      - name: Verify PowerShell Script Syntax
+        shell: pwsh
+        run: ./tools/check-powershell-syntax.ps1
+
       - name: Validate Windows Installer & Uninstaller Lifecycle
         shell: pwsh
         run: ./tools/validate-windows-lifecycle.ps1

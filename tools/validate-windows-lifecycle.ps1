@@ -92,7 +92,7 @@ Write-Host "[OK] Auto-start registry key successfully removed"
 if (Test-Path $appDir) {
     for ($i = 0; $i -lt 5; $i++) {
         cmd.exe /c "attrib -r -s -h `"$appDir\*.*`" /s /d >nul 2>nul"
-        cmd.exe /c "rmdir /s /q `"$appDir`"" >nul 2>nul"
+        cmd.exe /c "rmdir /s /q `"$appDir`" >nul 2>nul"
         if (-not (Test-Path $appDir)) { break }
         Start-Sleep -Seconds 1
     }

@@ -85,7 +85,7 @@ foreach ($val in @("RupeeCRMService", "BillsoftService")) {
     if (Test-Path $runKey) {
         Remove-ItemProperty -Path $runKey -Name $val -Force -ErrorAction SilentlyContinue
     }
-    reg.exe delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v $val /f 2>$null | Out-Null
+    cmd.exe /c "reg.exe delete `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"$val`" /f >nul 2>nul"
     Write-Success "Removed registry auto-start value: $val"
 }
 
@@ -150,7 +150,7 @@ foreach ($dir in $installDirs) {
             Start-Sleep -Milliseconds 300
         }
         if (Test-Path $dir) {
-            cmd.exe /c "rmdir /s /q `"$dir`"" 2>$null | Out-Null
+            cmd.exe /c "rmdir /s /q `"$dir`" >nul 2>nul"
         }
         if (-not (Test-Path $dir)) {
             Write-Success "Removed application files from $dir"

@@ -354,7 +354,10 @@ try {
 
     # 9a. Desktop Shortcut
     $DesktopPath = [Environment]::GetFolderPath("Desktop")
-    if (Test-Path $DesktopPath) {
+    if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
+        $DesktopPath = Join-Path $env:USERPROFILE "Desktop"
+    }
+    if ($DesktopPath -and (Test-Path $DesktopPath)) {
         $DesktopShortcutPath = Join-Path $DesktopPath "RupeeCRM.lnk"
         $Shortcut = $WshShell.CreateShortcut($DesktopShortcutPath)
         $Shortcut.TargetPath = $TargetExe

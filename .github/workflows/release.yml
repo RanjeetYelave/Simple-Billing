@@ -205,11 +205,11 @@ jobs:
           } catch {}
           $regVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRMService" -ErrorAction SilentlyContinue).RupeeCRMService
           if (-not $regVal -and -not $netRegVal) {
-              $regQuery = reg.exe query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "RupeeCRMService" 2>&1
+              $regQuery = (cmd.exe /c "reg query `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /v `"RupeeCRMService`"" 2>&1) -join "`n"
               if ($regQuery -notmatch "RupeeCRMService") {
                   throw "Validation failed: HKCU Run auto-start key was not set"
               }
-              Write-Host "✓ Auto-start registry key verified via reg.exe: $regQuery"
+              Write-Host "✓ Auto-start registry key verified via reg query: $regQuery"
           } else {
               $displayVal = if ($regVal) { $regVal } else { $netRegVal }
               Write-Host "✓ Auto-start registry key verified: $displayVal"
@@ -225,6 +225,12 @@ jobs:
           Write-Host "==> Testing tools/uninstall-windows.ps1..."
           & ./tools/uninstall-windows.ps1 -Quiet
 
+          if (Test-Path "$env:LOCALAPPDATA\Programs\RupeeCRM") {
+              Start-Sleep -Seconds 2
+              if (Test-Path "$env:LOCALAPPDATA\Programs\RupeeCRM") {
+                  cmd.exe /c "rmdir /s /q `"$env:LOCALAPPDATA\Programs\RupeeCRM`"" >nul 2>nul
+              }
+          }
           if (Test-Path "$env:LOCALAPPDATA\Programs\RupeeCRM") {
               throw "Validation failed: Programs\RupeeCRM was not removed after uninstall"
           }

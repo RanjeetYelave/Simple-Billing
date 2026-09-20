@@ -10,6 +10,32 @@ const EULA_VERSION_KEY     = 'rupeecrm_eula_version';
 const EULA_ACCEPTED_AT_KEY = 'rupeecrm_eula_accepted_at';
 const EULA_CURRENT_VERSION = '1.0.0';
 
+// ─── TEST FIRM SEED ───────────────────────────────────────────────────────────
+// Used on CI where the backend starts with an empty database.
+// The app calls GET /api/firm on startup; when it returns [] the app enters
+// the FirstTimeSetup / Onboarding screen, blocking all non-onboarding tests.
+//
+// Strategy: fetch the REAL backend response first. Only substitute our seed
+// when the response is an empty array. This preserves local developer state
+// (id=175 etc.) while fixing CI (id=0 seed, no real backend firm).
+const TEST_FIRM_SEED_ID = 0;         // Distinct from any real DB id
+const TEST_FIRM_SEED = [{
+  id: TEST_FIRM_SEED_ID,
+  firmName: 'Test Firm (CI Seed)',
+}];
+
+// A minimal license/status stub. On CI the backend returns { hasFirm: false }
+// for an empty DB, which would trigger the license-expired gate.
+// We override only when hasFirm is false.
+const TEST_LICENSE_SEED = {
+  hasFirm: true,
+  isValid: true,
+  status: 'trial',
+  isTrial: true,
+  trialDaysRemaining: 30,
+  plan: 'TRIAL',
+};
+
 /**
  * EULA mode controls whether the `app` fixture pre-seeds localStorage with an
  * accepted EULA state before the application mounts.
@@ -173,12 +199,92 @@ export const test = base.extend<TestOptions & TestFixtures>({
       );
     }
 
-    // ── Step 2: Announcement isolation ────────────────────────────────────
+    // ── Step 2: Firm & License seed (CI / fresh-DB isolation) ─────────────
+    // On CI the Spring Boot backend starts with an empty database.
+    // The production App component calls GET /api/firm on startup; when the
+    // response is an empty array it sets firstTimeSetup=true and renders the
+    // Onboarding screen instead of the main application shell.
+    //
+    // Strategy: FETCH-THROUGH with fallback.
+    //   • Always let the real request go to the backend first.
+    //   • If the backend returns an empty firm list (CI cold-start), respond
+    //     with our seed stub so the app boots into the main shell.
+    //   • If the backend returns real firms (local dev), pass the real response
+    //     through unchanged — no interference with local IDs.
+    //
+    // This means the SAME fixture works identically on both local and CI:
+    //   Local: real data passes through, no 404 on GET /api/firm/:realId
+    //   CI:    seed firm is used, and GET /api/firm/0 is also stubbed below
+    //
+    // We also stub GET /api/firm/:id for the seed firm ID to prevent the app
+    // from producing a 404 when it fetches the individual seeded firm.
+    await page.route('**/api/firm', async (route) => {
+      const method = route.request().method().toUpperCase();
+      if (method !== 'GET') {
+        // Let mutations (POST, PUT, DELETE) pass through unmodified.
+        await route.continue();
+        return;
+      }
+
+      // Fetch the real backend response first.
+      const response = await route.fetch();
+      const text = await response.text();
+      let firms: any[] = [];
+      try { firms = JSON.parse(text); } catch { /* ignore parse error */ }
+
+      if (Array.isArray(firms) && firms.length === 0) {
+        // Backend has no firms (CI cold-start): substitute the seed firm.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(TEST_FIRM_SEED),
+        });
+      } else {
+        // Backend has real firms: pass the real response through.
+        await route.fulfill({ response });
+      }
+    });
+
+    // Stub GET /api/firm/0 (the seed firm's individual lookup) so the app
+    // doesn't receive a 404 when it fetches firm details by the seeded ID.
+    // This route only fires on CI where the seed firm is used; on local the
+    // real backend firm ID is served by the pass-through above.
+    await page.route(`**/api/firm/${TEST_FIRM_SEED_ID}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(TEST_FIRM_SEED[0]),
+      });
+    });
+
+    // Similarly, seed the license/status so the app never shows the
+    // "TrialExpired" gate on CI (where hasFirm is false in a fresh DB).
+    // Same fetch-through approach: only override when hasFirm is false.
+    await page.route('**/api/license/status', async (route) => {
+      const response = await route.fetch();
+      const text = await response.text();
+      let lic: any = {};
+      try { lic = JSON.parse(text); } catch { /* ignore */ }
+
+      if (lic.hasFirm === false) {
+        // CI: no firm in DB — send a valid trial stub with hasFirm:true.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(TEST_LICENSE_SEED),
+        });
+      } else {
+        // Local (or CI once firm exists): pass real response through.
+        await route.fulfill({ response });
+      }
+    });
+
+    // ── Step 3: Announcement isolation ────────────────────────────────────
     // Route all announcement API calls to return an empty list so that the
     // real GitHub-backed announcement source never affects ordinary regression
-    // tests.  Individual announcement tests override this route per-test with
-    // their own mock data BEFORE calling app.gotoApp(), so the per-test route
-    // takes precedence (Playwright applies the most-recently-registered handler).
+    // tests.  Individual announcement tests override this route with their own
+    // mock data BEFORE calling app.gotoApp(), so the per-test route takes
+    // precedence (Playwright applies the most-recently-registered handler).
     await page.route('**/api/announcements*', async (route) => {
       await route.fulfill({
         status: 200,

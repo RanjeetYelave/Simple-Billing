@@ -80,8 +80,14 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      - name: Configure Local Hostname Mapping for Canonical Hostname
+        run: |
+          echo "127.0.0.1 management.rupeecrm.local" | sudo tee -a /etc/hosts
+
       - name: Start RupeeCRM Backend & Run Playwright UI Regression Suite
         working-directory: ./ui-regression
+        env:
+          BASE_URL: http://127.0.0.1:28080
         run: |
           echo "Starting RupeeCRM backend application on port 28080..."
           java -jar ../billsoft/target/billsoft-0.0.1-SNAPSHOT.war &

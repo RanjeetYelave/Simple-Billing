@@ -50,4 +50,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
                             @Param("now") LocalDateTime now);
 
     boolean existsByFirmIdAndEventKey(Long firmId, String eventKey);
+
+    List<Notification> findByFirmIdAndEventKeyStartingWith(Long firmId, String prefix);
 }

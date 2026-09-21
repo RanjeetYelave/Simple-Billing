@@ -196,23 +196,27 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
     await page.route('**/api/firm', async (route) => {
       const method = route.request().method().toUpperCase();
       if (method !== 'GET') {
-        await route.continue();
+        await route.continue().catch(() => {});
         return;
       }
 
-      const response = await route.fetch();
-      const text = await response.text();
-      let firms: any[] = [];
-      try { firms = JSON.parse(text); } catch {}
+      try {
+        const response = await route.fetch();
+        const text = await response.text();
+        let firms: any[] = [];
+        try { firms = JSON.parse(text); } catch {}
 
-      if (Array.isArray(firms) && firms.length === 0) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(TEST_FIRM_SEED),
-        });
-      } else {
-        await route.fulfill({ response });
+        if (Array.isArray(firms) && firms.length === 0) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(TEST_FIRM_SEED),
+          }).catch(() => {});
+        } else {
+          await route.fulfill({ response }).catch(() => {});
+        }
+      } catch (e) {
+        // Ignored if test ended or connection closed
       }
     });
 
@@ -221,23 +225,27 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(TEST_FIRM_SEED[0]),
-      });
+      }).catch(() => {});
     });
 
     await page.route('**/api/license/status', async (route) => {
-      const response = await route.fetch();
-      const text = await response.text();
-      let lic: any = {};
-      try { lic = JSON.parse(text); } catch {}
+      try {
+        const response = await route.fetch();
+        const text = await response.text();
+        let lic: any = {};
+        try { lic = JSON.parse(text); } catch {}
 
-      if (lic.hasFirm === false) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(TEST_LICENSE_SEED),
-        });
-      } else {
-        await route.fulfill({ response });
+        if (lic.hasFirm === false) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(TEST_LICENSE_SEED),
+          }).catch(() => {});
+        } else {
+          await route.fulfill({ response }).catch(() => {});
+        }
+      } catch (e) {
+        // Ignored if test ended
       }
     });
 
@@ -247,7 +255,7 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify([])
-      });
+      }).catch(() => {});
     });
 
     await use();

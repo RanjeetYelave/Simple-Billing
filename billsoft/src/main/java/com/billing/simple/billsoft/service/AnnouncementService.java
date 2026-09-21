@@ -32,9 +32,9 @@ public class AnnouncementService {
     private static final Logger log = LoggerFactory.getLogger(AnnouncementService.class);
 
     public static final String DEFAULT_RAW_URL =
-            "https://raw.githubusercontent.com/RanjeetYelave/license-registry/main/announcements.txt";
+            "https://raw.githubusercontent.com/RanjeetYelave/announcements/main/announcements.txt";
     public static final String DEFAULT_API_URL =
-            "https://api.github.com/repos/RanjeetYelave/license-registry/contents/announcements.txt";
+            "https://api.github.com/repos/RanjeetYelave/announcements/contents/announcements.txt";
 
     public static final String SEPARATOR = "@@@";
     public static final int MAX_FILE_SIZE_BYTES = 32 * 1024; // 32 KB limit

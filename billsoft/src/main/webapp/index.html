@@ -12193,8 +12193,10 @@
       const [text, setText] = useState(initialText || '');
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [highlightIdx, setHighlightIdx] = useState(-1);
+      const [remoteSuggestions, setRemoteSuggestions] = useState(null);
       const containerRef = useRef(null);
       const inputRef = useRef(null);
+      const debounceTimerRef = useRef(null);
 
       useEffect(() => {
         if (value) {
@@ -12209,7 +12211,35 @@
         }
       }, [value, initialText, products]);
 
+      // Fetch unified suggestions from backend autocomplete
+      useEffect(() => {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        if (!text || !text.trim()) {
+          setRemoteSuggestions(null);
+          return;
+        }
+        debounceTimerRef.current = setTimeout(() => {
+          if (API.savedItems && typeof API.savedItems.getUnifiedAutocomplete === 'function') {
+            API.savedItems.getUnifiedAutocomplete(text.trim())
+              .then(data => {
+                if (Array.isArray(data) && data.length > 0) {
+                  setRemoteSuggestions(data);
+                } else {
+                  setRemoteSuggestions(null);
+                }
+              })
+              .catch(() => {
+                setRemoteSuggestions(null);
+              });
+          }
+        }, 120);
+        return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+      }, [text]);
+
       const filtered = useMemo(() => {
+        if (remoteSuggestions && remoteSuggestions.length > 0) {
+          return remoteSuggestions;
+        }
         if (!text || !text.trim()) return products || [];
         const q = text.toLowerCase().trim();
         return (products || []).filter(p =>
@@ -12217,12 +12247,14 @@
           (p.sku && p.sku.toLowerCase().includes(q)) ||
           (p.category && p.category.toLowerCase().includes(q))
         );
-      }, [products, text]);
+      }, [products, text, remoteSuggestions]);
 
       const selectProduct = (prod) => {
         if (!prod) return;
         setText(prod.name);
-        if (onChange) onChange(String(prod.id), prod, prod.name);
+        const isSaved = prod.source === 'SAVED_ITEM';
+        const prodId = isSaved ? '' : String(prod.rawId || prod.id || '');
+        if (onChange) onChange(prodId, prod, prod.name);
         setShowSuggestions(false);
         setHighlightIdx(-1);
       };
@@ -12265,7 +12297,7 @@
           }
           setShowSuggestions(false);
           setHighlightIdx(-1);
-          const match = (products || []).find(p => p.name && p.name.toLowerCase() === text.trim().toLowerCase());
+          const match = (filtered || []).find(p => p.name && p.name.toLowerCase() === text.trim().toLowerCase());
           if (match) {
             selectProduct(match);
           } else {
@@ -12352,45 +12384,48 @@
             boxShadow: '0 6px 18px rgba(0,0,0,0.18)'
           }
         },
-          filtered.map((p, i) => React.createElement('div', {
-            key: p.id,
-            ref: i === highlightIdx ? (el => { if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' }); }) : null,
-            className: `autocomplete-item${i === highlightIdx ? ' highlighted' : ''}`,
-            style: {
-              padding: '7px 10px',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              background: i === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.12))' : 'transparent',
-              borderLeft: i === highlightIdx ? '3px solid var(--primary, #4F46E5)' : '3px solid transparent',
-              borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light, rgba(255,255,255,0.06))' : undefined,
-              transition: 'background 0.1s ease, border-color 0.1s ease'
+          filtered.map((p, i) => {
+            const isSaved = p.source === 'SAVED_ITEM';
+            return React.createElement('div', {
+              key: p.id || (p.rawId ? `${p.source}_${p.rawId}` : `${p.name}_${i}`),
+              ref: i === highlightIdx ? (el => { if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' }); }) : null,
+              className: `autocomplete-item${i === highlightIdx ? ' highlighted' : ''}`,
+              style: {
+                padding: '7px 10px',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                background: i === highlightIdx ? 'var(--bg-hover, rgba(79, 70, 229, 0.12))' : 'transparent',
+                borderLeft: i === highlightIdx ? '3px solid var(--primary, #4F46E5)' : '3px solid transparent',
+                borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light, rgba(255,255,255,0.06))' : undefined,
+                transition: 'background 0.1s ease, border-color 0.1s ease'
+              },
+              onMouseDown: (e) => {
+                e.preventDefault();
+                selectProduct(p);
+              },
+              onMouseEnter: () => setHighlightIdx(i)
             },
-            onMouseDown: (e) => {
-              e.preventDefault();
-              selectProduct(p);
-            },
-            onMouseEnter: () => setHighlightIdx(i)
-          },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              React.createElement('div', { style: { fontWeight: 600 } },
-                p.name,
-                p.sku ? React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6, fontWeight: 400 } }, `[${p.sku}]`) : null
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('div', { style: { fontWeight: 600 } },
+                  p.name,
+                  p.sku ? React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6, fontWeight: 400 } }, `[${p.sku}]`) : null
+                ),
+                React.createElement('span', {
+                  className: 'badge',
+                  style: {
+                    fontSize: '0.68rem',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: isSaved ? 'rgba(99, 102, 241, 0.15)' : (p.itemType === 'SERVICE' ? 'rgba(59, 130, 246, 0.15)' : (Number(p.stockQuantity || 0) <= 0 ? 'rgba(239, 68, 68, 0.15)' : (Number(p.stockQuantity || 0) <= Number(p.minStockLevel || 5) ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)'))),
+                    color: isSaved ? '#6366F1' : (p.itemType === 'SERVICE' ? '#3B82F6' : (Number(p.stockQuantity || 0) <= 0 ? '#EF4444' : (Number(p.stockQuantity || 0) <= Number(p.minStockLevel || 5) ? '#F59E0B' : '#10B981')))
+                  }
+                }, isSaved ? 'Saved Item' : (p.itemType === 'SERVICE' ? 'Service' : (Number(p.stockQuantity || 0) <= 0 ? 'Out of stock' : `${p.stockQuantity} ${p.unit || 'pcs'}`)))
               ),
-              React.createElement('span', {
-                className: 'badge',
-                style: {
-                  fontSize: '0.68rem',
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  background: p.itemType === 'SERVICE' ? 'rgba(59, 130, 246, 0.15)' : (Number(p.stockQuantity || 0) <= 0 ? 'rgba(239, 68, 68, 0.15)' : (Number(p.stockQuantity || 0) <= Number(p.minStockLevel || 5) ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)')),
-                  color: p.itemType === 'SERVICE' ? '#3B82F6' : (Number(p.stockQuantity || 0) <= 0 ? '#EF4444' : (Number(p.stockQuantity || 0) <= Number(p.minStockLevel || 5) ? '#F59E0B' : '#10B981'))
-                }
-              }, p.itemType === 'SERVICE' ? 'Service' : (Number(p.stockQuantity || 0) <= 0 ? 'Out of stock' : `${p.stockQuantity} ${p.unit || 'pcs'}`))
-            ),
-            React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
-              `${BillsoftUtils.formatCurrency(p.price || 0)}${p.gstPercentage ? ` | ${p.gstPercentage}% GST` : ''}${p.category ? ` • ${p.category}` : ''}`
-            )
-          ))
+              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                `${BillsoftUtils.formatCurrency(p.price || 0)}${p.gstPercentage ? ` | ${p.gstPercentage}% GST` : ''}${p.unit ? ` / ${p.unit}` : ''}${p.category ? ` • ${p.category}` : ''}${isSaved ? ' • Not in Inventory' : ''}`
+              )
+            );
+          })
         )
       );
     }
@@ -12910,9 +12945,10 @@
         const items = [...form.items];
         if (field === 'productSelect') {
           if (extraProd) {
+            const isSaved = extraProd.source === 'SAVED_ITEM';
             items[idx] = {
               ...items[idx],
-              productId: String(extraProd.id),
+              productId: isSaved ? '' : String(extraProd.rawId || extraProd.id || ''),
               productName: extraProd.name || '',
               hsnCode: extraProd.hsnCode || items[idx].hsnCode || '',
               pricePerUnit: (extraProd.price !== undefined && extraProd.price !== null) ? String(extraProd.price) : items[idx].pricePerUnit,
@@ -13011,6 +13047,7 @@
           }
         }
 
+        const prevFirmId = API.firmId;
         setSaving(true);
         setSubmitDisabled(true);
 
@@ -17809,6 +17846,201 @@
       const [movementPage, setMovementPage] = useState(1);
       const [movementPageSize, setMovementPageSize] = useState(15);
 
+      // Duplicate Detection & Merge State
+      const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+      const [duplicatesLoading, setDuplicatesLoading] = useState(false);
+      const [duplicateCandidates, setDuplicateCandidates] = useState([]);
+      const [batchMerging, setBatchMerging] = useState(false);
+
+      // Conflict Resolution Modal State
+      const [showConflictModal, setShowConflictModal] = useState(false);
+      const [conflictCandidate, setConflictCandidate] = useState(null);
+      const [conflictForm, setConflictForm] = useState({
+        nameResolution: 'KEEP_PRIMARY',
+        sellingPriceResolution: 'KEEP_PRIMARY',
+        customSellingPrice: '',
+        purchasePriceResolution: 'KEEP_PRIMARY',
+        customPurchasePrice: '',
+        stockStrategy: 'ADD',
+        gstResolution: 'KEEP_PRIMARY',
+        unitResolution: 'KEEP_PRIMARY'
+      });
+
+      // Saved Items Modal State
+      const [showSavedItemsModal, setShowSavedItemsModal] = useState(false);
+      const [savedItemsLoading, setSavedItemsLoading] = useState(false);
+      const [savedItemsList, setSavedItemsList] = useState([]);
+
+      const loadDuplicates = () => {
+        setDuplicatesLoading(true);
+        if (API.deduplication && typeof API.deduplication.getCandidates === 'function') {
+          API.deduplication.getCandidates()
+            .then(data => {
+              setDuplicateCandidates(data || []);
+              setDuplicatesLoading(false);
+            })
+            .catch(() => {
+              showToast('Failed to scan for duplicate items', 'error');
+              setDuplicatesLoading(false);
+            });
+        }
+      };
+
+      const openDuplicates = () => {
+        setShowDuplicatesModal(true);
+        loadDuplicates();
+      };
+
+      const loadSavedItems = () => {
+        setSavedItemsLoading(true);
+        if (API.savedItems && typeof API.savedItems.list === 'function') {
+          API.savedItems.list()
+            .then(data => {
+              setSavedItemsList(data || []);
+              setSavedItemsLoading(false);
+            })
+            .catch(() => {
+              showToast('Failed to load saved items', 'error');
+              setSavedItemsLoading(false);
+            });
+        }
+      };
+
+      const openSavedItems = () => {
+        setShowSavedItemsModal(true);
+        loadSavedItems();
+      };
+
+      const handleDismissDuplicate = (cand) => {
+        if (!cand) return;
+        API.deduplication.dismiss({
+          sourceTypeA: cand.candidateA.sourceType,
+          itemIdA: cand.candidateA.id,
+          sourceTypeB: cand.candidateB.sourceType,
+          itemIdB: cand.candidateB.id
+        }).then(() => {
+          showToast('Duplicate suggestion dismissed', 'info');
+          setDuplicateCandidates(prev => prev.filter(c => c.candidateKey !== cand.candidateKey));
+        }).catch(() => {
+          showToast('Failed to dismiss duplicate', 'error');
+        });
+      };
+
+      const handleSingleSafeMerge = (cand) => {
+        if (!cand) return;
+        API.deduplication.merge({
+          primaryType: cand.candidateA.sourceType,
+          primaryId: cand.candidateA.id,
+          secondaryType: cand.candidateB.sourceType,
+          secondaryId: cand.candidateB.id,
+          nameResolution: 'KEEP_PRIMARY',
+          sellingPriceResolution: 'KEEP_PRIMARY',
+          purchasePriceResolution: 'KEEP_PRIMARY',
+          stockStrategy: 'ADD',
+          gstResolution: 'KEEP_PRIMARY',
+          unitResolution: 'KEEP_PRIMARY'
+        }).then(() => {
+          showToast('Item successfully merged', 'success');
+          setDuplicateCandidates(prev => prev.filter(c => c.candidateKey !== cand.candidateKey));
+          load();
+        }).catch(e => {
+          showToast(e.message || 'Merge failed', 'error');
+        });
+      };
+
+      const handleBatchSafeMerge = () => {
+        const safeCandidates = duplicateCandidates.filter(c => c.isSafe);
+        if (safeCandidates.length === 0) return;
+        setBatchMerging(true);
+        const merges = safeCandidates.map(c => ({
+          primaryType: c.candidateA.sourceType,
+          primaryId: c.candidateA.id,
+          secondaryType: c.candidateB.sourceType,
+          secondaryId: c.candidateB.id,
+          nameResolution: 'KEEP_PRIMARY',
+          sellingPriceResolution: 'KEEP_PRIMARY',
+          purchasePriceResolution: 'KEEP_PRIMARY',
+          stockStrategy: 'ADD',
+          gstResolution: 'KEEP_PRIMARY',
+          unitResolution: 'KEEP_PRIMARY'
+        }));
+        API.deduplication.batchMerge({ merges })
+          .then(res => {
+            showToast(`Merged ${res.successfulMerges || merges.length} safe items`, 'success');
+            loadDuplicates();
+            load();
+          })
+          .catch(() => {
+            showToast('Batch merge failed', 'error');
+          })
+          .finally(() => setBatchMerging(false));
+      };
+
+      const openConflictResolver = (cand) => {
+        setConflictCandidate(cand);
+        setConflictForm({
+          nameResolution: 'KEEP_PRIMARY',
+          sellingPriceResolution: 'KEEP_PRIMARY',
+          customSellingPrice: '',
+          purchasePriceResolution: 'KEEP_PRIMARY',
+          customPurchasePrice: '',
+          stockStrategy: 'ADD',
+          gstResolution: 'KEEP_PRIMARY',
+          unitResolution: 'KEEP_PRIMARY'
+        });
+        setShowConflictModal(true);
+      };
+
+      const handleConfirmConflictMerge = () => {
+        if (!conflictCandidate) return;
+        const payload = {
+          primaryType: conflictCandidate.candidateA.sourceType,
+          primaryId: conflictCandidate.candidateA.id,
+          secondaryType: conflictCandidate.candidateB.sourceType,
+          secondaryId: conflictCandidate.candidateB.id,
+          nameResolution: conflictForm.nameResolution,
+          sellingPriceResolution: conflictForm.sellingPriceResolution,
+          customSellingPrice: conflictForm.sellingPriceResolution === 'CUSTOM' ? parseFloat(conflictForm.customSellingPrice) : null,
+          purchasePriceResolution: conflictForm.purchasePriceResolution,
+          customPurchasePrice: conflictForm.purchasePriceResolution === 'CUSTOM' ? parseFloat(conflictForm.customPurchasePrice) : null,
+          stockStrategy: conflictForm.stockStrategy,
+          gstResolution: conflictForm.gstResolution,
+          unitResolution: conflictForm.unitResolution
+        };
+        API.deduplication.merge(payload)
+          .then(() => {
+            showToast('Resolved and merged successfully', 'success');
+            setShowConflictModal(false);
+            setConflictCandidate(null);
+            loadDuplicates();
+            load();
+          })
+          .catch(e => {
+            showToast(e.message || 'Merge failed', 'error');
+          });
+      };
+
+      const handlePromoteFromSaved = (savedItem) => {
+        setShowSavedItemsModal(false);
+        setEditItem(null);
+        setForm({
+          name: savedItem.name || '',
+          sku: '',
+          barcode: '',
+          category: savedItem.category || '',
+          itemType: 'GOODS',
+          price: savedItem.sellingPrice != null ? String(savedItem.sellingPrice) : '',
+          costPrice: '',
+          unit: savedItem.unit || 'pcs',
+          hsnCode: savedItem.hsnCode || '',
+          gstPercentage: savedItem.gstPercentage != null ? String(savedItem.gstPercentage) : '',
+          initialStock: '10',
+          minStockLevel: '5',
+          description: savedItem.description || ''
+        });
+        setShowModal(true);
+      };
+
       const load = useCallback(() => {
         setLoading(true);
         Promise.all([
@@ -18082,7 +18314,19 @@
               'Track live stock quantities, cost valuation, product catalog, and movement ledger.'
             )
           ),
-          React.createElement('div', { style: { display: 'flex', gap: 10 } },
+          React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+            React.createElement('button', {
+              id: 'btn-duplicates-merge',
+              className: 'btn btn-outline',
+              onClick: openDuplicates,
+              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(245, 158, 11, 0.08)', color: '#d97706', borderColor: 'rgba(245, 158, 11, 0.3)', fontWeight: 600 }
+            }, '🔍 Duplicates & Merge'),
+            React.createElement('button', {
+              id: 'btn-saved-items',
+              className: 'btn btn-outline',
+              onClick: openSavedItems,
+              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99, 102, 241, 0.08)', color: '#6366f1', borderColor: 'rgba(99, 102, 241, 0.3)', fontWeight: 600 }
+            }, '📑 Saved Items'),
             React.createElement('button', {
               className: 'btn btn-secondary',
               onClick: () => openSmartReorder(null),
@@ -18872,7 +19116,254 @@
           initialProductId: reorderInitialProductId,
           onClose: () => { setShowReorderModal(false); setReorderInitialProductId(null); },
           onSuccess: () => { load(); }
-        })
+        }),
+
+        // ════════════════════════════════════════════════════
+        // MODAL 6: Smart Duplicate Detection & Merge Modal
+        // ════════════════════════════════════════════════════
+        showDuplicatesModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowDuplicatesModal(false) },
+          React.createElement('div', { id: 'modal-duplicates-merge', className: 'modal', style: { maxWidth: 900, width: '96%', maxHeight: '90vh' }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { className: 'modal-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('span', { style: { fontSize: '1.4rem' } }, '🔍'),
+                React.createElement('div', null,
+                  React.createElement('div', { className: 'modal-title' }, 'Smart Duplicate Detection & Safe Merge'),
+                  React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
+                    'Identify and consolidate redundant products & saved items. Merges preserve historical invoice lines.'
+                  )
+                )
+              ),
+              React.createElement('button', { className: 'modal-close', onClick: () => setShowDuplicatesModal(false) }, '✕')
+            ),
+            React.createElement('div', { className: 'modal-body', style: { maxHeight: '72vh', overflowY: 'auto', padding: '16px 20px' } },
+              // Summary & 1-Click Action Bar
+              React.createElement('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 16px',
+                  background: 'var(--bg-hover, rgba(255,255,255,0.03))',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  flexWrap: 'wrap',
+                  gap: 10
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+                  React.createElement('span', { style: { fontWeight: 700 } }, `${duplicateCandidates.length} Candidates Found`),
+                  React.createElement('span', { className: 'badge', style: { background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 600 } }, `${duplicateCandidates.filter(c => c.isSafe).length} Safe Matches`),
+                  duplicateCandidates.filter(c => !c.isSafe).length > 0 && React.createElement('span', { className: 'badge', style: { background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', fontWeight: 600 } }, `${duplicateCandidates.filter(c => !c.isSafe).length} Require Review`)
+                ),
+                React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                  React.createElement('button', {
+                    className: 'btn btn-sm btn-ghost',
+                    onClick: loadDuplicates,
+                    disabled: duplicatesLoading
+                  }, duplicatesLoading ? 'Scanning...' : '🔄 Rescan'),
+                  duplicateCandidates.filter(c => c.isSafe).length > 0 && React.createElement('button', {
+                    id: 'btn-batch-safe-merge',
+                    className: 'btn btn-sm btn-primary',
+                    style: { background: '#10B981', borderColor: '#10B981', fontWeight: 600 },
+                    onClick: handleBatchSafeMerge,
+                    disabled: batchMerging
+                  }, batchMerging ? 'Merging...' : `⚡ 1-Click Merge ${duplicateCandidates.filter(c => c.isSafe).length} Safe Matches`)
+                )
+              ),
+
+              // Candidates List
+              duplicatesLoading ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' } }, 'Scanning active items for duplicates...') :
+              duplicateCandidates.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' } },
+                React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '🎉'),
+                React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' } }, 'No Duplicate Items Found'),
+                React.createElement('div', { style: { fontSize: '0.82rem', marginTop: 4 } }, 'All inventory products and saved items are distinct.')
+              ) :
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                duplicateCandidates.map((c) => {
+                  const itemA = c.candidateA;
+                  const itemB = c.candidateB;
+                  return React.createElement('div', {
+                    key: c.candidateKey,
+                    style: {
+                      padding: 14,
+                      background: 'var(--bg-card)',
+                      border: c.isSafe ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+                      borderRadius: 8,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10
+                    }
+                  },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                        React.createElement('span', {
+                          className: 'badge',
+                          style: {
+                            background: c.isSafe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                            color: c.isSafe ? '#10B981' : '#F59E0B',
+                            fontWeight: 700
+                          }
+                        }, `${c.similarityScore}% Match · ${c.isSafe ? 'Safe' : 'Conflict'}`)
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                        c.isSafe ? React.createElement('button', {
+                          className: 'btn btn-sm btn-primary',
+                          style: { fontSize: '0.78rem', padding: '4px 10px' },
+                          onClick: () => handleSingleSafeMerge(c)
+                        }, 'Merge') :
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-secondary',
+                          style: { fontSize: '0.78rem', padding: '4px 10px' },
+                          onClick: () => openConflictResolver(c)
+                        }, 'Resolve & Merge >'),
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-ghost',
+                          style: { fontSize: '0.78rem', padding: '4px 8px', color: 'var(--text-secondary)' },
+                          onClick: () => handleDismissDuplicate(c)
+                        }, 'Dismiss')
+                      )
+                    ),
+                    // Comparison Row
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'center' } },
+                      React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                          React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemA.name),
+                          React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemA.sourceType)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                          `Price: ${BillsoftUtils.formatCurrency(itemA.price || 0)} | Unit: ${itemA.unit || 'pcs'}${itemA.stockQuantity != null ? ` | Stock: ${itemA.stockQuantity}` : ''}`
+                        )
+                      ),
+                      React.createElement('span', { style: { color: 'var(--text-secondary)', fontWeight: 700 } }, '⟷'),
+                      React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                          React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemB.name),
+                          React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemB.sourceType)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                          `Price: ${BillsoftUtils.formatCurrency(itemB.price || 0)} | Unit: ${itemB.unit || 'pcs'}${itemB.stockQuantity != null ? ` | Stock: ${itemB.stockQuantity}` : ''}`
+                        )
+                      )
+                    ),
+                    // Explainable Reasons & Conflicts
+                    React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: '0.75rem' } },
+                      (c.reasons || []).map((r, ri) => React.createElement('span', { key: ri, style: { background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6', padding: '2px 8px', borderRadius: 4 } }, `✓ ${r}`)),
+                      (c.conflicts || []).map((cf, cfi) => React.createElement('span', { key: cfi, style: { background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', padding: '2px 8px', borderRadius: 4 } }, `! ${cf}`))
+                    )
+                  );
+                })
+              )
+            )
+          )
+        ),
+
+        // ════════════════════════════════════════════════════
+        // MODAL 7: Conflict Reconciliation Modal
+        // ════════════════════════════════════════════════════
+        showConflictModal && conflictCandidate && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowConflictModal(false) },
+          React.createElement('div', { className: 'modal', style: { maxWidth: 580, width: '92%' }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { className: 'modal-header' },
+              React.createElement('div', { className: 'modal-title' }, '⚖️ Reconcile Item Merge'),
+              React.createElement('button', { className: 'modal-close', onClick: () => setShowConflictModal(false) }, '✕')
+            ),
+            React.createElement('div', { className: 'modal-body', style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+              React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+                `Merging "${conflictCandidate.candidateB.name}" into "${conflictCandidate.candidateA.name}". Select preferred values for conflicting fields.`
+              ),
+
+              // Name Choice
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'Primary Name'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: conflictForm.nameResolution,
+                  onChange: e => setConflictForm(f => ({ ...f, nameResolution: e.target.value }))
+                },
+                  React.createElement('option', { value: 'KEEP_PRIMARY' }, `Keep Primary: "${conflictCandidate.candidateA.name}"`),
+                  React.createElement('option', { value: 'USE_SECONDARY' }, `Use Secondary: "${conflictCandidate.candidateB.name}"`)
+                )
+              ),
+
+              // Selling Price Choice
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'Selling Price'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: conflictForm.sellingPriceResolution,
+                  onChange: e => setConflictForm(f => ({ ...f, sellingPriceResolution: e.target.value }))
+                },
+                  React.createElement('option', { value: 'KEEP_PRIMARY' }, `Keep Primary: ${BillsoftUtils.formatCurrency(conflictCandidate.candidateA.price || 0)}`),
+                  React.createElement('option', { value: 'USE_SECONDARY' }, `Use Secondary: ${BillsoftUtils.formatCurrency(conflictCandidate.candidateB.price || 0)}`)
+                )
+              ),
+
+              // Stock Strategy
+              (conflictCandidate.candidateA.sourceType === 'PRODUCT' && conflictCandidate.candidateB.sourceType === 'PRODUCT') && React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'Stock Reconcile Strategy'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: conflictForm.stockStrategy,
+                  onChange: e => setConflictForm(f => ({ ...f, stockStrategy: e.target.value }))
+                },
+                  React.createElement('option', { value: 'ADD' }, `Sum Stocks: ${Number(conflictCandidate.candidateA.stockQuantity || 0) + Number(conflictCandidate.candidateB.stockQuantity || 0)} (Recommended)`),
+                  React.createElement('option', { value: 'KEEP_PRIMARY' }, `Keep Primary Stock: ${conflictCandidate.candidateA.stockQuantity || 0}`),
+                  React.createElement('option', { value: 'KEEP_SECONDARY' }, `Keep Secondary Stock: ${conflictCandidate.candidateB.stockQuantity || 0}`)
+                )
+              ),
+
+              // Action Buttons
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 } },
+                React.createElement('button', { className: 'btn btn-ghost', onClick: () => setShowConflictModal(false) }, 'Cancel'),
+                React.createElement('button', { className: 'btn btn-primary', onClick: handleConfirmConflictMerge }, 'Confirm & Merge')
+              )
+            )
+          )
+        ),
+
+        // ════════════════════════════════════════════════════
+        // MODAL 8: Saved / Uncatalogued Items Modal
+        // ════════════════════════════════════════════════════
+        showSavedItemsModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowSavedItemsModal(false) },
+          React.createElement('div', { id: 'modal-saved-items', className: 'modal', style: { maxWidth: 750, width: '94%', maxHeight: '85vh' }, onClick: e => e.stopPropagation() },
+            React.createElement('div', { className: 'modal-header' },
+              React.createElement('div', { className: 'modal-title' }, '📑 Saved / Uncatalogued Items'),
+              React.createElement('button', { className: 'modal-close', onClick: () => setShowSavedItemsModal(false) }, '✕')
+            ),
+            React.createElement('div', { className: 'modal-body', style: { maxHeight: '65vh', overflowY: 'auto' } },
+              savedItemsLoading ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 0' } }, 'Loading saved items...') :
+              savedItemsList.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 0', color: 'var(--text-secondary)' } }, 'No uncatalogued saved items found.') :
+              React.createElement('table', { className: 'table', style: { width: '100%', fontSize: '0.85rem' } },
+                React.createElement('thead', null,
+                  React.createElement('tr', null,
+                    React.createElement('th', null, 'Item Name'),
+                    React.createElement('th', null, 'Unit'),
+                    React.createElement('th', { style: { textAlign: 'right' } }, 'Last Price'),
+                    React.createElement('th', { style: { textAlign: 'center' } }, 'Billed Count'),
+                    React.createElement('th', { style: { textAlign: 'right' } }, 'Action')
+                  )
+                ),
+                React.createElement('tbody', null,
+                  savedItemsList.map(s => React.createElement('tr', { key: s.id },
+                    React.createElement('td', { style: { fontWeight: 600 } }, s.name),
+                    React.createElement('td', null, s.unit || 'pcs'),
+                    React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(s.sellingPrice || 0)),
+                    React.createElement('td', { style: { textAlign: 'center' } },
+                      React.createElement('span', { className: 'badge' }, `${s.usageCount || 1}x`)
+                    ),
+                    React.createElement('td', { style: { textAlign: 'right' } },
+                      React.createElement('button', {
+                        className: 'btn btn-xs btn-primary',
+                        style: { fontSize: '0.72rem' },
+                        onClick: () => handlePromoteFromSaved(s)
+                      }, '+ Add to Inventory')
+                    )
+                  ))
+                )
+              )
+            )
+          )
+        )
       );
     }
 

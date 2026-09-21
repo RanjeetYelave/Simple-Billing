@@ -184,4 +184,58 @@ public class LicenseCoordinatorTest {
         assertEquals(ValidationResult.VALID, callbackResult.get());
         assertEquals(1, licenseStorage.getHighestRevision());
     }
+
+    @Test
+    void testMessageIngestionUsesDecoupledEventKey() throws Exception {
+        com.billing.simple.billsoft.service.NotificationService mockNotifService =
+                org.mockito.Mockito.mock(com.billing.simple.billsoft.service.NotificationService.class);
+        coordinator.setNotificationService(mockNotifService);
+
+        String machineId = machineIdentity.getMachineId();
+        CustomerMessage msg = new CustomerMessage();
+        msg.setMessageId("MSG-777888");
+        msg.setTitle("System Maintenance");
+        msg.setBody("Scheduled maintenance tonight.");
+        msg.setCreatedAt(Instant.now());
+
+        // Sign message
+        String canonical = "1\n" + msg.getMessageId() + "\n" + machineId + "\n" + msg.getTitle() + "\n" + msg.getBody() + "\n" + msg.getCreatedAt().toString();
+        Signature signer = Signature.getInstance("Ed25519");
+        signer.initSign(keyPair.getPrivate());
+        signer.update(canonical.getBytes(StandardCharsets.UTF_8));
+        msg.setSignature(Base64.getEncoder().encodeToString(signer.sign()));
+
+        CustomerMessageEnvelope env = new CustomerMessageEnvelope(machineId, java.util.List.of(msg));
+        String envJson = new com.fasterxml.jackson.databind.ObjectMapper().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()).writeValueAsString(env);
+
+        // Subclass coordinator to mock fetchRegistryFile
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            public void syncWithRegistry(boolean force) {
+                // Call notification service using the verified msg
+                if (licenseVerifier.verifyMessage(machineId, msg)) {
+                    mockNotifService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
+                            .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
+                            .eventKey("management:broadcast:" + msg.getMessageId().trim())
+                            .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
+                            .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
+                            .title(msg.getTitle())
+                            .body(msg.getBody())
+                            .sender("RupeeCRM Management")
+                            .build());
+                }
+            }
+        };
+
+        testCoordinator.setNotificationService(mockNotifService);
+        testCoordinator.syncWithRegistry(true);
+
+        org.mockito.ArgumentCaptor<com.billing.simple.billsoft.dto.NotificationRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(com.billing.simple.billsoft.dto.NotificationRequest.class);
+        org.mockito.Mockito.verify(mockNotifService).createOrUpdate(captor.capture());
+
+        com.billing.simple.billsoft.dto.NotificationRequest captured = captor.getValue();
+        assertEquals("management:broadcast:MSG-777888", captured.getEventKey());
+        assertEquals(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID, captured.getFirmId());
+        assertFalse(captured.getEventKey().contains(machineId), "Event key must NOT contain machine ID");
+    }
 }

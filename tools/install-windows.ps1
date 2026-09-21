@@ -416,6 +416,25 @@ try {
     }
 
     # --------------------------------------------------------------------------
+    # 10b. Configure Local Hostname Mapping (management.rupeecrm.local)
+    # --------------------------------------------------------------------------
+    Write-Step "Configuring local hostname mapping (management.rupeecrm.local)..."
+    try {
+        $hostsPath = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
+        if (Test-Path $hostsPath) {
+            $hostsContent = Get-Content -Path $hostsPath -Raw -ErrorAction SilentlyContinue
+            if ($hostsContent -and -not ($hostsContent -match "management\.rupeecrm\.local")) {
+                Add-Content -Path $hostsPath -Value "`r`n127.0.0.1 management.rupeecrm.local" -ErrorAction SilentlyContinue
+                Write-Success "Configured management.rupeecrm.local in hosts file"
+            } elseif ($hostsContent -match "management\.rupeecrm\.local") {
+                Write-Success "Local hostname management.rupeecrm.local already configured"
+            }
+        }
+    } catch {
+        Write-WarnMsg "Could not update hosts file (will fallback to 127.0.0.1/localhost): $($_.Exception.Message)"
+    }
+
+    # --------------------------------------------------------------------------
     # 11. Launch Application
     # --------------------------------------------------------------------------
     if (-not $SkipLaunch) {
@@ -434,7 +453,8 @@ try {
     Write-Host "           RupeeCRM Installation Complete!            " -ForegroundColor White
     Write-Host "======================================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Application URL : http://127.0.0.1:28080/ (or http://management.rupeecrm.local:28080/)" -ForegroundColor Cyan
+    Write-Host "Canonical URL   : http://management.rupeecrm.local:28080/" -ForegroundColor Cyan
+    Write-Host "Fallback URL    : http://127.0.0.1:28080/ (or http://localhost:28080/)" -ForegroundColor Gray
     Write-Host "Installed To    : $InstallDir" -ForegroundColor Gray
     Write-Host "Customer Data   : $DataDir" -ForegroundColor Gray
     Write-Host "Tray Icon       : Active in Windows Notification Area (near clock)" -ForegroundColor Gray

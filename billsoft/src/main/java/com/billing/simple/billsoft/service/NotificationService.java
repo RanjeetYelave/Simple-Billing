@@ -552,12 +552,10 @@ public class NotificationService {
         try {
             LicenseStorage storage = new LicenseStorage(LicensingConfig.getStorageDirectory());
             List<CustomerMessage> diskMsgs = storage.loadInboxMessages();
-            MachineIdentity mid = new MachineIdentity(LicensingConfig.getStorageDirectory());
-            String machineId = mid.getMachineId();
 
             for (CustomerMessage cm : diskMsgs) {
                 if (cm.getMessageId() == null || cm.getMessageId().isBlank()) continue;
-                String eventKey = "management:broadcast:" + machineId + ":" + cm.getMessageId().trim();
+                String eventKey = "management:broadcast:" + cm.getMessageId().trim();
                 if (!notificationRepository.existsByFirmIdAndEventKey(Notification.GLOBAL_FIRM_ID, eventKey)) {
                     Notification n = Notification.builder()
                             .firmId(Notification.GLOBAL_FIRM_ID)
@@ -575,6 +573,87 @@ public class NotificationService {
                 }
             }
         } catch (Exception ignored) {
+        }
+
+        // 3. Consolidate legacy management broadcast duplicates (machine-id decoupled)
+        try {
+            List<Notification> broadcasts = notificationRepository.findByFirmIdAndEventKeyStartingWith(
+                    Notification.GLOBAL_FIRM_ID, "management:broadcast:");
+            if (broadcasts != null && !broadcasts.isEmpty()) {
+                java.util.Map<String, List<Notification>> grouped = new java.util.LinkedHashMap<>();
+                for (Notification n : broadcasts) {
+                    if (n.getEventKey() == null) continue;
+                    String rawKey = n.getEventKey().trim();
+                    String rest = rawKey.substring("management:broadcast:".length());
+                    String msgId;
+                    if (rest.contains(":")) {
+                        // Legacy format: <machineId>:<messageId>
+                        msgId = rest.substring(rest.lastIndexOf(':') + 1).trim();
+                    } else {
+                        // Canonical format: <messageId>
+                        msgId = rest.trim();
+                    }
+                    if (!msgId.isBlank()) {
+                        grouped.computeIfAbsent(msgId, k -> new java.util.ArrayList<>()).add(n);
+                    }
+                }
+
+                for (java.util.Map.Entry<String, List<Notification>> entry : grouped.entrySet()) {
+                    String msgId = entry.getKey();
+                    List<Notification> list = entry.getValue();
+                    String canonicalKey = "management:broadcast:" + msgId;
+
+                    if (list.size() == 1 && canonicalKey.equals(list.get(0).getEventKey())) {
+                        continue; // Already single canonical row
+                    }
+
+                    // Find if any item already has the canonical key
+                    Notification canonical = null;
+                    for (Notification n : list) {
+                        if (canonicalKey.equals(n.getEventKey())) {
+                            canonical = n;
+                            break;
+                        }
+                    }
+
+                    if (canonical == null) {
+                        canonical = list.get(0);
+                    }
+
+                    // Best status precedence: DISMISSED > ACTIONED > READ > SNOOZED > UNREAD
+                    NotificationStatus bestStatus = canonical.getStatus();
+                    for (Notification n : list) {
+                        if (statusRank(n.getStatus()) > statusRank(bestStatus)) {
+                            bestStatus = n.getStatus();
+                        }
+                    }
+
+                    canonical.setEventKey(canonicalKey);
+                    canonical.setStatus(bestStatus != null ? bestStatus : NotificationStatus.UNREAD);
+                    canonical.setUpdatedAt(LocalDateTime.now());
+                    notificationRepository.save(canonical);
+
+                    for (Notification n : list) {
+                        if (n.getId() != null && !n.getId().equals(canonical.getId())) {
+                            notificationRepository.delete(n);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Legacy broadcast duplicate consolidation warning: {}", e.getMessage());
+        }
+    }
+
+    private int statusRank(NotificationStatus status) {
+        if (status == null) return 0;
+        switch (status) {
+            case DISMISSED: return 5;
+            case ACTIONED: return 4;
+            case READ: return 3;
+            case SNOOZED: return 2;
+            case UNREAD:
+            default: return 1;
         }
     }
 

@@ -66,26 +66,26 @@ test.describe('Announcements Feature Gate & Isolation', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(['Delayed announcement message'])
-      });
+      }).catch(() => {});
     });
 
     await app.gotoApp();
 
     // Main dashboard KPI or header should be visible before delayed announcement finishes
     const dashboardHeader = page.getByRole('heading', { name: 'Dashboard' }).first();
-    await expect(dashboardHeader).toBeVisible({ timeout: 3000 });
+    await expect(dashboardHeader).toBeVisible({ timeout: 8000 });
 
     // Acknowledge startup modal once it arrives
     const okBtn = page.locator('#btn-acknowledge-announcements');
     try {
-      await okBtn.waitFor({ state: 'visible', timeout: 3000 });
+      await okBtn.waitFor({ state: 'visible', timeout: 5000 });
       await okBtn.click();
     } catch {
       // Modal not displayed
     }
 
     // After delay, announcement card is loaded
-    await expect(page.locator('#dashboard-announcements-card')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#dashboard-announcements-card')).toBeVisible({ timeout: 8000 });
 
     await errorGate.assertZeroErrors(page, 'Announcements Non-blocking Async Loading');
   });

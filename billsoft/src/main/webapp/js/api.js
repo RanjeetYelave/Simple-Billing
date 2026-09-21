@@ -921,5 +921,19 @@ const API = {
   // ─── Global Announcements ───
   announcements: {
     get: (force = false) => API._json(force ? '/api/announcements?force=true' : '/api/announcements')
+  },
+
+  // ─── Saved / Uncatalogued Items & Deduplication ───
+  savedItems: {
+    getUnifiedAutocomplete: (q) => API._json(API._qs('/api/items/autocomplete', { q })),
+    list: () => API._json(API._qs('/api/saved-items')),
+    promote: (id, payload) => API._json(API._qs(`/api/saved-items/${id}/promote`), { method: 'POST', body: payload }),
+    delete: (id) => API._json(API._qs(`/api/saved-items/${id}`), { method: 'DELETE' })
+  },
+  deduplication: {
+    getCandidates: () => API._json(API._qs('/api/items/duplicates')),
+    dismiss: (payload) => API._json(API._qs('/api/items/duplicates/dismiss'), { method: 'POST', body: payload }),
+    merge: (payload) => API._json(API._qs('/api/items/merge'), { method: 'POST', body: payload }),
+    batchMerge: (payload) => API._json(API._qs('/api/items/merge/batch'), { method: 'POST', body: payload })
   }
 };

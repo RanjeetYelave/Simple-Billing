@@ -78,6 +78,14 @@ public class Product {
     @Column(nullable = false)
     private Long firmId;
 
+    // Optional link if merged to another canonical Product
+    @Column(name = "canonical_product_id")
+    private Long canonicalProductId;
+
+    @Builder.Default
+    @Column(name = "is_archived")
+    private Boolean isArchived = false;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -142,6 +150,10 @@ public class Product {
     public void setPreferredPartyId(Long preferredPartyId) { this.preferredPartyId = preferredPartyId; }
     public Long getFirmId() { return firmId; }
     public void setFirmId(Long firmId) { this.firmId = firmId; }
+    public Long getCanonicalProductId() { return canonicalProductId; }
+    public void setCanonicalProductId(Long canonicalProductId) { this.canonicalProductId = canonicalProductId; }
+    public Boolean getIsArchived() { return isArchived; }
+    public void setIsArchived(Boolean isArchived) { this.isArchived = isArchived; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
@@ -168,6 +180,8 @@ public class Product {
         private BigDecimal gstPercentage;
         private Long preferredPartyId;
         private Long firmId;
+        private Long canonicalProductId;
+        private Boolean isArchived = false;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -187,6 +201,8 @@ public class Product {
         public ProductBuilder gstPercentage(BigDecimal gstPercentage) { this.gstPercentage = gstPercentage; return this; }
         public ProductBuilder preferredPartyId(Long preferredPartyId) { this.preferredPartyId = preferredPartyId; return this; }
         public ProductBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
+        public ProductBuilder canonicalProductId(Long canonicalProductId) { this.canonicalProductId = canonicalProductId; return this; }
+        public ProductBuilder isArchived(Boolean isArchived) { this.isArchived = isArchived; return this; }
         public ProductBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProductBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
@@ -208,6 +224,8 @@ public class Product {
             p.gstPercentage = this.gstPercentage;
             p.preferredPartyId = this.preferredPartyId;
             p.firmId = this.firmId;
+            p.canonicalProductId = this.canonicalProductId;
+            p.isArchived = this.isArchived != null ? this.isArchived : false;
             p.createdAt = this.createdAt;
             p.updatedAt = this.updatedAt;
             return p;

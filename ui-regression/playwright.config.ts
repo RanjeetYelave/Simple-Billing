@@ -17,7 +17,7 @@ export default defineConfig({
     ['html', { open: 'never', outputFolder: 'playwright-report' }]
   ],
   use: {
-    baseURL: process.env.BASE_URL || 'http://127.0.0.1:28080',
+    baseURL: process.env.BASE_URL || 'http://management.rupeecrm.local:28080',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

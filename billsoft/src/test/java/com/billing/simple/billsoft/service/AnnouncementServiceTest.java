@@ -149,18 +149,43 @@ public class AnnouncementServiceTest {
     }
 
     @Test
+    public void testDefaultRepositoryUrlsTargetDedicatedAnnouncementsRepo() {
+        assertEquals("https://raw.githubusercontent.com/RanjeetYelave/announcements/main/announcements.txt",
+                AnnouncementService.DEFAULT_RAW_URL);
+        assertEquals("https://api.github.com/repos/RanjeetYelave/announcements/contents/announcements.txt",
+                AnnouncementService.DEFAULT_API_URL);
+        assertFalse(AnnouncementService.DEFAULT_RAW_URL.contains("license-registry"), "Must not point to license-registry repo");
+        assertFalse(AnnouncementService.DEFAULT_API_URL.contains("license-registry"), "Must not point to license-registry repo");
+    }
+
+    @Test
     public void testForceRefreshBypassesCooldownAndTTL() {
         List<String> staleData = List.of("Stale Announcement");
         // Fresh cache (1 hour old)
         announcementService.setMemoryCacheForTesting(staleData, Instant.now().minus(Duration.ofHours(1)));
         announcementService.setLastFailureTimeForTesting(Instant.now().minus(Duration.ofMinutes(5)));
 
-        // Normal getAnnouncements returns stale cache
+        // Normal getAnnouncements returns stale cache without making requests
         assertEquals(1, announcementService.getAnnouncements(false).size());
         assertEquals("Stale Announcement", announcementService.getAnnouncements(false).get(0));
 
         // getAnnouncements(true) attempts live fetch
         List<String> result = announcementService.getAnnouncements(true);
         assertNotNull(result);
+    }
+
+    @Test
+    public void testLegacyArrayCacheFileMigration() throws Exception {
+        // Write a legacy JSON array to cache file
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        List<String> legacyList = List.of("Legacy notice 1", "Legacy notice 2");
+        mapper.writeValue(testCacheFile, legacyList);
+
+        // Instantiating a new service should parse the legacy array seamlessly
+        AnnouncementService migratedService = new AnnouncementService(testCacheFile);
+        List<String> loaded = migratedService.getAnnouncements();
+        assertEquals(2, loaded.size());
+        assertEquals("Legacy notice 1", loaded.get(0));
+        assertEquals("Legacy notice 2", loaded.get(1));
     }
 }

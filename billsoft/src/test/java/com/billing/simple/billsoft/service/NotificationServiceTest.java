@@ -248,4 +248,124 @@ class NotificationServiceTest {
         Reminder updatedReminder = reminderRepository.findById(reminder.getId()).orElseThrow();
         assertThat(updatedReminder.isCompleted()).isTrue();
     }
+
+    @Test
+    @DisplayName("Should maintain exactly one global notification for same broadcast messageId across repeated ingestions")
+    void testGlobalBroadcastDeduplicationAndIdempotency() {
+        String msgId = "MSG-1789702831414";
+        String eventKey = "management:broadcast:" + msgId;
+
+        for (int i = 0; i < 10; i++) {
+            NotificationRequest req = NotificationRequest.builder()
+                    .firmId(Notification.GLOBAL_FIRM_ID)
+                    .eventKey(eventKey)
+                    .category(NotificationCategory.LICENSING)
+                    .priority(NotificationPriority.HIGH)
+                    .title("License Downgraded")
+                    .body("Due to violation")
+                    .sender("RupeeCRM Management")
+                    .build();
+            Notification n = notificationService.createOrUpdate(req);
+            assertThat(n.getFirmId()).isEqualTo(Notification.GLOBAL_FIRM_ID);
+            assertThat(n.getEventKey()).isEqualTo(eventKey);
+        }
+
+        List<Notification> globalList = notificationRepository.findByFirmIdAndEventKeyStartingWith(
+                Notification.GLOBAL_FIRM_ID, "management:broadcast:");
+        assertThat(globalList).hasSize(1);
+        assertThat(globalList.get(0).getEventKey()).isEqualTo(eventKey);
+    }
+
+    @Test
+    @DisplayName("Different broadcast messageIds must remain distinct global notifications")
+    void testDifferentBroadcastMessageIdsRemainDistinct() {
+        NotificationRequest req1 = NotificationRequest.builder()
+                .firmId(Notification.GLOBAL_FIRM_ID)
+                .eventKey("management:broadcast:MSG-AAA")
+                .category(NotificationCategory.LICENSING)
+                .priority(NotificationPriority.HIGH)
+                .title("Notice A")
+                .body("Body A")
+                .build();
+
+        NotificationRequest req2 = NotificationRequest.builder()
+                .firmId(Notification.GLOBAL_FIRM_ID)
+                .eventKey("management:broadcast:MSG-BBB")
+                .category(NotificationCategory.LICENSING)
+                .priority(NotificationPriority.HIGH)
+                .title("Notice B")
+                .body("Body B")
+                .build();
+
+        notificationService.createOrUpdate(req1);
+        notificationService.createOrUpdate(req2);
+
+        List<Notification> globalList = notificationRepository.findByFirmIdAndEventKeyStartingWith(
+                Notification.GLOBAL_FIRM_ID, "management:broadcast:");
+        assertThat(globalList).hasSize(2);
+        assertThat(globalList).extracting(Notification::getEventKey)
+                .containsExactlyInAnyOrder("management:broadcast:MSG-AAA", "management:broadcast:MSG-BBB");
+    }
+
+    @Test
+    @DisplayName("Legacy duplicate rows with different machine IDs should consolidate safely and idempotently")
+    void testLegacyDuplicateConsolidation() {
+        // Insert 3 legacy duplicate rows with different machine IDs
+        Notification legacy1 = Notification.builder()
+                .firmId(Notification.GLOBAL_FIRM_ID)
+                .eventKey("management:broadcast:SFCK-RDJR-12AD-JXY2:MSG-999")
+                .category(NotificationCategory.LICENSING)
+                .priority(NotificationPriority.HIGH)
+                .title("License Downgraded")
+                .body("Due to violation")
+                .status(NotificationStatus.UNREAD)
+                .createdAt(LocalDateTime.now().minusDays(2))
+                .updatedAt(LocalDateTime.now().minusDays(2))
+                .build();
+
+        Notification legacy2 = Notification.builder()
+                .firmId(Notification.GLOBAL_FIRM_ID)
+                .eventKey("management:broadcast:T578-SFHA-E6RX-DGEW:MSG-999")
+                .category(NotificationCategory.LICENSING)
+                .priority(NotificationPriority.HIGH)
+                .title("License Downgraded")
+                .body("Due to violation")
+                .status(NotificationStatus.READ) // User read this one
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .updatedAt(LocalDateTime.now().minusDays(1))
+                .build();
+
+        Notification legacy3 = Notification.builder()
+                .firmId(Notification.GLOBAL_FIRM_ID)
+                .eventKey("management:broadcast:Z3CS-4BVX-G2V0-MTKT:MSG-999")
+                .category(NotificationCategory.LICENSING)
+                .priority(NotificationPriority.HIGH)
+                .title("License Downgraded")
+                .body("Due to violation")
+                .status(NotificationStatus.UNREAD)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        notificationRepository.saveAll(List.of(legacy1, legacy2, legacy3));
+        assertThat(notificationRepository.findByFirmIdAndEventKeyStartingWith(Notification.GLOBAL_FIRM_ID, "management:broadcast:")).hasSize(3);
+
+        // Run migration / consolidation
+        notificationService.migrateLegacyData();
+
+        List<Notification> afterCleanup = notificationRepository.findByFirmIdAndEventKeyStartingWith(
+                Notification.GLOBAL_FIRM_ID, "management:broadcast:MSG-999");
+        assertThat(afterCleanup).hasSize(1);
+        assertThat(afterCleanup.get(0).getEventKey()).isEqualTo("management:broadcast:MSG-999");
+        assertThat(afterCleanup.get(0).getStatus()).isEqualTo(NotificationStatus.READ); // Preserved best status
+
+        // Re-run migration to verify idempotency
+        notificationService.migrateLegacyData();
+
+        List<Notification> afterSecondRun = notificationRepository.findByFirmIdAndEventKeyStartingWith(
+                Notification.GLOBAL_FIRM_ID, "management:broadcast:MSG-999");
+        assertThat(afterSecondRun).hasSize(1);
+        assertThat(afterSecondRun.get(0).getEventKey()).isEqualTo("management:broadcast:MSG-999");
+        assertThat(afterSecondRun.get(0).getStatus()).isEqualTo(NotificationStatus.READ);
+    }
 }

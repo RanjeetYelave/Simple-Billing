@@ -248,7 +248,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                                 try {
                                     notificationService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
                                             .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
-                                            .eventKey("management:broadcast:" + machineId + ":" + msg.getMessageId().trim())
+                                            .eventKey("management:broadcast:" + msg.getMessageId().trim())
                                             .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
                                             .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
                                             .title(msg.getTitle() != null ? msg.getTitle() : "Announcement")

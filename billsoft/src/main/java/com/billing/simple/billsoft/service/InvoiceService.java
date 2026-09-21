@@ -61,6 +61,7 @@ public class InvoiceService {
     private final SalesReturnRepository salesReturnRepo;
     private final SalesReturnItemRepository salesReturnItemRepo;
     private final InvoiceCalculationEngine engine;
+    private SavedItemService savedItemService;
 
     // scales
     private static final int SCALE = 2;
@@ -78,7 +79,8 @@ public class InvoiceService {
             InvoicePaymentRepository invoicePaymentRepo,
             AppConfigRepository appConfigRepo,
             SalesReturnRepository salesReturnRepo,
-            SalesReturnItemRepository salesReturnItemRepo) {
+            SalesReturnItemRepository salesReturnItemRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) SavedItemService savedItemService) {
         this.invoiceRepo = invoiceRepo;
         this.invoiceItemRepo = invoiceItemRepo;
         this.customerRepo = customerRepo;
@@ -88,6 +90,7 @@ public class InvoiceService {
         this.appConfigRepo = appConfigRepo;
         this.salesReturnRepo = salesReturnRepo;
         this.salesReturnItemRepo = salesReturnItemRepo;
+        this.savedItemService = savedItemService;
         this.engine = new InvoiceCalculationEngine();
     }
 
@@ -629,6 +632,11 @@ public class InvoiceService {
             }
         }
 
+        // Record uncatalogued line items into SavedItems (fail-safe auxiliary hook)
+        if (savedItemService != null) {
+            savedItemService.recordOrUpdateFromInvoice(saved);
+        }
+
         return saved;
     }
 
@@ -830,7 +838,14 @@ public class InvoiceService {
         // Delegate to engine
         Invoice calculated = engine.calculate(existing, cust, products, engineReq, true);
 
-        return invoiceRepo.save(calculated);
+        Invoice saved = invoiceRepo.save(calculated);
+
+        // Record uncatalogued line items into SavedItems (fail-safe auxiliary hook)
+        if (savedItemService != null) {
+            savedItemService.recordOrUpdateFromInvoice(saved);
+        }
+
+        return saved;
     }
 
     private InvoiceRequest buildInvoiceRequestFromExistingInvoice(Invoice existing) {

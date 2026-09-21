@@ -4,6 +4,7 @@ import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.CustomerRepository;
+import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.service.FirmDetailsService;
 import com.billing.simple.billsoft.service.InvoicePdfService;
 import com.billing.simple.billsoft.service.InvoiceService;
@@ -13,21 +14,34 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 @Tag("regression")
 @Tag("integration")
 @DisplayName("Invoice & Quotation PDF Generation Regression Tests")
 class InvoicePdfGenerationRegressionTest {
+
+    @Autowired
+    private MockMvc mockMvc;
 
     @Autowired
     private InvoicePdfService pdfService;
@@ -40,6 +54,9 @@ class InvoicePdfGenerationRegressionTest {
 
     @Autowired
     private CustomerRepository customerRepo;
+
+    @Autowired
+    private InvoiceRepository invoiceRepo;
 
     @Autowired
     private FirmDetailsService firmDetailsService;
@@ -130,5 +147,90 @@ class InvoicePdfGenerationRegressionTest {
         assertThat(pdfBytes.length).isGreaterThan(1000);
         String header = new String(pdfBytes, 0, Math.min(pdfBytes.length, 8), StandardCharsets.US_ASCII);
         assertThat(header).startsWith("%PDF-");
+    }
+
+    @Test
+    @DisplayName("Real HTTP endpoint GET /api/invoices/{id}/pdf?size=A4 should return HTTP 200 and valid PDF for positive total")
+    void shouldDownloadPdfViaHttpEndpointWithPositiveInvoice() throws Exception {
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem it1 = new InvoiceRequestItem();
+        it1.setProductId(testProduct.getId());
+        it1.setQty(1);
+        it1.setPricePerUnit(BigDecimal.valueOf(1250.00));
+        it1.setGstPercent(BigDecimal.valueOf(18.00));
+        req.setItems(List.of(it1));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+
+        MvcResult result = mockMvc.perform(get("/api/invoices/" + invoice.getId() + "/pdf")
+                        .param("size", "A4")
+                        .header("X-Firm-Id", testFirmId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=invoice-" + invoice.getInvoiceNumber() + ".pdf"))
+                .andReturn();
+
+        byte[] body = result.getResponse().getContentAsByteArray();
+        assertThat(body).isNotNull().isNotEmpty();
+        String header = new String(body, 0, Math.min(body.length, 5), StandardCharsets.US_ASCII);
+        assertThat(header).startsWith("%PDF");
+    }
+
+    @Test
+    @DisplayName("Real HTTP endpoint GET /api/invoices/{id}/pdf?size=A4 should return HTTP 200 and valid PDF for negative total")
+    void shouldDownloadPdfViaHttpEndpointWithNegativeTotalInvoice() throws Exception {
+        Invoice negInv = new Invoice();
+        negInv.setFirmId(testFirmId);
+        negInv.setCustomer(testCustomer);
+        negInv.setStatus(InvoiceStatus.FINAL);
+        negInv.setInvoiceNumber("INV-NEG-1001");
+        negInv.setInvoiceDate(LocalDateTime.now());
+        negInv.setTotalAmount(new BigDecimal("-1250.00"));
+        negInv.setSubtotalWithoutTax(new BigDecimal("-1250.00"));
+        negInv.setTotalDiscount(BigDecimal.ZERO);
+        negInv.setTotalTax(BigDecimal.ZERO);
+        negInv = invoiceRepo.save(negInv);
+
+        MvcResult result = mockMvc.perform(get("/api/invoices/" + negInv.getId() + "/pdf")
+                        .param("size", "A4")
+                        .header("X-Firm-Id", testFirmId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=invoice-INV-NEG-1001.pdf"))
+                .andReturn();
+
+        byte[] body = result.getResponse().getContentAsByteArray();
+        assertThat(body).isNotNull().isNotEmpty();
+        String header = new String(body, 0, Math.min(body.length, 5), StandardCharsets.US_ASCII);
+        assertThat(header).startsWith("%PDF");
+    }
+
+    @Test
+    @DisplayName("Real HTTP endpoint GET /api/invoices/{id}/pdf?size=A4 should return HTTP 200 and valid PDF for zero total")
+    void shouldDownloadPdfViaHttpEndpointWithZeroTotalInvoice() throws Exception {
+        Invoice zeroInv = new Invoice();
+        zeroInv.setFirmId(testFirmId);
+        zeroInv.setCustomer(testCustomer);
+        zeroInv.setStatus(InvoiceStatus.FINAL);
+        zeroInv.setInvoiceNumber("INV-ZERO-1001");
+        zeroInv.setInvoiceDate(LocalDateTime.now());
+        zeroInv.setTotalAmount(BigDecimal.ZERO);
+        zeroInv = invoiceRepo.save(zeroInv);
+
+        MvcResult result = mockMvc.perform(get("/api/invoices/" + zeroInv.getId() + "/pdf")
+                        .param("size", "A4")
+                        .header("X-Firm-Id", testFirmId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andReturn();
+
+        byte[] body = result.getResponse().getContentAsByteArray();
+        assertThat(body).isNotNull().isNotEmpty();
+        String header = new String(body, 0, Math.min(body.length, 5), StandardCharsets.US_ASCII);
+        assertThat(header).startsWith("%PDF");
     }
 }

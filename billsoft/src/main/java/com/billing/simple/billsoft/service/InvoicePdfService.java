@@ -687,11 +687,14 @@ public class InvoicePdfService {
 
     public static String numberToWords(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) return "Zero Rupees only";
-        long wholePart = amount.setScale(0, RoundingMode.FLOOR).longValue();
-        int decimalPart = amount.remainder(BigDecimal.ONE).movePointRight(2).abs().intValue();
+
+        boolean isNegative = amount.signum() < 0;
+        BigDecimal absAmount = amount.abs();
+        long wholePart = absAmount.setScale(0, RoundingMode.FLOOR).longValue();
+        int decimalPart = absAmount.remainder(BigDecimal.ONE).movePointRight(2).setScale(0, RoundingMode.FLOOR).intValue();
 
         String words = wholePart == 0 ? "Zero" : convertToIndianWords(wholePart);
-        String result = words + " Rupees";
+        String result = (isNegative ? "Negative " : "") + words + " Rupees";
         if (decimalPart > 0) {
             result += " and " + convertToIndianWords(decimalPart) + " Paise";
         }
@@ -699,7 +702,10 @@ public class InvoicePdfService {
         return result;
     }
 
-    private static String convertToIndianWords(long n) {
+    public static String convertToIndianWords(long n) {
+        if (n < 0) {
+            return "Negative " + convertToIndianWords(-n);
+        }
         String[] units = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
                 "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen",
                 "Eighteen", "Nineteen"};

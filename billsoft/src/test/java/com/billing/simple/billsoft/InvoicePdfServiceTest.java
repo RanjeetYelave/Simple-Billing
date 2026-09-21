@@ -86,10 +86,10 @@ public class InvoicePdfServiceTest {
 
         int pages = reader.getNumberOfPages();
         for (int i = 1; i <= pages; i++) {
-            text.append(extractor.getTextFromPage(i));
+            text.append(extractor.getTextFromPage(i)).append(" ");
         }
         reader.close();
-        return text.toString();
+        return text.toString().replaceAll("\\s+", " ");
     }
 
     @Test
@@ -210,5 +210,177 @@ public class InvoicePdfServiceTest {
         PdfReader massiveA5Reader = new PdfReader(massiveA5);
         assertThat(massiveA5Reader.getNumberOfPages()).isGreaterThan(massiveA4Reader.getNumberOfPages());
         massiveA5Reader.close();
+    }
+
+    @Test
+    void directNumberToWordsTests() {
+        // 1. Positive amount
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("1250.00")))
+                .isEqualTo("One Thousand Two Hundred Fifty Rupees only");
+
+        // 2. Zero & Null
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("0.00")))
+                .isEqualTo("Zero Rupees only");
+        assertThat(InvoicePdfService.numberToWords(BigDecimal.ZERO))
+                .isEqualTo("Zero Rupees only");
+        assertThat(InvoicePdfService.numberToWords(null))
+                .isEqualTo("Zero Rupees only");
+
+        // 3. Negative amount
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-1250.00")))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty Rupees only");
+
+        // 4. Negative decimal amount
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-1250.75")))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty Rupees and Seventy Five Paise only");
+
+        // 5. Large positive amount
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("15000000.50")))
+                .isEqualTo("One Crore Fifty Lakh Rupees and Fifty Paise only");
+
+        // 6. Large negative amount within supported range
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-15000000.50")))
+                .isEqualTo("Negative One Crore Fifty Lakh Rupees and Fifty Paise only");
+
+        // 7. Fractional amounts around rounding boundaries
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("1250.49")))
+                .isEqualTo("One Thousand Two Hundred Fifty Rupees and Forty Nine Paise only");
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("1250.50")))
+                .isEqualTo("One Thousand Two Hundred Fifty Rupees and Fifty Paise only");
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("1250.99")))
+                .isEqualTo("One Thousand Two Hundred Fifty Rupees and Ninety Nine Paise only");
+
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-1250.49")))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty Rupees and Forty Nine Paise only");
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-1250.50")))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty Rupees and Fifty Paise only");
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-1250.99")))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty Rupees and Ninety Nine Paise only");
+
+        assertThat(InvoicePdfService.numberToWords(new BigDecimal("-0.50")))
+                .isEqualTo("Negative Zero Rupees and Fifty Paise only");
+    }
+
+    @Test
+    void directConvertToIndianWordsTests() {
+        assertThat(InvoicePdfService.convertToIndianWords(1250L))
+                .isEqualTo("One Thousand Two Hundred Fifty");
+        assertThat(InvoicePdfService.convertToIndianWords(0L))
+                .isEqualTo("");
+        assertThat(InvoicePdfService.convertToIndianWords(-1250L))
+                .isEqualTo("Negative One Thousand Two Hundred Fifty");
+        assertThat(InvoicePdfService.convertToIndianWords(15000000L))
+                .isEqualTo("One Crore Fifty Lakh");
+        assertThat(InvoicePdfService.convertToIndianWords(-15000000L))
+                .isEqualTo("Negative One Crore Fifty Lakh");
+        assertThat(InvoicePdfService.convertToIndianWords(99L))
+                .isEqualTo("Ninety Nine");
+        assertThat(InvoicePdfService.convertToIndianWords(100L))
+                .isEqualTo("One Hundred");
+        assertThat(InvoicePdfService.convertToIndianWords(105L))
+                .isEqualTo("One Hundred Five");
+    }
+
+    private void assertValidPdf(byte[] pdfBytes) {
+        assertThat(pdfBytes).isNotNull();
+        assertThat(pdfBytes).isNotEmpty();
+        String header = new String(pdfBytes, 0, Math.min(pdfBytes.length, 5), java.nio.charset.StandardCharsets.US_ASCII);
+        assertThat(header).startsWith("%PDF");
+    }
+
+    @Test
+    void pdfGenerationWithPositiveAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(new BigDecimal("1250.00"));
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("One Thousand Two Hundred Fifty Rupees only");
+    }
+
+    @Test
+    void pdfGenerationWithZeroAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(BigDecimal.ZERO);
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("Zero Rupees only");
+    }
+
+    @Test
+    void pdfGenerationWithNegativeAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(new BigDecimal("-1250.00"));
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("Negative One Thousand Two Hundred Fifty Rupees only");
+    }
+
+    @Test
+    void pdfGenerationWithNegativeDecimalAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(new BigDecimal("-1250.75"));
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("Negative One Thousand Two Hundred Fifty Rupees and Seventy Five Paise only");
+    }
+
+    @Test
+    void pdfGenerationWithLargePositiveAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(new BigDecimal("15000000.50"));
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("One Crore Fifty Lakh Rupees and Fifty Paise only");
+    }
+
+    @Test
+    void pdfGenerationWithLargeNegativeAmount() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setTotalAmount(new BigDecimal("-15000000.50"));
+
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("Negative One Crore Fifty Lakh Rupees and Fifty Paise only");
+    }
+
+    @Test
+    void pdfGenerationWithFractionalRoundingBoundaries() throws Exception {
+        BigDecimal[] testAmounts = {
+                new BigDecimal("1250.49"),
+                new BigDecimal("1250.50"),
+                new BigDecimal("1250.99"),
+                new BigDecimal("-1250.49"),
+                new BigDecimal("-1250.50"),
+                new BigDecimal("-1250.99")
+        };
+
+        for (BigDecimal amount : testAmounts) {
+            Invoice inv = sampleInvoice();
+            inv.setTotalAmount(amount);
+
+            byte[] pdf = pdfService.generatePdf(inv, "A4");
+            assertValidPdf(pdf);
+
+            String expectedWords = InvoicePdfService.numberToWords(amount);
+            String text = extractPdfText(pdf);
+            assertThat(text).contains(expectedWords);
+        }
     }
 }

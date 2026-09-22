@@ -60,6 +60,10 @@ public class FirmDetailsController {
         if (req == null) {
             return ResponseEntity.badRequest().build();
         }
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (currentFirmId != null && !currentFirmId.equals(id)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm print preferences update prohibited");
+        }
         FirmDetails updated = service.updatePrintPreferences(id, req.getTheme(), req.getColor(), req.getFormat());
         return ResponseEntity.ok(updated);
     }

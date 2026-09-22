@@ -1192,12 +1192,20 @@ public class InvoiceService {
     // Analytics / helpers
     // -------------------------
     public CustomerAnalyticsResponse getCustomerAnalytics(Long customerId) {
-        List<Invoice> invoices = invoiceRepo.findByCustomer_Id(customerId);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Customer customer;
+        if (currentFirmId != null) {
+            customer = customerRepo.findByIdAndFirmId(customerId, currentFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                            "Customer #" + customerId + " not found in firm"));
+        } else {
+            customer = customerRepo.findById(customerId).orElse(null);
+        }
 
         CustomerAnalyticsResponse resp = new CustomerAnalyticsResponse();
         resp.setCustomerId(customerId);
 
-        if (invoices == null || invoices.isEmpty()) {
+        if (customer == null) {
             resp.setCustomerName(null);
             resp.setTotalBusiness(0.0);
             resp.setTotalPaid(0.0);
@@ -1207,13 +1215,28 @@ public class InvoiceService {
             return resp;
         }
 
-        Customer c = invoices.get(0).getCustomer();
-        resp.setCustomerName(c != null ? c.getName() : null);
+        resp.setCustomerName(customer.getName());
+
+        List<Invoice> invoices = (currentFirmId != null)
+                ? invoiceRepo.findByFirmIdAndCustomer_Id(currentFirmId, customerId)
+                : invoiceRepo.findByCustomer_Id(customerId);
+
+        if (invoices == null || invoices.isEmpty()) {
+            resp.setTotalBusiness(0.0);
+            resp.setTotalPaid(0.0);
+            resp.setTotalPending(0.0);
+            resp.setInvoiceCount(0L);
+            resp.setInvoices(Collections.emptyList());
+            return resp;
+        }
 
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
 
-        List<SalesReturn> custReturns = salesReturnRepo.findByCustomerIdOrderByReturnDateDesc(customerId);
+        List<SalesReturn> custReturns = (currentFirmId != null)
+                ? salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(currentFirmId, customerId)
+                : salesReturnRepo.findByCustomerIdOrderByReturnDateDesc(customerId);
+
         Map<Long, BigDecimal> custInvoiceReturnMap = new HashMap<>();
         for (SalesReturn sr : custReturns) {
             if (sr.getInvoice() != null && sr.getTotalRefundAmount() != null) {
@@ -1221,8 +1244,10 @@ public class InvoiceService {
             }
         }
 
-        List<InvoicePayment> allCustPayments = invoicePaymentRepo
-                .findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+        List<InvoicePayment> allCustPayments = (currentFirmId != null)
+                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(currentFirmId, customerId)
+                : invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+
         Map<Long, BigDecimal> custInvoicePaymentMap = new HashMap<>();
         for (InvoicePayment ip : allCustPayments) {
             if (ip.getInvoiceId() != null && ip.getAmount() != null) {
@@ -1276,7 +1301,11 @@ public class InvoiceService {
         if (namePart == null || namePart.trim().isEmpty())
             return Collections.emptyList();
 
-        List<Invoice> invoices = invoiceRepo.findByCustomer_NameContainingIgnoreCase(namePart);
+        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        List<Invoice> invoices = (currentFirmId != null)
+                ? invoiceRepo.findByFirmIdAndCustomerNameContainingIgnoreCase(currentFirmId, namePart.trim())
+                : invoiceRepo.findByCustomer_NameContainingIgnoreCase(namePart.trim());
+
         if (invoices == null || invoices.isEmpty())
             return Collections.emptyList();
 
@@ -1287,8 +1316,16 @@ public class InvoiceService {
                 .collect(Collectors.toSet());
 
         List<CustomerAnalyticsResponse> list = new ArrayList<>();
-        for (Long id : ids)
-            list.add(getCustomerAnalytics(id));
+        for (Long id : ids) {
+            try {
+                CustomerAnalyticsResponse ca = getCustomerAnalytics(id);
+                if (ca != null) {
+                    list.add(ca);
+                }
+            } catch (com.billing.simple.billsoft.security.TenantSecurityException ignored) {
+                // Cross-firm isolation: skip customers from other firms
+            }
+        }
 
         return list;
     }

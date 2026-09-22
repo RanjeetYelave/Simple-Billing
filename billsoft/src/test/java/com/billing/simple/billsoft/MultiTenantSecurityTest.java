@@ -495,4 +495,68 @@ public class MultiTenantSecurityTest {
                 .andExpect(jsonPath("$.totalViolationsCount").value(0))
                 .andExpect(jsonPath("$.scannedCounts").exists());
     }
+
+    // ─── 17. H-01 Customer Analytics Tenant Isolation ───
+    @Test
+    @DisplayName("17. H-01: Firm A can access its own customer analytics, Firm B receives tenant security rejection")
+    void testCustomerAnalyticsTenantIsolation() throws Exception {
+        // 1. Firm A can access its own customer analytics
+        mockMvc.perform(get("/api/invoices/analytics/customer/" + customerA.getId())
+                .header("X-Firm-Id", firmAId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerId").value(customerA.getId()))
+                .andExpect(jsonPath("$.customerName").value("Customer A"));
+
+        // 2. Firm B cannot access Firm A's customer analytics
+        mockMvc.perform(get("/api/invoices/analytics/customer/" + customerA.getId())
+                .header("X-Firm-Id", firmBId))
+                .andExpect(status().isBadRequest());
+
+        // 3. Search analytics scoped by firm: Firm B cannot find Firm A's customer analytics by name
+        mockMvc.perform(get("/api/invoices/analytics/search")
+                .param("name", "Customer A")
+                .header("X-Firm-Id", firmBId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    // ─── 18. H-02 Print Preferences Tenant Authorization ───
+    @Test
+    @DisplayName("18. H-02: Firm A can update own print preferences, but cannot update Firm B's print preferences")
+    void testPrintPreferencesTenantAuthorization() throws Exception {
+        // Record Firm B's initial preferences
+        FirmDetails initialB = firmRepo.findById(firmBId).orElseThrow();
+        String initialBTheme = initialB.getInvoicePrintTheme();
+
+        // 1. Firm A updates its own preferences -> OK
+        PrintPreferencesRequest reqA = new PrintPreferencesRequest();
+        reqA.setTheme("MODERN");
+        reqA.setColor("EMERALD");
+        reqA.setFormat("A5");
+
+        mockMvc.perform(patch("/api/firm/" + firmAId + "/print-preferences")
+                .header("X-Firm-Id", firmAId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(reqA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.invoicePrintTheme").value("MODERN"))
+                .andExpect(jsonPath("$.invoicePrintThemeColor").value("EMERALD"))
+                .andExpect(jsonPath("$.invoicePrintFormat").value("A5"));
+
+        // 2. Firm A attempts to update Firm B's preferences -> Rejected (400 Bad Request / TenantSecurityException)
+        PrintPreferencesRequest reqMalicious = new PrintPreferencesRequest();
+        reqMalicious.setTheme("MINIMAL");
+        reqMalicious.setColor("SLATE");
+        reqMalicious.setFormat("THERMAL_80MM");
+
+        mockMvc.perform(patch("/api/firm/" + firmBId + "/print-preferences")
+                .header("X-Firm-Id", firmAId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(reqMalicious)))
+                .andExpect(status().isBadRequest());
+
+        // 3. Confirm Firm B's preferences remain strictly unchanged
+        FirmDetails freshB = firmRepo.findById(firmBId).orElseThrow();
+        assertEquals(initialBTheme, freshB.getInvoicePrintTheme(), "Firm B print preferences must not be mutated by Firm A!");
+    }
 }

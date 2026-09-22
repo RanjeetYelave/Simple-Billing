@@ -106,8 +106,31 @@ public class FirmDetailsService {
         payload.setBankIfsc(nullIfBlank(payload.getBankIfsc()));
         payload.setUpiId(nullIfBlank(payload.getUpiId()));
         payload.setFooterNote(nullIfBlank(payload.getFooterNote()));
+        if (payload.getInvoicePrintTheme() == null) {
+            payload.setInvoicePrintTheme(existing.getInvoicePrintTheme());
+        }
+        if (payload.getInvoicePrintThemeColor() == null) {
+            payload.setInvoicePrintThemeColor(existing.getInvoicePrintThemeColor());
+        }
+        if (payload.getInvoicePrintFormat() == null) {
+            payload.setInvoicePrintFormat(existing.getInvoicePrintFormat());
+        }
 
         return repo.save(payload);
+    }
+
+    public FirmDetails updatePrintPreferences(Long id, String theme, String color, String format) {
+        FirmDetails existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Firm not found: " + id));
+        if (theme != null && !theme.isBlank()) {
+            existing.setInvoicePrintTheme(theme.trim().toUpperCase());
+        }
+        if (color != null && !color.isBlank()) {
+            existing.setInvoicePrintThemeColor(color.trim());
+        }
+        if (format != null && !format.isBlank()) {
+            existing.setInvoicePrintFormat(format.trim().toUpperCase());
+        }
+        return repo.save(existing);
     }
 
     public void delete(Long id) {

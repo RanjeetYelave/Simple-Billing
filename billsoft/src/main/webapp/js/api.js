@@ -355,10 +355,74 @@ const API = {
       return API._json(url, { headers });
     },
     nextNumber: (firmIdOverride) => API.invoices.nextInvoiceNumber(firmIdOverride),
-    downloadPdf: async (id, size = 'A4') => {
-      const res = await API._request(`/api/invoices/${id}/pdf?size=${size}`);
+    downloadPdf: async (id, optionsOrSize = 'A4') => {
+      let url = `/api/invoices/${id}/pdf`;
+      if (typeof optionsOrSize === 'string') {
+        const cleanSize = optionsOrSize.trim();
+        if (cleanSize && cleanSize !== '[object Object]') {
+          url += `?size=${encodeURIComponent(cleanSize)}`;
+        } else {
+          url += `?size=A4`;
+        }
+      } else if (optionsOrSize && typeof optionsOrSize === 'object') {
+        const params = new URLSearchParams();
+        const fmt = (typeof optionsOrSize.format === 'string' && optionsOrSize.format && optionsOrSize.format !== '[object Object]')
+          ? optionsOrSize.format.trim()
+          : ((typeof optionsOrSize.size === 'string' && optionsOrSize.size && optionsOrSize.size !== '[object Object]') ? optionsOrSize.size.trim() : null);
+        if (fmt) params.append('format', fmt);
+
+        const thm = (typeof optionsOrSize.theme === 'string' && optionsOrSize.theme && optionsOrSize.theme !== '[object Object]')
+          ? optionsOrSize.theme.trim()
+          : null;
+        if (thm) params.append('theme', thm);
+
+        const rawCol = optionsOrSize.color || optionsOrSize.themeColor;
+        const col = (typeof rawCol === 'string' && rawCol && rawCol !== '[object Object]')
+          ? rawCol.trim()
+          : null;
+        if (col) params.append('color', col);
+
+        const qs = params.toString();
+        if (qs) url += `?${qs}`;
+      }
+      const res = await API._request(url);
+      if (!res.ok) {
+        throw new Error(`PDF download failed with HTTP status ${res.status}`);
+      }
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
+    },
+    pdfUrl: (id, optionsOrSize = 'A4') => {
+      let url = `/api/invoices/${id}/pdf`;
+      if (typeof optionsOrSize === 'string') {
+        const cleanSize = optionsOrSize.trim();
+        if (cleanSize && cleanSize !== '[object Object]') {
+          url += `?size=${encodeURIComponent(cleanSize)}`;
+        } else {
+          url += `?size=A4`;
+        }
+      } else if (optionsOrSize && typeof optionsOrSize === 'object') {
+        const params = new URLSearchParams();
+        const fmt = (typeof optionsOrSize.format === 'string' && optionsOrSize.format && optionsOrSize.format !== '[object Object]')
+          ? optionsOrSize.format.trim()
+          : ((typeof optionsOrSize.size === 'string' && optionsOrSize.size && optionsOrSize.size !== '[object Object]') ? optionsOrSize.size.trim() : null);
+        if (fmt) params.append('format', fmt);
+
+        const thm = (typeof optionsOrSize.theme === 'string' && optionsOrSize.theme && optionsOrSize.theme !== '[object Object]')
+          ? optionsOrSize.theme.trim()
+          : null;
+        if (thm) params.append('theme', thm);
+
+        const rawCol = optionsOrSize.color || optionsOrSize.themeColor;
+        const col = (typeof rawCol === 'string' && rawCol && rawCol !== '[object Object]')
+          ? rawCol.trim()
+          : null;
+        if (col) params.append('color', col);
+
+        const qs = params.toString();
+        if (qs) url += `?${qs}`;
+      }
+      return url;
     },
     analyticsByCustomer: (id) => API._json(`/api/invoices/analytics/customer/${id}`),
     analyticsSearch: (name) => API._json(`/api/invoices/analytics/search?name=${encodeURIComponent(name)}`),
@@ -598,6 +662,10 @@ const API = {
     },
     create: (data) => API._json('/api/firm', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/firm/${id}`, { method: 'PUT', body: data }),
+    savePrintPreferences: (id, prefs) => {
+      if (id == null) return Promise.reject(new Error('firmId is required'));
+      return API._json(`/api/firm/${id}/print-preferences`, { method: 'PATCH', body: prefs });
+    },
     delete: (id) => API._request(`/api/firm/${id}`, { method: 'DELETE' }),
   },
 
@@ -839,7 +907,16 @@ const API = {
   estimates: {
     list: (page = 0, size = 50) => API.invoices.listEstimates(page, size),
     create: (data, firmIdOverride) => API.invoices.createEstimate(data, firmIdOverride),
-    convert: (id, data, firmIdOverride) => API.invoices.convertEstimate(id, data, firmIdOverride)
+    convert: (id, data, firmIdOverride) => API.invoices.convertEstimate(id, data, firmIdOverride),
+    downloadPdf: (id, optionsOrSize = 'A4') => API.invoices.downloadPdf(id, optionsOrSize),
+    pdfUrl: (id, optionsOrSize = 'A4') => API.invoices.pdfUrl(id, optionsOrSize)
+  },
+  quotations: {
+    list: (page = 0, size = 50) => API.invoices.listEstimates(page, size),
+    create: (data, firmIdOverride) => API.invoices.createEstimate(data, firmIdOverride),
+    convert: (id, data, firmIdOverride) => API.invoices.convertEstimate(id, data, firmIdOverride),
+    downloadPdf: (id, optionsOrSize = 'A4') => API.invoices.downloadPdf(id, optionsOrSize),
+    pdfUrl: (id, optionsOrSize = 'A4') => API.invoices.pdfUrl(id, optionsOrSize)
   },
 
   // ─── System & Updates ───

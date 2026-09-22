@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.billing.simple.billsoft.dtos.PrintPreferencesRequest;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.service.FirmDetailsService;
 
@@ -49,6 +51,17 @@ public class FirmDetailsController {
     @PutMapping("/{id}")
     public ResponseEntity<FirmDetails> update(@PathVariable Long id, @RequestBody FirmDetails details) {
         return ResponseEntity.ok(service.update(id, details));
+    }
+
+    @PatchMapping("/{id}/print-preferences")
+    public ResponseEntity<FirmDetails> updatePrintPreferences(
+            @PathVariable Long id,
+            @RequestBody(required = false) PrintPreferencesRequest req) {
+        if (req == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        FirmDetails updated = service.updatePrintPreferences(id, req.getTheme(), req.getColor(), req.getFormat());
+        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")

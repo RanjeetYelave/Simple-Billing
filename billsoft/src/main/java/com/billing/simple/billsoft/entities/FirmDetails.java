@@ -36,6 +36,10 @@ public class FirmDetails {
 
     private String footerNote;
 
+    private String invoicePrintTheme;
+    private String invoicePrintThemeColor;
+    private String invoicePrintFormat;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -86,4 +90,13 @@ public class FirmDetails {
 
     public String getFooterNote() { return footerNote; }
     public void setFooterNote(String footerNote) { this.footerNote = footerNote; }
+
+    public String getInvoicePrintTheme() { return invoicePrintTheme; }
+    public void setInvoicePrintTheme(String invoicePrintTheme) { this.invoicePrintTheme = invoicePrintTheme; }
+
+    public String getInvoicePrintThemeColor() { return invoicePrintThemeColor; }
+    public void setInvoicePrintThemeColor(String invoicePrintThemeColor) { this.invoicePrintThemeColor = invoicePrintThemeColor; }
+
+    public String getInvoicePrintFormat() { return invoicePrintFormat; }
+    public void setInvoicePrintFormat(String invoicePrintFormat) { this.invoicePrintFormat = invoicePrintFormat; }
 }

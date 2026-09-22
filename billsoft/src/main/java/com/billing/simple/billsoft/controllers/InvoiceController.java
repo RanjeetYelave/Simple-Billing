@@ -175,13 +175,21 @@ public class InvoiceController {
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadPdf(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "A4") String size) {
+            @RequestParam(required = false) String size,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color) {
 
         try {
             Invoice inv = service.getById(id);
             if (inv == null) return ResponseEntity.notFound().build();
 
-            byte[] pdf = pdfService.generatePdf(inv, size);
+            byte[] pdf;
+            if (format == null && theme == null && color == null) {
+                pdf = pdfService.generatePdf(inv, size != null ? size : "A4");
+            } else {
+                pdf = pdfService.generatePdf(inv, size, format, theme, color);
+            }
 
             String filename = (inv.getStatus() == InvoiceStatus.ESTIMATE)
                     ? "estimate-" + inv.getEstimateNumber() + ".pdf"

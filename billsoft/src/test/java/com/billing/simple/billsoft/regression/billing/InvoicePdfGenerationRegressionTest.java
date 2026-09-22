@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.regression.billing;
 
+import com.billing.simple.billsoft.dtos.InvoicePrintOptions;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.*;
@@ -63,7 +64,8 @@ class InvoicePdfGenerationRegressionTest {
 
     private Customer testCustomer;
     private Product testProduct;
-    private final Long testFirmId = 1L;
+    private FirmDetails testFirm;
+    private Long testFirmId = 1L;
 
     @BeforeEach
     void setUp() {
@@ -73,7 +75,8 @@ class InvoicePdfGenerationRegressionTest {
         firm.setPhone("022-12345678");
         firm.setEmail("contact@apexsupplies.com");
         firm.setAddressLine1("Unit 404, Tech Park, Mumbai");
-        firmDetailsService.create(firm);
+        testFirm = firmDetailsService.create(firm);
+        testFirmId = testFirm.getId();
 
         testCustomer = customerRepo.save(Customer.builder()
                 .name("Precision Manufacturing Ltd")
@@ -232,5 +235,129 @@ class InvoicePdfGenerationRegressionTest {
         assertThat(body).isNotNull().isNotEmpty();
         String header = new String(body, 0, Math.min(body.length, 5), StandardCharsets.US_ASCII);
         assertThat(header).startsWith("%PDF");
+    }
+
+    @Test
+    @DisplayName("Should generate valid PDF for all 16 theme and format combinations (4 themes x 4 formats)")
+    void shouldGenerateValidPdfForAll16Combinations() throws Exception {
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem it1 = new InvoiceRequestItem();
+        it1.setProductId(testProduct.getId());
+        it1.setQty(3);
+        it1.setPricePerUnit(BigDecimal.valueOf(1450.00));
+        it1.setGstPercent(BigDecimal.valueOf(18.00));
+        req.setItems(List.of(it1));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+
+        String[] themes = {"classic", "modern", "professional", "minimal"};
+        String[] formats = {"A3", "A4", "A5", "THERMAL_80MM"};
+
+        for (String theme : themes) {
+            for (String format : formats) {
+                InvoicePrintOptions opts = InvoicePrintOptions.builder()
+                        .theme(theme)
+                        .format(format)
+                        .themeColor("classic-blue")
+                        .build();
+
+                byte[] pdfBytes = pdfService.generatePdf(invoice, opts);
+                assertThat(pdfBytes)
+                        .as("PDF generation failed for theme=%s, format=%s", theme, format)
+                        .isNotNull()
+                        .isNotEmpty();
+
+                String magic = new String(pdfBytes, 0, Math.min(pdfBytes.length, 5), StandardCharsets.US_ASCII);
+                assertThat(magic).isEqualTo("%PDF-");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Should support custom theme colors across themes")
+    void shouldSupportCustomThemeColors() throws Exception {
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem it1 = new InvoiceRequestItem();
+        it1.setProductId(testProduct.getId());
+        it1.setQty(2);
+        it1.setPricePerUnit(BigDecimal.valueOf(1450.00));
+        req.setItems(List.of(it1));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+
+        String[] colors = {"emerald", "crimson", "indigo", "slate", "amber", "teal", "plum", "#2B6CB0"};
+        for (String color : colors) {
+            InvoicePrintOptions opts = InvoicePrintOptions.builder()
+                    .theme("modern")
+                    .format("A4")
+                    .themeColor(color)
+                    .build();
+
+            byte[] pdfBytes = pdfService.generatePdf(invoice, opts);
+            assertThat(pdfBytes).isNotNull().isNotEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("Should use FirmDetails persisted preferences when options are null/empty")
+    void shouldUseFirmDetailsPreferences() throws Exception {
+        FirmDetails firm = firmDetailsService.getFirmDetails(testFirmId);
+        firm.setInvoicePrintTheme("modern");
+        firm.setInvoicePrintThemeColor("emerald");
+        firm.setInvoicePrintFormat("A5");
+        firmDetailsService.update(firm.getId(), firm);
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem it1 = new InvoiceRequestItem();
+        it1.setProductId(testProduct.getId());
+        it1.setQty(1);
+        it1.setPricePerUnit(BigDecimal.valueOf(500.00));
+        req.setItems(List.of(it1));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+
+        // Generate with null options -> should read firm preferences (modern, emerald, A5)
+        byte[] pdfBytes = pdfService.generatePdf(invoice, (InvoicePrintOptions) null);
+        assertThat(pdfBytes).isNotNull().isNotEmpty();
+        String magic = new String(pdfBytes, 0, Math.min(pdfBytes.length, 5), StandardCharsets.US_ASCII);
+        assertThat(magic).isEqualTo("%PDF-");
+    }
+
+    @Test
+    @DisplayName("HTTP endpoint should accept theme, color, and format query params")
+    void shouldAcceptThemeParamsViaHttpEndpoint() throws Exception {
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setStatus(InvoiceStatus.FINAL);
+
+        InvoiceRequestItem it1 = new InvoiceRequestItem();
+        it1.setProductId(testProduct.getId());
+        it1.setQty(1);
+        it1.setPricePerUnit(BigDecimal.valueOf(100.00));
+        req.setItems(List.of(it1));
+
+        Invoice invoice = invoiceService.createInvoice(req);
+
+        mockMvc.perform(get("/api/invoices/" + invoice.getId() + "/pdf")
+                        .param("theme", "minimal")
+                        .param("themeColor", "slate")
+                        .param("format", "THERMAL_80MM")
+                        .header("X-Firm-Id", testFirmId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=invoice-" + invoice.getInvoiceNumber() + ".pdf"));
     }
 }

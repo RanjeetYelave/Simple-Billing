@@ -12,10 +12,17 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.billing.simple.billsoft.dtos.InvoicePrintOptions;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
+import com.billing.simple.billsoft.enums.InvoiceTheme;
+import com.billing.simple.billsoft.enums.PrintFormat;
+import com.billing.simple.billsoft.service.pdf.theme.MinimalThemeRenderer;
+import com.billing.simple.billsoft.service.pdf.theme.ModernThemeRenderer;
+import com.billing.simple.billsoft.service.pdf.theme.ProfessionalThemeRenderer;
+import com.billing.simple.billsoft.service.pdf.thermal.Thermal80mmRenderer;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.common.BitMatrix;
@@ -57,15 +64,57 @@ public class InvoicePdfService {
     }
 
     public byte[] generatePdf(Invoice invoice, String size) throws Exception {
-        Rectangle pageSize = PageSize.A4;
-        boolean isA5 = false;
-        if (size != null && size.equalsIgnoreCase("A5")) {
-            pageSize = PageSize.A5;
-            isA5 = true;
+        FirmDetails firm = getFirm(invoice);
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(size, null, null, null, firm);
+        return generatePdf(invoice, options);
+    }
+
+    public byte[] generatePdf(Invoice invoice, String size, String format, String theme, String color) throws Exception {
+        FirmDetails firm = getFirm(invoice);
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(size, format, theme, color, firm);
+        return generatePdf(invoice, options);
+    }
+
+    public byte[] generatePdf(Invoice invoice, InvoicePrintOptions options) throws Exception {
+        FirmDetails firm = getFirm(invoice);
+        if (options == null) {
+            options = InvoicePrintOptions.resolve(null, null, null, null, firm);
         }
 
+        if (options.getFormat() == PrintFormat.THERMAL_80MM) {
+            return Thermal80mmRenderer.render(invoice, firm, options);
+        }
+        if (options.getTheme() == InvoiceTheme.MODERN) {
+            return ModernThemeRenderer.render(invoice, firm, options);
+        }
+        if (options.getTheme() == InvoiceTheme.PROFESSIONAL) {
+            return ProfessionalThemeRenderer.render(invoice, firm, options);
+        }
+        if (options.getTheme() == InvoiceTheme.MINIMAL) {
+            return MinimalThemeRenderer.render(invoice, firm, options);
+        }
+
+        return renderClassic(invoice, firm, options);
+    }
+
+    private FirmDetails getFirm(Invoice invoice) {
+        try {
+            Long firmId = invoice != null ? invoice.getFirmId() : null;
+            return firmId != null ? firmService.get(firmId) : firmService.getFirst();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private byte[] renderClassic(Invoice invoice, FirmDetails firm, InvoicePrintOptions options) throws Exception {
+        PrintFormat format = options != null ? options.getFormat() : PrintFormat.A4;
+        boolean isA5 = format == PrintFormat.A5;
+        boolean isA3 = format == PrintFormat.A3;
+        Rectangle pageSize = isA5 ? PageSize.A5 : (isA3 ? PageSize.A3 : PageSize.A4);
+        Color headerColor = (options != null && options.getColorPalette() != null) ? options.getColorPalette().getPrimaryColor() : HEADER_BLUE;
+
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        float margin = isA5 ? 20 : 28;
+        float margin = isA5 ? 20 : (isA3 ? 36 : 28);
         Document doc = new Document(pageSize, margin, margin, margin, margin + 10);
         PdfWriter writer = PdfWriter.getInstance(doc, baos);
 
@@ -84,14 +133,6 @@ public class InvoicePdfService {
         Font smallMuted = new Font(Font.HELVETICA, isA5 ? 7 : 8, Font.NORMAL, TEXT_MUTED);
         Font tableHeaderFont = new Font(Font.HELVETICA, isA5 ? 7.5f : 8.5f, Font.BOLD, Color.WHITE);
         Font totalBoldFont = new Font(Font.HELVETICA, isA5 ? 8.5f : 9.5f, Font.BOLD, TEXT_DARK);
-
-        FirmDetails firm = null;
-        try {
-            Long firmId = invoice != null ? invoice.getFirmId() : null;
-            firm = firmId != null ? firmService.get(firmId) : firmService.getFirst();
-        } catch (Exception e) {
-            firm = null;
-        }
 
         boolean isEstimate = invoice != null && invoice.getStatus() != null && invoice.getStatus().name().equalsIgnoreCase("ESTIMATE");
         String documentTitle = isEstimate ? "Quotation" : "Tax Invoice";
@@ -215,7 +256,7 @@ public class InvoicePdfService {
         leftBillTo.setWidthPercentage(100);
 
         PdfPCell billToHeader = new PdfPCell(new Phrase("Bill To", subTitleFont));
-        billToHeader.setBackgroundColor(HEADER_BLUE);
+        billToHeader.setBackgroundColor(headerColor);
         billToHeader.setBorder(Rectangle.NO_BORDER);
         billToHeader.setPadding(4f);
         billToHeader.setPaddingLeft(8f);
@@ -304,7 +345,7 @@ public class InvoicePdfService {
         String[] itemHeaders = {"#", "Item name", "HSN/ SAC", "Quantity", "Unit", "Price/ Unit", "Amount"};
         for (int i = 0; i < itemHeaders.length; i++) {
             PdfPCell th = new PdfPCell(new Phrase(itemHeaders[i], tableHeaderFont));
-            th.setBackgroundColor(HEADER_BLUE);
+            th.setBackgroundColor(headerColor);
             th.setBorderColor(LIGHT_BORDER);
             th.setBorderWidth(0.5f);
             if (i == 0) {
@@ -432,14 +473,14 @@ public class InvoicePdfService {
 
         // Sub Header: "Invoice Amount In Words" vs "Amounts:"
         PdfPCell wordsHeader = new PdfPCell(new Phrase(isEstimate ? "Quotation Amount In Words" : "Invoice Amount In Words", subTitleFont));
-        wordsHeader.setBackgroundColor(HEADER_BLUE);
+        wordsHeader.setBackgroundColor(headerColor);
         wordsHeader.setBorder(Rectangle.NO_BORDER);
         wordsHeader.setPadding(4f);
         wordsHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
         summaryTable.addCell(wordsHeader);
 
         PdfPCell amountsHeader = new PdfPCell(new Phrase("Amounts:", subTitleFont));
-        amountsHeader.setBackgroundColor(HEADER_BLUE);
+        amountsHeader.setBackgroundColor(headerColor);
         amountsHeader.setBorder(Rectangle.LEFT);
         amountsHeader.setBorderColor(DARK_BORDER);
         amountsHeader.setBorderWidth(1f);

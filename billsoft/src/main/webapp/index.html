@@ -630,6 +630,388 @@
       ),
     };
 
+    // ─── INVOICE PRINT & DOWNLOAD CONFIGURATION MODAL ───
+    const INVOICE_PALETTES = [
+      { id: 'CLASSIC_BLUE', name: 'Classic Blue', hex: '#007AA6' },
+      { id: 'MODERN_TEAL',   name: 'Modern Teal',   hex: '#0D9488' },
+      { id: 'INDIGO_NAVY',   name: 'Indigo Navy',   hex: '#4F46E5' },
+      { id: 'EMERALD_GREEN', name: 'Emerald',     hex: '#059669' },
+      { id: 'SLATE_DARK',    name: 'Slate Dark',    hex: '#334155' }
+    ];
+
+    const INVOICE_THEMES = [
+      { id: 'CLASSIC',      name: 'Classic (Standard)' },
+      { id: 'MODERN',       name: 'Modern (Split Header & Card)' },
+      { id: 'PROFESSIONAL', name: 'Professional (Corporate Banner)' },
+      { id: 'MINIMAL',      name: 'Minimal (Clean Editorial Line)' }
+    ];
+
+    const INVOICE_FORMATS = [
+      { id: 'A4',           name: 'A4 (Standard Page)' },
+      { id: 'A3',           name: 'A3 (Large Page)' },
+      { id: 'A5',           name: 'A5 (Compact Page)' },
+      { id: 'THERMAL_80MM', name: 'Thermal 80mm (POS Receipt)' }
+    ];
+
+    function InvoicePrintModal({ isOpen, onClose, doc, onPrintSuccess }) {
+      if (!isOpen || !doc) return null;
+
+      const [theme, setTheme] = useState('CLASSIC');
+      const [color, setColor] = useState('#007AA6');
+      const [format, setFormat] = useState('A4');
+      const [saveAsDefault, setSaveAsDefault] = useState(false);
+      const [firmId, setFirmId] = useState(null);
+
+      const [previewLoading, setPreviewLoading] = useState(true);
+      const [previewError, setPreviewError] = useState(null);
+      const [previewPages, setPreviewPages] = useState([]);
+      const [currentBlob, setCurrentBlob] = useState(null);
+      const [actionLoading, setActionLoading] = useState(false);
+
+      // Load initial firm preferences
+      useEffect(() => {
+        let isMounted = true;
+        (async () => {
+          try {
+            const fid = doc.firmId || API.firmId;
+            setFirmId(fid);
+            const firm = fid ? await API.firm.get(fid) : await API.firm.getCurrent();
+            if (firm && isMounted) {
+              if (firm.invoicePrintTheme) setTheme(firm.invoicePrintTheme);
+              if (firm.invoicePrintThemeColor) setColor(firm.invoicePrintThemeColor);
+              if (firm.invoicePrintFormat) setFormat(firm.invoicePrintFormat);
+              if (firm.id) setFirmId(firm.id);
+            }
+          } catch (e) {
+            console.warn('Failed to load firm print preferences:', e);
+          }
+        })();
+        return () => { isMounted = false; };
+      }, [doc]);
+
+      // Live PDF Preview Generation whenever Theme, Color, or Format changes
+      useEffect(() => {
+        let cancelled = false;
+        setPreviewLoading(true);
+        setPreviewError(null);
+
+        const fetchAndRender = async () => {
+          try {
+            const printOpts = { theme, color, format };
+            const blob = await API.invoices.downloadPdf(doc.id, printOpts);
+            if (cancelled) return;
+            setCurrentBlob(blob);
+
+            if (typeof pdfjsLib !== 'undefined') {
+              const typedarray = new Uint8Array(await blob.arrayBuffer());
+              const pdf = await pdfjsLib.getDocument(typedarray).promise;
+              if (cancelled) return;
+
+              const pages = [];
+              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                pages.push(canvas.toDataURL('image/png'));
+              }
+              if (!cancelled) {
+                setPreviewPages(pages);
+                setPreviewLoading(false);
+              }
+            } else {
+              if (!cancelled) {
+                setPreviewLoading(false);
+              }
+            }
+          } catch (err) {
+            console.error('Invoice PDF preview generation error:', err);
+            if (!cancelled) {
+              setPreviewError(err.message || 'Failed to render PDF preview');
+              setPreviewLoading(false);
+            }
+          }
+        };
+
+        const timer = setTimeout(fetchAndRender, 150);
+        return () => {
+          cancelled = true;
+          clearTimeout(timer);
+        };
+      }, [doc.id, theme, color, format]);
+
+      const handleExecute = async (actionType) => {
+        setActionLoading(true);
+        try {
+          const printOpts = { theme, color, format };
+          let blob = currentBlob;
+          if (!blob) {
+            blob = await API.invoices.downloadPdf(doc.id, printOpts);
+          }
+
+          if (actionType === 'print') {
+            BillsoftUtils.printBlob(blob);
+          } else {
+            const prefix = doc.isEstimate ? 'quotation' : 'invoice';
+            const num = doc.docNumber || doc.invoiceNumber || doc.estimateNumber || doc.id;
+            BillsoftUtils.downloadBlob(blob, `${prefix}-${num}.pdf`);
+          }
+
+          // Persist preferences if requested or on successful generation
+          const targetFirmId = firmId || doc.firmId || API.firmId;
+          if (saveAsDefault && targetFirmId && API.firm && API.firm.savePrintPreferences) {
+            API.firm.savePrintPreferences(targetFirmId, printOpts).catch(err => {
+              console.warn('Could not persist print preferences:', err);
+            });
+          }
+
+          if (onPrintSuccess) onPrintSuccess();
+          onClose();
+        } catch (e) {
+          showToast('Failed to execute print / download action', 'error');
+        } finally {
+          setActionLoading(false);
+        }
+      };
+
+      const docNumber = doc.docNumber || doc.invoiceNumber || doc.estimateNumber || doc.id;
+      const currentThemeObj = INVOICE_THEMES.find(t => t.id === theme) || INVOICE_THEMES[0];
+      const currentFormatObj = INVOICE_FORMATS.find(f => f.id === format) || INVOICE_FORMATS[0];
+
+      return React.createElement('div', {
+        className: 'modal-overlay',
+        id: 'invoice-print-dialog-overlay',
+        style: {
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        },
+        onClick: (e) => { if (e.target === e.currentTarget && !actionLoading) onClose(); }
+      },
+        React.createElement('div', {
+          className: 'modal-content',
+          id: 'invoice-print-dialog',
+          style: {
+            backgroundColor: '#ffffff', borderRadius: '12px',
+            width: '95%', maxWidth: '960px', height: '90vh', maxHeight: '880px',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)'
+          }
+        },
+          // 1. Modal Header
+          React.createElement('div', {
+            style: {
+              padding: '12px 20px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              backgroundColor: '#f8fafc'
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+              React.createElement('span', { style: { fontSize: '1.2rem' } }, '📄'),
+              React.createElement('h3', {
+                style: { margin: 0, fontSize: '1.15rem', fontWeight: 600, color: '#1e293b' }
+              }, `${doc.isEstimate ? 'Quotation' : 'Invoice'} #${docNumber}`),
+              React.createElement('span', {
+                style: {
+                  fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '12px',
+                  backgroundColor: doc.isEstimate ? '#fef3c7' : '#e0e7ff',
+                  color: doc.isEstimate ? '#92400e' : '#3730a3'
+                }
+              }, doc.isEstimate ? 'ESTIMATE / QUOTE' : 'TAX INVOICE')
+            ),
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn-close',
+              disabled: actionLoading,
+              style: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#64748b' },
+              onClick: onClose
+            }, '×')
+          ),
+
+          // 2. Options Toolbar
+          React.createElement('div', {
+            style: {
+              padding: '12px 20px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center',
+              justifyContent: 'space-between', backgroundColor: '#ffffff'
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' } },
+              // Theme Selector
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                React.createElement('label', {
+                  htmlFor: 'print-theme-select',
+                  style: { fontSize: '0.82rem', fontWeight: 600, color: '#475569' }
+                }, 'Theme:'),
+                React.createElement('select', {
+                  id: 'print-theme-select',
+                  value: theme,
+                  disabled: actionLoading,
+                  className: 'form-control form-control-sm',
+                  style: { padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' },
+                  onChange: (e) => setTheme(e.target.value)
+                },
+                  INVOICE_THEMES.map(t => React.createElement('option', { key: t.id, value: t.id }, t.name))
+                )
+              ),
+
+              // Color Swatches
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                React.createElement('span', { style: { fontSize: '0.82rem', fontWeight: 600, color: '#475569' } }, 'Color:'),
+                React.createElement('div', {
+                  id: 'print-color-swatches',
+                  style: { display: 'flex', gap: '6px', alignItems: 'center' }
+                },
+                  INVOICE_PALETTES.map(p => {
+                    const isSelected = color.toUpperCase() === p.hex.toUpperCase() || color.toUpperCase() === p.id;
+                    return React.createElement('button', {
+                      key: p.id,
+                      type: 'button',
+                      title: p.name,
+                      disabled: actionLoading,
+                      className: `color-swatch-btn ${isSelected ? 'selected' : ''}`,
+                      style: {
+                        width: '24px', height: '24px', borderRadius: '50%',
+                        backgroundColor: p.hex,
+                        border: isSelected ? '2px solid #0f172a' : '2px solid #ffffff',
+                        boxShadow: isSelected ? '0 0 0 2px #3b82f6' : '0 1px 2px rgba(0,0,0,0.2)',
+                        cursor: 'pointer', outline: 'none', padding: 0
+                      },
+                      onClick: () => setColor(p.hex)
+                    });
+                  })
+                )
+              ),
+
+              // Paper Format Selector
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                React.createElement('label', {
+                  htmlFor: 'print-format-select',
+                  style: { fontSize: '0.82rem', fontWeight: 600, color: '#475569' }
+                }, 'Size:'),
+                React.createElement('select', {
+                  id: 'print-format-select',
+                  value: format,
+                  disabled: actionLoading,
+                  className: 'form-control form-control-sm',
+                  style: { padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' },
+                  onChange: (e) => setFormat(e.target.value)
+                },
+                  INVOICE_FORMATS.map(f => React.createElement('option', { key: f.id, value: f.id }, f.name))
+                )
+              )
+            ),
+
+            // Save default checkbox
+            React.createElement('label', {
+              style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#64748b', cursor: 'pointer' }
+            },
+              React.createElement('input', {
+                type: 'checkbox',
+                id: 'print-save-default-check',
+                checked: saveAsDefault,
+                disabled: actionLoading,
+                onChange: (e) => setSaveAsDefault(e.target.checked)
+              }),
+              'Save as firm default'
+            )
+          ),
+
+          // 3. Middle Preview Container
+          React.createElement('div', {
+            id: 'invoice-pdf-preview-container',
+            style: {
+              flex: 1, overflowY: 'auto', backgroundColor: '#525659',
+              padding: '24px 16px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: '20px', minHeight: '300px'
+            }
+          },
+            previewLoading && React.createElement('div', {
+              style: {
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', height: '100%', minHeight: '260px', color: '#f8fafc', gap: '12px'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: '36px', height: '36px', border: '3px solid rgba(255,255,255,0.3)',
+                  borderTopColor: '#ffffff', borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }
+              }),
+              React.createElement('span', { style: { fontSize: '0.9rem', color: '#cbd5e1' } }, 'Generating live PDF preview...')
+            ),
+
+            !previewLoading && previewError && React.createElement('div', {
+              style: {
+                backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px',
+                padding: '20px', maxWidth: '480px', textAlign: 'center', color: '#991b1b', marginTop: '40px'
+              }
+            },
+              React.createElement('div', { style: { fontSize: '1.5rem', marginBottom: '8px' } }, '⚠️'),
+              React.createElement('strong', { style: { display: 'block', marginBottom: '4px' } }, 'Preview Unavailable'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem' } }, previewError)
+            ),
+
+            !previewLoading && !previewError && previewPages.map((pageImg, idx) =>
+              React.createElement('img', {
+                key: idx,
+                src: pageImg,
+                alt: `Page ${idx + 1}`,
+                style: {
+                  maxWidth: '100%',
+                  width: format === 'THERMAL_80MM' ? '80mm' : (format === 'A5' ? '148mm' : (format === 'A3' ? '280mm' : '210mm')),
+                  minWidth: format === 'THERMAL_80MM' ? '240px' : '280px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '2px',
+                  display: 'block'
+                }
+              })
+            )
+          ),
+
+          // 4. Modal Footer Actions
+          React.createElement('div', {
+            style: {
+              padding: '12px 20px', borderTop: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              backgroundColor: '#f8fafc'
+            }
+          },
+            React.createElement('div', { style: { fontSize: '0.8rem', color: '#64748b' } },
+              `${currentThemeObj.name} • ${currentFormatObj.name}`
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: '10px' } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                disabled: actionLoading,
+                onClick: onClose
+              }, 'Cancel'),
+              React.createElement('button', {
+                type: 'button',
+                id: 'btn-modal-download-pdf',
+                className: 'btn btn-secondary',
+                disabled: actionLoading || previewLoading,
+                onClick: () => handleExecute('download')
+              }, actionLoading ? 'Processing...' : '📥 Download PDF'),
+              React.createElement('button', {
+                type: 'button',
+                id: 'btn-modal-print-now',
+                className: 'btn btn-primary',
+                disabled: actionLoading || previewLoading,
+                onClick: () => handleExecute('print')
+              }, actionLoading ? 'Printing...' : '🖨️ Print Now')
+            )
+          )
+        )
+      );
+    }
+
     // ─── WHATSAPP SHARE MODAL (SIMPLIFIED & AUTHENTIC WHATSAPP UI) ───
     function WhatsAppShareModal({
       isOpen,
@@ -4691,22 +5073,21 @@
       };
 
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+      const [printModalDoc, setPrintModalDoc] = useState(null);
 
-      const handlePrintPdf = async (id) => {
-        try {
-          const blob = await API.invoices.downloadPdf(id);
-          BillsoftUtils.printBlob(blob);
-        } catch (e) {
-          showToast('Print failed', 'error');
+      const handlePrintPdf = (docOrId) => {
+        if (docOrId && typeof docOrId === 'object') {
+          setPrintModalDoc(docOrId);
+        } else {
+          setPrintModalDoc({ id: docOrId });
         }
       };
 
-      const handleDownloadPdf = async (id, isEst, num) => {
-        try {
-          const blob = await API.invoices.downloadPdf(id);
-          BillsoftUtils.downloadBlob(blob, `${isEst ? 'quotation' : 'invoice'}-${num || id}.pdf`);
-        } catch (e) {
-          showToast('PDF download failed', 'error');
+      const handleDownloadPdf = (docOrId, isEst, num) => {
+        if (docOrId && typeof docOrId === 'object') {
+          setPrintModalDoc(docOrId);
+        } else {
+          setPrintModalDoc({ id: docOrId, isEstimate: isEst, docNumber: num });
         }
       };
 
@@ -5369,6 +5750,13 @@
           pdfFileName: whatsAppModalDoc.pdfFileName,
           pdfUrl: whatsAppModalDoc.pdfUrl,
           pdfBlob: whatsAppModalDoc.pdfBlob
+        }),
+
+        // Invoice Print & Download Modal
+        printModalDoc && React.createElement(InvoicePrintModal, {
+          isOpen: !!printModalDoc,
+          doc: printModalDoc,
+          onClose: () => setPrintModalDoc(null)
         })
       );
     }
@@ -15741,20 +16129,14 @@
 
       const [deleteInvoiceId, setDeleteInvoiceId] = useState(null);
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+      const [printModalDoc, setPrintModalDoc] = useState(null);
       const handleDelete = (id) => setDeleteInvoiceId(id);
       const confirmDeleteInvoice = () => {
         if (!deleteInvoiceId) return;
         API.invoices.delete(deleteInvoiceId).then(() => { showToast('Invoice deleted', 'success'); load(); }).catch(() => showToast('Delete failed', 'error')).finally(() => setDeleteInvoiceId(null));
       };
-      const handleDownloadPdf = async (id) => { try { const blob = await API.invoices.downloadPdf(id); BillsoftUtils.downloadBlob(blob, `invoice-${id}.pdf`); } catch (e) { showToast('PDF download failed', 'error'); } };
-      const handlePrintPdf = async (id) => {
-        try {
-          const blob = await API.invoices.downloadPdf(id);
-          BillsoftUtils.printBlob(blob);
-        } catch (e) {
-          showToast('Print failed', 'error');
-        }
-      };
+      const handleDownloadPdf = (id) => setPrintModalDoc(typeof id === 'object' && id !== null ? id : { id: id });
+      const handlePrintPdf = (id) => setPrintModalDoc(typeof id === 'object' && id !== null ? id : { id: id });
       const handleWhatsAppShare = async (inv) => {
         let fullInv = inv;
         let firmObj = { firmName: 'Our Business' };
@@ -16114,6 +16496,13 @@
           pdfFileName: whatsAppModalDoc.pdfFileName,
           pdfUrl: whatsAppModalDoc.pdfUrl,
           pdfBlob: whatsAppModalDoc.pdfBlob
+        }),
+
+        // Invoice Print & Download Modal
+        printModalDoc && React.createElement(InvoicePrintModal, {
+          isOpen: !!printModalDoc,
+          doc: printModalDoc,
+          onClose: () => setPrintModalDoc(null)
         })
       );
     }
@@ -16276,20 +16665,14 @@
       };
       const [deleteQuotationId, setDeleteQuotationId] = useState(null);
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+      const [printModalDoc, setPrintModalDoc] = useState(null);
       const handleDelete = (id) => setDeleteQuotationId(id);
       const confirmDeleteQuotation = () => {
         if (!deleteQuotationId) return;
         API.invoices.delete(deleteQuotationId).then(() => { showToast('Quotation deleted', 'success'); load(); }).catch(() => showToast('Delete failed', 'error')).finally(() => setDeleteQuotationId(null));
       };
-      const handleDownloadPdf = async (id) => { try { const blob = await API.invoices.downloadPdf(id); BillsoftUtils.downloadBlob(blob, `quotation-${id}.pdf`); } catch (e) { showToast('PDF download failed', 'error'); } };
-      const handlePrintPdf = async (id) => {
-        try {
-          const blob = await API.invoices.downloadPdf(id);
-          BillsoftUtils.printBlob(blob);
-        } catch (e) {
-          showToast('Print failed', 'error');
-        }
-      };
+      const handleDownloadPdf = (id) => setPrintModalDoc(typeof id === 'object' && id !== null ? { ...id, isEstimate: true } : { id: id, isEstimate: true });
+      const handlePrintPdf = (id) => setPrintModalDoc(typeof id === 'object' && id !== null ? { ...id, isEstimate: true } : { id: id, isEstimate: true });
       const handleWhatsAppShare = async (q) => {
         let fullEst = q;
         let firmObj = { firmName: 'Our Business' };
@@ -16637,6 +17020,13 @@
           pdfFileName: whatsAppModalDoc.pdfFileName,
           pdfUrl: whatsAppModalDoc.pdfUrl,
           pdfBlob: whatsAppModalDoc.pdfBlob
+        }),
+
+        // Invoice Print & Download Modal
+        printModalDoc && React.createElement(InvoicePrintModal, {
+          isOpen: !!printModalDoc,
+          doc: printModalDoc,
+          onClose: () => setPrintModalDoc(null)
         })
       );
     }

@@ -3,16 +3,13 @@ package com.billing.simple.billsoft.controllers;
 import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.licensing.LicenseCoordinator;
 import com.billing.simple.billsoft.licensing.LicensingConfig;
-import com.billing.simple.billsoft.licensing.model.CustomerMessage;
-import com.billing.simple.billsoft.licensing.model.LicensePayload;
-import com.billing.simple.billsoft.licensing.model.ValidationResult;
+import com.billing.simple.billsoft.licensing.model.*;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -21,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * REST API for frontend UI integration with the licensing coordinator and trial engine.
+ * REST API for frontend UI integration with the licensing coordinator, trial engine, and Schema 3 EMI lifecycle.
  */
 @RestController
 @RequestMapping("/api/licensing")
@@ -45,7 +42,6 @@ public class LicensingController {
         this.coordinator = coordinator != null ? coordinator : new LicenseCoordinator();
         this.appConfigRepo = appConfigRepo;
         this.firmDetailsRepo = firmDetailsRepo;
-        // Trigger fast-path startup check on controller bean creation
         this.coordinator.validateOnStartup();
     }
 
@@ -60,6 +56,7 @@ public class LicensingController {
         resp.put("validationResult", validation.name());
         resp.put("validationDescription", validation.getDescription());
         resp.put("isValid", validation.isValid());
+        resp.put("isEmiRestricted", validation == ValidationResult.EMI_RESTRICTED);
 
         boolean hasFirm = firmDetailsRepo != null && firmDetailsRepo.count() > 0;
         resp.put("hasFirm", hasFirm);
@@ -100,6 +97,7 @@ public class LicensingController {
             resp.put("issuedAt", license.getIssuedAt());
             resp.put("expiresAt", license.getExpiresAt());
             resp.put("statusReason", license.getStatusReason());
+            resp.put("schemaVersion", license.getSchemaVersion() != null ? license.getSchemaVersion() : 2);
 
             boolean expired = coordinator.getLicenseVerifier().isExpired(license, Instant.now());
             resp.put("isExpired", expired);
@@ -119,6 +117,31 @@ public class LicensingController {
             resp.put("dataProtectionActive", dpActive);
             resp.put("isDataProtectionActive", dpActive);
 
+            // Schema 3 EMI fields
+            boolean emiEnabled = license.getEmi() != null && Boolean.TRUE.equals(license.getEmi().getEnabled());
+            resp.put("emiEnabled", emiEnabled);
+            if (emiEnabled) {
+                EmiPayload emi = license.getEmi();
+                resp.put("emiPricing", emi.getPricing());
+                resp.put("emiSchedule", emi.getSchedule());
+                resp.put("emiState", emi.getState());
+                if (emi.getState() != null) {
+                    resp.put("emiStatus", emi.getState().getEmiStatus());
+                    resp.put("accessStatus", emi.getState().getAccessStatus());
+                    resp.put("nextDueDate", emi.getState().getNextDueDate());
+                    resp.put("graceDeadline", emi.getState().getGraceDeadline());
+                    resp.put("currentInstallment", emi.getState().getCurrentInstallment());
+                    resp.put("paidAmount", emi.getState().getPaidAmount());
+                    resp.put("outstandingAmount", emi.getState().getOutstandingAmount());
+                }
+            } else {
+                resp.put("emiPricing", null);
+                resp.put("emiSchedule", null);
+                resp.put("emiState", null);
+                resp.put("emiStatus", "NONE");
+                resp.put("accessStatus", "NORMAL");
+            }
+
             // Snooze state
             boolean licenseSnoozed = coordinator.getSnoozeManager().isLicenseSnoozed(license.getRevision());
             boolean dpSnoozed = coordinator.getSnoozeManager().isDataProtectionSnoozed(license.getRevision());
@@ -128,7 +151,7 @@ public class LicensingController {
             resp.put("dpSnoozedUntil", coordinator.getSnoozeManager().getCurrentState().getDpSnoozedUntil());
             resp.put("dpPermanentlySnoozed", coordinator.getSnoozeManager().getCurrentState().isDpPermanentlySnoozed());
 
-            // Popup trigger flags for frontend
+            // Popup trigger flags for frontend (zero-network local computation)
             boolean showLicensePopup = !licenseSnoozed && daysRemaining != null && daysRemaining <= 7 && daysRemaining >= 0;
             boolean showDpPopup = dpEnabled && !dpSnoozed && dpDaysRemaining != null && dpDaysRemaining <= 7 && dpDaysRemaining >= 0;
             resp.put("showLicensePopup", showLicensePopup);
@@ -146,6 +169,9 @@ public class LicensingController {
             resp.put("dpDaysRemaining", null);
             resp.put("dataProtectionActive", false);
             resp.put("isDataProtectionActive", false);
+            resp.put("emiEnabled", false);
+            resp.put("emiStatus", "NONE");
+            resp.put("accessStatus", "NORMAL");
             resp.put("licenseSnoozed", false);
             resp.put("dpSnoozed", false);
             resp.put("showLicensePopup", false);
@@ -205,6 +231,13 @@ public class LicensingController {
         return getStatus();
     }
 
+    @PostMapping("/recover-emi")
+    public ResponseEntity<Map<String, Object>> recoverEmi() {
+        // "I HAVE PAID EMI" deliberate recovery action with in-flight mutex
+        coordinator.syncWithRegistry(true);
+        return getStatus();
+    }
+
     @PostMapping("/init-trial")
     public ResponseEntity<Map<String, Object>> initTrial() {
         if (appConfigRepo != null) {
@@ -234,7 +267,7 @@ public class LicensingController {
         ValidationResult result = coordinator.activateLicense(payload);
         resp.put("result", result.name());
         resp.put("description", result.getDescription());
-        resp.put("success", result.isValid());
+        resp.put("success", result.isValid() || result == ValidationResult.EMI_RESTRICTED);
         return ResponseEntity.ok(resp);
     }
 

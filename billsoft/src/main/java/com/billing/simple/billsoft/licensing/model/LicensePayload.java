@@ -7,11 +7,13 @@ import java.time.Instant;
 
 /**
  * Immutable DTO representing a signed license payload.
+ * Strictly backward compatible across Schema 1, 2, and 3.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class LicensePayload {
 
+    private Integer schemaVersion;
     private String licenseId;
     private String machineId;
     private String customerName;
@@ -25,6 +27,7 @@ public class LicensePayload {
     private Boolean dataProtectionEnabled;
     private Instant dataProtectionExpiresAt;
     private String statusReason;
+    private EmiPayload emi;
     private String signature;
 
     public LicensePayload() {
@@ -41,6 +44,15 @@ public class LicensePayload {
                           String edition, MembershipPlan plan, LicenseStatus status, int revision,
                           Instant issuedAt, Instant expiresAt, Boolean dataProtectionEnabled,
                           Instant dataProtectionExpiresAt, String statusReason, String signature) {
+        this(2, licenseId, machineId, customerName, product, edition, plan, status, revision,
+             issuedAt, expiresAt, dataProtectionEnabled, dataProtectionExpiresAt, statusReason, null, signature);
+    }
+
+    public LicensePayload(Integer schemaVersion, String licenseId, String machineId, String customerName, String product,
+                          String edition, MembershipPlan plan, LicenseStatus status, int revision,
+                          Instant issuedAt, Instant expiresAt, Boolean dataProtectionEnabled,
+                          Instant dataProtectionExpiresAt, String statusReason, EmiPayload emi, String signature) {
+        this.schemaVersion = schemaVersion;
         this.licenseId = licenseId;
         this.machineId = machineId;
         this.customerName = customerName;
@@ -54,7 +66,16 @@ public class LicensePayload {
         this.dataProtectionEnabled = dataProtectionEnabled;
         this.dataProtectionExpiresAt = dataProtectionExpiresAt;
         this.statusReason = statusReason;
+        this.emi = emi;
         this.signature = signature;
+    }
+
+    public Integer getSchemaVersion() {
+        return schemaVersion;
+    }
+
+    public void setSchemaVersion(Integer schemaVersion) {
+        this.schemaVersion = schemaVersion;
     }
 
     public String getLicenseId() {
@@ -159,6 +180,14 @@ public class LicensePayload {
 
     public void setStatusReason(String statusReason) {
         this.statusReason = statusReason;
+    }
+
+    public EmiPayload getEmi() {
+        return emi;
+    }
+
+    public void setEmi(EmiPayload emi) {
+        this.emi = emi;
     }
 
     public String getSignature() {

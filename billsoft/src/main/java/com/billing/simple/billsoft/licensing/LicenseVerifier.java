@@ -1,10 +1,6 @@
 package com.billing.simple.billsoft.licensing;
 
-import com.billing.simple.billsoft.licensing.model.CustomerMessage;
-import com.billing.simple.billsoft.licensing.model.LicensePayload;
-import com.billing.simple.billsoft.licensing.model.LicenseStatus;
-import com.billing.simple.billsoft.licensing.model.MembershipPlan;
-import com.billing.simple.billsoft.licensing.model.ValidationResult;
+import com.billing.simple.billsoft.licensing.model.*;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
@@ -13,14 +9,17 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Locale;
 
 /**
- * Verifier for cryptographic signatures and license domain rules.
+ * Verifier for cryptographic signatures and multi-dimensional entitlement domain rules.
+ * Strictly backward-compatible with Schema 1, Schema 2, and Schema 3.
  */
 public class LicenseVerifier {
 
     private static final String SCHEMA_VERSION_1 = "1";
     private static final String SCHEMA_VERSION_2 = "2";
+    private static final String SCHEMA_VERSION_3 = "3";
     private static final String LIFETIME_EXPIRY_STRING = "LIFETIME";
 
     private final PublicKey publicKey;
@@ -49,7 +48,7 @@ public class LicenseVerifier {
 
     /**
      * Builds the deterministic canonical newline-delimited payload for license signing and verification.
-     * Supports Schema 2 (with Data Protection) and legacy Schema 1.
+     * Supports Schema 3 (with dynamic EMI), Schema 2 (with Data Protection), and legacy Schema 1.
      */
     public static String buildCanonicalString(LicensePayload license) {
         if (license == null) {
@@ -66,6 +65,65 @@ public class LicenseVerifier {
         String issuedAt = license.getIssuedAt() != null ? license.getIssuedAt().toString() : "";
         String expiresAt = license.getExpiresAt() != null ? license.getExpiresAt().toString() : LIFETIME_EXPIRY_STRING;
 
+        // Check if Schema 3 payload
+        if ((license.getSchemaVersion() != null && license.getSchemaVersion() >= 3) || license.getEmi() != null) {
+            String dpEnabled = String.valueOf(Boolean.TRUE.equals(license.getDataProtectionEnabled()));
+            String dpExpiresAt = license.getDataProtectionExpiresAt() != null 
+                    ? license.getDataProtectionExpiresAt().toString() 
+                    : LIFETIME_EXPIRY_STRING;
+            String statusReason = sanitize(license.getStatusReason());
+
+            boolean emiEnabled = license.getEmi() != null && Boolean.TRUE.equals(license.getEmi().getEnabled());
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(SCHEMA_VERSION_3).append("\n")
+              .append(licenseId).append("\n")
+              .append(machineId).append("\n")
+              .append(customerName).append("\n")
+              .append(product).append("\n")
+              .append(edition).append("\n")
+              .append(plan).append("\n")
+              .append(status).append("\n")
+              .append(revision).append("\n")
+              .append(issuedAt).append("\n")
+              .append(expiresAt).append("\n")
+              .append(dpEnabled).append("\n")
+              .append(dpExpiresAt).append("\n")
+              .append(statusReason).append("\n")
+              .append(emiEnabled);
+
+            if (emiEnabled) {
+                EmiPayload emi = license.getEmi();
+                EmiPricingPayload pricing = emi.getPricing();
+                EmiSchedulePayload schedule = emi.getSchedule();
+                EmiStatePayload state = emi.getState();
+
+                if (pricing != null && schedule != null && state != null) {
+                    sb.append("\n").append(pricing.getAgreedPrice() != null ? String.format(Locale.US, "%.2f", pricing.getAgreedPrice()) : "0.00")
+                      .append("\n").append(pricing.getDownPayment() != null ? String.format(Locale.US, "%.2f", pricing.getDownPayment()) : "0.00")
+                      .append("\n").append(pricing.getFinancedAmount() != null ? String.format(Locale.US, "%.2f", pricing.getFinancedAmount()) : "0.00")
+                      .append("\n").append(sanitize(pricing.getInterestType()))
+                      .append("\n").append(pricing.getInterestRate() != null ? String.format(Locale.US, "%.2f", pricing.getInterestRate()) : "0.00")
+                      .append("\n").append(pricing.getTotalInterest() != null ? String.format(Locale.US, "%.2f", pricing.getTotalInterest()) : "0.00")
+                      .append("\n").append(pricing.getTotalPayable() != null ? String.format(Locale.US, "%.2f", pricing.getTotalPayable()) : "0.00")
+                      .append("\n").append(schedule.getTenureMonths() != null ? schedule.getTenureMonths().toString() : "0")
+                      .append("\n").append(sanitize(schedule.getInterval()))
+                      .append("\n").append(sanitize(schedule.getFirstDueDate()))
+                      .append("\n").append(schedule.getGraceDays() != null ? schedule.getGraceDays().toString() : "0")
+                      .append("\n").append(schedule.getInstallmentAmount() != null ? String.format(Locale.US, "%.2f", schedule.getInstallmentAmount()) : "0.00")
+                      .append("\n").append(state.getPaidAmount() != null ? String.format(Locale.US, "%.2f", state.getPaidAmount()) : "0.00")
+                      .append("\n").append(state.getOutstandingAmount() != null ? String.format(Locale.US, "%.2f", state.getOutstandingAmount()) : "0.00")
+                      .append("\n").append(state.getCurrentInstallment() != null ? state.getCurrentInstallment().toString() : "NULL")
+                      .append("\n").append(state.getNextDueDate() != null ? sanitize(state.getNextDueDate()) : "NULL")
+                      .append("\n").append(state.getGraceDeadline() != null ? sanitize(state.getGraceDeadline()) : "NULL")
+                      .append("\n").append(sanitize(state.getEmiStatus()))
+                      .append("\n").append(sanitize(state.getAccessStatus()));
+                }
+            }
+            return sb.toString();
+        }
+
+        // Schema 2
         if (license.getDataProtectionEnabled() != null) {
             String dpEnabled = String.valueOf(license.getDataProtectionEnabled());
             String dpExpiresAt = license.getDataProtectionExpiresAt() != null 
@@ -87,6 +145,7 @@ public class LicenseVerifier {
                     dpExpiresAt;
         }
 
+        // Schema 1
         return SCHEMA_VERSION_1 + "\n" +
                 licenseId + "\n" +
                 machineId + "\n" +
@@ -116,7 +175,7 @@ public class LicenseVerifier {
     }
 
     /**
-     * Verifies cryptographic signature and basic schema consistency.
+     * Verifies cryptographic signature and multi-dimensional status consistency.
      */
     public ValidationResult verifyLicense(LicensePayload license, String currentMachineId) {
         if (license == null) {
@@ -153,12 +212,22 @@ public class LicenseVerifier {
             return ValidationResult.INVALID_SIGNATURE;
         }
 
-        // 4. Inspect Status
+        // 4. Inspect Base License Status (Precedence: REVOKED > SUSPENDED)
+        if (license.getStatus() == LicenseStatus.REVOKED) {
+            return ValidationResult.REVOKED;
+        }
         if (license.getStatus() == LicenseStatus.SUSPENDED) {
             return ValidationResult.SUSPENDED;
         }
-        if (license.getStatus() == LicenseStatus.REVOKED) {
-            return ValidationResult.REVOKED;
+
+        // 5. Inspect EMI Access Status (Schema 3)
+        if (license.getEmi() != null && Boolean.TRUE.equals(license.getEmi().getEnabled())) {
+            if (license.getEmi().getState() != null) {
+                String accessStatus = license.getEmi().getState().getAccessStatus();
+                if ("RESTRICTED".equalsIgnoreCase(accessStatus)) {
+                    return ValidationResult.EMI_RESTRICTED;
+                }
+            }
         }
 
         return ValidationResult.VALID;
@@ -198,25 +267,25 @@ public class LicenseVerifier {
     }
 
     /**
-     * Evaluates whether Data Protection add-on is enabled and not expired.
+     * Evaluates whether Data Protection add-on is active and unexpired.
      */
     public boolean isDataProtectionActive(LicensePayload license, Instant now) {
-        if (license == null || license.getStatus() != LicenseStatus.ACTIVE) {
+        if (license == null || !Boolean.TRUE.equals(license.getDataProtectionEnabled())) {
             return false;
         }
-        if (license.getDataProtectionEnabled() == null || !license.getDataProtectionEnabled()) {
+        if (license.getStatus() != LicenseStatus.ACTIVE) {
             return false;
         }
         if (license.getDataProtectionExpiresAt() == null) {
-            return true; // Lifetime add-on
+            return true; // Lifetime DP
         }
         return !now.isAfter(license.getDataProtectionExpiresAt());
     }
 
-    private static String sanitize(String input) {
+    public static String sanitize(String input) {
         if (input == null) {
             return "";
         }
-        return input.replace("\n", " ").replace("\r", "").trim();
+        return input.replace("\r", "").replace("\n", "").trim();
     }
 }

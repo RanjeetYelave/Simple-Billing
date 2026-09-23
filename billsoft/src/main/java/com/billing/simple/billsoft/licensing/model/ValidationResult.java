@@ -11,6 +11,7 @@ public enum ValidationResult {
     SUSPENDED("License has been suspended by the developer"),
     REVOKED("License has been permanently revoked"),
     EXPIRED("Membership plan has expired"),
+    EMI_RESTRICTED("Access restricted due to overdue EMI installment"),
     CORRUPT_PAYLOAD("License file is missing or corrupted");
 
     private final String description;

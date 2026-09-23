@@ -179,4 +179,202 @@ public class LicenseVerifierTest {
         Instant goldExp = MembershipPlan.GOLD.calculateExpiry(issued);
         assertNull(goldExp);
     }
+
+    @Test
+    void testSchema3EmiEnabledVerification() throws Exception {
+        EmiPricingPayload pricing = new EmiPricingPayload();
+        pricing.setInterestType("FLAT_RATE");
+        pricing.setInterestRate(new java.math.BigDecimal("12.00"));
+        pricing.setAgreedPrice(new java.math.BigDecimal("10000.00"));
+        pricing.setDownPayment(new java.math.BigDecimal("2000.00"));
+        pricing.setFinancedAmount(new java.math.BigDecimal("8000.00"));
+        pricing.setTotalInterest(new java.math.BigDecimal("800.00"));
+        pricing.setTotalPayable(new java.math.BigDecimal("8800.00"));
+
+        EmiSchedulePayload schedule = new EmiSchedulePayload();
+        schedule.setTenureMonths(8);
+        schedule.setInterval("MONTHLY");
+        schedule.setFirstDueDate("2026-10-01");
+        schedule.setGraceDays(5);
+        schedule.setInstallmentAmount(new java.math.BigDecimal("1100.00"));
+
+        EmiStatePayload emiState = new EmiStatePayload();
+        emiState.setPaidAmount(new java.math.BigDecimal("0.00"));
+        emiState.setOutstandingAmount(new java.math.BigDecimal("8800.00"));
+        emiState.setCurrentInstallment(1);
+        emiState.setNextDueDate("2026-10-01");
+        emiState.setGraceDeadline("2026-10-06");
+        emiState.setEmiStatus("ACTIVE");
+        emiState.setAccessStatus("NORMAL");
+
+        EmiPayload emi = new EmiPayload();
+        emi.setEnabled(true);
+        emi.setPricing(pricing);
+        emi.setSchedule(schedule);
+        emi.setState(emiState);
+
+        LicensePayload license = new LicensePayload(
+                "LIC-SCH3-001",
+                "K7XM-92QP-4B9R-XD6T",
+                "ABC Traders",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
+                null
+        );
+        license.setSchemaVersion(3);
+        license.setEmi(emi);
+        license.setSignature(signLicense(license));
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.VALID, result);
+        assertTrue(result.isValid());
+    }
+
+    @Test
+    void testSchema3EmiRestrictedStatus() throws Exception {
+        EmiPricingPayload pricing = new EmiPricingPayload();
+        pricing.setInterestType("NO_COST");
+        pricing.setInterestRate(new java.math.BigDecimal("0.00"));
+        pricing.setAgreedPrice(new java.math.BigDecimal("10000.00"));
+        pricing.setDownPayment(new java.math.BigDecimal("2000.00"));
+        pricing.setFinancedAmount(new java.math.BigDecimal("8000.00"));
+        pricing.setTotalInterest(new java.math.BigDecimal("0.00"));
+        pricing.setTotalPayable(new java.math.BigDecimal("8000.00"));
+
+        EmiSchedulePayload schedule = new EmiSchedulePayload();
+        schedule.setTenureMonths(4);
+        schedule.setInterval("MONTHLY");
+        schedule.setFirstDueDate("2026-08-01");
+        schedule.setGraceDays(5);
+        schedule.setInstallmentAmount(new java.math.BigDecimal("2000.00"));
+
+        EmiStatePayload emiState = new EmiStatePayload();
+        emiState.setPaidAmount(new java.math.BigDecimal("2000.00"));
+        emiState.setOutstandingAmount(new java.math.BigDecimal("6000.00"));
+        emiState.setCurrentInstallment(2);
+        emiState.setNextDueDate("2026-08-01");
+        emiState.setGraceDeadline("2026-08-06");
+        emiState.setEmiStatus("DEFAULTED");
+        emiState.setAccessStatus("RESTRICTED");
+
+        EmiPayload emi = new EmiPayload();
+        emi.setEnabled(true);
+        emi.setPricing(pricing);
+        emi.setSchedule(schedule);
+        emi.setState(emiState);
+
+        LicensePayload license = new LicensePayload(
+                "LIC-SCH3-RESTRICTED",
+                "K7XM-92QP-4B9R-XD6T",
+                "ABC Traders",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                2,
+                Instant.now(),
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
+                null
+        );
+        license.setSchemaVersion(3);
+        license.setEmi(emi);
+        license.setSignature(signLicense(license));
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.EMI_RESTRICTED, result);
+        assertFalse(result.isValid());
+    }
+
+    @Test
+    void testSchema3TamperedEmiStateRejection() throws Exception {
+        EmiPricingPayload pricing = new EmiPricingPayload();
+        pricing.setInterestType("NO_COST");
+        pricing.setInterestRate(new java.math.BigDecimal("0.00"));
+        pricing.setAgreedPrice(new java.math.BigDecimal("10000.00"));
+        pricing.setDownPayment(new java.math.BigDecimal("2000.00"));
+        pricing.setFinancedAmount(new java.math.BigDecimal("8000.00"));
+        pricing.setTotalInterest(new java.math.BigDecimal("0.00"));
+        pricing.setTotalPayable(new java.math.BigDecimal("8000.00"));
+
+        EmiSchedulePayload schedule = new EmiSchedulePayload();
+        schedule.setTenureMonths(4);
+        schedule.setInterval("MONTHLY");
+        schedule.setFirstDueDate("2026-08-01");
+        schedule.setGraceDays(5);
+        schedule.setInstallmentAmount(new java.math.BigDecimal("2000.00"));
+
+        EmiStatePayload emiState = new EmiStatePayload();
+        emiState.setPaidAmount(new java.math.BigDecimal("2000.00"));
+        emiState.setOutstandingAmount(new java.math.BigDecimal("6000.00"));
+        emiState.setCurrentInstallment(2);
+        emiState.setNextDueDate("2026-08-01");
+        emiState.setGraceDeadline("2026-08-06");
+        emiState.setEmiStatus("DEFAULTED");
+        emiState.setAccessStatus("RESTRICTED");
+
+        EmiPayload emi = new EmiPayload();
+        emi.setEnabled(true);
+        emi.setPricing(pricing);
+        emi.setSchedule(schedule);
+        emi.setState(emiState);
+
+        LicensePayload license = new LicensePayload(
+                "LIC-SCH3-TAMPER",
+                "K7XM-92QP-4B9R-XD6T",
+                "ABC Traders",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                2,
+                Instant.now(),
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
+                null
+        );
+        license.setSchemaVersion(3);
+        license.setEmi(emi);
+        license.setSignature(signLicense(license));
+
+        // Customer tampers with accessStatus in local JSON file to NORMAL
+        emiState.setAccessStatus("NORMAL");
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.INVALID_SIGNATURE, result);
+    }
+
+    @Test
+    void testSchema3NonEmiVerification() throws Exception {
+        EmiPayload emi = new EmiPayload();
+        emi.setEnabled(false);
+
+        LicensePayload license = new LicensePayload(
+                "LIC-SCH3-NON-EMI",
+                "K7XM-92QP-4B9R-XD6T",
+                "ABC Traders",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.GOLD,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                null,
+                null,
+                null
+        );
+        license.setSchemaVersion(3);
+        license.setEmi(emi);
+        license.setSignature(signLicense(license));
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.VALID, result);
+        assertTrue(result.isValid());
+    }
 }

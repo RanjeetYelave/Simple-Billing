@@ -11,7 +11,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -20,17 +19,21 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.springframework.stereotype.Service;
 
 /**
- * Orchestrates local offline startup validation and background opportunistic daily sync with GitHub.
+ * Orchestrates local offline startup validation, low-traffic background synchronization,
+ * and deliberate in-flight locked recovery for RupeeCRM Schema 3 licensing.
  */
 @Service
 public class LicenseCoordinator implements DataProtectionEntitlement {
 
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final int VALID_LICENSE_SYNC_INTERVAL_DAYS = 14;
+    private static final int NON_EMI_SYNC_INTERVAL_DAYS = 30;
+    private static final int ACTIVE_EMI_SYNC_INTERVAL_DAYS = 3;
 
     private final MachineIdentity machineIdentity;
     private final LicenseVerifier licenseVerifier;
@@ -39,6 +42,9 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     private final DataProtectionCredentialStore credentialStore;
     private final ObjectMapper mapper;
     private final ScheduledExecutorService scheduler;
+
+    private final AtomicBoolean inFlightSyncLock = new AtomicBoolean(false);
+    private Function<String, String> registryFetcher;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.billing.simple.billsoft.service.NotificationService notificationService;
@@ -73,10 +79,15 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             t.setDaemon(true);
             return t;
         });
+        this.registryFetcher = this::fetchRegistryFileDefault;
     }
 
     public void setNotificationService(com.billing.simple.billsoft.service.NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    public void setRegistryFetcher(Function<String, String> customFetcher) {
+        this.registryFetcher = customFetcher != null ? customFetcher : this::fetchRegistryFileDefault;
     }
 
     /**
@@ -94,7 +105,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
 
         // 1. Verify cryptographic signature & machine identity
         ValidationResult result = licenseVerifier.verifyLicense(activeLicense, machineId);
-        if (!result.isValid()) {
+        if (!result.isValid() && result != ValidationResult.EMI_RESTRICTED) {
             currentValidationResult = result;
             return false;
         }
@@ -108,20 +119,18 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             return false;
         }
 
-        // 3. Offline expiry tolerance: Check if expired
-        // In offline mode, an expired license STILL ALLOWS startup (Fail-Open), but UI can show warning
-        currentValidationResult = ValidationResult.VALID;
+        currentValidationResult = result;
 
         // Check and reset snoozes if revision changed
         snoozeManager.checkAndResetOnRevisionBump(activeLicense.getRevision());
 
-        // Schedule background sync
+        // Schedule background low-traffic cadence sync
         scheduleDailySync();
         return true;
     }
 
     /**
-     * Schedules the opportunistic background check.
+     * Schedules opportunistic low-traffic background synchronization.
      */
     public synchronized void scheduleDailySync() {
         if (dailySyncScheduled) {
@@ -131,182 +140,198 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         scheduler.scheduleWithFixedDelay(this::performOpportunisticDailySync, 10, 3600, TimeUnit.SECONDS);
     }
 
-    /**
-     * Performs opportunistic background synchronization when network is available.
-     */
     public void performOpportunisticDailySync() {
         syncWithRegistry(false);
     }
 
     /**
-     * Synchronizes local license state and inbox messages with the remote registry.
-     * Low-frequency policy:
-     * - If license is comfortably valid: checks at most once every 14 days.
-     * - If license is expired: checks on startup/daily sync to detect operator renewals.
-     * @param force if true, bypasses cadence restriction.
+     * Synchronizes local license state with the remote registry following Low-Traffic Rules:
+     * - Fully Paid / Non-EMI: checks at most once every 30 days.
+     * - Active Outstanding EMI: checks at most once every 3 days.
+     * - Restricted: checks once per login.
+     * - Expired: checks once per login.
+     * - Force ("I HAVE PAID EMI"): exactly 1 immediate check guarded by in-flight mutex.
+     *
+     * In-Flight Mutex: If a sync is already executing, concurrent attempts return immediately.
      */
-    public void syncWithRegistry(boolean force) {
-        LocalDate todayDate = LocalDate.now(DEFAULT_ZONE);
-        String today = todayDate.toString();
-        String lastChecked = licenseStorage.getLastSuccessfulCheckDate();
+    public boolean syncWithRegistry(boolean force) {
+        if (!inFlightSyncLock.compareAndSet(false, true)) {
+            // In-flight mutex locked: concurrent call rejected to prevent duplicate network traffic
+            return false;
+        }
 
-        if (!force && lastChecked != null && !lastChecked.isBlank()) {
-            try {
-                LocalDate lastCheckedDate = LocalDate.parse(lastChecked);
-                boolean expired = licenseVerifier.isExpired(activeLicense, Instant.now());
-                if (!expired) {
+        try {
+            LocalDate todayDate = LocalDate.now(DEFAULT_ZONE);
+            String today = todayDate.toString();
+            String lastChecked = licenseStorage.getLastSuccessfulCheckDate();
+
+            if (!force && lastChecked != null && !lastChecked.isBlank()) {
+                try {
+                    LocalDate lastCheckedDate = LocalDate.parse(lastChecked);
                     long daysSinceCheck = java.time.temporal.ChronoUnit.DAYS.between(lastCheckedDate, todayDate);
-                    if (daysSinceCheck < VALID_LICENSE_SYNC_INTERVAL_DAYS) {
-                        return; // Valid license checked < 14 days ago. Skip remote call.
+
+                    boolean hasActiveEmi = activeLicense != null && activeLicense.getEmi() != null && 
+                            Boolean.TRUE.equals(activeLicense.getEmi().getEnabled()) &&
+                            !"SETTLED".equalsIgnoreCase(activeLicense.getEmi().getState() != null ? activeLicense.getEmi().getState().getEmiStatus() : null);
+
+                    boolean isRestrictedOrExpired = currentValidationResult == ValidationResult.EMI_RESTRICTED ||
+                            licenseVerifier.isExpired(activeLicense, Instant.now());
+
+                    if (isRestrictedOrExpired) {
+                        if (today.equals(lastChecked)) {
+                            return false; // Already checked on login today
+                        }
+                    } else if (hasActiveEmi) {
+                        if (daysSinceCheck < ACTIVE_EMI_SYNC_INTERVAL_DAYS) {
+                            return false; // Active EMI checked < 3 days ago. Skip network call.
+                        }
+                    } else {
+                        if (daysSinceCheck < NON_EMI_SYNC_INTERVAL_DAYS) {
+                            return false; // Non-EMI checked < 30 days ago. Skip network call.
+                        }
                     }
-                } else {
-                    if (today.equals(lastChecked)) {
-                        return; // Expired license already checked today.
+                } catch (Exception ignored) {
+                }
+            }
+
+            String machineId = machineIdentity.getMachineId();
+
+            // 1. Fetch remote license from registry
+            try {
+                String body = registryFetcher.apply("licenses/" + machineId + ".lic");
+
+                if (body != null && !body.isBlank()) {
+                    LicensePayload remoteLicense = mapper.readValue(body, LicensePayload.class);
+                    ValidationResult remoteVerify = licenseVerifier.verifyLicense(remoteLicense, machineId);
+
+                    if (remoteVerify.isValid() || remoteVerify == ValidationResult.EMI_RESTRICTED ||
+                            remoteVerify == ValidationResult.SUSPENDED || remoteVerify == ValidationResult.REVOKED) {
+                        
+                        int localHighest = licenseStorage.getHighestRevision();
+                        String localLicId = licenseStorage.getRecordedLicenseId();
+                        if (localLicId == null && activeLicense != null) {
+                            localLicId = activeLicense.getLicenseId();
+                        }
+                        boolean isNewLicenseId = (localLicId == null || !localLicId.equals(remoteLicense.getLicenseId()));
+
+                        // Reject rollback attempts for the same license ID
+                        if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
+                            licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
+
+                            if (activeLicense == null || isNewLicenseId || remoteLicense.getRevision() > activeLicense.getRevision()) {
+                                licenseStorage.saveLocalLicense(remoteLicense);
+                                this.activeLicense = remoteLicense;
+                            }
+
+                            if (remoteLicense.getStatus() == LicenseStatus.SUSPENDED) {
+                                notifyStatusChange(ValidationResult.SUSPENDED);
+                                return true;
+                            }
+                            if (remoteLicense.getStatus() == LicenseStatus.REVOKED) {
+                                notifyStatusChange(ValidationResult.REVOKED);
+                                return true;
+                            }
+                            if (remoteVerify == ValidationResult.EMI_RESTRICTED) {
+                                notifyStatusChange(ValidationResult.EMI_RESTRICTED);
+                                return true;
+                            }
+
+                            if (licenseVerifier.isExpired(remoteLicense, Instant.now())) {
+                                notifyStatusChange(ValidationResult.EXPIRED);
+                                return true;
+                            }
+
+                            notifyStatusChange(ValidationResult.VALID);
+                            return true;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Fail-open network resiliency: Network/DNS/HTTP error preserves existing valid local license
+            }
+
+            // 2. Fetch customer inbox messages
+            try {
+                String msgBody = registryFetcher.apply("messages/" + machineId + ".json");
+                if (msgBody != null && !msgBody.isBlank()) {
+                    CustomerMessageEnvelope env = mapper.readValue(msgBody, CustomerMessageEnvelope.class);
+                    if (env.getMessages() != null) {
+                        List<CustomerMessage> existingLocal = licenseStorage.loadInboxMessages();
+                        java.util.Set<String> readMessageIds = new java.util.HashSet<>();
+                        if (existingLocal != null) {
+                            for (CustomerMessage existing : existingLocal) {
+                                if (existing.isRead() && existing.getMessageId() != null) {
+                                    readMessageIds.add(existing.getMessageId().trim());
+                                }
+                            }
+                        }
+                        List<CustomerMessage> validMsgs = new ArrayList<>();
+                        for (CustomerMessage msg : env.getMessages()) {
+                            if (licenseVerifier.verifyMessage(machineId, msg)) {
+                                if (msg.getMessageId() != null && readMessageIds.contains(msg.getMessageId().trim())) {
+                                    msg.setRead(true);
+                                }
+                                validMsgs.add(msg);
+
+                                if (notificationService != null && msg.getMessageId() != null && !msg.getMessageId().isBlank()) {
+                                    try {
+                                        notificationService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
+                                                .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
+                                                .eventKey("management:broadcast:" + msg.getMessageId().trim())
+                                                .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
+                                                .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
+                                                .title(msg.getTitle() != null ? msg.getTitle() : "Announcement")
+                                                .body(msg.getBody())
+                                                .sender("RupeeCRM Management")
+                                                .primaryActionLabel("Open System")
+                                                .primaryActionType(com.billing.simple.billsoft.entities.NotificationActionType.NAVIGATE)
+                                                .primaryActionTarget("settings")
+                                                .build());
+                                    } catch (Exception ignored) {
+                                    }
+                                }
+                            }
+                        }
+                        licenseStorage.saveInboxMessages(machineId, validMsgs);
                     }
                 }
             } catch (Exception ignored) {
             }
-        }
 
-        String machineId = machineIdentity.getMachineId();
-
-        // 1. Attempt to fetch remote license
-        try {
-            String body = fetchRegistryFile("licenses/" + machineId + ".lic");
-
-            if (body != null && !body.isBlank()) {
-                LicensePayload remoteLicense = mapper.readValue(body, LicensePayload.class);
-                ValidationResult remoteVerify = licenseVerifier.verifyLicense(remoteLicense, machineId);
-
-                if (remoteVerify.isValid() || remoteVerify == ValidationResult.SUSPENDED || remoteVerify == ValidationResult.REVOKED) {
-                    int localHighest = licenseStorage.getHighestRevision();
-                    String localLicId = licenseStorage.getRecordedLicenseId();
-                    if (localLicId == null && activeLicense != null) {
-                        localLicId = activeLicense.getLicenseId();
-                    }
-                    boolean isNewLicenseId = (localLicId == null || !localLicId.equals(remoteLicense.getLicenseId()));
-
-                    // Reject rollback attempts for the same license ID
-                    if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
-                        // Mark today as successfully checked!
-                        licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
-
-                        // Update local license if remote is newer or newly issued license
-                        if (activeLicense == null || isNewLicenseId || remoteLicense.getRevision() > activeLicense.getRevision()) {
-                            licenseStorage.saveLocalLicense(remoteLicense);
-                            this.activeLicense = remoteLicense;
-                        }
-
-                        // Evaluate remote status
-                        if (remoteLicense.getStatus() == LicenseStatus.SUSPENDED) {
-                            notifyStatusChange(ValidationResult.SUSPENDED);
-                            return;
-                        }
-                        if (remoteLicense.getStatus() == LicenseStatus.REVOKED) {
-                            notifyStatusChange(ValidationResult.REVOKED);
-                            return;
-                        }
-
-                        // Evaluate authenticated expiry
-                        if (licenseVerifier.isExpired(remoteLicense, Instant.now())) {
-                            notifyStatusChange(ValidationResult.EXPIRED);
-                            return;
-                        }
-
-                        notifyStatusChange(ValidationResult.VALID);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // Fail-open: Network / 404 / timeout / DNS failure does not interrupt active application
-        }
-
-        // 2. Fetch customer inbox messages
-        try {
-            String msgBody = fetchRegistryFile("messages/" + machineId + ".json");
-            if (msgBody != null && !msgBody.isBlank()) {
-                CustomerMessageEnvelope env = mapper.readValue(msgBody, CustomerMessageEnvelope.class);
-                if (env.getMessages() != null) {
-                    List<CustomerMessage> existingLocal = licenseStorage.loadInboxMessages();
-                    java.util.Set<String> readMessageIds = new java.util.HashSet<>();
-                    if (existingLocal != null) {
-                        for (CustomerMessage existing : existingLocal) {
-                            if (existing.isRead() && existing.getMessageId() != null) {
-                                readMessageIds.add(existing.getMessageId().trim());
-                            }
-                        }
-                    }
-                    List<CustomerMessage> validMsgs = new ArrayList<>();
-                    for (CustomerMessage msg : env.getMessages()) {
-                        if (licenseVerifier.verifyMessage(machineId, msg)) {
-                            if (msg.getMessageId() != null && readMessageIds.contains(msg.getMessageId().trim())) {
-                                msg.setRead(true);
-                            }
-                            validMsgs.add(msg);
-
-                            if (notificationService != null && msg.getMessageId() != null && !msg.getMessageId().isBlank()) {
-                                try {
-                                    notificationService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
-                                            .firmId(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID)
-                                            .eventKey("management:broadcast:" + msg.getMessageId().trim())
-                                            .category(com.billing.simple.billsoft.entities.NotificationCategory.LICENSING)
-                                            .priority(com.billing.simple.billsoft.entities.NotificationPriority.HIGH)
-                                            .title(msg.getTitle() != null ? msg.getTitle() : "Announcement")
-                                            .body(msg.getBody())
-                                            .sender("RupeeCRM Management")
-                                            .primaryActionLabel("Open System")
-                                            .primaryActionType(com.billing.simple.billsoft.entities.NotificationActionType.NAVIGATE)
-                                            .primaryActionTarget("settings")
-                                            .build());
-                                } catch (Exception ignored) {
-                                }
-                            }
-                        }
-                    }
-                    licenseStorage.saveInboxMessages(machineId, validMsgs);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        // 3. Fetch versioned Data Protection configuration
-        try {
-            String vaultConfigBody = fetchRegistryFile("config/vault-config.json");
-            if (vaultConfigBody != null && !vaultConfigBody.isBlank()) {
-                JsonNode root = mapper.readTree(vaultConfigBody);
-                if (root.has("version") && root.has("protectedPayload") && root.has("signature")) {
-                    int ver = root.get("version").asInt();
-                    String payload = root.get("protectedPayload").asText();
-                    String sig = root.get("signature").asText();
-                    credentialStore.updateCredential(ver, payload, sig, licenseVerifier.getMasterPublicKey());
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        // 4. Opportunistic Data Protection backup check (Single scheduled cycle)
-        if (backupCheckHook != null) {
+            // 3. Fetch Data Protection configuration
             try {
-                backupCheckHook.run();
-            } catch (Throwable ignored) {
+                String vaultConfigBody = registryFetcher.apply("config/vault-config.json");
+                if (vaultConfigBody != null && !vaultConfigBody.isBlank()) {
+                    JsonNode root = mapper.readTree(vaultConfigBody);
+                    if (root.has("version") && root.has("protectedPayload") && root.has("signature")) {
+                        int ver = root.get("version").asInt();
+                        String payload = root.get("protectedPayload").asText();
+                        String sig = root.get("signature").asText();
+                        credentialStore.updateCredential(ver, payload, sig, licenseVerifier.getMasterPublicKey());
+                    }
+                }
+            } catch (Exception ignored) {
             }
+
+            if (backupCheckHook != null) {
+                try {
+                    backupCheckHook.run();
+                } catch (Throwable ignored) {
+                }
+            }
+
+            return true;
+        } finally {
+            inFlightSyncLock.set(false);
         }
     }
 
-    /**
-     * Fetches file content from the remote registry using dual strategy:
-     * 1. Static raw.githubusercontent.com (CDN-cached, high rate-limit tolerance, fast).
-     * 2. GitHub REST API contents endpoint fallback (resilient against ISP routing blocks).
-     */
-    private String fetchRegistryFile(String subPath) {
-        // Strategy 1: Raw CDN endpoint (Primary)
+    private String fetchRegistryFileDefault(String subPath) {
         String rawBase = LicensingConfig.getRegistryBaseUrl();
         String result = fetchHttpText(rawBase + "/" + subPath);
         if (result != null && !result.isBlank()) {
             return result;
         }
-
-        // Strategy 2: GitHub REST API fallback
         String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
         return fetchHttpText(apiBase + "/" + subPath);
     }
@@ -338,22 +363,22 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     }
 
     /**
-     * Installs a newly received .lic file (e.g. from manual drop/paste or initial activation).
+     * Installs a newly received .lic file.
      */
     public synchronized ValidationResult activateLicense(LicensePayload license) {
         String machineId = machineIdentity.getMachineId();
         ValidationResult result = licenseVerifier.verifyLicense(license, machineId);
-        if (!result.isValid()) {
+        if (!result.isValid() && result != ValidationResult.EMI_RESTRICTED) {
             return result;
         }
         try {
             licenseStorage.saveLocalLicense(license);
             licenseStorage.updateSyncState(LocalDate.now(DEFAULT_ZONE).toString(), license.getRevision(), license.getLicenseId());
             this.activeLicense = license;
-            this.currentValidationResult = ValidationResult.VALID;
+            this.currentValidationResult = result;
             scheduleDailySync();
-            notifyStatusChange(ValidationResult.VALID);
-            return ValidationResult.VALID;
+            notifyStatusChange(result);
+            return result;
         } catch (Exception e) {
             return ValidationResult.CORRUPT_PAYLOAD;
         }
@@ -390,8 +415,6 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         return licenseVerifier;
     }
 
-    // --- DataProtectionEntitlement Implementation ---
-
     @Override
     public boolean isDataProtectionEnabled() {
         return activeLicense != null && Boolean.TRUE.equals(activeLicense.getDataProtectionEnabled());
@@ -426,11 +449,9 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         return credentialStore;
     }
 
-    // --- Expiry Days Calculation Helpers ---
-
     public Long getLicenseDaysRemaining() {
         if (activeLicense == null || activeLicense.getExpiresAt() == null || activeLicense.getPlan() == MembershipPlan.GOLD) {
-            return null; // Lifetime / no expiry
+            return null; // Lifetime
         }
         Instant now = Instant.now();
         if (now.isAfter(activeLicense.getExpiresAt())) {
@@ -441,7 +462,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
 
     public Long getDataProtectionDaysRemaining() {
         if (activeLicense == null || !Boolean.TRUE.equals(activeLicense.getDataProtectionEnabled()) || activeLicense.getDataProtectionExpiresAt() == null) {
-            return null; // Lifetime / disabled
+            return null;
         }
         Instant now = Instant.now();
         if (now.isAfter(activeLicense.getDataProtectionExpiresAt())) {

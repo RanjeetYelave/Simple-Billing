@@ -210,7 +210,7 @@ public class LicenseCoordinatorTest {
 
         // Subclass coordinator to mock fetchRegistryFile
         LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
-            public void syncWithRegistry(boolean force) {
+            public boolean syncWithRegistry(boolean force) {
                 // Call notification service using the verified msg
                 if (licenseVerifier.verifyMessage(machineId, msg)) {
                     mockNotifService.createOrUpdate(com.billing.simple.billsoft.dto.NotificationRequest.builder()
@@ -223,6 +223,7 @@ public class LicenseCoordinatorTest {
                             .sender("RupeeCRM Management")
                             .build());
                 }
+                return true;
             }
         };
 

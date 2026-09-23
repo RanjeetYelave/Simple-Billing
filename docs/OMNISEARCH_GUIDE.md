@@ -362,4 +362,3 @@ The in-app Omnisearch Guide (accessible via the `?` button next to the Omnisearc
 - **Zero Cloud AI / External API Callout**: 100% locally evaluated in under 2ms without network connectivity.
 - **Input Sanitization**: Injection payloads (XSS, SQL, Prototype Pollution) are safely treated as plaintext search queries without execution.
 - **Deterministic Regression Testing**: Automated Playwright UI test suites and 598+ Maven backend tests guarantee strict stability across releases.
-

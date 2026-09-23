@@ -55,7 +55,7 @@ public class AllApiEndpointsHealthCheckTest {
         assertThat(response).isNotNull();
         assertThat(response.getOverallStatus()).isEqualTo("HEALTHY");
         assertThat(response.getFailedEndpoints()).isEqualTo(0);
-        assertThat(response.getPassedEndpoints()).isGreaterThanOrEqualTo(20);
+        assertThat(response.getPassedEndpoints()).isGreaterThanOrEqualTo(50);
         assertThat(response.getTotalEndpoints()).isEqualTo(response.getPassedEndpoints());
         assertThat(response.getPassRatePercent()).isEqualTo(100.0);
 

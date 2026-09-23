@@ -95,63 +95,41 @@
 
     // ─── Exact RupeeCRM Vector Brand Icon & Logo ───
     function RupeeCRMIcon({ size = 36, className = '', style = {} }) {
+      const chevronD = "M 0 0 H 156 A 18 18 0 0 1 174 18 V 174 C 134.3 174 102 141.7 102 102 V 72 H 72 C 32.3 72 0 39.7 0 0 Z";
       return React.createElement('svg', {
         xmlns: 'http://www.w3.org/2000/svg',
         width: size,
         height: size,
-        viewBox: '0 0 110 110',
+        viewBox: '0 0 447 447',
         className: className,
         style: { display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, overflow: 'visible', ...style }
       },
         React.createElement('defs', null,
-          // Royal Blue to Deep Navy gradient for the upper 'R' loop
-          React.createElement('linearGradient', { id: 'rcrmBlueLoop', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#3b82f6' }),
-            React.createElement('stop', { offset: '40%', stopColor: '#1d4ed8' }),
-            React.createElement('stop', { offset: '100%', stopColor: '#0f2766' })
+          React.createElement('linearGradient', { id: 'rcrmChevronTop', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#38bdf8' }),
+            React.createElement('stop', { offset: '35%', stopColor: '#2563eb' }),
+            React.createElement('stop', { offset: '100%', stopColor: '#1d4ed8' })
           ),
-          // Royal Blue for the Rupee bars & left spine
-          React.createElement('linearGradient', { id: 'rcrmBlueRupee', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#2563eb' }),
+          React.createElement('linearGradient', { id: 'rcrmChevronMid', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#60a5fa' }),
+            React.createElement('stop', { offset: '45%', stopColor: '#2563eb' }),
             React.createElement('stop', { offset: '100%', stopColor: '#1e40af' })
           ),
-          // Emerald Green gradient for the right leg of 'R'
-          React.createElement('linearGradient', { id: 'rcrmGreenLeg', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#00d685' }),
-            React.createElement('stop', { offset: '60%', stopColor: '#059669' }),
-            React.createElement('stop', { offset: '100%', stopColor: '#047857' })
+          React.createElement('linearGradient', { id: 'rcrmChevronBot', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            React.createElement('stop', { offset: '0%', stopColor: '#2563eb' }),
+            React.createElement('stop', { offset: '60%', stopColor: '#1d4ed8' }),
+            React.createElement('stop', { offset: '100%', stopColor: '#1e40af' })
           )
         ),
-
-        // 1. Top Loop / Arch Ribbon of 'R' (Deep Blue Gradient)
-        React.createElement('path', {
-          d: 'M 14 36 C 24 16, 50 12, 70 12 C 92 12, 106 26, 106 45 C 106 63, 90 73, 68 74 C 54 74 44 68 38 60 C 44 48 60 48 74 48 C 84 48 88 43 88 38 C 88 28 76 22 64 22 C 44 22 28 28 14 36 Z',
-          fill: 'url(#rcrmBlueLoop)'
-        }),
-
-        // 2. Rupee Upper Horizontal Bar
-        React.createElement('rect', {
-          x: '10', y: '38', width: '38', height: '9', rx: '4.5',
-          fill: 'url(#rcrmBlueRupee)'
-        }),
-
-        // 3. Rupee Lower Horizontal Bar
-        React.createElement('rect', {
-          x: '10', y: '52', width: '36', height: '9', rx: '4.5',
-          fill: 'url(#rcrmBlueRupee)'
-        }),
-
-        // 4. Rupee Left Lower Slash / Spine
-        React.createElement('path', {
-          d: 'M 34 58 C 30 64, 24 72, 12 78 C 10 79, 10 84, 13 86 L 24 96 C 26 98, 30 98, 33 94 L 46 66 C 42 62, 38 60, 34 58 Z',
-          fill: 'url(#rcrmBlueRupee)'
-        }),
-
-        // 5. Emerald Green Right Leg of 'R'
-        React.createElement('path', {
-          d: 'M 60 62 L 86 98 C 89 102, 94 104, 99 104 L 105 104 C 109 104, 111 99, 108 95 L 80 56 C 72 58, 66 60, 60 62 Z',
-          fill: 'url(#rcrmGreenLeg)'
-        })
+        React.createElement('g', { transform: 'translate(216, 56)' },
+          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronTop)' })
+        ),
+        React.createElement('g', { transform: 'translate(136, 136)' },
+          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronMid)' })
+        ),
+        React.createElement('g', { transform: 'translate(56, 216)' },
+          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronBot)' })
+        )
       );
     }
 

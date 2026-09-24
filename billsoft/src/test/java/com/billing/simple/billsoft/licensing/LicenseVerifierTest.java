@@ -1,6 +1,8 @@
 package com.billing.simple.billsoft.licensing;
 
 import com.billing.simple.billsoft.licensing.model.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +20,7 @@ public class LicenseVerifierTest {
 
     private KeyPair keyPair;
     private LicenseVerifier verifier;
+    private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @BeforeEach
     void setUp() throws Exception {
@@ -27,6 +30,9 @@ public class LicenseVerifierTest {
     }
 
     private String signLicense(LicensePayload license) throws Exception {
+        if (license.getSchemaVersion() == null) {
+            license.setSchemaVersion(3);
+        }
         String canonical = LicenseVerifier.buildCanonicalString(license);
         Signature signer = Signature.getInstance("Ed25519");
         signer.initSign(keyPair.getPrivate());
@@ -50,6 +56,7 @@ public class LicenseVerifierTest {
                 null,
                 null
         );
+        license.setSchemaVersion(3);
         license.setSignature(signLicense(license));
 
         ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
@@ -73,6 +80,7 @@ public class LicenseVerifierTest {
                 null,
                 null
         );
+        license.setSchemaVersion(3);
         license.setSignature(signLicense(license));
 
         // Attacker modifies BRONZE to GOLD
@@ -99,6 +107,7 @@ public class LicenseVerifierTest {
                 null,
                 null
         );
+        license.setSchemaVersion(3);
         license.setSignature(signLicense(license));
 
         // Different machine tries to use this license
@@ -118,14 +127,14 @@ public class LicenseVerifierTest {
                 LicenseStatus.SUSPENDED,
                 2,
                 Instant.now(),
-                Instant.now().plus(3 * 365, ChronoUnit.DAYS),
-                "Payment issue",
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
                 null
         );
+        suspendedLic.setSchemaVersion(3);
         suspendedLic.setSignature(signLicense(suspendedLic));
 
-        ValidationResult suspendedResult = verifier.verifyLicense(suspendedLic, "K7XM-92QP-4B9R-XD6T");
-        assertEquals(ValidationResult.SUSPENDED, suspendedResult);
+        assertEquals(ValidationResult.SUSPENDED, verifier.verifyLicense(suspendedLic, "K7XM-92QP-4B9R-XD6T"));
 
         LicensePayload revokedLic = new LicensePayload(
                 "LIC-00182",
@@ -137,37 +146,71 @@ public class LicenseVerifierTest {
                 LicenseStatus.REVOKED,
                 3,
                 Instant.now(),
-                Instant.now().plus(3 * 365, ChronoUnit.DAYS),
-                "Fraudulent chargeback",
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
                 null
         );
+        revokedLic.setSchemaVersion(3);
         revokedLic.setSignature(signLicense(revokedLic));
 
-        ValidationResult revokedResult = verifier.verifyLicense(revokedLic, "K7XM-92QP-4B9R-XD6T");
-        assertEquals(ValidationResult.REVOKED, revokedResult);
+        assertEquals(ValidationResult.REVOKED, verifier.verifyLicense(revokedLic, "K7XM-92QP-4B9R-XD6T"));
     }
 
     @Test
-    void testDerivedExpiryLogic() {
+    void testExpirationCheck() {
         Instant now = Instant.now();
-        Instant past = now.minus(10, ChronoUnit.DAYS);
-        Instant future = now.plus(10, ChronoUnit.DAYS);
+        LicensePayload validLic = new LicensePayload(
+                "LIC-1", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1,
+                now.minus(10, ChronoUnit.DAYS), now.plus(10, ChronoUnit.DAYS), null, null
+        );
+        assertFalse(verifier.isExpired(validLic, now));
 
-        LicensePayload activeFuture = new LicensePayload("L1", "M1", "C1", "RupeeCRM", "PRO",
-                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1, past, future, null, null);
-        assertFalse(verifier.isExpired(activeFuture, now));
+        LicensePayload expiredLic = new LicensePayload(
+                "LIC-2", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1,
+                now.minus(20, ChronoUnit.DAYS), now.minus(5, ChronoUnit.DAYS), null, null
+        );
+        assertTrue(verifier.isExpired(expiredLic, now));
 
-        LicensePayload activePast = new LicensePayload("L2", "M1", "C1", "RupeeCRM", "PRO",
-                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1, past.minus(365, ChronoUnit.DAYS), past, null, null);
-        assertTrue(verifier.isExpired(activePast, now));
-
-        LicensePayload goldLifetime = new LicensePayload("L3", "M1", "C1", "RupeeCRM", "PRO",
-                MembershipPlan.GOLD, LicenseStatus.ACTIVE, 1, past, null, null, null);
-        assertFalse(verifier.isExpired(goldLifetime, now), "GOLD lifetime plan must never expire");
+        LicensePayload lifetimeLic = new LicensePayload(
+                "LIC-3", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.GOLD, LicenseStatus.ACTIVE, 1,
+                now.minus(20, ChronoUnit.DAYS), null, null, null
+        );
+        assertFalse(verifier.isExpired(lifetimeLic, now));
     }
 
     @Test
-    void testMembershipExpiryArithmetic() {
+    void testDataProtectionEntitlement() {
+        Instant now = Instant.now();
+        LicensePayload licWithDp = new LicensePayload(
+                "LIC-1", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1,
+                now.minus(10, ChronoUnit.DAYS), now.plus(10, ChronoUnit.DAYS),
+                true, now.plus(30, ChronoUnit.DAYS), null, null
+        );
+        assertTrue(verifier.isDataProtectionActive(licWithDp, now));
+
+        LicensePayload licWithoutDp = new LicensePayload(
+                "LIC-2", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1,
+                now.minus(10, ChronoUnit.DAYS), now.plus(10, ChronoUnit.DAYS),
+                false, null, null, null
+        );
+        assertFalse(verifier.isDataProtectionActive(licWithoutDp, now));
+
+        LicensePayload licExpiredDp = new LicensePayload(
+                "LIC-3", "MID", "Cust", "RupeeCRM", "PRO",
+                MembershipPlan.BRONZE, LicenseStatus.ACTIVE, 1,
+                now.minus(10, ChronoUnit.DAYS), now.plus(10, ChronoUnit.DAYS),
+                true, now.minus(2, ChronoUnit.DAYS), null, null
+        );
+        assertFalse(verifier.isDataProtectionActive(licExpiredDp, now));
+    }
+
+    @Test
+    void testPlanExpiryCalculation() {
         Instant issued = Instant.parse("2026-09-14T12:00:00Z");
 
         Instant bronzeExp = MembershipPlan.BRONZE.calculateExpiry(issued);
@@ -376,5 +419,53 @@ public class LicenseVerifierTest {
         ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
         assertEquals(ValidationResult.VALID, result);
         assertTrue(result.isValid());
+    }
+
+    @Test
+    void testRejectSchema1LegacyLicense() throws Exception {
+        LicensePayload license = new LicensePayload(
+                "LIC-LEGACY-1",
+                "K7XM-92QP-4B9R-XD6T",
+                "Legacy Customer",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
+                "dummySig"
+        );
+        license.setSchemaVersion(1);
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.CORRUPT_PAYLOAD, result);
+        assertFalse(result.isValid());
+    }
+
+    @Test
+    void testRejectSchema2LegacyLicense() throws Exception {
+        LicensePayload license = new LicensePayload(
+                "LIC-LEGACY-2",
+                "K7XM-92QP-4B9R-XD6T",
+                "Legacy Customer",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                true,
+                Instant.now().plus(365, ChronoUnit.DAYS),
+                null,
+                "dummySig"
+        );
+        license.setSchemaVersion(2);
+
+        ValidationResult result = verifier.verifyLicense(license, "K7XM-92QP-4B9R-XD6T");
+        assertEquals(ValidationResult.CORRUPT_PAYLOAD, result);
+        assertFalse(result.isValid());
     }
 }

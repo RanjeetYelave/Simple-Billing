@@ -4969,7 +4969,7 @@
     },
 
     parse(type, rawText, ctx = {}) {
-      const activeFirmId = ctx.activeFirmId || (ctx.firm && ctx.firm.id) || 1;
+      const activeFirmId = ctx.firmId || ctx.activeFirmId || (ctx.firm && ctx.firm.id) || (typeof API !== 'undefined' && API.firmId) || 1;
       const customers = ctx.customers || [];
       const text = (rawText || '').trim();
 
@@ -5042,6 +5042,8 @@
         textWithoutDate = textWithoutDate.replace(/\s+/g, ' ').trim();
       }
 
+      const formattedTags = Array.isArray(tags) ? tags.join(',') : (tags || '');
+
       // EXPENSE PARSER
       if (type === 'expense') {
         if (/(?:^|\s)-(?:\d|₹|rs)/i.test(textWithoutTags)) {
@@ -5109,7 +5111,7 @@
           expenseDate: expenseDate,
           paymentMode: paymentMode,
           notes: '',
-          tags: tags,
+          tags: formattedTags,
           firmId: activeFirmId,
           customerId: matchedCustomer ? matchedCustomer.id : null
         };
@@ -5176,7 +5178,7 @@
           type: type,
           status: 'TODO',
           progress: 0,
-          tags: tags,
+          tags: formattedTags,
           firmId: activeFirmId,
           customerId: matchedCustomer ? matchedCustomer.id : null
         };
@@ -5217,7 +5219,7 @@
         const payload = {
           title: title || 'Quick Note',
           content: cleanText,
-          tags: tags,
+          tags: formattedTags,
           firmId: activeFirmId,
           customerId: matchedCustomer ? matchedCustomer.id : null
         };

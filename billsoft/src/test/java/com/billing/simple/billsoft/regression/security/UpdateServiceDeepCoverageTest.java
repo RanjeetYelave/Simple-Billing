@@ -13,6 +13,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @Tag("regression")
 @Tag("unit")
 @DisplayName("Update Service Deep Coverage Tests")

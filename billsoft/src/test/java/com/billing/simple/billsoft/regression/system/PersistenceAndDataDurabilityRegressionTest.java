@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @Tag("regression")
 @Tag("integration")
 @DisplayName("Persistence, Data Durability, Atomicity & Multi-Business Isolation Regression Tests")

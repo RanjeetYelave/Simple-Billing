@@ -44,7 +44,7 @@ public class LicensePayload {
                           String edition, MembershipPlan plan, LicenseStatus status, int revision,
                           Instant issuedAt, Instant expiresAt, Boolean dataProtectionEnabled,
                           Instant dataProtectionExpiresAt, String statusReason, String signature) {
-        this(2, licenseId, machineId, customerName, product, edition, plan, status, revision,
+        this(3, licenseId, machineId, customerName, product, edition, plan, status, revision,
              issuedAt, expiresAt, dataProtectionEnabled, dataProtectionExpiresAt, statusReason, null, signature);
     }
 

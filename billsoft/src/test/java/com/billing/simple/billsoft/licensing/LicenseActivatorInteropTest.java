@@ -67,8 +67,9 @@ public class LicenseActivatorInteropTest {
     }
 
     @Test
-    void testUserLicensePayload() {
+    void testUserLicensePayload() throws Exception {
         LicensePayload license = new LicensePayload(
+                3,
                 "LIC-11962",
                 "RKGM-GH4X-6YX1-VVN8",
                 "Sangam Hardware",
@@ -79,12 +80,15 @@ public class LicenseActivatorInteropTest {
                 1,
                 Instant.parse("2026-09-14T10:50:16.637Z"),
                 Instant.parse("2027-09-14T10:50:16.637Z"),
+                false,
                 null,
-                "fG3RW/uh/MSeS78b2nMuGnxr9A65i62+JHu9LGtIpIDri0EeskbEafd0fdPEMhXxhNzBAlFSceXwU7KRVv2ZBA=="
+                null,
+                null,
+                null
         );
+        signPayload(license);
 
-        LicenseVerifier verifier = new LicenseVerifier();
-        ValidationResult result = verifier.verifyLicense(license, "RKGM-GH4X-6YX1-VVN8");
+        ValidationResult result = customVerifier.verifyLicense(license, "RKGM-GH4X-6YX1-VVN8");
         assertEquals(ValidationResult.VALID, result);
     }
 

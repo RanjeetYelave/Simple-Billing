@@ -12,13 +12,11 @@ import java.util.Base64;
 import java.util.Locale;
 
 /**
- * Verifier for cryptographic signatures and multi-dimensional entitlement domain rules.
- * Strictly backward-compatible with Schema 1, Schema 2, and Schema 3.
+ * Pure Schema 3 Verifier for Ed25519 cryptographic signatures and multi-dimensional entitlement rules.
+ * Obsolete Schema 1 and Schema 2 formats are strictly rejected for production security.
  */
 public class LicenseVerifier {
 
-    private static final String SCHEMA_VERSION_1 = "1";
-    private static final String SCHEMA_VERSION_2 = "2";
     private static final String SCHEMA_VERSION_3 = "3";
     private static final String LIFETIME_EXPIRY_STRING = "LIFETIME";
 
@@ -47,8 +45,7 @@ public class LicenseVerifier {
     }
 
     /**
-     * Builds the deterministic canonical newline-delimited payload for license signing and verification.
-     * Supports Schema 3 (with dynamic EMI), Schema 2 (with Data Protection), and legacy Schema 1.
+     * Builds the deterministic canonical newline-delimited payload for Schema 3 license signing and verification.
      */
     public static String buildCanonicalString(LicensePayload license) {
         if (license == null) {
@@ -65,98 +62,60 @@ public class LicenseVerifier {
         String issuedAt = license.getIssuedAt() != null ? license.getIssuedAt().toString() : "";
         String expiresAt = license.getExpiresAt() != null ? license.getExpiresAt().toString() : LIFETIME_EXPIRY_STRING;
 
-        // Check if Schema 3 payload
-        if ((license.getSchemaVersion() != null && license.getSchemaVersion() >= 3) || license.getEmi() != null) {
-            String dpEnabled = String.valueOf(Boolean.TRUE.equals(license.getDataProtectionEnabled()));
-            String dpExpiresAt = license.getDataProtectionExpiresAt() != null 
-                    ? license.getDataProtectionExpiresAt().toString() 
-                    : LIFETIME_EXPIRY_STRING;
-            String statusReason = sanitize(license.getStatusReason());
+        String dpEnabled = String.valueOf(Boolean.TRUE.equals(license.getDataProtectionEnabled()));
+        String dpExpiresAt = (Boolean.TRUE.equals(license.getDataProtectionEnabled()) && license.getDataProtectionExpiresAt() != null)
+                ? license.getDataProtectionExpiresAt().toString()
+                : LIFETIME_EXPIRY_STRING;
+        String statusReason = sanitize(license.getStatusReason());
 
-            boolean emiEnabled = license.getEmi() != null && Boolean.TRUE.equals(license.getEmi().getEnabled());
+        boolean emiEnabled = license.getEmi() != null && Boolean.TRUE.equals(license.getEmi().getEnabled());
 
-            StringBuilder sb = new StringBuilder();
-            sb.append(SCHEMA_VERSION_3).append("\n")
-              .append(licenseId).append("\n")
-              .append(machineId).append("\n")
-              .append(customerName).append("\n")
-              .append(product).append("\n")
-              .append(edition).append("\n")
-              .append(plan).append("\n")
-              .append(status).append("\n")
-              .append(revision).append("\n")
-              .append(issuedAt).append("\n")
-              .append(expiresAt).append("\n")
-              .append(dpEnabled).append("\n")
-              .append(dpExpiresAt).append("\n")
-              .append(statusReason).append("\n")
-              .append(emiEnabled);
+        StringBuilder sb = new StringBuilder();
+        sb.append(SCHEMA_VERSION_3).append("\n")
+          .append(licenseId).append("\n")
+          .append(machineId).append("\n")
+          .append(customerName).append("\n")
+          .append(product).append("\n")
+          .append(edition).append("\n")
+          .append(plan).append("\n")
+          .append(status).append("\n")
+          .append(revision).append("\n")
+          .append(issuedAt).append("\n")
+          .append(expiresAt).append("\n")
+          .append(dpEnabled).append("\n")
+          .append(dpExpiresAt).append("\n")
+          .append(statusReason).append("\n")
+          .append(emiEnabled ? "true" : "false");
 
-            if (emiEnabled) {
-                EmiPayload emi = license.getEmi();
-                EmiPricingPayload pricing = emi.getPricing();
-                EmiSchedulePayload schedule = emi.getSchedule();
-                EmiStatePayload state = emi.getState();
+        if (emiEnabled) {
+            EmiPayload emi = license.getEmi();
+            EmiPricingPayload pricing = emi.getPricing();
+            EmiSchedulePayload schedule = emi.getSchedule();
+            EmiStatePayload state = emi.getState();
 
-                if (pricing != null && schedule != null && state != null) {
-                    sb.append("\n").append(pricing.getAgreedPrice() != null ? String.format(Locale.US, "%.2f", pricing.getAgreedPrice()) : "0.00")
-                      .append("\n").append(pricing.getDownPayment() != null ? String.format(Locale.US, "%.2f", pricing.getDownPayment()) : "0.00")
-                      .append("\n").append(pricing.getFinancedAmount() != null ? String.format(Locale.US, "%.2f", pricing.getFinancedAmount()) : "0.00")
-                      .append("\n").append(sanitize(pricing.getInterestType()))
-                      .append("\n").append(pricing.getInterestRate() != null ? String.format(Locale.US, "%.2f", pricing.getInterestRate()) : "0.00")
-                      .append("\n").append(pricing.getTotalInterest() != null ? String.format(Locale.US, "%.2f", pricing.getTotalInterest()) : "0.00")
-                      .append("\n").append(pricing.getTotalPayable() != null ? String.format(Locale.US, "%.2f", pricing.getTotalPayable()) : "0.00")
-                      .append("\n").append(schedule.getTenureMonths() != null ? schedule.getTenureMonths().toString() : "0")
-                      .append("\n").append(sanitize(schedule.getInterval()))
-                      .append("\n").append(sanitize(schedule.getFirstDueDate()))
-                      .append("\n").append(schedule.getGraceDays() != null ? schedule.getGraceDays().toString() : "0")
-                      .append("\n").append(schedule.getInstallmentAmount() != null ? String.format(Locale.US, "%.2f", schedule.getInstallmentAmount()) : "0.00")
-                      .append("\n").append(state.getPaidAmount() != null ? String.format(Locale.US, "%.2f", state.getPaidAmount()) : "0.00")
-                      .append("\n").append(state.getOutstandingAmount() != null ? String.format(Locale.US, "%.2f", state.getOutstandingAmount()) : "0.00")
-                      .append("\n").append(state.getCurrentInstallment() != null ? state.getCurrentInstallment().toString() : "NULL")
-                      .append("\n").append(state.getNextDueDate() != null ? sanitize(state.getNextDueDate()) : "NULL")
-                      .append("\n").append(state.getGraceDeadline() != null ? sanitize(state.getGraceDeadline()) : "NULL")
-                      .append("\n").append(sanitize(state.getEmiStatus()))
-                      .append("\n").append(sanitize(state.getAccessStatus()));
-                }
+            if (pricing != null && schedule != null && state != null) {
+                sb.append("\n").append(pricing.getAgreedPrice() != null ? String.format(Locale.US, "%.2f", pricing.getAgreedPrice()) : "0.00")
+                  .append("\n").append(pricing.getDownPayment() != null ? String.format(Locale.US, "%.2f", pricing.getDownPayment()) : "0.00")
+                  .append("\n").append(pricing.getFinancedAmount() != null ? String.format(Locale.US, "%.2f", pricing.getFinancedAmount()) : "0.00")
+                  .append("\n").append(sanitize(pricing.getInterestType()))
+                  .append("\n").append(pricing.getInterestRate() != null ? String.format(Locale.US, "%.2f", pricing.getInterestRate()) : "0.00")
+                  .append("\n").append(pricing.getTotalInterest() != null ? String.format(Locale.US, "%.2f", pricing.getTotalInterest()) : "0.00")
+                  .append("\n").append(pricing.getTotalPayable() != null ? String.format(Locale.US, "%.2f", pricing.getTotalPayable()) : "0.00")
+                  .append("\n").append(schedule.getTenureMonths() != null ? schedule.getTenureMonths().toString() : "0")
+                  .append("\n").append(sanitize(schedule.getInterval()))
+                  .append("\n").append(sanitize(schedule.getFirstDueDate()))
+                  .append("\n").append(schedule.getGraceDays() != null ? schedule.getGraceDays().toString() : "0")
+                  .append("\n").append(schedule.getInstallmentAmount() != null ? String.format(Locale.US, "%.2f", schedule.getInstallmentAmount()) : "0.00")
+                  .append("\n").append(state.getPaidAmount() != null ? String.format(Locale.US, "%.2f", state.getPaidAmount()) : "0.00")
+                  .append("\n").append(state.getOutstandingAmount() != null ? String.format(Locale.US, "%.2f", state.getOutstandingAmount()) : "0.00")
+                  .append("\n").append(state.getCurrentInstallment() != null ? state.getCurrentInstallment().toString() : "NULL")
+                  .append("\n").append(state.getNextDueDate() != null ? sanitize(state.getNextDueDate()) : "NULL")
+                  .append("\n").append(state.getGraceDeadline() != null ? sanitize(state.getGraceDeadline()) : "NULL")
+                  .append("\n").append(sanitize(state.getEmiStatus()))
+                  .append("\n").append(sanitize(state.getAccessStatus()));
             }
-            return sb.toString();
         }
-
-        // Schema 2
-        if (license.getDataProtectionEnabled() != null) {
-            String dpEnabled = String.valueOf(license.getDataProtectionEnabled());
-            String dpExpiresAt = license.getDataProtectionExpiresAt() != null 
-                    ? license.getDataProtectionExpiresAt().toString() 
-                    : LIFETIME_EXPIRY_STRING;
-
-            return SCHEMA_VERSION_2 + "\n" +
-                    licenseId + "\n" +
-                    machineId + "\n" +
-                    customerName + "\n" +
-                    product + "\n" +
-                    edition + "\n" +
-                    plan + "\n" +
-                    status + "\n" +
-                    revision + "\n" +
-                    issuedAt + "\n" +
-                    expiresAt + "\n" +
-                    dpEnabled + "\n" +
-                    dpExpiresAt;
-        }
-
-        // Schema 1
-        return SCHEMA_VERSION_1 + "\n" +
-                licenseId + "\n" +
-                machineId + "\n" +
-                customerName + "\n" +
-                product + "\n" +
-                edition + "\n" +
-                plan + "\n" +
-                status + "\n" +
-                revision + "\n" +
-                issuedAt + "\n" +
-                expiresAt;
+        return sb.toString();
     }
 
     /**
@@ -166,7 +125,7 @@ public class LicenseVerifier {
         if (msg == null) {
             return "";
         }
-        return SCHEMA_VERSION_1 + "\n" +
+        return "1\n" +
                 sanitize(msg.getMessageId()) + "\n" +
                 sanitize(machineId) + "\n" +
                 sanitize(msg.getTitle()) + "\n" +
@@ -176,9 +135,15 @@ public class LicenseVerifier {
 
     /**
      * Verifies cryptographic signature and multi-dimensional status consistency.
+     * Strictly enforces Schema 3.
      */
     public ValidationResult verifyLicense(LicensePayload license, String currentMachineId) {
         if (license == null) {
+            return ValidationResult.CORRUPT_PAYLOAD;
+        }
+
+        // Strictly enforce Schema 3 (Reject legacy Schema 1 & Schema 2)
+        if (license.getSchemaVersion() == null || license.getSchemaVersion() < 3) {
             return ValidationResult.CORRUPT_PAYLOAD;
         }
 

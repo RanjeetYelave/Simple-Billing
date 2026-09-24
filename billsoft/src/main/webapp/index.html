@@ -2870,6 +2870,9 @@
             if (API.notes && API.notes.create) {
               await API.notes.create({
                 title: data.title || 'Sticky Note',
+                content: data.content || data.title || '',
+                tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags || ''),
+                firmId: API.firmId,
                 color: data.color || 'yellow'
               });
               if (window.showToast) window.showToast(`✓ Sticky note pinned to Planner!`, 'success');
@@ -10978,18 +10981,24 @@
       };
 
       const handleGestureSubmit = async (type, payload) => {
+        const targetFirmId = payload.firmId || (API.firmId ? parseInt(API.firmId, 10) : null);
+        const formattedTags = Array.isArray(payload.tags) ? payload.tags.join(',') : (payload.tags || '');
+        const sanitized = {
+          ...payload,
+          firmId: targetFirmId,
+          tags: formattedTags
+        };
         if (type === 'expense') {
-          if (onCreateExpense) await onCreateExpense(payload);
-          showToast('Expense recorded successfully', 'success');
+          if (onCreateExpense) return await onCreateExpense(sanitized);
         } else if (type === 'reminder') {
-          if (onCreateReminder) await onCreateReminder(payload);
-          showToast('Reminder created successfully', 'success');
+          if (onCreateReminder) return await onCreateReminder(sanitized);
         } else if (type === 'task') {
-          if (onCreateTask) await onCreateTask(payload);
-          showToast('Task created successfully', 'success');
+          if (onCreateTask) return await onCreateTask(sanitized);
         } else if (type === 'note') {
-          if (onCreateNote) await onCreateNote(payload);
-          showToast('Note created successfully', 'success');
+          if (onCreateNote) return await onCreateNote({
+            ...sanitized,
+            content: sanitized.content || sanitized.title || ''
+          });
         }
       };
 
@@ -30853,7 +30862,7 @@
       const [showFullEulaModal, setShowFullEulaModal] = useState(false);
       const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
-      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : { title: 'RupeeCRM End User License Agreement', version: '1.0.0', sections: [] };
+      const content = typeof EulaService !== 'undefined' ? EulaService.getContent(licenseInfo) : { title: 'RupeeCRM End User License Agreement', version: '1.0.0', sections: [] };
 
       const handleRevokeConfirm = () => {
         if (typeof EulaService !== 'undefined') {
@@ -30915,21 +30924,37 @@
 
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, padding: '12px 0', borderTop: '1px dashed rgba(255,255,255,0.15)', borderBottom: '1px dashed rgba(255,255,255,0.15)', marginBottom: 14 } },
                 React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'LICENSE ID'),
+                  React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' } }, licenseInfo.licenseId || '—')
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'CUSTOMER'),
+                  React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' } }, licenseInfo.customerName || '—')
+                ),
+                React.createElement('div', null,
                   React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'MACHINE IDENTITY'),
                   React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' } }, licenseInfo.machineId || '—')
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'PRODUCT & EDITION'),
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } }, `${licenseInfo.product || 'RupeeCRM'} • ${licenseInfo.edition || licenseInfo.plan || 'STANDARD'}`)
+                ),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'ISSUED DATE'),
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } }, licenseInfo.issuedAt ? new Date(licenseInfo.issuedAt).toLocaleDateString() : '—')
                 ),
                 React.createElement('div', null,
                   React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'EXPIRATION / VALIDITY'),
                   React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } },
                     licenseInfo.plan === 'GOLD'
                       ? 'Lifetime Validity (Never Expires)'
-                      : (licenseInfo.expiresAt ? `${new Date(licenseInfo.expiresAt).toLocaleDateString()} (${licenseInfo.daysRemaining != null ? licenseInfo.daysRemaining + ' days remaining' : ''})` : 'Active')
+                      : (licenseInfo.expiresAt ? `${new Date(licenseInfo.expiresAt).toLocaleDateString()} (${licenseInfo.daysRemaining != null ? licenseInfo.daysRemaining + ' days remaining' : ''})` : 'Active Perpetual')
                   )
                 ),
                 React.createElement('div', null,
                   React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'REVISION & STATUS'),
                   React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' } },
-                    `Revision ${licenseInfo.revision || 1} • Authenticated Ed25519`
+                    `Revision ${licenseInfo.revision || 1} • ${licenseInfo.status || 'ACTIVE'}`
                   )
                 ),
                 React.createElement('div', null,
@@ -30948,7 +30973,7 @@
                         fontWeight: 700,
                         fontSize: '0.80rem'
                       }
-                    }, `🛡️ FULLY PROTECTED • Active (${(licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) != null ? (licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) + 'd left' : (licenseInfo.dataProtectionExpiresAt ? String(licenseInfo.dataProtectionExpiresAt).split('T')[0] : 'Secure')})`)
+                    }, `🛡️ ACTIVE (${(licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) != null ? (licenseInfo.dpDaysRemaining != null ? licenseInfo.dpDaysRemaining : licenseInfo.dataProtectionDaysRemaining) + 'd left' : (licenseInfo.dataProtectionExpiresAt ? String(licenseInfo.dataProtectionExpiresAt).split('T')[0] : 'Secure')})`)
                   ) : (licenseInfo.dataProtectionEnabled ? (
                     React.createElement('div', {
                       style: {
@@ -30963,7 +30988,7 @@
                         fontWeight: 700,
                         fontSize: '0.80rem'
                       }
-                    }, '⚠️ PROTECTION EXPIRED • Cloud Vault Paused')
+                    }, '⚠️ EXPIRED')
                   ) : (
                     React.createElement('div', {
                       style: {
@@ -30978,8 +31003,86 @@
                         fontWeight: 700,
                         fontSize: '0.80rem'
                       }
-                    }, '🚨 UNPROTECTED • Local Storage Only')
+                    }, '🚨 UNPROTECTED')
                   ))
+                )
+              ),
+
+              licenseInfo.emiEnabled && (
+                React.createElement('div', {
+                  style: {
+                    margin: '16px 0',
+                    padding: '16px 18px',
+                    background: 'rgba(99, 102, 241, 0.06)',
+                    borderRadius: 10,
+                    border: '1px solid rgba(99, 102, 241, 0.25)'
+                  }
+                },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 6 } },
+                      '💳 EMI Financing & Entitlement Terms'
+                    ),
+                    React.createElement('span', {
+                      style: {
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        background: licenseInfo.accessStatus === 'RESTRICTED' ? '#fee2e2' : '#dcfce7',
+                        color: licenseInfo.accessStatus === 'RESTRICTED' ? '#b91c1c' : '#15803d'
+                      }
+                    }, `ACCESS: ${licenseInfo.accessStatus || (licenseInfo.emiState && licenseInfo.emiState.accessStatus) || 'NORMAL'}`)
+                  ),
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 } },
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'AGREED PRICE'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `₹${((licenseInfo.emiPricing && licenseInfo.emiPricing.agreedPrice) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'DOWN PAYMENT'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `₹${((licenseInfo.emiPricing && licenseInfo.emiPricing.downPayment) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'FINANCED AMOUNT'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `₹${((licenseInfo.emiPricing && licenseInfo.emiPricing.financedAmount) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'INTEREST RATE / TYPE'),
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem' } }, `${(licenseInfo.emiPricing && licenseInfo.emiPricing.interestRate) || 0}% (${(licenseInfo.emiPricing && licenseInfo.emiPricing.interestType) || 'NO_COST'})`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'TOTAL PAYABLE'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `₹${((licenseInfo.emiPricing && licenseInfo.emiPricing.totalPayable) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'TENURE / FREQUENCY'),
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem' } }, `${(licenseInfo.emiSchedule && licenseInfo.emiSchedule.tenureMonths) || '—'} Mo • ${(licenseInfo.emiSchedule && licenseInfo.emiSchedule.interval) || 'MONTHLY'}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'INSTALLMENT AMOUNT'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem', color: '#4f46e5' } }, `₹${((licenseInfo.emiSchedule && licenseInfo.emiSchedule.installmentAmount) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'PAID / OUTSTANDING'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `₹${((licenseInfo.emiState && licenseInfo.emiState.paidAmount) || 0).toLocaleString()} / ₹${((licenseInfo.emiState && licenseInfo.emiState.outstandingAmount) || 0).toLocaleString()}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'CURRENT INSTALLMENT'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem' } }, `#${(licenseInfo.emiState && licenseInfo.emiState.currentInstallment) || 1}`)
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'NEXT DUE DATE'),
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem' } }, (licenseInfo.emiState && licenseInfo.emiState.nextDueDate) || licenseInfo.nextDueDate || '—')
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'GRACE DEADLINE'),
+                      React.createElement('div', { style: { fontWeight: 600, fontSize: '0.85rem' } }, (licenseInfo.emiState && licenseInfo.emiState.graceDeadline) || licenseInfo.graceDeadline || '—')
+                    ),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'EMI STATUS'),
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.85rem' } }, (licenseInfo.emiState && licenseInfo.emiState.emiStatus) || licenseInfo.emiStatus || 'ACTIVE')
+                    )
+                  )
                 )
               ),
 
@@ -31155,6 +31258,7 @@
         showFullEulaModal && React.createElement(EulaGateModal, {
           isOpen: true,
           readOnly: true,
+          licenseInfo: licenseInfo,
           onClose: () => setShowFullEulaModal(false)
         }),
 
@@ -31646,13 +31750,13 @@
     }
 
     // ─── EULA GATE MODAL (Startup Gate & View Modal) ───
-    function EulaGateModal({ isOpen, isRevoked, onAccept, onDecline, readOnly = false, onClose }) {
+    function EulaGateModal({ isOpen, isRevoked, onAccept, onDecline, readOnly = false, onClose, licenseInfo }) {
       const [agreed, setAgreed] = useState(false);
       const [isDeclinedView, setIsDeclinedView] = useState(false);
 
       if (!isOpen) return null;
 
-      const content = typeof EulaService !== 'undefined' ? EulaService.getContent() : {
+      const content = typeof EulaService !== 'undefined' ? EulaService.getContent(licenseInfo) : {
         title: 'RupeeCRM End User License Agreement (EULA)',
         version: '1.0.0',
         effectiveDate: 'January 1, 2026',
@@ -37135,29 +37239,49 @@
         });
       };
       const handleCreateReminder = (data) => {
-        return API.reminders.create({ ...data, type: 'reminder', status: 'TODO', progress: 0 }).then(newRem => {
-          if (!newRem.firmId || String(newRem.firmId) === String(API.firmId)) {
+        const formatted = {
+          ...data,
+          type: 'reminder',
+          status: data.status || 'TODO',
+          progress: data.progress || 0,
+          tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags || ''),
+          firmId: data.firmId || API.firmId
+        };
+        return API.reminders.create(formatted).then(newRem => {
+          if (!newRem.firmId || !API.firmId || String(newRem.firmId) === String(API.firmId)) {
             setReminders(prev => [...prev, newRem]);
             showToast('Reminder created successfully', 'success');
           } else {
             const targetFirm = (firms || []).find(f => String(f.id) === String(newRem.firmId));
             showToast(`Reminder created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newRem.firmId}`, 'success');
           }
+          return newRem;
         }).catch(e => {
-          showToast('Failed to create reminder', 'error');
+          showToast(e && e.message ? e.message : 'Failed to create reminder', 'error');
+          throw e;
         });
       };
       const handleCreateTask = (data) => {
-        return API.reminders.create({ ...data, type: 'task' }).then(newTask => {
-          if (!newTask.firmId || String(newTask.firmId) === String(API.firmId)) {
+        const formatted = {
+          ...data,
+          type: 'task',
+          status: data.status || 'TODO',
+          progress: data.progress || 0,
+          tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags || ''),
+          firmId: data.firmId || API.firmId
+        };
+        return API.reminders.create(formatted).then(newTask => {
+          if (!newTask.firmId || !API.firmId || String(newTask.firmId) === String(API.firmId)) {
             setReminders(prev => [...prev, newTask]);
             showToast('Task created successfully', 'success');
           } else {
             const targetFirm = (firms || []).find(f => String(f.id) === String(newTask.firmId));
             showToast(`Task created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newTask.firmId}`, 'success');
           }
+          return newTask;
         }).catch(e => {
-          showToast('Failed to create task', 'error');
+          showToast(e && e.message ? e.message : 'Failed to create task', 'error');
+          throw e;
         });
       };
       const handleUpdateReminder = (id, data) => {
@@ -37178,16 +37302,24 @@
       };
 
       const handleCreateNote = (data) => {
-        return API.notes.create(data).then(newNote => {
-          if (!newNote.firmId || String(newNote.firmId) === String(API.firmId)) {
+        const formatted = {
+          ...data,
+          content: data.content || data.title || '',
+          tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags || ''),
+          firmId: data.firmId || API.firmId
+        };
+        return API.notes.create(formatted).then(newNote => {
+          if (!newNote.firmId || !API.firmId || String(newNote.firmId) === String(API.firmId)) {
             setNotes(prev => [...prev, newNote]);
             showToast('Note created successfully', 'success');
           } else {
             const targetFirm = (firms || []).find(f => String(f.id) === String(newNote.firmId));
             showToast(`Note created for ${targetFirm ? targetFirm.firmName : 'Firm #' + newNote.firmId}`, 'success');
           }
+          return newNote;
         }).catch(e => {
-          showToast('Failed to create note', 'error');
+          showToast(e && e.message ? e.message : 'Failed to create note', 'error');
+          throw e;
         });
       };
       const handleUpdateNote = (id, data) => {
@@ -37208,16 +37340,23 @@
       };
 
       const handleCreateExpense = (data) => {
-        return API.expenses.create(data).then(newExp => {
-          if (!newExp.firmId || String(newExp.firmId) === String(API.firmId)) {
+        const formatted = {
+          ...data,
+          tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags || ''),
+          firmId: data.firmId || API.firmId
+        };
+        return API.expenses.create(formatted).then(newExp => {
+          if (!newExp.firmId || !API.firmId || String(newExp.firmId) === String(API.firmId)) {
             setExpenses(prev => [newExp, ...prev]);
             showToast('Expense recorded successfully', 'success');
           } else {
             const targetFirm = (firms || []).find(f => String(f.id) === String(newExp.firmId));
             showToast(`Expense recorded for ${targetFirm ? targetFirm.firmName : 'Firm #' + newExp.firmId}`, 'success');
           }
+          return newExp;
         }).catch(e => {
-          showToast('Failed to record expense', 'error');
+          showToast(e && e.message ? e.message : 'Failed to record expense', 'error');
+          throw e;
         });
       };
       const handleUpdateExpense = (id, data) => {
@@ -37250,7 +37389,7 @@
 
       const handleCreateSaving = (data) => {
         return API.savings.create(data).then(newSav => {
-          if (!newSav.firmId || String(newSav.firmId) === String(API.firmId)) {
+          if (!newSav.firmId || !API.firmId || String(newSav.firmId) === String(API.firmId)) {
             setSavings(prev => [newSav, ...prev]);
             showToast('Savings recorded successfully', 'success');
           } else {
@@ -37258,8 +37397,10 @@
             showToast(`Savings recorded for ${targetFirm ? targetFirm.firmName : 'Firm #' + newSav.firmId}`, 'success');
           }
           refreshGoals();
+          return newSav;
         }).catch(e => {
-          showToast('Failed to record savings', 'error');
+          showToast(e && e.message ? e.message : 'Failed to record savings', 'error');
+          throw e;
         });
       };
       const handleUpdateSaving = (id, data) => {
@@ -37729,7 +37870,7 @@
         return () => window.removeEventListener('billsoft:statusbar-toggle', handler);
       }, []);
 
-      if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
+      if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', licenseInfo: licenseInfo, onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
       if (!appLoaded) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }));
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
       if (licenseStatus === 'expired' || licenseStatus === 'EXPIRED' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));

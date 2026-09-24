@@ -18,6 +18,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @Transactional
 @DisplayName("Notification Service Unit & Invariant Tests")
 class NotificationServiceTest {

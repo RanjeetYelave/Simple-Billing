@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @Tag("regression")
 @Tag("unit")
 @DisplayName("Invoice Service Deep Coverage & Logic Branch Tests")

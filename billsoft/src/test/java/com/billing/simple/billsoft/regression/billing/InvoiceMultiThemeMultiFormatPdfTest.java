@@ -42,6 +42,7 @@ import com.billing.simple.billsoft.service.InvoiceService;
 import com.billing.simple.billsoft.service.ProductService;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 @Tag("regression")

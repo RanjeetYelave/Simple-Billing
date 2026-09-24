@@ -17,6 +17,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @Tag("regression")
 @Tag("unit")
 @DisplayName("Service Implementation Layer (Party, PurchaseOrder, BusinessLetter) Deep Coverage Tests")

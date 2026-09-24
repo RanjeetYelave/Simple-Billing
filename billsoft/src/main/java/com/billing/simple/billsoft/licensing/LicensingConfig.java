@@ -43,7 +43,23 @@ public final class LicensingConfig {
         return dir;
     }
 
+    public static String getBranch() {
+        return System.getProperty("rupeecrm.licensing.branch", System.getenv().getOrDefault("RUPEECRM_LICENSING_BRANCH", "preprod"));
+    }
+
     public static String getRegistryBaseUrl() {
-        return System.getProperty("rupeecrm.licensing.url", DEFAULT_REGISTRY_BASE_URL);
+        String configured = System.getProperty("rupeecrm.licensing.url", System.getenv("RUPEECRM_LICENSING_URL"));
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return "https://raw.githubusercontent.com/RanjeetYelave/license-registry/" + getBranch();
+    }
+
+    public static String getApiBaseUrl() {
+        String configured = System.getProperty("rupeecrm.licensing.api.url", System.getenv("RUPEECRM_LICENSING_API_URL"));
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return "https://api.github.com/repos/RanjeetYelave/license-registry/contents";
     }
 }

@@ -98,6 +98,14 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         String machineId = machineIdentity.getMachineId();
         this.activeLicense = licenseStorage.loadLocalLicense();
 
+        // If local license is missing or not valid, attempt initial online activation sync
+        if (activeLicense == null || !licenseVerifier.verifyLicense(activeLicense, machineId).isValid()) {
+            try {
+                syncWithRegistry(true);
+            } catch (Exception ignored) {
+            }
+        }
+
         if (activeLicense == null) {
             currentValidationResult = ValidationResult.CORRUPT_PAYLOAD;
             return false;
@@ -201,7 +209,8 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                 String body = registryFetcher.apply("licenses/" + machineId + ".lic");
 
                 if (body != null && !body.isBlank()) {
-                    LicensePayload remoteLicense = mapper.readValue(body, LicensePayload.class);
+                    String cleanJson = deobfuscateIfNeeded(body.trim());
+                    LicensePayload remoteLicense = mapper.readValue(cleanJson, LicensePayload.class);
                     ValidationResult remoteVerify = licenseVerifier.verifyLicense(remoteLicense, machineId);
 
                     if (remoteVerify.isValid() || remoteVerify == ValidationResult.EMI_RESTRICTED ||
@@ -218,7 +227,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                         if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
                             licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
 
-                            if (activeLicense == null || isNewLicenseId || remoteLicense.getRevision() > activeLicense.getRevision()) {
+                            if (activeLicense == null || !licenseStorage.getLicenseFile().exists() || isNewLicenseId || remoteLicense.getRevision() >= activeLicense.getRevision()) {
                                 licenseStorage.saveLocalLicense(remoteLicense);
                                 this.activeLicense = remoteLicense;
                             }
@@ -332,8 +341,9 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         if (result != null && !result.isBlank()) {
             return result;
         }
-        String apiBase = System.getProperty("rupeecrm.licensing.api.url", LicensingConfig.DEFAULT_API_BASE_URL);
-        return fetchHttpText(apiBase + "/" + subPath);
+        String apiBase = LicensingConfig.getApiBaseUrl();
+        String branch = LicensingConfig.getBranch();
+        return fetchHttpText(apiBase + "/" + subPath + "?ref=" + branch);
     }
 
     private String fetchHttpText(String urlStr) {
@@ -477,5 +487,26 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
 
     public void shutdown() {
         scheduler.shutdownNow();
+    }
+
+    private String deobfuscateIfNeeded(String text) {
+        if (text == null || text.isBlank()) return text;
+        String trimmed = text.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return trimmed;
+        }
+        try {
+            byte[] binary = java.util.Base64.getDecoder().decode(trimmed);
+            byte[] unmasked = new byte[binary.length];
+            for (int i = 0; i < binary.length; i++) {
+                unmasked[i] = (byte) (binary[i] ^ 0x5C);
+            }
+            String result = new String(unmasked, java.nio.charset.StandardCharsets.UTF_8);
+            if (result.startsWith("{") || result.startsWith("[")) {
+                return result;
+            }
+        } catch (Exception ignored) {
+        }
+        return trimmed;
     }
 }

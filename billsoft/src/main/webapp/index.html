@@ -37426,16 +37426,22 @@
         return API.goals.create(data).then(newGoal => {
           setGoals(prev => [newGoal, ...prev]);
           showToast('Goal created successfully', 'success');
+          refreshSavings();
+          return newGoal;
         }).catch(e => {
-          showToast('Failed to create goal', 'error');
+          showToast(e && e.message ? e.message : 'Failed to create goal', 'error');
+          throw e;
         });
       };
       const handleUpdateGoal = (id, data) => {
         return API.goals.update(id, data).then(updated => {
           setGoals(prev => prev.map(g => g.id === id ? updated : g));
           showToast('Goal updated successfully', 'success');
+          refreshSavings();
+          return updated;
         }).catch(e => {
-          showToast('Failed to update goal', 'error');
+          showToast(e && e.message ? e.message : 'Failed to update goal', 'error');
+          throw e;
         });
       };
       const handleDeleteGoal = (id) => {

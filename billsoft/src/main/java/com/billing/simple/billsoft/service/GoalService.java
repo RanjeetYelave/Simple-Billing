@@ -94,6 +94,23 @@ public class GoalService {
         Goal saved = goalRepository.save(goal);
         Long effFirmId = saved.getFirmId() != null ? saved.getFirmId() : firmId;
         if (saved.getGoalType() == GoalType.SAVINGS_TARGET && effFirmId != null) {
+            if (saved.getCurrentValue() != null && saved.getCurrentValue().compareTo(BigDecimal.ZERO) > 0) {
+                List<SavingRecord> existingSavings = savingRepository.findByFirmIdAndGoalId(effFirmId, saved.getId());
+                if (existingSavings.isEmpty()) {
+                    SavingRecord initSaving = SavingRecord.builder()
+                            .firmId(effFirmId)
+                            .goalId(saved.getId())
+                            .title("Initial Savings - " + saved.getTitle())
+                            .amount(saved.getCurrentValue())
+                            .category("General Savings")
+                            .savingDate(saved.getStartDate() != null ? saved.getStartDate() : LocalDate.now())
+                            .paymentMode("UPI")
+                            .tags(saved.getTags())
+                            .notes("Initial balance upon goal creation")
+                            .build();
+                    savingRepository.save(initSaving);
+                }
+            }
             recalculateSavingsGoal(effFirmId, saved.getId());
             saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
         }
@@ -148,6 +165,23 @@ public class GoalService {
         Goal saved = goalRepository.save(existing);
         Long effFirmId = saved.getFirmId() != null ? saved.getFirmId() : firmId;
         if (saved.getGoalType() == GoalType.SAVINGS_TARGET && effFirmId != null) {
+            if (saved.getCurrentValue() != null && saved.getCurrentValue().compareTo(BigDecimal.ZERO) > 0) {
+                List<SavingRecord> existingSavings = savingRepository.findByFirmIdAndGoalId(effFirmId, saved.getId());
+                if (existingSavings.isEmpty()) {
+                    SavingRecord initSaving = SavingRecord.builder()
+                            .firmId(effFirmId)
+                            .goalId(saved.getId())
+                            .title("Initial Savings - " + saved.getTitle())
+                            .amount(saved.getCurrentValue())
+                            .category("General Savings")
+                            .savingDate(saved.getStartDate() != null ? saved.getStartDate() : LocalDate.now())
+                            .paymentMode("UPI")
+                            .tags(saved.getTags())
+                            .notes("Initial balance upon goal creation")
+                            .build();
+                    savingRepository.save(initSaving);
+                }
+            }
             recalculateSavingsGoal(effFirmId, saved.getId());
             saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
         }

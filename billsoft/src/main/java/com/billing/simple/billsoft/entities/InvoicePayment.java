@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "invoice_payments")
+@Table(name = "invoice_payments", indexes = {
+    @Index(name = "idx_inv_pmt_firm_cust", columnList = "firmId, customerId"),
+    @Index(name = "idx_inv_pmt_invoice_id", columnList = "invoiceId")
+})
 public class InvoicePayment {
 
     @Id

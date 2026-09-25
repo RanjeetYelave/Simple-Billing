@@ -16,7 +16,7 @@
   <script src="js/calculator.js?v=20260919_v1"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
-  <script src="js/themeToggle.js?v=20260906_theme_unified_v2"></script>
+  <script src="js/themeToggle.js?v=20260925_sunset_default_v1"></script>
   <script src="js/vendor/pdf.min.js"></script>
   <script>
     if (typeof pdfjsLib !== 'undefined') {
@@ -4724,7 +4724,7 @@
             )
           ),
           React.createElement('div', { className: 'sidebar-footer', style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-            React.createElement('div', null, firmName || 'Simple Billing Software'),
+            React.createElement('div', { style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, title: firmName || 'Simple Billing Software' }, firmName || 'Simple Billing Software'),
             onLogout && React.createElement('button', { className: 'btn btn-ghost w-full', onClick: () => onLogout(), style: { justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' } }, Icons.logOut, ' Logout')
           )
         )
@@ -11275,21 +11275,39 @@
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            flexWrap: 'wrap',
+            flexWrap: 'nowrap',
             gap: 12,
-            paddingBottom: 4
+            paddingBottom: 4,
+            minWidth: 0,
+            width: '100%',
+            overflow: 'hidden'
           }
         },
           // Left: Title + Segment Switcher
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
-            React.createElement('div', null,
-              React.createElement('h1', { style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em' } }, 'Dashboard'),
-              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                `${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}${currentFirmObj ? ' • ' + currentFirmObj.firmName : ''}`
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'nowrap', minWidth: 0, flexShrink: 1 } },
+            React.createElement('div', { style: { minWidth: 0, flexShrink: 1 } },
+              React.createElement('h1', { style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, 'Dashboard'),
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.78rem',
+                  color: 'var(--text-secondary)',
+                  marginTop: 2,
+                  maxWidth: 220,
+                  minWidth: 0,
+                  whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4
+                },
+                title: `${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}${currentFirmObj ? ' • ' + currentFirmObj.firmName : ''}`
+              },
+                React.createElement('span', { style: { flexShrink: 0 } }, new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
+                currentFirmObj ? React.createElement('span', { style: { flexShrink: 0, opacity: 0.6 } }, '•') : null,
+                currentFirmObj ? React.createElement('span', { style: { maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
               )
             ),
             // Segment Switcher Pill
-            React.createElement('div', { className: 'dashboard-segment-switcher' },
+            React.createElement('div', { className: 'dashboard-segment-switcher', style: { flexShrink: 0 } },
               React.createElement('button', {
                 className: `dashboard-segment-btn${dashSegment === 'business' ? ' active' : ''}`,
                 onClick: () => setDashSegment('business')
@@ -11302,36 +11320,36 @@
           ),
 
           // Right: Pinned Universal Quick Actions
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap', flexShrink: 0 } },
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('reminder'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '🔔 + Reminder'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('task'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '📋 + Task'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('expense'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '💳 + Expense'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openQuickModal('saving'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '💰 + Saving'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openQuickModal('goal'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '🎯 + Goal'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('note'),
-              style: { gap: 6, fontSize: '0.82rem' }
+              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
             }, '📝 + Note')
           )
         ),
@@ -30761,10 +30779,10 @@
               ),
               React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 12 } },
                 [
-                  { id: 'manual', label: 'Manual Switch' },
-                  { id: 'sunset', label: 'Sunset to Sunrise' },
-                  { id: 'system', label: 'System Match' },
-                  { id: 'custom', label: 'Custom Time' }
+                  { id: 'sunset', label: '🌅 Sunset to Sunrise' },
+                  { id: 'manual', label: '✋ Manual Switch' },
+                  { id: 'system', label: '💻 System Match' },
+                  { id: 'custom', label: '⏰ Custom Time' }
                 ].map(opt => React.createElement('button', {
                   key: opt.id,
                   type: 'button',
@@ -36116,7 +36134,7 @@
         return () => window.removeEventListener('themeChanged', handler);
       }, []);
 
-      const isDark = currentTheme.startsWith('dark');
+      const isDark = currentTheme.startsWith('dark') || currentTheme.endsWith('-dark') || currentTheme === 'classic-dark';
 
       return React.createElement('button', {
         type: 'button',

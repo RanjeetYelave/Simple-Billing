@@ -117,9 +117,14 @@ blob-report/
 playwright/.cache/
 **/playwright/.cache/
 .network
+
+# Temporary QA/analysis artifacts
+*.tmp
+*.scratch
+*.bak
+
 ###############################################################
 # STANDALONE OPERATOR TOOLS
 ###############################################################
 tools/SoftwareManagementTool.html
 SoftwareManagementTool.html
-

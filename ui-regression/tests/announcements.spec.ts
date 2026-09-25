@@ -195,7 +195,7 @@ test.describe('Announcements Feature Gate & Isolation', () => {
       });
     });
 
-    await app.gotoApp();
+    await app.gotoApp(true, false);
 
     // Startup Announcement modal should appear
     const modal = page.locator('#announcements-startup-modal');

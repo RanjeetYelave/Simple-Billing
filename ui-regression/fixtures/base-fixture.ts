@@ -74,7 +74,7 @@ export class RupeeCRMAppHelper {
    *   already seeded at fixture-setup time, so calling gotoApp(true) is
    *   idempotent and harmless.
    */
-  async gotoApp(ensureEulaAccepted = true) {
+  async gotoApp(ensureEulaAccepted = true, autoDismissAnnouncements = true) {
     if (ensureEulaAccepted) {
       await this.page.addInitScript(
         ({ statusKey, versionKey, acceptedAtKey, version }) => {
@@ -98,10 +98,25 @@ export class RupeeCRMAppHelper {
     await this.page.waitForSelector('#root', { timeout: 15000 });
     // Wait for initial firm and status sync
     await this.page.waitForTimeout(500);
+
+    // Dismiss announcement modal if open and requested
+    if (autoDismissAnnouncements) {
+      const annBtn = this.page.locator('#btn-acknowledge-announcements');
+      if (await annBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await annBtn.click().catch(() => {});
+      }
+    }
+
     await this.errorGate.assertZeroErrors(this.page, 'Initial App Mount');
   }
 
   async navigateTo(pageId: string) {
+    // Dismiss announcement modal if open
+    const annBtn = this.page.locator('#btn-acknowledge-announcements');
+    if (await annBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await annBtn.click().catch(() => {});
+    }
+
     const targetMap: Record<string, string> = {
       dashboard: 'Dashboard',
       invoices: 'Invoices & Quotes',
@@ -115,10 +130,16 @@ export class RupeeCRMAppHelper {
     const matchedKey = Object.keys(targetMap).find(k => lookup.includes(k)) || 'dashboard';
     const label = targetMap[matchedKey];
 
-    const navBtn = this.page.locator(`.nav-item:has-text("${label}")`).first();
-    if (await navBtn.isVisible()) {
-      await navBtn.click();
-    } else {
+    const navBtn = this.page.locator(`.sidebar .nav-item:has-text("${label}"), .nav-item:has-text("${label}")`).first();
+    try {
+      if (await navBtn.isVisible()) {
+        await navBtn.click({ timeout: 2000 });
+      } else {
+        await this.page.evaluate((target) => {
+          window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: target } }));
+        }, matchedKey);
+      }
+    } catch {
       await this.page.evaluate((target) => {
         window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: target } }));
       }, matchedKey);
@@ -192,7 +213,7 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
       );
     }
 
-    // 2. Firm & License seed (CI cold-start isolation)
+    // 2. Firm & License seed (CI cold-start fallback only)
     await page.route('**/api/firm', async (route) => {
       const method = route.request().method().toUpperCase();
       if (method !== 'GET') {
@@ -216,16 +237,8 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
           await route.fulfill({ response }).catch(() => {});
         }
       } catch (e) {
-        // Ignored if test ended or connection closed
+        await route.continue().catch(() => {});
       }
-    });
-
-    await page.route(`**/api/firm/${TEST_FIRM_SEED_ID}`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(TEST_FIRM_SEED[0]),
-      }).catch(() => {});
     });
 
     await page.route('**/api/license/status', async (route) => {
@@ -235,7 +248,7 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
         let lic: any = {};
         try { lic = JSON.parse(text); } catch {}
 
-        if (lic.hasFirm === false) {
+        if (lic && lic.hasFirm === false) {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -245,17 +258,8 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
           await route.fulfill({ response }).catch(() => {});
         }
       } catch (e) {
-        // Ignored if test ended
+        await route.continue().catch(() => {});
       }
-    });
-
-    // 3. Announcement isolation
-    await page.route('**/api/announcements*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([])
-      }).catch(() => {});
     });
 
     await use();

@@ -1014,3 +1014,7 @@ const API = {
     batchMerge: (payload) => API._json(API._qs('/api/items/merge/batch'), { method: 'POST', body: payload })
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.API = API;
+}

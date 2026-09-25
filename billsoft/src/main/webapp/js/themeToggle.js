@@ -26,7 +26,8 @@
   function getStoredState() {
     let family = localStorage.getItem('themeFamily');
     let isDark = localStorage.getItem('themeDarkMode') === 'true';
-    let schedule = localStorage.getItem('themeDarkSchedule') || 'manual';
+    let schedule = localStorage.getItem('themeDarkSchedule');
+    let isCustomized = localStorage.getItem('themeDarkScheduleCustomized') === 'true';
     let customStart = localStorage.getItem('themeCustomStart') || '19:00';
     let customEnd = localStorage.getItem('themeCustomEnd') || '07:00';
 
@@ -48,7 +49,14 @@
       family = 'modern';
     }
 
-    return { family, isDark, schedule, customStart, customEnd };
+    // Default theme scheduling for new/default installations is 'sunset' (Sunset → Sunrise)
+    // If the user has explicitly customized or set a schedule, preserve that exact preference.
+    const validSchedules = ['sunset', 'manual', 'system', 'custom'];
+    if (!schedule || !validSchedules.includes(schedule)) {
+      schedule = 'sunset';
+    }
+
+    return { family, isDark, schedule, isCustomized, customStart, customEnd };
   }
 
   function computeIsDark(state) {
@@ -97,6 +105,7 @@
         isDark: activeIsDark,
         manualDark: state.isDark,
         schedule: state.schedule,
+        isCustomized: state.isCustomized,
         customStart: state.customStart,
         customEnd: state.customEnd
       };
@@ -158,15 +167,17 @@
 
   window.setDarkMode = function(isDark) {
     localStorage.setItem('themeDarkMode', String(!!isDark));
-    // If setting manually, set schedule to manual so user's explicit action is respected
+    // If setting manually, record manual schedule and user customization
     localStorage.setItem('themeDarkSchedule', 'manual');
+    localStorage.setItem('themeDarkScheduleCustomized', 'true');
     applyThemeState(true);
   };
 
   window.setDarkSchedule = function(schedule, customStart, customEnd) {
-    const validSchedules = ['manual', 'sunset', 'system', 'custom'];
-    if (!validSchedules.includes(schedule)) schedule = 'manual';
+    const validSchedules = ['sunset', 'manual', 'system', 'custom'];
+    if (!validSchedules.includes(schedule)) schedule = 'sunset';
     localStorage.setItem('themeDarkSchedule', schedule);
+    localStorage.setItem('themeDarkScheduleCustomized', 'true');
     if (customStart) localStorage.setItem('themeCustomStart', customStart);
     if (customEnd) localStorage.setItem('themeCustomEnd', customEnd);
     applyThemeState(true);
@@ -194,6 +205,7 @@
       localStorage.setItem('themeDarkMode', String(themeId === 'dark-1'));
     }
     localStorage.setItem('themeDarkSchedule', 'manual');
+    localStorage.setItem('themeDarkScheduleCustomized', 'true');
     applyThemeState(true);
   };
 })();

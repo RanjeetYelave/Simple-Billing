@@ -38,19 +38,26 @@ public class SalesReturnController {
         try {
             SalesReturn created = invoiceService.createSalesReturn(id, request);
             return ResponseEntity.ok(created);
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException e) {
+            log.warn("Sales return rejected - invoice {} not found or unauthorized for tenant", id);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Invoice not found"));
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Invalid sales return request for invoice {}: {}", id, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             log.error("Error creating sales return for invoice " + id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to create sales return"));
+                    .body(Map.of("message", "Failed to create sales return"));
         }
     }
 
     @GetMapping("/invoices/{id}/returns")
-    public ResponseEntity<List<SalesReturn>> getReturnsForInvoice(@PathVariable Long id) {
-        return ResponseEntity.ok(invoiceService.getSalesReturnsForInvoice(id));
+    public ResponseEntity<?> getReturnsForInvoice(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(invoiceService.getSalesReturnsForInvoice(id));
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Invoice not found"));
+        }
     }
 
     @GetMapping("/returns")

@@ -22,6 +22,7 @@ import java.util.List;
 @Entity
 @Table(name = "sales_returns", indexes = {
     @Index(name = "idx_sales_return_firm_date_id", columnList = "firmId, returnDate DESC, id DESC"),
+    @Index(name = "idx_sales_return_firm_cust", columnList = "firmId, customer_id"),
     @Index(name = "idx_sales_return_invoice_id", columnList = "invoice_id")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})

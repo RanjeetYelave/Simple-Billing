@@ -20276,12 +20276,19 @@
         .reduce((sum, [_, v]) => sum + (parseFloat(v.amount) || 0), 0);
 
       const parsedPayment = parseFloat(paymentAmount) || 0;
+      const isOverAllocated = totalAllocated > parsedPayment;
+      const overAllocatedAmount = isOverAllocated ? totalAllocated - parsedPayment : 0;
       const unallocatedRemainder = Math.max(0, parsedPayment - totalAllocated);
 
       const handleSubmit = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
         if (parsedPayment <= 0) {
           showToast('Payment amount must be greater than 0', 'error');
+          return;
+        }
+
+        if (isOverAllocated) {
+          showToast(`Total allocated (${BillsoftUtils.formatCurrency(totalAllocated)}) cannot exceed total payment amount (${BillsoftUtils.formatCurrency(parsedPayment)}). Click Auto Allocate or adjust row amounts.`, 'error');
           return;
         }
 
@@ -20480,9 +20487,9 @@
               React.createElement('div', {
                 style: {
                   padding: '12px 16px',
-                  background: 'var(--bg-hover)',
+                  background: isOverAllocated ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-hover)',
                   borderRadius: 10,
-                  border: '1px solid var(--border)',
+                  border: isOverAllocated ? '1px solid #ef4444' : '1px solid var(--border)',
                   marginBottom: 18,
                   fontSize: '0.84rem'
                 }
@@ -20493,9 +20500,32 @@
                 ),
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
                   React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Allocated to Invoices:'),
-                  React.createElement('span', { style: { fontWeight: 700, color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(totalAllocated))
+                  React.createElement('span', { style: { fontWeight: 700, color: isOverAllocated ? '#ef4444' : 'var(--primary)' } }, BillsoftUtils.formatCurrency(totalAllocated))
                 ),
-                unallocatedRemainder > 0 && React.createElement('div', {
+                isOverAllocated && React.createElement('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: 8,
+                    padding: '8px 10px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    borderRadius: 6,
+                    color: '#ef4444',
+                    fontSize: '0.80rem',
+                    fontWeight: 600
+                  }
+                },
+                  React.createElement('span', null, `⚠️ Allocations exceed payment by ${BillsoftUtils.formatCurrency(overAllocatedAmount)}`),
+                  React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-ghost btn-sm',
+                    style: { color: '#ef4444', textDecoration: 'underline', padding: '1px 4px', fontSize: '0.75rem' },
+                    onClick: handleAutoAllocate
+                  }, '⚡ Auto Fix')
+                ),
+                (!isOverAllocated && unallocatedRemainder > 0) && React.createElement('div', {
                   style: {
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -20517,7 +20547,7 @@
                 React.createElement('button', {
                   type: 'submit',
                   className: 'btn btn-primary',
-                  disabled: submitting || parsedPayment <= 0,
+                  disabled: submitting || parsedPayment <= 0 || isOverAllocated,
                   style: { fontWeight: 600 }
                 }, submitting ? 'Processing Settlement...' : '✓ Record & Settle')
               )
@@ -20864,14 +20894,16 @@
             dues > 0 ? 'Pending Dues' : dues < 0 ? 'Advance Credit' : 'Settled'
           ].join(',');
         });
-        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-        const encodedUri = encodeURI(csvContent);
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.setAttribute('href', encodedUri);
+        link.setAttribute('href', url);
         link.setAttribute('download', `RupeeCRM_Customers_${new Date().toISOString().substring(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         showToast('Exported customer directory to CSV', 'success');
       };
 

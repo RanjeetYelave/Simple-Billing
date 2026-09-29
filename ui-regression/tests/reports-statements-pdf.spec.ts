@@ -122,8 +122,9 @@ test.describe('P1: Reports, Ledgers, Statements & PDF Binary Generation Suite', 
     const modal = page.locator('.modal-overlay, div[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    const downloadModalBtn = modal.locator('button:has-text("Download PDF")').first();
+    const downloadModalBtn = modal.locator('#btn-modal-download-pdf, button:has-text("Download PDF")').first();
     await expect(downloadModalBtn).toBeVisible({ timeout: 5000 });
+    await expect(downloadModalBtn).toBeEnabled({ timeout: 15000 });
 
     const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
     await downloadModalBtn.click();

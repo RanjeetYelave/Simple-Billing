@@ -234,9 +234,9 @@ public class IdempotentBackupRestorePhaseATest {
 
         SalaryRecord sal = new SalaryRecord();
         sal.setEmployee(emp);
-        sal.setMonthYear("08-2026");
+        sal.setMonthYear(String.format("%02d-%d", LocalDate.now().getMonthValue(), LocalDate.now().getYear()));
         sal.setNetPaid(40000.0);
-        sal.setPaymentDate(LocalDate.of(2026, 9, 1));
+        sal.setPaymentDate(LocalDate.now());
         salaryRepo.save(sal);
 
         EmployeeAdvance adv = new EmployeeAdvance();

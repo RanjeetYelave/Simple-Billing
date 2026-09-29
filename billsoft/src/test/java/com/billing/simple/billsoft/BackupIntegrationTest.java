@@ -227,7 +227,7 @@ public class BackupIntegrationTest {
 
         SalaryRecord sal = new SalaryRecord();
         sal.setEmployee(emp);
-        sal.setMonthYear("08-2026");
+        sal.setMonthYear(String.format("%02d-%d", LocalDate.now().getMonthValue(), LocalDate.now().getYear()));
         sal.setBaseSalaryAtTime(80000.0);
         sal.setNetPaid(80000.0);
         sal.setPaymentDate(LocalDate.now());

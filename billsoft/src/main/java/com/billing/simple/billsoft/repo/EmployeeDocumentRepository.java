@@ -12,6 +12,8 @@ public interface EmployeeDocumentRepository extends JpaRepository<EmployeeDocume
     @Query("SELECT d FROM EmployeeDocument d WHERE d.employee.id = :employeeId ORDER BY d.uploadedAt DESC")
     List<EmployeeDocument> findByEmployeeIdOrderByUploadedAtDesc(@Param("employeeId") Long employeeId);
 
+    java.util.Optional<EmployeeDocument> findFirstByEmployee_IdAndFileName(Long employeeId, String fileName);
+
     @Modifying
     @Transactional
     @Query("DELETE FROM EmployeeDocument d WHERE d.employee.id = :employeeId")

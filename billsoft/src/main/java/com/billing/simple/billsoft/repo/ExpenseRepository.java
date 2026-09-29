@@ -25,6 +25,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
     Optional<Expense> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<Expense> findFirstByFirmIdAndExpenseDateAndAmountAndCategory(Long firmId, LocalDate expenseDate, java.math.BigDecimal amount, String category);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

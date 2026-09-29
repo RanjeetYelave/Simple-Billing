@@ -17,6 +17,8 @@ public interface InboxMessageRepository extends JpaRepository<InboxMessage, Long
 
     Optional<InboxMessage> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<InboxMessage> findFirstByFirmIdAndSubjectIgnoreCase(Long firmId, String subject);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

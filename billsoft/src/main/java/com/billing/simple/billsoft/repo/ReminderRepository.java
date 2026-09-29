@@ -20,6 +20,8 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
     Optional<Reminder> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<Reminder> findFirstByFirmIdAndTitleIgnoreCase(Long firmId, String title);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

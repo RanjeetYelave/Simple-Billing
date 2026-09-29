@@ -20,7 +20,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(classes = BillsoftApplication.class)
 @ActiveProfiles("test")
 public class BackupIntegrationTest {
 

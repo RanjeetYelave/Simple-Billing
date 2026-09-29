@@ -18,6 +18,14 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     Optional<Employee> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<Employee> findFirstByFirmIdAndPhone(Long firmId, String phone);
+
+    Optional<Employee> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
+
+    Optional<Employee> findFirstByFirmIdAndPhoneAndNameIgnoreCase(Long firmId, String phone, String name);
+
+    Optional<Employee> findFirstByFirmIdAndNameIgnoreCaseAndPhoneIsNull(Long firmId, String name);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

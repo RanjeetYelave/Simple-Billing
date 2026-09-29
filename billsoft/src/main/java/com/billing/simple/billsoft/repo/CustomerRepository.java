@@ -19,7 +19,11 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     Optional<Customer> findFirstByFirmIdAndPhone(Long firmId, String phone);
 
+    Optional<Customer> findFirstByFirmIdAndPhoneAndNameIgnoreCase(Long firmId, String phone, String name);
+
     Optional<Customer> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
+
+    Optional<Customer> findFirstByFirmIdAndNameIgnoreCaseAndPhoneIsNull(Long firmId, String name);
 
     List<Customer> findTop5ByFirmIdAndNameContainingIgnoreCaseOrderByNameAsc(Long firmId, String name);
 

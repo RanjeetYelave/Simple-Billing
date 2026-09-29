@@ -13,6 +13,10 @@ public interface InvoicePaymentRepository extends JpaRepository<InvoicePayment, 
 
     Optional<InvoicePayment> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<InvoicePayment> findFirstByFirmIdAndInvoiceIdAndAmountAndPaymentDate(Long firmId, Long invoiceId, java.math.BigDecimal amount, LocalDate paymentDate);
+
+    Optional<InvoicePayment> findFirstByFirmIdAndCustomerIdAndAmountAndPaymentDate(Long firmId, Long customerId, java.math.BigDecimal amount, LocalDate paymentDate);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

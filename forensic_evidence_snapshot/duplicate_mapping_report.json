@@ -1,0 +1,4827 @@
+{
+  "firmId": 175,
+  "totalCustomers": 402,
+  "canonicalCustomersCount": 45,
+  "duplicateCustomersCount": 357,
+  "totalInvoices": 347,
+  "canonicalInvoicesCount": 38,
+  "duplicateInvoicesCount": 309,
+  "totalPayments": 91,
+  "canonicalPaymentsCount": 7,
+  "duplicatePaymentsCount": 84,
+  "customerMapping": {
+    "991": {
+      "duplicateId": 991,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1026": {
+      "duplicateId": 1026,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1048": {
+      "duplicateId": 1048,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1087": {
+      "duplicateId": 1087,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1109": {
+      "duplicateId": 1109,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1143": {
+      "duplicateId": 1143,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1165": {
+      "duplicateId": 1165,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1210": {
+      "duplicateId": 1210,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1232": {
+      "duplicateId": 1232,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1266": {
+      "duplicateId": 1266,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1288": {
+      "duplicateId": 1288,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1326": {
+      "duplicateId": 1326,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1348": {
+      "duplicateId": 1348,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1382": {
+      "duplicateId": 1382,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "1404": {
+      "duplicateId": 1404,
+      "canonicalId": 656,
+      "name": "Gauri",
+      "phone": "874503"
+    },
+    "992": {
+      "duplicateId": 992,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1027": {
+      "duplicateId": 1027,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1049": {
+      "duplicateId": 1049,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1088": {
+      "duplicateId": 1088,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1110": {
+      "duplicateId": 1110,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1144": {
+      "duplicateId": 1144,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1166": {
+      "duplicateId": 1166,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1211": {
+      "duplicateId": 1211,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1233": {
+      "duplicateId": 1233,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1267": {
+      "duplicateId": 1267,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1289": {
+      "duplicateId": 1289,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1327": {
+      "duplicateId": 1327,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1349": {
+      "duplicateId": 1349,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1383": {
+      "duplicateId": 1383,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "1405": {
+      "duplicateId": 1405,
+      "canonicalId": 688,
+      "name": "Aditya",
+      "phone": "08347023"
+    },
+    "993": {
+      "duplicateId": 993,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1028": {
+      "duplicateId": 1028,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1050": {
+      "duplicateId": 1050,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1089": {
+      "duplicateId": 1089,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1111": {
+      "duplicateId": 1111,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1145": {
+      "duplicateId": 1145,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1167": {
+      "duplicateId": 1167,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1212": {
+      "duplicateId": 1212,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1234": {
+      "duplicateId": 1234,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1268": {
+      "duplicateId": 1268,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1290": {
+      "duplicateId": 1290,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1328": {
+      "duplicateId": 1328,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1350": {
+      "duplicateId": 1350,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1384": {
+      "duplicateId": 1384,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "1406": {
+      "duplicateId": 1406,
+      "canonicalId": 720,
+      "name": "Chetan",
+      "phone": "97420473223"
+    },
+    "998": {
+      "duplicateId": 998,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1033": {
+      "duplicateId": 1033,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1055": {
+      "duplicateId": 1055,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1094": {
+      "duplicateId": 1094,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1116": {
+      "duplicateId": 1116,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1150": {
+      "duplicateId": 1150,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1172": {
+      "duplicateId": 1172,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1217": {
+      "duplicateId": 1217,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1239": {
+      "duplicateId": 1239,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1273": {
+      "duplicateId": 1273,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1295": {
+      "duplicateId": 1295,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1333": {
+      "duplicateId": 1333,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1355": {
+      "duplicateId": 1355,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1389": {
+      "duplicateId": 1389,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1411": {
+      "duplicateId": 1411,
+      "canonicalId": 946,
+      "name": "Exclusive-A-1790305361860",
+      "phone": "9111111111"
+    },
+    "1000": {
+      "duplicateId": 1000,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1035": {
+      "duplicateId": 1035,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1057": {
+      "duplicateId": 1057,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1096": {
+      "duplicateId": 1096,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1118": {
+      "duplicateId": 1118,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1152": {
+      "duplicateId": 1152,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1174": {
+      "duplicateId": 1174,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1219": {
+      "duplicateId": 1219,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1241": {
+      "duplicateId": 1241,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1275": {
+      "duplicateId": 1275,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1297": {
+      "duplicateId": 1297,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1335": {
+      "duplicateId": 1335,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1357": {
+      "duplicateId": 1357,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1391": {
+      "duplicateId": 1391,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1413": {
+      "duplicateId": 1413,
+      "canonicalId": 976,
+      "name": "Cust_Inv_1790314016507",
+      "phone": "9876543210"
+    },
+    "1001": {
+      "duplicateId": 1001,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1036": {
+      "duplicateId": 1036,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1058": {
+      "duplicateId": 1058,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1097": {
+      "duplicateId": 1097,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1119": {
+      "duplicateId": 1119,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1153": {
+      "duplicateId": 1153,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1175": {
+      "duplicateId": 1175,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1220": {
+      "duplicateId": 1220,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1242": {
+      "duplicateId": 1242,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1276": {
+      "duplicateId": 1276,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1298": {
+      "duplicateId": 1298,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1336": {
+      "duplicateId": 1336,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1358": {
+      "duplicateId": 1358,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1392": {
+      "duplicateId": 1392,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1414": {
+      "duplicateId": 1414,
+      "canonicalId": 977,
+      "name": "Cust_Inv_1790314081023",
+      "phone": "9876543210"
+    },
+    "1002": {
+      "duplicateId": 1002,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1037": {
+      "duplicateId": 1037,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1059": {
+      "duplicateId": 1059,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1098": {
+      "duplicateId": 1098,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1120": {
+      "duplicateId": 1120,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1154": {
+      "duplicateId": 1154,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1176": {
+      "duplicateId": 1176,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1221": {
+      "duplicateId": 1221,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1243": {
+      "duplicateId": 1243,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1277": {
+      "duplicateId": 1277,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1299": {
+      "duplicateId": 1299,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1337": {
+      "duplicateId": 1337,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1359": {
+      "duplicateId": 1359,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1393": {
+      "duplicateId": 1393,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1415": {
+      "duplicateId": 1415,
+      "canonicalId": 978,
+      "name": "Cust_Return_1790314416874",
+      "phone": null
+    },
+    "1003": {
+      "duplicateId": 1003,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1038": {
+      "duplicateId": 1038,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1060": {
+      "duplicateId": 1060,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1099": {
+      "duplicateId": 1099,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1121": {
+      "duplicateId": 1121,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1155": {
+      "duplicateId": 1155,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1177": {
+      "duplicateId": 1177,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1222": {
+      "duplicateId": 1222,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1244": {
+      "duplicateId": 1244,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1278": {
+      "duplicateId": 1278,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1300": {
+      "duplicateId": 1300,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1338": {
+      "duplicateId": 1338,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1360": {
+      "duplicateId": 1360,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1394": {
+      "duplicateId": 1394,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1416": {
+      "duplicateId": 1416,
+      "canonicalId": 979,
+      "name": "Cust_REP_1790314558682",
+      "phone": null
+    },
+    "1004": {
+      "duplicateId": 1004,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1039": {
+      "duplicateId": 1039,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1061": {
+      "duplicateId": 1061,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1100": {
+      "duplicateId": 1100,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1122": {
+      "duplicateId": 1122,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1156": {
+      "duplicateId": 1156,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1178": {
+      "duplicateId": 1178,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1223": {
+      "duplicateId": 1223,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1245": {
+      "duplicateId": 1245,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1279": {
+      "duplicateId": 1279,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1301": {
+      "duplicateId": 1301,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1339": {
+      "duplicateId": 1339,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1361": {
+      "duplicateId": 1361,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1395": {
+      "duplicateId": 1395,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1417": {
+      "duplicateId": 1417,
+      "canonicalId": 980,
+      "name": "ISO_Alpha_1790314905006",
+      "phone": "9900112233"
+    },
+    "1005": {
+      "duplicateId": 1005,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1040": {
+      "duplicateId": 1040,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1062": {
+      "duplicateId": 1062,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1101": {
+      "duplicateId": 1101,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1123": {
+      "duplicateId": 1123,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1157": {
+      "duplicateId": 1157,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1179": {
+      "duplicateId": 1179,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1224": {
+      "duplicateId": 1224,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1246": {
+      "duplicateId": 1246,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1280": {
+      "duplicateId": 1280,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1302": {
+      "duplicateId": 1302,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1340": {
+      "duplicateId": 1340,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1362": {
+      "duplicateId": 1362,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1396": {
+      "duplicateId": 1396,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1418": {
+      "duplicateId": 1418,
+      "canonicalId": 981,
+      "name": "Cust_Inv_1790315248464",
+      "phone": "9876543210"
+    },
+    "1006": {
+      "duplicateId": 1006,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1041": {
+      "duplicateId": 1041,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1063": {
+      "duplicateId": 1063,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1102": {
+      "duplicateId": 1102,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1124": {
+      "duplicateId": 1124,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1158": {
+      "duplicateId": 1158,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1180": {
+      "duplicateId": 1180,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1225": {
+      "duplicateId": 1225,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1247": {
+      "duplicateId": 1247,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1281": {
+      "duplicateId": 1281,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1303": {
+      "duplicateId": 1303,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1341": {
+      "duplicateId": 1341,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1363": {
+      "duplicateId": 1363,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1397": {
+      "duplicateId": 1397,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1419": {
+      "duplicateId": 1419,
+      "canonicalId": 982,
+      "name": "ISO_Alpha_1790315266548",
+      "phone": "9900112233"
+    },
+    "1007": {
+      "duplicateId": 1007,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1042": {
+      "duplicateId": 1042,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1064": {
+      "duplicateId": 1064,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1103": {
+      "duplicateId": 1103,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1125": {
+      "duplicateId": 1125,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1159": {
+      "duplicateId": 1159,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1181": {
+      "duplicateId": 1181,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1226": {
+      "duplicateId": 1226,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1248": {
+      "duplicateId": 1248,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1282": {
+      "duplicateId": 1282,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1304": {
+      "duplicateId": 1304,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1342": {
+      "duplicateId": 1342,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1364": {
+      "duplicateId": 1364,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1398": {
+      "duplicateId": 1398,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1420": {
+      "duplicateId": 1420,
+      "canonicalId": 983,
+      "name": "Cust_REP_1790315431429",
+      "phone": null
+    },
+    "1008": {
+      "duplicateId": 1008,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1043": {
+      "duplicateId": 1043,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1065": {
+      "duplicateId": 1065,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1104": {
+      "duplicateId": 1104,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1126": {
+      "duplicateId": 1126,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1160": {
+      "duplicateId": 1160,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1182": {
+      "duplicateId": 1182,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1227": {
+      "duplicateId": 1227,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1249": {
+      "duplicateId": 1249,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1283": {
+      "duplicateId": 1283,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1305": {
+      "duplicateId": 1305,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1343": {
+      "duplicateId": 1343,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1365": {
+      "duplicateId": 1365,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1399": {
+      "duplicateId": 1399,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1421": {
+      "duplicateId": 1421,
+      "canonicalId": 984,
+      "name": "Cust_Return_1790315456168",
+      "phone": null
+    },
+    "1009": {
+      "duplicateId": 1009,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1044": {
+      "duplicateId": 1044,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1066": {
+      "duplicateId": 1066,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1105": {
+      "duplicateId": 1105,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1127": {
+      "duplicateId": 1127,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1161": {
+      "duplicateId": 1161,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1183": {
+      "duplicateId": 1183,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1228": {
+      "duplicateId": 1228,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1250": {
+      "duplicateId": 1250,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1284": {
+      "duplicateId": 1284,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1306": {
+      "duplicateId": 1306,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1344": {
+      "duplicateId": 1344,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1366": {
+      "duplicateId": 1366,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1400": {
+      "duplicateId": 1400,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1422": {
+      "duplicateId": 1422,
+      "canonicalId": 985,
+      "name": "Cust_Inv_1790315623825",
+      "phone": "9876543210"
+    },
+    "1010": {
+      "duplicateId": 1010,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1045": {
+      "duplicateId": 1045,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1067": {
+      "duplicateId": 1067,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1106": {
+      "duplicateId": 1106,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1128": {
+      "duplicateId": 1128,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1162": {
+      "duplicateId": 1162,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1184": {
+      "duplicateId": 1184,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1229": {
+      "duplicateId": 1229,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1251": {
+      "duplicateId": 1251,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1285": {
+      "duplicateId": 1285,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1307": {
+      "duplicateId": 1307,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1345": {
+      "duplicateId": 1345,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1367": {
+      "duplicateId": 1367,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1401": {
+      "duplicateId": 1401,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1423": {
+      "duplicateId": 1423,
+      "canonicalId": 986,
+      "name": "ISO_Alpha_1790315641694",
+      "phone": "9900112233"
+    },
+    "1011": {
+      "duplicateId": 1011,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1046": {
+      "duplicateId": 1046,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1068": {
+      "duplicateId": 1068,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1107": {
+      "duplicateId": 1107,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1129": {
+      "duplicateId": 1129,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1163": {
+      "duplicateId": 1163,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1185": {
+      "duplicateId": 1185,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1230": {
+      "duplicateId": 1230,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1252": {
+      "duplicateId": 1252,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1286": {
+      "duplicateId": 1286,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1308": {
+      "duplicateId": 1308,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1346": {
+      "duplicateId": 1346,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1368": {
+      "duplicateId": 1368,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1402": {
+      "duplicateId": 1402,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1424": {
+      "duplicateId": 1424,
+      "canonicalId": 987,
+      "name": "Cust_REP_1790315764282",
+      "phone": null
+    },
+    "1012": {
+      "duplicateId": 1012,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1047": {
+      "duplicateId": 1047,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1069": {
+      "duplicateId": 1069,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1108": {
+      "duplicateId": 1108,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1130": {
+      "duplicateId": 1130,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1164": {
+      "duplicateId": 1164,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1186": {
+      "duplicateId": 1186,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1231": {
+      "duplicateId": 1231,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1253": {
+      "duplicateId": 1253,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1287": {
+      "duplicateId": 1287,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1309": {
+      "duplicateId": 1309,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1347": {
+      "duplicateId": 1347,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1369": {
+      "duplicateId": 1369,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1403": {
+      "duplicateId": 1403,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1425": {
+      "duplicateId": 1425,
+      "canonicalId": 988,
+      "name": "Cust_Return_1790315782009",
+      "phone": null
+    },
+    "1070": {
+      "duplicateId": 1070,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1131": {
+      "duplicateId": 1131,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1187": {
+      "duplicateId": 1187,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1254": {
+      "duplicateId": 1254,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1310": {
+      "duplicateId": 1310,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1370": {
+      "duplicateId": 1370,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1426": {
+      "duplicateId": 1426,
+      "canonicalId": 1013,
+      "name": "BAK_Cust_1790316250278",
+      "phone": "9876543210"
+    },
+    "1071": {
+      "duplicateId": 1071,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1132": {
+      "duplicateId": 1132,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1188": {
+      "duplicateId": 1188,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1255": {
+      "duplicateId": 1255,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1311": {
+      "duplicateId": 1311,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1371": {
+      "duplicateId": 1371,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1427": {
+      "duplicateId": 1427,
+      "canonicalId": 1014,
+      "name": "ISO_Cust_1790316446365",
+      "phone": "9988776655"
+    },
+    "1072": {
+      "duplicateId": 1072,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1133": {
+      "duplicateId": 1133,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1189": {
+      "duplicateId": 1189,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1256": {
+      "duplicateId": 1256,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1312": {
+      "duplicateId": 1312,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1372": {
+      "duplicateId": 1372,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1428": {
+      "duplicateId": 1428,
+      "canonicalId": 1015,
+      "name": "ISO_Cust_1790316544404",
+      "phone": "9988776655"
+    },
+    "1073": {
+      "duplicateId": 1073,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1134": {
+      "duplicateId": 1134,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1190": {
+      "duplicateId": 1190,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1257": {
+      "duplicateId": 1257,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1313": {
+      "duplicateId": 1313,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1373": {
+      "duplicateId": 1373,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1429": {
+      "duplicateId": 1429,
+      "canonicalId": 1016,
+      "name": "ISO_Cust_1790316563776",
+      "phone": "9988776655"
+    },
+    "1074": {
+      "duplicateId": 1074,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1135": {
+      "duplicateId": 1135,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1191": {
+      "duplicateId": 1191,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1258": {
+      "duplicateId": 1258,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1314": {
+      "duplicateId": 1314,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1374": {
+      "duplicateId": 1374,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1430": {
+      "duplicateId": 1430,
+      "canonicalId": 1017,
+      "name": "ISO_Cust_1790316580456",
+      "phone": "9988776655"
+    },
+    "1075": {
+      "duplicateId": 1075,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1136": {
+      "duplicateId": 1136,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1192": {
+      "duplicateId": 1192,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1259": {
+      "duplicateId": 1259,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1315": {
+      "duplicateId": 1315,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1375": {
+      "duplicateId": 1375,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1431": {
+      "duplicateId": 1431,
+      "canonicalId": 1018,
+      "name": "ISO_Cust_1790316628251",
+      "phone": "9988776655"
+    },
+    "1076": {
+      "duplicateId": 1076,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1137": {
+      "duplicateId": 1137,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1193": {
+      "duplicateId": 1193,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1260": {
+      "duplicateId": 1260,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1316": {
+      "duplicateId": 1316,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1376": {
+      "duplicateId": 1376,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1432": {
+      "duplicateId": 1432,
+      "canonicalId": 1019,
+      "name": "ISO_Cust_1790316713672",
+      "phone": "9988776655"
+    },
+    "1077": {
+      "duplicateId": 1077,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1138": {
+      "duplicateId": 1138,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1194": {
+      "duplicateId": 1194,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1261": {
+      "duplicateId": 1261,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1317": {
+      "duplicateId": 1317,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1377": {
+      "duplicateId": 1377,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1433": {
+      "duplicateId": 1433,
+      "canonicalId": 1020,
+      "name": "ISO_Cust_1790316753889",
+      "phone": "9988776655"
+    },
+    "1078": {
+      "duplicateId": 1078,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1139": {
+      "duplicateId": 1139,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1195": {
+      "duplicateId": 1195,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1262": {
+      "duplicateId": 1262,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1318": {
+      "duplicateId": 1318,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1378": {
+      "duplicateId": 1378,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1434": {
+      "duplicateId": 1434,
+      "canonicalId": 1021,
+      "name": "ISO_Cust_1790316812516",
+      "phone": "9988776655"
+    },
+    "1079": {
+      "duplicateId": 1079,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1140": {
+      "duplicateId": 1140,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1196": {
+      "duplicateId": 1196,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1263": {
+      "duplicateId": 1263,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1319": {
+      "duplicateId": 1319,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1379": {
+      "duplicateId": 1379,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1435": {
+      "duplicateId": 1435,
+      "canonicalId": 1022,
+      "name": "REP_Cust_1790316871263",
+      "phone": "9876501234"
+    },
+    "1080": {
+      "duplicateId": 1080,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1141": {
+      "duplicateId": 1141,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1197": {
+      "duplicateId": 1197,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1264": {
+      "duplicateId": 1264,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1320": {
+      "duplicateId": 1320,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1380": {
+      "duplicateId": 1380,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1436": {
+      "duplicateId": 1436,
+      "canonicalId": 1023,
+      "name": "REP_Cust_1790316911227",
+      "phone": "9876501234"
+    },
+    "1081": {
+      "duplicateId": 1081,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1142": {
+      "duplicateId": 1142,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1198": {
+      "duplicateId": 1198,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1265": {
+      "duplicateId": 1265,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1321": {
+      "duplicateId": 1321,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1381": {
+      "duplicateId": 1381,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1437": {
+      "duplicateId": 1437,
+      "canonicalId": 1024,
+      "name": "QT_Cust_1790317132165",
+      "phone": "9876543210"
+    },
+    "1199": {
+      "duplicateId": 1199,
+      "canonicalId": 1082,
+      "name": "BAK_Cust_1790317442182",
+      "phone": "9876543210"
+    },
+    "1322": {
+      "duplicateId": 1322,
+      "canonicalId": 1082,
+      "name": "BAK_Cust_1790317442182",
+      "phone": "9876543210"
+    },
+    "1438": {
+      "duplicateId": 1438,
+      "canonicalId": 1082,
+      "name": "BAK_Cust_1790317442182",
+      "phone": "9876543210"
+    },
+    "1200": {
+      "duplicateId": 1200,
+      "canonicalId": 1083,
+      "name": "ISO_Cust_1790317469069",
+      "phone": "9988776655"
+    },
+    "1323": {
+      "duplicateId": 1323,
+      "canonicalId": 1083,
+      "name": "ISO_Cust_1790317469069",
+      "phone": "9988776655"
+    },
+    "1439": {
+      "duplicateId": 1439,
+      "canonicalId": 1083,
+      "name": "ISO_Cust_1790317469069",
+      "phone": "9988776655"
+    },
+    "1201": {
+      "duplicateId": 1201,
+      "canonicalId": 1084,
+      "name": "QT_Cust_1790317489068",
+      "phone": "9876543210"
+    },
+    "1324": {
+      "duplicateId": 1324,
+      "canonicalId": 1084,
+      "name": "QT_Cust_1790317489068",
+      "phone": "9876543210"
+    },
+    "1440": {
+      "duplicateId": 1440,
+      "canonicalId": 1084,
+      "name": "QT_Cust_1790317489068",
+      "phone": "9876543210"
+    },
+    "1202": {
+      "duplicateId": 1202,
+      "canonicalId": 1085,
+      "name": "REP_Cust_1790317526666",
+      "phone": "9876501234"
+    },
+    "1325": {
+      "duplicateId": 1325,
+      "canonicalId": 1085,
+      "name": "REP_Cust_1790317526666",
+      "phone": "9876501234"
+    },
+    "1441": {
+      "duplicateId": 1441,
+      "canonicalId": 1085,
+      "name": "REP_Cust_1790317526666",
+      "phone": "9876501234"
+    },
+    "1442": {
+      "duplicateId": 1442,
+      "canonicalId": 1203,
+      "name": "BAK_Cust_1790317577400",
+      "phone": "9876543210"
+    },
+    "1443": {
+      "duplicateId": 1443,
+      "canonicalId": 1204,
+      "name": "Cust_Inv_1790317638294",
+      "phone": "9876543210"
+    },
+    "1444": {
+      "duplicateId": 1444,
+      "canonicalId": 1205,
+      "name": "ISO_Cust_1790317656215",
+      "phone": "9988776655"
+    },
+    "1445": {
+      "duplicateId": 1445,
+      "canonicalId": 1206,
+      "name": "QT_Cust_1790317672795",
+      "phone": "9876543210"
+    },
+    "1446": {
+      "duplicateId": 1446,
+      "canonicalId": 1207,
+      "name": "REP_Cust_1790317819215",
+      "phone": "9876501234"
+    },
+    "1447": {
+      "duplicateId": 1447,
+      "canonicalId": 1208,
+      "name": "Cust_Return_1790317832958",
+      "phone": null
+    }
+  },
+  "invoiceMapping": {
+    "1408": {
+      "duplicateId": 1408,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1440": {
+      "duplicateId": 1440,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1462": {
+      "duplicateId": 1462,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1497": {
+      "duplicateId": 1497,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1519": {
+      "duplicateId": 1519,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1551": {
+      "duplicateId": 1551,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1573": {
+      "duplicateId": 1573,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1613": {
+      "duplicateId": 1613,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1635": {
+      "duplicateId": 1635,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1667": {
+      "duplicateId": 1667,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1689": {
+      "duplicateId": 1689,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1724": {
+      "duplicateId": 1724,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1746": {
+      "duplicateId": 1746,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1778": {
+      "duplicateId": 1778,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1800": {
+      "duplicateId": 1800,
+      "canonicalId": 1081,
+      "invoiceNumber": "INV-0001",
+      "estimateNumber": null,
+      "totalAmount": 1298.0
+    },
+    "1409": {
+      "duplicateId": 1409,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1441": {
+      "duplicateId": 1441,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1463": {
+      "duplicateId": 1463,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1498": {
+      "duplicateId": 1498,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1520": {
+      "duplicateId": 1520,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1552": {
+      "duplicateId": 1552,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1574": {
+      "duplicateId": 1574,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1614": {
+      "duplicateId": 1614,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1636": {
+      "duplicateId": 1636,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1668": {
+      "duplicateId": 1668,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1690": {
+      "duplicateId": 1690,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1725": {
+      "duplicateId": 1725,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1747": {
+      "duplicateId": 1747,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1779": {
+      "duplicateId": 1779,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1801": {
+      "duplicateId": 1801,
+      "canonicalId": 1113,
+      "invoiceNumber": "INV-0002",
+      "estimateNumber": null,
+      "totalAmount": 2956.56
+    },
+    "1410": {
+      "duplicateId": 1410,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1442": {
+      "duplicateId": 1442,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1464": {
+      "duplicateId": 1464,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1499": {
+      "duplicateId": 1499,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1521": {
+      "duplicateId": 1521,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1553": {
+      "duplicateId": 1553,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1575": {
+      "duplicateId": 1575,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1615": {
+      "duplicateId": 1615,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1637": {
+      "duplicateId": 1637,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1669": {
+      "duplicateId": 1669,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1691": {
+      "duplicateId": 1691,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1726": {
+      "duplicateId": 1726,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1748": {
+      "duplicateId": 1748,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1780": {
+      "duplicateId": 1780,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1802": {
+      "duplicateId": 1802,
+      "canonicalId": 1114,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0001",
+      "totalAmount": 1558730.4
+    },
+    "1411": {
+      "duplicateId": 1411,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1443": {
+      "duplicateId": 1443,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1465": {
+      "duplicateId": 1465,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1500": {
+      "duplicateId": 1500,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1522": {
+      "duplicateId": 1522,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1554": {
+      "duplicateId": 1554,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1576": {
+      "duplicateId": 1576,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1616": {
+      "duplicateId": 1616,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1638": {
+      "duplicateId": 1638,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1670": {
+      "duplicateId": 1670,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1692": {
+      "duplicateId": 1692,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1727": {
+      "duplicateId": 1727,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1749": {
+      "duplicateId": 1749,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1781": {
+      "duplicateId": 1781,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1803": {
+      "duplicateId": 1803,
+      "canonicalId": 1115,
+      "invoiceNumber": "INV-0003",
+      "estimateNumber": null,
+      "totalAmount": 1558730.4
+    },
+    "1412": {
+      "duplicateId": 1412,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1444": {
+      "duplicateId": 1444,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1466": {
+      "duplicateId": 1466,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1501": {
+      "duplicateId": 1501,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1523": {
+      "duplicateId": 1523,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1555": {
+      "duplicateId": 1555,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1577": {
+      "duplicateId": 1577,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1617": {
+      "duplicateId": 1617,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1639": {
+      "duplicateId": 1639,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1671": {
+      "duplicateId": 1671,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1693": {
+      "duplicateId": 1693,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1728": {
+      "duplicateId": 1728,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1750": {
+      "duplicateId": 1750,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1782": {
+      "duplicateId": 1782,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1804": {
+      "duplicateId": 1804,
+      "canonicalId": 1145,
+      "invoiceNumber": "INV-0004",
+      "estimateNumber": null,
+      "totalAmount": 1687.4
+    },
+    "1413": {
+      "duplicateId": 1413,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1445": {
+      "duplicateId": 1445,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1467": {
+      "duplicateId": 1467,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1502": {
+      "duplicateId": 1502,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1524": {
+      "duplicateId": 1524,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1556": {
+      "duplicateId": 1556,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1578": {
+      "duplicateId": 1578,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1618": {
+      "duplicateId": 1618,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1640": {
+      "duplicateId": 1640,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1672": {
+      "duplicateId": 1672,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1694": {
+      "duplicateId": 1694,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1729": {
+      "duplicateId": 1729,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1751": {
+      "duplicateId": 1751,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1783": {
+      "duplicateId": 1783,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1805": {
+      "duplicateId": 1805,
+      "canonicalId": 1146,
+      "invoiceNumber": "INV-0005",
+      "estimateNumber": null,
+      "totalAmount": 1699.2
+    },
+    "1414": {
+      "duplicateId": 1414,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1446": {
+      "duplicateId": 1446,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1468": {
+      "duplicateId": 1468,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1503": {
+      "duplicateId": 1503,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1525": {
+      "duplicateId": 1525,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1557": {
+      "duplicateId": 1557,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1579": {
+      "duplicateId": 1579,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1619": {
+      "duplicateId": 1619,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1641": {
+      "duplicateId": 1641,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1673": {
+      "duplicateId": 1673,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1695": {
+      "duplicateId": 1695,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1730": {
+      "duplicateId": 1730,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1752": {
+      "duplicateId": 1752,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1784": {
+      "duplicateId": 1784,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1806": {
+      "duplicateId": 1806,
+      "canonicalId": 1147,
+      "invoiceNumber": "INV-0006",
+      "estimateNumber": null,
+      "totalAmount": 141.6
+    },
+    "1421": {
+      "duplicateId": 1421,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1453": {
+      "duplicateId": 1453,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1475": {
+      "duplicateId": 1475,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1510": {
+      "duplicateId": 1510,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1532": {
+      "duplicateId": 1532,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1564": {
+      "duplicateId": 1564,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1586": {
+      "duplicateId": 1586,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1626": {
+      "duplicateId": 1626,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1648": {
+      "duplicateId": 1648,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1680": {
+      "duplicateId": 1680,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1702": {
+      "duplicateId": 1702,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1737": {
+      "duplicateId": 1737,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1759": {
+      "duplicateId": 1759,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1791": {
+      "duplicateId": 1791,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1813": {
+      "duplicateId": 1813,
+      "canonicalId": 1245,
+      "invoiceNumber": "INV-0007",
+      "estimateNumber": null,
+      "totalAmount": 1617.6
+    },
+    "1423": {
+      "duplicateId": 1423,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1455": {
+      "duplicateId": 1455,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1477": {
+      "duplicateId": 1477,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1512": {
+      "duplicateId": 1512,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1534": {
+      "duplicateId": 1534,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1566": {
+      "duplicateId": 1566,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1588": {
+      "duplicateId": 1588,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1628": {
+      "duplicateId": 1628,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1650": {
+      "duplicateId": 1650,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1682": {
+      "duplicateId": 1682,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1704": {
+      "duplicateId": 1704,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1739": {
+      "duplicateId": 1739,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1761": {
+      "duplicateId": 1761,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1793": {
+      "duplicateId": 1793,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1815": {
+      "duplicateId": 1815,
+      "canonicalId": 1401,
+      "invoiceNumber": "INV-0008",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1424": {
+      "duplicateId": 1424,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1456": {
+      "duplicateId": 1456,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1478": {
+      "duplicateId": 1478,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1513": {
+      "duplicateId": 1513,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1535": {
+      "duplicateId": 1535,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1567": {
+      "duplicateId": 1567,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1589": {
+      "duplicateId": 1589,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1629": {
+      "duplicateId": 1629,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1651": {
+      "duplicateId": 1651,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1683": {
+      "duplicateId": 1683,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1705": {
+      "duplicateId": 1705,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1740": {
+      "duplicateId": 1740,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1762": {
+      "duplicateId": 1762,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1794": {
+      "duplicateId": 1794,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1816": {
+      "duplicateId": 1816,
+      "canonicalId": 1402,
+      "invoiceNumber": "INV-0009",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1425": {
+      "duplicateId": 1425,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1457": {
+      "duplicateId": 1457,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1479": {
+      "duplicateId": 1479,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1514": {
+      "duplicateId": 1514,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1536": {
+      "duplicateId": 1536,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1568": {
+      "duplicateId": 1568,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1590": {
+      "duplicateId": 1590,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1630": {
+      "duplicateId": 1630,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1652": {
+      "duplicateId": 1652,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1684": {
+      "duplicateId": 1684,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1706": {
+      "duplicateId": 1706,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1741": {
+      "duplicateId": 1741,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1763": {
+      "duplicateId": 1763,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1795": {
+      "duplicateId": 1795,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1817": {
+      "duplicateId": 1817,
+      "canonicalId": 1403,
+      "invoiceNumber": "INV-0010",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1426": {
+      "duplicateId": 1426,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1458": {
+      "duplicateId": 1458,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1480": {
+      "duplicateId": 1480,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1515": {
+      "duplicateId": 1515,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1537": {
+      "duplicateId": 1537,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1569": {
+      "duplicateId": 1569,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1591": {
+      "duplicateId": 1591,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1631": {
+      "duplicateId": 1631,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1653": {
+      "duplicateId": 1653,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1685": {
+      "duplicateId": 1685,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1707": {
+      "duplicateId": 1707,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1742": {
+      "duplicateId": 1742,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1764": {
+      "duplicateId": 1764,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1796": {
+      "duplicateId": 1796,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1818": {
+      "duplicateId": 1818,
+      "canonicalId": 1404,
+      "invoiceNumber": "INV-0011",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1427": {
+      "duplicateId": 1427,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1459": {
+      "duplicateId": 1459,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1481": {
+      "duplicateId": 1481,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1516": {
+      "duplicateId": 1516,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1538": {
+      "duplicateId": 1538,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1570": {
+      "duplicateId": 1570,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1592": {
+      "duplicateId": 1592,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1632": {
+      "duplicateId": 1632,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1654": {
+      "duplicateId": 1654,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1686": {
+      "duplicateId": 1686,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1708": {
+      "duplicateId": 1708,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1743": {
+      "duplicateId": 1743,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1765": {
+      "duplicateId": 1765,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1797": {
+      "duplicateId": 1797,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1819": {
+      "duplicateId": 1819,
+      "canonicalId": 1405,
+      "invoiceNumber": "INV-0012",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1428": {
+      "duplicateId": 1428,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1460": {
+      "duplicateId": 1460,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1482": {
+      "duplicateId": 1482,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1517": {
+      "duplicateId": 1517,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1539": {
+      "duplicateId": 1539,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1571": {
+      "duplicateId": 1571,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1593": {
+      "duplicateId": 1593,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1633": {
+      "duplicateId": 1633,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1655": {
+      "duplicateId": 1655,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1687": {
+      "duplicateId": 1687,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1709": {
+      "duplicateId": 1709,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1744": {
+      "duplicateId": 1744,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1766": {
+      "duplicateId": 1766,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1798": {
+      "duplicateId": 1798,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1820": {
+      "duplicateId": 1820,
+      "canonicalId": 1406,
+      "invoiceNumber": "INV-0013",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1429": {
+      "duplicateId": 1429,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1461": {
+      "duplicateId": 1461,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1483": {
+      "duplicateId": 1483,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1518": {
+      "duplicateId": 1518,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1540": {
+      "duplicateId": 1540,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1572": {
+      "duplicateId": 1572,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1594": {
+      "duplicateId": 1594,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1634": {
+      "duplicateId": 1634,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1656": {
+      "duplicateId": 1656,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1688": {
+      "duplicateId": 1688,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1710": {
+      "duplicateId": 1710,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1745": {
+      "duplicateId": 1745,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1767": {
+      "duplicateId": 1767,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1799": {
+      "duplicateId": 1799,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1821": {
+      "duplicateId": 1821,
+      "canonicalId": 1407,
+      "invoiceNumber": "INV-0014",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    },
+    "1484": {
+      "duplicateId": 1484,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1541": {
+      "duplicateId": 1541,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1595": {
+      "duplicateId": 1595,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1657": {
+      "duplicateId": 1657,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1711": {
+      "duplicateId": 1711,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1768": {
+      "duplicateId": 1768,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1822": {
+      "duplicateId": 1822,
+      "canonicalId": 1430,
+      "invoiceNumber": "INV-0015",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1485": {
+      "duplicateId": 1485,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1542": {
+      "duplicateId": 1542,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1596": {
+      "duplicateId": 1596,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1658": {
+      "duplicateId": 1658,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1712": {
+      "duplicateId": 1712,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1769": {
+      "duplicateId": 1769,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1823": {
+      "duplicateId": 1823,
+      "canonicalId": 1431,
+      "invoiceNumber": "INV-0016",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1486": {
+      "duplicateId": 1486,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1543": {
+      "duplicateId": 1543,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1597": {
+      "duplicateId": 1597,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1659": {
+      "duplicateId": 1659,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1713": {
+      "duplicateId": 1713,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1770": {
+      "duplicateId": 1770,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1824": {
+      "duplicateId": 1824,
+      "canonicalId": 1432,
+      "invoiceNumber": "INV-0017",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1487": {
+      "duplicateId": 1487,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1544": {
+      "duplicateId": 1544,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1598": {
+      "duplicateId": 1598,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1660": {
+      "duplicateId": 1660,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1714": {
+      "duplicateId": 1714,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1771": {
+      "duplicateId": 1771,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1825": {
+      "duplicateId": 1825,
+      "canonicalId": 1433,
+      "invoiceNumber": "INV-0018",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1488": {
+      "duplicateId": 1488,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1545": {
+      "duplicateId": 1545,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1599": {
+      "duplicateId": 1599,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1661": {
+      "duplicateId": 1661,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1715": {
+      "duplicateId": 1715,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1772": {
+      "duplicateId": 1772,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1826": {
+      "duplicateId": 1826,
+      "canonicalId": 1434,
+      "invoiceNumber": "INV-0019",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1489": {
+      "duplicateId": 1489,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1546": {
+      "duplicateId": 1546,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1600": {
+      "duplicateId": 1600,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1662": {
+      "duplicateId": 1662,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1716": {
+      "duplicateId": 1716,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1773": {
+      "duplicateId": 1773,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1827": {
+      "duplicateId": 1827,
+      "canonicalId": 1435,
+      "invoiceNumber": "INV-0020",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1490": {
+      "duplicateId": 1490,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1547": {
+      "duplicateId": 1547,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1601": {
+      "duplicateId": 1601,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1663": {
+      "duplicateId": 1663,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1717": {
+      "duplicateId": 1717,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1774": {
+      "duplicateId": 1774,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1828": {
+      "duplicateId": 1828,
+      "canonicalId": 1436,
+      "invoiceNumber": "INV-0021",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1491": {
+      "duplicateId": 1491,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1548": {
+      "duplicateId": 1548,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1602": {
+      "duplicateId": 1602,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1664": {
+      "duplicateId": 1664,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1718": {
+      "duplicateId": 1718,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1775": {
+      "duplicateId": 1775,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1829": {
+      "duplicateId": 1829,
+      "canonicalId": 1437,
+      "invoiceNumber": "INV-0022",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1492": {
+      "duplicateId": 1492,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1549": {
+      "duplicateId": 1549,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1603": {
+      "duplicateId": 1603,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1665": {
+      "duplicateId": 1665,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1719": {
+      "duplicateId": 1719,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1776": {
+      "duplicateId": 1776,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1830": {
+      "duplicateId": 1830,
+      "canonicalId": 1438,
+      "invoiceNumber": "INV-0023",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1493": {
+      "duplicateId": 1493,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1550": {
+      "duplicateId": 1550,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1604": {
+      "duplicateId": 1604,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1666": {
+      "duplicateId": 1666,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1720": {
+      "duplicateId": 1720,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1777": {
+      "duplicateId": 1777,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1831": {
+      "duplicateId": 1831,
+      "canonicalId": 1439,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0002",
+      "totalAmount": 0.0
+    },
+    "1605": {
+      "duplicateId": 1605,
+      "canonicalId": 1494,
+      "invoiceNumber": "INV-0024",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1721": {
+      "duplicateId": 1721,
+      "canonicalId": 1494,
+      "invoiceNumber": "INV-0024",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1832": {
+      "duplicateId": 1832,
+      "canonicalId": 1494,
+      "invoiceNumber": "INV-0024",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1606": {
+      "duplicateId": 1606,
+      "canonicalId": 1495,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0003",
+      "totalAmount": 0.0
+    },
+    "1722": {
+      "duplicateId": 1722,
+      "canonicalId": 1495,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0003",
+      "totalAmount": 0.0
+    },
+    "1833": {
+      "duplicateId": 1833,
+      "canonicalId": 1495,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0003",
+      "totalAmount": 0.0
+    },
+    "1607": {
+      "duplicateId": 1607,
+      "canonicalId": 1496,
+      "invoiceNumber": "INV-0025",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1723": {
+      "duplicateId": 1723,
+      "canonicalId": 1496,
+      "invoiceNumber": "INV-0025",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1834": {
+      "duplicateId": 1834,
+      "canonicalId": 1496,
+      "invoiceNumber": "INV-0025",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1835": {
+      "duplicateId": 1835,
+      "canonicalId": 1608,
+      "invoiceNumber": "INV-0026",
+      "estimateNumber": null,
+      "totalAmount": 5310.0
+    },
+    "1836": {
+      "duplicateId": 1836,
+      "canonicalId": 1609,
+      "invoiceNumber": "INV-0027",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1837": {
+      "duplicateId": 1837,
+      "canonicalId": 1610,
+      "invoiceNumber": null,
+      "estimateNumber": "EST-0004",
+      "totalAmount": 0.0
+    },
+    "1838": {
+      "duplicateId": 1838,
+      "canonicalId": 1611,
+      "invoiceNumber": "INV-0028",
+      "estimateNumber": null,
+      "totalAmount": 0.0
+    },
+    "1839": {
+      "duplicateId": 1839,
+      "canonicalId": 1612,
+      "invoiceNumber": "INV-0029",
+      "estimateNumber": null,
+      "totalAmount": 2000.0
+    }
+  },
+  "paymentMapping": {
+    "634": {
+      "duplicateId": 634,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "641": {
+      "duplicateId": 641,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "648": {
+      "duplicateId": 648,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "655": {
+      "duplicateId": 655,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "662": {
+      "duplicateId": 662,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "669": {
+      "duplicateId": 669,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "676": {
+      "duplicateId": 676,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "684": {
+      "duplicateId": 684,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "691": {
+      "duplicateId": 691,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "698": {
+      "duplicateId": 698,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "705": {
+      "duplicateId": 705,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "712": {
+      "duplicateId": 712,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "719": {
+      "duplicateId": 719,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "726": {
+      "duplicateId": 726,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "733": {
+      "duplicateId": 733,
+      "canonicalId": 503,
+      "amount": 1298.0,
+      "paymentDate": "2026-09-21"
+    },
+    "636": {
+      "duplicateId": 636,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "643": {
+      "duplicateId": 643,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "650": {
+      "duplicateId": 650,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "657": {
+      "duplicateId": 657,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "664": {
+      "duplicateId": 664,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "671": {
+      "duplicateId": 671,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "678": {
+      "duplicateId": 678,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "686": {
+      "duplicateId": 686,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "693": {
+      "duplicateId": 693,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "700": {
+      "duplicateId": 700,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "707": {
+      "duplicateId": 707,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "714": {
+      "duplicateId": 714,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "721": {
+      "duplicateId": 721,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "728": {
+      "duplicateId": 728,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "735": {
+      "duplicateId": 735,
+      "canonicalId": 568,
+      "amount": 1617.6,
+      "paymentDate": "2026-09-22"
+    },
+    "632": {
+      "duplicateId": 632,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "633": {
+      "duplicateId": 633,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "638": {
+      "duplicateId": 638,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "639": {
+      "duplicateId": 639,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "640": {
+      "duplicateId": 640,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "645": {
+      "duplicateId": 645,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "646": {
+      "duplicateId": 646,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "647": {
+      "duplicateId": 647,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "652": {
+      "duplicateId": 652,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "653": {
+      "duplicateId": 653,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "654": {
+      "duplicateId": 654,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "659": {
+      "duplicateId": 659,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "660": {
+      "duplicateId": 660,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "661": {
+      "duplicateId": 661,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "666": {
+      "duplicateId": 666,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "667": {
+      "duplicateId": 667,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "668": {
+      "duplicateId": 668,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "673": {
+      "duplicateId": 673,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "674": {
+      "duplicateId": 674,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "675": {
+      "duplicateId": 675,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "680": {
+      "duplicateId": 680,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "681": {
+      "duplicateId": 681,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "682": {
+      "duplicateId": 682,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "683": {
+      "duplicateId": 683,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "688": {
+      "duplicateId": 688,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "689": {
+      "duplicateId": 689,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "690": {
+      "duplicateId": 690,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "695": {
+      "duplicateId": 695,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "696": {
+      "duplicateId": 696,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "697": {
+      "duplicateId": 697,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "702": {
+      "duplicateId": 702,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "703": {
+      "duplicateId": 703,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "704": {
+      "duplicateId": 704,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "709": {
+      "duplicateId": 709,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "710": {
+      "duplicateId": 710,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "711": {
+      "duplicateId": 711,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "716": {
+      "duplicateId": 716,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "717": {
+      "duplicateId": 717,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "718": {
+      "duplicateId": 718,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "723": {
+      "duplicateId": 723,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "724": {
+      "duplicateId": 724,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "725": {
+      "duplicateId": 725,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "730": {
+      "duplicateId": 730,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "731": {
+      "duplicateId": 731,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "732": {
+      "duplicateId": 732,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "737": {
+      "duplicateId": 737,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "738": {
+      "duplicateId": 738,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "739": {
+      "duplicateId": 739,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "740": {
+      "duplicateId": 740,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "741": {
+      "duplicateId": 741,
+      "canonicalId": 631,
+      "amount": 3000.0,
+      "paymentDate": "2026-09-25"
+    },
+    "795": {
+      "duplicateId": 795,
+      "canonicalId": 791,
+      "amount": 2956.56,
+      "paymentDate": "2026-09-25"
+    },
+    "796": {
+      "duplicateId": 796,
+      "canonicalId": 792,
+      "amount": 1687.4,
+      "paymentDate": "2026-09-25"
+    },
+    "797": {
+      "duplicateId": 797,
+      "canonicalId": 793,
+      "amount": 1699.2,
+      "paymentDate": "2026-09-25"
+    },
+    "798": {
+      "duplicateId": 798,
+      "canonicalId": 794,
+      "amount": 1656.84,
+      "paymentDate": "2026-09-25"
+    }
+  }
+}

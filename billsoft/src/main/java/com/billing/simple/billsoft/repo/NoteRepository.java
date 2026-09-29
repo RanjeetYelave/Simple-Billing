@@ -14,6 +14,8 @@ public interface NoteRepository extends JpaRepository<Note, Long> {
 
     Optional<Note> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<Note> findFirstByFirmIdAndTitleIgnoreCase(Long firmId, String title);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

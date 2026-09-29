@@ -11,6 +11,8 @@ public interface GoalLogRepository extends JpaRepository<GoalLog, Long> {
 
     List<GoalLog> findByGoalIdAndFirmIdOrderByLogDateAscCreatedAtAsc(Long goalId, Long firmId);
 
+    java.util.Optional<GoalLog> findFirstByGoalIdAndFirmIdAndLogDateAndDeltaValue(Long goalId, Long firmId, java.time.LocalDate logDate, java.math.BigDecimal deltaValue);
+
     List<GoalLog> findByGoalIdOrderByLogDateAscCreatedAtAsc(Long goalId);
 
     List<GoalLog> findByFirmIdOrderByLogDateAscCreatedAtAsc(Long firmId);

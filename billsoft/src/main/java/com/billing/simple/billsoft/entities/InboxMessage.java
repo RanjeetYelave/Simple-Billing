@@ -22,7 +22,7 @@ public class InboxMessage {
     @Column(nullable = false, length = 200)
     private String subject;
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "TEXT")
     private String body;
 
     @Column(length = 100)

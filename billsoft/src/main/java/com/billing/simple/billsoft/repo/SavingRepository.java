@@ -32,6 +32,8 @@ public interface SavingRepository extends JpaRepository<SavingRecord, Long> {
 
     Optional<SavingRecord> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<SavingRecord> findFirstByFirmIdAndSavingDateAndAmount(Long firmId, LocalDate savingDate, java.math.BigDecimal amount);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

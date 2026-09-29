@@ -16,6 +16,8 @@ public interface GoalRepository extends JpaRepository<Goal, Long> {
 
     Optional<Goal> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<Goal> findFirstByFirmIdAndTitleIgnoreCase(Long firmId, String title);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

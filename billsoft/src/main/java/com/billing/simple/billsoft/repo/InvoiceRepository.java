@@ -22,6 +22,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     // Used by BackupService
     List<Invoice> findAllByFirmId(Long firmId);
+
+    @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items WHERE i.firmId = :firmId")
+    List<Invoice> findAllByFirmIdWithItems(@Param("firmId") Long firmId);
     
     Optional<Invoice> findByIdAndFirmId(Long id, Long firmId);
 

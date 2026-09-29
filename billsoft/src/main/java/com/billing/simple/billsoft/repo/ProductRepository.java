@@ -35,6 +35,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     List<Product> findTop5ByFirmIdAndNameContainingIgnoreCaseOrderByNameAsc(Long firmId, String name);
 
+    Optional<Product> findFirstByFirmIdAndSku(Long firmId, String sku);
+
+    Optional<Product> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
+
     @Query("SELECT p FROM Product p WHERE p.firmId = :firmId AND (p.itemType IS NULL OR p.itemType = 'GOODS') AND p.stockQuantity <= p.minStockLevel ORDER BY p.stockQuantity ASC")
     List<Product> findLowStockProductsByFirmId(@Param("firmId") Long firmId);
 

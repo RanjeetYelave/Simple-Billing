@@ -21,6 +21,8 @@ public interface SalesReturnRepository extends JpaRepository<SalesReturn, Long> 
 
     Optional<SalesReturn> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<SalesReturn> findFirstByFirmIdAndReturnNumber(Long firmId, String returnNumber);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

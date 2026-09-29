@@ -21,6 +21,8 @@ public interface BusinessLetterRepository extends JpaRepository<BusinessLetter, 
 
     Optional<BusinessLetter> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<BusinessLetter> findFirstByFirmIdAndLetterNumberIgnoreCase(Long firmId, String letterNumber);
+
     List<BusinessLetter> findByFirmIdAndRecipientTypeOrderByLetterDateDescIdDesc(Long firmId, LetterRecipientType recipientType);
 
     List<BusinessLetter> findByFirmIdAndPartyIdOrderByLetterDateDescIdDesc(Long firmId, Long partyId);

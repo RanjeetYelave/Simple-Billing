@@ -32,6 +32,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     Optional<PurchaseOrder> findByIdAndFirmId(Long id, Long firmId);
 
+    Optional<PurchaseOrder> findFirstByFirmIdAndPoNumber(Long firmId, String poNumber);
+
     @org.springframework.data.jpa.repository.Query("SELECT po FROM PurchaseOrder po WHERE po.firmId = :firmId AND po.party.id = :partyId ORDER BY po.poDate DESC, po.id DESC")
     List<PurchaseOrder> findByFirmIdAndPartyIdOrderByPoDateDescIdDesc(@org.springframework.data.repository.query.Param("firmId") Long firmId, @org.springframework.data.repository.query.Param("partyId") Long partyId);
 

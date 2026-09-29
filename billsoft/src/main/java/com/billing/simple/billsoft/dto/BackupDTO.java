@@ -35,6 +35,27 @@ public class BackupDTO {
     private List<SalesReturn> salesReturns;
     private List<GoalLog> goalLogs;
 
+    public Long getSourceFirmId() {
+        if (metadata != null && metadata.get("sourceFirmId") != null) {
+            try {
+                return Long.valueOf(metadata.get("sourceFirmId").toString());
+            } catch (Exception ignored) {}
+        }
+        if (metadata != null && metadata.get("firmId") != null) {
+            try {
+                return Long.valueOf(metadata.get("firmId").toString());
+            } catch (Exception ignored) {}
+        }
+        return firmDetails != null ? firmDetails.getId() : null;
+    }
+
+    public void setSourceFirmId(Long sourceFirmId) {
+        if (metadata == null) {
+            metadata = new java.util.HashMap<>();
+        }
+        metadata.put("sourceFirmId", sourceFirmId);
+    }
+
     public List<SavingRecord> getSavings() {
         return savings;
     }

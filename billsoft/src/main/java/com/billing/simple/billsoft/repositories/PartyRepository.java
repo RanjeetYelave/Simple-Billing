@@ -22,5 +22,13 @@ public interface PartyRepository extends JpaRepository<Party, Long> {
 
     List<Party> findByFirmIdAndNameContainingIgnoreCase(Long firmId, String name);
 
+    Optional<Party> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
+
+    Optional<Party> findFirstByFirmIdAndPhone(Long firmId, String phone);
+
+    Optional<Party> findFirstByFirmIdAndPhoneAndNameIgnoreCase(Long firmId, String phone, String name);
+
+    Optional<Party> findFirstByFirmIdAndNameIgnoreCaseAndPhoneIsNull(Long firmId, String name);
+
     long countByFirmId(Long firmId);
 }

@@ -70,14 +70,14 @@ DOWNLOAD_URL=""
 RELEASE_JSON="$(curl -fsSL -H "User-Agent: RupeeCRM-Installer/1.0" -H "Accept: application/vnd.github.v3+json" "${API_URL}" 2>/dev/null || true)"
 
 if [ -n "$RELEASE_JSON" ] && echo "$RELEASE_JSON" | grep -q '"tag_name":'; then
-    TAG_NAME="$(echo "$RELEASE_JSON" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+    TAG_NAME="$(echo "$RELEASE_JSON" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed -E 's/"tag_name": *"([^"]+)"/\1/')"
     
     # Try exact architecture match
-    DOWNLOAD_URL="$(echo "$RELEASE_JSON" | grep '"browser_download_url":' | grep "RupeeCRM-macOS-${PKG_ARCH}.tar.gz" | head -n 1 | sed -E 's/.*"browser_download_url": *"([^"]+)".*/\1/' || true)"
+    DOWNLOAD_URL="$(echo "$RELEASE_JSON" | grep -o "https://github.com/[^\"]*RupeeCRM-macOS-${PKG_ARCH}\.tar\.gz" | head -n 1 || true)"
     
     # Fallback to arm64 if x64 is not published on older release
     if [ -z "$DOWNLOAD_URL" ]; then
-        DOWNLOAD_URL="$(echo "$RELEASE_JSON" | grep '"browser_download_url":' | grep 'RupeeCRM-macOS-arm64.tar.gz' | head -n 1 | sed -E 's/.*"browser_download_url": *"([^"]+)".*/\1/' || true)"
+        DOWNLOAD_URL="$(echo "$RELEASE_JSON" | grep -o "https://github.com/[^\"]*RupeeCRM-macOS-arm64\.tar\.gz" | head -n 1 || true)"
     fi
 fi
 
@@ -111,13 +111,13 @@ mkdir -p "$EXTRACT_DIR"
 echo -e "${BLUE}ℹ${NC} Downloading release package..."
 
 DOWNLOAD_SUCCESS=0
-if curl -fSL --progress-bar "$DOWNLOAD_URL" -o "$ARCHIVE_FILE" 2>/dev/null; then
+if curl -fSL --retry 3 --retry-delay 2 --progress-bar "$DOWNLOAD_URL" -o "$ARCHIVE_FILE"; then
     DOWNLOAD_SUCCESS=1
 elif [ "$PKG_ARCH" != "arm64" ]; then
     # Fallback to ARM64 asset if x64 asset was not found on this specific release
     FALLBACK_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/RupeeCRM-macOS-arm64.tar.gz"
     echo -e "${YELLOW}ℹ ${PKG_ARCH} build not found for ${TAG_NAME}, trying universal/arm64 fallback...${NC}"
-    if curl -fSL --progress-bar "$FALLBACK_URL" -o "$ARCHIVE_FILE" 2>/dev/null; then
+    if curl -fSL --retry 3 --retry-delay 2 --progress-bar "$FALLBACK_URL" -o "$ARCHIVE_FILE"; then
         DOWNLOAD_SUCCESS=1
     fi
 fi
@@ -268,6 +268,6 @@ echo -e "• Web Dashboard:     ${CYAN}${BOLD}http://management.rupeecrm.local:2
 echo -e "• Direct IP Access:  ${CYAN}${BOLD}http://127.0.0.1:28080/${NC}"
 echo -e "• Installed Path:    ${BOLD}/Applications/RupeeCRM.app${NC}"
 echo -e "• Data Directory:    ${BOLD}~/Library/Application Support/RupeeCRM${NC}"
-echo -e "• Login Auto-Start:  ${GREEN}Enabled${NC} (LaunchAgent + Login Item)"
+echo -e "• Login Auto-Start:  ${GREEN}Enabled${NC} (LaunchAgent)"
 echo ""
 echo -e "You can access RupeeCRM anytime via ${BOLD}Spotlight${NC} (Cmd+Space → 'RupeeCRM'), ${BOLD}Launchpad${NC}, or ${BOLD}Finder → Applications${NC}."

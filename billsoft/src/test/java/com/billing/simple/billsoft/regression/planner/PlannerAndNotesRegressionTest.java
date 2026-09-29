@@ -1,17 +1,23 @@
 package com.billing.simple.billsoft.regression.planner;
 
 import com.billing.simple.billsoft.entities.Expense;
+import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Note;
 import com.billing.simple.billsoft.entities.Reminder;
+import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.service.ExpenseService;
 import com.billing.simple.billsoft.service.NoteService;
 import com.billing.simple.billsoft.service.ReminderService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -21,8 +27,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+@ActiveProfiles("test")
+@Transactional
 @Tag("regression")
 @Tag("integration")
 @DisplayName("Planner, Reminders, Notes & Expenses Regression Tests")
@@ -38,21 +44,22 @@ class PlannerAndNotesRegressionTest {
     private ExpenseService expenseService;
 
     @Autowired
-    private com.billing.simple.billsoft.repo.ExpenseRepository expenseRepo;
+    private FirmDetailsRepository firmRepo;
 
-    @Autowired
-    private com.billing.simple.billsoft.repo.NoteRepository noteRepo;
+    private Long testFirmId;
 
-    @Autowired
-    private com.billing.simple.billsoft.repo.ReminderRepository reminderRepo;
-
-    private final Long testFirmId = 1L;
-
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void setUp() {
-        expenseRepo.deleteAll();
-        noteRepo.deleteAll();
-        reminderRepo.deleteAll();
+        FirmDetails firm = new FirmDetails();
+        firm.setFirmName("Planner Test Firm " + System.nanoTime());
+        firm = firmRepo.save(firm);
+        testFirmId = firm.getId();
+        TenantContext.setCurrentFirmId(testFirmId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test

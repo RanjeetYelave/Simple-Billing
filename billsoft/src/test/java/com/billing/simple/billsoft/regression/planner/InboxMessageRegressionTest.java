@@ -1,21 +1,27 @@
 package com.billing.simple.billsoft.regression.planner;
 
+import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.InboxMessage;
+import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.service.InboxMessageService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+@ActiveProfiles("test")
+@Transactional
 @Tag("regression")
 @Tag("integration")
 @DisplayName("Inbox Messages & Notification Regression Tests")
@@ -24,7 +30,24 @@ class InboxMessageRegressionTest {
     @Autowired
     private InboxMessageService messageService;
 
-    private final Long testFirmId = 1L;
+    @Autowired
+    private FirmDetailsRepository firmRepo;
+
+    private Long testFirmId;
+
+    @BeforeEach
+    void setUp() {
+        FirmDetails firm = new FirmDetails();
+        firm.setFirmName("Inbox Test Firm " + System.nanoTime());
+        firm = firmRepo.save(firm);
+        testFirmId = firm.getId();
+        TenantContext.setCurrentFirmId(testFirmId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
+    }
 
     @Test
     @DisplayName("Should create inbox notifications and filter unread messages")

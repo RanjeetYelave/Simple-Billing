@@ -83,6 +83,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
 
         if (po.getItems() != null) {
+            po.setItems(new ArrayList<>(po.getItems()));
             for (PurchaseOrderItem item : po.getItems()) {
                 if (item.getProductId() != null) {
                     if (!productRepository.existsByIdAndFirmId(item.getProductId(), po.getFirmId())) {

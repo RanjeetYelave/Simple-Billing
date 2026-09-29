@@ -44,12 +44,10 @@ public class PaginationBoundaryAndHiddenLimitRegressionTest {
 
     @BeforeEach
     void setup() {
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElseGet(() -> {
-            FirmDetails f = new FirmDetails();
-            f.setFirmName("Pagination Regression Firm");
-            return firmRepo.save(f);
-        });
-        firmId = firm.getId();
+        FirmDetails f = new FirmDetails();
+        f.setFirmName("Pagination Regression Firm " + System.nanoTime());
+        f = firmRepo.save(f);
+        firmId = f.getId();
         TenantContext.setCurrentFirmId(firmId);
     }
 

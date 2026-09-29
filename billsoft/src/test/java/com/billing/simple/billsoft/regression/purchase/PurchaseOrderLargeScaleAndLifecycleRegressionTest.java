@@ -65,11 +65,9 @@ public class PurchaseOrderLargeScaleAndLifecycleRegressionTest {
 
     @BeforeEach
     void setup() {
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElseGet(() -> {
-            FirmDetails f = new FirmDetails();
-            f.setFirmName("PO Lifecycle Scale Firm");
-            return firmRepo.save(f);
-        });
+        FirmDetails f = new FirmDetails();
+        f.setFirmName("PO Lifecycle Scale Firm " + System.nanoTime());
+        FirmDetails firm = firmRepo.save(f);
         firmId = firm.getId();
         TenantContext.setCurrentFirmId(firmId);
 

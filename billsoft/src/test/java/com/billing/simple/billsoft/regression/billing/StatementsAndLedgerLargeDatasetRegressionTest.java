@@ -84,11 +84,9 @@ public class StatementsAndLedgerLargeDatasetRegressionTest {
 
     @BeforeEach
     void setup() {
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElseGet(() -> {
-            FirmDetails f = new FirmDetails();
-            f.setFirmName("Statement Scale Test Firm");
-            return firmRepo.save(f);
-        });
+        FirmDetails f = new FirmDetails();
+        f.setFirmName("Statement Scale Test Firm " + System.nanoTime());
+        FirmDetails firm = firmRepo.save(f);
         firmId = firm.getId();
         TenantContext.setCurrentFirmId(firmId);
 

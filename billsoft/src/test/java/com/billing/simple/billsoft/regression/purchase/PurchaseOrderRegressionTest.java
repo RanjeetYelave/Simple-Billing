@@ -1,17 +1,21 @@
 package com.billing.simple.billsoft.regression.purchase;
 
 import com.billing.simple.billsoft.entities.*;
+import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.service.PartyService;
 import com.billing.simple.billsoft.service.ProductService;
 import com.billing.simple.billsoft.service.PurchaseOrderPdfService;
 import com.billing.simple.billsoft.service.PurchaseOrderService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -23,8 +27,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+@ActiveProfiles("test")
+@Transactional
 @Tag("regression")
 @Tag("integration")
 @DisplayName("Purchase Order Lifecycle & Stock Intake Regression Tests")
@@ -42,12 +46,21 @@ class PurchaseOrderRegressionTest {
     @Autowired
     private ProductService productService;
 
+    @Autowired
+    private FirmDetailsRepository firmRepo;
+
     private Party testSupplier;
     private Product testProduct;
-    private final Long testFirmId = 1L;
+    private Long testFirmId;
 
     @BeforeEach
     void setUp() {
+        FirmDetails firm = new FirmDetails();
+        firm.setFirmName("PO Test Firm " + System.nanoTime());
+        firm = firmRepo.save(firm);
+        testFirmId = firm.getId();
+        TenantContext.setCurrentFirmId(testFirmId);
+
         testSupplier = partyService.createParty(Party.builder()
                 .name("Standard Steel Mill Ltd")
                 .phone("9811223344")
@@ -65,6 +78,11 @@ class PurchaseOrderRegressionTest {
                 .itemType("GOODS")
                 .unit("kg")
                 .build());
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
@@ -140,7 +158,7 @@ class PurchaseOrderRegressionTest {
                 .unitPrice(BigDecimal.valueOf(900.00))
                 .build();
 
-        po.setItems(List.of(item));
+        po.setItems(new ArrayList<>(List.of(item)));
         poService.createPurchaseOrder(po);
 
         // Initial 20 + 30 received = 50
@@ -171,7 +189,7 @@ class PurchaseOrderRegressionTest {
                 .gstPercent(BigDecimal.valueOf(18.0))
                 .build();
 
-        po.setItems(List.of(item));
+        po.setItems(new ArrayList<>(List.of(item)));
         PurchaseOrder created = poService.createPurchaseOrder(po);
         assertThat(created.getId()).isNotNull();
 
@@ -234,7 +252,7 @@ class PurchaseOrderRegressionTest {
                 .gstPercent(BigDecimal.valueOf(18.0))
                 .build();
 
-        po.setItems(List.of(item));
+        po.setItems(new ArrayList<>(List.of(item)));
         PurchaseOrder created = poService.createPurchaseOrder(po);
 
         byte[] pdf = poPdfService.generatePdf(created);

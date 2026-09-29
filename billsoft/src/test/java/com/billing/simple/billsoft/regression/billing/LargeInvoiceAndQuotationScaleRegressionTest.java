@@ -65,14 +65,12 @@ public class LargeInvoiceAndQuotationScaleRegressionTest {
 
     @BeforeEach
     void setup() {
-        FirmDetails firm = firmRepo.findAll().stream().findFirst().orElseGet(() -> {
-            FirmDetails f = new FirmDetails();
-            f.setFirmName("Scale Test Enterprise Firm");
-            f.setCity("Pune");
-            f.setState("Maharashtra");
-            f.setPincode("411001");
-            return firmRepo.save(f);
-        });
+        FirmDetails f = new FirmDetails();
+        f.setFirmName("Scale Test Enterprise Firm " + System.nanoTime());
+        f.setCity("Pune");
+        f.setState("Maharashtra");
+        f.setPincode("411001");
+        FirmDetails firm = firmRepo.save(f);
         firmId = firm.getId();
         TenantContext.setCurrentFirmId(firmId);
 

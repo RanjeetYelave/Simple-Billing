@@ -184,8 +184,8 @@ xattr -cr "$TARGET_APP" 2>/dev/null || true
 chmod -R u+w "$TARGET_APP" 2>/dev/null || true
 chmod +x "$TARGET_APP"/Contents/MacOS/* 2>/dev/null || true
 
-# 10. Persistent Auto-Start Configuration (LaunchAgent & Login Item)
-echo -e "${BLUE}ℹ${NC} Configuring automatic background startup on login..."
+# 10. Persistent Auto-Start Configuration (LaunchAgent - Single Authoritative Mechanism)
+echo -e "${BLUE}ℹ${NC} Configuring automatic background startup on login via LaunchAgent..."
 
 LAUNCH_AGENT_DIR="${HOME}/Library/LaunchAgents"
 mkdir -p "$LAUNCH_AGENT_DIR"
@@ -220,13 +220,12 @@ EOF
 # Ensure log directory exists
 mkdir -p "${HOME}/Library/Application Support/RupeeCRM/logs"
 
-# Refresh LaunchAgent registration
+# Refresh LaunchAgent registration (authoritative launchd startup)
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
 launchctl load -w "$PLIST_FILE" 2>/dev/null || true
 
-# Also sync AppleScript Login Item for native macOS Settings integration
+# Clean up any legacy/duplicate Login Item from previous versions to guarantee exactly ONE startup mechanism
 osascript -e 'tell application "System Events" to delete (every login item whose name is "RupeeCRM")' 2>/dev/null || true
-osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/RupeeCRM.app", hidden:true, name:"RupeeCRM"}' 2>/dev/null || true
 
 # 11. Local Hostname Mapping (/etc/hosts)
 if ! grep -q "management.rupeecrm.local" /etc/hosts 2>/dev/null; then

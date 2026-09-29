@@ -255,9 +255,9 @@ public class Firm175DuplicationPreventionStressTest {
 
         SalaryRecord sal175 = new SalaryRecord();
         sal175.setEmployee(emp175);
-        sal175.setMonthYear("08-2026");
+        sal175.setMonthYear(String.format("%02d-%d", LocalDate.now().getMonthValue(), LocalDate.now().getYear()));
         sal175.setNetPaid(35000.0);
-        sal175.setPaymentDate(LocalDate.of(2026, 9, 1));
+        sal175.setPaymentDate(LocalDate.now());
         salaryRepo.save(sal175);
 
         EmployeeAdvance adv175 = new EmployeeAdvance();

@@ -84,15 +84,19 @@ public class PlannerNotificationScheduler {
             }
 
             // 2. Backward compatibility for legacy inbox table
-            InboxMessage msg = new InboxMessage();
-            msg.setFirmId(firmId);
-            msg.setSubject(subject);
-            msg.setBody(body);
-            msg.setSender("System (Planner)");
-            msg.setRead(false);
-            msg.setReminderId(item.getId());
-            msg.setCreatedAt(LocalDateTime.now());
-            inboxMessageRepository.save(msg);
+            boolean alreadyNotified = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId)
+                    .stream().anyMatch(m -> item.getId() != null && item.getId().equals(m.getReminderId()));
+            if (!alreadyNotified) {
+                InboxMessage msg = new InboxMessage();
+                msg.setFirmId(firmId);
+                msg.setSubject(subject);
+                msg.setBody(body);
+                msg.setSender("System (Planner)");
+                msg.setRead(false);
+                msg.setReminderId(item.getId());
+                msg.setCreatedAt(LocalDateTime.now());
+                inboxMessageRepository.save(msg);
+            }
 
             item.setInboxNotified(true);
             reminderRepository.save(item);

@@ -205,6 +205,23 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Verify ARM64 Host Architecture & Environment
+        run: |
+          echo "=== Host Architecture ==="
+          uname -m
+          echo "=== macOS Version ==="
+          sw_vers
+          echo "=== Java Version ==="
+          java -version
+          echo "=== Maven Version ==="
+          mvn -version
+          
+          ARCH=$(uname -m)
+          if [ "$ARCH" != "arm64" ]; then
+            echo "ERROR: Expected arm64 architecture for Apple Silicon build runner, but got $ARCH"
+            exit 1
+          fi
+
       - name: Download WAR payload
         uses: actions/download-artifact@v4
         with:
@@ -243,6 +260,14 @@ jobs:
           test -f dist-pkg/RupeeCRM.app/Contents/Resources/RupeeCRM.icns
           test -x dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
 
+          echo "=== Verifying Native Mach-O Architecture ==="
+          file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
+          lipo -info dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
+          if ! file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM | grep -q "arm64"; then
+            echo "ERROR: Executable is not arm64 Mach-O binary!"
+            exit 1
+          fi
+
           tar -czf RupeeCRM-macOS-arm64.tar.gz -C dist-pkg RupeeCRM.app
           shasum -a 256 RupeeCRM-macOS-arm64.tar.gz | awk '{print $1}' > RupeeCRM-macOS-arm64.tar.gz.sha256
 
@@ -256,7 +281,7 @@ jobs:
           if-no-files-found: error
 
   build-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     needs: [build-war]
 
     steps:
@@ -269,6 +294,23 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
+
+      - name: Verify Intel Host Architecture & Environment
+        run: |
+          echo "=== Host Architecture ==="
+          uname -m
+          echo "=== macOS Version ==="
+          sw_vers
+          echo "=== Java Version ==="
+          java -version
+          echo "=== Maven Version ==="
+          mvn -version
+          
+          ARCH=$(uname -m)
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "ERROR: Expected x86_64 architecture for Intel build runner, but got $ARCH"
+            exit 1
+          fi
 
       - name: Download WAR payload
         uses: actions/download-artifact@v4
@@ -285,6 +327,9 @@ jobs:
           cp launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
           cp downloaded-war/billsoft.war package-input/runtime/billsoft.war
           xattr -cr package-input
+
+      - name: Validate macOS Packaging & Lifecycle Test Suite
+        run: ./tools/validate-mac-lifecycle.sh
 
       - name: Package macOS Intel (x86_64) Native App Bundle
         run: |
@@ -304,6 +349,14 @@ jobs:
           test -f dist-pkg/RupeeCRM.app/Contents/Info.plist
           test -f dist-pkg/RupeeCRM.app/Contents/Resources/RupeeCRM.icns
           test -x dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
+
+          echo "=== Verifying Native Mach-O Architecture ==="
+          file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
+          lipo -info dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
+          if ! file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM | grep -q "x86_64"; then
+            echo "ERROR: Executable is not x86_64 Mach-O binary!"
+            exit 1
+          fi
 
           tar -czf RupeeCRM-macOS-x64.tar.gz -C dist-pkg RupeeCRM.app
           shasum -a 256 RupeeCRM-macOS-x64.tar.gz | awk '{print $1}' > RupeeCRM-macOS-x64.tar.gz.sha256

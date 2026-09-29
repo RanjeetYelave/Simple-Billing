@@ -47,6 +47,8 @@ public class GenericMultiFirmBackupIdempotencyTest {
     private ExpenseRepository expenseRepo;
     @Autowired
     private EmployeeRepository employeeRepo;
+    @Autowired
+    private InboxMessageRepository inboxMessageRepo;
 
     @BeforeEach
     void setupCleanDatabase() {
@@ -225,5 +227,66 @@ public class GenericMultiFirmBackupIdempotencyTest {
         Customer reloaded = customerRepo.findByFirmIdOrderByNameAsc(firmId).get(0);
         assertEquals("live@acme.com", reloaded.getEmail(), "Live email must NOT be overwritten by null in backup");
         assertEquals("Original Address 100", reloaded.getAddress());
+    }
+
+    @Test
+    @DisplayName("4. InboxMessage: 5-Cycle Repeated Export-Import Idempotency, Distinct Messages, & Multi-Firm Isolation")
+    public void testInboxMessageMultiCycleAndMultiFirmIdempotency() {
+        // Setup Firm A
+        FirmDetails firmA = new FirmDetails();
+        firmA.setFirmName("Inbox Test Firm A");
+        firmA = firmDetailsRepo.save(firmA);
+        Long firmAId = firmA.getId();
+
+        // Setup Firm B
+        FirmDetails firmB = new FirmDetails();
+        firmB.setFirmName("Inbox Test Firm B");
+        firmB = firmDetailsRepo.save(firmB);
+        Long firmBId = firmB.getId();
+
+        // 1. Create single message for Firm A
+        InboxMessage msgA = InboxMessage.builder()
+                .firmId(firmAId)
+                .subject("Quarterly Tax Advisory")
+                .body("Advance tax payment deadline approaching.")
+                .sender("System Finance")
+                .isRead(false)
+                .build();
+        msgA = inboxMessageRepo.save(msgA);
+
+        // 2. Create message with identical subject but for Firm B
+        InboxMessage msgB = InboxMessage.builder()
+                .firmId(firmBId)
+                .subject("Quarterly Tax Advisory")
+                .body("Advance tax payment deadline approaching for Firm B.")
+                .sender("System Finance")
+                .isRead(false)
+                .build();
+        msgB = inboxMessageRepo.save(msgB);
+
+        assertEquals(1, inboxMessageRepo.countByFirmId(firmAId));
+        assertEquals(1, inboxMessageRepo.countByFirmId(firmBId));
+
+        // 3. 5-Cycle Repeated Export-All and Merge-Import
+        for (int cycle = 1; cycle <= 5; cycle++) {
+            BackupDTO fullBackup = backupService.exportAllData();
+            assertNotNull(fullBackup);
+            backupService.importSelectiveData(fullBackup, null, "merge", null);
+
+            assertEquals(1, inboxMessageRepo.countByFirmId(firmAId), "Cycle " + cycle + ": Firm A Inbox count mismatch");
+            assertEquals(1, inboxMessageRepo.countByFirmId(firmBId), "Cycle " + cycle + ": Firm B Inbox count mismatch");
+        }
+
+        // 4. Live DB update preserved across re-import
+        InboxMessage liveMsgA = inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmAId).get(0);
+        liveMsgA.setRead(true);
+        inboxMessageRepo.save(liveMsgA);
+
+        BackupDTO backupA = backupService.exportData(firmAId);
+        backupService.importSelectiveData(backupA, null, "merge", firmAId);
+
+        InboxMessage reloadedA = inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmAId).get(0);
+        assertTrue(reloadedA.isRead(), "Live read status must be preserved");
+        assertEquals(1, inboxMessageRepo.countByFirmId(firmAId));
     }
 }

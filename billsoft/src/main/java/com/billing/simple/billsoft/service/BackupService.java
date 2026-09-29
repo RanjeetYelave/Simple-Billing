@@ -1164,7 +1164,12 @@ public class BackupService {
                         }
                     }
 
-                    if (remToUse == null) {
+                    if (remToUse != null) {
+                        if (rem.getInboxNotified() != null && rem.getInboxNotified()) {
+                            remToUse.setInboxNotified(true);
+                        }
+                        remToUse = reminderRepo.save(remToUse);
+                    } else {
                         Long newCustId = rem.getCustomerId();
                         if (rem.getCustomerId() != null && oldToNewCustomerMap.containsKey(rem.getCustomerId())) {
                             newCustId = oldToNewCustomerMap.get(rem.getCustomerId()).getId();
@@ -1181,6 +1186,7 @@ public class BackupService {
                                 .progress(rem.getProgress())
                                 .completed(rem.isCompleted())
                                 .completedAt(rem.getCompletedAt())
+                                .inboxNotified(rem.getInboxNotified())
                                 .build();
                         remToUse = reminderRepo.save(newRem);
                     }
@@ -1847,11 +1853,11 @@ public class BackupService {
                     InboxMessage msgToUse = null;
 
                     if (mappedTargetEntityId != null) {
-                        msgToUse = inboxMessageRepo.findById(mappedTargetEntityId).orElse(null);
+                        msgToUse = inboxMessageRepo.findByIdAndFirmId(mappedTargetEntityId, mappedFirmId).orElse(null);
                     }
                     if (msgToUse == null && Objects.equals(oldFid, mappedFirmId) && msg.getId() != null) {
                         if (isTargetEntityAvailable(claimedTargetEntitiesByType, "INBOX_MESSAGE", msg.getId())) {
-                            msgToUse = inboxMessageRepo.findById(msg.getId()).orElse(null);
+                            msgToUse = inboxMessageRepo.findByIdAndFirmId(msg.getId(), mappedFirmId).orElse(null);
                         }
                     }
                     if (msgToUse == null && msg.getSubject() != null && !msg.getSubject().trim().isEmpty()) {
@@ -1861,7 +1867,15 @@ public class BackupService {
                         }
                     }
 
-                    if (msgToUse == null) {
+                    if (msgToUse != null) {
+                        if (msg.isRead() && !msgToUse.isRead()) {
+                            msgToUse.setRead(true);
+                        }
+                        if (msgToUse.getBody() == null && msg.getBody() != null) {
+                            msgToUse.setBody(msg.getBody());
+                        }
+                        msgToUse = inboxMessageRepo.save(msgToUse);
+                    } else {
                         Long newRemId = msg.getReminderId();
                         if (msg.getReminderId() != null && oldToNewReminderMap.containsKey(msg.getReminderId())) {
                             newRemId = oldToNewReminderMap.get(msg.getReminderId()).getId();
@@ -1873,6 +1887,7 @@ public class BackupService {
                                 .sender(msg.getSender())
                                 .isRead(msg.isRead())
                                 .reminderId(newRemId)
+                                .createdAt(msg.getCreatedAt())
                                 .build();
                         msgToUse = inboxMessageRepo.save(newMsg);
                     }

@@ -310,7 +310,8 @@ public class Firm175DuplicationPreventionStressTest {
                 .firmId(firm175Id)
                 .customerId(c175_1.getId())
                 .title("Service due notification")
-                .dueDate(LocalDateTime.of(2026, 9, 25, 10, 0))
+                .dueDate(LocalDateTime.of(2026, 9, 30, 10, 0))
+                .inboxNotified(true)
                 .build();
         reminderRepo.save(rem175);
 

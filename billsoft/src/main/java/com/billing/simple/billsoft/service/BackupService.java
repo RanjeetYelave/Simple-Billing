@@ -1901,7 +1901,7 @@ public class BackupService {
         if (backup.getAppConfigs() != null) {
             for (AppConfig ac : backup.getAppConfigs()) {
                 if (ac.getConfigKey() != null) {
-                    if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode) || !appConfigRepo.existsById(ac.getConfigKey())) {
+                    if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode) || !appConfigRepo.existsById(ac.getConfigKey()) || "CIRCUIT_CONNECT_STATE".equals(ac.getConfigKey()) || "SNAKE_GAME_STATE".equals(ac.getConfigKey())) {
                         appConfigRepo.save(ac);
                     }
                 }

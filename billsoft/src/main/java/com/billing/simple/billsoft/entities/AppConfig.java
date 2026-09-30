@@ -13,8 +13,11 @@ import lombok.Setter;
 @Setter
 @Table(name = "app_config")
 public class AppConfig {
-    @Id
+    @jakarta.persistence.Id
     private String configKey;
+
+    @jakarta.persistence.Lob
+    @jakarta.persistence.Column(name = "config_value", columnDefinition = "CLOB")
     private String configValue;
 
     public AppConfig() {}

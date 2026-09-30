@@ -2862,6 +2862,15 @@
       if (/\b(open|go\s*to)\s*(?:the\s*)?expenses?\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'planner', plannerTab: 'expenses' } };
       if (/\b(open|go\s*to)\s*(?:the\s*)?(?:parties|vendors?)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'parties' } };
       if (/\b(open|go\s*to)\s*(?:the\s*)?(?:staff|employees?|hr)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'hr', hrTab: 'staff' } };
+      if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:snake\s*classic|snakes?|classic\s*snake|classic\s*game|classic|arcade)\b/i.test(lower) || /^\s*(?:snake|snakes|snake\s*classic|classic|arcade)\s*$/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'circuit_connect', gameTab: 'classic' } };
+      }
+      if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:circuit\s*connect|circuit\s*game|circuit|connect|puzzle|modern|modern\s*game)\b/i.test(lower) || /^\s*(?:circuit|circuit\s*connect|connect|modern|puzzle)\s*$/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'circuit_connect', gameTab: 'modern' } };
+      }
+      if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:take\s*a\s*break|take\s*break|break|game\s*zone|games\s*hub|mini\s*games|minigames|games?|play)\b/i.test(lower) || /^\s*(?:take\s*a\s*break|take\s*break|break|game\s*zone|games\s*hub|mini\s*games|minigames|game|games|play)\s*$/i.test(lower)) {
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'circuit_connect' } };
+      }
 
       // ─────────────────────────────────────────────────────────
       // C. QUICK_HELP CAPABILITIES (Authoritative Read Adapters)
@@ -4668,13 +4677,28 @@
       // ACTION: Shortcuts, Previews, Navigations
       if (classification.category === 'ACTION') {
         if (classification.capabilityId === 'ACT_NAV_PAGE' || classification.capabilityId === 'ACT_NAV_SLASH') {
+          const pageId = classification.target.page || 'PAGE';
+          let title = `⚡ Open ${pageId.toUpperCase()}`;
+          let subtitle = `Navigate directly to ${pageId}`;
+          if (pageId === 'circuit_connect') {
+            if (classification.target.gameTab === 'classic') {
+              title = '🐍 Snake (Classic)';
+              subtitle = 'Take a short break with the classic Snake game';
+            } else if (classification.target.gameTab === 'modern') {
+              title = '⚡ Circuit Connect (Modern)';
+              subtitle = 'Take a short break with Circuit Connect puzzle game';
+            } else {
+              title = '🎮 Take a Break';
+              subtitle = 'Take a short break with lightweight puzzle & arcade games';
+            }
+          }
           return {
             status: 'NAVIGATE',
             category: 'ACTION',
             capabilityId: classification.capabilityId,
             target: classification.target,
-            title: `⚡ Open ${(classification.target.page || 'PAGE').toUpperCase()}`,
-            subtitle: `Navigate directly to ${classification.target.page}`
+            title,
+            subtitle
           };
         }
         if (classification.capabilityId === 'ACT_THEME_TOGGLE') {

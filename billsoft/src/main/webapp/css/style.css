@@ -8950,3 +8950,432 @@ body.dark-mode .wa-target-btn.active {
   border-color: #334155;
   color: #f1f5f9;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   CIRCUIT CONNECT SMOOTH ANIMATIONS & CASCADE FLOW
+   ───────────────────────────────────────────────────────────── */
+@keyframes circuitVictoryEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translateY(12px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes circuitStarPop {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(-25deg);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.35) rotate(8deg);
+    filter: drop-shadow(0 0 16px rgba(251, 191, 36, 0.9));
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.6));
+  }
+}
+
+@keyframes circuitBulbBloom {
+  0% {
+    transform: scale(0.9);
+    filter: drop-shadow(0 0 2px rgba(56, 189, 248, 0.3));
+  }
+  50% {
+    transform: scale(1.25);
+    filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 24px rgba(245, 158, 11, 0.8));
+  }
+  100% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.8));
+  }
+}
+
+@keyframes circuitOverchargePulse {
+  0% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(56, 189, 248, 0.7), inset 0 0 25px rgba(56, 189, 248, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.35);
+  }
+}
+
+@keyframes circuitBoardSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes circuitBoardSlideOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+}
+
+.circuit-board-wrapper {
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+}
+
+.circuit-board-wrapper.overcharge {
+  animation: circuitOverchargePulse 1.2s ease infinite alternate;
+  border-color: #38bdf8 !important;
+}
+
+.circuit-tile {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+.circuit-tile:active {
+  transform: scale(0.93) !important;
+}
+
+.circuit-tile-wire {
+  transition: stroke 0.35s ease, stroke-width 0.2s ease;
+}
+
+.circuit-bulb-icon.energized {
+  animation: circuitBulbBloom 0.45s ease forwards;
+}
+
+.circuit-star-item {
+  display: inline-block;
+  animation: circuitStarPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes circuitHintPulse {
+  0% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.55), inset 0 0 8px rgba(245, 158, 11, 0.25);
+    transform: scale(1);
+  }
+  50% {
+    border-color: #fbbf24;
+    box-shadow: 0 0 24px rgba(251, 191, 36, 0.9), inset 0 0 14px rgba(251, 191, 36, 0.45);
+    transform: scale(1.04);
+  }
+  100% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.55), inset 0 0 8px rgba(245, 158, 11, 0.25);
+    transform: scale(1);
+  }
+}
+
+.circuit-tile.hint-highlight {
+  border-color: #fbbf24 !important;
+  animation: circuitHintPulse 1.6s ease-in-out infinite !important;
+  z-index: 2;
+}
+
+.circuit-hint-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+  pointer-events: none;
+}
+
+@keyframes circuitLockedRattle {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-4px) rotate(-2deg); }
+  40% { transform: translateX(4px) rotate(2deg); }
+  60% { transform: translateX(-3px) rotate(-1deg); }
+  80% { transform: translateX(3px) rotate(1deg); }
+  100% { transform: translateX(0); }
+}
+
+.circuit-tile.locked-rattle {
+  animation: circuitLockedRattle 0.35s ease-in-out !important;
+}
+
+.circuit-bonus-icon.energized {
+  animation: circuitStarPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ==========================================================
+ * Take a Break — Maharashtra World & Progression Layer
+ * Compact Full-Viewport Zero-Scroll Architecture
+ * ========================================================== */
+
+.take-a-break-hub-wrapper {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 84px);
+  max-height: calc(100vh - 84px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden !important;
+  box-sizing: border-box;
+  padding: 4px 16px 8px 16px;
+}
+
+.take-a-break-game-container {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden !important;
+}
+
+.circuit-connect-container,
+.snake-classic-container {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden !important;
+}
+
+.circuit-play-row,
+.snake-play-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.circuit-board-wrapper {
+  max-height: calc(100vh - 200px);
+  max-width: calc(100vw - 440px);
+  box-sizing: border-box;
+}
+
+.circuit-side-panel,
+.snake-side-panel {
+  flex-shrink: 0;
+}
+
+.take-a-break-ambient-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.09;
+  color: var(--text, #94a3b8);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* --- Maharashtra World & Journey Progression Redesign --- */
+.maharashtra-atmosphere-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.maharashtra-atmosphere-svg-layer {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  opacity: 0.85;
+}
+
+:root:not(.dark):not(.dark-mode) .maharashtra-atmosphere-svg-layer {
+  opacity: 0.45;
+}
+
+:root:not(.dark):not(.dark-mode) .maharashtra-atmosphere-vignette {
+  background: radial-gradient(ellipse at 50% 45%, rgba(248, 250, 252, 0.95) 0%, rgba(241, 245, 249, 0.75) 55%, transparent 100%) !important;
+}
+
+.maharashtra-journey-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.5) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 15px rgba(56, 189, 248, 0.2) !important;
+}
+
+@keyframes journeyPulse {
+  0% { transform: scale(1); box-shadow: 0 0 8px #38bdf8; }
+  50% { transform: scale(1.15); box-shadow: 0 0 16px #38bdf8; }
+  100% { transform: scale(1); box-shadow: 0 0 8px #38bdf8; }
+}
+
+@keyframes locationTransitionSlide {
+  0% { transform: translate(-50%, -20px) scale(0.95); opacity: 0; }
+  15% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -15px) scale(0.95); opacity: 0; }
+}
+
+.location-transition-toast {
+  animation: locationTransitionSlide 2.8s ease-in-out forwards;
+}
+
+@keyframes levelMilestonePop {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.level-milestone-modal-card {
+  animation: levelMilestonePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ==========================================================================
+   PROGRESSION EXPERIENCE: 4-STAGE TRAVEL TRANSITIONS & CELEBRATIONS
+   ========================================================================== */
+
+@keyframes progressionFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes departureFade {
+  0% { opacity: 0; transform: scale(0.96); }
+  25% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.05) translateY(-10px); }
+}
+
+@keyframes departureIconPulse {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes sahyadriSlide {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes compassSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes travelTextPulse {
+  0% { transform: scale(0.98); opacity: 0.85; }
+  100% { transform: scale(1.02); opacity: 1; }
+}
+
+@keyframes revealScaleIn {
+  0% { transform: scale(0.75) rotate(-2deg); opacity: 0; }
+  60% { transform: scale(1.04) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes arrivalPop {
+  0% { transform: scale(0.88) translateY(20px); opacity: 0; }
+  70% { transform: scale(1.03) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes arrivalIconBounce {
+  0% { transform: scale(0) rotate(-15deg); }
+  60% { transform: scale(1.2) rotate(5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes trophyAnticipate {
+  0% { transform: scale(0.92) rotate(-5deg); filter: drop-shadow(0 0 10px rgba(255,215,0,0.4)); }
+  100% { transform: scale(1.08) rotate(5deg); filter: drop-shadow(0 0 25px rgba(255,215,0,0.8)); }
+}
+
+@keyframes trophyReveal3D {
+  0% { transform: scale(0.3) rotateY(180deg) translateY(40px); opacity: 0; }
+  60% { transform: scale(1.15) rotateY(-10deg) translateY(-5px); opacity: 1; }
+  100% { transform: scale(1) rotateY(0deg) translateY(0); opacity: 1; }
+}
+
+@keyframes trophyCardPop {
+  0% { transform: scale(0.85); opacity: 0; }
+  65% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes milestoneBounce {
+  0% { transform: scale(0.4); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.progression-travel-overlay,
+.progression-trophy-overlay,
+.progression-milestone-overlay {
+  animation: progressionFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (max-width: 640px) {
+  .maharashtra-journey-card {
+    padding: 10px 14px;
+  }
+  .travel-stage-arrival,
+  .trophy-celebration-card,
+  .milestone-celebration-card {
+    padding: 20px 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-transition-toast,
+  .level-milestone-modal-card,
+  .maharashtra-journey-card,
+  .trophy-progress-fill,
+  .progression-travel-overlay,
+  .progression-trophy-overlay,
+  .progression-milestone-overlay,
+  .travel-stage-departure,
+  .sahyadri-peaks-layer,
+  .travel-stage-reveal,
+  .travel-stage-arrival,
+  .trophy-celebration-card,
+  .milestone-celebration-card {
+    animation: none !important;
+    transition: none !important;
+  }
+}

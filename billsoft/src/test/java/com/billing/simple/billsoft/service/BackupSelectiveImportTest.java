@@ -63,7 +63,9 @@ class BackupSelectiveImportTest {
     @Mock
     private BusinessLetterRepository businessLetterRepo;
     @Mock
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
+    @Mock
+    private NotificationPreferenceRepository notificationPreferenceRepo;
     @Mock
     private AppConfigRepository appConfigRepo;
     @Mock

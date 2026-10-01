@@ -20,6 +20,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     Optional<Notification> findByFirmIdAndEventKey(Long firmId, String eventKey);
 
+    List<Notification> findByFirmId(Long firmId);
+
     Optional<Notification> findByIdAndFirmId(Long id, Long firmId);
 
     List<Notification> findByFirmIdAndStatusInOrderByCreatedAtDesc(Long firmId, Collection<NotificationStatus> statuses);

@@ -39,8 +39,6 @@ class ServiceBoosterCoverageTest {
     @Autowired
     private ExpenseService expenseService;
 
-    @Autowired
-    private InboxMessageService inboxService;
 
     @Autowired
     private BackupService backupService;
@@ -192,56 +190,5 @@ class ServiceBoosterCoverageTest {
         assertThat(deleted).isTrue();
     }
 
-    @Test
-    @DisplayName("Should test InboxMessageService aggregated low stock and duplicate prevention")
-    void testInboxMessageServiceBranches() {
-        Product outOfStock = Product.builder()
-                .name("Thermal Paper Rolls")
-                .price(BigDecimal.valueOf(40.0))
-                .stockQuantity(BigDecimal.ZERO)
-                .minStockLevel(BigDecimal.valueOf(20.0))
-                .firmId(testFirmId)
-                .build();
 
-        Product lowStock = Product.builder()
-                .name("Barcode Ribbons")
-                .price(BigDecimal.valueOf(150.0))
-                .stockQuantity(BigDecimal.valueOf(3.0))
-                .minStockLevel(BigDecimal.valueOf(10.0))
-                .firmId(testFirmId)
-                .build();
-
-        // 1. Aggregated low stock notifications
-        inboxService.notifyAggregatedLowStock(testFirmId, List.of(outOfStock, lowStock));
-        List<InboxMessage> msgs = inboxService.getMessagesByFirm(testFirmId);
-        assertThat(msgs).isNotEmpty();
-
-        // 2. Notification if absent (new vs duplicate)
-        boolean sentFirst = inboxService.sendNotificationIfAbsent(
-                testFirmId,
-                "PAYROLL:",
-                "PAYROLL: September Disbursal Due",
-                "Monthly payroll is due for review.",
-                "HR System"
-        );
-        assertThat(sentFirst).isTrue();
-
-        // Second time with same prefix should be skipped (returns false)
-        boolean sentDuplicate = inboxService.sendNotificationIfAbsent(
-                testFirmId,
-                "PAYROLL:",
-                "PAYROLL: September Disbursal Due",
-                "Monthly payroll is due for review.",
-                "HR System"
-        );
-        assertThat(sentDuplicate).isFalse();
-
-        // Mark as read and delete
-        InboxMessage first = msgs.get(0);
-        InboxMessage readMsg = inboxService.markAsRead(first.getId());
-        assertThat(readMsg.isRead()).isTrue();
-
-        boolean deleted = inboxService.deleteMessage(first.getId());
-        assertThat(deleted).isTrue();
-    }
 }

@@ -78,7 +78,7 @@ public class Firm175ComprehensiveIdempotencyValidationTest {
     @Autowired
     private BusinessLetterRepository businessLetterRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
     @Autowired
     private SavingRepository savingRepo;
     @Autowired
@@ -308,12 +308,14 @@ public class Firm175ComprehensiveIdempotencyValidationTest {
                 .build();
         businessLetterRepo.save(bl);
 
-        InboxMessage msg = InboxMessage.builder()
+        Notification notif = Notification.builder()
                 .firmId(firmId)
-                .subject("Inventory Alert: Oil stock updated")
+                .category(NotificationCategory.INVENTORY)
+                .eventKey("inventory:oil_update_101")
+                .title("Inventory Alert: Oil stock updated")
                 .body("Stock updated to 50 cans.")
                 .build();
-        inboxMessageRepo.save(msg);
+        notificationRepo.save(notif);
 
         // Baseline verification
         assertEquals(1, customerRepo.countByFirmId(firmId));
@@ -349,7 +351,7 @@ public class Firm175ComprehensiveIdempotencyValidationTest {
             assertEquals(1, savingRepo.findByFirmIdOrderBySavingDateDescIdDesc(firmId).size(), "Iteration " + i + ": Saving count changed");
             assertEquals(1, goalLogRepo.findByFirmIdOrderByLogDateAscCreatedAtAsc(firmId).size(), "Iteration " + i + ": Goal log count changed");
             assertEquals(1, businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId).size(), "Iteration " + i + ": Letter count changed");
-            assertEquals(1, inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId).size(), "Iteration " + i + ": Inbox count changed");
+            assertEquals(1, notificationRepo.findByFirmId(firmId).size(), "Iteration " + i + ": Notification count changed");
 
             // Verify invoice item child list count is still 1
             Invoice checkInv = invoiceRepo.findAllByFirmId(firmId).get(0);

@@ -9842,7 +9842,7 @@
     }
 
     // ─── UNIFIED CANONICAL NOTIFICATION INBOX PAGE ───
-    function InboxPage({ messages, onSendMessage, onMarkRead, onDeleteMessage, reminders, onMarkDone, onUpdateReminder }) {
+    function InboxPage({ reminders, onMarkDone, onUpdateReminder }) {
       const [notifications, setNotifications] = useState([]);
       const [loading, setLoading] = useState(true);
       const [selectedNotif, setSelectedNotif] = useState(null);
@@ -9883,27 +9883,11 @@
             }
           }
         } catch (e) {
-          console.warn('Failed to load canonical notifications, falling back to props:', e);
+          console.warn('Failed to load canonical notifications:', e);
         }
-
-        // Fallback to legacy messages prop
-        if (Array.isArray(messages)) {
-          const mapped = messages.map(m => ({
-            id: m.id,
-            title: m.subject || 'Message',
-            body: m.body,
-            sender: m.sender || 'System',
-            category: m.reminderId ? 'PLANNER' : 'SYSTEM',
-            priority: 'NORMAL',
-            status: (m.read || m.isRead) ? 'READ' : 'UNREAD',
-            createdAt: m.createdAt || new Date().toISOString(),
-            actionable: !!m.reminderId,
-            reminderId: m.reminderId
-          }));
-          setNotifications(mapped);
-        }
+        setNotifications([]);
         setLoading(false);
-      }, [statusFilter, categoryFilter, messages]);
+      }, [statusFilter, categoryFilter]);
 
       useEffect(() => {
         loadNotifications();
@@ -9923,8 +9907,6 @@
               await API.notifications.markRead(notif.id);
               setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'READ' } : n));
               window.dispatchEvent(new CustomEvent('billsoft:notifications-refresh'));
-            } else if (onMarkRead) {
-              onMarkRead(notif.id);
             }
           } catch (e) {
             console.error('Error marking read:', e);
@@ -9968,9 +9950,6 @@
             if (selectedNotif && selectedNotif.id === notifId) setSelectedNotif(null);
             window.dispatchEvent(new CustomEvent('billsoft:notifications-refresh'));
             if (window.showToast) window.showToast('Notification dismissed', 'info');
-          } else if (onDeleteMessage) {
-            onDeleteMessage(notifId);
-            setSelectedNotif(null);
           }
         } catch (e) {
           if (window.showToast) window.showToast('Failed to dismiss: ' + e.message, 'error');
@@ -10238,8 +10217,6 @@
                   body: payload.body,
                   sender: payload.sender || 'User'
                 });
-              } else if (onSendMessage) {
-                onSendMessage(payload);
               }
               loadNotifications();
               if (window.showToast) window.showToast('Message sent successfully', 'success');
@@ -10645,7 +10622,6 @@
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
-      messages,
       reminders = [],
       notes = [],
       expenses = [],
@@ -10654,8 +10630,6 @@
       firms = [],
       onMarkDone,
       onUpdateReminder,
-      onMarkMessageRead,
-      onDeleteMessage,
       onCreateReminder,
       onCreateTask,
       onCreateNote,
@@ -10879,14 +10853,6 @@
       }, 500), []);
       useEffect(() => { handleSearch(searchName); }, [searchName]);
 
-      const isMsgUnread = (m) => m && !m.read && !m.isRead;
-
-      // Latest unread message for banner
-      const latestUnread = useMemo(() => {
-        if (!messages) return null;
-        const unread = messages.filter(m => isMsgUnread(m) && !dismissedIds.includes(m.id));
-        return unread.length > 0 ? unread[0] : null;
-      }, [messages, dismissedIds]);
 
       // Calculate Business Metrics
       const businessStats = useMemo(() => {
@@ -11391,73 +11357,16 @@
           )
         ),
 
-        // Streamlined Alert Banner (Due tasks, reminders or system updates)
-        latestUnread ? React.createElement('div', {
-          className: 'card', style: {
-            borderLeft: `4px solid ${latestUnread.reminderId ? '#f59e0b' : 'var(--primary)'}`,
-            background: latestUnread.reminderId ? 'rgba(245, 158, 11, 0.08)' : 'rgba(79, 70, 229, 0.08)',
-            padding: '12px 16px',
-            border: '1px solid var(--border)',
-            borderRadius: 8
-          }
-        },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 300px' } },
-              React.createElement('span', { style: { fontSize: '1.2rem' } }, latestUnread.reminderId ? '📋' : '📩'),
-              React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('strong', { style: { fontSize: '0.92rem', color: 'var(--text-primary)' } },
-                    (() => {
-                      const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
-                      return rem ? rem.title : (latestUnread.subject || 'New Attention Notification');
-                    })()
-                  ),
-                  latestUnread.reminderId && (() => {
-                    const rem = reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
-                    return rem && rem.dueDate ? React.createElement('span', { className: 'badge badge-warning', style: { fontSize: '0.72rem', padding: '1px 6px' } }, `Due ${rem.dueDate.split('T')[0]}`) : null;
-                  })(),
-                  React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, latestUnread.sender ? `via ${latestUnread.sender}` : '')
-                ),
-                (() => {
-                  const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
-                  const preview = rem ? rem.note : (latestUnread.body || '');
-                  return preview ? React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 } }, preview) : null;
-                })()
-              )
-            ),
-            React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
-              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => handleSnooze(latestUnread, 1) }, '⏰ +1h'),
-              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-xs btn-outline', onClick: () => handleSnooze(latestUnread, 24) }, '📅 +1d'),
-              latestUnread.reminderId && React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => handleQuickDone(latestUnread) }, '✓ Done'),
-              (() => {
-                const rem = latestUnread.reminderId && reminders ? reminders.find(r => r.id === latestUnread.reminderId) : null;
-                return rem && rem.type === 'task' ? React.createElement('select', {
-                  className: 'select select-xs',
-                  style: { fontSize: '0.75rem', height: 26, padding: '0 6px' },
-                  value: rem.status || 'TODO',
-                  onChange: e => {
-                    const st = e.target.value;
-                    handleQuickProgress(latestUnread, st === 'DONE' ? 100 : (st === 'IN_PROGRESS' ? 50 : 0));
-                  }
-                },
-                  React.createElement('option', { value: 'TODO' }, 'To Do'),
-                  React.createElement('option', { value: 'IN_PROGRESS' }, 'In Progress'),
-                  React.createElement('option', { value: 'DONE' }, 'Done')
-                ) : null;
-              })(),
-              React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: () => handleDismiss(latestUnread.id) }, '✕')
-            )
+        // Streamlined Alert Banner (System updates)
+        (updateInfo && !updateDismissed) ? React.createElement('div', { className: 'card', style: { borderLeft: '4px solid var(--primary)', background: 'rgba(79, 70, 229, 0.08)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: 8 } },
+          React.createElement('div', null,
+            React.createElement('strong', { style: { color: 'var(--primary)', fontSize: '0.9rem' } }, `⚡ Update Available: Version ${updateInfo.latestVersion}`)
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Now'),
+            React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
           )
-        ) :
-          (updateInfo && !updateDismissed) ? React.createElement('div', { className: 'card', style: { borderLeft: '4px solid var(--primary)', background: 'rgba(79, 70, 229, 0.08)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: 8 } },
-            React.createElement('div', null,
-              React.createElement('strong', { style: { color: 'var(--primary)', fontSize: '0.9rem' } }, `⚡ Update Available: Version ${updateInfo.latestVersion}`)
-            ),
-            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-              React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Now'),
-              React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
-            )
-          ) : null,
+        ) : null,
 
         // ════════════════════════════════════════════════════════════════════════
         // PERSPECTIVE 1: BUSINESS VIEW (DEFAULT)
@@ -32617,9 +32526,7 @@
               setNetworkData(data.network);
               window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: data.network }));
             }
-            if (Array.isArray(data.messages)) {
-              window.dispatchEvent(new CustomEvent('billsoft:messages-sync', { detail: data.messages }));
-            }
+
           }
         } catch (e) {
           console.error("Heartbeat fetch error:", e);
@@ -36566,7 +36473,6 @@
       const [expenses, setExpenses] = useState([]);
       const [savings, setSavings] = useState([]);
       const [goals, setGoals] = useState([]);
-      const [messages, setMessages] = useState([]);
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
@@ -36963,8 +36869,6 @@
         setExpenses([]);
         setSavings([]);
         setGoals([]);
-        setMessages([]);
-        lastSeenMsgIdRef.current = null;
         const msg = typeof reason === 'string' ? reason : 'Logged out successfully';
         if (window.showToast) window.showToast(msg, 'info');
       };
@@ -37101,38 +37005,7 @@
           }
         }
       }, [isAuthenticated, API.firmId]);
-      const lastSeenMsgIdRef = useRef(null);
 
-      const processMessages = useCallback((list) => {
-        if (!Array.isArray(list)) return;
-        setMessages(list);
-        if (list.length > 0) {
-          const maxId = Math.max(...list.map(m => m.id));
-          if (lastSeenMsgIdRef.current !== null && lastSeenMsgIdRef.current > 0) {
-            const newMsgs = list.filter(m => m.id > lastSeenMsgIdRef.current);
-            if (newMsgs.length > 0) {
-              showToast(`New message: ${newMsgs[0].subject}`, 'info');
-            }
-          }
-          lastSeenMsgIdRef.current = maxId;
-        } else {
-          lastSeenMsgIdRef.current = 0;
-        }
-      }, []);
-
-      useEffect(() => {
-        const handleSync = (e) => {
-          if (e && e.detail) processMessages(e.detail);
-        };
-        window.addEventListener('billsoft:messages-sync', handleSync);
-        return () => window.removeEventListener('billsoft:messages-sync', handleSync);
-      }, [processMessages]);
-
-      useEffect(() => {
-        if (isAuthenticated && API.firmId) {
-          API.messages.list().then(processMessages).catch(() => { });
-        }
-      }, [isAuthenticated, API.firmId, processMessages]);
       const refreshFirm = () => {
         const currentId = API.firmId;
         if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => { }); }).catch(() => { }); }
@@ -37166,7 +37039,6 @@
           (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && API.firmId ? API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { }) : Promise.resolve()),
           (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && API.firmId ? API.savings.listByFirm(API.firmId).then(setSavings).catch(() => { }) : Promise.resolve()),
           (API.goals && typeof API.goals.list === 'function' && isAuthenticated && API.firmId ? API.goals.list().then(setGoals).catch(() => { }) : Promise.resolve()),
-          (API.messages && typeof API.messages.list === 'function' && isAuthenticated && API.firmId ? API.messages.list().then(processMessages).catch(() => { }) : Promise.resolve()),
           (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
             if (lic) {
               setLicenseInfo(lic);
@@ -37219,7 +37091,7 @@
 
         setIsSyncing(false);
         if (window.showToast) window.showToast('Workspace refreshed & synchronized', 'success');
-      }, [isSyncing, isAuthenticated, processMessages]);
+      }, [isSyncing, isAuthenticated]);
 
       const fetchNotificationSummary = useCallback(() => {
         if (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated) {
@@ -37656,31 +37528,6 @@
         setPage('invoices');
       };
       const handleFirmChanged = () => { refreshFirm(); };
-      const handleSendMessage = (data) => {
-        API.messages.create(data).then(newMsg => {
-          setMessages(prev => [newMsg, ...prev]);
-          if (lastSeenMsgIdRef.current === null || newMsg.id > lastSeenMsgIdRef.current) {
-            lastSeenMsgIdRef.current = newMsg.id;
-          }
-          showToast('Message sent successfully', 'success');
-        }).catch(() => {
-          showToast('Failed to send message', 'error');
-        });
-      };
-      const handleMarkMessageRead = (id) => {
-        API.messages.markRead(id).then(updated => {
-          setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true, read: true } : m));
-        }).catch(() => { });
-      };
-      const handleDeleteMessage = (id, silent = false) => {
-        return API.messages.delete(id).then(() => {
-          setMessages(prev => prev.filter(m => m.id !== id));
-          if (!silent) showToast('Message dismissed', 'success');
-        }).catch(() => {
-          setMessages(prev => prev.filter(m => m.id !== id));
-          if (!silent) showToast('Failed to dismiss message', 'error');
-        });
-      };
 
       const [isUpdating, setIsUpdating] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
@@ -37888,7 +37735,6 @@
           title: 'Dashboard', comp: React.createElement(Dashboard, {
             key: API.firmId,
             onStartUpdate: handleStartUpdate,
-            messages,
             reminders,
             notes,
             expenses,
@@ -37897,8 +37743,6 @@
             firms,
             onMarkDone: handleMarkReminderDone,
             onUpdateReminder: handleUpdateReminder,
-            onMarkMessageRead: handleMarkMessageRead,
-            onDeleteMessage: handleDeleteMessage,
             onCreateReminder: handleCreateReminder,
             onCreateTask: handleCreateTask,
             onCreateNote: handleCreateNote,
@@ -37968,7 +37812,7 @@
             onIncrementStreakGoal: handleIncrementStreakGoal
           })
         },
-        inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { messages: messages, onSendMessage: handleSendMessage, onMarkRead: handleMarkMessageRead, onDeleteMessage: handleDeleteMessage, reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },
+        inbox: { title: 'Inbox', comp: React.createElement(InboxPage, { reminders, onMarkDone: handleMarkReminderDone, onUpdateReminder: handleUpdateReminder }) },
         hr: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         employees: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         paperwork: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },

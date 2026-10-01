@@ -146,8 +146,8 @@ class BusinessLetterAndMiscControllerRegressionTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
 
-        // 4. Inbox Messages Controller
-        mockMvc.perform(get("/api/messages?firmId=" + testFirmId))
+        // 4. Notifications Controller
+        mockMvc.perform(get("/api/notifications?firmId=" + testFirmId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }

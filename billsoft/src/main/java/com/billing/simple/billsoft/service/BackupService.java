@@ -36,7 +36,6 @@ public class BackupService {
     private final PromotionRecordRepository promotionRepo;
     private final EmployeeDocumentRepository employeeDocumentRepo;
     private final BusinessLetterRepository businessLetterRepo;
-    private final InboxMessageRepository inboxMessageRepo;
     private final AppConfigRepository appConfigRepo;
     private final InvoicePaymentRepository invoicePaymentRepo;
     private final SalesReturnRepository salesReturnRepo;
@@ -45,6 +44,8 @@ public class BackupService {
     private final GoalRepository goalRepo;
     private final GoalLogRepository goalLogRepo;
     private final BackupEntityMappingRepository backupEntityMappingRepo;
+    private final NotificationRepository notificationRepo;
+    private final NotificationPreferenceRepository notificationPreferenceRepo;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -67,7 +68,6 @@ public class BackupService {
                          PromotionRecordRepository promotionRepo,
                          EmployeeDocumentRepository employeeDocumentRepo,
                          BusinessLetterRepository businessLetterRepo,
-                         InboxMessageRepository inboxMessageRepo,
                          AppConfigRepository appConfigRepo,
                          InvoicePaymentRepository invoicePaymentRepo,
                          SalesReturnRepository salesReturnRepo,
@@ -75,7 +75,9 @@ public class BackupService {
                          SavingRepository savingRepo,
                          GoalRepository goalRepo,
                          GoalLogRepository goalLogRepo,
-                         BackupEntityMappingRepository backupEntityMappingRepo) {
+                         BackupEntityMappingRepository backupEntityMappingRepo,
+                         NotificationRepository notificationRepo,
+                         NotificationPreferenceRepository notificationPreferenceRepo) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -97,7 +99,6 @@ public class BackupService {
         this.promotionRepo = promotionRepo;
         this.employeeDocumentRepo = employeeDocumentRepo;
         this.businessLetterRepo = businessLetterRepo;
-        this.inboxMessageRepo = inboxMessageRepo;
         this.appConfigRepo = appConfigRepo;
         this.invoicePaymentRepo = invoicePaymentRepo;
         this.salesReturnRepo = salesReturnRepo;
@@ -106,6 +107,8 @@ public class BackupService {
         this.goalRepo = goalRepo;
         this.goalLogRepo = goalLogRepo;
         this.backupEntityMappingRepo = backupEntityMappingRepo;
+        this.notificationRepo = notificationRepo;
+        this.notificationPreferenceRepo = notificationPreferenceRepo;
     }
 
     @Transactional(readOnly = true)
@@ -173,7 +176,8 @@ public class BackupService {
         backup.setEmployeeDocuments(documents);
 
         backup.setBusinessLetters(businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId));
-        backup.setInboxMessages(inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId));
+        backup.setNotifications(notificationRepo.findByFirmId(firmId));
+        notificationPreferenceRepo.findByFirmId(firmId).ifPresent(pref -> backup.setNotificationPreferences(Collections.singletonList(pref)));
         backup.setAppConfigs(appConfigRepo.findAll());
         backup.setSalesReturns(salesReturnRepo.findByFirmIdOrderByReturnDateDescIdDesc(firmId));
 
@@ -222,7 +226,8 @@ public class BackupService {
         backup.setEmployeeDocuments(employeeDocumentRepo.findAll());
 
         backup.setBusinessLetters(businessLetterRepo.findAll());
-        backup.setInboxMessages(inboxMessageRepo.findAll());
+        backup.setNotifications(notificationRepo.findAll());
+        backup.setNotificationPreferences(notificationPreferenceRepo.findAll());
         backup.setAppConfigs(appConfigRepo.findAll());
         backup.setSalesReturns(salesReturnRepo.findAll());
 
@@ -1842,57 +1847,117 @@ public class BackupService {
             }
         }
 
-        // 14. Inbox Messages
-        if (backup.getInboxMessages() != null) {
-            for (InboxMessage msg : backup.getInboxMessages()) {
-                Long oldFid = msg.getFirmId() != null ? msg.getFirmId() : -1L;
+        // 14. Notifications
+        if (backup.getNotifications() != null) {
+            for (Notification notif : backup.getNotifications()) {
+                Long oldFid = notif.getFirmId() != null ? notif.getFirmId() : -1L;
                 boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
                     Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
-                    Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, msg.getId(), "INBOX_MESSAGE", mappedFirmId);
-                    InboxMessage msgToUse = null;
+                    Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, notif.getId(), "NOTIFICATION", mappedFirmId);
+                    Notification notifToUse = null;
 
                     if (mappedTargetEntityId != null) {
-                        msgToUse = inboxMessageRepo.findByIdAndFirmId(mappedTargetEntityId, mappedFirmId).orElse(null);
+                        notifToUse = notificationRepo.findByIdAndFirmId(mappedTargetEntityId, mappedFirmId).orElse(null);
                     }
-                    if (msgToUse == null && Objects.equals(oldFid, mappedFirmId) && msg.getId() != null) {
-                        if (isTargetEntityAvailable(claimedTargetEntitiesByType, "INBOX_MESSAGE", msg.getId())) {
-                            msgToUse = inboxMessageRepo.findByIdAndFirmId(msg.getId(), mappedFirmId).orElse(null);
-                        }
+                    if (notifToUse == null && notif.getEventKey() != null && !notif.getEventKey().trim().isEmpty()) {
+                        notifToUse = notificationRepo.findByFirmIdAndEventKey(mappedFirmId, notif.getEventKey().trim()).orElse(null);
                     }
-                    if (msgToUse == null && msg.getSubject() != null && !msg.getSubject().trim().isEmpty()) {
-                        InboxMessage cand = inboxMessageRepo.findFirstByFirmIdAndSubjectIgnoreCase(mappedFirmId, msg.getSubject().trim()).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "INBOX_MESSAGE", cand.getId())) {
-                            msgToUse = cand;
+                    if (notifToUse == null && Objects.equals(oldFid, mappedFirmId) && notif.getId() != null) {
+                        if (isTargetEntityAvailable(claimedTargetEntitiesByType, "NOTIFICATION", notif.getId())) {
+                            notifToUse = notificationRepo.findByIdAndFirmId(notif.getId(), mappedFirmId).orElse(null);
                         }
                     }
 
-                    if (msgToUse != null) {
-                        if (msg.isRead() && !msgToUse.isRead()) {
-                            msgToUse.setRead(true);
+                    if (notifToUse != null) {
+                        if (notif.getStatus() != null) {
+                            notifToUse.setStatus(notif.getStatus());
                         }
-                        if (msgToUse.getBody() == null && msg.getBody() != null) {
-                            msgToUse.setBody(msg.getBody());
+                        if (notif.getTitle() != null) {
+                            notifToUse.setTitle(notif.getTitle());
                         }
-                        msgToUse = inboxMessageRepo.save(msgToUse);
+                        if (notif.getBody() != null) {
+                            notifToUse.setBody(notif.getBody());
+                        }
+                        if (notif.getPriority() != null) {
+                            notifToUse.setPriority(notif.getPriority());
+                        }
+                        if (notif.getSender() != null) {
+                            notifToUse.setSender(notif.getSender());
+                        }
+                        notifToUse.setSnoozedUntil(notif.getSnoozedUntil());
+                        notifToUse.setExpiresAt(notif.getExpiresAt());
+                        notifToUse.setUpdatedAt(LocalDateTime.now());
+                        notifToUse = notificationRepo.save(notifToUse);
                     } else {
-                        Long newRemId = msg.getReminderId();
-                        if (msg.getReminderId() != null && oldToNewReminderMap.containsKey(msg.getReminderId())) {
-                            newRemId = oldToNewReminderMap.get(msg.getReminderId()).getId();
-                        }
-                        InboxMessage newMsg = InboxMessage.builder()
+                        Notification newNotif = Notification.builder()
                                 .firmId(mappedFirmId)
-                                .subject(msg.getSubject())
-                                .body(msg.getBody())
-                                .sender(msg.getSender())
-                                .isRead(msg.isRead())
-                                .reminderId(newRemId)
-                                .createdAt(msg.getCreatedAt())
+                                .category(notif.getCategory() != null ? notif.getCategory() : NotificationCategory.SYSTEM)
+                                .title(notif.getTitle())
+                                .body(notif.getBody())
+                                .sender(notif.getSender())
+                                .eventKey(notif.getEventKey())
+                                .primaryActionLabel(notif.getPrimaryActionLabel())
+                                .primaryActionType(notif.getPrimaryActionType())
+                                .primaryActionTarget(notif.getPrimaryActionTarget())
+                                .secondaryActionLabel(notif.getSecondaryActionLabel())
+                                .secondaryActionType(notif.getSecondaryActionType())
+                                .secondaryActionTarget(notif.getSecondaryActionTarget())
+                                .priority(notif.getPriority() != null ? notif.getPriority() : NotificationPriority.NORMAL)
+                                .status(notif.getStatus() != null ? notif.getStatus() : NotificationStatus.UNREAD)
+                                .snoozedUntil(notif.getSnoozedUntil())
+                                .expiresAt(notif.getExpiresAt())
+                                .createdAt(notif.getCreatedAt() != null ? notif.getCreatedAt() : LocalDateTime.now())
+                                .updatedAt(LocalDateTime.now())
                                 .build();
-                        msgToUse = inboxMessageRepo.save(newMsg);
+                        notifToUse = notificationRepo.save(newNotif);
                     }
-                    recordEntityMapping(backupSourceId, msg.getId(), "INBOX_MESSAGE", mappedFirmId, msgToUse.getId());
-                    markTargetEntityClaimed(claimedTargetEntitiesByType, "INBOX_MESSAGE", msgToUse.getId());
+                    recordEntityMapping(backupSourceId, notif.getId(), "NOTIFICATION", mappedFirmId, notifToUse.getId());
+                    markTargetEntityClaimed(claimedTargetEntitiesByType, "NOTIFICATION", notifToUse.getId());
+                }
+            }
+        }
+
+        // 14c. Notification Preferences
+        if (backup.getNotificationPreferences() != null) {
+            for (NotificationPreference pref : backup.getNotificationPreferences()) {
+                Long oldFid = pref.getFirmId() != null ? pref.getFirmId() : -1L;
+                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport) {
+                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    NotificationPreference prefToUse = notificationPreferenceRepo.findByFirmId(mappedFirmId).orElse(null);
+                    if (prefToUse != null) {
+                        prefToUse.setEnabled(pref.isEnabled());
+                        prefToUse.setBellEnabled(pref.isBellEnabled());
+                        prefToUse.setInboxEnabled(pref.isInboxEnabled());
+                        prefToUse.setDefaultSnooze(pref.getDefaultSnooze());
+                        prefToUse.setLicensingEnabled(pref.isLicensingEnabled());
+                        prefToUse.setBillingEnabled(pref.isBillingEnabled());
+                        prefToUse.setInventoryEnabled(pref.isInventoryEnabled());
+                        prefToUse.setPurchaseEnabled(pref.isPurchaseEnabled());
+                        prefToUse.setPlannerEnabled(pref.isPlannerEnabled());
+                        prefToUse.setHrEnabled(pref.isHrEnabled());
+                        prefToUse.setSystemEnabled(pref.isSystemEnabled());
+                        prefToUse.setUpdatedAt(LocalDateTime.now());
+                        notificationPreferenceRepo.save(prefToUse);
+                    } else {
+                        NotificationPreference newPref = NotificationPreference.builder()
+                                .firmId(mappedFirmId)
+                                .enabled(pref.isEnabled())
+                                .bellEnabled(pref.isBellEnabled())
+                                .inboxEnabled(pref.isInboxEnabled())
+                                .defaultSnooze(pref.getDefaultSnooze())
+                                .licensingEnabled(pref.isLicensingEnabled())
+                                .billingEnabled(pref.isBillingEnabled())
+                                .inventoryEnabled(pref.isInventoryEnabled())
+                                .purchaseEnabled(pref.isPurchaseEnabled())
+                                .plannerEnabled(pref.isPlannerEnabled())
+                                .hrEnabled(pref.isHrEnabled())
+                                .systemEnabled(pref.isSystemEnabled())
+                                .updatedAt(LocalDateTime.now())
+                                .build();
+                        notificationPreferenceRepo.save(newPref);
+                    }
                 }
             }
         }
@@ -1952,7 +2017,8 @@ public class BackupService {
         goalRepo.deleteAllInBatch();
         expenseRepo.deleteAllInBatch();
         reminderRepo.deleteAllInBatch();
-        inboxMessageRepo.deleteAllInBatch();
+        notificationRepo.deleteAllInBatch();
+        notificationPreferenceRepo.deleteAllInBatch();
         noteRepo.deleteAllInBatch();
 
         // Core business catalogs & firms

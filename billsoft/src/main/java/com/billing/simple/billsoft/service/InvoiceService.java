@@ -48,6 +48,10 @@ import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.SalesReturnItemRepository;
 import com.billing.simple.billsoft.repo.SalesReturnRepository;
 
+import com.billing.simple.billsoft.entities.NotificationStatus;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+
 @Service
 public class InvoiceService {
 
@@ -62,6 +66,10 @@ public class InvoiceService {
     private final SalesReturnItemRepository salesReturnItemRepo;
     private final InvoiceCalculationEngine engine;
     private SavedItemService savedItemService;
+
+    @Autowired(required = false)
+    @Lazy
+    private NotificationService notificationService;
 
     // scales
     private static final int SCALE = 2;
@@ -781,6 +789,9 @@ public class InvoiceService {
 
         salesReturnItemRepo.nullifyInvoiceItemReferencesByInvoiceId(id);
         invoiceRepo.delete(inv);
+        if (notificationService != null && inv.getId() != null) {
+            notificationService.resolveByEventKey(inv.getFirmId(), "billing:invoice:overdue:" + inv.getId(), NotificationStatus.DISMISSED);
+        }
         return true;
     }
 
@@ -989,7 +1000,15 @@ public class InvoiceService {
                 || newStatus == InvoiceStatus.DRAFT || newStatus == InvoiceStatus.CANCELLED) {
             i.setPaid(false);
         }
-        return invoiceRepo.save(i);
+        Invoice saved = invoiceRepo.save(i);
+        if (notificationService != null && saved != null && saved.getId() != null) {
+            if (newStatus == InvoiceStatus.PAID) {
+                notificationService.resolveByEventKey(saved.getFirmId(), "billing:invoice:overdue:" + saved.getId(), NotificationStatus.ACTIONED);
+            } else if (newStatus == InvoiceStatus.CANCELLED) {
+                notificationService.resolveByEventKey(saved.getFirmId(), "billing:invoice:overdue:" + saved.getId(), NotificationStatus.DISMISSED);
+            }
+        }
+        return saved;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -1587,6 +1606,9 @@ public class InvoiceService {
         invoice.setPaid(totalPaid.compareTo(effectiveReceivable) >= 0);
         if (Boolean.TRUE.equals(invoice.getPaid())) {
             invoice.setStatus(InvoiceStatus.PAID);
+            if (notificationService != null && invoice.getId() != null) {
+                notificationService.resolveByEventKey(invoice.getFirmId(), "billing:invoice:overdue:" + invoice.getId(), NotificationStatus.ACTIONED);
+            }
         }
         invoiceRepo.save(invoice);
 
@@ -1651,6 +1673,9 @@ public class InvoiceService {
                 invoice.setPaid(isFullyPaid);
                 if (isFullyPaid) {
                     invoice.setStatus(InvoiceStatus.PAID);
+                    if (notificationService != null && invoice.getId() != null) {
+                        notificationService.resolveByEventKey(invoice.getFirmId(), "billing:invoice:overdue:" + invoice.getId(), NotificationStatus.ACTIONED);
+                    }
                 } else if (invoice.getStatus() == InvoiceStatus.PAID) {
                     invoice.setStatus(InvoiceStatus.UNPAID);
                 }

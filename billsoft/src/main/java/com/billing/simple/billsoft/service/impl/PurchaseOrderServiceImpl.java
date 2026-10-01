@@ -36,6 +36,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final com.billing.simple.billsoft.service.ProductService productService;
     private final ProductRepository productRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private com.billing.simple.billsoft.service.NotificationService notificationService;
+
     public PurchaseOrderServiceImpl(PurchaseOrderRepository poRepository,
                                     PurchaseOrderItemRepository poItemRepository,
                                     PartyRepository partyRepository,
@@ -259,6 +263,13 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder saved = poRepository.save(po);
 
         handleStockAdjustment(saved, oldStatus, status);
+        if (notificationService != null && saved != null && saved.getId() != null) {
+            if (status == PurchaseOrderStatus.RECEIVED) {
+                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
+            } else if (status == PurchaseOrderStatus.CANCELLED) {
+                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+            }
+        }
         return saved;
     }
 
@@ -274,6 +285,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         partyPaymentRepository.deleteByPurchaseOrderId(po.getId());
         poRepository.delete(po);
+        if (notificationService != null && po.getId() != null) {
+            notificationService.resolveByEventKey(po.getFirmId(), "purchase:po:delivery:" + po.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+        }
     }
 
     private void handleStockAdjustment(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {

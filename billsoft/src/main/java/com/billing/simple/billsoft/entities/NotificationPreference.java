@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @Table(
     name = "notification_preferences",
     uniqueConstraints = {
-        @UniqueConstraint(name = "uk_notification_preferences_firm", columnNames = {"firmId"})
+        @UniqueConstraint(name = "uk_notification_preferences_firm", columnNames = {"firm_id"})
     }
 )
 public class NotificationPreference {

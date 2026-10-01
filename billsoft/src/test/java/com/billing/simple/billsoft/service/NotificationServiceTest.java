@@ -308,65 +308,42 @@ class NotificationServiceTest {
                 .containsExactlyInAnyOrder("management:broadcast:MSG-AAA", "management:broadcast:MSG-BBB");
     }
 
+
+
     @Test
-    @DisplayName("Legacy duplicate rows with different machine IDs should consolidate safely and idempotently")
-    void testLegacyDuplicateConsolidation() {
-        // Insert 3 legacy duplicate rows with different machine IDs
-        Notification legacy1 = Notification.builder()
-                .firmId(Notification.GLOBAL_FIRM_ID)
-                .eventKey("management:broadcast:SFCK-RDJR-12AD-JXY2:MSG-999")
-                .category(NotificationCategory.LICENSING)
-                .priority(NotificationPriority.HIGH)
-                .title("License Downgraded")
-                .body("Due to violation")
-                .status(NotificationStatus.UNREAD)
-                .createdAt(LocalDateTime.now().minusDays(2))
-                .updatedAt(LocalDateTime.now().minusDays(2))
+    @DisplayName("RC-03: resolveByEventKey should resolve active notification to ACTIONED or DISMISSED")
+    void testResolveByEventKeyLifecycle() {
+        String eventKey = "billing:invoice:overdue:777";
+        NotificationRequest req = NotificationRequest.builder()
+                .firmId(firm1)
+                .eventKey(eventKey)
+                .category(NotificationCategory.BILLING)
+                .title("Invoice #777 Overdue")
+                .body("Payment is overdue")
                 .build();
 
-        Notification legacy2 = Notification.builder()
-                .firmId(Notification.GLOBAL_FIRM_ID)
-                .eventKey("management:broadcast:T578-SFHA-E6RX-DGEW:MSG-999")
-                .category(NotificationCategory.LICENSING)
-                .priority(NotificationPriority.HIGH)
-                .title("License Downgraded")
-                .body("Due to violation")
-                .status(NotificationStatus.READ) // User read this one
-                .createdAt(LocalDateTime.now().minusDays(1))
-                .updatedAt(LocalDateTime.now().minusDays(1))
-                .build();
+        Notification notif = notificationService.createOrUpdate(req);
+        assertThat(notif.getStatus()).isEqualTo(NotificationStatus.UNREAD);
 
-        Notification legacy3 = Notification.builder()
-                .firmId(Notification.GLOBAL_FIRM_ID)
-                .eventKey("management:broadcast:Z3CS-4BVX-G2V0-MTKT:MSG-999")
-                .category(NotificationCategory.LICENSING)
-                .priority(NotificationPriority.HIGH)
-                .title("License Downgraded")
-                .body("Due to violation")
-                .status(NotificationStatus.UNREAD)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
+        // Resolve as ACTIONED when paid
+        notificationService.resolveByEventKey(firm1, eventKey, NotificationStatus.ACTIONED);
 
-        notificationRepository.saveAll(List.of(legacy1, legacy2, legacy3));
-        assertThat(notificationRepository.findByFirmIdAndEventKeyStartingWith(Notification.GLOBAL_FIRM_ID, "management:broadcast:")).hasSize(3);
+        Notification resolved = notificationRepository.findByFirmIdAndEventKey(firm1, eventKey).orElseThrow();
+        assertThat(resolved.getStatus()).isEqualTo(NotificationStatus.ACTIONED);
 
-        // Run migration / consolidation
-        notificationService.migrateLegacyData();
+        // Resolve PO delivery notification as DISMISSED on cancel
+        String poEventKey = "purchase:po:delivery:888";
+        notificationService.createOrUpdate(NotificationRequest.builder()
+                .firmId(firm1)
+                .eventKey(poEventKey)
+                .category(NotificationCategory.PURCHASE)
+                .title("PO Delivery Due")
+                .body("PO #888 is due")
+                .build());
 
-        List<Notification> afterCleanup = notificationRepository.findByFirmIdAndEventKeyStartingWith(
-                Notification.GLOBAL_FIRM_ID, "management:broadcast:MSG-999");
-        assertThat(afterCleanup).hasSize(1);
-        assertThat(afterCleanup.get(0).getEventKey()).isEqualTo("management:broadcast:MSG-999");
-        assertThat(afterCleanup.get(0).getStatus()).isEqualTo(NotificationStatus.READ); // Preserved best status
-
-        // Re-run migration to verify idempotency
-        notificationService.migrateLegacyData();
-
-        List<Notification> afterSecondRun = notificationRepository.findByFirmIdAndEventKeyStartingWith(
-                Notification.GLOBAL_FIRM_ID, "management:broadcast:MSG-999");
-        assertThat(afterSecondRun).hasSize(1);
-        assertThat(afterSecondRun.get(0).getEventKey()).isEqualTo("management:broadcast:MSG-999");
-        assertThat(afterSecondRun.get(0).getStatus()).isEqualTo(NotificationStatus.READ);
+        notificationService.resolveByEventKey(firm1, poEventKey, NotificationStatus.DISMISSED);
+        Notification poResolved = notificationRepository.findByFirmIdAndEventKey(firm1, poEventKey).orElseThrow();
+        assertThat(poResolved.getStatus()).isEqualTo(NotificationStatus.DISMISSED);
     }
+
 }

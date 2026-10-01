@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.regression.planner;
 
+import com.billing.simple.billsoft.dto.NotificationRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.*;
@@ -32,7 +33,7 @@ class PlannerAndNotificationCoverageTest {
     private PlannerNotificationScheduler scheduler;
 
     @Autowired
-    private InboxMessageService inboxService;
+    private NotificationService notificationService;
 
     @Autowired
     private ReminderService reminderService;
@@ -71,7 +72,7 @@ class PlannerAndNotificationCoverageTest {
     private ReminderRepository reminderRepo;
 
     @Autowired
-    private InboxMessageRepository inboxRepo;
+    private NotificationRepository notificationRepo;
 
     @Autowired
     private BackupService backupService;
@@ -165,25 +166,29 @@ class PlannerAndNotificationCoverageTest {
         scheduler.checkPendingPurchaseOrderDeliveries();
         scheduler.checkPayrollMonthlyReminders();
 
-        // Verify inbox notifications generated
-        List<InboxMessage> msgs = inboxService.getMessagesByFirm(testFirmId);
-        assertThat(msgs).isNotEmpty();
+        // Verify notifications generated
+        List<Notification> notifs = notificationRepo.findByFirmId(testFirmId);
+        assertThat(notifs).isNotEmpty();
     }
 
     @Test
-    @DisplayName("Should test Inbox, Reminder, Note, Expense and SystemMetrics services")
+    @DisplayName("Should test Notification, Reminder, Note, Expense and SystemMetrics services")
     void testPlannerCrudAndMetrics() {
-        // 1. InboxMessageService
-        InboxMessage msg = new InboxMessage();
-        msg.setSubject("Test Alert");
-        msg.setBody("Testing inbox notification body");
-        msg.setSender("System");
-        msg.setFirmId(testFirmId);
-        msg = inboxService.createMessage(msg);
-        assertThat(msg.getId()).isNotNull();
+        // 1. NotificationService
+        NotificationRequest notifReq = NotificationRequest.builder()
+                .firmId(testFirmId)
+                .eventKey("test:manual:alert")
+                .category(NotificationCategory.SYSTEM)
+                .title("Test Alert")
+                .body("Testing notification body")
+                .sender("System")
+                .priority(NotificationPriority.CRITICAL)
+                .build();
+        Notification notif = notificationService.createOrUpdate(notifReq);
+        assertThat(notif.getId()).isNotNull();
 
-        inboxService.markAsRead(msg.getId());
-        inboxService.deleteMessage(msg.getId());
+        notificationService.markRead(notif.getId());
+        notificationService.dismiss(notif.getId());
 
         // 2. ReminderService
         Reminder r = new Reminder();

@@ -48,7 +48,7 @@ public class GenericMultiFirmBackupIdempotencyTest {
     @Autowired
     private EmployeeRepository employeeRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
 
     @BeforeEach
     void setupCleanDatabase() {
@@ -230,42 +230,46 @@ public class GenericMultiFirmBackupIdempotencyTest {
     }
 
     @Test
-    @DisplayName("4. InboxMessage: 5-Cycle Repeated Export-Import Idempotency, Distinct Messages, & Multi-Firm Isolation")
-    public void testInboxMessageMultiCycleAndMultiFirmIdempotency() {
+    @DisplayName("4. Notification: 5-Cycle Repeated Export-Import Idempotency, Distinct Messages, & Multi-Firm Isolation")
+    public void testNotificationMultiCycleAndMultiFirmIdempotency() {
         // Setup Firm A
         FirmDetails firmA = new FirmDetails();
-        firmA.setFirmName("Inbox Test Firm A");
+        firmA.setFirmName("Notification Test Firm A");
         firmA = firmDetailsRepo.save(firmA);
         Long firmAId = firmA.getId();
 
         // Setup Firm B
         FirmDetails firmB = new FirmDetails();
-        firmB.setFirmName("Inbox Test Firm B");
+        firmB.setFirmName("Notification Test Firm B");
         firmB = firmDetailsRepo.save(firmB);
         Long firmBId = firmB.getId();
 
-        // 1. Create single message for Firm A
-        InboxMessage msgA = InboxMessage.builder()
+        // 1. Create single notification for Firm A
+        Notification msgA = Notification.builder()
                 .firmId(firmAId)
-                .subject("Quarterly Tax Advisory")
+                .category(NotificationCategory.BILLING)
+                .eventKey("tax:quarterly:2026")
+                .title("Quarterly Tax Advisory")
                 .body("Advance tax payment deadline approaching.")
                 .sender("System Finance")
-                .isRead(false)
+                .status(NotificationStatus.UNREAD)
                 .build();
-        msgA = inboxMessageRepo.save(msgA);
+        msgA = notificationRepo.save(msgA);
 
-        // 2. Create message with identical subject but for Firm B
-        InboxMessage msgB = InboxMessage.builder()
+        // 2. Create notification with identical title but for Firm B
+        Notification msgB = Notification.builder()
                 .firmId(firmBId)
-                .subject("Quarterly Tax Advisory")
+                .category(NotificationCategory.BILLING)
+                .eventKey("tax:quarterly:2026")
+                .title("Quarterly Tax Advisory")
                 .body("Advance tax payment deadline approaching for Firm B.")
                 .sender("System Finance")
-                .isRead(false)
+                .status(NotificationStatus.UNREAD)
                 .build();
-        msgB = inboxMessageRepo.save(msgB);
+        msgB = notificationRepo.save(msgB);
 
-        assertEquals(1, inboxMessageRepo.countByFirmId(firmAId));
-        assertEquals(1, inboxMessageRepo.countByFirmId(firmBId));
+        assertEquals(1, notificationRepo.findByFirmId(firmAId).size());
+        assertEquals(1, notificationRepo.findByFirmId(firmBId).size());
 
         // 3. 5-Cycle Repeated Export-All and Merge-Import
         for (int cycle = 1; cycle <= 5; cycle++) {
@@ -273,20 +277,20 @@ public class GenericMultiFirmBackupIdempotencyTest {
             assertNotNull(fullBackup);
             backupService.importSelectiveData(fullBackup, null, "merge", null);
 
-            assertEquals(1, inboxMessageRepo.countByFirmId(firmAId), "Cycle " + cycle + ": Firm A Inbox count mismatch");
-            assertEquals(1, inboxMessageRepo.countByFirmId(firmBId), "Cycle " + cycle + ": Firm B Inbox count mismatch");
+            assertEquals(1, notificationRepo.findByFirmId(firmAId).size(), "Cycle " + cycle + ": Firm A Notification count mismatch");
+            assertEquals(1, notificationRepo.findByFirmId(firmBId).size(), "Cycle " + cycle + ": Firm B Notification count mismatch");
         }
 
         // 4. Live DB update preserved across re-import
-        InboxMessage liveMsgA = inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmAId).get(0);
-        liveMsgA.setRead(true);
-        inboxMessageRepo.save(liveMsgA);
+        Notification liveMsgA = notificationRepo.findByFirmId(firmAId).get(0);
+        liveMsgA.setStatus(NotificationStatus.READ);
+        notificationRepo.save(liveMsgA);
 
         BackupDTO backupA = backupService.exportData(firmAId);
         backupService.importSelectiveData(backupA, null, "merge", firmAId);
 
-        InboxMessage reloadedA = inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmAId).get(0);
-        assertTrue(reloadedA.isRead(), "Live read status must be preserved");
-        assertEquals(1, inboxMessageRepo.countByFirmId(firmAId));
+        Notification reloadedA = notificationRepo.findByFirmId(firmAId).get(0);
+        assertEquals(NotificationStatus.READ, reloadedA.getStatus(), "Live read status must be preserved");
+        assertEquals(1, notificationRepo.findByFirmId(firmAId).size());
     }
 }

@@ -47,7 +47,7 @@ public class PreResetNaturalKeyCollisionSafetyTest {
     @Autowired
     private NoteRepository noteRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
     @Autowired
     private EmployeeRepository employeeRepo;
     @Autowired
@@ -196,30 +196,30 @@ public class PreResetNaturalKeyCollisionSafetyTest {
     }
 
     @Test
-    @DisplayName("4. Inbox Messages: Two distinct messages with identical firm and subject survive restore")
-    public void testCoexistingInboxMessagesWithSameSubjectSurviveRestore() {
+    @DisplayName("4. Notifications: Two distinct notifications with identical firm and title survive restore")
+    public void testCoexistingNotificationsWithSameTitleSurviveRestore() {
         FirmDetails firm = new FirmDetails();
-        firm.setFirmName("Inbox Test Firm");
+        firm.setFirmName("Notification Test Firm");
         firm = firmDetailsRepo.save(firm);
         Long fid = firm.getId();
 
-        InboxMessage m1 = InboxMessage.builder().firmId(fid).subject("System Alert").body("Disk check completed").sender("System").build();
-        InboxMessage m2 = InboxMessage.builder().firmId(fid).subject("System Alert").body("Backup check completed").sender("Cron").build();
-        inboxMessageRepo.save(m1);
-        inboxMessageRepo.save(m2);
+        Notification m1 = Notification.builder().firmId(fid).category(NotificationCategory.SYSTEM).eventKey("sys:alert:1").title("System Alert").body("Disk check completed").sender("System").build();
+        Notification m2 = Notification.builder().firmId(fid).category(NotificationCategory.SYSTEM).eventKey("sys:alert:2").title("System Alert").body("Backup check completed").sender("Cron").build();
+        notificationRepo.save(m1);
+        notificationRepo.save(m2);
 
         BackupDTO backup = backupService.exportData(fid);
-        assertEquals(2, backup.getInboxMessages().size());
+        assertEquals(2, backup.getNotifications().size());
 
         backupService.factoryReset();
         backupService.importData(backup, null, true);
 
-        assertEquals(2, inboxMessageRepo.findAll().size(), "Both inbox messages must survive restore");
+        assertEquals(2, notificationRepo.findAll().size(), "Both notifications must survive restore");
 
         for (int i = 0; i < 3; i++) {
             backupService.importData(backup, null, true);
         }
-        assertEquals(2, inboxMessageRepo.findAll().size());
+        assertEquals(2, notificationRepo.findAll().size());
     }
 
     @Test

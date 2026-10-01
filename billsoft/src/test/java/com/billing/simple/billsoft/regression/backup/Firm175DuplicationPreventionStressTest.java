@@ -71,7 +71,7 @@ public class Firm175DuplicationPreventionStressTest {
     @Autowired
     private BusinessLetterRepository businessLetterRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
     @Autowired
     private SavingRepository savingRepo;
     @Autowired
@@ -296,7 +296,7 @@ public class Firm175DuplicationPreventionStressTest {
         doc175.setUploadedAt(LocalDateTime.of(2026, 9, 1, 10, 0));
         employeeDocumentRepo.save(doc175);
 
-        // Expense, Reminder, Note, Goal, Saving, GoalLog, BusinessLetter, InboxMessage
+        // Expense, Reminder, Note, Goal, Saving, GoalLog, BusinessLetter, Notification
         Expense exp175 = Expense.builder()
                 .firmId(firm175Id)
                 .title("Workshop Electricity")
@@ -363,12 +363,14 @@ public class Firm175DuplicationPreventionStressTest {
                 .build();
         businessLetterRepo.save(bl175);
 
-        InboxMessage msg175 = InboxMessage.builder()
+        Notification notif175 = Notification.builder()
                 .firmId(firm175Id)
-                .subject("System Update Notification")
+                .category(NotificationCategory.SYSTEM)
+                .eventKey("system:update:175")
+                .title("System Update Notification")
                 .body("All automated services operational.")
                 .build();
-        inboxMessageRepo.save(msg175);
+        notificationRepo.save(notif175);
 
         // Also add 1 customer and 1 invoice to Firm 1 to ensure multi-tenant baseline
         Customer c1_1 = new Customer();
@@ -389,7 +391,7 @@ public class Firm175DuplicationPreventionStressTest {
         long baseFirm175Rems = reminderRepo.findByFirmId(firm175Id).size();
         long baseFirm175Notes = noteRepo.findByFirmId(firm175Id).size();
         long baseFirm175Letters = businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firm175Id).size();
-        long baseFirm175Inbox = inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firm175Id).size();
+        long baseFirm175Notifications = notificationRepo.findByFirmId(firm175Id).size();
 
         assertEquals(2, baseFirm175Custs, "Baseline Firm 175 customer count must be 2");
         assertEquals(2, baseFirm175Prods, "Baseline Firm 175 product count must be 2");
@@ -417,7 +419,7 @@ public class Firm175DuplicationPreventionStressTest {
             assertEquals(baseFirm175Rems, reminderRepo.findByFirmId(firm175Id).size(), "Cycle " + cycle + ": Reminder count mismatch");
             assertEquals(baseFirm175Notes, noteRepo.findByFirmId(firm175Id).size(), "Cycle " + cycle + ": Note count mismatch");
             assertEquals(baseFirm175Letters, businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firm175Id).size(), "Cycle " + cycle + ": Letter count mismatch");
-            assertEquals(baseFirm175Inbox, inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firm175Id).size(), "Cycle " + cycle + ": Inbox message count mismatch");
+            assertEquals(baseFirm175Notifications, notificationRepo.findByFirmId(firm175Id).size(), "Cycle " + cycle + ": Notification message count mismatch");
 
             // Verify Financial Integrity
             BigDecimal invoiced = invoiceRepo.findAllByFirmId(firm175Id).stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);

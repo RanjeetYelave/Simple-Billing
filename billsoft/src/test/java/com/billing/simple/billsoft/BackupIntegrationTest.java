@@ -64,7 +64,7 @@ public class BackupIntegrationTest {
     @Autowired
     private BusinessLetterRepository businessLetterRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
     @Autowired
     private SavingRepository savingRepo;
     @Autowired
@@ -246,13 +246,15 @@ public class BackupIntegrationTest {
                 .build();
         businessLetterRepo.save(letter);
 
-        // 12. Create Inbox Message
-        InboxMessage msg = InboxMessage.builder()
+        // 12. Create Notification
+        Notification notif = Notification.builder()
                 .firmId(firmId)
-                .subject("System Update")
+                .category(NotificationCategory.SYSTEM)
+                .eventKey("sys:update:welcome")
+                .title("System Update")
                 .body("Welcome to Simple Billing")
                 .build();
-        inboxMessageRepo.save(msg);
+        notificationRepo.save(notif);
 
         // 13. Create Goal, GoalLog, Saving
         Goal goal = Goal.builder()
@@ -312,7 +314,7 @@ public class BackupIntegrationTest {
         assertEquals(1, export.getAttendanceRecords().size());
         assertEquals(1, export.getSalaryRecords().size());
         assertEquals(1, export.getBusinessLetters().size());
-        assertEquals(1, export.getInboxMessages().size());
+        assertEquals(1, export.getNotifications().size());
         assertEquals(1, export.getGoals().size());
         assertEquals(1, export.getGoalLogs().size());
         assertEquals(1, export.getSavings().size());

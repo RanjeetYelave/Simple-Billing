@@ -31,15 +31,15 @@ public class HealthHeartbeatTest {
                 .andExpect(jsonPath("$.backup").isMap())
                 .andExpect(jsonPath("$.diagnostics").isMap())
                 .andExpect(jsonPath("$.diagnostics.database.status").value("ONLINE"))
-                .andExpect(jsonPath("$.messages").isArray());
+                .andExpect(jsonPath("$.notifications").exists());
     }
 
     @Test
-    @DisplayName("GET /api/system/heartbeat?firmId=100 returns firm-specific messages")
+    @DisplayName("GET /api/system/heartbeat?firmId=100 returns firm-specific notifications")
     void testSystemHeartbeatWithFirmId() throws Exception {
         mockMvc.perform(get("/api/system/heartbeat").param("firmId", "100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.messages").isArray());
+                .andExpect(jsonPath("$.notifications").exists());
     }
 }

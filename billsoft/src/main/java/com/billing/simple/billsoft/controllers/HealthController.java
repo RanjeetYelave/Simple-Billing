@@ -1,10 +1,8 @@
 package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.dtos.ApiDiagnosticsResponse;
-import com.billing.simple.billsoft.entities.InboxMessage;
 import com.billing.simple.billsoft.service.ApiDiagnosticsService;
 import com.billing.simple.billsoft.service.AutoBackupService;
-import com.billing.simple.billsoft.service.InboxMessageService;
 import com.billing.simple.billsoft.service.SystemMetricsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -30,7 +28,6 @@ public class HealthController {
     private final SystemMetricsService systemMetricsService;
     private final AutoBackupService autoBackupService;
     private final ApiDiagnosticsService apiDiagnosticsService;
-    private final InboxMessageService inboxMessageService;
     private final DataSource dataSource;
 
     private final com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService;
@@ -40,7 +37,6 @@ public class HealthController {
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
                             ApiDiagnosticsService apiDiagnosticsService,
-                            InboxMessageService inboxMessageService,
                             DataSource dataSource,
                             com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService,
                             com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService,
@@ -48,7 +44,6 @@ public class HealthController {
         this.systemMetricsService = systemMetricsService;
         this.autoBackupService = autoBackupService;
         this.apiDiagnosticsService = apiDiagnosticsService;
-        this.inboxMessageService = inboxMessageService;
         this.dataSource = dataSource;
         this.tenantDataIntegrityAuditService = tenantDataIntegrityAuditService;
         this.networkReachabilityService = networkReachabilityService;
@@ -102,7 +97,7 @@ public class HealthController {
     }
 
     /**
-     * Unified Heartbeat API: Consolidates metrics, backup status, diagnostics, network status, and firm inbox messages
+     * Unified Heartbeat API: Consolidates metrics, backup status, diagnostics, network status, and notifications
      * into a single lightweight HTTP call to eliminate redundant background network polling.
      */
     @GetMapping({"/api/system/heartbeat", "/api/health/heartbeat"})
@@ -111,9 +106,6 @@ public class HealthController {
         Map<String, Object> backupData = autoBackupService != null ? autoBackupService.ensureTodayBackup() : Map.of();
         Map<String, Object> diagData = buildDiagnosticsData(backupData);
         Map<String, Object> netData = networkReachabilityService != null ? networkReachabilityService.getStatus(false).toMap() : Map.of("connected", true);
-        List<InboxMessage> messages = (firmId != null && inboxMessageService != null)
-                ? inboxMessageService.getMessagesByFirm(firmId)
-                : Collections.emptyList();
 
         com.billing.simple.billsoft.dto.NotificationSummaryResponse notifSummary = null;
         if (notificationService != null) {
@@ -130,7 +122,6 @@ public class HealthController {
         response.put("backup", backupData);
         response.put("diagnostics", diagData);
         response.put("network", netData);
-        response.put("messages", messages);
         if (notifSummary != null) {
             response.put("notifications", notifSummary);
         }

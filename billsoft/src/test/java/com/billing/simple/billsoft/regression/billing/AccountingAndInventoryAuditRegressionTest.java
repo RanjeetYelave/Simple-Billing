@@ -6,7 +6,7 @@ import com.billing.simple.billsoft.dtos.FirmAnalyticsResponse;
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.*;
-import com.billing.simple.billsoft.repo.InboxMessageRepository;
+import com.billing.simple.billsoft.repo.NotificationRepository;
 import com.billing.simple.billsoft.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,7 +56,7 @@ class AccountingAndInventoryAuditRegressionTest {
     private PlannerNotificationScheduler scheduler;
 
     @Autowired
-    private InboxMessageRepository inboxMessageRepository;
+    private NotificationRepository notificationRepository;
 
     @Autowired
     private BackupService backupService;
@@ -229,7 +229,7 @@ class AccountingAndInventoryAuditRegressionTest {
     @Test
     @DisplayName("Verify that Estimates with past due dates do NOT trigger false Overdue Invoice alerts")
     void testEstimatesDoNotTriggerOverdueNotifications() {
-        inboxMessageRepository.deleteAll();
+        notificationRepository.deleteAll();
 
         // Create an ESTIMATE quotation with past due date
         InvoiceRequest estReq = new InvoiceRequest();
@@ -251,9 +251,9 @@ class AccountingAndInventoryAuditRegressionTest {
         // Run scheduler
         scheduler.checkOverdueInvoices();
 
-        // Verify no inbox messages were created for this estimate
-        long estimateMsgCount = inboxMessageRepository.findAll().stream()
-                .filter(m -> m.getSubject() != null && m.getSubject().contains("Overdue Invoice"))
+        // Verify no notification messages were created for this estimate
+        long estimateMsgCount = notificationRepository.findAll().stream()
+                .filter(m -> m.getTitle() != null && m.getTitle().contains("Overdue Invoice"))
                 .count();
         assertThat(estimateMsgCount).isEqualTo(0);
 
@@ -272,8 +272,8 @@ class AccountingAndInventoryAuditRegressionTest {
         scheduler.checkOverdueInvoices();
 
         // Verify overdue alert IS triggered for the final invoice
-        long finalMsgCount = inboxMessageRepository.findAll().stream()
-                .filter(m -> m.getSubject() != null && m.getSubject().contains("Overdue Invoice"))
+        long finalMsgCount = notificationRepository.findAll().stream()
+                .filter(m -> m.getTitle() != null && m.getTitle().contains("Overdue Invoice"))
                 .count();
         assertThat(finalMsgCount).isEqualTo(1);
     }

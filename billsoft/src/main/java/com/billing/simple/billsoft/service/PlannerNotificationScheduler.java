@@ -22,12 +22,6 @@ public class PlannerNotificationScheduler {
     private ReminderRepository reminderRepository;
 
     @Autowired
-    private InboxMessageRepository inboxMessageRepository;
-
-    @Autowired
-    private InboxMessageService inboxMessageService;
-
-    @Autowired
     private NotificationService notificationService;
 
     @Autowired
@@ -83,21 +77,6 @@ public class PlannerNotificationScheduler {
                         .build());
             }
 
-            // 2. Backward compatibility for legacy inbox table
-            boolean alreadyNotified = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId)
-                    .stream().anyMatch(m -> item.getId() != null && item.getId().equals(m.getReminderId()));
-            if (!alreadyNotified) {
-                InboxMessage msg = new InboxMessage();
-                msg.setFirmId(firmId);
-                msg.setSubject(subject);
-                msg.setBody(body);
-                msg.setSender("System (Planner)");
-                msg.setRead(false);
-                msg.setReminderId(item.getId());
-                msg.setCreatedAt(LocalDateTime.now());
-                inboxMessageRepository.save(msg);
-            }
-
             item.setInboxNotified(true);
             reminderRepository.save(item);
         }
@@ -109,12 +88,121 @@ public class PlannerNotificationScheduler {
         List<FirmDetails> firms = firmDetailsRepository.findAll();
         if (firms.isEmpty()) {
             List<Product> products = productRepository.findByFirmId(1L);
-            inboxMessageService.notifyAggregatedLowStock(1L, products);
+            notifyAggregatedLowStock(1L, products);
         } else {
             for (FirmDetails firm : firms) {
                 List<Product> products = productRepository.findByFirmId(firm.getId());
-                inboxMessageService.notifyAggregatedLowStock(firm.getId(), products);
+                notifyAggregatedLowStock(firm.getId(), products);
             }
+        }
+    }
+
+    /**
+     * Aggregates all low stock and out-of-stock items for a firm into a single consolidated notification.
+     */
+    @Transactional
+    public void notifyAggregatedLowStock(Long firmId, List<Product> products) {
+        if (firmId == null || products == null || products.isEmpty()) {
+            return;
+        }
+
+        List<Product> outOfStock = new ArrayList<>();
+        List<Product> lowStock = new ArrayList<>();
+
+        for (Product p : products) {
+            if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
+                continue;
+            }
+            java.math.BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal min = p.getMinStockLevel() != null ? p.getMinStockLevel() : new java.math.BigDecimal("5.000");
+
+            if (stock.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                outOfStock.add(p);
+            } else if (stock.compareTo(min) <= 0) {
+                lowStock.add(p);
+            }
+        }
+
+        int totalAlertItems = outOfStock.size() + lowStock.size();
+        if (totalAlertItems == 0) {
+            // Inventory condition resolved; mark aggregate low stock notification as ACTIONED
+            if (notificationService != null) {
+                notificationService.resolveByEventKey(firmId, "inventory:low-stock:aggregate:" + firmId);
+            }
+            return;
+        }
+
+        String subject;
+        if (!outOfStock.isEmpty() && !lowStock.isEmpty()) {
+            subject = String.format("⚠️ Inventory Alert: %d Items Require Attention (%d Out of Stock, %d Low)",
+                    totalAlertItems, outOfStock.size(), lowStock.size());
+        } else if (!outOfStock.isEmpty()) {
+            subject = String.format("🔴 Inventory Alert: %d %s Out of Stock",
+                    outOfStock.size(), outOfStock.size() == 1 ? "Item" : "Items");
+        } else {
+            subject = String.format("⚠️ Inventory Alert: %d %s Low on Stock",
+                    lowStock.size(), lowStock.size() == 1 ? "Item" : "Items");
+        }
+
+        StringBuilder body = new StringBuilder();
+        body.append("Consolidated Inventory Alert: Several items have reached or breached their safety reorder thresholds.\n\n");
+
+        if (!outOfStock.isEmpty()) {
+            body.append("🔴 OUT OF STOCK (").append(outOfStock.size()).append("):\n");
+            int limit = Math.min(outOfStock.size(), 10);
+            for (int i = 0; i < limit; i++) {
+                Product p = outOfStock.get(i);
+                String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "";
+                String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
+                body.append("• ").append(p.getName()).append(skuStr)
+                        .append(" — 0 ").append(unitStr).append(" (Min Threshold: ")
+                        .append(p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "0")
+                        .append(" ").append(unitStr).append(")\n");
+            }
+            if (outOfStock.size() > 10) {
+                body.append("... and ").append(outOfStock.size() - 10).append(" more out-of-stock items.\n");
+            }
+            body.append("\n");
+        }
+
+        if (!lowStock.isEmpty()) {
+            body.append("🟡 LOW STOCK (").append(lowStock.size()).append("):\n");
+            int limit = Math.min(lowStock.size(), 10);
+            for (int i = 0; i < limit; i++) {
+                Product p = lowStock.get(i);
+                String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "";
+                String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
+                String currentStock = p.getStockQuantity() != null ? p.getStockQuantity().stripTrailingZeros().toPlainString() : "0";
+                String minStock = p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "0";
+                body.append("• ").append(p.getName()).append(skuStr)
+                        .append(" — ").append(currentStock).append(" ").append(unitStr)
+                        .append(" remaining (Min Threshold: ").append(minStock).append(" ").append(unitStr).append(")\n");
+            }
+            if (lowStock.size() > 10) {
+                body.append("... and ").append(lowStock.size() - 10).append(" more low-stock items.\n");
+            }
+            body.append("\n");
+        }
+
+        body.append("Action Required: Please visit the Inventory Manager to adjust counts or generate Purchase Orders to replenish supply.");
+
+        // Canonical Notification with deterministic eventKey
+        if (notificationService != null) {
+            notificationService.createOrUpdate(NotificationRequest.builder()
+                    .firmId(firmId)
+                    .eventKey("inventory:low-stock:aggregate:" + firmId)
+                    .category(NotificationCategory.INVENTORY)
+                    .priority(NotificationPriority.HIGH)
+                    .title(subject)
+                    .body(body.toString())
+                    .sender("Inventory System")
+                    .primaryActionLabel("Open Inventory Catalog")
+                    .primaryActionType(NotificationActionType.NAVIGATE)
+                    .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"inventory\"}")
+                    .secondaryActionLabel("Create Purchase Order")
+                    .secondaryActionType(NotificationActionType.NAVIGATE)
+                    .secondaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\"}")
+                    .build());
         }
     }
 
@@ -154,15 +242,6 @@ public class PlannerNotificationScheduler {
                         .secondaryActionTarget("{\"modal\":\"payment\",\"invoiceId\":" + inv.getId() + "}")
                         .build());
             }
-
-            // Legacy backward-compat check
-            inboxMessageService.sendNotificationIfAbsent(
-                    firmId,
-                    "⏰ Overdue Invoice: #" + inv.getInvoiceNumber(),
-                    subject,
-                    body,
-                    "Billing System"
-            );
         }
     }
 
@@ -198,15 +277,6 @@ public class PlannerNotificationScheduler {
                         .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\",\"poId\":" + po.getId() + "}")
                         .build());
             }
-
-            // Legacy backward-compat check
-            inboxMessageService.sendNotificationIfAbsent(
-                    firmId,
-                    "📦 Expected Delivery: PO #" + po.getPoNumber(),
-                    subject,
-                    body,
-                    "Purchase System"
-            );
         }
     }
 
@@ -261,6 +331,10 @@ public class PlannerNotificationScheduler {
         }
 
         if (pendingEmployees.isEmpty()) {
+            // All active employee salaries disbursed for this month; resolve active notification
+            if (notificationService != null) {
+                notificationService.resolveByEventKey(firmId, "hr:payroll:" + firmId + ":" + monthYear);
+            }
             return;
         }
 
@@ -294,22 +368,6 @@ public class PlannerNotificationScheduler {
                     .primaryActionType(NotificationActionType.NAVIGATE)
                     .primaryActionTarget("{\"page\":\"hr\",\"tab\":\"payroll\"}")
                     .build());
-        }
-
-        // 2. Legacy check
-        List<InboxMessage> existingMsgs = inboxMessageRepository.findByFirmIdOrderByCreatedAtDesc(firmId);
-        boolean alreadySent = existingMsgs.stream()
-                .anyMatch(m -> m.getSubject() != null && m.getSubject().startsWith(subjectPrefix));
-
-        if (!alreadySent) {
-            InboxMessage msg = new InboxMessage();
-            msg.setFirmId(firmId);
-            msg.setSubject(subject);
-            msg.setBody(bodyBuilder.toString());
-            msg.setSender("HR System");
-            msg.setRead(false);
-            msg.setCreatedAt(now);
-            inboxMessageRepository.save(msg);
         }
     }
 }

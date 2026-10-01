@@ -94,7 +94,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT i.estimateNumber FROM Invoice i WHERE i.firmId = :firmId AND i.estimateNumber IS NOT NULL")
     List<String> findEstimateNumbersByFirmId(@Param("firmId") Long firmId);
 
-    @Query("SELECT i FROM Invoice i WHERE i.status NOT IN (com.billing.simple.billsoft.entities.InvoiceStatus.CANCELLED, com.billing.simple.billsoft.entities.InvoiceStatus.ESTIMATE, com.billing.simple.billsoft.entities.InvoiceStatus.DRAFT) AND (i.paid IS NULL OR i.paid = false) AND i.dueDate IS NOT NULL AND i.dueDate < :today")
+    @Query("SELECT i FROM Invoice i WHERE i.status NOT IN (com.billing.simple.billsoft.entities.InvoiceStatus.CANCELLED, com.billing.simple.billsoft.entities.InvoiceStatus.ESTIMATE, com.billing.simple.billsoft.entities.InvoiceStatus.DRAFT, com.billing.simple.billsoft.entities.InvoiceStatus.PAID) AND (i.paid IS NULL OR i.paid = false) AND i.totalAmount IS NOT NULL AND i.totalAmount > 0 AND i.dueDate IS NOT NULL AND i.dueDate < :today")
     List<Invoice> findOverdueInvoices(@Param("today") java.time.LocalDate today);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.firmId = :firmId AND i.status IN :statuses")

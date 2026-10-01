@@ -5,20 +5,15 @@ import com.billing.simple.billsoft.dto.NotificationPreferencesDto;
 import com.billing.simple.billsoft.dto.NotificationRequest;
 import com.billing.simple.billsoft.dto.NotificationSummaryResponse;
 import com.billing.simple.billsoft.entities.*;
-import com.billing.simple.billsoft.licensing.LicenseStorage;
-import com.billing.simple.billsoft.licensing.LicensingConfig;
-import com.billing.simple.billsoft.licensing.MachineIdentity;
-import com.billing.simple.billsoft.licensing.model.CustomerMessage;
-import com.billing.simple.billsoft.repo.InboxMessageRepository;
 import com.billing.simple.billsoft.repo.NotificationPreferenceRepository;
 import com.billing.simple.billsoft.repo.NotificationRepository;
 import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.security.TenantSecurityException;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,27 +29,15 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationPreferenceRepository preferenceRepository;
-    private final InboxMessageRepository legacyInboxRepository;
 
     @Autowired(required = false)
     @Lazy
     private ReminderService reminderService;
 
     public NotificationService(NotificationRepository notificationRepository,
-                               NotificationPreferenceRepository preferenceRepository,
-                               InboxMessageRepository legacyInboxRepository) {
+                               NotificationPreferenceRepository preferenceRepository) {
         this.notificationRepository = notificationRepository;
         this.preferenceRepository = preferenceRepository;
-        this.legacyInboxRepository = legacyInboxRepository;
-    }
-
-    @PostConstruct
-    public void init() {
-        try {
-            migrateLegacyData();
-        } catch (Exception e) {
-            log.warn("Legacy notification migration warning: {}", e.getMessage());
-        }
     }
 
     /**
@@ -131,7 +114,12 @@ public class NotificationService {
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
-            return notificationRepository.save(n);
+            try {
+                return notificationRepository.save(n);
+            } catch (DataIntegrityViolationException dive) {
+                // Handle concurrent insertion race condition across multi-nodes
+                return notificationRepository.findByFirmIdAndEventKey(firmId, req.getEventKey().trim()).orElse(n);
+            }
         }
 
         Notification existing = existingOpt.get();
@@ -177,6 +165,40 @@ public class NotificationService {
         existing.setUpdatedAt(now);
 
         return notificationRepository.save(existing);
+    }
+
+    /**
+     * Programmatically resolves a notification by its canonical eventKey (e.g. on payment, receipt, replenishment).
+     */
+    @Transactional
+    public boolean resolveByEventKey(Long firmId, String eventKey) {
+        return resolveByEventKey(firmId, eventKey, NotificationStatus.ACTIONED);
+    }
+
+    /**
+     * Programmatically resolves a notification by its canonical eventKey with an explicit target status (ACTIONED / DISMISSED).
+     */
+    @Transactional
+    public boolean resolveByEventKey(Long firmId, String eventKey, NotificationStatus targetStatus) {
+        if (eventKey == null || eventKey.isBlank()) {
+            return false;
+        }
+        Long targetFirmId = firmId != null ? firmId : resolveAuthoritativeFirmId(null);
+        Optional<Notification> opt = notificationRepository.findByFirmIdAndEventKey(targetFirmId, eventKey.trim());
+        if (opt.isPresent()) {
+            Notification n = opt.get();
+            NotificationStatus desired = targetStatus != null ? targetStatus : NotificationStatus.ACTIONED;
+            // Only transition active or read states; do not re-modify already dismissed or actioned states
+            if (n.getStatus() == NotificationStatus.UNREAD
+                    || n.getStatus() == NotificationStatus.READ
+                    || n.getStatus() == NotificationStatus.SNOOZED) {
+                n.setStatus(desired);
+                n.setUpdatedAt(LocalDateTime.now());
+                notificationRepository.save(n);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -440,7 +462,22 @@ public class NotificationService {
     @Transactional
     public NotificationPreferencesDto updatePreferences(Long requestedFirmId, NotificationPreferencesDto dto) {
         Long firmId = resolveAuthoritativeFirmId(requestedFirmId);
-        NotificationPreference pref = getOrCreatePreference(firmId);
+        NotificationPreference pref = preferenceRepository.findByFirmId(firmId).orElseGet(() ->
+                NotificationPreference.builder()
+                        .firmId(firmId)
+                        .enabled(true)
+                        .bellEnabled(true)
+                        .inboxEnabled(true)
+                        .defaultSnooze("1d")
+                        .licensingEnabled(true)
+                        .billingEnabled(true)
+                        .inventoryEnabled(true)
+                        .purchaseEnabled(true)
+                        .plannerEnabled(true)
+                        .hrEnabled(true)
+                        .systemEnabled(true)
+                        .build()
+        );
 
         if (dto != null) {
             pref.setEnabled(dto.isEnabled());
@@ -464,9 +501,10 @@ public class NotificationService {
     }
 
     private NotificationPreference getOrCreatePreference(Long firmId) {
-        return preferenceRepository.findByFirmId(firmId).orElseGet(() -> {
-            NotificationPreference defaultPref = NotificationPreference.builder()
-                    .firmId(firmId)
+        final Long targetFirmId = (firmId != null) ? firmId : Notification.GLOBAL_FIRM_ID;
+        return preferenceRepository.findByFirmId(targetFirmId).orElseGet(() ->
+            NotificationPreference.builder()
+                    .firmId(targetFirmId)
                     .enabled(true)
                     .bellEnabled(true)
                     .inboxEnabled(true)
@@ -479,13 +517,8 @@ public class NotificationService {
                     .hrEnabled(true)
                     .systemEnabled(true)
                     .updatedAt(LocalDateTime.now())
-                    .build();
-            try {
-                return preferenceRepository.save(defaultPref);
-            } catch (Exception e) {
-                return defaultPref;
-            }
-        });
+                    .build()
+        );
     }
 
     private boolean isCategoryAllowedForFirm(Long firmId, NotificationCategory category) {
@@ -497,165 +530,6 @@ public class NotificationService {
         }
     }
 
-    /**
-     * Idempotent migration of legacy inbox_messages table and disk inbox_messages.json.
-     */
-    @Transactional
-    public void migrateLegacyData() {
-        // 1. Migrate database table inbox_messages
-        if (legacyInboxRepository != null) {
-            List<InboxMessage> legacyList = legacyInboxRepository.findAll();
-            for (InboxMessage msg : legacyList) {
-                if (msg.getId() == null) continue;
-                String eventKey;
-                NotificationCategory cat;
-                if (msg.getReminderId() != null) {
-                    eventKey = "planner:reminder:" + msg.getReminderId();
-                    cat = NotificationCategory.PLANNER;
-                } else if (msg.getSubject() != null && msg.getSubject().contains("Inventory Alert")) {
-                    eventKey = "inventory:low-stock:legacy:" + msg.getId();
-                    cat = NotificationCategory.INVENTORY;
-                } else if (msg.getSubject() != null && msg.getSubject().contains("Overdue Invoice")) {
-                    eventKey = "billing:invoice:overdue:legacy:" + msg.getId();
-                    cat = NotificationCategory.BILLING;
-                } else if (msg.getSubject() != null && msg.getSubject().contains("Expected Delivery")) {
-                    eventKey = "purchase:po:delivery:legacy:" + msg.getId();
-                    cat = NotificationCategory.PURCHASE;
-                } else if (msg.getSubject() != null && msg.getSubject().contains("Payroll Reminder")) {
-                    eventKey = "hr:payroll:legacy:" + msg.getId();
-                    cat = NotificationCategory.HR;
-                } else {
-                    eventKey = "legacy:inbox:" + (msg.getFirmId() != null ? msg.getFirmId() : "0") + ":" + msg.getId();
-                    cat = NotificationCategory.SYSTEM;
-                }
-
-                Long firmId = msg.getFirmId() != null ? msg.getFirmId() : Notification.GLOBAL_FIRM_ID;
-                if (!notificationRepository.existsByFirmIdAndEventKey(firmId, eventKey)) {
-                    Notification n = Notification.builder()
-                            .firmId(firmId)
-                            .eventKey(eventKey)
-                            .category(cat)
-                            .priority(NotificationPriority.NORMAL)
-                            .title(msg.getSubject() != null ? msg.getSubject() : "Message")
-                            .body(msg.getBody())
-                            .sender(msg.getSender() != null ? msg.getSender() : "System")
-                            .status(msg.isRead() ? NotificationStatus.READ : NotificationStatus.UNREAD)
-                            .createdAt(msg.getCreatedAt() != null ? msg.getCreatedAt() : LocalDateTime.now())
-                            .updatedAt(LocalDateTime.now())
-                            .build();
-                    notificationRepository.save(n);
-                }
-            }
-        }
-
-        // 2. Migrate disk inbox_messages.json
-        try {
-            LicenseStorage storage = new LicenseStorage(LicensingConfig.getStorageDirectory());
-            List<CustomerMessage> diskMsgs = storage.loadInboxMessages();
-
-            for (CustomerMessage cm : diskMsgs) {
-                if (cm.getMessageId() == null || cm.getMessageId().isBlank()) continue;
-                String eventKey = "management:broadcast:" + cm.getMessageId().trim();
-                if (!notificationRepository.existsByFirmIdAndEventKey(Notification.GLOBAL_FIRM_ID, eventKey)) {
-                    Notification n = Notification.builder()
-                            .firmId(Notification.GLOBAL_FIRM_ID)
-                            .eventKey(eventKey)
-                            .category(NotificationCategory.LICENSING)
-                            .priority(NotificationPriority.HIGH)
-                            .title(cm.getTitle() != null ? cm.getTitle() : "Announcement")
-                            .body(cm.getBody())
-                            .sender("RupeeCRM Management")
-                            .status(cm.isRead() ? NotificationStatus.READ : NotificationStatus.UNREAD)
-                            .createdAt(cm.getCreatedAt() != null ? LocalDateTime.ofInstant(cm.getCreatedAt(), java.time.ZoneId.systemDefault()) : LocalDateTime.now())
-                            .updatedAt(LocalDateTime.now())
-                            .build();
-                    notificationRepository.save(n);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        // 3. Consolidate legacy management broadcast duplicates (machine-id decoupled)
-        try {
-            List<Notification> broadcasts = notificationRepository.findByFirmIdAndEventKeyStartingWith(
-                    Notification.GLOBAL_FIRM_ID, "management:broadcast:");
-            if (broadcasts != null && !broadcasts.isEmpty()) {
-                java.util.Map<String, List<Notification>> grouped = new java.util.LinkedHashMap<>();
-                for (Notification n : broadcasts) {
-                    if (n.getEventKey() == null) continue;
-                    String rawKey = n.getEventKey().trim();
-                    String rest = rawKey.substring("management:broadcast:".length());
-                    String msgId;
-                    if (rest.contains(":")) {
-                        // Legacy format: <machineId>:<messageId>
-                        msgId = rest.substring(rest.lastIndexOf(':') + 1).trim();
-                    } else {
-                        // Canonical format: <messageId>
-                        msgId = rest.trim();
-                    }
-                    if (!msgId.isBlank()) {
-                        grouped.computeIfAbsent(msgId, k -> new java.util.ArrayList<>()).add(n);
-                    }
-                }
-
-                for (java.util.Map.Entry<String, List<Notification>> entry : grouped.entrySet()) {
-                    String msgId = entry.getKey();
-                    List<Notification> list = entry.getValue();
-                    String canonicalKey = "management:broadcast:" + msgId;
-
-                    if (list.size() == 1 && canonicalKey.equals(list.get(0).getEventKey())) {
-                        continue; // Already single canonical row
-                    }
-
-                    // Find if any item already has the canonical key
-                    Notification canonical = null;
-                    for (Notification n : list) {
-                        if (canonicalKey.equals(n.getEventKey())) {
-                            canonical = n;
-                            break;
-                        }
-                    }
-
-                    if (canonical == null) {
-                        canonical = list.get(0);
-                    }
-
-                    // Best status precedence: DISMISSED > ACTIONED > READ > SNOOZED > UNREAD
-                    NotificationStatus bestStatus = canonical.getStatus();
-                    for (Notification n : list) {
-                        if (statusRank(n.getStatus()) > statusRank(bestStatus)) {
-                            bestStatus = n.getStatus();
-                        }
-                    }
-
-                    canonical.setEventKey(canonicalKey);
-                    canonical.setStatus(bestStatus != null ? bestStatus : NotificationStatus.UNREAD);
-                    canonical.setUpdatedAt(LocalDateTime.now());
-                    notificationRepository.save(canonical);
-
-                    for (Notification n : list) {
-                        if (n.getId() != null && !n.getId().equals(canonical.getId())) {
-                            notificationRepository.delete(n);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Legacy broadcast duplicate consolidation warning: {}", e.getMessage());
-        }
-    }
-
-    private int statusRank(NotificationStatus status) {
-        if (status == null) return 0;
-        switch (status) {
-            case DISMISSED: return 5;
-            case ACTIONED: return 4;
-            case READ: return 3;
-            case SNOOZED: return 2;
-            case UNREAD:
-            default: return 1;
-        }
-    }
 
     private Duration parseDuration(String code) {
         if (code == null || code.isBlank()) return Duration.ofDays(1);

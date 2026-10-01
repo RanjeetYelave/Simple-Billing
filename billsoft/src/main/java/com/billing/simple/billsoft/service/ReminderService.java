@@ -12,8 +12,11 @@ import java.util.List;
 @Service
 public class ReminderService {
     private final ReminderRepository reminderRepository;
-
     private final com.billing.simple.billsoft.repo.CustomerRepository customerRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private NotificationService notificationService;
 
     public ReminderService(ReminderRepository reminderRepository,
             com.billing.simple.billsoft.repo.CustomerRepository customerRepository) {
@@ -113,17 +116,21 @@ public class ReminderService {
     @Transactional
     public boolean delete(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            if (!reminderRepository.existsByIdAndFirmId(id, firmId))
-                return false;
-            reminderRepository.deleteByIdAndFirmId(id, firmId);
-            return true;
-        } else {
-            if (!reminderRepository.existsById(id))
-                return false;
-            reminderRepository.deleteById(id);
-            return true;
+        java.util.Optional<Reminder> existing = (firmId != null ? reminderRepository.findByIdAndFirmId(id, firmId) : reminderRepository.findById(id));
+        if (existing.isEmpty()) {
+            return false;
         }
+        Reminder r = existing.get();
+        if (firmId != null) {
+            reminderRepository.deleteByIdAndFirmId(id, firmId);
+        } else {
+            reminderRepository.deleteById(id);
+        }
+        if (notificationService != null && r.getId() != null) {
+            String typeStr = (r.getType() != null && "task".equalsIgnoreCase(r.getType())) ? "task" : "reminder";
+            notificationService.resolveByEventKey(r.getFirmId(), "planner:" + typeStr + ":" + r.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+        }
+        return true;
     }
 
     @Transactional
@@ -135,6 +142,11 @@ public class ReminderService {
         r.setCompletedAt(LocalDateTime.now());
         r.setStatus("DONE");
         r.setProgress(100);
-        return reminderRepository.save(r);
+        Reminder saved = reminderRepository.save(r);
+        if (notificationService != null && saved.getId() != null) {
+            String typeStr = (saved.getType() != null && "task".equalsIgnoreCase(saved.getType())) ? "task" : "reminder";
+            notificationService.resolveByEventKey(saved.getFirmId(), "planner:" + typeStr + ":" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
+        }
+        return saved;
     }
 }

@@ -48,7 +48,7 @@ class NotificationControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private final Long testFirmId = 1L;
+    private final Long testFirmId = 98765L;
 
     @BeforeEach
     void setUp() {

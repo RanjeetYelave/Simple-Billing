@@ -42,7 +42,8 @@ class BackupSavingsGoalsTest {
     @Mock private PromotionRecordRepository promotionRepo;
     @Mock private EmployeeDocumentRepository employeeDocumentRepo;
     @Mock private BusinessLetterRepository businessLetterRepo;
-    @Mock private InboxMessageRepository inboxMessageRepo;
+    @Mock private NotificationRepository notificationRepo;
+    @Mock private NotificationPreferenceRepository notificationPreferenceRepo;
     @Mock private AppConfigRepository appConfigRepo;
     @Mock private InvoicePaymentRepository invoicePaymentRepo;
     @Mock private SalesReturnRepository salesReturnRepo;

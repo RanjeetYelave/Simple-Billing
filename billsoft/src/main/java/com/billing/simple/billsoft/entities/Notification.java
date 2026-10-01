@@ -13,11 +13,11 @@ import java.time.LocalDateTime;
 @Table(
     name = "notifications",
     uniqueConstraints = {
-        @UniqueConstraint(name = "uk_notifications_firm_event_key", columnNames = {"firmId", "eventKey"})
+        @UniqueConstraint(name = "uk_notifications_firm_event_key", columnNames = {"firm_id", "event_key"})
     },
     indexes = {
-        @Index(name = "idx_notifications_firm_status_created", columnList = "firmId, status, createdAt"),
-        @Index(name = "idx_notifications_event_key", columnList = "eventKey")
+        @Index(name = "idx_notifications_firm_status_created", columnList = "firm_id, status, created_at"),
+        @Index(name = "idx_notifications_event_key", columnList = "event_key")
     }
 )
 public class Notification {

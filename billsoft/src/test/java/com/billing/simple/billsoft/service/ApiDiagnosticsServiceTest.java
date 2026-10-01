@@ -39,7 +39,6 @@ class ApiDiagnosticsServiceTest {
     private BusinessLetterService letterService;
     private ExpenseService expenseService;
     private ReminderService reminderService;
-    private InboxMessageService inboxMessageService;
     private DevLogService devLogService;
     private UpdateService updateService;
     private AutoBackupService autoBackupService;
@@ -74,7 +73,6 @@ class ApiDiagnosticsServiceTest {
         letterService = Mockito.mock(BusinessLetterService.class);
         expenseService = Mockito.mock(ExpenseService.class);
         reminderService = Mockito.mock(ReminderService.class);
-        inboxMessageService = Mockito.mock(InboxMessageService.class);
         devLogService = Mockito.mock(DevLogService.class);
         updateService = Mockito.mock(UpdateService.class);
         autoBackupService = Mockito.mock(AutoBackupService.class);
@@ -97,7 +95,7 @@ class ApiDiagnosticsServiceTest {
         apiDiagnosticsService = new ApiDiagnosticsService(
                 invoiceService, customerService, productService, partyService, poService,
                 statementService, firmService, noteService, letterService, expenseService,
-                reminderService, inboxMessageService, devLogService, updateService,
+                reminderService, devLogService, updateService,
                 autoBackupService, systemMetricsService, employeeRepo, appConfigRepo,
                 notificationService, kpiService, goalService, savingService,
                 savedItemService, deduplicationService, announcementService,
@@ -150,7 +148,6 @@ class ApiDiagnosticsServiceTest {
         // Reminders, Messages, Notifications
         when(reminderService.getAll()).thenReturn(Collections.emptyList());
         when(reminderService.getActiveByFirm(any())).thenReturn(Collections.emptyList());
-        when(inboxMessageService.getMessagesByFirm(any())).thenReturn(Collections.emptyList());
         when(notificationService.listNotifications(any(), anyString(), any(), anyInt())).thenReturn(Collections.emptyList());
         when(notificationService.getSummary(any())).thenReturn(NotificationSummaryResponse.builder().unreadCount(0).build());
         when(notificationService.getPreferences(any())).thenReturn(NotificationPreferencesDto.builder().enabled(true).build());

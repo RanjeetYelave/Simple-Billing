@@ -613,29 +613,6 @@ const API = {
     reset: (id) => API._json(`/api/goals/${id}/reset`, { method: 'POST' }),
   },
 
-  // ── Messages ──
-  messages: {
-    list: (firmIdOverride) => {
-      const fid = firmIdOverride || API.firmId;
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._ensureFirmReady().then(() => API._json(API._qs('/api/messages'), { headers }));
-    },
-    create: (data, firmIdOverride) => {
-      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._ensureFirmReady().then(() => API._json('/api/messages', { method: 'POST', headers, body: { ...data, firmId: fid } }));
-    },
-    markRead: (id, firmIdOverride) => {
-      const fid = firmIdOverride || API.firmId;
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._ensureFirmReady().then(() => API._json(`/api/messages/${id}/read`, { method: 'PUT', headers }));
-    },
-    delete: (id, firmIdOverride) => {
-      const fid = firmIdOverride || API.firmId;
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._ensureFirmReady().then(() => API._request(`/api/messages/${id}`, { method: 'DELETE', headers }));
-    },
-  },
   // ── Firm (multi-row) ──
   firm: {
     list: () => API._json('/api/firm'),

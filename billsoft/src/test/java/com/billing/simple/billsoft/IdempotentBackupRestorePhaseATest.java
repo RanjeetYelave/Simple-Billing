@@ -77,7 +77,7 @@ public class IdempotentBackupRestorePhaseATest {
     @Autowired
     private BusinessLetterRepository businessLetterRepo;
     @Autowired
-    private InboxMessageRepository inboxMessageRepo;
+    private NotificationRepository notificationRepo;
     @Autowired
     private SavingRepository savingRepo;
     @Autowired
@@ -960,14 +960,16 @@ public class IdempotentBackupRestorePhaseATest {
                 .build();
         businessLetterRepo.save(bl);
 
-        // 24. Inbox Message
-        InboxMessage msg = InboxMessage.builder()
+        // 24. Notification
+        Notification notif = Notification.builder()
                 .firmId(firmId)
-                .subject("Omni Message")
+                .category(NotificationCategory.SYSTEM)
+                .eventKey("omni:msg:1")
+                .title("Omni Message")
                 .body("Hello Omni")
                 .sender("System")
                 .build();
-        inboxMessageRepo.save(msg);
+        notificationRepo.save(notif);
 
         // 25. App Config
         AppConfig ac = new AppConfig();
@@ -1008,6 +1010,6 @@ public class IdempotentBackupRestorePhaseATest {
         assertEquals(1, promotionRepo.count(), "Promotion count = 1");
         assertEquals(1, employeeDocumentRepo.count(), "Document count = 1");
         assertEquals(1, businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId).size(), "BusinessLetter count = 1");
-        assertEquals(1, inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId).size(), "InboxMessage count = 1");
+        assertEquals(1, notificationRepo.findByFirmId(firmId).size(), "Notification count = 1");
     }
 }

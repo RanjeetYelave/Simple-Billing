@@ -61,8 +61,7 @@ class BackupServiceTest {
     private EmployeeDocumentRepository employeeDocumentRepo;
     @Mock
     private BusinessLetterRepository businessLetterRepo;
-    @Mock
-    private InboxMessageRepository inboxMessageRepo;
+
     @Mock
     private AppConfigRepository appConfigRepo;
     @Mock
@@ -79,6 +78,10 @@ class BackupServiceTest {
     private GoalLogRepository goalLogRepo;
     @Mock
     private BackupEntityMappingRepository backupEntityMappingRepo;
+    @Mock
+    private NotificationRepository notificationRepo;
+    @Mock
+    private NotificationPreferenceRepository notificationPreferenceRepo;
 
     @InjectMocks
     private BackupService service;
@@ -104,8 +107,7 @@ class BackupServiceTest {
         when(partyPaymentRepo.findByFirmIdOrderByPaymentDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
         when(purchaseOrderRepo.findByFirmIdOrderByPoDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
         when(employeeRepo.findByFirmId(firmId)).thenReturn(new ArrayList<>());
-        when(businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId)).thenReturn(new ArrayList<>());
-        when(inboxMessageRepo.findByFirmIdOrderByCreatedAtDesc(firmId)).thenReturn(new ArrayList<>());
+        when(notificationRepo.findByFirmId(firmId)).thenReturn(new ArrayList<>());
 
         BackupDTO result = service.exportData(firmId);
 
@@ -205,5 +207,32 @@ class BackupServiceTest {
         verify(purchaseOrderRepo, times(1)).deleteAllInBatch();
         verify(stockMovementRepo, times(1)).deleteAllInBatch();
         verify(businessLetterRepo, times(1)).deleteAllInBatch();
+        verify(notificationRepo, times(1)).deleteAllInBatch();
+        verify(notificationPreferenceRepo, times(1)).deleteAllInBatch();
+    }
+
+    @Test
+    void testExportAndImportNotifications() {
+        Long firmId = 1L;
+        Notification notif = Notification.builder()
+                .firmId(firmId)
+                .eventKey("billing:invoice:overdue:10")
+                .category(NotificationCategory.BILLING)
+                .title("Overdue Invoice")
+                .body("Invoice is overdue")
+                .status(NotificationStatus.UNREAD)
+                .build();
+        notif.setId(100L);
+
+        when(notificationRepo.findByFirmId(firmId)).thenReturn(Collections.singletonList(notif));
+        when(notificationRepo.save(any(Notification.class))).thenAnswer(i -> i.getArguments()[0]);
+
+        BackupDTO exported = service.exportData(firmId);
+        assertNotNull(exported.getNotifications());
+        assertEquals(1, exported.getNotifications().size());
+        assertEquals("billing:invoice:overdue:10", exported.getNotifications().get(0).getEventKey());
+
+        service.importData(exported, firmId, true);
+        verify(notificationRepo, atLeastOnce()).save(any(Notification.class));
     }
 }

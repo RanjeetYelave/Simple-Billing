@@ -2,9 +2,11 @@ package com.billing.simple.billsoft.dto;
 
 import com.billing.simple.billsoft.entities.*;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class BackupDTO {
     private Map<String, Object> metadata;
     private FirmDetails firmDetails;
@@ -27,7 +29,8 @@ public class BackupDTO {
     private List<EmployeeAdvance> advances;
     private List<PromotionRecord> promotions;
     private List<BusinessLetter> businessLetters;
-    private List<InboxMessage> inboxMessages;
+    private List<Notification> notifications;
+    private List<NotificationPreference> notificationPreferences;
     private List<InvoicePayment> invoicePayments;
     private List<AppConfig> appConfigs;
     private List<EmployeeDocument> employeeDocuments;
@@ -272,11 +275,19 @@ public class BackupDTO {
         this.businessLetters = businessLetters;
     }
 
-    public List<InboxMessage> getInboxMessages() {
-        return inboxMessages;
+    public List<Notification> getNotifications() {
+        return notifications;
     }
 
-    public void setInboxMessages(List<InboxMessage> inboxMessages) {
-        this.inboxMessages = inboxMessages;
+    public void setNotifications(List<Notification> notifications) {
+        this.notifications = notifications;
+    }
+
+    public List<NotificationPreference> getNotificationPreferences() {
+        return notificationPreferences;
+    }
+
+    public void setNotificationPreferences(List<NotificationPreference> notificationPreferences) {
+        this.notificationPreferences = notificationPreferences;
     }
 }

@@ -42,7 +42,6 @@ public class ApiDiagnosticsService {
     private final BusinessLetterService letterService;
     private final ExpenseService expenseService;
     private final ReminderService reminderService;
-    private final InboxMessageService inboxMessageService;
     private final DevLogService devLogService;
     private final UpdateService updateService;
     private final AutoBackupService autoBackupService;
@@ -74,7 +73,6 @@ public class ApiDiagnosticsService {
             BusinessLetterService letterService,
             ExpenseService expenseService,
             ReminderService reminderService,
-            InboxMessageService inboxMessageService,
             DevLogService devLogService,
             UpdateService updateService,
             AutoBackupService autoBackupService,
@@ -103,7 +101,6 @@ public class ApiDiagnosticsService {
         this.letterService = letterService;
         this.expenseService = expenseService;
         this.reminderService = reminderService;
-        this.inboxMessageService = inboxMessageService;
         this.devLogService = devLogService;
         this.updateService = updateService;
         this.autoBackupService = autoBackupService;
@@ -304,12 +301,7 @@ public class ApiDiagnosticsService {
                 return "Returned " + (list != null ? list.size() : 0) + " active reminders";
             });
 
-            // 10. Inbox & Notifications
-            testEndpoint(results, "Inbox & Notifications", "List Firm Messages", "GET", "/api/messages?firmId=" + fId, () -> {
-                var list = inboxMessageService.getMessagesByFirm(fId);
-                return "Returned " + (list != null ? list.size() : 0) + " messages";
-            });
-
+            // 10. Notifications
             testEndpoint(results, "Inbox & Notifications", "List Active Notifications", "GET", "/api/notifications?firmId=" + fId, () -> {
                 if (notificationService == null) return "Notification service standby";
                 var list = notificationService.listNotifications(fId, "ACTIVE", null, 10);

@@ -256,6 +256,7 @@ public class Firm175ComprehensiveIdempotencyValidationTest {
                 .customerId(c1.getId())
                 .title("Quarterly Service Callback")
                 .dueDate(LocalDateTime.of(2026, 9, 30, 10, 0))
+                .inboxNotified(true)
                 .build();
         reminderRepo.save(rem);
 

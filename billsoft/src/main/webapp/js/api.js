@@ -959,6 +959,8 @@ const API = {
 
   // ─── Canonical Notifications (Bell + Inbox + Preferences) ───
   notifications: {
+    createOrUpdate: (request) => API._json('/api/notifications', { method: 'POST', body: request }),
+    create: (request) => API._json('/api/notifications', { method: 'POST', body: request }),
     summary: (firmId) => API._json(API._qs('/api/notifications/summary', { firmId })),
     list: (params = {}) => API._json(API._qs('/api/notifications', params)),
     get: (id) => API._json(`/api/notifications/${id}`),

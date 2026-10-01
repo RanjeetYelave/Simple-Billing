@@ -26,6 +26,9 @@ public class UpdateService {
     @Value("${app.version:v1.0.0}")
     private String defaultVersion;
 
+    @Value("${app.update.check.enabled:true}")
+    private boolean updateCheckEnabled = true;
+
     private final RestTemplate restTemplate;
 
     public UpdateService(RestTemplate restTemplate) {
@@ -210,6 +213,11 @@ public class UpdateService {
         response.put("automaticInstallSupported", true);
         String currentVersion = getCurrentVersion();
         response.put("currentVersion", currentVersion);
+
+        if (!updateCheckEnabled || "true".equalsIgnoreCase(System.getenv("DISABLE_UPDATE_CHECK")) || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
+            response.put("updateAvailable", false);
+            return response;
+        }
 
         try {
             HttpHeaders headers = new HttpHeaders();

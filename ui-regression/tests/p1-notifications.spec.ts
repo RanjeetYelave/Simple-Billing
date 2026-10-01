@@ -41,19 +41,27 @@ test.describe('P1: Notifications & Inbox Action Dispatch', () => {
     await expect(bodyInput).toBeVisible();
     await bodyInput.fill(`Detailed notification body content ${testRunId}`);
 
-    // Send Message
+    // Send Message and wait for creation response
+    const sendResponsePromise = page.waitForResponse(response =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/api/notifications') &&
+      response.ok()
+    );
+
     const sendBtn = modal.locator('button:has-text("Send")').first();
     await expect(sendBtn).toBeVisible();
     await sendBtn.click();
-    await page.waitForTimeout(600);
+    await sendResponsePromise;
+
+    // Modal closes upon submit
+    await expect(modal).not.toBeVisible({ timeout: 5000 });
 
     // Search for our created notification
     await searchInput.fill(notifSubject);
-    await page.waitForTimeout(400);
 
-    // Verify notification item is displayed
-    const notifItem = page.locator(`:visible:text("${notifSubject}")`).first();
-    await expect(notifItem).toBeVisible({ timeout: 10000 });
+    // Verify notification item is displayed using exact text matching
+    const notifItem = page.getByText(notifSubject, { exact: true }).first();
+    await expect(notifItem).toBeVisible({ timeout: 15000 });
 
     await errorGate.assertZeroErrors(page, 'Inbox Notification List & Search');
   });

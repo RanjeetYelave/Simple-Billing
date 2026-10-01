@@ -2,6 +2,7 @@ package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.dto.NotificationActionRequest;
 import com.billing.simple.billsoft.dto.NotificationPreferencesDto;
+import com.billing.simple.billsoft.dto.NotificationRequest;
 import com.billing.simple.billsoft.dto.NotificationSummaryResponse;
 import com.billing.simple.billsoft.entities.Notification;
 import com.billing.simple.billsoft.service.NotificationService;
@@ -19,6 +20,11 @@ public class NotificationController {
 
     public NotificationController(NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    @PostMapping
+    public Notification createOrUpdate(@RequestBody NotificationRequest request) {
+        return notificationService.createOrUpdate(request);
     }
 
     @GetMapping

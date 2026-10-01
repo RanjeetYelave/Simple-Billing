@@ -88,6 +88,7 @@ jobs:
         working-directory: ./ui-regression
         env:
           BASE_URL: http://127.0.0.1:28080
+          DISABLE_UPDATE_CHECK: "true"
         run: |
           echo "Starting RupeeCRM backend application on port 28080..."
           java -jar ../billsoft/target/billsoft-0.0.1-SNAPSHOT.war &

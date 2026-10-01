@@ -127,31 +127,50 @@ test.describe('PHASE 5: Business Intelligence & Aggregations Regression Suite', 
     await page.waitForLoadState('networkidle');
 
     const results = await page.evaluate(() => {
-      const p = (window as any).OmnibarPipeline;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      const curMonth = todayStr.slice(0, 7);
-      const nowD = new Date();
-      const lastMonthD = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1);
-      const lastMonthStr = `${lastMonthD.getFullYear()}-${String(lastMonthD.getMonth() + 1).padStart(2, '0')}`;
+      // Deterministically freeze Date to a mid-month reference point (2026-05-15)
+      const fixedDate = new Date('2026-05-15T12:00:00.000Z');
+      const RealDate = Date;
+      class MockDate extends RealDate {
+        constructor(...args: any[]) {
+          if (args.length === 0) {
+            super(fixedDate.getTime());
+          } else {
+            super(...(args as [any]));
+          }
+        }
+        static now() {
+          return fixedDate.getTime();
+        }
+      }
+      (window as any).Date = MockDate;
 
-      const ctx = {
-        invoices: [
-          { id: 101, invoiceDate: `${curMonth}-05`, grandTotal: 50000 },
-          { id: 102, invoiceDate: `${curMonth}-12`, grandTotal: 70000 },
-          { id: 103, invoiceDate: `${lastMonthStr}-10`, grandTotal: 80000 },
-          { id: 104, invoiceDate: todayStr, grandTotal: 15000 },
-          { id: 105, invoiceDate: yesterdayStr, grandTotal: 10000 }
-        ]
-      };
+      try {
+        const p = (window as any).OmnibarPipeline;
+        const todayStr = '2026-05-15';
+        const yesterdayStr = '2026-05-14';
+        const curMonth = '2026-05';
+        const lastMonthStr = '2026-04';
 
-      const momComp = p.processQuery('sales this month vs last month', ctx);
-      const dodComp = p.processQuery('sales today vs yesterday', ctx);
+        const ctx = {
+          invoices: [
+            { id: 101, invoiceDate: `${curMonth}-05`, grandTotal: 50000 },
+            { id: 102, invoiceDate: `${curMonth}-12`, grandTotal: 70000 },
+            { id: 103, invoiceDate: `${lastMonthStr}-10`, grandTotal: 80000 },
+            { id: 104, invoiceDate: todayStr, grandTotal: 15000 },
+            { id: 105, invoiceDate: yesterdayStr, grandTotal: 10000 }
+          ]
+        };
 
-      return {
-        momComp,
-        dodComp
-      };
+        const momComp = p.processQuery('sales this month vs last month', ctx);
+        const dodComp = p.processQuery('sales today vs yesterday', ctx);
+
+        return {
+          momComp,
+          dodComp
+        };
+      } finally {
+        (window as any).Date = RealDate;
+      }
     });
 
     // Month-over-Month Comparison: This month = 145,000 (50k+70k+15k+10k), Last month = 80,000 -> Delta = +65,000 (+81.25%)

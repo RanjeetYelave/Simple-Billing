@@ -254,13 +254,25 @@ try {
     # --------------------------------------------------------------------------
     # 6. Stop Existing Process Cleanly (Update Safe)
     # --------------------------------------------------------------------------
-    $runningProcesses = Get-Process -Name "RupeeCRM", "Billsoft" -ErrorAction SilentlyContinue
+    $runningProcesses = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.ProcessName -in @("RupeeCRM", "Billsoft") -or (
+            $_.ProcessName -in @("javaw", "java") -and (
+                try {
+                    $_.Path -and (
+                        $_.Path.Contains("RupeeCRM") -or
+                        $_.Path.Contains("Billsoft") -or
+                        $_.Path.Contains("SimpleBilling")
+                    )
+                } catch { $false }
+            )
+        )
+    }
     if ($runningProcesses) {
         Write-Step "Stopping running RupeeCRM processes before updating..."
         foreach ($proc in $runningProcesses) {
             try {
                 $proc.CloseMainWindow() | Out-Null
-                Start-Sleep -Milliseconds 500
+                Start-Sleep -Milliseconds 300
                 if (-not $proc.HasExited) {
                     $proc.Kill()
                     $proc.WaitForExit(3000)

@@ -2,7 +2,7 @@
  * snakePersistence.js
  * Lightweight two-tier persistence (localStorage + AppConfig DB) and crash recovery engine
  * for Snake (Take a Break -> Classic).
- * Persists PERMANENT PROGRESSION + SINGLE ACTIVE CURRENT BOARD rather than historical boards.
+ * Persists strictly logical progression without physical canvas or viewport dimensions.
  */
 
 (function (root, factory) {
@@ -46,24 +46,19 @@
 
   /**
    * Validate that a board object is structurally sound and matches the expected level.
-   * @param {Object} board
-   * @param {number} expectedLevel
-   * @returns {boolean} True if board is valid
    */
   function validateBoard(board, expectedLevel) {
     if (!board || typeof board !== 'object') return false;
     if (typeof board.level !== 'number' || board.level !== expectedLevel) return false;
-    if (typeof board.width !== 'number' || board.width < 10 || board.width > 60) return false;
-    if (typeof board.height !== 'number' || board.height < 8 || board.height > 36) return false;
     if (!Array.isArray(board.snake) || board.snake.length < 1) return false;
     if (typeof board.direction !== 'string') return false;
     if (typeof board.targetFruits !== 'number' || board.targetFruits < 1) return false;
 
-    // Check snake coordinates inside bounds
+    // Snake coordinates check
     for (let i = 0; i < board.snake.length; i++) {
       const seg = board.snake[i];
       if (!Array.isArray(seg) || seg.length < 2) return false;
-      if (seg[0] < 0 || seg[0] >= board.width || seg[1] < 0 || seg[1] >= board.height) return false;
+      if (typeof seg[0] !== 'number' || typeof seg[1] !== 'number') return false;
     }
 
     return true;
@@ -71,8 +66,6 @@
 
   /**
    * Validate state integrity and enforce invariants.
-   * @param {Object} state
-   * @returns {boolean} True if valid
    */
   function validateState(state) {
     if (!state || typeof state !== 'object') return false;
@@ -84,6 +77,7 @@
 
   /**
    * Sanitize and fill defaults for any missing optional fields while protecting lifetime statistics.
+   * Strips any viewport/pixel dimensions to maintain pure logical persistence.
    */
   function sanitizeState(state) {
     if (!state) return createDefaultState();
@@ -100,8 +94,20 @@
       sanitizedBoard = {
         level: currentLevel,
         seed: cb.seed != null ? cb.seed : 0,
-        width: cb.width,
-        height: cb.height,
+        bounds: cb.bounds ? {
+          minX: Math.floor(cb.bounds.minX || 0),
+          minY: Math.floor(cb.bounds.minY || 0),
+          maxX: Math.floor(cb.bounds.maxX || 15),
+          maxY: Math.floor(cb.bounds.maxY || 11),
+          spanX: Math.max(1, Math.floor(cb.bounds.spanX || 16)),
+          spanY: Math.max(1, Math.floor(cb.bounds.spanY || 12)),
+          totalCols: Math.floor(cb.bounds.totalCols || cb.totalCols || 24),
+          totalRows: Math.floor(cb.bounds.totalRows || cb.totalRows || 16)
+        } : null,
+        width: Math.max(1, Math.floor(cb.width || 16)),
+        height: Math.max(1, Math.floor(cb.height || 12)),
+        totalCols: Math.floor(cb.totalCols || 24),
+        totalRows: Math.floor(cb.totalRows || 16),
         targetFruits: Math.max(1, Math.floor(cb.targetFruits || 5)),
         baseTickMs: Math.max(115, Math.floor(cb.baseTickMs || 150)),
         layoutType: cb.layoutType || 'CLEAN',
@@ -109,7 +115,7 @@
         isOasis: !!cb.isOasis,
         snake: cb.snake.map(seg => [Math.floor(seg[0]), Math.floor(seg[1])]),
         direction: cb.direction || 'RIGHT',
-        obstacles: Array.isArray(cb.obstacles) ? cb.obstacles.map(o => Math.floor(o)) : [],
+        obstacles: Array.isArray(cb.obstacles) ? cb.obstacles.map(o => typeof o === 'string' ? o : (typeof o === 'number' ? Math.floor(o) : (o && o.x !== undefined ? `${o.x},${o.y}` : o))) : [],
         gateways: Array.isArray(cb.gateways) ? cb.gateways.map(g => ({ x: Math.floor(g.x), y: Math.floor(g.y), color: g.color || '#00e5ff' })) : [],
         fruitsEatenInLevel: Math.max(0, Math.floor(cb.fruitsEatenInLevel || 0)),
         elapsedSeconds: Math.max(0, Math.floor(cb.elapsedSeconds || 0)),
@@ -299,6 +305,51 @@
     return resolvedState;
   }
 
+  /**
+   * Authoritative, isolated reset of Snake Classic game progress.
+   * Resets Tier 1 (localStorage) and Tier 2 (AppConfig backend) to canonical Level 1 clean state.
+   * Clears acknowledged location unlocks and dispatches 'billsoft:snake-progress-reset'.
+   */
+  async function resetGameProgress() {
+    try {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      pendingState = null;
+
+      const cleanState = createDefaultState();
+      cleanState.stateRevision = 1;
+      cleanState.updatedAt = Date.now();
+
+      // 1. Tier 1: LocalStorage
+      saveToLocalStorage(cleanState);
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.removeItem('TAKE_A_BREAK_SHOWN_LOCATION_UNLOCKS');
+        } catch (e) {}
+      }
+
+      // 2. Tier 2: Backend AppConfig
+      await flushToBackend(cleanState);
+
+      // 3. Dispatch system event for real-time reactivity
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('billsoft:snake-progress-reset', {
+          detail: { state: cleanState }
+        }));
+        window.dispatchEvent(new CustomEvent('billsoft:game-progression', {
+          detail: { gameType: 'classic', level: 1, totalStars: 0, completedCount: 0 }
+        }));
+      }
+
+      return { success: true, state: cleanState };
+    } catch (err) {
+      console.error('[SnakePersistence] Reset game progress failed:', err);
+      return { success: false, error: err };
+    }
+  }
+
   return {
     STORAGE_KEY,
     createDefaultState,
@@ -312,6 +363,7 @@
     saveWorkingState,
     saveProgressionImmediate,
     flushPending,
-    loadAndRecoverState
+    loadAndRecoverState,
+    resetGameProgress
   };
 }));

@@ -230,41 +230,103 @@
   }
 
   /**
-   * 🗺️ 4-STAGE LOCATION TRAVEL TRANSITION OVERLAY
+   * 🗺️ ENHANCED 7-STAGE LOCATION TRAVEL TRANSITION OVERLAY
+   * Sequence:
+   * 1. CURRENT LOCATION / DEPARTURE (Establish current destination & pause gameplay)
+   * 2. DEPARTURE MOTION (Visually communicate departure into Sahyadri mists)
+   * 3. TRAVEL JOURNEY (Parallax Sahyadri silhouettes, compass, journey route progress)
+   * 4. ARRIVAL APPROACH (Progressive theme introduction & landmark/food/obstacle reveal)
+   * 5. DESTINATION REVEAL (Archetype illustration, destination title & district)
+   * 6. CELEBRATION (Celebratory fanfare, level range, cultural note)
+   * 7. INTERACTIVE HANDOVER (Single-fire CTA, keyboard trap, safety cleanup)
    */
   function LocationTravelTransition({ fromLoc, toLoc, worldData, onComplete, onDismiss }) {
-    // Stages: 'DEPARTURE' (0-700ms) -> 'TRAVEL' (700-2100ms) -> 'REVEAL' (2100-3300ms) -> 'ARRIVAL' (3300ms+)
-    const [stage, setStage] = useState('DEPARTURE');
-    const toColor = toLoc.themeColor || '#38bdf8';
+    const isReducedMotion = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const [stage, setStage] = useState(isReducedMotion ? 'ARRIVAL' : 'DEPARTURE');
+    const toColor = toLoc ? (toLoc.themeColor || '#38bdf8') : '#38bdf8';
     const fromColor = fromLoc ? (fromLoc.themeColor || '#64748b') : '#64748b';
+    const hasCompletedRef = useRef(false);
 
     useEffect(() => {
-      const t1 = setTimeout(() => setStage('TRAVEL'), 750);
-      const t2 = setTimeout(() => setStage('REVEAL'), 2100);
-      const t3 = setTimeout(() => setStage('ARRIVAL'), 3300);
+      if (isReducedMotion) return;
+
+      let t1 = null;
+      let t2 = null;
+      let t3 = null;
+      let t4 = null;
+      let t5 = null;
+
+      const scheduleTimers = () => {
+        t1 = setTimeout(() => setStage('DEPARTURE_MOTION'), 650);
+        t2 = setTimeout(() => setStage('TRAVEL'), 1300);
+        t3 = setTimeout(() => setStage('ARRIVAL_APPROACH'), 2400);
+        t4 = setTimeout(() => setStage('REVEAL'), 3300);
+        t5 = setTimeout(() => setStage('ARRIVAL'), 4300);
+      };
+
+      const clearAll = () => {
+        if (t1) clearTimeout(t1);
+        if (t2) clearTimeout(t2);
+        if (t3) clearTimeout(t3);
+        if (t4) clearTimeout(t4);
+        if (t5) clearTimeout(t5);
+      };
+
+      scheduleTimers();
+
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          clearAll();
+        } else {
+          // If returning from background, advance directly to final arrival card for stability
+          setStage('ARRIVAL');
+        }
+      };
+
+      const handleKeyTrap = (e) => {
+        if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
+          e.preventDefault();
+          handleComplete();
+        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('keydown', handleKeyTrap, { capture: true });
 
       return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
+        clearAll();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('keydown', handleKeyTrap, { capture: true });
       };
-    }, []);
+    }, [isReducedMotion]);
 
     const archetypeSvg = useMemo(() => {
-      return getArchetypeRevealSvg(toLoc.archetypeId, toColor);
-    }, [toLoc.archetypeId, toColor]);
+      return getArchetypeRevealSvg(toLoc ? toLoc.archetypeId : 'ARCH_HILL_FORT', toColor);
+    }, [toLoc, toColor]);
 
-    const handleSkip = (e) => {
+    const handleComplete = (e) => {
       if (e) e.stopPropagation();
+      if (hasCompletedRef.current) return;
+      hasCompletedRef.current = true;
       if (typeof onDismiss === 'function') onDismiss();
       else if (typeof onComplete === 'function') onComplete();
     };
+
+    const handleSkip = (e) => {
+      handleComplete(e);
+    };
+
+    const fromRegion = fromLoc ? (fromLoc.region ? fromLoc.region.replace(/_/g, ' ') : 'MAHARASHTRA') : 'MAHARASHTRA';
+    const toRegion = toLoc ? (toLoc.region ? toLoc.region.replace(/_/g, ' ') : 'MAHARASHTRA') : 'MAHARASHTRA';
 
     return renderModalPortal(React.createElement('div', {
       className: 'progression-travel-overlay',
       role: 'dialog',
       'aria-modal': 'true',
-      'aria-label': `Travel transition to ${toLoc.name}`,
+      'aria-label': `Travel transition to ${toLoc ? toLoc.name : 'Next Destination'}`,
       style: {
         position: 'fixed',
         inset: 0,
@@ -307,7 +369,7 @@
           }
         },
           React.createElement('span', { style: { color: toColor } }, '🗺️'),
-          'Maharashtra Journey · Expedition'
+          'Maharashtra Journey · Expedition Route'
         ),
         React.createElement('button', {
           type: 'button',
@@ -320,12 +382,13 @@
             padding: '4px 14px',
             fontSize: '0.8rem',
             fontWeight: 700,
-            background: 'rgba(255,255,255,0.08)'
+            background: 'rgba(255,255,255,0.08)',
+            cursor: 'pointer'
           }
         }, 'Skip Transition ⏭')
       ),
 
-      // STAGE A: DEPARTURE
+      // STAGE 1: CURRENT LOCATION / DEPARTURE (Clearly establish current location)
       stage === 'DEPARTURE' && React.createElement('div', {
         className: 'travel-stage-departure',
         style: {
@@ -334,45 +397,102 @@
           flexDirection: 'column',
           alignItems: 'center',
           gap: 12,
-          animation: 'departureFade 0.75s ease-out forwards'
+          animation: 'departureFadeIn 0.65s ease-out forwards',
+          zIndex: 5
+        }
+      },
+        React.createElement('div', {
+          style: {
+            fontSize: '3.6rem',
+            filter: `drop-shadow(0 0 18px ${fromColor})`,
+            animation: 'departureIconPulse 0.65s ease-in-out'
+          }
+        }, fromLoc ? (fromLoc.icon || '🚩') : '🏰'),
+        React.createElement('div', {
+          style: {
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: '#fbbf24'
+          }
+        }, `✦ ${fromRegion} · ${fromLoc && fromLoc.district ? fromLoc.district.toUpperCase() : ''} ✦`),
+        React.createElement('h1', {
+          style: {
+            fontSize: '2.4rem',
+            fontWeight: 900,
+            margin: 0,
+            letterSpacing: '-0.02em',
+            color: '#f8fafc',
+            textShadow: '0 2px 12px rgba(0,0,0,0.6)'
+          }
+        }, `Departing ${fromLoc ? fromLoc.name : 'Current Territory'}`),
+        React.createElement('div', {
+          style: {
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: fromColor
+          }
+        }, fromLoc ? fromLoc.subtitle : 'Expedition Completed'),
+        React.createElement('div', {
+          style: {
+            fontSize: '0.92rem',
+            color: 'rgba(255,255,255,0.75)',
+            maxWidth: 440,
+            lineHeight: 1.4,
+            marginTop: 4
+          }
+        }, 'Packing supplies and concluding this chapter across Maharashtra.')
+      ),
+
+      // STAGE 2: DEPARTURE MOTION (Leaving current location & entering mountain passes)
+      stage === 'DEPARTURE_MOTION' && React.createElement('div', {
+        className: 'travel-stage-departure-motion',
+        style: {
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 14,
+          animation: 'departureSlideAway 0.65s ease-in forwards',
+          zIndex: 5
         }
       },
         React.createElement('div', {
           style: {
             fontSize: '3.2rem',
-            filter: `drop-shadow(0 0 16px ${fromColor})`,
-            animation: 'departureIconPulse 0.7s ease-in-out'
+            opacity: 0.8,
+            transform: 'scale(0.9) translateY(-10px)',
+            filter: `drop-shadow(0 0 12px ${fromColor})`
           }
-        }, fromLoc ? (fromLoc.icon || '🚩') : '🏰'),
+        }, '🐎'),
         React.createElement('div', {
           style: {
             fontSize: '0.85rem',
             fontWeight: 800,
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.6)'
+            color: 'rgba(255,255,255,0.7)'
           }
-        }, `✓ ${fromLoc ? fromLoc.name : 'Current Location'} Completed`),
-        React.createElement('h1', {
+        }, `Leaving ${fromLoc ? fromLoc.name : 'the Citadel'} Behind`),
+        React.createElement('h2', {
           style: {
-            fontSize: '2.2rem',
+            fontSize: '2rem',
             fontWeight: 900,
             margin: 0,
-            letterSpacing: '-0.02em',
-            color: '#f8fafc',
-            textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+            color: '#f8fafc'
           }
-        }, `Departing ${fromLoc ? fromLoc.name : 'the Valley'}...`),
+        }, 'Entering the Sahyadri Mountain Passes...'),
         React.createElement('div', {
           style: {
-            fontSize: '0.95rem',
-            color: 'rgba(255,255,255,0.7)',
+            fontSize: '0.9rem',
+            color: 'rgba(255,255,255,0.6)',
             maxWidth: 420
           }
-        }, 'Packing expedition supplies and advancing through the mountain passes.')
+        }, 'Advancing across rugged historical frontiers towards uncharted lands.')
       ),
 
-      // STAGE B: TRAVEL SEQUENCE (Parallax Sahyadri Silhouettes & Moving Motifs)
+      // STAGE 3: TRAVEL JOURNEY (Moving Visuals across Sahyadri Parallax Peaks)
       stage === 'TRAVEL' && React.createElement('div', {
         className: 'travel-stage-motion',
         style: {
@@ -419,7 +539,7 @@
         }),
         // Drifting Maharashtra Particle Stars
         React.createElement('div', { className: 'travel-star-trails' }),
-        // Center Travel Compass & Header
+        // Center Travel Compass & Route Progression
         React.createElement('div', {
           style: {
             zIndex: 5,
@@ -433,16 +553,16 @@
         },
           React.createElement('div', {
             style: {
-              width: 64,
-              height: 64,
+              width: 68,
+              height: 68,
               borderRadius: '50%',
-              background: `radial-gradient(circle, ${toColor} 0%, rgba(15,23,42,0.6) 80%)`,
+              background: `radial-gradient(circle, ${toColor} 0%, rgba(15,23,42,0.8) 80%)`,
               border: `2px solid ${toColor}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.8rem',
-              boxShadow: `0 0 30px ${toColor}`,
+              fontSize: '2rem',
+              boxShadow: `0 0 32px ${toColor}`,
               animation: 'compassSpin 4s linear infinite'
             }
           }, '🧭'),
@@ -454,32 +574,90 @@
               textTransform: 'uppercase',
               color: toColor
             }
-          }, 'Traveling Across the Sahyadris'),
+          }, 'Traversing Maharashtra Expedition Route'),
           React.createElement('h2', {
             style: {
-              fontSize: '2rem',
+              fontSize: '2.1rem',
               fontWeight: 900,
               margin: 0,
               color: '#ffffff',
-              letterSpacing: '0.04em'
+              letterSpacing: '0.03em'
             }
-          }, 'Navigating Historic Maharashtra Passes...'),
+          }, 'Navigating Historic Sahyadri Ghats...'),
           React.createElement('div', {
             style: {
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              marginTop: 4
+              gap: 14,
+              marginTop: 6,
+              background: 'rgba(255,255,255,0.08)',
+              padding: '6px 20px',
+              borderRadius: 30,
+              border: '1px solid rgba(255,255,255,0.15)'
             }
           },
-            React.createElement('span', { style: { opacity: 0.6, fontSize: '0.9rem' } }, fromLoc ? fromLoc.name : 'Start'),
-            React.createElement('span', { style: { color: toColor, fontWeight: 900 } }, '━━━━━━━━ ➔'),
-            React.createElement('span', { style: { color: '#fbbf24', fontWeight: 900 } }, '???')
+            React.createElement('span', { style: { opacity: 0.8, fontSize: '0.92rem', fontWeight: 700 } }, fromLoc ? fromLoc.name : 'Start'),
+            React.createElement('span', { style: { color: toColor, fontWeight: 900 } }, '━━━━━━ ➔'),
+            React.createElement('span', { style: { color: '#fbbf24', fontWeight: 900, fontSize: '0.92rem' } }, toLoc ? toLoc.name : '???')
           )
         )
       ),
 
-      // STAGE C: DESTINATION REVEAL (Mysterious ??? transforms to Archetype Reveal)
+      // STAGE 4: ARRIVAL APPROACH (Progressive Theme Introduction & Visual Identity Reveal)
+      stage === 'ARRIVAL_APPROACH' && React.createElement('div', {
+        className: 'travel-stage-approach',
+        style: {
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          animation: 'revealScaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+          zIndex: 5
+        }
+      },
+        React.createElement('div', {
+          style: {
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: '#fbbf24'
+          }
+        }, '✨ Approaching New Expedition Sector ✨'),
+        React.createElement('div', {
+          style: {
+            fontSize: '3.8rem',
+            filter: `drop-shadow(0 0 25px ${toColor})`,
+            animation: 'arrivalIconBounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }
+        }, toLoc ? (toLoc.icon || '🚩') : '🚩'),
+        React.createElement('h2', {
+          style: {
+            fontSize: '2rem',
+            fontWeight: 900,
+            margin: 0,
+            color: '#ffffff',
+            textShadow: `0 0 20px ${toColor}`
+          }
+        }, `Approaching ${toLoc ? toLoc.name : 'Next Destination'}`),
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: '0.88rem',
+            fontWeight: 700,
+            color: toColor
+          }
+        },
+          React.createElement('span', null, `Region: ${toRegion}`),
+          React.createElement('span', null, '·'),
+          React.createElement('span', null, `District: ${toLoc && toLoc.district ? toLoc.district : ''}`)
+        )
+      ),
+
+      // STAGE 5: DESTINATION REVEAL (Archetype Vector Graphic & Theme Unveiled)
       stage === 'REVEAL' && React.createElement('div', {
         className: 'travel-stage-reveal',
         style: {
@@ -494,13 +672,13 @@
       },
         React.createElement('div', {
           style: {
-            fontSize: '0.8rem',
+            fontSize: '0.82rem',
             fontWeight: 800,
             letterSpacing: '0.16em',
             textTransform: 'uppercase',
             color: '#fbbf24'
           }
-        }, '✨ Approaching Undiscovered Territory ✨'),
+        }, '✦ DESTINATION UNLOCKED ✦'),
         React.createElement('div', {
           className: 'reveal-graphic-frame',
           style: {
@@ -522,14 +700,14 @@
           style: {
             fontSize: '1.8rem',
             fontWeight: 900,
-            letterSpacing: '0.1em',
+            letterSpacing: '0.08em',
             color: '#ffffff',
             textShadow: `0 0 20px ${toColor}`
           }
-        }, `DISCOVERING: ${toLoc.name.toUpperCase()}`)
+        }, `DISCOVERING: ${toLoc ? toLoc.name.toUpperCase() : 'DESTINATION'}`)
       ),
 
-      // STAGE D: ARRIVAL (Grand Destination Card & Ambient Atmosphere Crossfade)
+      // STAGE 6 & 7: CELEBRATION & INTERACTIVE HANDOVER (Grand Arrival Card & Control Handover)
       stage === 'ARRIVAL' && React.createElement('div', {
         className: 'travel-stage-arrival',
         style: {
@@ -555,7 +733,7 @@
             filter: `drop-shadow(0 0 20px ${toColor})`,
             animation: 'arrivalIconBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
           }
-        }, toLoc.icon || '🚩'),
+        }, toLoc ? (toLoc.icon || '🚩') : '🚩'),
         React.createElement('div', {
           style: {
             fontSize: '0.8rem',
@@ -564,7 +742,7 @@
             textTransform: 'uppercase',
             color: '#fbbf24'
           }
-        }, `✦ ${toLoc.region ? toLoc.region.replace(/_/g, ' ') : 'MAHARASHTRA'} · ${toLoc.district ? toLoc.district.toUpperCase() : ''} ✦`),
+        }, `✦ ${toRegion} · ${toLoc && toLoc.district ? toLoc.district.toUpperCase() : ''} ✦`),
         React.createElement('h1', {
           style: {
             fontSize: '2.4rem',
@@ -574,7 +752,7 @@
             color: '#ffffff',
             textShadow: `0 0 25px ${toColor}`
           }
-        }, toLoc.name),
+        }, toLoc ? toLoc.name : 'Maharashtra Destination'),
         React.createElement('div', {
           style: {
             fontSize: '1.05rem',
@@ -582,7 +760,7 @@
             color: toColor,
             marginTop: -4
           }
-        }, toLoc.subtitle),
+        }, toLoc ? toLoc.subtitle : 'Swarajya Expedition'),
         React.createElement('p', {
           style: {
             margin: 0,
@@ -591,7 +769,7 @@
             lineHeight: 1.5,
             maxWidth: 440
           }
-        }, toLoc.culturalNote || 'An iconic historical citadel of Maharashtra swarajya.'),
+        }, toLoc && toLoc.culturalNote ? toLoc.culturalNote : 'An iconic historical territory of Maharashtra heritage.'),
         React.createElement('div', {
           style: {
             display: 'inline-flex',
@@ -609,18 +787,19 @@
         React.createElement('button', {
           type: 'button',
           className: 'btn btn-primary',
-          onClick: handleSkip,
+          onClick: handleComplete,
           style: {
             marginTop: 10,
             padding: '10px 32px',
             fontSize: '1rem',
             fontWeight: 800,
             borderRadius: 10,
-            boxShadow: `0 0 20px ${toColor}`
+            boxShadow: `0 0 20px ${toColor}`,
+            cursor: 'pointer'
           }
-        }, 'Begin Solving in ' + toLoc.name + ' ➔')
+        }, `Begin Solving in ${toLoc ? toLoc.name : 'Destination'} ➔`)
       )
-    ));
+    );
   }
 
   /**

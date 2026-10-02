@@ -14,21 +14,18 @@
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
-  <script src="js/maharashtraWorld.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/MaharashtraAtmosphere.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/MaharashtraJourney.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/TrophyProgressBar.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/circuitEngine.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/circuitGenerator.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/circuitPersistence.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/circuitAudio.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/CircuitConnect.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/snakeEngine.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/snakeGenerator.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/snakePersistence.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/SnakeClassic.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/ProgressionExperience.js?v=20260930_v23_circuit_gameplay_revamp"></script>
-  <script src="js/components/TakeABreakHub.js?v=20260930_v23_circuit_gameplay_revamp"></script>
+  <script src="js/maharashtraWorld.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/MaharashtraAtmosphere.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/MaharashtraJourney.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/TrophyProgressBar.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/snakeAudio.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/snakeSpriteRenderers.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/snakeEngine.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/snakeGenerator.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/snakePersistence.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/SnakeClassic.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/ProgressionExperience.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/components/TakeABreakHub.js?v=20261002_v26_smooth_transition_fix"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
   <script src="js/themeToggle.js?v=20260925_sunset_default_v1"></script>
@@ -336,17 +333,17 @@
 
             const cardStyle = isHovered
               ? {
-                  transform: `translateY(-${index * 58}px) scale(1)`,
-                  opacity: 1,
-                  pointerEvents: 'auto',
-                  zIndex: 2003 - index
-                }
+                transform: `translateY(-${index * 58}px) scale(1)`,
+                opacity: 1,
+                pointerEvents: 'auto',
+                zIndex: 2003 - index
+              }
               : {
-                  transform: `translateY(-${stackOffset}px) scale(${stackScale})`,
-                  opacity: isHidden ? 0 : Math.max(0, stackOpacity),
-                  pointerEvents: index === 0 ? 'auto' : 'none',
-                  zIndex: 2003 - index
-                };
+                transform: `translateY(-${stackOffset}px) scale(${stackScale})`,
+                opacity: isHidden ? 0 : Math.max(0, stackOpacity),
+                pointerEvents: index === 0 ? 'auto' : 'none',
+                zIndex: 2003 - index
+              };
 
             return React.createElement('div', {
               key: t.id,
@@ -633,23 +630,23 @@
     // ─── INVOICE PRINT & DOWNLOAD CONFIGURATION MODAL ───
     const INVOICE_PALETTES = [
       { id: 'CLASSIC_BLUE', name: 'Classic Blue', hex: '#007AA6' },
-      { id: 'MODERN_TEAL',   name: 'Modern Teal',   hex: '#0D9488' },
-      { id: 'INDIGO_NAVY',   name: 'Indigo Navy',   hex: '#4F46E5' },
-      { id: 'EMERALD_GREEN', name: 'Emerald',     hex: '#059669' },
-      { id: 'SLATE_DARK',    name: 'Slate Dark',    hex: '#334155' }
+      { id: 'MODERN_TEAL', name: 'Modern Teal', hex: '#0D9488' },
+      { id: 'INDIGO_NAVY', name: 'Indigo Navy', hex: '#4F46E5' },
+      { id: 'EMERALD_GREEN', name: 'Emerald', hex: '#059669' },
+      { id: 'SLATE_DARK', name: 'Slate Dark', hex: '#334155' }
     ];
 
     const INVOICE_THEMES = [
-      { id: 'CLASSIC',      name: 'Classic (Standard)' },
-      { id: 'MODERN',       name: 'Modern (Split Header & Card)' },
+      { id: 'CLASSIC', name: 'Classic (Standard)' },
+      { id: 'MODERN', name: 'Modern (Split Header & Card)' },
       { id: 'PROFESSIONAL', name: 'Professional (Corporate Banner)' },
-      { id: 'MINIMAL',      name: 'Minimal (Clean Editorial Line)' }
+      { id: 'MINIMAL', name: 'Minimal (Clean Editorial Line)' }
     ];
 
     const INVOICE_FORMATS = [
-      { id: 'A4',           name: 'A4 (Standard Page)' },
-      { id: 'A3',           name: 'A3 (Large Page)' },
-      { id: 'A5',           name: 'A5 (Compact Page)' },
+      { id: 'A4', name: 'A4 (Standard Page)' },
+      { id: 'A3', name: 'A3 (Large Page)' },
+      { id: 'A5', name: 'A5 (Compact Page)' },
       { id: 'THERMAL_80MM', name: 'Thermal 80mm (POS Receipt)' }
     ];
 
@@ -4656,18 +4653,32 @@
 
     // ─── SIDEBAR ───
     function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [] }) {
-      const [circuitEnabled, setCircuitEnabled] = useState(() => localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false');
+      const [circuitEnabled, setCircuitEnabled] = useState(() => {
+        try {
+          return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false';
+        } catch (e) {
+          return true;
+        }
+      });
 
       useEffect(() => {
         const handler = (e) => {
           if (e && e.detail && typeof e.detail.enabled === 'boolean') {
             setCircuitEnabled(e.detail.enabled);
           } else {
-            setCircuitEnabled(localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false');
+            try {
+              setCircuitEnabled(localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false');
+            } catch (err) {
+              setCircuitEnabled(true);
+            }
           }
         };
+        window.addEventListener('billsoft:snake-toggle', handler);
         window.addEventListener('billsoft:circuit-toggle', handler);
-        return () => window.removeEventListener('billsoft:circuit-toggle', handler);
+        return () => {
+          window.removeEventListener('billsoft:snake-toggle', handler);
+          window.removeEventListener('billsoft:circuit-toggle', handler);
+        };
       }, []);
 
       const navItems = [
@@ -10685,7 +10696,7 @@
       const [empAnalytics, setEmpAnalytics] = useState(null);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
-       const [updateInfo, setUpdateInfo] = useState(null);
+      const [updateInfo, setUpdateInfo] = useState(null);
       const [updateDismissed, setUpdateDismissed] = useState(false);
       const [dismissedIds, setDismissedIds] = useState([]);
       const [dashGoalTab, setDashGoalTab] = useState('ALL'); // 'ALL' | 'SAVINGS' | 'HABITS'
@@ -10811,13 +10822,13 @@
                   if (acknowledgedKey !== currentKey) {
                     setShowAnnouncementModal(true);
                   }
-                } catch (e) {}
+                } catch (e) { }
               } else {
                 setAnnouncements([]);
                 setShowAnnouncementModal(false);
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       }, []);
 
@@ -10827,7 +10838,7 @@
           if (currentKey) {
             localStorage.setItem('rupeecrm_announcements_ack', currentKey);
           }
-        } catch (e) {}
+        } catch (e) { }
         setShowAnnouncementModal(false);
         if (window.showToast) {
           window.showToast('Announcements acknowledged — saved to bottom of Dashboard', 'info', 3000);
@@ -19515,86 +19526,86 @@
 
               // Candidates List
               duplicatesLoading ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' } }, 'Scanning active items for duplicates...') :
-              duplicateCandidates.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' } },
-                React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '🎉'),
-                React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' } }, 'No Duplicate Items Found'),
-                React.createElement('div', { style: { fontSize: '0.82rem', marginTop: 4 } }, 'All inventory products and saved items are distinct.')
-              ) :
-              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-                duplicateCandidates.map((c) => {
-                  const itemA = c.candidateA;
-                  const itemB = c.candidateB;
-                  return React.createElement('div', {
-                    key: c.candidateKey,
-                    style: {
-                      padding: 14,
-                      background: 'var(--bg-card)',
-                      border: c.isSafe ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10
-                    }
-                  },
-                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                        React.createElement('span', {
-                          className: 'badge',
-                          style: {
-                            background: c.isSafe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                            color: c.isSafe ? '#10B981' : '#F59E0B',
-                            fontWeight: 700
-                          }
-                        }, `${c.similarityScore}% Match · ${c.isSafe ? 'Safe' : 'Conflict'}`)
-                      ),
-                      React.createElement('div', { style: { display: 'flex', gap: 8 } },
-                        c.isSafe ? React.createElement('button', {
-                          className: 'btn btn-sm btn-primary',
-                          style: { fontSize: '0.78rem', padding: '4px 10px' },
-                          onClick: () => handleSingleSafeMerge(c)
-                        }, 'Merge') :
-                        React.createElement('button', {
-                          className: 'btn btn-sm btn-secondary',
-                          style: { fontSize: '0.78rem', padding: '4px 10px' },
-                          onClick: () => openConflictResolver(c)
-                        }, 'Resolve & Merge >'),
-                        React.createElement('button', {
-                          className: 'btn btn-sm btn-ghost',
-                          style: { fontSize: '0.78rem', padding: '4px 8px', color: 'var(--text-secondary)' },
-                          onClick: () => handleDismissDuplicate(c)
-                        }, 'Dismiss')
-                      )
-                    ),
-                    // Comparison Row
-                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'center' } },
-                      React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
-                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                          React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemA.name),
-                          React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemA.sourceType)
+                duplicateCandidates.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' } },
+                  React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '🎉'),
+                  React.createElement('div', { style: { fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' } }, 'No Duplicate Items Found'),
+                  React.createElement('div', { style: { fontSize: '0.82rem', marginTop: 4 } }, 'All inventory products and saved items are distinct.')
+                ) :
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+                    duplicateCandidates.map((c) => {
+                      const itemA = c.candidateA;
+                      const itemB = c.candidateB;
+                      return React.createElement('div', {
+                        key: c.candidateKey,
+                        style: {
+                          padding: 14,
+                          background: 'var(--bg-card)',
+                          border: c.isSafe ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: 8,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 10
+                        }
+                      },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                            React.createElement('span', {
+                              className: 'badge',
+                              style: {
+                                background: c.isSafe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                color: c.isSafe ? '#10B981' : '#F59E0B',
+                                fontWeight: 700
+                              }
+                            }, `${c.similarityScore}% Match · ${c.isSafe ? 'Safe' : 'Conflict'}`)
+                          ),
+                          React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                            c.isSafe ? React.createElement('button', {
+                              className: 'btn btn-sm btn-primary',
+                              style: { fontSize: '0.78rem', padding: '4px 10px' },
+                              onClick: () => handleSingleSafeMerge(c)
+                            }, 'Merge') :
+                              React.createElement('button', {
+                                className: 'btn btn-sm btn-secondary',
+                                style: { fontSize: '0.78rem', padding: '4px 10px' },
+                                onClick: () => openConflictResolver(c)
+                              }, 'Resolve & Merge >'),
+                            React.createElement('button', {
+                              className: 'btn btn-sm btn-ghost',
+                              style: { fontSize: '0.78rem', padding: '4px 8px', color: 'var(--text-secondary)' },
+                              onClick: () => handleDismissDuplicate(c)
+                            }, 'Dismiss')
+                          )
                         ),
-                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
-                          `Price: ${BillsoftUtils.formatCurrency(itemA.price || 0)} | Unit: ${itemA.unit || 'pcs'}${itemA.stockQuantity != null ? ` | Stock: ${itemA.stockQuantity}` : ''}`
-                        )
-                      ),
-                      React.createElement('span', { style: { color: 'var(--text-secondary)', fontWeight: 700 } }, '⟷'),
-                      React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
-                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                          React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemB.name),
-                          React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemB.sourceType)
+                        // Comparison Row
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'center' } },
+                          React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemA.name),
+                              React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemA.sourceType)
+                            ),
+                            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                              `Price: ${BillsoftUtils.formatCurrency(itemA.price || 0)} | Unit: ${itemA.unit || 'pcs'}${itemA.stockQuantity != null ? ` | Stock: ${itemA.stockQuantity}` : ''}`
+                            )
+                          ),
+                          React.createElement('span', { style: { color: 'var(--text-secondary)', fontWeight: 700 } }, '⟷'),
+                          React.createElement('div', { style: { padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6 } },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, itemB.name),
+                              React.createElement('span', { className: 'badge', style: { fontSize: '0.65rem' } }, itemB.sourceType)
+                            ),
+                            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                              `Price: ${BillsoftUtils.formatCurrency(itemB.price || 0)} | Unit: ${itemB.unit || 'pcs'}${itemB.stockQuantity != null ? ` | Stock: ${itemB.stockQuantity}` : ''}`
+                            )
+                          )
                         ),
-                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } },
-                          `Price: ${BillsoftUtils.formatCurrency(itemB.price || 0)} | Unit: ${itemB.unit || 'pcs'}${itemB.stockQuantity != null ? ` | Stock: ${itemB.stockQuantity}` : ''}`
+                        // Explainable Reasons & Conflicts
+                        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: '0.75rem' } },
+                          (c.reasons || []).map((r, ri) => React.createElement('span', { key: ri, style: { background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6', padding: '2px 8px', borderRadius: 4 } }, `✓ ${r}`)),
+                          (c.conflicts || []).map((cf, cfi) => React.createElement('span', { key: cfi, style: { background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', padding: '2px 8px', borderRadius: 4 } }, `! ${cf}`))
                         )
-                      )
-                    ),
-                    // Explainable Reasons & Conflicts
-                    React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: '0.75rem' } },
-                      (c.reasons || []).map((r, ri) => React.createElement('span', { key: ri, style: { background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6', padding: '2px 8px', borderRadius: 4 } }, `✓ ${r}`)),
-                      (c.conflicts || []).map((cf, cfi) => React.createElement('span', { key: cfi, style: { background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', padding: '2px 8px', borderRadius: 4 } }, `! ${cf}`))
-                    )
-                  );
-                })
-              )
+                      );
+                    })
+                  )
             )
           )
         ),
@@ -19673,35 +19684,35 @@
             ),
             React.createElement('div', { className: 'modal-body', style: { maxHeight: '65vh', overflowY: 'auto' } },
               savedItemsLoading ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 0' } }, 'Loading saved items...') :
-              savedItemsList.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 0', color: 'var(--text-secondary)' } }, 'No uncatalogued saved items found.') :
-              React.createElement('table', { className: 'table', style: { width: '100%', fontSize: '0.85rem' } },
-                React.createElement('thead', null,
-                  React.createElement('tr', null,
-                    React.createElement('th', null, 'Item Name'),
-                    React.createElement('th', null, 'Unit'),
-                    React.createElement('th', { style: { textAlign: 'right' } }, 'Last Price'),
-                    React.createElement('th', { style: { textAlign: 'center' } }, 'Billed Count'),
-                    React.createElement('th', { style: { textAlign: 'right' } }, 'Action')
-                  )
-                ),
-                React.createElement('tbody', null,
-                  savedItemsList.map(s => React.createElement('tr', { key: s.id },
-                    React.createElement('td', { style: { fontWeight: 600 } }, s.name),
-                    React.createElement('td', null, s.unit || 'pcs'),
-                    React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(s.sellingPrice || 0)),
-                    React.createElement('td', { style: { textAlign: 'center' } },
-                      React.createElement('span', { className: 'badge' }, `${s.usageCount || 1}x`)
+                savedItemsList.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 0', color: 'var(--text-secondary)' } }, 'No uncatalogued saved items found.') :
+                  React.createElement('table', { className: 'table', style: { width: '100%', fontSize: '0.85rem' } },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', null, 'Item Name'),
+                        React.createElement('th', null, 'Unit'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Last Price'),
+                        React.createElement('th', { style: { textAlign: 'center' } }, 'Billed Count'),
+                        React.createElement('th', { style: { textAlign: 'right' } }, 'Action')
+                      )
                     ),
-                    React.createElement('td', { style: { textAlign: 'right' } },
-                      React.createElement('button', {
-                        className: 'btn btn-xs btn-primary',
-                        style: { fontSize: '0.72rem' },
-                        onClick: () => handlePromoteFromSaved(s)
-                      }, '+ Add to Inventory')
+                    React.createElement('tbody', null,
+                      savedItemsList.map(s => React.createElement('tr', { key: s.id },
+                        React.createElement('td', { style: { fontWeight: 600 } }, s.name),
+                        React.createElement('td', null, s.unit || 'pcs'),
+                        React.createElement('td', { style: { textAlign: 'right' } }, BillsoftUtils.formatCurrency(s.sellingPrice || 0)),
+                        React.createElement('td', { style: { textAlign: 'center' } },
+                          React.createElement('span', { className: 'badge' }, `${s.usageCount || 1}x`)
+                        ),
+                        React.createElement('td', { style: { textAlign: 'right' } },
+                          React.createElement('button', {
+                            className: 'btn btn-xs btn-primary',
+                            style: { fontSize: '0.72rem' },
+                            onClick: () => handlePromoteFromSaved(s)
+                          }, '+ Add to Inventory')
+                        )
+                      ))
                     )
-                  ))
-                )
-              )
+                  )
             )
           )
         )
@@ -30812,28 +30823,171 @@
           )
         ),
         (() => {
-          const [circuitOn, setCircuitOn] = useState(() => localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false');
-          const handleCircuitToggle = (e) => {
+          const [snakeEnabled, setSnakeEnabled] = useState(() => {
+            try {
+              return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false';
+            } catch (e) {
+              return true;
+            }
+          });
+          const [showResetConfirm, setShowResetConfirm] = useState(false);
+          const [isResetting, setIsResetting] = useState(false);
+
+          const handleSnakeToggle = (e) => {
             const checked = e.target.checked;
-            setCircuitOn(checked);
-            localStorage.setItem('CONFIG_CIRCUIT_CONNECT_ENABLED', checked ? 'true' : 'false');
+            setSnakeEnabled(checked);
+            try {
+              localStorage.setItem('CONFIG_SNAKE_CLASSIC_ENABLED', checked ? 'true' : 'false');
+              localStorage.setItem('CONFIG_CIRCUIT_CONNECT_ENABLED', checked ? 'true' : 'false');
+            } catch (err) {}
+            window.dispatchEvent(new CustomEvent('billsoft:snake-toggle', { detail: { enabled: checked } }));
             window.dispatchEvent(new CustomEvent('billsoft:circuit-toggle', { detail: { enabled: checked } }));
-            if (window.showToast) window.showToast(checked ? 'Game Zone enabled in Navigation' : 'Game Zone disabled', 'success');
+            if (window.showToast) window.showToast(checked ? 'Snake Classic enabled in Navigation' : 'Snake Classic disabled', 'success');
           };
-          return React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
+
+          const handlePerformReset = async () => {
+            setIsResetting(true);
+            try {
+              const persistence = window.SnakePersistence || (typeof SnakePersistence !== 'undefined' ? SnakePersistence : null);
+              if (!persistence || typeof persistence.resetGameProgress !== 'function') {
+                throw new Error('SnakePersistence reset engine unavailable');
+              }
+              const res = await persistence.resetGameProgress();
+              if (res && res.success) {
+                setShowResetConfirm(false);
+                if (window.showToast) {
+                  window.showToast('Progress reset successfully. Your Maharashtra expedition starts again from Level 1.', 'success');
+                }
+              } else {
+                throw (res && res.error) || new Error('Reset operation failed');
+              }
+            } catch (err) {
+              console.error('[SnakeSettings] Reset progress error:', err);
+              if (window.showToast) {
+                window.showToast('Progress could not be reset. Your existing progress has been preserved.', 'error');
+              }
+            } finally {
+              setIsResetting(false);
+            }
+          };
+
+          return React.createElement('div', { className: 'card', style: { padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 } },
+            // 1. Enable / Disable Toggle Section
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
                 React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('span', null, 'Game Zone')
+                  React.createElement('span', null, '🐍 Snake Classic')
                 ),
                 React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
-                  'Take a short break with lightweight games inside RupeeCRM.'
+                  'Enable Game: Take a short break with Snake Classic — Maharashtra Expedition inside RupeeCRM.'
                 )
               ),
               React.createElement('div', null,
-                React.createElement('label', { className: 'switch' },
-                  React.createElement('input', { type: 'checkbox', checked: circuitOn, onChange: handleCircuitToggle }),
+                React.createElement('label', { className: 'switch', 'aria-label': 'Enable Snake Classic Game' },
+                  React.createElement('input', { type: 'checkbox', checked: snakeEnabled, onChange: handleSnakeToggle }),
                   React.createElement('span', { className: 'slider' })
+                )
+              )
+            ),
+
+            // 2. Reset Game Progress Section
+            React.createElement('div', {
+              style: {
+                borderTop: '1px solid var(--border)',
+                paddingTop: 18,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 12
+              }
+            },
+              React.createElement('div', { style: { flex: 1, minWidth: 240 } },
+                React.createElement('div', { style: { fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' } },
+                  'Reset Game Progress'
+                ),
+                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  'Start the Maharashtra expedition again from Level 1.'
+                )
+              ),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline-danger',
+                onClick: () => setShowResetConfirm(true),
+                style: {
+                  padding: '8px 16px',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  borderColor: 'var(--danger, #ef4444)',
+                  color: 'var(--danger, #ef4444)',
+                  borderRadius: 6,
+                  cursor: 'pointer'
+                }
+              }, 'Reset Progress'),
+
+              // Destructive Confirmation Dialog
+              showResetConfirm && React.createElement('div', {
+                className: 'modal-overlay',
+                style: {
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  backdropFilter: 'blur(6px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 99999,
+                  padding: 16
+                },
+                onClick: () => !isResetting && setShowResetConfirm(false)
+              },
+                React.createElement('div', {
+                  className: 'modal-card',
+                  style: {
+                    background: 'var(--bg-card, #ffffff)',
+                    border: '1px solid var(--border, #e2e8f0)',
+                    borderRadius: 12,
+                    padding: 24,
+                    maxWidth: 440,
+                    width: '92%',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 16
+                  },
+                  onClick: e => e.stopPropagation()
+                },
+                  React.createElement('div', null,
+                    React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' } },
+                      'Reset Game Progress?'
+                    ),
+                    React.createElement('p', { style: { margin: '8px 0 0 0', fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
+                      'This will reset your Snake Classic progress and start the Maharashtra expedition again from Level 1.'
+                    )
+                  ),
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 } },
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-secondary',
+                      disabled: isResetting,
+                      onClick: () => setShowResetConfirm(false),
+                      style: { padding: '8px 18px', fontWeight: 600 }
+                    }, 'Cancel'),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-danger',
+                      disabled: isResetting,
+                      onClick: handlePerformReset,
+                      style: {
+                        padding: '8px 18px',
+                        fontWeight: 700,
+                        background: 'var(--danger, #ef4444)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6
+                      }
+                    }, isResetting ? 'Resetting...' : 'Reset Progress')
+                  )
                 )
               )
             )
@@ -31811,122 +31965,122 @@
           className: 'eula-modal-card',
           onClick: e => e.stopPropagation()
         },
-            // Header
-            React.createElement('div', { className: 'eula-header' },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-                React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, showTagline: false, isDarkBg: false }),
-                React.createElement('div', null,
-                  React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' } }, content.title),
-                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                    `Version ${content.version} • Effective ${content.effectiveDate} • Dev: ${content.developer}`
-                  )
-                )
-              ),
-              readOnly && React.createElement('button', {
-                id: 'eula-close-top-btn',
-                className: 'btn btn-ghost btn-sm',
-                onClick: onClose,
-                style: { fontSize: '1.2rem', padding: '2px 8px' }
-              }, '✕')
-            ),
-
-            // Declined State View
-            isDeclinedView ? (
-              React.createElement('div', { style: { padding: '40px 30px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
-                React.createElement('div', { style: { fontSize: '3rem' } }, '⛔'),
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.3rem', fontWeight: 700, color: '#ef4444' } }, 'EULA Acceptance Required'),
-                React.createElement('p', { style: { maxWidth: 480, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 } },
-                  'Access to RupeeCRM requires acceptance of the End User License Agreement. Because the agreement was declined, application features remain locked. Your local business data remains completely safe.'
-                ),
-                React.createElement('div', { style: { display: 'flex', gap: 12, marginTop: 12 } },
-                  React.createElement('button', {
-                    id: 'eula-review-again-btn',
-                    className: 'btn btn-primary',
-                    onClick: () => setIsDeclinedView(false),
-                    style: { fontWeight: 700 }
-                  }, '← Review & Accept EULA')
+          // Header
+          React.createElement('div', { className: 'eula-header' },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, showTagline: false, isDarkBg: false }),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' } }, content.title),
+                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  `Version ${content.version} • Effective ${content.effectiveDate} • Dev: ${content.developer}`
                 )
               )
-            ) : (
-              // Normal Agreement Scrollable Content
-              React.createElement(React.Fragment, null,
-                // Notice banner
-                !readOnly && React.createElement('div', {
-                  id: 'eula-notice-banner',
-                  style: {
-                    padding: '10px 24px',
-                    background: isRevoked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(99, 102, 241, 0.08)',
-                    borderBottom: '1px solid var(--border)',
-                    fontSize: '0.82rem',
-                    color: isRevoked ? '#dc2626' : 'var(--primary)',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8
-                  }
-                },
-                  isRevoked
-                    ? '⚠️ Access Locked: EULA acceptance was previously revoked. Accept below to resume application access.'
-                    : '📋 Please review and accept the RupeeCRM End User License Agreement to proceed.'
-                ),
+            ),
+            readOnly && React.createElement('button', {
+              id: 'eula-close-top-btn',
+              className: 'btn btn-ghost btn-sm',
+              onClick: onClose,
+              style: { fontSize: '1.2rem', padding: '2px 8px' }
+            }, '✕')
+          ),
 
-                // Scrollable Terms Container
-                React.createElement('div', { id: 'eula-scroll-box', className: 'eula-scroll-box' },
-                  (content.sections || []).map((sec, idx) => React.createElement('div', { key: sec.id || idx, className: 'eula-section' },
-                    React.createElement('div', { className: 'eula-section-title' }, sec.title),
-                    React.createElement('div', { className: 'eula-section-text' }, sec.text)
-                  ))
-                ),
+          // Declined State View
+          isDeclinedView ? (
+            React.createElement('div', { style: { padding: '40px 30px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 } },
+              React.createElement('div', { style: { fontSize: '3rem' } }, '⛔'),
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.3rem', fontWeight: 700, color: '#ef4444' } }, 'EULA Acceptance Required'),
+              React.createElement('p', { style: { maxWidth: 480, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 } },
+                'Access to RupeeCRM requires acceptance of the End User License Agreement. Because the agreement was declined, application features remain locked. Your local business data remains completely safe.'
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 12, marginTop: 12 } },
+                React.createElement('button', {
+                  id: 'eula-review-again-btn',
+                  className: 'btn btn-primary',
+                  onClick: () => setIsDeclinedView(false),
+                  style: { fontWeight: 700 }
+                }, '← Review & Accept EULA')
+              )
+            )
+          ) : (
+            // Normal Agreement Scrollable Content
+            React.createElement(React.Fragment, null,
+              // Notice banner
+              !readOnly && React.createElement('div', {
+                id: 'eula-notice-banner',
+                style: {
+                  padding: '10px 24px',
+                  background: isRevoked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(99, 102, 241, 0.08)',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: '0.82rem',
+                  color: isRevoked ? '#dc2626' : 'var(--primary)',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
+              },
+                isRevoked
+                  ? '⚠️ Access Locked: EULA acceptance was previously revoked. Accept below to resume application access.'
+                  : '📋 Please review and accept the RupeeCRM End User License Agreement to proceed.'
+              ),
 
-                // Footer Actions
-                React.createElement('div', { className: 'eula-footer' },
-                  !readOnly ? (
-                    React.createElement(React.Fragment, null,
-                      React.createElement('label', { className: 'eula-checkbox-label' },
-                        React.createElement('input', {
-                          id: 'eula-agree-checkbox',
-                          type: 'checkbox',
-                          checked: agreed,
-                          onChange: e => setAgreed(e.target.checked)
-                        }),
-                        React.createElement('span', null,
-                          'I have read, understood, and agree to the ',
-                          React.createElement('strong', null, 'RupeeCRM End User License Agreement'),
-                          '.'
-                        )
-                      ),
-                      React.createElement('div', { className: 'eula-actions-row' },
-                        React.createElement('button', {
-                          id: 'eula-decline-btn',
-                          type: 'button',
-                          className: 'btn btn-ghost btn-sm',
-                          onClick: handleDeclineClick,
-                          style: { color: 'var(--text-secondary)', fontWeight: 600 }
-                        }, 'Decline'),
-                        React.createElement('button', {
-                          id: 'eula-accept-btn',
-                          type: 'button',
-                          className: 'btn btn-primary',
-                          disabled: !agreed,
-                          onClick: handleAccept,
-                          style: { padding: '8px 24px', fontWeight: 700 }
-                        }, 'Accept & Continue →')
+              // Scrollable Terms Container
+              React.createElement('div', { id: 'eula-scroll-box', className: 'eula-scroll-box' },
+                (content.sections || []).map((sec, idx) => React.createElement('div', { key: sec.id || idx, className: 'eula-section' },
+                  React.createElement('div', { className: 'eula-section-title' }, sec.title),
+                  React.createElement('div', { className: 'eula-section-text' }, sec.text)
+                ))
+              ),
+
+              // Footer Actions
+              React.createElement('div', { className: 'eula-footer' },
+                !readOnly ? (
+                  React.createElement(React.Fragment, null,
+                    React.createElement('label', { className: 'eula-checkbox-label' },
+                      React.createElement('input', {
+                        id: 'eula-agree-checkbox',
+                        type: 'checkbox',
+                        checked: agreed,
+                        onChange: e => setAgreed(e.target.checked)
+                      }),
+                      React.createElement('span', null,
+                        'I have read, understood, and agree to the ',
+                        React.createElement('strong', null, 'RupeeCRM End User License Agreement'),
+                        '.'
                       )
-                    )
-                  ) : (
-                    React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+                    ),
+                    React.createElement('div', { className: 'eula-actions-row' },
                       React.createElement('button', {
-                        id: 'eula-close-view-btn',
+                        id: 'eula-decline-btn',
                         type: 'button',
-                        className: 'btn btn-primary btn-sm',
-                        onClick: onClose,
-                        style: { padding: '6px 20px', fontWeight: 600 }
-                      }, 'Close')
+                        className: 'btn btn-ghost btn-sm',
+                        onClick: handleDeclineClick,
+                        style: { color: 'var(--text-secondary)', fontWeight: 600 }
+                      }, 'Decline'),
+                      React.createElement('button', {
+                        id: 'eula-accept-btn',
+                        type: 'button',
+                        className: 'btn btn-primary',
+                        disabled: !agreed,
+                        onClick: handleAccept,
+                        style: { padding: '8px 24px', fontWeight: 700 }
+                      }, 'Accept & Continue →')
                     )
+                  )
+                ) : (
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+                    React.createElement('button', {
+                      id: 'eula-close-view-btn',
+                      type: 'button',
+                      className: 'btn btn-primary btn-sm',
+                      onClick: onClose,
+                      style: { padding: '6px 20px', fontWeight: 600 }
+                    }, 'Close')
                   )
                 )
               )
             )
+          )
         )
       );
 
@@ -37145,7 +37299,7 @@
             return;
           }
           if ((e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'ç' || e.key === 'Ç' || e.code === 'KeyC')) ||
-              ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC'))) {
+            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC'))) {
             e.preventDefault();
             setShowCalculator(prev => !prev);
             return;

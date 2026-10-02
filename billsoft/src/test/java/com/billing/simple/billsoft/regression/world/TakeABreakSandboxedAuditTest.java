@@ -113,11 +113,9 @@ public class TakeABreakSandboxedAuditTest {
         testFirm.setCity("Pune");
         testFirm = firmDetailsRepo.save(testFirm);
 
-        // Seed AppConfig state for Circuit Connect and Snake
-        String circuitStateJson = "{\"schemaVersion\":1,\"currentLevel\":16,\"completedCount\":15,\"totalStars\":45,\"highestStarMilestone\":0,\"totalPlayTimeSeconds\":420,\"totalMoves\":85}";
+        // Seed AppConfig state for Snake
         String snakeStateJson = "{\"schemaVersion\":1,\"currentLevel\":8,\"completedCount\":7,\"totalStars\":21,\"highestStarMilestone\":0,\"totalFruitsEaten\":35,\"longestSnake\":12,\"totalPlayTimeSeconds\":310}";
 
-        appConfigRepo.save(new AppConfig("CIRCUIT_CONNECT_STATE", circuitStateJson));
         appConfigRepo.save(new AppConfig("SNAKE_GAME_STATE", snakeStateJson));
 
         // Generate full application backup
@@ -125,27 +123,20 @@ public class TakeABreakSandboxedAuditTest {
         assertNotNull(backup);
         assertNotNull(backup.getAppConfigs());
 
-        boolean hasCircuit = backup.getAppConfigs().stream().anyMatch(ac -> "CIRCUIT_CONNECT_STATE".equals(ac.getConfigKey()));
         boolean hasSnake = backup.getAppConfigs().stream().anyMatch(ac -> "SNAKE_GAME_STATE".equals(ac.getConfigKey()));
-        assertTrue(hasCircuit, "Backup must include CIRCUIT_CONNECT_STATE");
         assertTrue(hasSnake, "Backup must include SNAKE_GAME_STATE");
 
         // Clear AppConfig state to simulate clean new environment
-        appConfigRepo.deleteById("CIRCUIT_CONNECT_STATE");
         appConfigRepo.deleteById("SNAKE_GAME_STATE");
-        assertFalse(appConfigRepo.existsById("CIRCUIT_CONNECT_STATE"));
         assertFalse(appConfigRepo.existsById("SNAKE_GAME_STATE"));
 
         // Restore backup
         backupService.importData(backup, testFirm.getId(), true);
 
         // Verify that game progression was safely restored
-        Optional<AppConfig> restoredCircuit = appConfigRepo.findById("CIRCUIT_CONNECT_STATE");
         Optional<AppConfig> restoredSnake = appConfigRepo.findById("SNAKE_GAME_STATE");
 
-        assertTrue(restoredCircuit.isPresent(), "CIRCUIT_CONNECT_STATE must be restored");
         assertTrue(restoredSnake.isPresent(), "SNAKE_GAME_STATE must be restored");
-        assertTrue(restoredCircuit.get().getConfigValue().contains("\"currentLevel\":16"));
         assertTrue(restoredSnake.get().getConfigValue().contains("\"currentLevel\":8"));
     }
 
@@ -165,7 +156,6 @@ public class TakeABreakSandboxedAuditTest {
         corruptedBackup.setMetadata(Map.of("version", "1.0", "sourceFirmId", testFirm.getId()));
         corruptedBackup.setFirmDetails(testFirm);
         corruptedBackup.setAppConfigs(List.of(
-                new AppConfig("CIRCUIT_CONNECT_STATE", "{CORRUPTED_NON_JSON_DATA::###"),
                 new AppConfig("SNAKE_GAME_STATE", "{\"currentLevel\":-999,\"totalStars\":\"INVALID\"}")
         ));
 
@@ -186,12 +176,9 @@ public class TakeABreakSandboxedAuditTest {
         var endpointResults = diagnosticsReport.getResults();
         assertNotNull(endpointResults);
 
-        boolean circuitCheckFound = endpointResults.stream()
-                .anyMatch(e -> "Circuit Connect State Access".equals(e.getName()));
         boolean snakeCheckFound = endpointResults.stream()
                 .anyMatch(e -> "Snake Classic State Access".equals(e.getName()));
 
-        assertTrue(circuitCheckFound, "Circuit Connect state access must be covered in diagnostics");
         assertTrue(snakeCheckFound, "Snake Classic state access must be covered in diagnostics");
     }
 

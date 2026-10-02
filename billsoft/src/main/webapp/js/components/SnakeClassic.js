@@ -1,25 +1,34 @@
 /**
  * SnakeClassic.js
- * Production-ready, ultra-responsive, high-performance classic Snake game for RupeeCRM.
+ * Billsoft Full-Viewport Dynamic Territory Snake Component.
  * Features:
- * - Dynamic rectangular grid automatically utilizing 90-96% available horizontal stage width
- * - Strictly square cells with zero physical cropping across arbitrary viewport dimensions
- * - Decoupled high-performance imperative canvas rendering loop (zero React input lag / frame jitter)
- * - Immediate keyboard input response (Arrow keys & WASD)
- * - Seamless ResizeObserver with active gameplay coordinate adaptation (no level reset on resize)
- * - Full audio, powerups (Gold Apple, Chill Berry slow-mo, Hopping Fruit, Gateways), milestones & persistence
+ * - Dynamic full-viewport responsive canvas driven by ResizeObserver.
+ * - Progressive playable territory: centered beginner play area expanding to full viewport at level 40+.
+ * - Illustrated Multi-Layer Canvas World Renderer (Prince of Persia philosophy):
+ *     Layer 0: Atmospheric Sky & Horizon Silhouette (Sahyadri peaks, sea forts, caves, temples, wadas)
+ *     Layer 1: Tactile Ground Material (basalt flagstone, coastal sand, cave stone, terracotta, moss, coronation dais)
+ *     Layer 2: Architectural Board Framing (fort battlements, laterite sea walls, chaitya arches, teak mouldings)
+ *     Layer 3: 3D Architectural Obstacles (bastions, arched gates, monolithic pillars, timber docks, banyans)
+ *     Layer 4: Destination-Themed Snake Avatar (Basalt Cobra, Konkan Azure Serpent, Cave Naga, Teak Python, Emerald Viper)
+ *     Layer 5: Regional Cultural Collectibles (Sahyadri Gem, Konkan Pearl, Cave Relic, Wada Hon, Forest Orchid, Diya)
+ *     Layer 6: Ambient Environmental Particles (mist motes, sea spray, stone dust, gold dust, flower petals)
+ * - Offscreen static layer caching for 60 FPS silky smooth performance.
+ * - Non-destructive live container resize: coordinates adapt smoothly without resetting score or progression.
+ * - Pure procedural audio synthesis via snakeAudio.js (0 external assets).
+ * - Consolidated 38px status header & 34px control bottom rail (0 page scroll).
  */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['react', '../snakeEngine', '../snakeGenerator', '../snakePersistence', '../circuitAudio'], factory);
+    define(['react', '../snakeEngine', '../snakeGenerator', '../snakePersistence', '../snakeAudio', '../maharashtraWorld'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('react'),
       require('../snakeEngine'),
       require('../snakeGenerator'),
       require('../snakePersistence'),
-      require('../circuitAudio')
+      require('../snakeAudio'),
+      require('../maharashtraWorld')
     );
   } else {
     root.SnakeClassic = factory(
@@ -27,17 +36,19 @@
       root.SnakeEngine,
       root.SnakeGenerator,
       root.SnakePersistence,
-      root.CircuitAudio
+      root.SnakeAudio,
+      root.MaharashtraWorld
     );
   }
-}(typeof self !== 'undefined' ? self : this, function (React, SnakeEngine, SnakeGenerator, SnakePersistence, CircuitAudio) {
+}(typeof self !== 'undefined' ? self : this, function (React, SnakeEngine, SnakeGenerator, SnakePersistence, SnakeAudio, MaharashtraWorld) {
   'use strict';
 
   const { useState, useEffect, useRef, useCallback } = React;
   const Engine = SnakeEngine || (typeof window !== 'undefined' ? window.SnakeEngine : null);
   const Generator = SnakeGenerator || (typeof window !== 'undefined' ? window.SnakeGenerator : null);
   const Persistence = SnakePersistence || (typeof window !== 'undefined' ? window.SnakePersistence : null);
-  const Audio = CircuitAudio || (typeof window !== 'undefined' ? window.CircuitAudio : null);
+  const Audio = SnakeAudio || (typeof window !== 'undefined' ? window.SnakeAudio : null);
+  const MWorld = MaharashtraWorld || (typeof window !== 'undefined' ? window.MaharashtraWorld : null);
 
   function renderModalPortal(element) {
     if (typeof document !== 'undefined' && document.body && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
@@ -48,112 +59,12 @@
 
   // Progressive infinite trophy tiers
   const SNAKE_TROPHY_TIERS = [
-    { maxMilestone: 5,   name: 'Bronze Viper',       icon: '🥉', color: '#cd7f32', tier: 'Bronze' },
-    { maxMilestone: 10,  name: 'Silver Cobra',        icon: '🥈', color: '#c0c0c0', tier: 'Silver' },
-    { maxMilestone: 20,  name: 'Gold Python',         icon: '🥇', color: '#ffd700', tier: 'Gold' },
-    { maxMilestone: 50,  name: 'Platinum Anaconda',   icon: '💎', color: '#00e5ff', tier: 'Platinum' },
-    { maxMilestone: 100, name: 'Diamond Ouroboros',   icon: '👑', color: '#e040fb', tier: 'Diamond' },
+    { maxMilestone: 5, name: 'Bronze Viper', icon: '🥉', color: '#cd7f32', tier: 'Bronze' },
+    { maxMilestone: 10, name: 'Silver Cobra', icon: '🥈', color: '#c0c0c0', tier: 'Silver' },
+    { maxMilestone: 20, name: 'Gold Python', icon: '🥇', color: '#ffd700', tier: 'Gold' },
+    { maxMilestone: 50, name: 'Platinum Anaconda', icon: '💎', color: '#00e5ff', tier: 'Platinum' },
+    { maxMilestone: 100, name: 'Diamond Ouroboros', icon: '👑', color: '#e040fb', tier: 'Diamond' },
     { maxMilestone: Infinity, name: 'Cosmic Leviathan', icon: '🌌', color: '#ff9100', tier: 'Cosmic' }
-  ];
-
-  // Dynamic Level Start Tips (Educating players about novelties, special items & mechanics)
-  const SNAKE_LEVEL_TIPS = [
-    {
-      icon: '🌟',
-      badge: 'Golden Apple',
-      badgeBg: 'rgba(234, 179, 8, 0.16)',
-      badgeBorder: '#eab308',
-      badgeColor: '#fde047',
-      text: 'Counts as +2 apples toward your goal! Grab it quickly before its sparkle fades.'
-    },
-    {
-      icon: '❄️',
-      badge: 'Chill Berry',
-      badgeBg: 'rgba(56, 189, 248, 0.16)',
-      badgeBorder: '#38bdf8',
-      badgeColor: '#7dd3fc',
-      text: 'Slows the snake by 35% for 7 seconds — perfect for navigating tight maze corridors!'
-    },
-    {
-      icon: '⚡',
-      badge: 'Speed Rush',
-      badgeBg: 'rgba(245, 158, 11, 0.16)',
-      badgeBorder: '#f59e0b',
-      badgeColor: '#fcd34d',
-      text: 'Grants a 5-second turbo sprint (+28% speed) to zip across wide open stages.'
-    },
-    {
-      icon: '🎁',
-      badge: 'Mystery Box',
-      badgeBg: 'rgba(168, 85, 247, 0.16)',
-      badgeBorder: '#a855f7',
-      badgeColor: '#d8b4fe',
-      text: 'Surprise pickup! Spawns random safe rewards: bonus apple surge, freeze, or magnetic pull.'
-    },
-    {
-      icon: '🧲',
-      badge: 'Magnet Attractor',
-      badgeBg: 'rgba(236, 72, 153, 0.16)',
-      badgeBorder: '#ec4899',
-      badgeColor: '#f472b6',
-      text: 'Generates a magnetic aura for 8s that pulls nearby apples straight into your path!'
-    },
-    {
-      icon: '🌀',
-      badge: 'Quantum Gateways',
-      badgeBg: 'rgba(6, 182, 212, 0.16)',
-      badgeBorder: '#06b6d4',
-      badgeColor: '#67e8f9',
-      text: 'Slither into one glowing portal to instantly teleport across the board to its twin portal!'
-    },
-    {
-      icon: '🔥',
-      badge: 'Combo Multipliers',
-      badgeBg: 'rgba(239, 68, 68, 0.16)',
-      badgeBorder: '#ef4444',
-      badgeColor: '#fca5a5',
-      text: 'Eat fruits in quick succession to trigger combo multipliers (x3, x5, x8) and score bursts!'
-    },
-    {
-      icon: '🌴',
-      badge: 'Breather Oasis',
-      badgeBg: 'rgba(16, 185, 129, 0.16)',
-      badgeBorder: '#10b981',
-      badgeColor: '#6ee7b7',
-      text: 'Every 5th level is an obstacle-free Zen garden to relax, practice smooth turns, and build streaks.'
-    },
-    {
-      icon: '🧱',
-      badge: 'Obstacle Bricks',
-      badgeBg: 'rgba(100, 116, 139, 0.16)',
-      badgeBorder: '#64748b',
-      badgeColor: '#cbd5e1',
-      text: 'Slate bricks are solid stone! Plan your path 2 turns ahead to avoid getting cornered.'
-    },
-    {
-      icon: '⭐',
-      badge: 'Star Ratings',
-      badgeBg: 'rgba(245, 158, 11, 0.16)',
-      badgeBorder: '#f59e0b',
-      badgeColor: '#fde68a',
-      text: 'Complete on 1st attempt for 3 Stars ⭐⭐⭐, 2nd attempt for 2 Stars ⭐⭐, 3rd for 1 Star ⭐.'
-    },
-    {
-      icon: '🏆',
-      badge: 'Maharashtra Journey',
-      badgeBg: 'rgba(139, 92, 246, 0.16)',
-      badgeBorder: '#8b5cf6',
-      badgeColor: '#c4b5fd',
-      text: 'Collect stars to journey across 15 iconic Maharashtra destinations from Raigad to Tadoba!'
-    },
-    {
-      icon: '⌨️',
-      badge: 'Pro Controls',
-      badgeBg: 'rgba(59, 130, 246, 0.16)',
-      badgeBorder: '#3b82f6',
-      badgeColor: '#93c5fd',
-      text: 'Use Arrow Keys or WASD to navigate. Spacebar or Esc instantly pauses the game anytime.'
-    }
   ];
 
   function getTrophyForMilestone(milestoneNumber) {
@@ -185,6 +96,1691 @@
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
 
+  // =========================================================================
+  // ILLUSTRATED MAHARASHTRA WORLD CANVAS VECTOR RENDERERS
+  // =========================================================================
+
+  /**
+   * Layer 0: Atmospheric Sky & Horizon Silhouette
+   */
+  function renderAtmosphericBackdrop(ctx, displayW, displayH, bounds, cellSize, theme, level, isChill) {
+    const pal = theme.palette;
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, displayH);
+    if (isChill) {
+      skyGrad.addColorStop(0, '#071322');
+      skyGrad.addColorStop(1, '#0f2438');
+    } else {
+      skyGrad.addColorStop(0, pal.skyTop || '#0b1120');
+      skyGrad.addColorStop(1, pal.skyBottom || '#1e293b');
+    }
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, displayW, displayH);
+
+    // Distant horizon silhouettes in upper sky backdrop
+    const horizonH = Math.min(Math.floor(displayH * 0.35), 140);
+    ctx.save();
+
+    if (theme.horizonStyle === 'citadel_peaks' || theme.horizonStyle === 'mountain_peaks') {
+      // Sahyadri mountain ridgelines & fort bastions
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.08)' : 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.moveTo(0, horizonH);
+      ctx.lineTo(displayW * 0.15, horizonH - 45);
+      ctx.lineTo(displayW * 0.30, horizonH - 20);
+      ctx.lineTo(displayW * 0.50, horizonH - 60); // Peak
+      ctx.lineTo(displayW * 0.65, horizonH - 30);
+      ctx.lineTo(displayW * 0.85, horizonH - 55);
+      ctx.lineTo(displayW, horizonH - 15);
+      ctx.lineTo(displayW, displayH);
+      ctx.lineTo(0, displayH);
+      ctx.closePath();
+      ctx.fill();
+
+      // Citadel bastions atop peaks
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 0, 0, 0.45)';
+      const bx = displayW * 0.50 - 12;
+      const by = horizonH - 72;
+      ctx.fillRect(bx, by, 24, 14);
+      // Saffron pennant flagpole
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx + 12, by);
+      ctx.lineTo(bx + 12, by - 12);
+      ctx.stroke();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(bx + 12, by - 12);
+      ctx.lineTo(bx + 20, by - 8);
+      ctx.lineTo(bx + 12, by - 4);
+      ctx.fill();
+    } else if (theme.horizonStyle === 'sea_fort_islands') {
+      // Arabian Sea rolling waves & distant fort towers
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.1)' : 'rgba(2, 132, 199, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(0, horizonH - 15);
+      for (let x = 0; x <= displayW; x += 40) {
+        ctx.quadraticCurveTo(x + 20, horizonH - 25, x + 40, horizonH - 15);
+      }
+      ctx.lineTo(displayW, displayH);
+      ctx.lineTo(0, displayH);
+      ctx.closePath();
+      ctx.fill();
+
+      // Distant sea-fort rampart
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.18)' : 'rgba(12, 74, 110, 0.45)';
+      const fx = displayW * 0.70;
+      ctx.fillRect(fx - 25, horizonH - 35, 50, 20);
+      ctx.fillRect(fx - 8, horizonH - 45, 16, 10);
+    } else if (theme.horizonStyle === 'temple_shikharas') {
+      // Hemadpanthi temple shikhara outlines & deepmal towers
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.1)' : 'rgba(120, 53, 15, 0.25)';
+      const sx = displayW * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(sx - 35, horizonH);
+      ctx.lineTo(sx - 20, horizonH - 35);
+      ctx.lineTo(sx, horizonH - 65); // Shikhara apex
+      ctx.lineTo(sx + 20, horizonH - 35);
+      ctx.lineTo(sx + 35, horizonH);
+      ctx.closePath();
+      ctx.fill();
+
+      // Kalash finial
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(sx, horizonH - 68, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (theme.horizonStyle === 'cave_cliffs') {
+      // Massive monolithic basalt cliff overhangs & chaitya arches
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.1)' : 'rgba(24, 24, 27, 0.5)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(displayW, 0);
+      ctx.lineTo(displayW, horizonH - 20);
+      ctx.quadraticCurveTo(displayW * 0.75, horizonH - 50, displayW * 0.5, horizonH - 25);
+      ctx.quadraticCurveTo(displayW * 0.25, horizonH, 0, horizonH - 30);
+      ctx.closePath();
+      ctx.fill();
+    } else if (theme.horizonStyle === 'wada_parapets') {
+      // Multi-tiered Peshwa timber rooflines & Delhi Darwaza spikes
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.1)' : 'rgba(69, 26, 3, 0.35)';
+      ctx.beginPath();
+      ctx.moveTo(0, horizonH);
+      for (let x = 0; x < displayW; x += 60) {
+        ctx.lineTo(x + 10, horizonH - 25);
+        ctx.lineTo(x + 30, horizonH - 40);
+        ctx.lineTo(x + 50, horizonH - 25);
+        ctx.lineTo(x + 60, horizonH);
+      }
+      ctx.lineTo(displayW, displayH);
+      ctx.lineTo(0, displayH);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // Dense forest & canopy ridge
+      ctx.fillStyle = isChill ? 'rgba(56, 189, 248, 0.1)' : 'rgba(6, 78, 59, 0.3)';
+      ctx.beginPath();
+      ctx.moveTo(0, horizonH);
+      for (let x = 0; x < displayW; x += 30) {
+        ctx.arc(x + 15, horizonH - 20, 18, Math.PI, 0);
+      }
+      ctx.lineTo(displayW, displayH);
+      ctx.lineTo(0, displayH);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Subtle uncharted territory grid stars / dots
+    ctx.fillStyle = pal.particleColor || 'rgba(148, 163, 184, 0.15)';
+    const totalCols = bounds.totalCols || Math.floor(displayW / cellSize);
+    const totalRows = bounds.totalRows || Math.floor(displayH / cellSize);
+    for (let y = 0; y < totalRows; y++) {
+      for (let x = 0; x < totalCols; x++) {
+        if (x < bounds.minX || x > bounds.maxX || y < bounds.minY || y > bounds.maxY) {
+          ctx.beginPath();
+          ctx.arc(x * cellSize + cellSize / 2, y * cellSize + cellSize / 2, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Layer 1: Tactile Ground Material & Patterns
+   */
+  function renderTactileGround(ctx, tX, tY, tW, tH, bounds, cellSize, theme, level) {
+    const pal = theme.palette;
+    ctx.save();
+
+    // Base ground floor fill
+    ctx.fillStyle = pal.groundBase || '#0f172a';
+    ctx.fillRect(tX, tY, tW, tH);
+
+    const style = theme.groundStyle;
+    const tileColor = pal.groundTile || '#1e293b';
+    const groutColor = pal.groundGrout || '#09090b';
+
+    if (style === 'basalt_flagstone') {
+      // Interlocking dark basalt stone flagstones with masonry brick seams
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        const isOddRow = (y % 2 !== 0);
+        const yPos = y * cellSize;
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const xPos = x * cellSize;
+          ctx.fillStyle = tileColor;
+          ctx.fillRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+
+          // Subtle stone chisel relief lines
+          ctx.strokeStyle = groutColor;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+
+          // Corner stone highlight chip
+          if ((x + y) % 3 === 0) {
+            ctx.fillStyle = pal.frameDetail || '#475569';
+            ctx.fillRect(xPos + 3, yPos + 3, 2, 2);
+          }
+        }
+      }
+    } else if (style === 'coastal_sand') {
+      // Coastal fine sand with tidal wave contour gradients
+      const sandGrad = ctx.createLinearGradient(tX, tY, tX + tW, tY + tH);
+      sandGrad.addColorStop(0, pal.groundBase || '#082f49');
+      sandGrad.addColorStop(0.5, pal.groundTile || '#0c4a6e');
+      sandGrad.addColorStop(1, pal.groundBase || '#082f49');
+      ctx.fillStyle = sandGrad;
+      ctx.fillRect(tX, tY, tW, tH);
+
+      // Gentle tidal wave ripple contours
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+      ctx.lineWidth = 1.5;
+      for (let y = bounds.minY; y <= bounds.maxY; y += 2) {
+        ctx.beginPath();
+        const yPos = y * cellSize + cellSize / 2;
+        ctx.moveTo(tX, yPos);
+        for (let x = tX; x <= tX + tW; x += 40) {
+          ctx.quadraticCurveTo(x + 20, yPos - 3, x + 40, yPos);
+        }
+        ctx.stroke();
+      }
+    } else if (style === 'cave_carved_stone') {
+      // Monolithic rock-hewn floor with ancient carved relief markings
+      ctx.fillStyle = pal.groundBase || '#18181b';
+      ctx.fillRect(tX, tY, tW, tH);
+
+      ctx.strokeStyle = pal.groundTile || '#27272a';
+      ctx.lineWidth = 1;
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const xPos = x * cellSize;
+          const yPos = y * cellSize;
+          ctx.strokeRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+
+          // Carved glyph accent
+          if ((x * 7 + y * 13) % 5 === 0) {
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.15)';
+            ctx.beginPath();
+            ctx.arc(xPos + cellSize / 2, yPos + cellSize / 2, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    } else if (style === 'wada_terracotta') {
+      // Interlocking terracotta courtyard floor tiles
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        const yPos = y * cellSize;
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const xPos = x * cellSize;
+          ctx.fillStyle = ((x + y) % 2 === 0) ? tileColor : pal.groundBase;
+          ctx.fillRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+          ctx.strokeStyle = groutColor;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+        }
+      }
+    } else if (style === 'forest_moss' || style === 'rocky_plateau') {
+      // Rich forest loam with moss patches and wildflower flecks
+      ctx.fillStyle = pal.groundBase || '#052e16';
+      ctx.fillRect(tX, tY, tW, tH);
+
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const xPos = x * cellSize;
+          const yPos = y * cellSize;
+          if ((x * 3 + y * 5) % 4 === 0) {
+            ctx.fillStyle = pal.groundTile || '#14532d';
+            ctx.beginPath();
+            ctx.arc(xPos + cellSize / 2, yPos + cellSize / 2, Math.floor(cellSize * 0.35), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          if ((x + y * 2) % 7 === 0) {
+            ctx.fillStyle = pal.groundDecor || '#ec4899';
+            ctx.beginPath();
+            ctx.arc(xPos + cellSize * 0.3, yPos + cellSize * 0.3, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    } else if (style === 'coronation_dais') {
+      // Sovereign 24K coronation dais with radial gold inlay mosaic
+      const daisGrad = ctx.createRadialGradient(tX + tW / 2, tY + tH / 2, 10, tX + tW / 2, tY + tH / 2, Math.max(tW, tH) / 2);
+      daisGrad.addColorStop(0, '#2e1065');
+      daisGrad.addColorStop(0.5, '#1e1b4b');
+      daisGrad.addColorStop(1, '#0f0728');
+      ctx.fillStyle = daisGrad;
+      ctx.fillRect(tX, tY, tW, tH);
+
+      // Gold inlaid grid lines
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.25)';
+      ctx.lineWidth = 1;
+      for (let x = bounds.minX; x <= bounds.maxX + 1; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, tY);
+        ctx.lineTo(x * cellSize, tY + tH);
+        ctx.stroke();
+      }
+      for (let y = bounds.minY; y <= bounds.maxY + 1; y++) {
+        ctx.beginPath();
+        ctx.moveTo(tX, y * cellSize);
+        ctx.lineTo(tX + tW, y * cellSize);
+        ctx.stroke();
+      }
+    } else {
+      // River silt / default grid pavers
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const xPos = x * cellSize;
+          const yPos = y * cellSize;
+          ctx.fillStyle = tileColor;
+          ctx.fillRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+          ctx.strokeStyle = groutColor;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(xPos + 1, yPos + 1, cellSize - 2, cellSize - 2);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Layer 2: Architectural Board Framing & Ornamental Borders
+   */
+  function renderArchitecturalFraming(ctx, tX, tY, tW, tH, bounds, cellSize, theme, worldData, level, isChill) {
+    const pal = theme.palette;
+    const style = theme.frameStyle;
+    ctx.save();
+
+    const frameColor = isChill ? '#38bdf8' : (pal.frameBorder || '#475569');
+    const accentColor = isChill ? '#00e5ff' : (pal.frameAccent || '#f59e0b');
+    const embossColor = isChill ? '#0c4a6e' : (pal.frameEmboss || '#1e293b');
+
+    // Outer framing thickness & drop shadow line
+    ctx.strokeStyle = embossColor;
+    ctx.lineWidth = 5;
+    ctx.strokeRect(tX - 2, tY - 2, tW + 4, tH + 4);
+
+    ctx.strokeStyle = frameColor;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(tX + 1, tY + 1, tW - 2, tH - 2);
+
+    const cornerSize = Math.min(18, Math.floor(cellSize * 0.9));
+
+    if (style === 'sahyadri_battlement') {
+      // Basalt stone fort battlements with crenellations & corner bastions
+      ctx.fillStyle = accentColor;
+      // Top-Left bastion
+      ctx.fillRect(tX - 4, tY - 4, cornerSize, 4);
+      ctx.fillRect(tX - 4, tY - 4, 4, cornerSize);
+      // Top-Right bastion
+      ctx.fillRect(tX + tW - cornerSize + 4, tY - 4, cornerSize, 4);
+      ctx.fillRect(tX + tW, tY - 4, 4, cornerSize);
+      // Bottom-Left bastion
+      ctx.fillRect(tX - 4, tY + tH, cornerSize, 4);
+      ctx.fillRect(tX - 4, tY + tH - cornerSize + 4, 4, cornerSize);
+      // Bottom-Right bastion
+      ctx.fillRect(tX + tW - cornerSize + 4, tY + tH, cornerSize, 4);
+      ctx.fillRect(tX + tW, tY + tH - cornerSize + 4, 4, cornerSize);
+
+      // Saffron corner emblem studs
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(tX, tY, 3.5, 0, Math.PI * 2);
+      ctx.arc(tX + tW, tY, 3.5, 0, Math.PI * 2);
+      ctx.arc(tX, tY + tH, 3.5, 0, Math.PI * 2);
+      ctx.arc(tX + tW, tY + tH, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (style === 'konkan_laterite') {
+      // Red-laterite stone sea-wall with nautical brass rivets
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tX + 3, tY + 3, tW - 6, tH - 6);
+
+      // Nautical brass corner anchors
+      ctx.fillStyle = '#38bdf8';
+      for (let px of [tX, tX + tW]) {
+        for (let py of [tY, tY + tH]) {
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (style === 'chaitya_arch') {
+      // Rock-cut chaitya arch ornamental corners
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 2.5;
+      // Top arch crest
+      ctx.beginPath();
+      ctx.arc(tX + tW / 2, tY + 2, 8, Math.PI, 0);
+      ctx.stroke();
+      // Corner lotus brackets
+      ctx.fillStyle = '#a855f7';
+      for (let px of [tX + 4, tX + tW - 4]) {
+        for (let py of [tY + 4, tY + tH - 4]) {
+          ctx.beginPath();
+          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (style === 'wada_teak') {
+      // Carved teak wood moulding with golden corner brackets
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tX + 2, tY + 2, tW - 4, tH - 4);
+      // Golden corner brackets
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(tX - 2, tY - 2, cornerSize, 3);
+      ctx.fillRect(tX - 2, tY - 2, 3, cornerSize);
+      ctx.fillRect(tX + tW - cornerSize + 2, tY - 2, cornerSize, 3);
+      ctx.fillRect(tX + tW - 1, tY - 2, 3, cornerSize);
+      ctx.fillRect(tX - 2, tY + tH - 1, cornerSize, 3);
+      ctx.fillRect(tX - 2, tY + tH - cornerSize + 2, 3, cornerSize);
+      ctx.fillRect(tX + tW - cornerSize + 2, tY + tH - 1, cornerSize, 3);
+      ctx.fillRect(tX + tW - 1, tY + tH - cornerSize + 2, 3, cornerSize);
+    } else if (style === 'coronation_imperial') {
+      // 24K gold filigree frame with Maratha imperial sun motifs
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(tX, tY, tW, tH);
+      ctx.shadowBlur = 0;
+
+      // Radiant golden sunburst corner medallions
+      ctx.fillStyle = '#fbbf24';
+      for (let px of [tX, tX + tW]) {
+        for (let py of [tY, tY + tH]) {
+          ctx.beginPath();
+          ctx.arc(px, py, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fbbf24';
+        }
+      }
+    } else {
+      // Standard corner territory accents
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 3;
+      // Top-Left
+      ctx.beginPath(); ctx.moveTo(tX, tY + cornerSize); ctx.lineTo(tX, tY); ctx.lineTo(tX + cornerSize, tY); ctx.stroke();
+      // Top-Right
+      ctx.beginPath(); ctx.moveTo(tX + tW - cornerSize, tY); ctx.lineTo(tX + tW, tY); ctx.lineTo(tX + tW, tY + cornerSize); ctx.stroke();
+      // Bottom-Left
+      ctx.beginPath(); ctx.moveTo(tX, tY + tH - cornerSize); ctx.lineTo(tX, tY + tH); ctx.lineTo(tX + cornerSize, tY + tH); ctx.stroke();
+      // Bottom-Right
+      ctx.beginPath(); ctx.moveTo(tX + tW - cornerSize, tY + tH); ctx.lineTo(tX + tW, tY + tH); ctx.lineTo(tX + tW, tY + tH - cornerSize); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Layer 3: Chunky 3D Illustrated Architectural Obstacles
+   */
+  /**
+   * Layer 3: 3D Illustrated Location-Specific Architectural Obstacles
+   * Renders genuine handcrafted vector sprites for forts, cannons, boulders, palms, rocks, boats,
+   * chaitya pillars, stupas, teak columns, terracotta walls, deepmal lamp towers, ghat steps, and thickets.
+   */
+  function renderArchitecturalObstacle(ctx, obs, ox, oy, sz, cx, cy, pad, cellSize, theme, gameTick) {
+    let vType = 'FORT_WALL';
+    if (obs && typeof obs === 'object' && obs.visualType) {
+      vType = obs.visualType;
+    }
+    const pal = theme.palette;
+    ctx.save();
+
+    if (vType === 'GOLDEN_BASTION') {
+      // Level 1000 Royal Sovereign Golden Bastion (3D Gold Citadel Tower)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 2, sz * 0.45, sz * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Polished 24K Gold Cylinder
+      const bGrad = ctx.createLinearGradient(ox + pad, oy + pad, ox + pad + sz, oy + pad);
+      bGrad.addColorStop(0, '#d97706');
+      bGrad.addColorStop(0.3, '#fef08a');
+      bGrad.addColorStop(0.7, '#f59e0b');
+      bGrad.addColorStop(1, '#92400e');
+      ctx.fillStyle = bGrad;
+      ctx.beginPath();
+      ctx.roundRect(ox + pad + 2, oy + pad + 4, sz - 4, sz - 6, [2, 2, 4, 4]);
+      ctx.fill();
+
+      // Crenellations & Golden Merlons
+      ctx.fillStyle = '#fde047';
+      const merlonW = Math.max(3, Math.floor(sz / 5));
+      for (let mx = ox + pad + 3; mx < ox + pad + sz - 4; mx += merlonW + 2) {
+        ctx.fillRect(mx, oy + pad + 1, merlonW, 4);
+      }
+
+      // Maratha Sunburst Imperial Emblem & Ruby Gem
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy + 2, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Saffron Imperial Pennant
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, oy + pad);
+      ctx.lineTo(cx, oy + pad - 6);
+      ctx.stroke();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(cx, oy + pad - 6);
+      ctx.lineTo(cx + 6, oy + pad - 4);
+      ctx.lineTo(cx, oy + pad - 2);
+      ctx.fill();
+    } else if (vType === 'ROYAL_RAMPART') {
+      // Level 1000 Sovereign Coronation Rampart
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(ox + pad + 2, oy + pad + 2, sz, sz);
+
+      const rGrad = ctx.createLinearGradient(ox + pad, oy + pad, ox + pad, oy + pad + sz);
+      rGrad.addColorStop(0, '#78350f');
+      rGrad.addColorStop(0.5, '#451a03');
+      rGrad.addColorStop(1, '#290f02');
+      ctx.fillStyle = rGrad;
+      ctx.fillRect(ox + pad, oy + pad, sz, sz);
+
+      // Gold Coping & Chevron Inlay
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + pad + 2, oy + pad + 2, sz - 4, 3);
+      ctx.fillStyle = '#fbbf24';
+      for (let x = ox + pad + 3; x < ox + pad + sz - 4; x += 6) {
+        ctx.fillRect(x, oy + pad + 6, 3, sz - 10);
+      }
+    } else if (vType === 'BASTION' || vType === 'BASTION_TOWER') {
+      // Authentic Sahyadri Circular Basalt Fort Bastion Tower
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz, sz * 0.45, sz * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Basalt Cylindrical Drum with 3D Radial Curve
+      const drumGrad = ctx.createLinearGradient(ox + pad, cy, ox + pad + sz, cy);
+      drumGrad.addColorStop(0, '#1e293b');
+      drumGrad.addColorStop(0.35, '#475569');
+      drumGrad.addColorStop(0.7, '#334155');
+      drumGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = drumGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, sz / 2 - 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Stonework Ashlar Masonry Rings
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, sz * 0.35, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Crenellated Stone Merlons on Top Parapet
+      ctx.fillStyle = '#334155';
+      const numMerlons = 5;
+      for (let m = 0; m < numMerlons; m++) {
+        const ang = (m / numMerlons) * Math.PI * 2 + (gameTick * 0.01);
+        const mx = cx + Math.cos(ang) * (sz * 0.38);
+        const my = cy + Math.sin(ang) * (sz * 0.38);
+        ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
+      }
+
+      // Deep Arrow Slit (Embrasure) with Amber Lantern Glint
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(cx - 1.5, cy - sz * 0.22, 3, sz * 0.44);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(cx - 1, cy - sz * 0.1, 2, 2.5);
+
+      // Saffron Maratha Pennant Flag
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - sz * 0.35);
+      ctx.lineTo(cx, cy - sz * 0.48);
+      ctx.stroke();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - sz * 0.48);
+      ctx.lineTo(cx + 6, cy - sz * 0.42);
+      ctx.lineTo(cx, cy - sz * 0.36);
+      ctx.fill();
+    } else if (vType === 'FORT_GATE' || vType === 'CEREMONIAL_GATE' || vType === 'ARCHWAY' || vType === 'STONE_ARCH') {
+      // Arched Fort Gate with Wooden Studded Doors & Keystone
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(ox + pad + 2, oy + pad + 2, sz, sz);
+
+      // Stone Wall Pier
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(ox + pad, oy + pad, sz, sz);
+
+      // Deep Recessed Arch
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(cx, oy + pad + sz, sz / 2 - 2, Math.PI, 0);
+      ctx.fill();
+
+      // Reinforced Teak Gate Panels
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(cx - sz * 0.35, cy, sz * 0.7, sz * 0.5);
+
+      // Iron Horizontal Straps & Anti-Elephant Brass Spikes
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - sz * 0.32, cy + 2, sz * 0.64, 1.5);
+      ctx.fillRect(cx - sz * 0.32, cy + sz * 0.25, sz * 0.64, 1.5);
+      ctx.beginPath();
+      ctx.arc(cx - sz * 0.15, cy + 3, 1.5, 0, Math.PI * 2);
+      ctx.arc(cx + sz * 0.15, cy + 3, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Carved Keystone at Arch Apex
+      ctx.fillStyle = pal.frameAccent || '#f59e0b';
+      ctx.fillRect(cx - 2, oy + pad + 1, 4, 3.5);
+
+      // Torch Sconces
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(ox + pad + 3, cy, 1.8, 0, Math.PI * 2);
+      ctx.arc(ox + pad + sz - 3, cy, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (vType === 'COASTAL_ROCK' || vType === 'LATERITE_CRAG') {
+      // Konkan Laterite Reef Crag with Porous Cavities & Turquoise Tidal Foam
+      ctx.fillStyle = 'rgba(2, 132, 199, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 1, sz * 0.48, sz * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Multi-Faceted Laterite Red-Brown Rock
+      const rockGrad = ctx.createLinearGradient(ox + pad, oy + pad, ox + pad + sz, oy + pad + sz);
+      rockGrad.addColorStop(0, '#9a3412');
+      rockGrad.addColorStop(0.45, '#7c2d12');
+      rockGrad.addColorStop(0.8, '#431407');
+      rockGrad.addColorStop(1, '#1c1917');
+      ctx.fillStyle = rockGrad;
+      ctx.beginPath();
+      ctx.moveTo(ox + pad + 4, oy + pad + 2);
+      ctx.lineTo(ox + pad + sz - 3, oy + pad + 5);
+      ctx.lineTo(ox + pad + sz - 1, oy + pad + sz - 3);
+      ctx.lineTo(ox + pad + 2, oy + pad + sz - 1);
+      ctx.closePath();
+      ctx.fill();
+
+      // Porous Laterite Cavity Pits
+      ctx.fillStyle = '#290f02';
+      ctx.beginPath();
+      ctx.arc(cx - 3, cy - 2, 2, 0, Math.PI * 2);
+      ctx.arc(cx + 4, cy + 2, 1.8, 0, Math.PI * 2);
+      ctx.arc(cx - 1, cy + 4, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // White Barnacles & Turquoise Wave Foam Rim
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ox + pad + 2, oy + pad + sz - 2);
+      ctx.quadraticCurveTo(cx, oy + pad + sz - 5, ox + pad + sz - 1, oy + pad + sz - 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(ox + pad + 5, oy + pad + sz - 4, 1.5, 1.5);
+      ctx.fillRect(cx + 2, oy + pad + sz - 5, 1.5, 1.5);
+    } else if (vType === 'BOAT_DOCK' || vType === 'WOODEN_BOAT') {
+      // Konkan Timber Jetty Pier & Moored Fishing Canoe
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      // Teak Wood Planks
+      const plankH = Math.max(3, Math.floor(sz / 3.5));
+      for (let p = 0; p < 3; p++) {
+        const py = oy + pad + 1 + p * (plankH + 1);
+        ctx.fillStyle = (p % 2 === 0) ? '#78350f' : '#451a03';
+        ctx.fillRect(ox + pad + 1, py, sz - 2, plankH);
+        // Brass Rivet Nails
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(ox + pad + 3, py + 1, 1.2, 1.2);
+        ctx.fillRect(ox + pad + sz - 4, py + 1, 1.2, 1.2);
+      }
+
+      // Coiled Hemp Mooring Rope & Cleat
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(cx - 1, cy - 3, 2, 6);
+    } else if (vType === 'SEA_CHANNEL' || vType === 'COASTAL_PALM') {
+      // Coastal Palm Trunk & Radiating Green Fronds
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 1, sz * 0.4, sz * 0.18, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ringed Brown Palm Trunk
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.moveTo(cx - 2, oy + sz - 2);
+      ctx.quadraticCurveTo(cx - 1, cy, cx - 1.5, oy + pad + 6);
+      ctx.lineTo(cx + 1.5, oy + pad + 6);
+      ctx.quadraticCurveTo(cx + 1, cy, cx + 2, oy + sz - 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Palm Crown of 5 Arching Emerald Fronds
+      const frondAngles = [-2.2, -1.4, -0.6, 0.6, 1.4, 2.2];
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 2;
+      for (let a of frondAngles) {
+        ctx.beginPath();
+        ctx.moveTo(cx, oy + pad + 6);
+        ctx.quadraticCurveTo(cx + Math.cos(a) * (sz * 0.4), oy + pad + 6 + Math.sin(a) * (sz * 0.25), cx + Math.cos(a) * (sz * 0.5), oy + pad + 6 + Math.sin(a) * (sz * 0.45));
+        ctx.stroke();
+      }
+
+      // Golden Coconuts
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.arc(cx - 2, oy + pad + 7, 2, 0, Math.PI * 2);
+      ctx.arc(cx + 2, oy + pad + 7, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (vType === 'CAVE_PILLAR' || vType === 'CAVE_CHAITYA_PILLAR') {
+      // Rock-Cut Monolithic Chaitya Pillar with Carved Plinth & Lotus Capital
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      // Fluted Octagonal Pillar Shaft
+      const pilGrad = ctx.createLinearGradient(ox + pad, cy, ox + pad + sz, cy);
+      pilGrad.addColorStop(0, '#27272a');
+      pilGrad.addColorStop(0.35, '#52525b');
+      pilGrad.addColorStop(0.7, '#3f3f46');
+      pilGrad.addColorStop(1, '#18181b');
+      ctx.fillStyle = pilGrad;
+      ctx.fillRect(ox + pad + 3, oy + pad + 4, sz - 6, sz - 8);
+
+      // Vertical Fluting Lines
+      ctx.strokeStyle = '#18181b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - 2, oy + pad + 4); ctx.lineTo(cx - 2, oy + pad + sz - 4);
+      ctx.moveTo(cx + 2, oy + pad + 4); ctx.lineTo(cx + 2, oy + pad + sz - 4);
+      ctx.stroke();
+
+      // Stepped Plinth Base & Lotus Capital
+      ctx.fillStyle = '#71717a';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz - 2, 3.5);
+      ctx.fillRect(ox + pad + 1, oy + pad + sz - 4.5, sz - 2, 3.5);
+
+      // Mystic Purple Relief Medallion
+      ctx.fillStyle = '#a855f7';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (vType === 'ROCK_WALL' || vType === 'BUDDHIST_STUPA') {
+      // Monolithic Carved Buddhist Stupa Dome with Harmika & Chhatra Finial
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 1, sz * 0.45, sz * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Hemispherical Stone Stupa Dome
+      const stupaGrad = ctx.createRadialGradient(cx - 2, cy + 2, 2, cx, cy + 2, sz * 0.45);
+      stupaGrad.addColorStop(0, '#52525b');
+      stupaGrad.addColorStop(0.7, '#27272a');
+      stupaGrad.addColorStop(1, '#18181b');
+      ctx.fillStyle = stupaGrad;
+      ctx.beginPath();
+      ctx.arc(cx, oy + sz - 3, sz * 0.42, Math.PI, 0);
+      ctx.fill();
+
+      // Harmika Balustrade & 3-Tiered Chhatra Finial
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - 3, oy + pad + 5, 6, 2.5);
+      ctx.fillRect(cx - 4, oy + pad + 2, 8, 1.5);
+      ctx.fillRect(cx - 2, oy + pad, 4, 1.2);
+    } else if (vType === 'WADA_COLUMN' || vType === 'WADA_TEAK_PILLAR') {
+      // Peshwa Carved Teakwood Pillar with Cypress Base & Golden Peacock Bracket
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(ox + pad + 2, oy + pad + 2, sz, sz);
+
+      // Polished Teak Shaft
+      const teakGrad = ctx.createLinearGradient(ox + pad, cy, ox + pad + sz, cy);
+      teakGrad.addColorStop(0, '#451a03');
+      teakGrad.addColorStop(0.4, '#78350f');
+      teakGrad.addColorStop(0.8, '#92400e');
+      teakGrad.addColorStop(1, '#290f02');
+      ctx.fillStyle = teakGrad;
+      ctx.fillRect(ox + pad + 4, oy + pad + 4, sz - 8, sz - 8);
+
+      // Carved Wooden Bracket Capital (Peacock Flairs)
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz - 2, 3.5);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(ox + pad + 2, oy + pad + 4.5, sz - 4, 1.5);
+      ctx.fillRect(cx - 2, cy - 2, 4, 4);
+    } else if (vType === 'COURTYARD_WALL' || vType === 'WADA_FOUNTAIN') {
+      // Terracotta Jali Courtyard Wall with Diamond Screen Pattern
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(ox + pad, oy + pad, sz, sz);
+
+      // Terracotta Coping Tiles
+      ctx.fillStyle = '#c2410c';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz - 2, 3);
+
+      // Diamond Jali Openwork Screen Cutouts
+      ctx.fillStyle = '#f97316';
+      for (let jx = ox + pad + 3; jx < ox + pad + sz - 4; jx += 5) {
+        ctx.beginPath();
+        ctx.moveTo(jx + 2, cy - 2);
+        ctx.lineTo(jx + 4, cy);
+        ctx.lineTo(jx + 2, cy + 2);
+        ctx.lineTo(jx, cy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (vType === 'TREE_CLUSTER' || vType === 'TEAK_TREE' || vType === 'BANYAN_TRUNK') {
+      // Sahyadri Teak & Banyan Canopy Tree
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 2, sz * 0.45, sz * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Textured Tree Trunk
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(cx - 2.5, cy, 5, sz / 2 - 2);
+
+      // Multi-Lobed Lush Emerald Canopy
+      ctx.fillStyle = '#064e3b';
+      ctx.beginPath();
+      ctx.arc(cx - 3, cy - 3, sz * 0.32, 0, Math.PI * 2);
+      ctx.arc(cx + 3, cy - 3, sz * 0.32, 0, Math.PI * 2);
+      ctx.arc(cx, cy - 6, sz * 0.34, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Leaf Highlights
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 6, sz * 0.2, 0, Math.PI * 2);
+      ctx.arc(cx + 2, cy - 4, sz * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#34d399';
+      ctx.fillRect(cx - 1, cy - 7, 2, 2);
+    } else if (vType === 'BOULDER' || vType === 'SAHYADRI_ROCK') {
+      // Mossy Sahyadri Volcanic Basalt Boulder
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 2, sz * 0.45, sz * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Faceted Angular Basalt Stone
+      const rockGrad = ctx.createLinearGradient(ox + pad, oy + pad, ox + pad + sz, oy + pad + sz);
+      rockGrad.addColorStop(0, '#475569');
+      rockGrad.addColorStop(0.5, '#334155');
+      rockGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = rockGrad;
+      ctx.beginPath();
+      ctx.moveTo(ox + pad + 3, oy + pad + 5);
+      ctx.lineTo(cx, oy + pad + 2);
+      ctx.lineTo(ox + pad + sz - 2, oy + pad + 4);
+      ctx.lineTo(ox + pad + sz - 1, oy + pad + sz - 3);
+      ctx.lineTo(ox + pad + 2, oy + pad + sz - 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Vibrant Green Sahyadri Moss Cushion
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(cx - 2, oy + pad + 3, 3, 0, Math.PI * 2);
+      ctx.arc(cx + 3, oy + pad + 4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#34d399';
+      ctx.fillRect(cx - 1, oy + pad + 2, 2, 1.5);
+    } else if (vType === 'STONE_PILLAR' || vType === 'TEMPLE_DEEPMAL') {
+      // Hemadpanthi Temple Deepmal (Stepped Black Stone Lamp Tower)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      // Tapered Black Stone Pillar
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(cx - 3, oy + pad + 2, 6, sz - 4);
+
+      // Projecting Stone Lamp Brackets
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(cx - 6, cy - 3, 12, 2);
+      ctx.fillRect(cx - 5, cy + 3, 10, 2);
+
+      // Glowing Golden Diya Oil Flames
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(cx - 5, cy - 4, 1.8, 0, Math.PI * 2);
+      ctx.arc(cx + 5, cy - 4, 1.8, 0, Math.PI * 2);
+      ctx.arc(cx - 4, cy + 2, 1.5, 0, Math.PI * 2);
+      ctx.arc(cx + 4, cy + 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (vType === 'GHAT_STEPS' || vType === 'RIVER_STONE' || vType === 'STONE_BRIDGE') {
+      // Stepped Hemadpanthi River Ghat Platforms
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      // 3 Descending Stone Steps
+      const stepH = Math.max(3, Math.floor(sz / 3));
+      for (let s = 0; s < 3; s++) {
+        const sy = oy + pad + s * stepH;
+        ctx.fillStyle = (s === 0) ? '#475569' : (s === 1 ? '#334155' : '#1e293b');
+        ctx.fillRect(ox + pad + s * 2, sy, sz - s * 4, stepH);
+        // Step Edge Bullnose Highlight
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(ox + pad + s * 2, sy, sz - s * 4, 1);
+      }
+
+      // Iron Mooring Ring
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, oy + pad + sz - 4, 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (vType === 'BAMBOO_THICKET' || vType === 'ROOT_CLUSTER') {
+      // Dense Bamboo Cane Cluster
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(cx, oy + sz - 2, sz * 0.4, sz * 0.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3 Bamboo Canes with Nodes
+      const bXs = [cx - 4, cx, cx + 4];
+      for (let bx of bXs) {
+        ctx.fillStyle = '#059669';
+        ctx.fillRect(bx - 1, oy + pad + 2, 2, sz - 4);
+        // Golden Nodes
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(bx - 1.5, cy - 3, 3, 1.2);
+        ctx.fillRect(bx - 1.5, cy + 3, 3, 1.2);
+      }
+
+      // Pointed Leaves
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      ctx.ellipse(cx - 3, cy - 4, 4, 1.5, -Math.PI / 4, 0, Math.PI * 2);
+      ctx.ellipse(cx + 3, cy - 2, 4, 1.5, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Default Basalt Fort Wall Masonry Block
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(ox + pad + 1, oy + pad + 1, sz, sz);
+
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.roundRect(ox + pad, oy + pad, sz, sz, 3);
+      ctx.fill();
+
+      // Stone Chisel Relief Lines & Mortar Joints
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(ox + pad + 2, oy + pad + 2, sz - 4, 2.5);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(cx - 1, oy + pad + 3, 2, sz - 6);
+
+      // Corner Highlight Chip
+      ctx.fillStyle = pal.frameAccent || '#f59e0b';
+      ctx.fillRect(ox + pad + sz - 4, oy + pad + 2, 2, 2);
+    }
+    ctx.restore();
+  }
+
+  function renderThemedSnake(ctx, snake, direction, cellSize, theme, boostTimer, chillTimer, magnetTimer, gameTick, interpolatedSegments) {
+    const len = snake.length;
+    if (len === 0) return;
+    const pal = theme.palette;
+    ctx.save();
+
+    const skin = theme.snakeSkin;
+
+    for (let i = len - 1; i >= 0; i--) {
+      const segData = (interpolatedSegments && interpolatedSegments[i])
+        ? interpolatedSegments[i]
+        : { x: snake[i][0], y: snake[i][1], hasWrap: false, wrapX: snake[i][0], wrapY: snake[i][1] };
+
+      const sx = segData.x * cellSize;
+      const sy = segData.y * cellSize;
+      const isHead = (i === 0);
+      const isTail = (i === len - 1);
+
+      const drawSegment = (drawSx, drawSy) => {
+        if (isHead) {
+          // Snake Head
+          let headColor = pal.snakeHead || '#22c55e';
+          let glowColor = pal.snakeGlow || '#4ade80';
+
+          if (boostTimer > 0) {
+            headColor = '#f59e0b';
+            glowColor = '#fbbf24';
+          } else if (chillTimer > 0) {
+            headColor = '#38bdf8';
+            glowColor = '#00e5ff';
+          } else if (magnetTimer > 0) {
+            headColor = '#ec4899';
+            glowColor = '#f472b6';
+          }
+
+          ctx.fillStyle = headColor;
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 12;
+
+          ctx.beginPath();
+          ctx.roundRect(drawSx + 1, drawSy + 1, cellSize - 2, cellSize - 2, 6);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Cobra hood flare / sovereign crown motif
+          if (skin === 'basalt_cobra' || skin === 'coronation_dragon') {
+            ctx.fillStyle = pal.frameAccent || '#f59e0b';
+            if (direction === 'UP' || direction === 'DOWN') {
+              ctx.fillRect(drawSx - 2, drawSy + 4, 2, cellSize - 8);
+              ctx.fillRect(drawSx + cellSize, drawSy + 4, 2, cellSize - 8);
+            } else {
+              ctx.fillRect(drawSx + 4, drawSy - 2, cellSize - 8, 2);
+              ctx.fillRect(drawSx + 4, drawSy + cellSize, cellSize - 8, 2);
+            }
+          }
+
+          // Expressive serpent eyes & slit pupils
+          const eyeRadius = Math.max(1.8, Math.floor(cellSize * 0.14));
+          const eyeOffset = Math.floor(cellSize * 0.28);
+          ctx.fillStyle = pal.snakeEye || '#fef08a';
+
+          let eye1X, eye1Y, eye2X, eye2Y;
+          if (direction === 'UP') {
+            eye1X = drawSx + eyeOffset; eye1Y = drawSy + eyeOffset;
+            eye2X = drawSx + cellSize - eyeOffset; eye2Y = drawSy + eyeOffset;
+          } else if (direction === 'DOWN') {
+            eye1X = drawSx + eyeOffset; eye1Y = drawSy + cellSize - eyeOffset;
+            eye2X = drawSx + cellSize - eyeOffset; eye2Y = drawSy + cellSize - eyeOffset;
+          } else if (direction === 'LEFT') {
+            eye1X = drawSx + eyeOffset; eye1Y = drawSy + eyeOffset;
+            eye2X = drawSx + eyeOffset; eye2Y = drawSy + cellSize - eyeOffset;
+          } else {
+            eye1X = drawSx + cellSize - eyeOffset; eye1Y = drawSy + eyeOffset;
+            eye2X = drawSx + cellSize - eyeOffset; eye2Y = drawSy + cellSize - eyeOffset;
+          }
+
+          ctx.beginPath(); ctx.arc(eye1X, eye1Y, eyeRadius, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2); ctx.fill();
+
+          // Eye slit pupils
+          ctx.fillStyle = '#000000';
+          ctx.beginPath(); ctx.arc(eye1X, eye1Y, eyeRadius * 0.5, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(eye2X, eye2Y, eyeRadius * 0.5, 0, Math.PI * 2); ctx.fill();
+
+          // Forked tongue flicker (procedural animation)
+          if ((gameTick % 8) < 4) {
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            const tLen = 6;
+            if (direction === 'UP') {
+              ctx.moveTo(drawSx + cellSize / 2, drawSy);
+              ctx.lineTo(drawSx + cellSize / 2, drawSy - tLen);
+              ctx.lineTo(drawSx + cellSize / 2 - 2, drawSy - tLen - 2);
+              ctx.moveTo(drawSx + cellSize / 2, drawSy - tLen);
+              ctx.lineTo(drawSx + cellSize / 2 + 2, drawSy - tLen - 2);
+            } else if (direction === 'DOWN') {
+              ctx.moveTo(drawSx + cellSize / 2, drawSy + cellSize);
+              ctx.lineTo(drawSx + cellSize / 2, drawSy + cellSize + tLen);
+              ctx.lineTo(drawSx + cellSize / 2 - 2, drawSy + cellSize + tLen + 2);
+              ctx.moveTo(drawSx + cellSize / 2, drawSy + cellSize + tLen);
+              ctx.lineTo(drawSx + cellSize / 2 + 2, drawSy + cellSize + tLen + 2);
+            } else if (direction === 'LEFT') {
+              ctx.moveTo(drawSx, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx - tLen, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx - tLen - 2, drawSy + cellSize / 2 - 2);
+              ctx.moveTo(drawSx - tLen, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx - tLen - 2, drawSy + cellSize / 2 + 2);
+            } else {
+              ctx.moveTo(drawSx + cellSize, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx + cellSize + tLen, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx + cellSize + tLen + 2, drawSy + cellSize / 2 - 2);
+              ctx.moveTo(drawSx + cellSize + tLen, drawSy + cellSize / 2);
+              ctx.lineTo(drawSx + cellSize + tLen + 2, drawSy + cellSize / 2 + 2);
+            }
+            ctx.stroke();
+          }
+        } else {
+          // Snake Body Segments
+          let bodyColorPrimary = pal.snakeBodyPrimary || '#16a34a';
+          let bodyColorSecondary = pal.snakeBodySecondary || '#4ade80';
+
+          if (boostTimer > 0) {
+            bodyColorPrimary = '#d97706';
+            bodyColorSecondary = '#fde047';
+          } else if (chillTimer > 0) {
+            bodyColorPrimary = '#0284c7';
+            bodyColorSecondary = '#7dd3fc';
+          } else if (magnetTimer > 0) {
+            bodyColorPrimary = '#be185d';
+            bodyColorSecondary = '#f472b6';
+          }
+
+          ctx.fillStyle = (i % 2 === 0) ? bodyColorPrimary : bodyColorSecondary;
+          ctx.beginPath();
+          const rad = isTail ? 6 : 4;
+          ctx.roundRect(drawSx + 2, drawSy + 2, cellSize - 4, cellSize - 4, rad);
+          ctx.fill();
+
+          // Dorsal scale ridge / rune / gold ring
+          ctx.fillStyle = pal.frameAccent || '#f59e0b';
+          ctx.fillRect(drawSx + cellSize / 2 - 1, drawSy + cellSize / 2 - 1, 2, 2);
+        }
+      };
+
+      drawSegment(sx, sy);
+      if (segData.hasWrap) {
+        drawSegment(segData.wrapX * cellSize, segData.wrapY * cellSize);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Layer 5: Regional Cultural Collectibles & Relics
+   */
+  /**
+   * Layer 5: Regional Cultural Collectibles & Handcrafted Fruit Vector Sprites
+   * Renders genuine handcrafted vector illustrations for strawberries, mangoes, oranges, grapes,
+   * modaks, coconuts, jaggery blocks, custard apples, bananas, pedas, guavas, pomegranates, and royal relics.
+   */
+  function renderThemedCollectible(ctx, food, fx, fy, cx, cy, radius, cellSize, theme, gameTick) {
+    const pal = theme.palette;
+    const fType = food.type || (theme.regionalFood || theme.foodVisual || 'APPLE');
+    const fVis = theme.foodVisual || '';
+    ctx.save();
+
+    if (fType === 'SOVEREIGN_CREST' || fVis === 'coronation_crest') {
+      // Level 1000 Sovereign Coronation Crest (Maratha Rajmudra Seal)
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius + 2);
+      grad.addColorStop(0, '#fffbeb');
+      grad.addColorStop(0.3, '#fde047');
+      grad.addColorStop(0.7, '#f59e0b');
+      grad.addColorStop(1, '#b45309');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Crown Jewel Accent & Seal Sunburst
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - 3, cy - 3, 6, 6);
+    } else if (fType === 'STRAWBERRY' || fVis === 'strawberry') {
+      // Mahabaleshwar Fresh Strawberry (Heart-Shaped Crimson Berry + Yellow Seeds + Green Sepals)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#f87171');
+      grad.addColorStop(0.4, '#ef4444');
+      grad.addColorStop(0.85, '#dc2626');
+      grad.addColorStop(1, '#991b1b');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 12;
+
+      // Heart/Conical Berry Silhouette
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + radius);
+      ctx.bezierCurveTo(cx - radius * 1.1, cy + radius * 0.3, cx - radius, cy - radius * 0.7, cx, cy - radius * 0.4);
+      ctx.bezierCurveTo(cx + radius, cy - radius * 0.7, cx + radius * 1.1, cy + radius * 0.3, cx, cy + radius);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Realistic Golden-Yellow Seed Specks
+      ctx.fillStyle = '#fde047';
+      const seedOffsets = [
+        [-radius * 0.4, -radius * 0.1], [radius * 0.4, -radius * 0.1],
+        [-radius * 0.2, radius * 0.3], [radius * 0.2, radius * 0.3],
+        [0, 0], [0, radius * 0.6]
+      ];
+      for (let [sx, sy] of seedOffsets) {
+        ctx.fillRect(cx + sx, cy + sy, 1.2, 1.8);
+      }
+
+      // 5-Pointed Fresh Green Sepals (Calyx) & Stem
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 0.4);
+      ctx.lineTo(cx - radius * 0.8, cy - radius * 0.7);
+      ctx.lineTo(cx - radius * 0.3, cy - radius * 0.4);
+      ctx.lineTo(cx, cy - radius * 0.8);
+      ctx.lineTo(cx + radius * 0.3, cy - radius * 0.4);
+      ctx.lineTo(cx + radius * 0.8, cy - radius * 0.7);
+      ctx.closePath();
+      ctx.fill();
+
+      // Stem
+      ctx.strokeStyle = '#15803d';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 0.6);
+      ctx.quadraticCurveTo(cx + 2, cy - radius - 2, cx + 4, cy - radius - 1);
+      ctx.stroke();
+    } else if (fType === 'ALPHONSO_MANGO' || fVis === 'alphonso_mango') {
+      // Ratnagiri / Devgad Alphonso Hapus Mango (Golden S-Curve + Orange/Pink Blush + Stem Leaves)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius + 1);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.35, '#f59e0b');
+      grad.addColorStop(0.7, '#ea580c');
+      grad.addColorStop(1, '#dc2626');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 12;
+
+      // Characteristic Alphonso Beak Curve Silhouette
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.bezierCurveTo(cx + radius * 1.1, cy - radius * 0.5, cx + radius * 1.2, cy + radius * 0.6, cx + radius * 0.3, cy + radius);
+      ctx.bezierCurveTo(cx - radius * 0.2, cy + radius * 1.1, cx - radius * 1.1, cy + radius * 0.5, cx - radius * 0.8, cy - radius * 0.2);
+      ctx.bezierCurveTo(cx - radius * 0.6, cy - radius * 0.8, cx - radius * 0.2, cy - radius, cx, cy - radius);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Glossy Specular Highlight Arc
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 1, radius * 0.6, Math.PI * 0.8, Math.PI * 1.4);
+      ctx.stroke();
+
+      // Stem & Twin Green Leaves
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.lineTo(cx, cy - radius - 3);
+      ctx.stroke();
+      ctx.fillStyle = '#16a34a';
+      ctx.beginPath();
+      ctx.ellipse(cx + 3, cy - radius - 2, 4, 1.8, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (fType === 'NAGPUR_ORANGE' || fVis === 'nagpur_orange') {
+      // Nagpur Sweet Orange (Santra - Textured Spherical Orange + Leaf + Segment Detail)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#fed7aa');
+      grad.addColorStop(0.35, '#fb923c');
+      grad.addColorStop(0.75, '#ea580c');
+      grad.addColorStop(1, '#c2410c');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#f97316';
+      ctx.shadowBlur = 12;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Stippled Peel Pores Texture
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(cx - 3, cy - 2, 1, 1);
+      ctx.fillRect(cx + 3, cy + 2, 1, 1);
+      ctx.fillRect(cx - 1, cy + 4, 1, 1);
+      ctx.fillRect(cx + 2, cy - 4, 1, 1);
+
+      // Curved Specular Highlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 2, radius * 0.6, Math.PI * 0.9, Math.PI * 1.5);
+      ctx.stroke();
+
+      // Stem Node & Leaf
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.arc(cx, cy - radius, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#15803d';
+      ctx.beginPath();
+      ctx.ellipse(cx + 3, cy - radius - 1, 4, 2, -Math.PI / 6, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (fType === 'PURPLE_GRAPES' || fVis === 'purple_grapes') {
+      // Nashik Table Grapes (Clustered Deep Violet Spheres + Translucent Bloom + Tendril)
+      ctx.shadowColor = '#8b5cf6';
+      ctx.shadowBlur = 10;
+      const grapeR = Math.max(2.2, radius * 0.38);
+      const grapes = [
+        [cx, cy + radius * 0.6],
+        [cx - grapeR * 0.9, cy + radius * 0.2], [cx + grapeR * 0.9, cy + radius * 0.2],
+        [cx - grapeR * 1.4, cy - radius * 0.2], [cx, cy - radius * 0.2], [cx + grapeR * 1.4, cy - radius * 0.2],
+        [cx - grapeR * 0.8, cy - radius * 0.6], [cx + grapeR * 0.8, cy - radius * 0.6]
+      ];
+      for (let [gx, gy] of grapes) {
+        const gGrad = ctx.createRadialGradient(gx - 1, gy - 1, 1, gx, gy, grapeR);
+        gGrad.addColorStop(0, '#c084fc');
+        gGrad.addColorStop(0.5, '#7e22ce');
+        gGrad.addColorStop(1, '#3b0764');
+        ctx.fillStyle = gGrad;
+        ctx.beginPath();
+        ctx.arc(gx, gy, grapeR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+
+      // Woody Stem & Curly Vine Tendril
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 0.6);
+      ctx.lineTo(cx, cy - radius - 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx + 3, cy - radius - 1, 2, Math.PI, 0);
+      ctx.stroke();
+    } else if (fType === 'MODAK' || fVis === 'modak') {
+      // Pune Ukadiche Modak (Steamed Ivory Teardrop + 7 Pinched Pleated Ridges + Saffron Strand)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.5, '#fef3c7');
+      grad.addColorStop(1, '#fde68a');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 12;
+
+      // Teardrop Modak Body
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.bezierCurveTo(cx + radius * 1.1, cy - radius * 0.2, cx + radius * 0.9, cy + radius, cx, cy + radius);
+      ctx.bezierCurveTo(cx - radius * 0.9, cy + radius, cx - radius * 1.1, cy - radius * 0.2, cx, cy - radius);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 7 Pinched Pleated Folds (Vertical Grooves)
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 1;
+      for (let ang = -0.7; ang <= 0.7; ang += 0.25) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - radius);
+        ctx.quadraticCurveTo(cx + ang * radius, cy, cx + ang * (radius * 0.8), cy + radius - 1);
+        ctx.stroke();
+      }
+
+      // Saffron Strand (Kesar) at Apex
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.lineTo(cx + 2, cy - radius - 2.5);
+      ctx.stroke();
+    } else if (fType === 'TENDER_COCONUT' || fVis === 'tender_coconut') {
+      // Konkan Tender Coconut (Shahaale - Green Husk + White Meat Ring + Straw)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#a7f3d0');
+      grad.addColorStop(0.4, '#34d399');
+      grad.addColorStop(0.8, '#059669');
+      grad.addColorStop(1, '#064e3b');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 10;
+
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 1, radius, radius * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Shaved Top Cut & Coconut Meat Ring
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - radius * 0.4, radius * 0.55, radius * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Aqua Fresh Water Surface
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - radius * 0.4, radius * 0.35, radius * 0.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Striped Straw
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 0.4);
+      ctx.lineTo(cx + 4, cy - radius - 3);
+      ctx.stroke();
+    } else if (fType === 'KOLHAPURI_JAGGERY' || fVis === 'kolhapuri_jaggery') {
+      // Kolhapuri Amber Jaggery Block & Sugarcane Stalks
+      ctx.shadowColor = '#d97706';
+      ctx.shadowBlur = 10;
+      const bGrad = ctx.createLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius);
+      bGrad.addColorStop(0, '#fde047');
+      bGrad.addColorStop(0.5, '#d97706');
+      bGrad.addColorStop(1, '#78350f');
+      ctx.fillStyle = bGrad;
+      ctx.fillRect(cx - radius * 0.7, cy - radius * 0.5, radius * 1.4, radius * 1.2);
+      ctx.shadowBlur = 0;
+
+      // Crystalline Glistening Flecks
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(cx - radius * 0.3, cy - radius * 0.2, 2, 2);
+      ctx.fillRect(cx + radius * 0.2, cy + radius * 0.2, 2, 2);
+
+      // Sugarcane Stalk Cut
+      ctx.fillStyle = '#15803d';
+      ctx.fillRect(cx - radius * 0.8, cy - radius * 0.8, radius * 0.4, radius * 1.6);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - radius * 0.8, cy - radius * 0.1, radius * 0.4, 1.5);
+    } else if (fType === 'CUSTARD_APPLE' || fVis === 'custard_apple') {
+      // Daulatabad Sitaphal (Custard Apple - Knobby Polygonal Green Lobes)
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#065f46';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Knobby Segment Lobes
+      const lobeOffsets = [
+        [0, 0], [-radius * 0.45, -radius * 0.3], [radius * 0.45, -radius * 0.3],
+        [-radius * 0.45, radius * 0.3], [radius * 0.45, radius * 0.3],
+        [0, -radius * 0.6], [0, radius * 0.6]
+      ];
+      for (let [lx, ly] of lobeOffsets) {
+        const lGrad = ctx.createRadialGradient(cx + lx - 1, cy + ly - 1, 1, cx + lx, cy + ly, radius * 0.35);
+        lGrad.addColorStop(0, '#a7f3d0');
+        lGrad.addColorStop(0.6, '#34d399');
+        lGrad.addColorStop(1, '#059669');
+        ctx.fillStyle = lGrad;
+        ctx.beginPath();
+        ctx.arc(cx + lx, cy + ly, radius * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (fType === 'JALGAON_BANANA' || fVis === 'jalgaon_banana') {
+      // Jalgaon Golden Banana (Crescent Yellow Curve + Green Tip & Stem)
+      ctx.shadowColor = '#eab308';
+      ctx.shadowBlur = 10;
+      const bGrad = ctx.createLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius);
+      bGrad.addColorStop(0, '#fef08a');
+      bGrad.addColorStop(0.6, '#eab308');
+      bGrad.addColorStop(1, '#ca8a04');
+      ctx.fillStyle = bGrad;
+
+      ctx.beginPath();
+      ctx.moveTo(cx - radius * 0.7, cy - radius * 0.6);
+      ctx.quadraticCurveTo(cx + radius * 1.1, cy, cx - radius * 0.6, cy + radius * 0.8);
+      ctx.quadraticCurveTo(cx + radius * 0.5, cy, cx - radius * 0.7, cy - radius * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Green Tip & Brown Stem
+      ctx.fillStyle = '#16a34a';
+      ctx.fillRect(cx - radius * 0.8, cy + radius * 0.6, 3, 2.5);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(cx - radius * 0.8, cy - radius * 0.7, 3, 2.5);
+    } else if (fType === 'PRASAAD_PEDA' || fType === 'BHAKRI_POHA' || fVis === 'prasaad_lamp') {
+      // Temple Prasaad Peda / Roasted Bhakri (Golden Round Disc + Pistachio Garnish)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#fef3c7');
+      grad.addColorStop(0.45, '#fbbf24');
+      grad.addColorStop(0.85, '#d97706');
+      grad.addColorStop(1, '#92400e');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 10;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Pressed Center Stamp
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Pistachio Garnish & Cardamom Flecks
+      ctx.fillStyle = '#16a34a';
+      ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(cx - 3, cy + 2, 1.2, 1.2);
+      ctx.fillRect(cx + 2, cy - 3, 1.2, 1.2);
+    } else if (fType === 'WAI_GUAVA' || fVis === 'wai_guava') {
+      // Wai Sardar Guava (Pear-Shaped Lime-Green Fruit + Raised Crown)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#d9f99d');
+      grad.addColorStop(0.4, '#a3e635');
+      grad.addColorStop(0.8, '#65a30d');
+      grad.addColorStop(1, '#3f6212');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#84cc16';
+      ctx.shadowBlur = 10;
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.bezierCurveTo(cx + radius * 1.1, cy - radius * 0.3, cx + radius * 0.9, cy + radius, cx, cy + radius);
+      ctx.bezierCurveTo(cx - radius * 0.9, cy + radius, cx - radius * 1.1, cy - radius * 0.3, cx, cy - radius);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Crown Calyx
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(cx - 2, cy + radius - 2, 4, 2);
+    } else if (fType === 'POMEGRANATE' || fVis === 'pomegranate') {
+      // Solapur Bhagwa Pomegranate (Ruby-Red Crowned Fruit + Sparkling Arils)
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#f87171');
+      grad.addColorStop(0.4, '#dc2626');
+      grad.addColorStop(0.8, '#991b1b');
+      grad.addColorStop(1, '#450a0a');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 12;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Crowned Top Apex
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, cy - radius);
+      ctx.lineTo(cx - 4, cy - radius - 3);
+      ctx.lineTo(cx, cy - radius - 1);
+      ctx.lineTo(cx + 4, cy - radius - 3);
+      ctx.lineTo(cx + 3, cy - radius);
+      ctx.fill();
+
+      // Sparkling Aril Seeds
+      ctx.fillStyle = '#fee2e2';
+      ctx.fillRect(cx - 1, cy - 1, 2, 2);
+      ctx.fillRect(cx + 2, cy + 1, 1.5, 1.5);
+    } else if (fType === 'SAHYADRI_GEM' || fVis === 'sahyadri_gem') {
+      // Multi-Faceted Sahyadri Ruby/Sapphire Gem in Gold Setting
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, radius);
+      grad.addColorStop(0, '#fee2e2');
+      grad.addColorStop(0.4, '#ef4444');
+      grad.addColorStop(1, '#991b1b');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.lineTo(cx + radius, cy);
+      ctx.lineTo(cx, cy + radius);
+      ctx.lineTo(cx - radius, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Gold Setting Prongs & Sparkling Glint
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(cx - 1, cy - radius * 0.4, 2, 2);
+    } else if (fType === 'KONKAN_PEARL' || fVis === 'konkan_pearl') {
+      // Konkan Iridescent Shimmering Pearl in Oyster
+      ctx.fillStyle = '#0284c7';
+      ctx.beginPath();
+      ctx.arc(cx, cy + 2, radius, 0, Math.PI);
+      ctx.fill();
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, radius - 1);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.6, '#e0f2fe');
+      grad.addColorStop(1, '#38bdf8');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 1, radius - 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (fType === 'CAVE_RELIC' || fVis === 'cave_relic') {
+      // Ancient Rock-Cut Golden Lotus Relic
+      ctx.fillStyle = '#a855f7';
+      ctx.shadowColor = '#c084fc';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - 2, cy - 2, 4, 4);
+    } else if (fType === 'ROYAL_WADA_TOKEN' || fVis === 'wada_token') {
+      // Maratha Gold Hon / Peshwa Coin
+      ctx.fillStyle = '#f59e0b';
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (fType === 'FOREST_SPIRIT' || fVis === 'forest_spirit') {
+      // Sahyadri Wildflower Orchid
+      const grad = ctx.createRadialGradient(cx, cy, 1, cx, cy, radius);
+      grad.addColorStop(0, '#fbcfe8');
+      grad.addColorStop(0.5, '#ec4899');
+      grad.addColorStop(1, '#9d174d');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ec4899';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (fType === 'GOLDEN_APPLE') {
+      // Radiant Golden Fig
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#fffbeb');
+      grad.addColorStop(0.4, '#fde047');
+      grad.addColorStop(1, '#eab308');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (fType === 'CHILL_BERRY') {
+      // Frost Ice Berry
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#e0f2fe');
+      grad.addColorStop(0.5, '#38bdf8');
+      grad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (fType === 'SPEED_BOOST') {
+      // Agni Flame
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.5, '#f59e0b');
+      grad.addColorStop(1, '#d97706');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (fType === 'MAGNET') {
+      // Magnet Stone
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, '#fbcfe8');
+      grad.addColorStop(0.5, '#ec4899');
+      grad.addColorStop(1, '#be185d');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#ec4899';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Crisp Maharashtra Royal Apple
+      const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
+      grad.addColorStop(0, pal.foodSecondary || '#fca5a5');
+      grad.addColorStop(0.5, pal.foodPrimary || '#ef4444');
+      grad.addColorStop(1, pal.foodGlow || '#b91c1c');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = pal.foodPrimary || '#ef4444';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Leaf accent
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.ellipse(cx + 2, cy - radius - 1, 3, 2, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function SnakeClassic() {
     const [progression, setProgression] = useState(null);
     const [isPaused, setIsPaused] = useState(true);
@@ -195,24 +1791,38 @@
     const [milestoneCelebration, setMilestoneCelebration] = useState(null);
     const [levelMilestoneCelebration, setLevelMilestoneCelebration] = useState(null);
     const [levelCelebration, setLevelCelebration] = useState(null);
-    const [uiBoardHeader, setUiBoardHeader] = useState(null); // Lightweight state for header/rail
-    const [stageDimensions, setStageDimensions] = useState({ width: 600, height: 340 });
+    const [uiBoardHeader, setUiBoardHeader] = useState(null);
 
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
+    const offscreenStaticCanvasRef = useRef(null);
+    const staticCacheKeyRef = useRef('');
+    const gameTickRef = useRef(0);
     const levelMilestoneTimerRef = useRef(null);
 
-    // Live mutable refs for high-frequency game engine
+    // Live mutable refs for game loop
     const boardRef = useRef(null);
     const stateRef = useRef({ progression: null, isPaused: true, deathState: null, showLevelGoalCard: true });
-    const layoutRef = useRef({ cols: 24, rows: 14, cellSize: 22, canvasW: 528, canvasH: 308 });
+    const layoutRef = useRef({ totalCols: 32, totalRows: 20, cellSize: 22, canvasW: 704, canvasH: 440 });
     const gameLoopTimerRef = useRef(null);
     const activeTimerRef = useRef(null);
-    const hoppingTimerRef = useRef(null);
     const nextDirectionQueueRef = useRef([]);
     const particlesRef = useRef([]);
 
-    // Synchronize stateRef
+    // Presentation / Smooth Visual Interpolation Layer Refs
+    const previousSnakeRef = useRef([]);
+    const lastTickTimeRef = useRef(0);
+    const tickDurationRef = useRef(200);
+    const interpolatedSegmentsRef = useRef([]);
+
+    const syncPreviousSnake = useCallback((board, tickMs) => {
+      if (!board || !board.snake) return;
+      previousSnakeRef.current = board.snake.map(s => [s[0], s[1]]);
+      lastTickTimeRef.current = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      if (typeof tickMs === 'number') tickDurationRef.current = tickMs;
+    }, []);
+
+    // Keep stateRef synchronized
     useEffect(() => {
       stateRef.current.progression = progression;
       stateRef.current.isPaused = isPaused;
@@ -220,7 +1830,7 @@
       stateRef.current.showLevelGoalCard = showLevelGoalCard;
     }, [progression, isPaused, deathState, showLevelGoalCard]);
 
-    // High-performance canvas drawing function
+    // High-performance canvas drawing function (Multi-Layer Illustrated Architecture + Offscreen Caching + Presentation Interpolation)
     const drawCanvas = useCallback(() => {
       const canvas = canvasRef.current;
       const board = boardRef.current;
@@ -230,13 +1840,16 @@
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Single Source of Truth: board.width & board.height define the grid columns and rows
-      const cols = board.width;
-      const rows = board.height;
-      const snake = board.snake || [];
-      const cellSize = layout && layout.cellSize ? layout.cellSize : 22;
-      const displayW = cols * cellSize;
-      const displayH = rows * cellSize;
+      gameTickRef.current = (gameTickRef.current + 1) % 10000;
+      const tick = gameTickRef.current;
+
+      const { totalCols, totalRows, cellSize } = layout;
+      const bounds = board.bounds || (Generator ? Generator.getTerritoryBounds(totalCols, totalRows, board.level || 1) : {
+        minX: 0, maxX: totalCols - 1, minY: 0, maxY: totalRows - 1, spanX: totalCols, spanY: totalRows
+      });
+
+      const displayW = totalCols * cellSize;
+      const displayH = totalRows * cellSize;
 
       const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
       const bufferW = Math.round(displayW * dpr);
@@ -251,43 +1864,96 @@
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // 1. Clear background
-      ctx.fillStyle = board.chillTimer > 0 ? '#0b1928' : '#0f172a';
-      ctx.fillRect(0, 0, displayW, displayH);
+      // Resolve Maharashtra destination world & theme
+      const worldData = MWorld ? MWorld.getWorldForLevel('classic', board.level || 1) : null;
+      const theme = (worldData && worldData.theme) ? worldData.theme : (
+        MWorld ? MWorld.getDestinationTheme(null, null, board.level || 1) : {
+          palette: { skyTop: '#0b1120', skyBottom: '#1e293b', groundBase: '#0f172a', groundTile: '#1e293b', groundGrout: '#09090b', frameBorder: '#475569', frameAccent: '#f59e0b', frameEmboss: '#1e293b', snakeHead: '#22c55e', snakeBodyPrimary: '#16a34a', snakeBodySecondary: '#4ade80', snakeEye: '#fef08a', snakeGlow: '#4ade80', foodPrimary: '#ef4444', foodSecondary: '#fca5a5', foodGlow: '#b91c1c', particleColor: 'rgba(245, 158, 11, 0.35)' },
+          skyStyle: 'misty_sahyadri', horizonStyle: 'citadel_peaks', frameStyle: 'sahyadri_battlement', groundStyle: 'basalt_flagstone', snakeSkin: 'basalt_cobra', foodVisual: 'sahyadri_gem', obstacleStyle: 'fort_bastion_gate'
+        }
+      );
 
-      // 2. Draw subtle grid
-      ctx.strokeStyle = board.chillTimer > 0 ? 'rgba(0, 229, 255, 0.08)' : 'rgba(255, 255, 255, 0.05)';
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= cols; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * cellSize, 0);
-        ctx.lineTo(x * cellSize, displayH);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= rows; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * cellSize);
-        ctx.lineTo(displayW, y * cellSize);
-        ctx.stroke();
+      const tX = bounds.minX * cellSize;
+      const tY = bounds.minY * cellSize;
+      const tW = bounds.spanX * cellSize;
+      const tH = bounds.spanY * cellSize;
+
+      // =======================================================================
+      // OFFSCREEN CACHE (LAYERS 0, 1, 2): SKY, HORIZON, GROUND & FRAME
+      // =======================================================================
+      const cacheKey = `${board.level}_${totalCols}_${totalRows}_${cellSize}_${bounds.minX}_${bounds.minY}_${bounds.spanX}_${bounds.spanY}_${board.chillTimer > 0 ? 'chill' : 'normal'}`;
+
+      if (staticCacheKeyRef.current !== cacheKey || !offscreenStaticCanvasRef.current) {
+        let offCanvas = offscreenStaticCanvasRef.current;
+        if (!offCanvas) {
+          offCanvas = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+          offscreenStaticCanvasRef.current = offCanvas;
+        }
+        if (offCanvas) {
+          offCanvas.width = displayW;
+          offCanvas.height = displayH;
+          const offCtx = offCanvas.getContext('2d');
+          if (offCtx) {
+            // Layer 0: Atmospheric Sky & Horizon Silhouette
+            renderAtmosphericBackdrop(offCtx, displayW, displayH, bounds, cellSize, theme, board.level, board.chillTimer > 0);
+            // Layer 1: Tactile Ground Material
+            renderTactileGround(offCtx, tX, tY, tW, tH, bounds, cellSize, theme, board.level);
+            // Layer 2: Architectural Board Framing
+            renderArchitecturalFraming(offCtx, tX, tY, tW, tH, bounds, cellSize, theme, worldData, board.level, board.chillTimer > 0);
+            staticCacheKeyRef.current = cacheKey;
+          }
+        }
       }
 
-      // 3. Draw Obstacles (Bricks)
+      // Blit cached background & framework
+      if (offscreenStaticCanvasRef.current) {
+        ctx.drawImage(offscreenStaticCanvasRef.current, 0, 0);
+      } else {
+        renderAtmosphericBackdrop(ctx, displayW, displayH, bounds, cellSize, theme, board.level, board.chillTimer > 0);
+        renderTactileGround(ctx, tX, tY, tW, tH, bounds, cellSize, theme, board.level);
+        renderArchitecturalFraming(ctx, tX, tY, tW, tH, bounds, cellSize, theme, worldData, board.level, board.chillTimer > 0);
+      }
+
+      // =======================================================================
+      // DYNAMIC PLAYFIELD LAYERS (LAYERS 3, 4, 5) - CLIPPED TO PLAYFIELD RECT
+      // Clamps all dynamic rendering, toroidal snake wraps, collectibles and obstacles
+      // cleanly inside the territory box so segments never bleed across borders.
+      // =======================================================================
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(tX, tY, tW, tH);
+      ctx.clip();
+
+      // =======================================================================
+      // LAYER 3: 3D ARCHITECTURAL OBSTACLES
+      // =======================================================================
       const obstacleList = board.obstacles || [];
-      const bWidth = board.width || cols;
-      for (let obsIdx of obstacleList) {
-        const ox = (obsIdx % bWidth) * cellSize;
-        const oy = Math.floor(obsIdx / bWidth) * cellSize;
-        ctx.fillStyle = '#475569';
-        ctx.beginPath();
-        ctx.roundRect(ox + 2, oy + 2, cellSize - 4, cellSize - 4, 4);
-        ctx.fill();
+      for (let obs of obstacleList) {
+        let ox, oy;
+        if (typeof obs === 'string') {
+          const parts = obs.split(',');
+          ox = parseInt(parts[0], 10) * cellSize;
+          oy = parseInt(parts[1], 10) * cellSize;
+        } else if (typeof obs === 'number') {
+          const stride = bounds.totalCols || bounds.spanX;
+          ox = (obs % stride) * cellSize;
+          oy = Math.floor(obs / stride) * cellSize;
+        } else if (obs && typeof obs === 'object') {
+          ox = obs.x * cellSize;
+          oy = obs.y * cellSize;
+        }
 
-        // Brick highlight
-        ctx.fillStyle = '#64748b';
-        ctx.fillRect(ox + 4, oy + 4, cellSize - 8, 2);
+        if (ox === undefined || oy === undefined) continue;
+
+        const pad = Math.max(1, Math.floor(cellSize * 0.08));
+        const sz = cellSize - pad * 2;
+        const cx = ox + cellSize / 2;
+        const cy = oy + cellSize / 2;
+
+        renderArchitecturalObstacle(ctx, obs, ox, oy, sz, cx, cy, pad, cellSize, theme, tick);
       }
 
-      // 4. Draw Gateways
+      // Draw Gateways (if any)
       if (board.gateways && board.gateways.length >= 2) {
         for (let g of board.gateways) {
           const gx = g.x * cellSize;
@@ -305,473 +1971,199 @@
         }
       }
 
-      // 5. Draw Food / Novelty Pickups (Guaranteed valid in-bounds food)
-      let food = board.food;
-      if (!food || typeof food.x !== 'number' || typeof food.y !== 'number' ||
-          food.x < 0 || food.x >= cols || food.y < 0 || food.y >= rows) {
-        if (Generator && typeof Generator.ensureValidFood === 'function') {
-          food = Generator.ensureValidFood(board);
-          board.food = food;
+      // =======================================================================
+      // LAYER 4: REGIONAL CULTURAL COLLECTIBLES / FRUITS
+      // =======================================================================
+      const activeFoods = Array.isArray(board.foods) ? board.foods : (board.food ? [board.food] : []);
+      for (let food of activeFoods) {
+        if (!food || typeof food.x !== 'number' || typeof food.y !== 'number' ||
+            food.x < bounds.minX || food.x > bounds.maxX || food.y < bounds.minY || food.y > bounds.maxY) {
+          continue;
         }
-      }
 
-      if (food) {
         const fx = food.x * cellSize;
         const fy = food.y * cellSize;
         const radius = Math.max(4, (cellSize / 2) - 3);
         const cx = fx + cellSize / 2;
         const cy = fy + cellSize / 2;
 
-        if (food.type === 'GOLDEN_APPLE') {
-          // 🌟 Golden Apple: Radiant gold glow + shimmer
-          const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
-          grad.addColorStop(0, '#fffbeb');
-          grad.addColorStop(0.4, '#fde047');
-          grad.addColorStop(1, '#eab308');
-          ctx.fillStyle = grad;
-          ctx.shadowColor = '#ffd700';
-          ctx.shadowBlur = 14;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius + 1, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+        renderThemedCollectible(ctx, food, fx, fy, cx, cy, radius, cellSize, theme, tick);
+      }
 
-          // Golden leaf & sparkle
-          ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(cx - 1, cy - radius - 3, 2, 4);
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(cx - 2, cy - 2, 1.5, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (food.type === 'CHILL_BERRY') {
-          // ❄️ Chill Berry: Cyan frost glow + ice halo
-          const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
-          grad.addColorStop(0, '#e0f2fe');
-          grad.addColorStop(0.5, '#38bdf8');
-          grad.addColorStop(1, '#0284c7');
-          ctx.fillStyle = grad;
-          ctx.shadowColor = '#00e5ff';
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      // =======================================================================
+      // LAYER 5: DESTINATION-THEMED SNAKE AVATAR (SMOOTH INTERPOLATED PRESENTATION)
+      // =======================================================================
+      const currSnake = board.snake || [];
+      const prevSnake = previousSnakeRef.current;
+      const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      const elapsed = Math.max(0, now - (lastTickTimeRef.current || now));
+      const duration = Math.max(1, tickDurationRef.current || 200);
+      let progress = Math.min(1.0, Math.max(0, elapsed / duration));
 
-          // Ice stem
-          ctx.fillStyle = '#bae6fd';
-          ctx.fillRect(cx - 1, cy - radius - 2, 2, 4);
-        } else if (food.type === 'SPEED_BOOST') {
-          // ⚡ Speed Boost: Vibrant amber lightning pickup
-          const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
-          grad.addColorStop(0, '#fef3c7');
-          grad.addColorStop(0.5, '#f59e0b');
-          grad.addColorStop(1, '#d97706');
-          ctx.fillStyle = grad;
-          ctx.shadowColor = '#f59e0b';
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      const isReducedMotion = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (stateRef.current.isPaused || stateRef.current.deathState || stateRef.current.showLevelGoalCard || isReducedMotion || !prevSnake || prevSnake.length === 0) {
+        progress = 1.0;
+      }
 
-          // Lightning bolt symbol
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${Math.max(8, Math.floor(cellSize * 0.55))}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('⚡', cx, cy + 1);
-        } else if (food.type === 'MYSTERY') {
-          // 🎁 Mystery Item: Glowing purple box with '?'
-          ctx.fillStyle = '#9333ea';
-          ctx.shadowColor = '#c084fc';
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.roundRect(fx + 2, fy + 2, cellSize - 4, cellSize - 4, 4);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      // Preallocated mutation buffer: 0 GC allocations per frame
+      const interpBuf = interpolatedSegmentsRef.current;
+      while (interpBuf.length < currSnake.length) {
+        interpBuf.push({ x: 0, y: 0, hasWrap: false, wrapX: 0, wrapY: 0 });
+      }
+      interpBuf.length = currSnake.length;
 
-          // Inscribed '?'
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${Math.max(9, Math.floor(cellSize * 0.65))}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('?', cx, cy + 1);
-        } else if (food.type === 'MAGNET') {
-          // 🧲 Magnet: Crimson magnetic attraction pickup
-          const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
-          grad.addColorStop(0, '#fce7f3');
-          grad.addColorStop(0.5, '#ec4899');
-          grad.addColorStop(1, '#be185d');
-          ctx.fillStyle = grad;
-          ctx.shadowColor = '#ec4899';
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      for (let i = 0; i < currSnake.length; i++) {
+        const curr = currSnake[i];
+        const prev = (prevSnake && i < prevSnake.length)
+          ? prevSnake[i]
+          : (prevSnake && prevSnake.length > 0 ? prevSnake[prevSnake.length - 1] : curr);
 
-          // Magnet 'U' symbol
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${Math.max(8, Math.floor(cellSize * 0.55))}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('🧲', cx, cy + 1);
-        } else if (food.type === 'HOPPING_FRUIT') {
-          // 🍇 Hopping Fruit: Berry purple
-          ctx.fillStyle = '#a855f7';
-          ctx.shadowColor = '#a855f7';
-          ctx.shadowBlur = 8;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+        const dx = curr[0] - prev[0];
+        const dy = curr[1] - prev[1];
+        let renderX = prev[0];
+        let renderY = prev[1];
+        let hasWrap = false;
+        let wrapX = renderX;
+        let wrapY = renderY;
 
-          ctx.fillStyle = '#22c55e';
-          ctx.fillRect(cx - 1, cy - radius - 2, 2, 4);
+        // Toroidal boundary wrap handling along X axis
+        if (dx < -1) {
+          hasWrap = true;
+          const unwrappedTargetX = curr[0] + bounds.spanX;
+          renderX = prev[0] + (unwrappedTargetX - prev[0]) * progress;
+          wrapX = renderX - bounds.spanX;
+        } else if (dx > 1) {
+          hasWrap = true;
+          const unwrappedTargetX = curr[0] - bounds.spanX;
+          renderX = prev[0] + (unwrappedTargetX - prev[0]) * progress;
+          wrapX = renderX + bounds.spanX;
         } else {
-          // 🍎 Classic Normal Apple
-          const grad = ctx.createRadialGradient(cx - 2, cy - 2, 2, cx, cy, radius);
-          grad.addColorStop(0, '#fca5a5');
-          grad.addColorStop(0.4, '#ef4444');
-          grad.addColorStop(1, '#b91c1c');
-          ctx.fillStyle = grad;
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 8;
+          renderX = prev[0] + dx * progress;
+        }
+
+        // Toroidal boundary wrap handling along Y axis
+        if (dy < -1) {
+          hasWrap = true;
+          const unwrappedTargetY = curr[1] + bounds.spanY;
+          renderY = prev[1] + (unwrappedTargetY - prev[1]) * progress;
+          wrapY = renderY - bounds.spanY;
+        } else if (dy > 1) {
+          hasWrap = true;
+          const unwrappedTargetY = curr[1] - bounds.spanY;
+          renderY = prev[1] + (unwrappedTargetY - prev[1]) * progress;
+          wrapY = renderY + bounds.spanY;
+        } else {
+          renderY = prev[1] + dy * progress;
+        }
+
+        interpBuf[i].x = renderX;
+        interpBuf[i].y = renderY;
+        interpBuf[i].hasWrap = hasWrap;
+        interpBuf[i].wrapX = wrapX;
+        interpBuf[i].wrapY = wrapY;
+      }
+
+      renderThemedSnake(
+        ctx,
+        currSnake,
+        board.direction,
+        cellSize,
+        theme,
+        board.boostTimer,
+        board.chillTimer,
+        board.magnetTimer,
+        tick,
+        interpBuf
+      );
+
+      ctx.restore();
+
+      // =======================================================================
+      // LAYER 6: AMBIENT PARTICLES & FLOATING TEXT FX
+      // =======================================================================
+      const particles = particlesRef.current;
+      for (let pIdx = particles.length - 1; pIdx >= 0; pIdx--) {
+        const p = particles[pIdx];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.035;
+
+        if (p.alpha <= 0) {
+          particles.splice(pIdx, 1);
+          continue;
+        }
+
+        ctx.fillStyle = p.color || (pal.particleColor || '#fde047');
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        if (p.text) {
+          ctx.font = 'bold 12px Inter, sans-serif';
+          ctx.fillText(p.text, p.x, p.y);
+        } else {
           ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.radius || 2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
-
-          // Emerald leaf & stem
-          ctx.fillStyle = '#15803d';
-          ctx.fillRect(cx - 1, cy - radius - 2, 2, 4);
-          ctx.fillStyle = '#4ade80';
-          ctx.fillRect(cx + 1, cy - radius - 1, 3, 2);
         }
-      }
-
-      // 6. Draw Snake Body & Head
-      const isDead = !!stateRef.current.deathState;
-      const chillActive = board.chillTimer > 0;
-      const boostActive = board.boostTimer > 0;
-      const magnetActive = board.magnetTimer > 0;
-
-      if (snake && snake.length > 0) {
-        for (let i = snake.length - 1; i >= 0; i--) {
-          const seg = snake[i];
-          const sx = seg[0] * cellSize;
-          const sy = seg[1] * cellSize;
-          const isHead = (i === 0);
-
-          if (isHead) {
-            // Distinct Head Colors for Active Novelty Modifiers
-            if (isDead) {
-              ctx.fillStyle = '#ef4444';
-            } else if (chillActive) {
-              ctx.fillStyle = '#38bdf8'; // Frost cyan
-              ctx.shadowColor = '#00e5ff';
-              ctx.shadowBlur = 8;
-            } else if (boostActive) {
-              ctx.fillStyle = '#f59e0b'; // Speed amber
-              ctx.shadowColor = '#fbbf24';
-              ctx.shadowBlur = 10;
-            } else if (magnetActive) {
-              ctx.fillStyle = '#ec4899'; // Magnet magenta
-              ctx.shadowColor = '#f472b6';
-              ctx.shadowBlur = 8;
-            } else {
-              ctx.fillStyle = '#10b981'; // Classic emerald
-            }
-
-            ctx.beginPath();
-            ctx.roundRect(sx + 2, sy + 2, cellSize - 4, cellSize - 4, 6);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-
-            // Optional Magnet Aura Ring around Head
-            if (magnetActive && !isDead) {
-              ctx.strokeStyle = 'rgba(236, 72, 153, 0.4)';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(sx + cellSize / 2, sy + cellSize / 2, cellSize * 0.9, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-
-            // Eyes on Head
-            ctx.fillStyle = '#ffffff';
-            const dir = board.direction;
-            let eye1 = { x: sx + 4, y: sy + 4 };
-            let eye2 = { x: sx + cellSize - 8, y: sy + 4 };
-
-            if (dir === 'DOWN') {
-              eye1 = { x: sx + 4, y: sy + cellSize - 8 };
-              eye2 = { x: sx + cellSize - 8, y: sy + cellSize - 8 };
-            } else if (dir === 'LEFT') {
-              eye1 = { x: sx + 4, y: sy + 4 };
-              eye2 = { x: sx + 4, y: sy + cellSize - 8 };
-            } else if (dir === 'RIGHT') {
-              eye1 = { x: sx + cellSize - 8, y: sy + 4 };
-              eye2 = { x: sx + cellSize - 8, y: sy + cellSize - 8 };
-            }
-
-            if (isDead) {
-              ctx.fillStyle = '#ffffff';
-              ctx.font = 'bold 9px sans-serif';
-              ctx.fillText('✕', eye1.x - 1, eye1.y + 6);
-              ctx.fillText('✕', eye2.x - 1, eye2.y + 6);
-            } else {
-              ctx.fillRect(eye1.x, eye1.y, 4, 4);
-              ctx.fillRect(eye2.x, eye2.y, 4, 4);
-              ctx.fillStyle = '#0f172a';
-              ctx.fillRect(eye1.x + 1, eye1.y + 1, 2, 2);
-              ctx.fillRect(eye2.x + 1, eye2.y + 1, 2, 2);
-            }
-          } else {
-            // Body segment with smooth gradient fade
-            const alpha = Math.max(0.4, 1 - (i / snake.length) * 0.6);
-            if (isDead) {
-              ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
-            } else if (chillActive) {
-              ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
-            } else if (boostActive) {
-              ctx.fillStyle = `rgba(245, 158, 11, ${alpha})`;
-            } else if (magnetActive) {
-              ctx.fillStyle = `rgba(236, 72, 153, ${alpha})`;
-            } else {
-              ctx.fillStyle = `rgba(16, 185, 129, ${alpha})`;
-            }
-            ctx.beginPath();
-            ctx.roundRect(sx + 3, sy + 3, cellSize - 6, cellSize - 6, 4);
-            ctx.fill();
-          }
-        }
-      }
-
-      // 7. Draw Death Burst Particles & Floating Novelty Banner Text
-      if (particlesRef.current.length > 0) {
-        const nextParticles = [];
-        for (let p of particlesRef.current) {
-          if (p.text) {
-            ctx.save();
-            ctx.globalAlpha = Math.max(0, p.alpha || 1);
-            ctx.fillStyle = p.color || '#fde047';
-            ctx.font = 'bold 12px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.shadowColor = p.color || '#fde047';
-            ctx.shadowBlur = 6;
-            ctx.fillText(p.text, p.x, p.y);
-            ctx.restore();
-            p.y += (p.vy || -1);
-            p.alpha = (p.alpha || 1) - 0.04;
-            if (p.alpha > 0.05) nextParticles.push(p);
-          } else {
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-            p.x += (p.vx || 0);
-            p.y += (p.vy || 0);
-            p.life = (p.life || 1) - 0.05;
-            if (p.life > 0) nextParticles.push(p);
-          }
-        }
-        particlesRef.current = nextParticles;
+        ctx.globalAlpha = 1.0;
       }
     }, []);
 
-    // Calculate dynamic responsive rectangular dimensions
-    const computeRectangularGrid = useCallback((availW, availH) => {
-      // Target cell size ~ 20-24px for ideal playable scale
-      const targetCell = 22;
-      let cols = Math.floor(availW / targetCell);
-      let rows = Math.floor(availH / targetCell);
-
-      // Bounded playable limits: expand horizontally on wide screens (up to 48 columns)
-      cols = Math.max(16, Math.min(48, cols));
-      rows = Math.max(10, Math.min(24, rows));
-
-      const cellSize = Math.floor(Math.min(availW / cols, availH / rows));
-      const canvasW = cols * cellSize;
-      const canvasH = rows * cellSize;
-
-      return { cols, rows, cellSize, canvasW, canvasH };
-    }, []);
-
-    // ResizeObserver on the container to adjust canvas and preserve active board
+    // Active Play Time Tracker
     useEffect(() => {
-      const container = containerRef.current;
-      if (!container || typeof ResizeObserver === 'undefined') return;
-
-      const observer = new ResizeObserver((entries) => {
-        if (!entries || entries.length === 0) return;
-        const entry = entries[0];
-        const rect = entry.contentRect;
-        const width = Math.floor(rect.width);
-        const height = Math.floor(rect.height);
-        if (width <= 0 || height <= 0) return;
-
-        // Subtract header (~32px) and control rail (~64px) + safe padding (~12px)
-        const usableW = Math.max(260, width - 20);
-        const usableH = Math.max(180, height - 108);
-
-        const newGrid = computeRectangularGrid(usableW, usableH);
-        layoutRef.current = newGrid;
-        setStageDimensions({ width: newGrid.canvasW, height: newGrid.canvasH });
-
-        // Adapt active board seamlessly if dimensions changed while playing
-        if (boardRef.current && Generator) {
-          const adapted = Generator.adaptBoardDimensions(boardRef.current, newGrid.cols, newGrid.rows);
-          if (typeof Generator.ensureValidFood === 'function') {
-            adapted.food = Generator.ensureValidFood(adapted);
-          }
-          boardRef.current = adapted;
-          setUiBoardHeader({
-            level: adapted.level,
-            layoutType: adapted.layoutType,
-            isMilestone: adapted.isMilestone,
-            isOasis: adapted.isOasis,
-            fruitsEaten: adapted.fruitsEatenInLevel,
-            targetFruits: adapted.targetFruits,
-            restartsCount: adapted.restartsCount,
-            chillTimer: adapted.chillTimer
-          });
-        }
-
-        drawCanvas();
-      });
-
-      observer.observe(container);
-      return () => observer.disconnect();
-    }, [computeRectangularGrid, drawCanvas]);
-
-    // Handle Death / Collision Sequence
-    const handleDeath = useCallback((failedBoard, reason) => {
-      if (Audio) Audio.playCrash();
-      setIsPaused(true);
-
-      const head = failedBoard.snake[0];
-      const cellSize = layoutRef.current.cellSize || 20;
-      const headPx = head[0] * cellSize + cellSize / 2;
-      const headPy = head[1] * cellSize + cellSize / 2;
-
-      // Burst particles for death animation
-      const particles = [];
-      for (let i = 0; i < 24; i++) {
-        const angle = (Math.PI * 2 * i) / 24 + (Math.random() * 0.2);
-        const speed = 2 + Math.random() * 4;
-        particles.push({
-          x: headPx,
-          y: headPy,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: 1.0,
-          color: i % 2 === 0 ? '#ef4444' : '#fbbf24',
-          size: 3 + Math.random() * 4
-        });
+      if (isPaused || deathState || showLevelGoalCard) {
+        if (activeTimerRef.current) clearInterval(activeTimerRef.current);
+        return;
       }
-      particlesRef.current = particles;
+      activeTimerRef.current = setInterval(() => {
+        setProgression(prev => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            totalPlayTimeSeconds: (prev.totalPlayTimeSeconds || 0) + 1
+          };
+          if (boardRef.current) {
+            boardRef.current.elapsedSeconds = (boardRef.current.elapsedSeconds || 0) + 1;
+            updated.currentBoard = { ...boardRef.current };
+          }
+          if (Persistence) Persistence.saveWorkingState(updated);
+          return updated;
+        });
+      }, 1000);
 
-      const nextRestarts = (failedBoard.restartsCount || 0) + 1;
-      const remainingStars = Engine.calculateStars(nextRestarts);
+      return () => {
+        if (activeTimerRef.current) clearInterval(activeTimerRef.current);
+      };
+    }, [isPaused, deathState, showLevelGoalCard]);
 
-      setDeathState({
-        active: true,
-        reason: reason === 'SELF_COLLISION' ? 'Hit own body!' : 'Crashed into barrier!',
-        remainingStars,
-        failedBoard
-      });
-
-      drawCanvas();
-    }, [drawCanvas]);
-
-    // Handle Level Completion & Auto Advance
-    const handleLevelComplete = useCallback((completedBoard) => {
+    // Handle Level Completion
+    const handleLevelWin = useCallback((completedBoard) => {
       if (Audio) Audio.playVictory();
 
-      const starsEarned = Engine.calculateStars(completedBoard.restartsCount);
-      setLevelCelebration({
-        level: completedBoard.level,
-        stars: starsEarned
-      });
+      setProgression(prev => {
+        if (!prev) return prev;
+        const currentLevel = completedBoard.level || 1;
+        const restarts = completedBoard.restartsCount || 0;
+        const starsGained = Engine ? Engine.calculateStars(restarts) : 3;
 
-      const currentProg = stateRef.current.progression || Persistence.createDefaultState();
-      const prevTotalStars = currentProg.totalStars || 0;
-      const newTotalStars = prevTotalStars + starsEarned;
-      const nextLevel = completedBoard.level + 1;
+        const nextLevel = currentLevel + 1;
+        const nextCompleted = (prev.completedCount || 0) + 1;
+        const newTotalStars = (prev.totalStars || 0) + starsGained;
+        const nextStreak = (prev.currentStreak || 0) + 1;
+        const bestStreak = Math.max(prev.bestStreak || 0, nextStreak);
 
-      const newMilestone = Math.floor(newTotalStars / 50);
-      const oldMilestone = currentProg.highestStarMilestone || 0;
-      const isNewMilestone = newMilestone > oldMilestone && newMilestone >= 1;
-
-      const isFirstTry = (completedBoard.restartsCount === 0);
-      const newStreak = isFirstTry ? ((currentProg.currentStreak || 0) + 1) : 0;
-      const bestStreak = Math.max(currentProg.bestStreak || 0, newStreak);
-      const nextCompleted = (currentProg.completedCount || 0) + 1;
-
-      const grid = layoutRef.current;
-      const nextBoard = Generator.generateLevel(nextLevel, { width: grid.cols, height: grid.rows });
-      if (typeof Generator.ensureValidFood === 'function') {
-        nextBoard.food = Generator.ensureValidFood(nextBoard);
-      }
-
-      const nextProgression = {
-        ...currentProg,
-        currentLevel: nextLevel,
-        completedCount: nextCompleted,
-        totalStars: newTotalStars,
-        highestStarMilestone: Math.max(oldMilestone, newMilestone),
-        totalFruitsEaten: (currentProg.totalFruitsEaten || 0) + (completedBoard.fruitsEatenInLevel || 0),
-        longestSnake: Math.max(currentProg.longestSnake || 3, completedBoard.longestSnakeInLevel || 3),
-        totalPlayTimeSeconds: Math.max(0, currentProg.totalPlayTimeSeconds || 0),
-        bestStreak,
-        currentStreak: newStreak,
-        currentBoard: nextBoard
-      };
-
-      Persistence.saveProgressionImmediate(nextProgression);
-      setProgression(nextProgression);
-      if (stateRef.current) stateRef.current.progression = nextProgression;
-
-      if (nextCompleted > 0 && nextCompleted % 50 === 0) {
-        setLevelMilestoneCelebration(nextCompleted);
-        try {
-          window.dispatchEvent(new CustomEvent('billsoft:level-milestone-reached', { detail: { levelCount: nextCompleted } }));
-        } catch (e) {}
-      }
-
-      // Check for 15-level Location Unlock Transition (e.g. Level 15 completed -> Location 2 unlocked)
-      const WorldEngine = typeof window !== 'undefined' ? window.MaharashtraWorld : null;
-      if (WorldEngine && typeof WorldEngine.checkAndTriggerLocationUnlock === 'function') {
-        WorldEngine.checkAndTriggerLocationUnlock(completedBoard.level, 'classic');
-      }
-
-      try {
-        window.dispatchEvent(new CustomEvent('billsoft:game-progression', {
-          detail: { gameType: 'classic', level: nextLevel, totalStars: newTotalStars, completedCount: nextCompleted }
-        }));
-      } catch (e) {}
-
-      setTimeout(() => {
-        setLevelCelebration(null);
-        boardRef.current = nextBoard;
-        setUiBoardHeader({
-          level: nextBoard.level,
-          layoutType: nextBoard.layoutType,
-          isMilestone: nextBoard.isMilestone,
-          isOasis: nextBoard.isOasis,
-          fruitsEaten: 0,
-          targetFruits: nextBoard.targetFruits,
-          restartsCount: 0,
-          chillTimer: 0
+        setLevelCelebration({
+          level: currentLevel,
+          stars: starsGained,
+          restarts,
+          totalStars: newTotalStars
         });
-        nextDirectionQueueRef.current = [];
-        setIsPaused(true);
-        setShowLevelGoalCard(true);
-        drawCanvas();
 
-        if (isNewMilestone) {
+        // 50-Star Milestone Trophy Calculation
+        const prevMilestone = Math.floor((prev.totalStars || 0) / 50);
+        const newMilestone = Math.floor(newTotalStars / 50);
+        if (newMilestone > prevMilestone) {
           const trophy = getTrophyForMilestone(newMilestone);
           if (trophy) {
+            setMilestoneCelebration({ milestoneNumber: newMilestone, trophy });
             if (Audio) Audio.playMilestone();
             try {
               window.dispatchEvent(new CustomEvent('billsoft:trophy-unlocked', {
@@ -780,1093 +2172,798 @@
             } catch (e) {}
           }
         }
-      }, 1000);
-    }, [drawCanvas]);
 
-    // High-frequency game tick (Executes imperatively with zero React state overhead on movement)
-    const runGameTick = useCallback(() => {
-      const currBoard = boardRef.current;
-      const s = stateRef.current;
-      if (!currBoard || s.isPaused || s.showLevelGoalCard || s.deathState || !Engine) return;
-
-      // Process queued direction change
-      let currentDir = currBoard.direction;
-      if (nextDirectionQueueRef.current.length > 0) {
-        const nextDir = nextDirectionQueueRef.current.shift();
-        currentDir = Engine.changeDirection(currentDir, nextDir, currBoard.snake.length);
-      }
-
-      const boardToTick = {
-        ...currBoard,
-        direction: currentDir,
-        currentTickMs: Math.max(115, Math.floor(currBoard.baseTickMs * (currBoard.speedModifier || 1.0)))
-      };
-
-      const result = Engine.tick(boardToTick);
-      const { nextState, event, fruitEaten, deathReason, needsFoodSpawn } = result;
-
-      if (event === 'DEATH') {
-        boardRef.current = nextState;
-        handleDeath(nextState, deathReason);
-        return;
-      }
-
-      if (event === 'WIN') {
-        boardRef.current = nextState;
-        drawCanvas();
-        handleLevelComplete(nextState);
-        return;
-      }
-
-      if (event === 'GROW') {
-        if (result.noveltyEffect) {
-          if (result.noveltyEffect.type === 'GOLDEN_APPLE' && Audio) {
-            Audio.playMilestone();
-          } else if (result.noveltyEffect.type === 'CHILL_BERRY' && Audio) {
-            Audio.playPortal();
-          } else if (result.noveltyEffect.type === 'SPEED_BOOST' && Audio) {
-            Audio.playPortal();
-          } else if (result.noveltyEffect.type === 'MAGNET' && Audio) {
-            Audio.playMilestone();
-          } else if (Audio) {
-            Audio.playEat(fruitEaten);
-          }
-
-          if (result.noveltyEffect.text) {
-            const head = nextState.snake[0];
-            const cellSize = layoutRef.current.cellSize || 20;
-            particlesRef.current.push({
-              text: result.noveltyEffect.text,
-              x: head[0] * cellSize + cellSize / 2,
-              y: Math.max(16, head[1] * cellSize - 8),
-              vy: -1.2,
-              alpha: 1.0,
-              color: result.noveltyEffect.type === 'GOLDEN_APPLE' ? '#fde047' :
-                     result.noveltyEffect.type === 'CHILL_BERRY' ? '#7dd3fc' :
-                     result.noveltyEffect.type === 'SPEED_BOOST' ? '#fcd34d' :
-                     result.noveltyEffect.type === 'MAGNET' ? '#f472b6' :
-                     result.noveltyEffect.type === 'MYSTERY' ? '#d8b4fe' : '#fb923c'
-            });
-          }
-        } else if (Audio) {
-          Audio.playEat(fruitEaten);
+        if (nextCompleted > 0 && nextCompleted % 50 === 0) {
+          setLevelMilestoneCelebration(nextCompleted);
+          try {
+            window.dispatchEvent(new CustomEvent('billsoft:level-milestone-reached', { detail: { levelCount: nextCompleted } }));
+          } catch (e) {}
         }
 
-        setUiBoardHeader(prev => prev ? ({
+        // Trigger Location Unlock & Travel Transition on Sector Boundary (every 15 levels)
+        if (MWorld && typeof MWorld.checkAndTriggerLocationUnlock === 'function') {
+          MWorld.checkAndTriggerLocationUnlock(currentLevel, 'classic');
+        }
+
+        try {
+          window.dispatchEvent(new CustomEvent('billsoft:game-progression', {
+            detail: { gameType: 'classic', level: nextLevel, totalStars: newTotalStars, completedCount: nextCompleted }
+          }));
+        } catch (e) {}
+
+        setTimeout(() => {
+          setLevelCelebration(null);
+        }, 3200);
+
+        const nextGen = Generator ? Generator.generateLevel(nextLevel, {
+          totalCols: layoutRef.current.totalCols,
+          totalRows: layoutRef.current.totalRows
+        }) : null;
+
+        const nextBoard = nextGen ? {
+          ...nextGen,
+          elapsedSeconds: 0,
+          restartsCount: 0
+        } : null;
+
+        boardRef.current = nextBoard;
+        syncPreviousSnake(nextBoard, nextBoard ? nextBoard.baseTickMs : 200);
+        setShowLevelGoalCard(true);
+        setIsPaused(true);
+        nextDirectionQueueRef.current = [];
+
+        const updatedState = {
           ...prev,
-          fruitsEaten: nextState.fruitsEatenInLevel,
-          chillTimer: nextState.chillTimer,
-          boostTimer: nextState.boostTimer,
-          magnetTimer: nextState.magnetTimer
-        }) : prev);
-      } else if (event === 'TELEPORT') {
+          currentLevel: nextLevel,
+          completedCount: nextCompleted,
+          totalStars: newTotalStars,
+          highestStarMilestone: Math.max(prev.highestStarMilestone || 0, newMilestone),
+          currentStreak: nextStreak,
+          bestStreak,
+          currentBoard: nextBoard
+        };
+
+        if (Persistence) Persistence.saveProgressionImmediate(updatedState);
+        setUiBoardHeader({ ...nextBoard });
+        return updatedState;
+      });
+    }, [syncPreviousSnake]);
+
+    // Main Game Engine Tick Callback
+    const runGameTick = useCallback(() => {
+      const board = boardRef.current;
+      const state = stateRef.current;
+      if (!board || state.isPaused || state.deathState || state.showLevelGoalCard) return;
+
+      // Dequeue next direction input
+      if (nextDirectionQueueRef.current.length > 0) {
+        const nextDir = nextDirectionQueueRef.current.shift();
+        if (Engine) {
+          board.direction = Engine.changeDirection(board.direction, nextDir, board.snake.length);
+        }
+      }
+
+      if (!Engine) return;
+
+      // 1. Save previous snake segment positions for presentation interpolation
+      const prevSnake = board.snake.map(s => [s[0], s[1]]);
+
+      // 2. Calculate movement tick duration in ms
+      const baseMs = board.baseTickMs || 200;
+      const eaten = board.fruitsEatenInLevel || 0;
+      const target = board.targetFruits || 5;
+      const modifier = board.speedModifier || 1.0;
+      const tickInterval = Engine.calculateIntraLevelTickMs
+        ? Engine.calculateIntraLevelTickMs(baseMs, eaten, target, modifier)
+        : Math.max(75, Math.round(baseMs * modifier));
+
+      const result = Engine.tick(board);
+      const nextBoard = result.nextState;
+      boardRef.current = nextBoard;
+
+      // 3. Update interpolation state
+      previousSnakeRef.current = prevSnake;
+      lastTickTimeRef.current = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      tickDurationRef.current = tickInterval;
+
+      // Handle Events
+      if (result.event === 'DEATH') {
+        if (Audio) Audio.playCrash();
+        setDeathState({
+          reason: result.deathReason,
+          fruitsEaten: nextBoard.fruitsEatenInLevel || 0,
+          targetFruits: nextBoard.targetFruits || 5
+        });
+        setIsPaused(true);
+        setProgression(prev => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            currentStreak: 0,
+            currentBoard: { ...nextBoard }
+          };
+          if (Persistence) Persistence.saveWorkingState(updated);
+          return updated;
+        });
+      } else if (result.event === 'WIN') {
+        handleLevelWin(nextBoard);
+      } else if (result.event === 'GROW') {
+        if (Audio) Audio.playEat();
+        if (result.noveltyEffect) {
+          const head = nextBoard.snake[0];
+          const cs = layoutRef.current.cellSize;
+          particlesRef.current.push({
+            x: head[0] * cs + cs / 2,
+            y: head[1] * cs,
+            text: result.noveltyEffect.text,
+            vx: 0,
+            vy: -1.2,
+            alpha: 1.0,
+            color: result.noveltyEffect.type === 'GOLDEN_APPLE' ? '#fde047' :
+                   result.noveltyEffect.type === 'CHILL_BERRY' ? '#7dd3fc' :
+                   result.noveltyEffect.type === 'SPEED_BOOST' ? '#fcd34d' :
+                   result.noveltyEffect.type === 'MAGNET' ? '#f472b6' :
+                   result.noveltyEffect.type === 'MYSTERY' ? '#d8b4fe' :
+                   result.noveltyEffect.type === 'SAHYADRI_GEM' ? '#60a5fa' :
+                   result.noveltyEffect.type === 'KONKAN_PEARL' ? '#38bdf8' :
+                   result.noveltyEffect.type === 'CAVE_RELIC' ? '#c084fc' :
+                   result.noveltyEffect.type === 'ROYAL_WADA_TOKEN' ? '#fbbf24' :
+                   result.noveltyEffect.type === 'FOREST_SPIRIT' ? '#34d399' :
+                   result.noveltyEffect.type === 'EMBER_RELIC' ? '#f97316' :
+                   result.noveltyEffect.type === 'DECCAN_CRYSTAL' ? '#e0e7ff' :
+                   result.noveltyEffect.type === 'EXPEDITION_RELIC' ? '#f59e0b' :
+                   result.noveltyEffect.type === 'SOVEREIGN_CREST' ? '#ffd700' : '#fb923c'
+          });
+        }
+        setProgression(prev => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            totalFruitsEaten: (prev.totalFruitsEaten || 0) + 1,
+            longestSnake: Math.max(prev.longestSnake || 3, nextBoard.snake.length),
+            currentBoard: { ...nextBoard }
+          };
+          if (Persistence) Persistence.saveWorkingState(updated);
+          return updated;
+        });
+      } else if (result.event === 'TELEPORT') {
         if (Audio) Audio.playPortal();
       }
 
-      // Guarantee valid in-bounds food after every tick
-      if (needsFoodSpawn || !nextState.food) {
-        if (Generator && typeof Generator.ensureValidFood === 'function') {
-          nextState.food = Generator.ensureValidFood(nextState);
+      // Spawn replacement food if needed
+      if (result.needsFoodSpawn && Generator) {
+        const currentFoods = Array.isArray(nextBoard.foods) ? nextBoard.foods : (nextBoard.food ? [nextBoard.food] : []);
+        const lvlCfg = Generator.getLevelConfig(nextBoard.level, {
+          totalCols: layoutRef.current.totalCols,
+          totalRows: layoutRef.current.totalRows
+        });
+        const maxTargets = (nextBoard.level >= 10 && nextBoard.bounds && nextBoard.bounds.spanX >= 24) ? 2 : 1;
+        while (currentFoods.length < maxTargets) {
+          const fresh = Generator.spawnFood(
+            nextBoard.snake,
+            nextBoard.obstacles,
+            nextBoard.bounds,
+            Math.random,
+            lvlCfg,
+            nextBoard,
+            currentFoods
+          );
+          if (fresh) currentFoods.push(fresh);
+          else break;
         }
+        nextBoard.foods = currentFoods;
+        nextBoard.food = currentFoods[0] || null;
       }
 
-      boardRef.current = nextState;
+      setUiBoardHeader({ ...nextBoard });
       drawCanvas();
+    }, [drawCanvas, handleLevelWin]);
 
-      // Schedule next tick
-      const tickInterval = Math.max(115, Math.floor(nextState.baseTickMs * (nextState.speedModifier || 1.0)));
-      gameLoopTimerRef.current = setTimeout(runGameTick, tickInterval);
-    }, [drawCanvas, handleDeath, handleLevelComplete]);
-
-    // Game loop starter / scheduler
+    // Dynamic Game Loop Timer (Intra-Level Speed Progression)
     useEffect(() => {
-      if (isPaused || showLevelGoalCard || deathState || levelCelebration || milestoneCelebration) {
+      if (isPaused || deathState || showLevelGoalCard) {
         if (gameLoopTimerRef.current) clearTimeout(gameLoopTimerRef.current);
         return;
       }
 
-      const currBoard = boardRef.current;
-      const tickInterval = currBoard ? Math.max(115, Math.floor(currBoard.baseTickMs * (currBoard.speedModifier || 1.0))) : 150;
+      const scheduleNextTick = () => {
+        const board = boardRef.current;
+        const baseMs = (board && board.baseTickMs) ? board.baseTickMs : 200;
+        const eaten = (board && board.fruitsEatenInLevel) ? board.fruitsEatenInLevel : 0;
+        const target = (board && board.targetFruits) ? board.targetFruits : 5;
+        const modifier = (board && board.speedModifier) ? board.speedModifier : 1.0;
+        const tickInterval = Engine && Engine.calculateIntraLevelTickMs
+          ? Engine.calculateIntraLevelTickMs(baseMs, eaten, target, modifier)
+          : Math.max(75, Math.round(baseMs * modifier));
 
-      gameLoopTimerRef.current = setTimeout(runGameTick, tickInterval);
+        gameLoopTimerRef.current = setTimeout(() => {
+          runGameTick();
+          if (!stateRef.current.isPaused && !stateRef.current.deathState && !stateRef.current.showLevelGoalCard) {
+            scheduleNextTick();
+          }
+        }, tickInterval);
+      };
+
+      scheduleNextTick();
 
       return () => {
         if (gameLoopTimerRef.current) clearTimeout(gameLoopTimerRef.current);
       };
-    }, [isPaused, showLevelGoalCard, deathState, levelCelebration, milestoneCelebration, runGameTick]);
+    }, [isPaused, deathState, showLevelGoalCard, runGameTick]);
 
-    // Start / Resume Game Helper
-    const startGame = useCallback((initialDirection = null) => {
-      if (initialDirection && boardRef.current) {
-        const b = boardRef.current;
-        b.direction = Engine.changeDirection(b.direction, initialDirection, b.snake.length);
-      }
-      if (boardRef.current && Generator && typeof Generator.ensureValidFood === 'function') {
-        boardRef.current.food = Generator.ensureValidFood(boardRef.current);
-      }
-      setShowLevelGoalCard(false);
-      setDeathState(null);
-      setIsPaused(false);
-      drawCanvas();
-    }, [drawCanvas]);
-
-    // Retry / Restart from Death
-    const handleRetry = useCallback((initialDirection = null) => {
-      const currDeath = stateRef.current.deathState;
-      if (!currDeath || !currDeath.failedBoard) return;
-
-      const grid = layoutRef.current;
-      const regenerated = Generator.generateLevel(currDeath.failedBoard.level, { width: grid.cols, height: grid.rows });
-      regenerated.restartsCount = (currDeath.failedBoard.restartsCount || 0) + 1;
-      if (initialDirection) {
-        regenerated.direction = Engine.changeDirection(regenerated.direction, initialDirection, regenerated.snake.length);
-      }
-      if (typeof Generator.ensureValidFood === 'function') {
-        regenerated.food = Generator.ensureValidFood(regenerated);
-      }
-
-      boardRef.current = regenerated;
-      setUiBoardHeader({
-        level: regenerated.level,
-        layoutType: regenerated.layoutType,
-        isMilestone: regenerated.isMilestone,
-        isOasis: regenerated.isOasis,
-        fruitsEaten: 0,
-        targetFruits: regenerated.targetFruits,
-        restartsCount: regenerated.restartsCount,
-        chillTimer: 0
-      });
-
-      nextDirectionQueueRef.current = [];
-      particlesRef.current = [];
-      setDeathState(null);
-      setShowLevelGoalCard(false);
-      setIsPaused(false);
-      drawCanvas();
-
-      setProgression(prev => {
-        if (!prev) return prev;
-        const updated = {
-          ...prev,
-          currentStreak: 0,
-          currentBoard: regenerated
-        };
-        Persistence.saveWorkingState(updated);
-        return updated;
-      });
-    }, [drawCanvas]);
-
-    // Manual Restart Current Level
-    const handleRestartCurrentLevel = useCallback(() => {
-      if (!boardRef.current) return;
-      const curr = boardRef.current;
-      const grid = layoutRef.current;
-      const regenerated = Generator.generateLevel(curr.level, { width: grid.cols, height: grid.rows });
-      regenerated.restartsCount = (curr.restartsCount || 0) + 1;
-      if (typeof Generator.ensureValidFood === 'function') {
-        regenerated.food = Generator.ensureValidFood(regenerated);
-      }
-
-      boardRef.current = regenerated;
-      setUiBoardHeader({
-        level: regenerated.level,
-        layoutType: regenerated.layoutType,
-        isMilestone: regenerated.isMilestone,
-        isOasis: regenerated.isOasis,
-        fruitsEaten: 0,
-        targetFruits: regenerated.targetFruits,
-        restartsCount: regenerated.restartsCount,
-        chillTimer: 0
-      });
-
-      nextDirectionQueueRef.current = [];
-      particlesRef.current = [];
-      setDeathState(null);
-      setShowLevelGoalCard(false);
-      setIsPaused(false);
-      drawCanvas();
-
-      setProgression(prev => {
-        if (!prev) return prev;
-        const updated = {
-          ...prev,
-          currentStreak: 0,
-          currentBoard: regenerated
-        };
-        Persistence.saveWorkingState(updated);
-        return updated;
-      });
-    }, [drawCanvas]);
-
-    // Keyboard Controls: PRESS ANY KEY TO START / RETRY / IMMEDIATE DIRECTION CHANGE
+    // Keyboard Input Handler (Arrow keys, WASD, Space/Esc pause, Death restart)
     useEffect(() => {
       const handleKeyDown = (e) => {
+        const target = e.target;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+
         const key = e.key;
-        if (key === 'Shift' || key === 'Control' || key === 'Alt' || key === 'Meta') return;
-
-        if (showStatsModal) {
-          if (key === 'Escape') setShowStatsModal(false);
-          return;
-        }
-        if (milestoneCelebration) {
-          if (key === 'Escape' || key === 'Enter' || key === ' ') setMilestoneCelebration(null);
-          return;
-        }
-        if (levelMilestoneCelebration) {
-          if (key === 'Escape' || key === 'Enter' || key === ' ') setLevelMilestoneCelebration(null);
-          return;
-        }
-
         let reqDir = null;
         if (key === 'ArrowUp' || key === 'w' || key === 'W') reqDir = 'UP';
         else if (key === 'ArrowDown' || key === 's' || key === 'S') reqDir = 'DOWN';
         else if (key === 'ArrowLeft' || key === 'a' || key === 'A') reqDir = 'LEFT';
         else if (key === 'ArrowRight' || key === 'd' || key === 'D') reqDir = 'RIGHT';
 
-        // 1. Press ANY key to start from level goal card
-        if (stateRef.current.showLevelGoalCard) {
-          e.preventDefault();
-          startGame(reqDir);
-          return;
-        }
-
-        // 2. Press ANY key to restart from death overlay
+        // 1. Restart on death with directional key or Space/Enter/R
         if (stateRef.current.deathState) {
-          e.preventDefault();
-          handleRetry(reqDir);
-          return;
+          if (reqDir || key === ' ' || key === 'Enter' || key === 'r' || key === 'R' || key === 'Escape') {
+            e.preventDefault();
+            handleRestartLevel(reqDir);
+            return;
+          }
         }
 
-        // 3. Spacebar toggles pause/resume
-        if (key === ' ' || key === 'Spacebar') {
+        // 2. Start from level goal card
+        if (stateRef.current.showLevelGoalCard) {
+          if (reqDir || key === ' ' || key === 'Enter') {
+            e.preventDefault();
+            handleStartLevel(reqDir);
+            return;
+          }
+        }
+
+        // 3. Space/Escape pause toggle
+        if (key === ' ' || key === 'Escape') {
           e.preventDefault();
           setIsPaused(prev => !prev);
           return;
         }
 
-        // 4. Direction navigation during active play
+        // 4. Quick restart with 'r' or 'R'
+        if (key === 'r' || key === 'R') {
+          e.preventDefault();
+          handleRestartLevel();
+          return;
+        }
+
+        // 5. Active gameplay directional navigation
         if (reqDir) {
           e.preventDefault();
           if (stateRef.current.isPaused) {
             setIsPaused(false);
           }
-          if (nextDirectionQueueRef.current.length < 2) {
+          if (nextDirectionQueueRef.current.length < 3) {
             nextDirectionQueueRef.current.push(reqDir);
           }
         }
       };
 
-      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keydown', handleKeyDown, { passive: false });
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showStatsModal, milestoneCelebration, levelMilestoneCelebration, startGame, handleRetry]);
+    }, [showLevelGoalCard, isPaused, deathState]);
 
-    // Developer / Test Harness Integration: Force spawn any collectible type into active board
+    // Robust ResizeObserver for Snake Stage Container
     useEffect(() => {
-      window.__billsoft_snake_force_spawn = (type) => {
-        if (!boardRef.current) return false;
-        const b = boardRef.current;
-        const width = b.width;
-        const height = b.height;
-        const occupied = new Set();
-        for (let s of (b.snake || [])) occupied.add(s[1] * width + s[0]);
-        for (let o of (b.obstacles || [])) occupied.add(o);
+      const container = containerRef.current;
+      if (!container) return;
 
-        const available = [];
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const idx = y * width + x;
-            if (!occupied.has(idx)) available.push({ x, y });
-          }
+      const handleResize = () => {
+        const rect = container.getBoundingClientRect();
+        const availableW = Math.max(300, Math.floor(rect.width - 8));
+        const availableH = Math.max(200, Math.floor(rect.height - 8));
+
+        // Clamped cell size S in [18, 32]
+        let cols = Math.floor(availableW / 24);
+        let rows = Math.floor(availableH / 24);
+
+        cols = Math.max(16, Math.min(48, cols));
+        rows = Math.max(12, Math.min(30, rows));
+
+        let cellSize = Math.min(
+          Math.floor(availableW / cols),
+          Math.floor(availableH / rows)
+        );
+        cellSize = Math.max(18, Math.min(32, cellSize));
+
+        const canvasW = cols * cellSize;
+        const canvasH = rows * cellSize;
+
+        layoutRef.current = { totalCols: cols, totalRows: rows, cellSize, canvasW, canvasH };
+
+        if (boardRef.current && Generator) {
+          boardRef.current = Generator.adaptBoardDimensions(boardRef.current, cols, rows);
+          syncPreviousSnake(boardRef.current);
+          setUiBoardHeader({ ...boardRef.current });
         }
-        if (available.length === 0) return false;
-        const pick = available[Math.floor(Math.random() * available.length)];
-        const validTypes = ['APPLE', 'GOLDEN_APPLE', 'CHILL_BERRY', 'SPEED_BOOST', 'MYSTERY', 'MAGNET', 'HOPPING_FRUIT'];
-        const chosenType = validTypes.includes(type) ? type : 'APPLE';
-        const lifetimeMs = chosenType === 'APPLE' ? null : 15000;
-
-        b.food = {
-          x: pick.x,
-          y: pick.y,
-          type: chosenType,
-          spawnTime: Date.now(),
-          lifetimeMs
-        };
         drawCanvas();
-        return true;
       };
 
-      return () => {
-        delete window.__billsoft_snake_force_spawn;
-      };
-    }, [drawCanvas]);
+      const ro = new ResizeObserver(() => {
+        handleResize();
+      });
+      ro.observe(container);
+      handleResize();
 
-    // Initialize Game & Persistence
+      return () => ro.disconnect();
+    }, [drawCanvas, syncPreviousSnake]);
+
+    // Initial State Loader & Lifecycle Hook
     useEffect(() => {
-      let isMounted = true;
-
       async function init() {
-        if (!Persistence || !Generator) return;
-        const loaded = await Persistence.loadAndRecoverState();
-        if (!isMounted) return;
-
-        const grid = layoutRef.current;
-        let activeBoard = loaded.currentBoard;
-        if (!activeBoard || !Persistence.validateBoard(activeBoard, loaded.currentLevel)) {
-          activeBoard = Generator.generateLevel(loaded.currentLevel, { width: grid.cols, height: grid.rows });
-          loaded.currentBoard = activeBoard;
-          Persistence.saveWorkingState(loaded);
-        } else {
-          // Adapt loaded board to current responsive aspect ratio
-          activeBoard = Generator.adaptBoardDimensions(activeBoard, grid.cols, grid.rows);
+        let loaded = null;
+        if (Persistence) {
+          loaded = await Persistence.loadAndRecoverState();
+        }
+        if (!loaded) {
+          loaded = Persistence ? Persistence.createDefaultState() : { currentLevel: 1, totalStars: 0, completedCount: 0 };
         }
 
-        if (typeof Generator.ensureValidFood === 'function') {
-          activeBoard.food = Generator.ensureValidFood(activeBoard);
+        const currentLvl = loaded.currentLevel || 1;
+        const cols = layoutRef.current.totalCols || 32;
+        const rows = layoutRef.current.totalRows || 20;
+
+        let activeBoard = loaded.currentBoard;
+        if (!activeBoard || activeBoard.level !== currentLvl) {
+          if (Generator) {
+            activeBoard = Generator.generateLevel(currentLvl, { totalCols: cols, totalRows: rows });
+          }
+        } else if (Generator) {
+          activeBoard = Generator.adaptBoardDimensions(activeBoard, cols, rows);
         }
 
         boardRef.current = activeBoard;
+        syncPreviousSnake(activeBoard, activeBoard ? activeBoard.baseTickMs : 200);
         setProgression(loaded);
-        setUiBoardHeader({
-          level: activeBoard.level,
-          layoutType: activeBoard.layoutType,
-          isMilestone: activeBoard.isMilestone,
-          isOasis: activeBoard.isOasis,
-          fruitsEaten: activeBoard.fruitsEatenInLevel || 0,
-          targetFruits: activeBoard.targetFruits || 5,
-          restartsCount: activeBoard.restartsCount || 0,
-          chillTimer: activeBoard.chillTimer || 0
-        });
-        setIsPaused(true);
+        setUiBoardHeader(activeBoard);
         setShowLevelGoalCard(true);
-        drawCanvas();
+        setIsPaused(true);
 
         try {
           window.dispatchEvent(new CustomEvent('billsoft:game-progression', {
             detail: { gameType: 'classic', level: loaded.currentLevel || 1, totalStars: loaded.totalStars || 0, completedCount: loaded.completedCount || 0 }
           }));
         } catch (e) {}
+
+        requestAnimationFrame(drawCanvas);
       }
 
       init();
 
-      return () => {
-        isMounted = false;
-        if (Persistence && stateRef.current.progression) {
-          Persistence.flushPending();
+      const handleReset = (e) => {
+        const cleanState = (e && e.detail && e.detail.state) ? e.detail.state : (Persistence ? Persistence.createDefaultState() : { currentLevel: 1, totalStars: 0, completedCount: 0 });
+        const cols = layoutRef.current.totalCols || 32;
+        const rows = layoutRef.current.totalRows || 20;
+        let freshBoard = null;
+        if (Generator) {
+          freshBoard = Generator.generateLevel(1, { totalCols: cols, totalRows: rows });
         }
+        boardRef.current = freshBoard;
+        syncPreviousSnake(freshBoard, freshBoard ? freshBoard.baseTickMs : 200);
+        setProgression(cleanState);
+        setUiBoardHeader(freshBoard);
+        setShowLevelGoalCard(true);
+        setIsPaused(true);
+        setDeathState(null);
+        setCompletedCelebration(null);
+        requestAnimationFrame(drawCanvas);
       };
+
+      window.addEventListener('billsoft:snake-progress-reset', handleReset);
+
+      return () => {
+        window.removeEventListener('billsoft:snake-progress-reset', handleReset);
+        if (Persistence) Persistence.flushPending();
+      };
+    }, [drawCanvas, syncPreviousSnake]);
+
+    // Continuous Animation Frame for visual effects
+    useEffect(() => {
+      let animId;
+      const loop = () => {
+        drawCanvas();
+        animId = requestAnimationFrame(loop);
+      };
+      animId = requestAnimationFrame(loop);
+      return () => cancelAnimationFrame(animId);
     }, [drawCanvas]);
 
-    // Active Play Time tracking (Runs steadily every 1s when active)
-    useEffect(() => {
-      activeTimerRef.current = setInterval(() => {
-        const s = stateRef.current;
-        if (s && !s.isPaused && !s.showLevelGoalCard && !s.deathState && boardRef.current && document.visibilityState === 'visible') {
-          setProgression(prev => {
-            if (!prev) return prev;
-            const updated = {
-              ...prev,
-              totalPlayTimeSeconds: (prev.totalPlayTimeSeconds || 0) + 1
-            };
-            if (stateRef.current) stateRef.current.progression = updated;
-            return updated;
-          });
-        }
-      }, 1000);
-
-      const persistInterval = setInterval(() => {
-        const s = stateRef.current;
-        if (s && s.progression && Persistence) {
-          const currentState = {
-            ...s.progression,
-            currentBoard: boardRef.current ? { ...boardRef.current } : s.progression.currentBoard
-          };
-          Persistence.saveWorkingState(currentState);
-        }
-      }, 5000);
-
-      return () => {
-        if (activeTimerRef.current) clearInterval(activeTimerRef.current);
-        if (persistInterval) clearInterval(persistInterval);
-        if (Persistence && stateRef.current && stateRef.current.progression) {
-          const currentState = {
-            ...stateRef.current.progression,
-            currentBoard: boardRef.current ? { ...boardRef.current } : stateRef.current.progression.currentBoard
-          };
-          Persistence.saveWorkingState(currentState);
-          Persistence.flushPending();
-        }
-      };
-    }, []);
-
-    // Automatic pause on tab blur / visibility change / unload
-    useEffect(() => {
-      const handleFlushAndPause = () => {
-        setIsPaused(true);
-        if (!stateRef.current.deathState) {
-          setShowLevelGoalCard(true);
-        }
-        if (Persistence && stateRef.current.progression) {
-          const currentState = {
-            ...stateRef.current.progression,
-            currentBoard: boardRef.current ? { ...boardRef.current } : stateRef.current.progression.currentBoard
-          };
-          Persistence.saveWorkingState(currentState);
-          Persistence.flushPending();
-        }
-      };
-
-      const handleVisibilityChange = () => {
-        if (document.hidden) {
-          handleFlushAndPause();
-        }
-      };
-
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      window.addEventListener('blur', handleFlushAndPause);
-      window.addEventListener('beforeunload', handleFlushAndPause);
-      window.addEventListener('pagehide', handleFlushAndPause);
-
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        window.removeEventListener('blur', handleFlushAndPause);
-        window.removeEventListener('beforeunload', handleFlushAndPause);
-        window.removeEventListener('pagehide', handleFlushAndPause);
-        handleFlushAndPause();
-      };
-    }, []);
-
-    // 50-Level milestone celebration auto-dismiss timer
-    useEffect(() => {
-      if (levelMilestoneCelebration) {
-        if (levelMilestoneTimerRef.current) clearTimeout(levelMilestoneTimerRef.current);
-        levelMilestoneTimerRef.current = setTimeout(() => {
-          setLevelMilestoneCelebration(null);
-        }, 1800);
-        return () => {
-          if (levelMilestoneTimerRef.current) clearTimeout(levelMilestoneTimerRef.current);
-        };
+    // Actions
+    const handleStartLevel = (initialDir) => {
+      if (initialDir && boardRef.current && ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(initialDir)) {
+        boardRef.current.direction = initialDir;
+        nextDirectionQueueRef.current = [initialDir];
       }
-    }, [levelMilestoneCelebration]);
+      syncPreviousSnake(boardRef.current, boardRef.current ? boardRef.current.baseTickMs : 200);
+      setShowLevelGoalCard(false);
+      setIsPaused(false);
+      setDeathState(null);
+    };
 
-    const stars = Math.max(0, Math.floor(progression ? progression.totalStars : 0));
-    const currentMilestoneCount = Math.floor(stars / 50);
-    const progressInMilestone = stars % 50;
-    const currentTrophy = getTrophyForMilestone(currentMilestoneCount);
-    const WorldEngine = typeof window !== 'undefined' ? window.MaharashtraWorld : null;
-    const worldData = WorldEngine && uiBoardHeader ? WorldEngine.getWorldForLevel('classic', uiBoardHeader.level) : null;
+    const handleRestartLevel = (initialDir) => {
+      const currentLvl = progression ? progression.currentLevel : 1;
+      const cols = layoutRef.current.totalCols || 32;
+      const rows = layoutRef.current.totalRows || 20;
+      const freshGen = Generator ? Generator.generateLevel(currentLvl, { totalCols: cols, totalRows: rows }) : null;
+
+      const restarts = (boardRef.current ? boardRef.current.restartsCount : 0) + 1;
+      const chosenDir = (initialDir && ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(initialDir))
+        ? initialDir
+        : (freshGen ? freshGen.direction : 'RIGHT');
+
+      const freshBoard = freshGen ? {
+        ...freshGen,
+        direction: chosenDir,
+        restartsCount: restarts,
+        elapsedSeconds: 0
+      } : null;
+
+      boardRef.current = freshBoard;
+      syncPreviousSnake(freshBoard, freshBoard ? freshBoard.baseTickMs : 200);
+      setDeathState(null);
+      setShowLevelGoalCard(false);
+      setIsPaused(false);
+      nextDirectionQueueRef.current = (initialDir && ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(initialDir)) ? [initialDir] : [];
+
+      setProgression(prev => {
+        if (!prev) return prev;
+        const updated = {
+          ...prev,
+          currentStreak: 0,
+          currentBoard: freshBoard
+        };
+        if (Persistence) Persistence.saveWorkingState(updated);
+        return updated;
+      });
+
+      setUiBoardHeader(freshBoard);
+      drawCanvas();
+    };
+
+    const handleToggleMute = () => {
+      const next = !isMuted;
+      setIsMuted(next);
+      if (Audio) Audio.setMuted(next);
+    };
+
+    const currentLvl = progression ? progression.currentLevel : 1;
+    const totalStars = progression ? progression.totalStars : 0;
+    const fruitsEaten = uiBoardHeader ? (uiBoardHeader.fruitsEatenInLevel || 0) : 0;
+    const targetFruits = uiBoardHeader ? (uiBoardHeader.targetFruits || 5) : 5;
+    const streak = progression ? (progression.currentStreak || 0) : 0;
+    const bestStreak = progression ? (progression.bestStreak || 0) : 0;
+    const milestoneCount = Math.floor(totalStars / 50);
 
     return React.createElement('div', {
-      ref: containerRef,
       className: 'snake-classic-container',
       style: {
+        width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'flex-start',
-        padding: '0 8px 4px',
-        maxWidth: 960,
-        width: '100%',
-        margin: '0 auto',
-        userSelect: 'none',
-        flex: 1,
-        minHeight: 0,
-        boxSizing: 'border-box',
-        overflow: 'hidden'
+        justifyContent: 'space-between',
+        overflow: 'hidden',
+        boxSizing: 'border-box'
       }
-    },
-      // Centered Compact Game Header
+    }, [
+      // 1. CONSOLIDATED COMPACT STATUS HEADER (38px)
       React.createElement('div', {
-        className: 'snake-game-header',
+        key: 'snake-header',
         style: {
-          textAlign: 'center',
-          marginBottom: 4,
+          width: '100%',
+          maxWidth: '1280px',
+          height: '38px',
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center'
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 16px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(56, 189, 248, 0.2)',
+          borderRadius: '8px',
+          margin: '0 0 6px 0',
+          boxSizing: 'border-box',
+          fontSize: '13px',
+          color: '#f1f5f9',
+          flexShrink: 0
         }
-      },
-        React.createElement('div', {
-          style: {
-            fontSize: '1.02rem',
-            fontWeight: 800,
-            color: uiBoardHeader && uiBoardHeader.isMilestone ? '#fbbf24' : 'var(--text)',
-            letterSpacing: '0.04em',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }
-        },
-          `LEVEL ${uiBoardHeader ? uiBoardHeader.level : 1} · SNAKE RECTANGULAR`,
-          uiBoardHeader && uiBoardHeader.isOasis && React.createElement('span', {
-            style: { fontSize: '0.7rem', background: '#0284c7', padding: '1px 6px', borderRadius: 6, color: '#fff', fontWeight: 700 }
-          }, '🌴 Oasis'),
-          uiBoardHeader && uiBoardHeader.isMilestone && React.createElement('span', {
-            style: { fontSize: '0.7rem', background: '#8b5cf6', padding: '1px 6px', borderRadius: 6, color: '#fff', fontWeight: 700 }
-          }, '⭐ Milestone')
-        ),
-        React.createElement('div', {
-          style: {
-            fontSize: '0.74rem',
-            fontWeight: 600,
-            color: 'var(--text-secondary, #64748b)',
-            marginTop: 1
-          }
-        },
-          `⭐ ${stars} · ${currentTrophy ? `${currentTrophy.icon} ${currentTrophy.tier}` : '🥉 Bronze'} · ${progressInMilestone}/50 → next trophy`
-        )
-      ),
+      }, [
+        React.createElement('div', { key: 'header-left', style: { display: 'flex', alignItems: 'center', gap: '12px' } }, [
+          React.createElement('span', { key: 'game-title', style: { fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em' } }, '🐍 TAKE A BREAK'),
+          React.createElement('span', { key: 'level-badge', style: { background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 } }, `Level ${currentLvl}`),
+          React.createElement('span', { key: 'stars-badge', style: { color: '#fbbf24', fontWeight: 600 } }, `⭐ ${totalStars} Stars`),
+          milestoneCount > 0 ? React.createElement('span', { key: 'milestone-badge', style: { color: '#00e5ff', fontWeight: 600 } }, `🏆 M${milestoneCount}`) : null
+        ]),
+        React.createElement('div', { key: 'header-right', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
+          React.createElement('span', { key: 'streak-badge', style: { color: streak >= 3 ? '#f59e0b' : '#94a3b8', fontWeight: 600 } }, `🔥 Streak: ${streak} (Best: ${bestStreak})`),
+          React.createElement('button', {
+            key: 'stats-btn',
+            onClick: () => setShowStatsModal(true),
+            style: {
+              background: 'transparent',
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+              color: '#94a3b8',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }
+          }, '📊 Stats')
+        ])
+      ]),
 
-      // 2. Responsive Rectangular Canvas Game Stage with Overlay Wrappers
+      // 2. DOMINANT RESPONSIVE CANVAS STAGE
       React.createElement('div', {
-        className: 'snake-board-wrapper',
+        key: 'snake-stage',
+        ref: containerRef,
         style: {
-          position: 'relative',
-          borderRadius: 12,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow-md, 0 6px 24px rgba(0,0,0,0.22))',
-          border: deathState ? '2px solid #ef4444' : (uiBoardHeader && uiBoardHeader.chillTimer > 0 ? '2px solid #00e5ff' : '1.5px solid var(--border, rgba(255,255,255,0.12))'),
-          transition: 'border 0.2s ease',
-          background: '#0f172a',
-          margin: '0 auto',
+          width: '100%',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: stageDimensions.width,
-          height: stageDimensions.height,
-          flexShrink: 0
+          position: 'relative',
+          overflow: 'hidden',
+          borderRadius: '8px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
         }
-      },
+      }, [
         React.createElement('canvas', {
+          key: 'snake-canvas',
           ref: canvasRef,
-          width: stageDimensions.width,
-          height: stageDimensions.height,
-          style: { display: 'block', cursor: 'pointer' },
-          onClick: () => {
-            if (showLevelGoalCard) {
-              startGame();
-            } else if (deathState) {
-              handleRetry();
-            } else if (isPaused) {
-              setIsPaused(false);
-            }
+          style: {
+            display: 'block',
+            borderRadius: '6px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.6)'
           }
         }),
 
-        // Explicit Level Goals Card with Dynamic Gameplay Tips
-        showLevelGoalCard && !levelCelebration && !showStatsModal && (() => {
-          const currentLevelNum = uiBoardHeader ? uiBoardHeader.level : 1;
-          let selectedTip = null;
-          if (uiBoardHeader && uiBoardHeader.isOasis) {
-            selectedTip = SNAKE_LEVEL_TIPS.find(t => t.badge === 'Breather Oasis');
-          } else if (boardRef.current && boardRef.current.gateways && boardRef.current.gateways.length > 0) {
-            selectedTip = SNAKE_LEVEL_TIPS.find(t => t.badge === 'Quantum Gateways');
+        // Start / Pause Goal Card Overlay
+        showLevelGoalCard ? React.createElement('div', {
+          key: 'level-goal-card',
+          style: {
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            color: '#fff',
+            padding: '20px'
           }
-          if (!selectedTip) {
-            selectedTip = SNAKE_LEVEL_TIPS[(currentLevelNum - 1) % SNAKE_LEVEL_TIPS.length];
-          }
-
-          return React.createElement('div', {
+        }, [
+          React.createElement('div', { key: 'goal-title', style: { fontSize: '24px', fontWeight: 800, color: currentLvl === 1000 ? '#ffd700' : '#38bdf8', marginBottom: '4px' } },
+            currentLvl === 1000 ? '👑 LEVEL 1000: SOVEREIGN FINALE' : `LEVEL ${currentLvl}`
+          ),
+          (uiBoardHeader && uiBoardHeader.chapterName) ? React.createElement('div', { key: 'chapter-title', style: { fontSize: '13px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' } }, `Chapter ${uiBoardHeader.chapter || 1}: ${uiBoardHeader.chapterName}`) : null,
+          React.createElement('div', { key: 'goal-desc', style: { fontSize: '15px', color: '#cbd5e1', marginBottom: '16px' } },
+            currentLvl === 1000 ? 'Coronation Quest: Collect the Sovereign Maharashtra Crest to complete the 1,000-level expedition!' : `Goal: Collect ${targetFruits} fruits to advance through Maharashtra`
+          ),
+          React.createElement('div', { key: 'goal-controls-tip', style: { fontSize: '13px', color: '#94a3b8', marginBottom: '24px' } }, 'Use Arrow Keys or WASD to navigate'),
+          React.createElement('button', {
+            key: 'start-btn',
+            onClick: handleStartLevel,
             style: {
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(15, 23, 42, 0.90)',
-              backdropFilter: 'blur(6px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '16px 20px',
-              textAlign: 'center',
-              zIndex: 10
-            },
-            onClick: () => startGame()
-          },
-            React.createElement('div', { style: { fontSize: '2.2rem', marginBottom: 2 } }, '🐍'),
-            React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', letterSpacing: 0.5 } },
-              `Level ${uiBoardHeader ? uiBoardHeader.level : 1} — ${uiBoardHeader ? uiBoardHeader.layoutType.replace('_', ' ') : 'Challenge'}`
-            ),
+              background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+              border: '1px solid #38bdf8',
+              color: '#fff',
+              fontSize: '16px',
+              fontWeight: 700,
+              padding: '10px 32px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 0 16px rgba(56, 189, 248, 0.4)'
+            }
+          }, '▶ START SLITHERING')
+        ]) : null,
 
-            // Goal Badge
-            React.createElement('div', {
-              style: {
-                background: 'rgba(239, 68, 68, 0.2)',
-                border: '1.5px solid rgba(239, 68, 68, 0.6)',
-                borderRadius: 10,
-                padding: '6px 16px',
-                marginTop: 8,
-                marginBottom: 8,
-                maxWidth: 360
-              }
-            },
-              React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 800, color: '#fca5a5' } },
-                `🎯 GOAL: Eat ${uiBoardHeader ? uiBoardHeader.targetFruits : 5} Apples`
-              ),
-              React.createElement('div', { style: { fontSize: '0.76rem', color: '#fecaca', marginTop: 2 } },
-                uiBoardHeader && uiBoardHeader.isOasis ? '🌴 Relaxing breather: 0 obstacles on this level!' : 'Arrow Keys or WASD to control'
-              )
-            ),
-
-            // 💡 Dynamic Single-Tip Box for Game Novelties / Mechanics
-            selectedTip && React.createElement('div', {
-              style: {
-                background: selectedTip.badgeBg,
-                border: `1.5px solid ${selectedTip.badgeBorder}66`,
-                borderRadius: 10,
-                padding: '8px 14px',
-                marginTop: 2,
-                marginBottom: 10,
-                maxWidth: 380,
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.25)'
-              }
-            },
-              React.createElement('div', { style: { fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 } }, selectedTip.icon),
-              React.createElement('div', { style: { flex: 1 } },
-                React.createElement('div', {
-                  style: {
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    color: selectedTip.badgeColor,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.6,
-                    marginBottom: 2
-                  }
-                }, `💡 TIP: ${selectedTip.badge}`),
-                React.createElement('div', {
-                  style: {
-                    fontSize: '0.78rem',
-                    color: '#e2e8f0',
-                    lineHeight: 1.35
-                  }
-                }, selectedTip.text)
-              )
-            ),
-
-            React.createElement('button', {
-              type: 'button',
-              className: 'btn btn-primary',
-              onClick: (e) => {
-                e.stopPropagation();
-                startGame();
-              },
-              style: {
-                padding: '8px 26px',
-                fontSize: '0.92rem',
-                fontWeight: 800,
-                borderRadius: 8,
-                background: '#10b981',
-                borderColor: '#10b981',
-                color: '#ffffff',
-                boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)'
-              }
-            }, '▶ START LEVEL'),
-
-            React.createElement('div', { style: { fontSize: '0.74rem', color: '#94a3b8', marginTop: 6 } },
-              '⌨️ Press ANY key to start'
-            )
-          );
-        })(),
-
-        // Satisfying Death / Crash Overlay
-        deathState && !levelCelebration && !milestoneCelebration && React.createElement('div', {
+        // Death / Crash Overlay
+        deathState ? React.createElement('div', {
+          key: 'death-card',
           style: {
             position: 'absolute',
             inset: 0,
             background: 'rgba(15, 23, 42, 0.9)',
-            backdropFilter: 'blur(4px)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '16px 20px',
-            textAlign: 'center',
-            zIndex: 15
-          },
-          onClick: () => handleRetry()
-        },
-          React.createElement('div', { style: { fontSize: '2.4rem', marginBottom: 4 } }, '💥'),
-          React.createElement('div', { style: { fontSize: '1.45rem', fontWeight: 800, color: '#ef4444', letterSpacing: 0.5 } },
-            'CRASHED!'
-          ),
-          React.createElement('div', { style: { fontSize: '0.88rem', fontWeight: 600, color: '#fca5a5', marginTop: 2 } },
-            deathState.reason
-          ),
-
-          React.createElement('div', {
-            style: {
-              background: 'rgba(255,255,255,0.06)',
-              borderRadius: 8,
-              padding: '8px 14px',
-              margin: '10px 0',
-              fontSize: '0.82rem',
-              color: '#cbd5e1'
-            }
-          },
-            React.createElement('div', null, `Level ${uiBoardHeader ? uiBoardHeader.level : 1} Attempt Failed`),
-            React.createElement('div', { style: { marginTop: 3, color: '#fbbf24', fontWeight: 700 } },
-              `Rating on retry: ${'⭐'.repeat(deathState.remainingStars)}${'☆'.repeat(3 - deathState.remainingStars)}`
-            )
-          ),
-
+            zIndex: 10,
+            color: '#fff',
+            padding: '20px'
+          }
+        }, [
+          React.createElement('div', { key: 'death-icon', style: { fontSize: '36px', marginBottom: '8px' } }, '💥'),
+          React.createElement('div', { key: 'death-title', style: { fontSize: '22px', fontWeight: 800, color: '#ef4444', marginBottom: '8px' } }, 'COLLISION DETECTED'),
+          React.createElement('div', { key: 'death-desc', style: { fontSize: '14px', color: '#cbd5e1', marginBottom: '20px' } }, `Progress: ${fruitsEaten} / ${targetFruits} fruits collected`),
           React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-primary',
-            onClick: (e) => {
-              e.stopPropagation();
-              handleRetry();
-            },
+            key: 'retry-btn',
+            onClick: handleRestartLevel,
             style: {
-              padding: '8px 24px',
-              fontSize: '0.92rem',
-              fontWeight: 800,
-              borderRadius: 8,
-              background: '#ef4444',
-              borderColor: '#ef4444',
-              color: '#ffffff',
-              boxShadow: '0 4px 16px rgba(239, 68, 68, 0.4)'
+              background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+              border: '1px solid #f87171',
+              color: '#fff',
+              fontSize: '15px',
+              fontWeight: 700,
+              padding: '10px 28px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 0 16px rgba(239, 68, 68, 0.4)'
             }
-          }, '🔄 TRY AGAIN'),
+          }, '🔄 TRY AGAIN')
+        ]) : null,
 
-          React.createElement('div', { style: { fontSize: '0.76rem', color: '#94a3b8', marginTop: 6 } },
-            'Press ANY key to restart'
-          )
-        ),
-
-        // Level Complete Celebration Overlay
-        levelCelebration && React.createElement('div', {
+        // Level Victory Celebration Toast
+        levelCelebration ? React.createElement('div', {
+          key: 'win-toast',
           style: {
             position: 'absolute',
-            inset: 0,
-            background: 'rgba(16, 185, 129, 0.94)',
+            top: '20px',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
+            border: '1px solid #34d399',
+            borderRadius: '8px',
+            padding: '12px 24px',
+            color: '#fff',
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
+            gap: '12px',
+            boxShadow: '0 8px 32px rgba(16, 185, 129, 0.5)',
             zIndex: 20
           }
-        },
-          React.createElement('div', { style: { fontSize: '1.8rem', fontWeight: 900, color: '#fff' } },
-            'LEVEL COMPLETE!'
-          ),
-          React.createElement('div', { style: { fontSize: '1.6rem' } },
-            '⭐'.repeat(levelCelebration.stars)
-          ),
-          React.createElement('div', { style: { fontSize: '0.9rem', color: '#f0fdf4', fontWeight: 600 } },
-            'Generating next challenge...'
-          )
-        )
-      ),
+        }, [
+          React.createElement('span', { key: 'win-star', style: { fontSize: '24px' } }, '⭐'.repeat(levelCelebration.stars)),
+          React.createElement('div', { key: 'win-text' }, [
+            React.createElement('div', { key: 'win-title', style: { fontWeight: 800, fontSize: '15px' } }, `LEVEL ${levelCelebration.level} MASTERED!`),
+            React.createElement('div', { key: 'win-sub', style: { fontSize: '12px', opacity: 0.9 } }, `+${levelCelebration.stars} Stars • Expanding Territory...`)
+          ])
+        ]) : null
+      ]),
 
-      // 3. Compact Control & Status Rail below Canvas
+      // 3. CONSOLIDATED BOTTOM CONTROL RAIL (34px)
       React.createElement('div', {
-        className: 'snake-action-rail',
+        key: 'snake-bottom-rail',
         style: {
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 5,
-          marginTop: 6,
           width: '100%',
-          maxWidth: 480,
-          boxSizing: 'border-box'
-        }
-      },
-        // Row 1: Action Buttons
-        React.createElement('div', {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            width: '100%'
-          }
-        },
-          // Play / Pause Button
-          React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-outline btn-sm',
-            onClick: () => {
-              if (showLevelGoalCard) {
-                startGame();
-              } else if (deathState) {
-                handleRetry();
-              } else {
-                setIsPaused(prev => !prev);
-              }
-            },
-            title: isPaused ? 'Resume Game (Space)' : 'Pause Game (Space)',
-            style: {
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              padding: '4px 14px',
-              borderRadius: 'var(--radius, 8px)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }
-          }, isPaused ? '▶ Play' : '⏸ Pause'),
-
-          // Restart Button
-          React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-outline btn-sm',
-            onClick: () => {
-              if (deathState) {
-                handleRetry();
-              } else {
-                handleRestartCurrentLevel();
-              }
-            },
-            title: 'Restart Level',
-            style: {
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              padding: '4px 14px',
-              borderRadius: 'var(--radius, 8px)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }
-          }, '↺ Restart'),
-
-          // Audio Mute/Unmute Button
-          React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-outline btn-sm',
-            onClick: () => {
-              const nextMuted = !isMuted;
-              setIsMuted(nextMuted);
-              if (Audio) Audio.setMuted(nextMuted);
-            },
-            title: isMuted ? 'Unmute Audio' : 'Mute Audio',
-            style: {
-              width: 32,
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.85rem',
-              borderRadius: 'var(--radius, 8px)'
-            }
-          }, isMuted ? '🔇' : '🔊'),
-
-          // Stats Button
-          React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-outline btn-sm',
-            onClick: () => {
-              setIsPaused(true);
-              setShowStatsModal(true);
-            },
-            title: 'View Lifetime Statistics & Milestone Trophies',
-            style: {
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              padding: '4px 14px',
-              borderRadius: 'var(--radius, 8px)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }
-          }, '📊 Stats')
-        ),
-
-        // Row 2: Unified Supporting Status Bar
-        React.createElement('div', {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            color: 'var(--text-secondary, #64748b)',
-            background: 'var(--surface-sunken, #f8fafc)',
-            border: '1px solid var(--border, #e2e8f0)',
-            borderRadius: 'var(--radius, 8px)',
-            padding: '3px 12px',
-            width: '100%',
-            boxSizing: 'border-box',
-            flexWrap: 'wrap'
-          }
-        },
-          React.createElement('span', { style: { color: 'var(--text, #1e293b)', fontWeight: 700 } },
-            `⭐ ${stars} Stars`
-          ),
-          React.createElement('span', { style: { color: 'var(--border, #cbd5e1)' } }, '•'),
-          React.createElement('span', { style: { color: currentTrophy ? currentTrophy.color : '#d97706', fontWeight: 700 } },
-            `${currentTrophy ? `${currentTrophy.icon} ${currentTrophy.tier}` : '🥉 Bronze'} (${progressInMilestone}/50)`
-          ),
-          worldData && worldData.location && React.createElement(React.Fragment, null,
-            React.createElement('span', { style: { color: 'var(--border, #cbd5e1)' } }, '•'),
-            React.createElement('span', { style: { color: 'var(--text-secondary, #64748b)' } },
-              `📍 ${worldData.location.name} (${worldData.progressInLocation}/${worldData.levelsPerLocation})`
-            )
-          ),
-          React.createElement('span', { style: { color: 'var(--border, #cbd5e1)' } }, '•'),
-          React.createElement('span', { style: { color: '#ef4444', fontWeight: 700 } },
-            `🍎 ${uiBoardHeader ? uiBoardHeader.fruitsEaten : 0} / ${uiBoardHeader ? uiBoardHeader.targetFruits : 5}`
-          ),
-          React.createElement('span', { style: { color: 'var(--border, #cbd5e1)' } }, '•'),
-          React.createElement('span', null, `Streak: 🔥 ${progression ? progression.currentStreak : 0}`)
-        )
-      ),
-
-      // Stats Modal
-      showStatsModal && renderModalPortal(React.createElement('div', {
-        className: 'modal-overlay take-a-break-stats-overlay',
-        style: {
-          position: 'fixed',
-          inset: 0,
+          maxWidth: '1280px',
+          height: '34px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 16px',
           background: 'rgba(15, 23, 42, 0.75)',
           backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: 16
-        },
-        onClick: () => setShowStatsModal(false)
-      },
-        React.createElement('div', {
-          className: 'modal-card take-a-break-stats-card',
-          style: {
-            width: 480,
-            maxWidth: '92vw',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            padding: '24px 28px',
-            borderRadius: 16,
-            background: 'var(--bg-card, #ffffff)',
-            color: 'var(--text, #1e293b)',
-            border: '1px solid var(--border, #e2e8f0)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            boxSizing: 'border-box'
-          },
-          onClick: (e) => e.stopPropagation()
-        },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-              React.createElement('span', { style: { fontSize: '1.4rem' } }, '🐍'),
-              React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)' } }, 'Snake Statistics')
-            ),
-            React.createElement('button', {
-              type: 'button',
-              className: 'btn btn-ghost btn-sm',
-              style: { padding: '4px 8px', fontSize: '1.1rem', cursor: 'pointer', borderRadius: 6 },
-              onClick: () => setShowStatsModal(false)
-            }, '✕')
-          ),
-
-          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 } },
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Current Level'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: 'var(--text)' } }, progression ? progression.currentLevel : 1)
-            ),
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Levels Completed'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: 'var(--text)' } }, progression ? progression.completedCount : 0)
-            ),
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Total Lifetime Stars'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#eab308' } }, `⭐ ${progression ? progression.totalStars : 0}`)
-            ),
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Longest Snake'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: 'var(--text)' } }, `${progression ? progression.longestSnake : 3} units`)
-            ),
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Total Fruits Eaten'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#ef4444' } }, `🍎 ${progression ? progression.totalFruitsEaten : 0}`)
-            ),
-            React.createElement('div', { style: { background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Best 1st-Try Streak'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#f97316' } }, `🔥 ${progression ? progression.bestStreak : 0}`)
-            ),
-            React.createElement('div', { style: { gridColumn: 'span 2', background: 'var(--surface-sunken, #f8fafc)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 } }, 'Lifetime Play Time'),
-              React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: 'var(--text)' } }, formatLifetimeTime(progression ? progression.totalPlayTimeSeconds : 0))
-            )
-          ),
-
-          React.createElement(window.TrophyProgressBar || TrophyProgressBar, {
-            totalStars: progression ? progression.totalStars : 0,
-            currentLevel: progression ? progression.currentLevel : 1,
-            gameType: 'classic'
-          }),
-
-          React.createElement('div', { style: { marginTop: 4, textAlign: 'right' } },
-            React.createElement('button', {
-              type: 'button',
-              className: 'btn btn-primary',
-              onClick: () => setShowStatsModal(false),
-              style: { padding: '8px 24px', fontWeight: 700, borderRadius: 8 }
-            }, 'Close')
-          )
-        )
-      )),
-
-      // 50-Level Celebration Modal
-      levelMilestoneCelebration && renderModalPortal(React.createElement('div', {
-        className: 'level-milestone-modal-overlay',
-        style: {
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          animation: 'milestoneFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-        },
-        onClick: () => setLevelMilestoneCelebration(null)
-      },
-        React.createElement('div', {
-          className: 'level-milestone-modal-card',
-          style: {
-            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98))',
-            border: '2px solid rgba(255, 215, 0, 0.7)',
-            borderRadius: 18,
-            padding: '28px 32px',
-            maxWidth: 440,
-            width: '90%',
-            textAlign: 'center',
-            boxShadow: '0 0 50px rgba(255, 215, 0, 0.4)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 12,
-            animation: 'milestonePop 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
-          },
-          onClick: e => e.stopPropagation()
-        },
-          React.createElement('div', { style: { fontSize: '3.2rem', filter: 'drop-shadow(0 0 16px gold)' } }, '👑'),
-          React.createElement('h2', { style: { margin: 0, fontSize: '1.45rem', fontWeight: 900, color: '#ffd700', letterSpacing: '0.04em' } },
-            `✨ ${levelMilestoneCelebration} LEVELS COMPLETE! ✨`
-          ),
-          React.createElement('p', { style: { margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary, #94a3b8)' } },
-            'Incredible agility! Maharashtra world level milestone reached.'
-          ),
+          border: '1px solid rgba(56, 189, 248, 0.2)',
+          borderRadius: '8px',
+          margin: '6px 0 0 0',
+          boxSizing: 'border-box',
+          fontSize: '12px',
+          color: '#94a3b8',
+          flexShrink: 0
+        }
+      }, [
+        React.createElement('div', { key: 'rail-left', style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
           React.createElement('button', {
-            type: 'button',
-            className: 'btn btn-primary',
-            onClick: () => setLevelMilestoneCelebration(null),
-            style: { marginTop: 8, padding: '8px 24px', fontWeight: 700, borderRadius: 8 }
-          }, 'Continue Playing ➔')
+            key: 'pause-btn',
+            onClick: () => setIsPaused(prev => !prev),
+            disabled: showLevelGoalCard || !!deathState,
+            style: {
+              background: isPaused ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              padding: '2px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 600
+            }
+          }, isPaused ? '▶ Resume' : '⏸ Pause'),
+          React.createElement('button', {
+            key: 'restart-btn',
+            onClick: handleRestartLevel,
+            style: {
+              background: 'transparent',
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+              color: '#94a3b8',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }
+          }, '🔄 Restart'),
+          React.createElement('button', {
+            key: 'mute-btn',
+            onClick: handleToggleMute,
+            style: {
+              background: 'transparent',
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+              color: isMuted ? '#f87171' : '#94a3b8',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }
+          }, isMuted ? '🔇 Muted' : '🔊 Sound')
+        ]),
+
+        React.createElement('div', { key: 'rail-center', style: { fontWeight: 600, color: '#f1f5f9' } },
+          `🍎 Food Progress: ${fruitsEaten} / ${targetFruits}`
+        ),
+
+        React.createElement('div', { key: 'rail-right', style: { color: '#64748b' } },
+          'Arrows / WASD to move • Space to pause'
         )
-      ))
-    );
+      ]),
+
+      // Stats Modal Portal
+      showStatsModal && renderModalPortal(
+        React.createElement('div', {
+          key: 'stats-modal-overlay',
+          style: {
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }
+        }, [
+          React.createElement('div', {
+            key: 'stats-modal-card',
+            style: {
+              background: '#0f172a',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '12px',
+              padding: '24px',
+              width: '380px',
+              color: '#fff',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)'
+            }
+          }, [
+            React.createElement('div', { key: 'modal-title', style: { fontSize: '18px', fontWeight: 800, color: '#38bdf8', marginBottom: '16px' } }, '🐍 Snake Career Stats'),
+            React.createElement('div', { key: 'stats-grid', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px', color: '#cbd5e1' } }, [
+              React.createElement('div', { key: 'stat-lvl' }, `Current Level: ${currentLvl}`),
+              React.createElement('div', { key: 'stat-stars' }, `Total Stars: ⭐ ${totalStars}`),
+              React.createElement('div', { key: 'stat-completed' }, `Levels Solved: ${progression ? progression.completedCount : 0}`),
+              React.createElement('div', { key: 'stat-fruits' }, `Fruits Eaten: ${progression ? progression.totalFruitsEaten : 0}`),
+              React.createElement('div', { key: 'stat-len' }, `Longest Snake: ${progression ? progression.longestSnake : 3}`),
+              React.createElement('div', { key: 'stat-streak' }, `Best Streak: 🔥 ${bestStreak}`),
+              React.createElement('div', { key: 'stat-time', style: { gridColumn: 'span 2' } }, `Play Time: ⏱️ ${formatLifetimeTime(progression ? progression.totalPlayTimeSeconds : 0)}`)
+            ]),
+            React.createElement('button', {
+              key: 'close-stats-btn',
+              onClick: () => setShowStatsModal(false),
+              style: {
+                marginTop: '20px',
+                width: '100%',
+                background: 'rgba(56, 189, 248, 0.15)',
+                border: '1px solid #38bdf8',
+                color: '#38bdf8',
+                padding: '8px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 700
+              }
+            }, 'Close')
+          ])
+        ])
+      )
+    ]);
   }
 
   return SnakeClassic;

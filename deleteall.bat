@@ -16,13 +16,22 @@ echo    - Desktop and Start Menu shortcuts
 echo    - Application binaries and configuration files
 echo ================================================================
 echo.
-set /p CONFIRM="Are you absolutely sure you want to delete EVERYTHING? (Type YES to confirm): "
-if /i not "!CONFIRM!"=="YES" (
-    echo.
-    echo Operation cancelled by user. No files were removed.
-    echo.
-    pause
-    exit /b 0
+set "FORCE=0"
+if /i "%~1"=="/y" set "FORCE=1"
+if /i "%~1"=="-y" set "FORCE=1"
+if /i "%~1"=="/quiet" set "FORCE=1"
+if /i "%~1"=="-quiet" set "FORCE=1"
+if /i "%~1"=="--quiet" set "FORCE=1"
+
+if "!FORCE!"=="0" (
+    set /p CONFIRM="Are you absolutely sure you want to delete EVERYTHING? (Type YES to confirm): "
+    if /i not "!CONFIRM!"=="YES" (
+        echo.
+        echo Operation cancelled by user. No files were removed.
+        echo.
+        pause
+        exit /b 0
+    )
 )
 
 echo.
@@ -141,7 +150,7 @@ if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Billsoft" (
 )
 
 echo [5/6] Removing installed binaries...
-powershell -NoProfile -Command "$appDirs = @('$env:LOCALAPPDATA\Programs\RupeeCRM', '$env:LOCALAPPDATA\Programs\RupeeCRM.old', '$env:LOCALAPPDATA\Programs\Billsoft'); foreach ($d in $appDirs) { if (Test-Path $d) { for ($i=0; $i -lt 3; $i++) { try { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue; if (-not (Test-Path $d)) { break } } catch {} Start-Sleep -Milliseconds 300 } } }" >nul 2>&1
+powershell -NoProfile -Command "$appDirs = @('$env:LOCALAPPDATA\Programs\RupeeCRM', '$env:LOCALAPPDATA\Programs\RupeeCRM.old', '$env:LOCALAPPDATA\Programs\Billsoft', '$env:ProgramFiles\RupeeCRM', '${env:ProgramFiles(x86)}\RupeeCRM', '$env:ProgramFiles\Billsoft'); foreach ($d in $appDirs) { if ($d -and (Test-Path $d)) { for ($i=0; $i -lt 3; $i++) { try { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue; if (-not (Test-Path $d)) { break } } catch {} Start-Sleep -Milliseconds 300 } } }" >nul 2>&1
 
 if exist "%LOCALAPPDATA%\Programs\RupeeCRM" (
     attrib -r -s -h "%LOCALAPPDATA%\Programs\RupeeCRM\*.*" /s /d >nul 2>&1
@@ -157,6 +166,11 @@ if exist "%LOCALAPPDATA%\Programs\Billsoft" (
     attrib -r -s -h "%LOCALAPPDATA%\Programs\Billsoft\*.*" /s /d >nul 2>&1
     rd /s /q "%LOCALAPPDATA%\Programs\Billsoft" >nul 2>&1
     echo   - Removed installed binaries in %LOCALAPPDATA%\Programs\Billsoft
+)
+if exist "%ProgramFiles%\RupeeCRM" (
+    attrib -r -s -h "%ProgramFiles%\RupeeCRM\*.*" /s /d >nul 2>&1
+    rd /s /q "%ProgramFiles%\RupeeCRM" >nul 2>&1
+    echo   - Removed %ProgramFiles%\RupeeCRM
 )
 
 echo [6/6] Cleanup complete!

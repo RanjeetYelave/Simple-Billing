@@ -799,7 +799,7 @@
           }
         }, `Begin Solving in ${toLoc ? toLoc.name : 'Destination'} ➔`)
       )
-    );
+    ));
   }
 
   /**

@@ -66,9 +66,10 @@ public class LauncherMain {
 
         // 1. Single-instance check: if server is already running, focus/open browser and notify
         if (isBackendHealthy(1200)) {
-            System.out.println("RupeeCRM service is already active. Opening browser at " + APP_URL);
+            String targetUrl = getEffectiveAppUrl();
+            System.out.println("RupeeCRM service is already active. Opening browser at " + targetUrl);
             if (!background) {
-                openBrowser(APP_URL);
+                openBrowser(targetUrl);
             }
             System.exit(0);
             return;
@@ -222,7 +223,7 @@ public class LauncherMain {
                 buttonsGrid.setOpaque(false);
 
                 openBrowserBtn = createStyledButton("🌐 Open in Browser (Port 28080)", new Color(79, 70, 229), Color.WHITE);
-                openBrowserBtn.addActionListener(e -> openBrowser(APP_URL));
+                openBrowserBtn.addActionListener(e -> openBrowser(getEffectiveAppUrl()));
 
                 minimizeTrayBtn = createStyledButton("📌 Minimize to System Tray", new Color(30, 41, 59), new Color(226, 232, 240));
                 minimizeTrayBtn.addActionListener(e -> minimizeToTray());
@@ -529,7 +530,7 @@ public class LauncherMain {
 
             // If launched interactively by user double-click, open browser
             if (!isBackgroundMode) {
-                openBrowser(APP_URL);
+                openBrowser(getEffectiveAppUrl());
             }
 
             // Monitor backend process execution
@@ -661,6 +662,16 @@ public class LauncherMain {
         return false;
     }
 
+    public static String getEffectiveAppUrl() {
+        try {
+            java.net.InetAddress addr = java.net.InetAddress.getByName("management.rupeecrm.local");
+            if (addr != null && (addr.isLoopbackAddress() || "127.0.0.1".equals(addr.getHostAddress()))) {
+                return APP_URL;
+            }
+        } catch (Exception ignored) {}
+        return "http://localhost:" + PORT + "/";
+    }
+
     public static void openBrowser(String urlStr) {
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
@@ -694,7 +705,7 @@ public class LauncherMain {
                 PopupMenu popup = new PopupMenu();
 
                 MenuItem openItem = new MenuItem("🌐 Open RupeeCRM (Browser)");
-                openItem.addActionListener(e -> openBrowser(APP_URL));
+                openItem.addActionListener(e -> openBrowser(getEffectiveAppUrl()));
                 popup.add(openItem);
 
                 MenuItem managerItem = new MenuItem("🖥️ Show Control Center");
@@ -731,7 +742,7 @@ public class LauncherMain {
 
                 trayIcon = new TrayIcon(image, "RupeeCRM (Active)", popup);
                 trayIcon.setImageAutoSize(true);
-                trayIcon.addActionListener(e -> openBrowser(APP_URL)); // Single click opens browser
+                trayIcon.addActionListener(e -> openBrowser(getEffectiveAppUrl())); // Single click opens browser
 
                 tray.add(trayIcon);
                 System.out.println("System tray icon initialized successfully for RupeeCRM.");

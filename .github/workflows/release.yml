@@ -114,11 +114,6 @@ jobs:
             }
           }
 
-      - name: Install WiX Toolset v4
-        shell: pwsh
-        run: |
-          dotnet tool install --global wix --version 4.0.5
-
       - name: Prepare Application Packaging Layout
         shell: pwsh
         run: |
@@ -171,40 +166,31 @@ jobs:
       - name: Build Unified RupeeCRMSetup.msi
         shell: pwsh
         run: |
-          Copy-Item tools/assets/RupeeCRM.ico installer/wix/RupeeCRM.ico -ErrorAction SilentlyContinue
-
-          # Package Native Launcher Executable
+          # Package Native Application and build standalone MSI Installer directly via jpackage
           jpackage --name RupeeCRM `
                    --input dist/RupeeCRM `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
-                   --type app-image `
+                   --type msi `
                    --icon tools/assets/RupeeCRM.ico `
                    --dest msi-stage `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
+                   --win-shortcut `
+                   --win-menu `
+                   --win-menu-group "RupeeCRM" `
+                   --win-per-user-install `
+                   --win-dir-chooser `
                    --java-options "-Djava.awt.headless=false"
 
-          # Prepare MSI staging payload
-          New-Item -ItemType Directory -Force -Path installer/wix/payload
-          Copy-Item -Recurse msi-stage/RupeeCRM/* installer/wix/payload/
-
-          # Validate MSI staging payload before WiX compilation
-          Write-Host "=== Validating WiX MSI payload directory ==="
-          if (-not (Test-Path installer/wix/payload/RupeeCRM.exe)) {
-            Write-Error "CRITICAL: installer/wix/payload/RupeeCRM.exe is missing from jpackage output!"
+          $generatedMsi = Get-ChildItem -Path msi-stage -Filter "*.msi" | Select-Object -First 1
+          if (-not $generatedMsi) {
+            Write-Error "CRITICAL: jpackage failed to generate MSI installer in msi-stage!"
             exit 1
           }
-          $payloadFiles = Get-ChildItem -Recurse installer/wix/payload
-          Write-Host "Total payload items: $($payloadFiles.Count)"
-          if ($payloadFiles.Count -lt 5) {
-            Write-Error "CRITICAL: installer/wix/payload is empty or incomplete!"
-            exit 1
-          }
-          Write-Host "✓ Verified WiX payload readiness."
 
-          # Build MSI with WiX v4
-          wix build -o RupeeCRMSetup.msi installer/wix/RupeeCRMSetup.wxs
+          Copy-Item $generatedMsi.FullName RupeeCRMSetup.msi
+          Write-Host "✓ Successfully generated RupeeCRMSetup.msi ($((Get-Item RupeeCRMSetup.msi).Length) bytes)"
 
           # Prepare direct WAR & checksum assets for in-app update pipeline
           Copy-Item app-binaries/rupeecrm.war rupeecrm.war

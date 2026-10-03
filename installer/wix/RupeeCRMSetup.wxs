@@ -58,9 +58,9 @@
     <StandardDirectory Id="DesktopFolder" />
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <!-- Harvest all payload files into INSTALLFOLDER -->
+    <!-- Harvest all payload files into INSTALLFOLDER excluding explicitly managed executable -->
     <ComponentGroup Id="PayloadComponents" Directory="INSTALLFOLDER">
-      <Files Include="payload\**" />
+      <Files Include="payload\**" Exclude="payload\RupeeCRM.exe" />
     </ComponentGroup>
 
     <Feature Id="MainApplication" Title="RupeeCRM Core" Level="1">

@@ -5,11 +5,8 @@
     Permanently removes all RupeeCRM application binaries, databases, customer data,
     licenses, machine identities, backups, logs, registry keys, MSI installer entries,
     services, scheduled tasks, shortcuts, and legacy remnants from the system.
-    After successful execution, the machine state is identical to a clean machine
-    where RupeeCRM has never been installed.
 .PARAMETER DryRun
-    Discovers and displays all artifacts that would be removed without performing
-    any destructive actions, process kills, or registry modifications.
+    Discovers and displays all artifacts without deleting anything.
 #>
 
 [CmdletBinding()]
@@ -17,82 +14,51 @@ param(
     [switch]$DryRun
 )
 
-$ErrorActionPreference = "Continue"
-
-# Helper function to pause window before exit so window does not close immediately
-function Complete-Exit {
-    param([int]$ExitCode = 0)
-    
-    try {
-        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-            Write-Host ""
-            Write-Host "Press Enter to close this window..." -ForegroundColor Gray
-            [void][System.Console]::ReadLine()
-        }
-    } catch {}
-    
-    exit $ExitCode
+# Keep console open on exit under all conditions
+function Pause-And-Exit {
+    param([int]$Code = 0)
+    Write-Host ""
+    Write-Host "Press Enter to exit this window..." -ForegroundColor Gray
+    [void][System.Console]::ReadLine()
+    exit $Code
 }
 
 # ==============================================================================
-# 1. ELEVATION CHECK & AUTO-RELAUNCH
+# 1. ROBUST ELEVATION HANDLER
 # ==============================================================================
 
-function Test-IsAdministrator {
+function Check-IsAdmin {
     try {
-        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-        return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object Security.Principal.WindowsPrincipal($id)
+        return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     } catch {
         return $false
     }
 }
 
-# Resolve current script path with robust fallbacks
-$scriptPath = $PSCommandPath
-if (-not $scriptPath) {
-    if ($PSScriptRoot -and $MyInvocation.MyCommand.Name) {
-        $scriptPath = Join-Path $PSScriptRoot $MyInvocation.MyCommand.Name
-    } elseif ($MyInvocation.MyCommand.Path) {
-        $scriptPath = $MyInvocation.MyCommand.Path
-    } elseif ($MyInvocation.MyCommand.Definition) {
-        $scriptPath = $MyInvocation.MyCommand.Definition
-    }
-}
-
-if (-not (Test-IsAdministrator)) {
-    if ($env:RUPEECRM_PURGE_RELAUNCHED -eq "1") {
-        Write-Host "CRITICAL: Administrator privileges were not acquired. Please right-click PowerShell and select 'Run as Administrator'." -ForegroundColor Red
-        Complete-Exit 1
-    }
-
+if (-not (Check-IsAdmin)) {
     Write-Host "======================================================================" -ForegroundColor Yellow
     Write-Host " Administrator privileges required. Requesting elevation (UAC)...    " -ForegroundColor Yellow
     Write-Host "======================================================================" -ForegroundColor Yellow
-    
-    if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
-        Write-Host "Could not automatically resolve script path for elevation." -ForegroundColor Red
-        Write-Host "Please open an elevated PowerShell prompt (Run as Administrator) and run:" -ForegroundColor Yellow
-        Write-Host "  powershell -ExecutionPolicy Bypass -File .\purge-rupeecrm-completely.ps1" -ForegroundColor White
-        Complete-Exit 1
-    }
 
-    $argList = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    if ($DryRun) {
-        $argList += " -DryRun"
-    }
+    $scriptFile = $MyInvocation.MyCommand.Definition
+    if (-not $scriptFile) { $scriptFile = $PSCommandPath }
 
-    $env:RUPEECRM_PURGE_RELAUNCHED = "1"
+    $dryRunArg = if ($DryRun) { "-DryRun" } else { "" }
+
     try {
-        Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs
+        Start-Process powershell.exe -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$scriptFile`" $dryRunArg" -Verb RunAs
         exit 0
     } catch {
-        Write-Host "Elevation prompt was cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
-        Complete-Exit 1
+        Write-Host "Failed to elevate automatically: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Please right-click PowerShell, choose 'Run as Administrator', and run this script." -ForegroundColor Yellow
+        Pause-And-Exit 1
     }
 }
 
 # ==============================================================================
-# 2. SAFETY WARNING & MANDATORY CONFIRMATION
+# 2. BANNER & CONFIRMATION
 # ==============================================================================
 
 Write-Host ""
@@ -102,17 +68,12 @@ Write-Host "====================================================================
 Write-Host ""
 Write-Host " WARNING: This utility performs a full, permanent factory reset." -ForegroundColor Yellow
 Write-Host " It will IRREVOCABLY DELETE all of the following:" -ForegroundColor Yellow
-Write-Host "   • RupeeCRM Application Binaries (Current & Legacy)" -ForegroundColor DarkYellow
-Write-Host "   • Customer Database (billsoft_database.mv.db and related)" -ForegroundColor DarkYellow
-Write-Host "   • All Customer Billing, Inventory & Firm Data" -ForegroundColor DarkYellow
-Write-Host "   • All Automated & Manual Backups (%LOCALAPPDATA%\RupeeCRM\backups)" -ForegroundColor DarkYellow
-Write-Host "   • Licensing & Machine ID Tokens (license.lic, mid.dat)" -ForegroundColor DarkYellow
-Write-Host "   • System Configuration, Cache & Staging Files" -ForegroundColor DarkYellow
-Write-Host "   • Supervisor & Backend Diagnostic Logs" -ForegroundColor DarkYellow
-Write-Host "   • Windows Registry Keys & Startup Autostart Entries" -ForegroundColor DarkYellow
-Write-Host "   • MSI Installer Registration State" -ForegroundColor DarkYellow
-Write-Host "   • Desktop and Start Menu Shortcuts" -ForegroundColor DarkYellow
-Write-Host "   • Associated Background Services & Scheduled Tasks" -ForegroundColor DarkYellow
+Write-Host "   - Application Binaries (%LOCALAPPDATA%\Programs\RupeeCRM)" -ForegroundColor DarkYellow
+Write-Host "   - Customer Database & All Billing Data (%LOCALAPPDATA%\RupeeCRM\data)" -ForegroundColor DarkYellow
+Write-Host "   - Automated Backups, Licensing & Machine ID Tokens" -ForegroundColor DarkYellow
+Write-Host "   - Diagnostic Logs, Cache, Staging & Updater State" -ForegroundColor DarkYellow
+Write-Host "   - Windows Registry Keys & Startup Autostart Entries" -ForegroundColor DarkYellow
+Write-Host "   - MSI Installer Registrations & Shortcuts" -ForegroundColor DarkYellow
 Write-Host ""
 
 if ($DryRun) {
@@ -122,659 +83,352 @@ if ($DryRun) {
     Write-Host ""
 } else {
     $expectedPhrase = "DELETE EVERYTHING AND START FRESH"
-    Write-Host "To confirm complete destruction of all RupeeCRM data and application state," -ForegroundColor White
-    Write-Host "type EXACTLY the following phrase:" -ForegroundColor White
+    Write-Host "To confirm complete factory reset, type EXACTLY:" -ForegroundColor White
     Write-Host "  $expectedPhrase" -ForegroundColor Magenta
     Write-Host ""
-    $userInput = Read-Host "Confirmation Prompt"
+    $inputPhrase = Read-Host "Type confirmation phrase"
 
-    if ($userInput -cne $expectedPhrase) {
+    if ($inputPhrase.Trim() -ne $expectedPhrase) {
         Write-Host ""
-        Write-Host "Confirmation phrase did not match. Aborting immediately with ZERO changes." -ForegroundColor Green
-        Complete-Exit 0
+        Write-Host "Confirmation did not match. Aborting immediately with ZERO modifications." -ForegroundColor Green
+        Pause-And-Exit 0
     }
     Write-Host ""
-    Write-Host "Confirmation accepted. Commencing forensic discovery and purge..." -ForegroundColor Red
+    Write-Host "Confirmation accepted. Commencing complete purge..." -ForegroundColor Red
 }
 
 # ==============================================================================
-# 3. DISCOVERY ENGINE (ARTIFACT INVENTORY)
-# ==============================================================================
-
-function New-Artifact {
-    param(
-        [string]$Category,
-        [string]$PathOrName,
-        [string]$Reason,
-        [string]$Action,
-        [object]$Data = $null
-    )
-    return [PSCustomObject]@{
-        Category   = $Category
-        PathOrName = $PathOrName
-        Reason     = $Reason
-        Action     = $Action
-        Data       = $Data
-    }
-}
-
-function Find-RupeeCrmArtifacts {
-    $inventory = [System.Collections.Generic.List[object]]::new()
-
-    # --------------------------------------------------------------------------
-    # A. PROCESSES
-    # --------------------------------------------------------------------------
-    $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
-    foreach ($p in $processes) {
-        $isRupee = $false
-        $reason = ""
-
-        $name = $p.Name
-        $cmd = $p.CommandLine
-        $exe = $p.ExecutablePath
-
-        if ($name -match "^RupeeCRM(\.exe)?$" -or $exe -match "RupeeCRM(\.exe)?$") {
-            $isRupee = $true
-            $reason = "Process name or executable matches RupeeCRM"
-        } elseif ($cmd -and ($cmd -match "rupeecrm\.war" -or $cmd -match "launcher\.jar" -or $cmd -match "com\.billing\.simple" -or $cmd -match "RUPEECRM_DATA_DIR")) {
-            $isRupee = $true
-            $reason = "Command line contains RupeeCRM arguments: $($p.CommandLine)"
-        } elseif ($exe -and ($exe -match "\\RupeeCRM\\" -or $exe -match "\\Programs\\RupeeCRM\\")) {
-            $isRupee = $true
-            $reason = "Process executable is located inside RupeeCRM directory: $exe"
-        }
-
-        if ($isRupee) {
-            $inventory.Add((New-Artifact `
-                -Category "PROCESS" `
-                -PathOrName "$($p.Name) (PID: $($p.ProcessId))" `
-                -Reason $reason `
-                -Action "Terminate Process" `
-                -Data $p.ProcessId))
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # B. MSI / WINDOWS INSTALLER REGISTRATIONS
-    # --------------------------------------------------------------------------
-    $uninstallRegRoots = @(
-        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
-        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-    )
-
-    foreach ($regRoot in $uninstallRegRoots) {
-        if (Test-Path $regRoot) {
-            $subkeys = Get-ChildItem -Path $regRoot -ErrorAction SilentlyContinue
-            foreach ($sk in $subkeys) {
-                try {
-                    $dn = $sk.GetValue("DisplayName")
-                    $pub = $sk.GetValue("Publisher")
-                    $loc = $sk.GetValue("InstallLocation")
-                    $unStr = $sk.GetValue("UninstallString")
-                    $keyName = $sk.PSChildName
-
-                    $isMsiMatch = $false
-                    $reason = ""
-
-                    if ($dn -and $dn -like "*RupeeCRM*") {
-                        $isMsiMatch = $true
-                        $reason = "MSI DisplayName matches '$dn'"
-                    } elseif ($pub -and $pub -eq "RupeeCRM") {
-                        $isMsiMatch = $true
-                        $reason = "MSI Publisher matches '$pub'"
-                    } elseif ($loc -and $loc -like "*RupeeCRM*") {
-                        $isMsiMatch = $true
-                        $reason = "MSI InstallLocation matches '$loc'"
-                    }
-
-                    if ($isMsiMatch) {
-                        $inventory.Add((New-Artifact `
-                            -Category "MSI" `
-                            -PathOrName "$regRoot\$keyName ($dn)" `
-                            -Reason $reason `
-                            -Action "Uninstall MSI / Deregister Product" `
-                            -Data @{ KeyPath = $sk.PSPath; ProductCode = $keyName; UninstallString = $unStr; InstallLocation = $loc }))
-                    }
-                } catch {}
-            }
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # C. WINDOWS SERVICES
-    # --------------------------------------------------------------------------
-    $services = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue
-    foreach ($s in $services) {
-        if ($s.Name -match "^RupeeCRM" -or $s.DisplayName -match "RupeeCRM" -or ($s.PathName -and $s.PathName -match "RupeeCRM")) {
-            $inventory.Add((New-Artifact `
-                -Category "SERVICE" `
-                -PathOrName $s.Name `
-                -Reason "Service Name/Path matches RupeeCRM: $($s.PathName)" `
-                -Action "Stop and Delete Service" `
-                -Data $s.Name))
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # D. SCHEDULED TASKS
-    # --------------------------------------------------------------------------
-    if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-        $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue
-        foreach ($t in $tasks) {
-            if ($t.TaskName -match "RupeeCRM" -or $t.TaskPath -match "RupeeCRM") {
-                $inventory.Add((New-Artifact `
-                    -Category "TASK" `
-                    -PathOrName "$($t.TaskPath)$($t.TaskName)" `
-                    -Reason "Task Name/Path matches RupeeCRM" `
-                    -Action "Unregister Scheduled Task" `
-                    -Data $t.TaskName))
-            }
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # E. INSTALLATION & APPLICATION BINARY DIRECTORIES
-    # --------------------------------------------------------------------------
-    $potentialBinDirs = @(
-        "$env:LOCALAPPDATA\Programs\RupeeCRM",
-        "$env:ProgramFiles\RupeeCRM",
-        "${env:ProgramFiles(x86)}\RupeeCRM"
-    )
-
-    foreach ($dir in $potentialBinDirs) {
-        if ($dir -and (Test-Path $dir)) {
-            $inventory.Add((New-Artifact `
-                -Category "INSTALLATION" `
-                -PathOrName $dir `
-                -Reason "Authoritative or legacy application binary directory" `
-                -Action "Delete Directory Tree"))
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # F. CUSTOMER DATA, DATABASES, LOGS, BACKUPS & CONFIGURATION
-    # --------------------------------------------------------------------------
-    $userProfiles = @()
-    if (Test-Path "$env:SystemDrive\Users") {
-        $userProfiles = Get-ChildItem -Path "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
-    }
-    if (-not $userProfiles -contains $env:USERPROFILE) {
-        $userProfiles += $env:USERPROFILE
-    }
-
-    $potentialDataPaths = @(
-        "$env:LOCALAPPDATA\RupeeCRM",
-        "$env:APPDATA\RupeeCRM",
-        "$env:ProgramData\RupeeCRM",
-        "$env:USERPROFILE\.rupeecrm"
-    )
-
-    foreach ($up in $userProfiles) {
-        $potentialDataPaths += "$up\AppData\Local\RupeeCRM"
-        $potentialDataPaths += "$up\AppData\Roaming\RupeeCRM"
-        $potentialDataPaths += "$up\.rupeecrm"
-    }
-
-    $uniqueDataPaths = $potentialDataPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-    foreach ($dp in $uniqueDataPaths) {
-        $inventory.Add((New-Artifact `
-            -Category "DATA" `
-            -PathOrName $dp `
-            -Reason "Authoritative customer data, database, backups, or logs directory" `
-            -Action "Delete Data Directory Tree"))
-    }
-
-    # --------------------------------------------------------------------------
-    # G. REGISTRY KEYS & AUTOSTART VALUES
-    # --------------------------------------------------------------------------
-    $rupeeRegKeys = @(
-        "HKCU:\Software\RupeeCRM",
-        "HKLM:\Software\RupeeCRM",
-        "HKLM:\Software\WOW6432Node\RupeeCRM"
-    )
-    foreach ($rk in $rupeeRegKeys) {
-        if (Test-Path $rk) {
-            $inventory.Add((New-Artifact `
-                -Category "REGISTRY" `
-                -PathOrName $rk `
-                -Reason "RupeeCRM configuration registry hive" `
-                -Action "Delete Registry Key"))
-        }
-    }
-
-    $runKeys = @(
-        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
-        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run",
-        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"
-    )
-    foreach ($runKey in $runKeys) {
-        if (Test-Path $runKey) {
-            $prop = Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue
-            if ($prop -and $prop.RupeeCRM) {
-                $inventory.Add((New-Artifact `
-                    -Category "STARTUP" `
-                    -PathOrName "$runKey\RupeeCRM -> $($prop.RupeeCRM)" `
-                    -Reason "RupeeCRM autostart registry entry" `
-                    -Action "Remove Registry Value" `
-                    -Data @{ KeyPath = $runKey; ValueName = "RupeeCRM" }))
-            }
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # H. SHORTCUTS & START MENU GROUPS
-    # --------------------------------------------------------------------------
-    $shortcutDirs = @(
-        [Environment]::GetFolderPath("Desktop"),
-        [Environment]::GetFolderPath("CommonDesktopDirectory"),
-        [Environment]::GetFolderPath("Programs"),
-        [Environment]::GetFolderPath("CommonPrograms"),
-        [Environment]::GetFolderPath("Startup"),
-        [Environment]::GetFolderPath("CommonStartup")
-    )
-
-    foreach ($scDir in $shortcutDirs | Select-Object -Unique) {
-        if ($scDir -and (Test-Path $scDir)) {
-            $links = Get-ChildItem -Path $scDir -Filter "*.lnk" -Recurse -File -ErrorAction SilentlyContinue
-            foreach ($lnk in $links) {
-                $isMatch = $false
-                $reason = ""
-                if ($lnk.Name -like "*RupeeCRM*") {
-                    $isMatch = $true
-                    $reason = "Shortcut filename matches RupeeCRM"
-                } else {
-                    try {
-                        $wsh = New-Object -ComObject WScript.Shell
-                        $target = $wsh.CreateShortcut($lnk.FullName).TargetPath
-                        if ($target -and $target -like "*RupeeCRM*") {
-                            $isMatch = $true
-                            $reason = "Shortcut target points to RupeeCRM: $target"
-                        }
-                    } catch {}
-                }
-
-                if ($isMatch) {
-                    $inventory.Add((New-Artifact `
-                        -Category "SHORTCUT" `
-                        -PathOrName $lnk.FullName `
-                        -Reason $reason `
-                        -Action "Delete Shortcut File"))
-                }
-            }
-
-            # Check for Start Menu folders named RupeeCRM
-            $startMenuFolders = Get-ChildItem -Path $scDir -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue
-            foreach ($smf in $startMenuFolders) {
-                $inventory.Add((New-Artifact `
-                    -Category "SHORTCUT" `
-                    -PathOrName $smf.FullName `
-                    -Reason "Start Menu application group folder" `
-                    -Action "Delete Directory Tree"))
-            }
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # I. ENVIRONMENT VARIABLES
-    # --------------------------------------------------------------------------
-    $envTargets = @("User", "Machine")
-    $rupeeEnvNames = @("RUPEECRM_DATA_DIR", "RUPEECRM_BASE_DIR", "BILLSOFT_DATA_DIR")
-
-    foreach ($target in $envTargets) {
-        foreach ($varName in $rupeeEnvNames) {
-            $val = [Environment]::GetEnvironmentVariable($varName, $target)
-            if ($val) {
-                $inventory.Add((New-Artifact `
-                    -Category "ENVIRONMENT" `
-                    -PathOrName "[$target] $varName = $val" `
-                    -Reason "RupeeCRM custom environment variable" `
-                    -Action "Delete Environment Variable" `
-                    -Data @{ Target = $target; Name = $varName }))
-            }
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # J. TEMPORARY & STAGING ARTIFACTS
-    # --------------------------------------------------------------------------
-    $tempDirs = @($env:TEMP, $env:TMP) | Select-Object -Unique
-    foreach ($td in $tempDirs) {
-        if ($td -and (Test-Path $td)) {
-            $tempMatches = Get-ChildItem -Path $td -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -like "*rupeecrm*" -or $_.Name -like "*billsoft*"
-            }
-            foreach ($tm in $tempMatches) {
-                $inventory.Add((New-Artifact `
-                    -Category "TEMP" `
-                    -PathOrName $tm.FullName `
-                    -Reason "Temporary installation / update artifact" `
-                    -Action "Delete File/Directory"))
-            }
-        }
-    }
-
-    return $inventory
-}
-
-# ==============================================================================
-# 4. EXECUTION OR DRY RUN REPORTING
+# 3. DISCOVERY & PURGE EXECUTION
 # ==============================================================================
 
 $stats = @{
-    ProcessesRemoved      = 0
-    InstallationsRemoved  = 0
-    DataLocationsRemoved  = 0
-    RegistryRemoved       = 0
-    MsiRemoved            = 0
-    ServicesRemoved       = 0
-    TasksRemoved          = 0
-    ShortcutsRemoved      = 0
-    StartupRemoved        = 0
-    EnvironmentRemoved    = 0
-    TempRemoved           = 0
-    DeletionFailures      = 0
+    Processes   = 0
+    MSI         = 0
+    Services    = 0
+    Tasks       = 0
+    Directories = 0
+    Registry    = 0
+    Shortcuts   = 0
+    Environment = 0
+    Failures    = 0
 }
 
-function Remove-DirectoryWithRetry {
-    param(
-        [string]$Path,
-        [int]$MaxRetries = 5,
-        [int]$DelaySeconds = 1
-    )
+# --- A. PROCESS CLEANUP ---
+Write-Host "`n[1/8] Checking for running RupeeCRM processes..." -ForegroundColor Cyan
+$procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    try {
+        ($_.ProcessName -like "*RupeeCRM*") -or ($_.Path -and $_.Path -like "*RupeeCRM*")
+    } catch { $false }
+}
 
-    if (-not (Test-Path $Path)) { return $true }
+# Also check for RupeeCRM java processes
+$javaProcs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe' or Name = 'javaw.exe'" -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -and ($_.CommandLine -like "*rupeecrm*" -or $_.CommandLine -like "*launcher.jar*" -or $_.CommandLine -like "*RUPEECRM_DATA_DIR*")
+}
 
-    for ($i = 1; $i -le $MaxRetries; $i++) {
+foreach ($p in $procs) {
+    Write-Host "  Found process: $($p.ProcessName) (PID: $($p.Id))" -ForegroundColor Yellow
+    if (-not $DryRun) {
         try {
-            # Clear read-only attributes
-            Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-                if ($_.Attributes -band [System.IO.FileAttributes]::ReadOnly) {
-                    $_.Attributes = $_.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
-                }
-            }
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction Stop
-            if (-not (Test-Path $Path)) {
-                return $true
-            }
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            $stats.Processes++
+            Write-Host "    -> Terminated" -ForegroundColor Green
         } catch {
-            Write-Host " [Retry $i/$MaxRetries] Waiting for locks to release on $Path..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds $DelaySeconds
+            Write-Host "    -> Failed to terminate PID $($p.Id)" -ForegroundColor Red
+            $stats.Failures++
+        }
+    } else {
+        Write-Host "    -> [WOULD TERMINATE]" -ForegroundColor Gray
+    }
+}
+
+foreach ($jp in $javaProcs) {
+    Write-Host "  Found backend process: $($jp.Name) (PID: $($jp.ProcessId))" -ForegroundColor Yellow
+    if (-not $DryRun) {
+        try {
+            Stop-Process -Id $jp.ProcessId -Force -ErrorAction SilentlyContinue
+            $stats.Processes++
+            Write-Host "    -> Terminated" -ForegroundColor Green
+        } catch {
+            Write-Host "    -> Failed to terminate PID $($jp.ProcessId)" -ForegroundColor Red
+            $stats.Failures++
+        }
+    } else {
+        Write-Host "    -> [WOULD TERMINATE]" -ForegroundColor Gray
+    }
+}
+
+# --- B. WINDOWS SERVICES ---
+Write-Host "`n[2/8] Checking for RupeeCRM Windows services..." -ForegroundColor Cyan
+$services = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*RupeeCRM*" -or $_.DisplayName -like "*RupeeCRM*" }
+foreach ($s in $services) {
+    Write-Host "  Found Service: $($s.Name)" -ForegroundColor Yellow
+    if (-not $DryRun) {
+        try {
+            Stop-Service -Name $s.Name -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 500
+            sc.exe delete $s.Name | Out-Null
+            $stats.Services++
+            Write-Host "    -> Stopped and removed" -ForegroundColor Green
+        } catch {
+            Write-Host "    -> Failed to remove service: $($_.Exception.Message)" -ForegroundColor Red
+            $stats.Failures++
+        }
+    } else {
+        Write-Host "    -> [WOULD REMOVE SERVICE]" -ForegroundColor Gray
+    }
+}
+
+# --- C. SCHEDULED TASKS ---
+Write-Host "`n[3/8] Checking for RupeeCRM Scheduled Tasks..." -ForegroundColor Cyan
+if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+    $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*RupeeCRM*" }
+    foreach ($t in $tasks) {
+        Write-Host "  Found Task: $($t.TaskName)" -ForegroundColor Yellow
+        if (-not $DryRun) {
+            try {
+                Unregister-ScheduledTask -TaskName $t.TaskName -Confirm:$false -ErrorAction Stop
+                $stats.Tasks++
+                Write-Host "    -> Unregistered" -ForegroundColor Green
+            } catch {
+                Write-Host "    -> Failed to unregister task: $($_.Exception.Message)" -ForegroundColor Red
+                $stats.Failures++
+            }
+        } else {
+            Write-Host "    -> [WOULD UNREGISTER TASK]" -ForegroundColor Gray
         }
     }
-
-    return (-not (Test-Path $Path))
 }
 
-Write-Host "==> Phase 1: Conducting Forensic Discovery..." -ForegroundColor Cyan
-$discovered = Find-RupeeCrmArtifacts
+# --- D. MSI INSTALLER DEREGISTRATION ---
+Write-Host "`n[4/8] Checking for RupeeCRM MSI registrations..." -ForegroundColor Cyan
+$uninstallKeys = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+)
 
-Write-Host "Found $($discovered.Count) RupeeCRM artifacts across all system subsystems." -ForegroundColor Cyan
-Write-Host ""
-
-if ($discovered.Count -eq 0) {
-    Write-Host "[NOT FOUND] No active or legacy RupeeCRM artifacts detected on this system." -ForegroundColor Green
-}
-
-if ($DryRun) {
-    foreach ($item in $discovered) {
-        Write-Host "[FOUND] [$($item.Category)] $($item.PathOrName)" -ForegroundColor Yellow
-        Write-Host "        Reason: $($item.Reason)" -ForegroundColor DarkGray
-        Write-Host "        Action: [WOULD REMOVE] $($item.Action)" -ForegroundColor Gray
+foreach ($keyPath in $uninstallKeys) {
+    if (Test-Path $keyPath) {
+        Get-ChildItem -Path $keyPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $dn = $_.GetValue("DisplayName")
+            $pub = $_.GetValue("Publisher")
+            if (($dn -and $dn -like "*RupeeCRM*") -or ($pub -and $pub -eq "RupeeCRM")) {
+                $pCode = $_.PSChildName
+                Write-Host "  Found MSI Registration: $dn (ProductCode: $pCode)" -ForegroundColor Yellow
+                if (-not $DryRun) {
+                    if ($pCode -match "^\{[A-Fa-f0-9\-]+\}$") {
+                        Write-Host "    Running msiexec /x $pCode /qn..." -ForegroundColor DarkGray
+                        Start-Process "msiexec.exe" -ArgumentList "/x `"$pCode`" /qn /norestart" -Wait -NoNewWindow
+                    }
+                    Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                    $stats.MSI++
+                    Write-Host "    -> MSI registration removed" -ForegroundColor Green
+                } else {
+                    Write-Host "    -> [WOULD UNINSTALL MSI]" -ForegroundColor Gray
+                }
+            }
+        }
     }
-} else {
-    # --------------------------------------------------------------------------
-    # 1. PROCESS TERMINATION
-    # --------------------------------------------------------------------------
-    $processItems = $discovered | Where-Object { $_.Category -eq "PROCESS" }
-    foreach ($item in $processItems) {
-        $pidToKill = $item.Data
-        Write-Host "==> Terminating Process: $($item.PathOrName)..." -ForegroundColor White
-        try {
-            $p = Get-Process -Id $pidToKill -ErrorAction SilentlyContinue
-            if ($p) {
-                # Attempt graceful close first
-                $p.CloseMainWindow() | Out-Null
+}
+
+# --- E. DIRECTORIES & CUSTOMER DATA ---
+Write-Host "`n[5/8] Checking for RupeeCRM directories and customer data..." -ForegroundColor Cyan
+$targetDirs = @(
+    "$env:LOCALAPPDATA\Programs\RupeeCRM",
+    "$env:LOCALAPPDATA\RupeeCRM",
+    "$env:APPDATA\RupeeCRM",
+    "$env:ProgramData\RupeeCRM",
+    "$env:ProgramFiles\RupeeCRM",
+    "${env:ProgramFiles(x86)}\RupeeCRM",
+    "$env:USERPROFILE\.rupeecrm"
+)
+
+# Search all local user profiles for roaming/local data
+if (Test-Path "$env:SystemDrive\Users") {
+    Get-ChildItem -Path "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $targetDirs += "$($_.FullName)\AppData\Local\RupeeCRM"
+        $targetDirs += "$($_.FullName)\AppData\Roaming\RupeeCRM"
+        $targetDirs += "$($_.FullName)\.rupeecrm"
+    }
+}
+
+$uniqueDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
+foreach ($dir in $uniqueDirs) {
+    Write-Host "  Found Directory: $dir" -ForegroundColor Yellow
+    if (-not $DryRun) {
+        $removed = $false
+        for ($i = 1; $i -le 3; $i++) {
+            try {
+                Get-ChildItem -Path $dir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    $_.Attributes = 'Normal'
+                }
+                Remove-Item -Path $dir -Recurse -Force -ErrorAction Stop
+                $removed = $true
+                break
+            } catch {
                 Start-Sleep -Milliseconds 500
-                if (-not $p.HasExited) {
-                    $p.Kill()
-                    $p.WaitForExit(3000) | Out-Null
-                }
-            }
-            $stats.ProcessesRemoved++
-            Write-Host "    ✓ Process terminated successfully" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to terminate process (PID: $pidToKill): $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
-    Start-Sleep -Seconds 1
-
-    # --------------------------------------------------------------------------
-    # 2. SERVICES CLEANUP
-    # --------------------------------------------------------------------------
-    $serviceItems = $discovered | Where-Object { $_.Category -eq "SERVICE" }
-    foreach ($item in $serviceItems) {
-        $sName = $item.Data
-        Write-Host "==> Removing Service: $sName..." -ForegroundColor White
-        try {
-            Stop-Service -Name $sName -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 1
-            sc.exe delete $sName | Out-Null
-            $stats.ServicesRemoved++
-            Write-Host "    ✓ Service stopped and unregistered" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Service removal failed: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # 3. SCHEDULED TASKS CLEANUP
-    # --------------------------------------------------------------------------
-    $taskItems = $discovered | Where-Object { $_.Category -eq "TASK" }
-    foreach ($item in $taskItems) {
-        $tName = $item.Data
-        Write-Host "==> Removing Scheduled Task: $tName..." -ForegroundColor White
-        try {
-            Unregister-ScheduledTask -TaskName $tName -Confirm:$false -ErrorAction Stop
-            $stats.TasksRemoved++
-            Write-Host "    ✓ Scheduled task unregistered" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Scheduled task removal failed: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # 4. MSI PRODUCT UNINSTALLATION
-    # --------------------------------------------------------------------------
-    $msiItems = $discovered | Where-Object { $_.Category -eq "MSI" }
-    foreach ($item in $msiItems) {
-        $msiData = $item.Data
-        $pCode = $msiData.ProductCode
-        Write-Host "==> Uninstalling MSI Product: $($item.PathOrName)..." -ForegroundColor White
-        
-        $uninstalledCleanly = $false
-        if ($pCode -match "^\{[A-Fa-f0-9\-]+\}$") {
-            $msiArgs = "/x `"$pCode`" /qn /norestart"
-            $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-            if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010 -or $proc.ExitCode -eq 1605) {
-                $uninstalledCleanly = $true
             }
         }
 
-        # Remove stale registry key if still present
-        if (Test-Path $msiData.KeyPath) {
-            Remove-Item -Path $msiData.KeyPath -Recurse -Force -ErrorAction SilentlyContinue
-        }
-
-        $stats.MsiRemoved++
-        Write-Host "    ✓ MSI registration removed (ExitCode: $($proc.ExitCode))" -ForegroundColor Green
-    }
-
-    # --------------------------------------------------------------------------
-    # 5. INSTALLATION & APPLICATION BINARY DELETION
-    # --------------------------------------------------------------------------
-    $installItems = $discovered | Where-Object { $_.Category -eq "INSTALLATION" }
-    foreach ($item in $installItems) {
-        Write-Host "==> Deleting Application Binaries: $($item.PathOrName)..." -ForegroundColor White
-        if (Remove-DirectoryWithRetry -Path $item.PathOrName) {
-            $stats.InstallationsRemoved++
-            Write-Host "    ✓ Application binaries removed" -ForegroundColor Green
+        if ($removed -or -not (Test-Path $dir)) {
+            $stats.Directories++
+            Write-Host "    -> Deleted" -ForegroundColor Green
         } else {
-            Write-Host "    ✗ Failed to completely delete directory: $($item.PathOrName)" -ForegroundColor Red
-            $stats.DeletionFailures++
+            Write-Host "    -> Failed to delete: $dir" -ForegroundColor Red
+            $stats.Failures++
         }
+    } else {
+        Write-Host "    -> [WOULD DELETE]" -ForegroundColor Gray
     }
+}
 
-    # --------------------------------------------------------------------------
-    # 6. CUSTOMER DATA, DATABASE, LICENSES & BACKUPS DELETION
-    # --------------------------------------------------------------------------
-    $dataItems = $discovered | Where-Object { $_.Category -eq "DATA" }
-    foreach ($item in $dataItems) {
-        Write-Host "==> Deleting Customer Data & Database Root: $($item.PathOrName)..." -ForegroundColor White
-        if (Remove-DirectoryWithRetry -Path $item.PathOrName) {
-            $stats.DataLocationsRemoved++
-            Write-Host "    ✓ Customer data root and all databases removed" -ForegroundColor Green
+# --- F. REGISTRY HIVE & AUTOSTART KEYS ---
+Write-Host "`n[6/8] Checking for RupeeCRM registry entries..." -ForegroundColor Cyan
+$rupeeKeys = @(
+    "HKCU:\Software\RupeeCRM",
+    "HKLM:\Software\RupeeCRM",
+    "HKLM:\Software\WOW6432Node\RupeeCRM"
+)
+
+foreach ($rk in $rupeeKeys) {
+    if (Test-Path $rk) {
+        Write-Host "  Found Registry Key: $rk" -ForegroundColor Yellow
+        if (-not $DryRun) {
+            Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
+            $stats.Registry++
+            Write-Host "    -> Deleted" -ForegroundColor Green
         } else {
-            Write-Host "    ✗ Failed to completely delete data directory: $($item.PathOrName)" -ForegroundColor Red
-            $stats.DeletionFailures++
+            Write-Host "    -> [WOULD DELETE KEY]" -ForegroundColor Gray
         }
     }
+}
 
-    # --------------------------------------------------------------------------
-    # 7. REGISTRY KEYS & RUN AUTOSTART CLEANUP
-    # --------------------------------------------------------------------------
-    $regItems = $discovered | Where-Object { $_.Category -eq "REGISTRY" }
-    foreach ($item in $regItems) {
-        Write-Host "==> Deleting Registry Key: $($item.PathOrName)..." -ForegroundColor White
-        try {
-            Remove-Item -Path $item.PathOrName -Recurse -Force -ErrorAction SilentlyContinue
-            $stats.RegistryRemoved++
-            Write-Host "    ✓ Registry key removed" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to remove registry key: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
+$runKeys = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
+)
 
-    $startupItems = $discovered | Where-Object { $_.Category -eq "STARTUP" }
-    foreach ($item in $startupItems) {
-        $stData = $item.Data
-        Write-Host "==> Removing Startup Autostart Entry: $($item.PathOrName)..." -ForegroundColor White
-        try {
-            Remove-ItemProperty -Path $stData.KeyPath -Name $stData.ValueName -Force -ErrorAction SilentlyContinue
-            $stats.StartupRemoved++
-            Write-Host "    ✓ Startup entry removed" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to remove startup entry: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
-
-    # --------------------------------------------------------------------------
-    # 8. SHORTCUTS & START MENU GROUPS
-    # --------------------------------------------------------------------------
-    $shortcutItems = $discovered | Where-Object { $_.Category -eq "SHORTCUT" }
-    foreach ($item in $shortcutItems) {
-        Write-Host "==> Removing Shortcut / Menu Folder: $($item.PathOrName)..." -ForegroundColor White
-        try {
-            if (Test-Path $item.PathOrName) {
-                Remove-Item -Path $item.PathOrName -Recurse -Force -ErrorAction Stop
+foreach ($rk in $runKeys) {
+    if (Test-Path $rk) {
+        $val = Get-ItemPropertyValue -Path $rk -Name "RupeeCRM" -ErrorAction SilentlyContinue
+        if ($val) {
+            Write-Host "  Found Autostart Entry: $rk\RupeeCRM -> $val" -ForegroundColor Yellow
+            if (-not $DryRun) {
+                Remove-ItemProperty -Path $rk -Name "RupeeCRM" -Force -ErrorAction SilentlyContinue
+                $stats.Registry++
+                Write-Host "    -> Removed" -ForegroundColor Green
+            } else {
+                Write-Host "    -> [WOULD REMOVE AUTOSTART]" -ForegroundColor Gray
             }
-            $stats.ShortcutsRemoved++
-            Write-Host "    ✓ Shortcut removed" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to remove shortcut: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
         }
     }
+}
 
-    # --------------------------------------------------------------------------
-    # 9. ENVIRONMENT VARIABLES
-    # --------------------------------------------------------------------------
-    $envItems = $discovered | Where-Object { $_.Category -eq "ENVIRONMENT" }
-    foreach ($item in $envItems) {
-        $envData = $item.Data
-        Write-Host "==> Removing Environment Variable: $($envData.Name) from $($envData.Target)..." -ForegroundColor White
-        try {
-            [Environment]::SetEnvironmentVariable($envData.Name, $null, $envData.Target)
-            $stats.EnvironmentRemoved++
-            Write-Host "    ✓ Environment variable removed" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to remove environment variable: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
-        }
-    }
+# --- G. SHORTCUTS & START MENU ---
+Write-Host "`n[7/8] Checking for RupeeCRM desktop & start menu shortcuts..." -ForegroundColor Cyan
+$shortcutRoots = @(
+    [Environment]::GetFolderPath("Desktop"),
+    [Environment]::GetFolderPath("CommonDesktopDirectory"),
+    [Environment]::GetFolderPath("Programs"),
+    [Environment]::GetFolderPath("CommonPrograms")
+)
 
-    # --------------------------------------------------------------------------
-    # 10. TEMPORARY FILES
-    # --------------------------------------------------------------------------
-    $tempItems = $discovered | Where-Object { $_.Category -eq "TEMP" }
-    foreach ($item in $tempItems) {
-        Write-Host "==> Deleting Temporary File: $($item.PathOrName)..." -ForegroundColor White
-        try {
-            if (Test-Path $item.PathOrName) {
-                Remove-Item -Path $item.PathOrName -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($sr in $shortcutRoots | Select-Object -Unique) {
+    if ($sr -and (Test-Path $sr)) {
+        # Check files
+        Get-ChildItem -Path $sr -Filter "*RupeeCRM*.lnk" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  Found Shortcut: $($_.FullName)" -ForegroundColor Yellow
+            if (-not $DryRun) {
+                Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+                $stats.Shortcuts++
+                Write-Host "    -> Deleted" -ForegroundColor Green
+            } else {
+                Write-Host "    -> [WOULD DELETE SHORTCUT]" -ForegroundColor Gray
             }
-            $stats.TempRemoved++
-            Write-Host "    ✓ Temporary file removed" -ForegroundColor Green
-        } catch {
-            Write-Host "    ✗ Failed to remove temporary file: $($_.Exception.Message)" -ForegroundColor Red
-            $stats.DeletionFailures++
+        }
+
+        # Check folders
+        Get-ChildItem -Path $sr -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  Found Menu Folder: $($_.FullName)" -ForegroundColor Yellow
+            if (-not $DryRun) {
+                Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                $stats.Shortcuts++
+                Write-Host "    -> Deleted" -ForegroundColor Green
+            } else {
+                Write-Host "    -> [WOULD DELETE MENU FOLDER]" -ForegroundColor Gray
+            }
+        }
+    }
+}
+
+# --- H. ENVIRONMENT VARIABLES ---
+Write-Host "`n[8/8] Checking for RupeeCRM environment variables..." -ForegroundColor Cyan
+$envVars = @("RUPEECRM_DATA_DIR", "RUPEECRM_BASE_DIR", "BILLSOFT_DATA_DIR")
+foreach ($target in @("User", "Machine")) {
+    foreach ($v in $envVars) {
+        $val = [Environment]::GetEnvironmentVariable($v, $target)
+        if ($val) {
+            Write-Host "  Found Environment Variable: [$target] $v = $val" -ForegroundColor Yellow
+            if (-not $DryRun) {
+                [Environment]::SetEnvironmentVariable($v, $null, $target)
+                $stats.Environment++
+                Write-Host "    -> Cleared" -ForegroundColor Green
+            } else {
+                Write-Host "    -> [WOULD CLEAR VARIABLE]" -ForegroundColor Gray
+            }
         }
     }
 }
 
 # ==============================================================================
-# 5. FINAL INDEPENDENT FORENSIC SCAN & VERIFICATION
+# 4. FINAL INDEPENDENT AUDIT SCAN
 # ==============================================================================
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "       PHASE 2: INDEPENDENT POST-PURGE FORENSIC AUDIT SCAN           " -ForegroundColor Cyan
+Write-Host "                     POST-PURGE FORENSIC AUDIT                        " -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
-
-$postAuditArtifacts = Find-RupeeCrmArtifacts
-
-Write-Host "----------------- PURGE EXECUTION SUMMARY -----------------" -ForegroundColor White
-Write-Host " Processes Terminated      : $($stats.ProcessesRemoved)" -ForegroundColor White
-Write-Host " Binary Installations Purged : $($stats.InstallationsRemoved)" -ForegroundColor White
-Write-Host " Customer Data Roots Purged: $($stats.DataLocationsRemoved)" -ForegroundColor White
-Write-Host " Registry Keys Removed     : $($stats.RegistryRemoved)" -ForegroundColor White
-Write-Host " MSI Registrations Purged  : $($stats.MsiRemoved)" -ForegroundColor White
-Write-Host " Services Removed          : $($stats.ServicesRemoved)" -ForegroundColor White
-Write-Host " Scheduled Tasks Removed   : $($stats.TasksRemoved)" -ForegroundColor White
-Write-Host " Shortcuts Removed         : $($stats.ShortcutsRemoved)" -ForegroundColor White
-Write-Host " Startup Entries Removed   : $($stats.StartupRemoved)" -ForegroundColor White
-Write-Host " Environment Vars Cleared  : $($stats.EnvironmentRemoved)" -ForegroundColor White
-Write-Host " Temporary Artifacts Purged: $($stats.TempRemoved)" -ForegroundColor White
-Write-Host " Deletion Failures         : $($stats.DeletionFailures)" -ForegroundColor White
-Write-Host "-----------------------------------------------------------" -ForegroundColor White
+Write-Host " Summary of Actions Performed:" -ForegroundColor White
+Write-Host "   Processes Terminated     : $($stats.Processes)" -ForegroundColor White
+Write-Host "   Services Removed         : $($stats.Services)" -ForegroundColor White
+Write-Host "   Scheduled Tasks Removed  : $($stats.Tasks)" -ForegroundColor White
+Write-Host "   MSI Registrations Purged : $($stats.MSI)" -ForegroundColor White
+Write-Host "   Directories/Data Purged  : $($stats.Directories)" -ForegroundColor White
+Write-Host "   Registry Entries Cleared : $($stats.Registry)" -ForegroundColor White
+Write-Host "   Shortcuts Removed        : $($stats.Shortcuts)" -ForegroundColor White
+Write-Host "   Environment Vars Cleared : $($stats.Environment)" -ForegroundColor White
+Write-Host "   Failures Encountered     : $($stats.Failures)" -ForegroundColor White
 Write-Host ""
 
 if ($DryRun) {
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host " DRY RUN COMPLETED: No modifications were made to the system." -ForegroundColor Cyan
+    Write-Host " DRY RUN COMPLETED - ZERO MODIFICATIONS WERE MADE" -ForegroundColor Cyan
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Complete-Exit 0
+    Pause-And-Exit 0
 }
 
-if ($postAuditArtifacts.Count -gt 0 -or $stats.DeletionFailures -gt 0) {
+# Check if any directories remain
+$remainingDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+$remainingKeys = $rupeeKeys | Where-Object { Test-Path $_ }
+
+if ($remainingDirs.Count -gt 0 -or $remainingKeys.Count -gt 0 -or $stats.Failures -gt 0) {
     Write-Host "======================================================================" -ForegroundColor Red
     Write-Host "                  RUPEECRM COMPLETE CLEANUP: FAILED                   " -ForegroundColor Red
     Write-Host "======================================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "The following $($postAuditArtifacts.Count) artifact(s) still remain on the system:" -ForegroundColor Red
-    foreach ($rem in $postAuditArtifacts) {
-        Write-Host "  • [$($rem.Category)] $($rem.PathOrName)" -ForegroundColor Red
-        Write-Host "    Reason: $($rem.Reason)" -ForegroundColor DarkRed
+    if ($remainingDirs.Count -gt 0) {
+        Write-Host "Remaining Directories:" -ForegroundColor Red
+        $remainingDirs | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    }
+    if ($remainingKeys.Count -gt 0) {
+        Write-Host "Remaining Registry Keys:" -ForegroundColor Red
+        $remainingKeys | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     }
     Write-Host ""
-    Write-Host "Failure: System is not in a pure pristine state. Please resolve file locks or permissions and re-run." -ForegroundColor Red
-    Complete-Exit 1
+    Pause-And-Exit 1
 } else {
     Write-Host "======================================================================" -ForegroundColor Green
     Write-Host "                 RUPEECRM COMPLETE CLEANUP: SUCCESS                   " -ForegroundColor Green
@@ -785,5 +439,5 @@ if ($postAuditArtifacts.Count -gt 0 -or $stats.DeletionFailures -gt 0) {
     Write-Host ""
     Write-Host "The next RupeeCRM installation can be treated as a genuine first-time installation." -ForegroundColor Green
     Write-Host ""
-    Complete-Exit 0
+    Pause-And-Exit 0
 }

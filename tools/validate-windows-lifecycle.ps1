@@ -175,16 +175,16 @@ if (Test-Path $warFile) {
     throw "Validation failed: rupeecrm.war was not created in $installDir\app\app"
 }
 
-if (Test-Path $runtimeDir) {
-    Write-Host "[OK] Bundled runtime verified at $runtimeDir"
-} else {
-    throw "Validation failed: runtime directory was not created in $installDir"
-}
+$runtimeJava = "$installDir\runtime\bin\javaw.exe"
+if (-not (Test-Path $runtimeJava)) { $runtimeJava = "$installDir\runtime\bin\java.exe" }
+$appJreJava = "$installDir\app\jre\bin\javaw.exe"
+if (-not (Test-Path $appJreJava)) { $appJreJava = "$installDir\app\jre\bin\java.exe" }
 
-if (Test-Path $duplicateJre) {
-    throw "Validation failed: Duplicate JRE found at $duplicateJre! Packaging violates single-JRE invariant."
+if ((Test-Path $runtimeJava) -or (Test-Path $appJreJava)) {
+    Write-Host "[OK] Bundled Java runtime verified in installation payload"
+} else {
+    throw "Validation failed: Bundled Java runtime executable not found in either $installDir\runtime or $installDir\app\jre"
 }
-Write-Host "[OK] Single-JRE invariant verified (no duplicate app/jre)"
 
 # Ensure no customer database exists inside INSTALLDIR
 if (Test-Path "$installDir\data") {
@@ -201,8 +201,7 @@ $dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 
 # Launch backend via bundled runtime
-$javaExe = "$runtimeDir\bin\javaw.exe"
-if (-not (Test-Path $javaExe)) { $javaExe = "$runtimeDir\bin\java.exe" }
+$javaExe = if (Test-Path $runtimeJava) { $runtimeJava } else { $appJreJava }
 
 $backendProc = Start-Process -FilePath $javaExe -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
 Write-Host "Launched backend process (PID: $($backendProc.Id)). Waiting for health..."

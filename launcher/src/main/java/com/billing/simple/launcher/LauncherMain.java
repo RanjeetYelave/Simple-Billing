@@ -971,37 +971,70 @@ public class LauncherMain {
         return Paths.get(System.getProperty("user.home"), ".rupeecrm");
     }
 
-    private File resolveBundledJavaw() {
+    public static File resolveAuthoritativeJava(boolean preferJavaw) {
         String os = System.getProperty("os.name").toLowerCase();
-        String binName = os.contains("win") ? "javaw.exe" : "java";
+        boolean isWindows = os.contains("win");
 
-        File appDir = getAppDirectory();
-
-        // 1. Check jpackage bundled runtime under installation root (<InstallDir>/runtime/bin)
-        if (appDir.getParentFile() != null) {
-            File jpackageRuntime = new File(appDir.getParentFile(), "runtime" + File.separator + "bin" + File.separator + binName);
-            if (jpackageRuntime.exists()) return jpackageRuntime;
-        }
-        File appRuntime = new File(appDir, "runtime" + File.separator + "bin" + File.separator + binName);
-        if (appRuntime.exists()) return appRuntime;
-
-        // 2. Check legacy/bundled jre directory
-        File bundled = new File(appDir, "jre" + File.separator + "bin" + File.separator + binName);
-        if (bundled.exists()) return bundled;
-
-        if (appDir.getParentFile() != null) {
-            File parentBundled = new File(appDir.getParentFile(), "jre" + File.separator + "bin" + File.separator + binName);
-            if (parentBundled.exists()) return parentBundled;
+        List<String> binaryNames = new ArrayList<>();
+        if (isWindows) {
+            if (preferJavaw) {
+                binaryNames.add("javaw.exe");
+                binaryNames.add("java.exe");
+            } else {
+                binaryNames.add("java.exe");
+                binaryNames.add("javaw.exe");
+            }
+        } else {
+            binaryNames.add("java");
         }
 
-        // 3. Fallback to active JVM java.home
+        File appDir = getAppDirectoryStatic();
+        List<File> candidateDirs = new ArrayList<>();
+
+        // 1. Installation root directories (<root>/runtime/bin, <root>/app/jre/bin, <root>/jre/bin)
+        if (appDir != null) {
+            File rootDir = appDir.getParentFile();
+            if (rootDir != null) {
+                candidateDirs.add(new File(rootDir, "runtime" + File.separator + "bin"));
+                candidateDirs.add(new File(rootDir, "app" + File.separator + "jre" + File.separator + "bin"));
+                candidateDirs.add(new File(rootDir, "jre" + File.separator + "bin"));
+            }
+            candidateDirs.add(new File(appDir, "jre" + File.separator + "bin"));
+            candidateDirs.add(new File(appDir, "runtime" + File.separator + "bin"));
+            candidateDirs.add(new File(appDir, "bin"));
+        }
+
+        // 2. Embedded JVM java.home when running under jpackage/bundled JRE
         String javaHome = System.getProperty("java.home");
-        if (javaHome != null) {
-            File jvmBin = new File(javaHome + File.separator + "bin" + File.separator + binName);
-            if (jvmBin.exists()) return jvmBin;
+        if (javaHome != null && !javaHome.isBlank()) {
+            candidateDirs.add(new File(javaHome, "bin"));
         }
 
-        return new File(binName);
+        // Search candidate directories in authoritative order
+        for (File dir : candidateDirs) {
+            if (dir != null && dir.exists() && dir.isDirectory()) {
+                for (String name : binaryNames) {
+                    File candidate = new File(dir, name);
+                    if (candidate.exists() && candidate.isFile()) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return new File(binaryNames.get(0));
+    }
+
+    private static File getAppDirectoryStatic() {
+        try {
+            return new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile();
+        } catch (Exception e) {
+            return new File(System.getProperty("user.dir"));
+        }
+    }
+
+    private File resolveBundledJavaw() {
+        return resolveAuthoritativeJava(true);
     }
 
     private File resolveRupeeCRMExe() {

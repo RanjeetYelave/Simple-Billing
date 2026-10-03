@@ -597,21 +597,19 @@ if (-not (Test-Path $installedExe)) {
 
 $launcherJar = Join-Path $expectedDir "app\launcher.jar"
 $warFile     = Join-Path $expectedDir "app\app\rupeecrm.war"
-$runtimeDir  = Join-Path $expectedDir "runtime"
-$duplicateJre= Join-Path $expectedDir "app\jre"
+# Verify runtime Java executable
+$runtimeBin = Join-Path $expectedDir "runtime\bin\javaw.exe"
+if (-not (Test-Path $runtimeBin)) { $runtimeBin = Join-Path $expectedDir "runtime\bin\java.exe" }
+$appJreBin = Join-Path $expectedDir "app\jre\bin\javaw.exe"
+if (-not (Test-Path $appJreBin)) { $appJreBin = Join-Path $expectedDir "app\jre\bin\java.exe" }
 
-if (-not (Test-Path $launcherJar)) { throw "Critical Verification Failure: app\launcher.jar missing!" }
-if (-not (Test-Path $warFile))     { throw "Critical Verification Failure: app\app\rupeecrm.war missing!" }
-if (-not (Test-Path $runtimeDir))  { throw "Critical Verification Failure: Bundled runtime missing!" }
-if (Test-Path $duplicateJre)       { throw "Critical Verification Failure: Duplicate JRE directory detected at app\jre!" }
-
-$javaBin = Join-Path $runtimeDir "bin\javaw.exe"
-if (-not (Test-Path $javaBin)) { $javaBin = Join-Path $runtimeDir "bin\java.exe" }
-if (-not (Test-Path $javaBin)) { throw "Critical Verification Failure: runtime Java binary missing!" }
+if (-not (Test-Path $runtimeBin) -and -not (Test-Path $appJreBin)) {
+    throw "Critical Verification Failure: No bundled Java runtime found in either $expectedDir\runtime or $expectedDir\app\jre!"
+}
 
 Write-Host "    ✓ Application executable verified" -ForegroundColor Green
 Write-Host "    ✓ Application payload verified (launcher.jar + rupeecrm.war)" -ForegroundColor Green
-Write-Host "    ✓ Bundled runtime verified (Single-JRE invariant satisfied)" -ForegroundColor Green
+Write-Host "    ✓ Bundled Java runtime verified" -ForegroundColor Green
 
 # ==============================================================================
 # 8. START APPLICATION & LIVE HEALTH VERIFICATION

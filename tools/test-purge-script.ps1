@@ -40,6 +40,11 @@ New-Item -ItemType Directory -Force -Path $mockTempDir | Out-Null
 "MOCK_LEGACY_DATA" | Out-File -FilePath "$mockLegacyDir\legacy.dat" -Encoding ASCII
 "MOCK_TEMP_DATA" | Out-File -FilePath "$mockTempDir\staged.tmp" -Encoding ASCII
 
+# Setup Mock User Environment Variable
+try {
+    [Environment]::SetEnvironmentVariable("RUPEECRM_DATA_DIR", $mockDataDir, "User")
+} catch {}
+
 # Setup Unrelated Application Artifact to prove safety isolation
 $unrelatedDir = "$env:LOCALAPPDATA\UnrelatedTestApp"
 New-Item -ItemType Directory -Force -Path $unrelatedDir | Out-Null
@@ -48,7 +53,18 @@ $unrelatedFile = "$unrelatedDir\important_data.txt"
 
 Write-Host "[OK] Mock RupeeCRM environment & unrelated safety canary initialized."
 
-# 2. Test Dry-Run Mode (Must NOT delete anything)
+# 2. Test Diagnostics Mode BEFORE Purge (Must detect artifacts and exit with code 1)
+Write-Host "`n==> Testing Diagnostics mode with active mock artifacts..."
+& .\tools\purge-rupeecrm-completely.ps1 -Diagnostics -NoElevation
+if ($LASTEXITCODE -ne 1) {
+    throw "FAILURE: Diagnostics failed to detect active mock artifacts (expected exit code 1, got $LASTEXITCODE)!"
+}
+if (-not (Test-Path "$mockDataDir\database.mv.db") -or -not (Test-Path "$mockCurrentDir\RupeeCRM.exe")) {
+    throw "CRITICAL VIOLATION: Diagnostics mode modified or deleted mock artifacts!"
+}
+Write-Host "[OK] Diagnostics accurately detected existing artifacts and made zero modifications."
+
+# 3. Test Dry-Run Mode (Must NOT delete anything)
 Write-Host "`n==> Testing Dry-Run mode..."
 & .\tools\purge-rupeecrm-completely.ps1 -DryRun -NoElevation
 if (-not (Test-Path "$mockDataDir\database.mv.db") -or -not (Test-Path "$mockCurrentDir\RupeeCRM.exe")) {
@@ -56,11 +72,14 @@ if (-not (Test-Path "$mockDataDir\database.mv.db") -or -not (Test-Path "$mockCur
 }
 Write-Host "[OK] Dry-Run mode validated (zero modifications)."
 
-# 3. Test Destructive Purge Execution
+# 4. Test Destructive Purge Execution
 Write-Host "`n==> Testing Destructive Purge execution..."
 & .\tools\purge-rupeecrm-completely.ps1 -Force -NoElevation
+if ($LASTEXITCODE -ne 0) {
+    throw "FAILURE: Destructive purge exited with non-zero code ($LASTEXITCODE)!"
+}
 
-# 4. Verify All Mock RupeeCRM Artifacts Are Completely Removed
+# 5. Verify All Mock RupeeCRM Artifacts Are Completely Removed
 Write-Host "`n==> Verifying removal of all mock RupeeCRM artifacts..."
 
 $pathsToCheck = @(
@@ -75,9 +94,14 @@ foreach ($p in $pathsToCheck) {
         throw "FAILURE: Path '$p' still exists after complete purge!"
     }
 }
-Write-Host "[OK] All RupeeCRM directories, databases, binaries, and caches successfully wiped."
 
-# 5. Verify Unrelated Application Safety Canary Is 100% Intact
+$remainingEnvVar = [Environment]::GetEnvironmentVariable("RUPEECRM_DATA_DIR", "User")
+if ($remainingEnvVar) {
+    throw "FAILURE: Environment variable RUPEECRM_DATA_DIR still exists after complete purge!"
+}
+Write-Host "[OK] All RupeeCRM directories, databases, binaries, env vars, and caches successfully wiped."
+
+# 6. Verify Unrelated Application Safety Canary Is 100% Intact
 Write-Host "`n==> Verifying unrelated safety canary..."
 if (-not (Test-Path $unrelatedFile)) {
     throw "CRITICAL SAFETY VIOLATION: Unrelated file '$unrelatedFile' was deleted!"
@@ -91,11 +115,11 @@ Write-Host "[OK] Unrelated application data safely preserved."
 # Cleanup canary
 Remove-Item -Path $unrelatedDir -Recurse -Force -ErrorAction SilentlyContinue
 
-# 6. Execute Diagnostics Quality Gate
-Write-Host "`n==> Running Diagnostics mode..."
+# 7. Execute Diagnostics Quality Gate on Clean State (Must return exit code 0)
+Write-Host "`n==> Running Diagnostics mode on clean system..."
 & .\tools\purge-rupeecrm-completely.ps1 -Diagnostics -NoElevation
 if ($LASTEXITCODE -ne 0) {
-    throw "FAILURE: Diagnostics reported unclean state after purge!"
+    throw "FAILURE: Diagnostics reported unclean state after purge (expected exit code 0, got $LASTEXITCODE)!"
 }
 
 Write-Host ""

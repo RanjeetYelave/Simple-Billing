@@ -18,7 +18,7 @@ function Invoke-MsiCommand {
     )
 
     Write-Host ""
-    Write-Host "==> $ActionName: msiexec.exe $Arguments (Log: $LogFile)..."
+    Write-Host "==> ${ActionName}: msiexec.exe $Arguments (Log: $LogFile)..."
     
     if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
 

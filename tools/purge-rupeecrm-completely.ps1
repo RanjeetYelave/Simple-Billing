@@ -326,7 +326,8 @@ $runKeys = @(
 
 foreach ($rk in $runKeys) {
     if (Test-Path $rk) {
-        $val = Get-ItemPropertyValue -Path $rk -Name "RupeeCRM" -ErrorAction SilentlyContinue
+        $regItem = Get-Item -Path $rk -ErrorAction SilentlyContinue
+        $val = if ($regItem) { $regItem.GetValue("RupeeCRM") } else { $null }
         if ($val) {
             Write-Host "  Found Autostart Entry: $rk\RupeeCRM -> $val" -ForegroundColor Yellow
             if (-not $DryRun) {

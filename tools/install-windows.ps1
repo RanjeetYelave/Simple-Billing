@@ -320,7 +320,8 @@ $runKeys = @(
 )
 foreach ($rk in $runKeys) {
     if (Test-Path $rk) {
-        $val = Get-ItemPropertyValue -Path $rk -Name "RupeeCRM" -ErrorAction SilentlyContinue
+        $regItem = Get-Item -Path $rk -ErrorAction SilentlyContinue
+        $val = if ($regItem) { $regItem.GetValue("RupeeCRM") } else { $null }
         if ($val) { Remove-ItemProperty -Path $rk -Name "RupeeCRM" -Force -ErrorAction SilentlyContinue }
     }
 }
@@ -692,7 +693,8 @@ try {
 }
 
 # Verify autostart registration
-$runVal = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RupeeCRM" -ErrorAction SilentlyContinue
+$runRegItem = Get-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
+$runVal = if ($runRegItem) { $runRegItem.GetValue("RupeeCRM") } else { $null }
 if ($runVal) {
     Write-Host "    ✓ Autostart entry verified ($runVal)" -ForegroundColor Green
 } else {

@@ -83,6 +83,7 @@ function Find-InstalledDirectory {
 
 function Stop-RupeeCrmProcesses {
     Write-Host "Stopping any running RupeeCRM / background processes..."
+    Start-Sleep -Milliseconds 1500
     Get-Process -Name "RupeeCRM", "javaw", "java" -ErrorAction SilentlyContinue | Where-Object {
         try {
             $path = $_.Path

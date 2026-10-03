@@ -224,6 +224,11 @@ jobs:
         run: |
           .\tools\validate-windows-lifecycle.ps1
 
+      - name: Validate Forensic Purge Utility
+        shell: pwsh
+        run: |
+          .\tools\test-purge-script.ps1
+
       - name: Upload Release Assets
         uses: actions/upload-artifact@v4
         with:

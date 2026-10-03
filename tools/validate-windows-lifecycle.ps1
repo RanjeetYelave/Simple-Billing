@@ -402,6 +402,9 @@ try {
     }
     $executedPassed.Add("13. MSI Reinstallation Reconnects to Existing Customer Data & All Firms")
 
+    # Stop backend before performing in-app update operations
+    Stop-RupeeCrmProcesses
+
     # ------------------------------------------------------------------------------
     # 7. In-App Update & Automatic Rollback Validation
     # ------------------------------------------------------------------------------
@@ -420,7 +423,8 @@ try {
     Write-Host "[OK] Staged valid update WAR at $stagedUpdateWar"
 
     Copy-Item $installedWar $backupWar -Force
-    Move-Item $stagedUpdateWar $installedWar -Force
+    Copy-Item $stagedUpdateWar $installedWar -Force
+    Remove-Item $stagedUpdateWar -Force -ErrorAction SilentlyContinue
     if (-not (Test-Path $backupWar)) {
         throw "CRITICAL FAILURE: Update rollback backup was not created!"
     }

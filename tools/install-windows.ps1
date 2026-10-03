@@ -114,10 +114,18 @@ if (-not $isAdmin) {
 
         if (-not $scriptContent -or $scriptContent.Trim().Length -lt 200) {
             Write-Host "Fetching installer script payload for elevated launch..." -ForegroundColor DarkGray
-            $installerScriptUrl = "https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-windows.ps1"
+            $urls = @(
+                "https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overhaul/tools/install-windows.ps1",
+                "https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-windows.ps1"
+            )
             $webClient = New-Object System.Net.WebClient
             $webClient.Headers.Add("User-Agent", "RupeeCRM-Installer/1.0")
-            $scriptContent = $webClient.DownloadString($installerScriptUrl)
+            foreach ($u in $urls) {
+                try {
+                    $scriptContent = $webClient.DownloadString($u)
+                    if ($scriptContent -and $scriptContent.Trim().Length -ge 200) { break }
+                } catch {}
+            }
         }
 
         [System.IO.File]::WriteAllText($scriptToRun, $scriptContent, [System.Text.Encoding]::UTF8)

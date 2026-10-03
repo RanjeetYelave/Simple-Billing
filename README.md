@@ -105,7 +105,7 @@ Built on an embedded Spring Boot engine with a native supervisor, desktop system
 Open PowerShell and run the following command:
 
 ```powershell
-irm https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-windows.ps1 | iex
+irm https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overhaul/tools/install-windows.ps1 | iex
 ```
 
 This automated installer:

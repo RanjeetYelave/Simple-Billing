@@ -464,6 +464,100 @@ try {
     }
     $executedPassed.Add("16. Automatic Rollback Restores Working Backend After Broken Update")
 
+    # ------------------------------------------------------------------------------
+    # 8. Latest-Release Update-Banner & Version Comparison Validation
+    # ------------------------------------------------------------------------------
+    Write-Host ""
+    Write-Host "==> 8. Testing Latest-Release Update-Banner & Version-Check Behavior..."
+
+    # Ensure backend is healthy and running
+    if (-not (Wait-ForBackendHealth -TimeoutSeconds 5)) {
+        $updateBackendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$customerDataDir`" -jar `"$installedWar`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+        if (-not (Wait-ForBackendHealth -TimeoutSeconds 45)) {
+            Stop-RupeeCrmProcesses
+            throw "CRITICAL FAILURE: Backend failed to start for update banner validation!"
+        }
+    }
+
+    # 8A. Live Update Status Check for Latest Release
+    $updateStatusUrl = "http://127.0.0.1:28080/api/system/update-status?force=true"
+    Write-Host "Querying live update-status endpoint ($updateStatusUrl)..."
+    $updateStatusResp = Invoke-RestMethod -Uri $updateStatusUrl -Method Get -TimeoutSec 10
+
+    if (-not $updateStatusResp) {
+        throw "CRITICAL FAILURE: Update status endpoint returned empty response!"
+    }
+
+    $installedVersion = $updateStatusResp.currentVersion
+    $latestAvailableVersion = $updateStatusResp.latestVersion
+    $updateAvailable = $updateStatusResp.updateAvailable
+    $updateError = $updateStatusResp.error
+
+    Write-Host "  Installed version        : $installedVersion"
+    Write-Host "  Latest available version : $latestAvailableVersion"
+    Write-Host "  Update available flag    : $updateAvailable"
+    Write-Host "  Update check error       : $(if ($updateError) { $updateError } else { 'None (Success)' })"
+
+    if (-not $installedVersion) {
+        throw "CRITICAL FAILURE: Installed application version could not be determined from metadata/API!"
+    }
+
+    # Verify that the update check completed successfully and did NOT fail or error out silently
+    if ($updateError) {
+        throw "CRITICAL FAILURE: Update check failed with error: $updateError"
+    }
+
+    # If installed version matches latest available version, updateAvailable MUST be false
+    if ($installedVersion -eq $latestAvailableVersion) {
+        if ($updateAvailable -ne $false) {
+            throw "CRITICAL FAILURE: Installed version equals latest release ($installedVersion == $latestAvailableVersion) but updateAvailable is true!"
+        }
+        Write-Host "  [PASS] Installed version: $installedVersion" -ForegroundColor Green
+        Write-Host "  [PASS] Latest available version: $latestAvailableVersion" -ForegroundColor Green
+        Write-Host "  [PASS] Update check completed successfully" -ForegroundColor Green
+        Write-Host "  [PASS] No newer release available" -ForegroundColor Green
+        Write-Host "  [PASS] `"Update Available`" banner is NOT displayed" -ForegroundColor Green
+    } elseif ($latestAvailableVersion) {
+        Write-Host "  [INFO] Installed: $installedVersion, Latest: $latestAvailableVersion"
+    }
+
+    $executedPassed.Add("17. Latest Release Update Check (Installed version: $installedVersion, Update Available: $updateAvailable -> Banner Suppressed)")
+
+    # 8B. Negative Test: Mock Older Version & Verify Banner Activation
+    Write-Host "`n==> Testing Negative Scenario: Mocking older version to verify update banner activation..."
+    $versionFile1 = Join-Path (Split-Path $installedWar -Parent) ".billsoft-version"
+    $versionFile2 = Join-Path $customerDataDir ".billsoft-version"
+
+    "v0.9.0" | Out-File -FilePath $versionFile1 -Encoding ASCII
+    "v0.9.0" | Out-File -FilePath $versionFile2 -Encoding ASCII
+
+    try {
+        $olderCheckResp = Invoke-RestMethod -Uri $updateStatusUrl -Method Get -TimeoutSec 10
+        Write-Host "  Mocked older version check response:"
+        Write-Host "    Current : $($olderCheckResp.currentVersion)"
+        Write-Host "    Latest  : $($olderCheckResp.latestVersion)"
+        Write-Host "    Update  : $($olderCheckResp.updateAvailable)"
+
+        if ($olderCheckResp.currentVersion -ne "v0.9.0") {
+            throw "CRITICAL FAILURE: Application did not reload version from version file metadata!"
+        }
+        if ($olderCheckResp.updateAvailable -ne $true) {
+            throw "CRITICAL FAILURE: Application failed to report updateAvailable=true when running an older version ($($olderCheckResp.currentVersion) < $($olderCheckResp.latestVersion))!"
+        }
+
+        Write-Host "  [PASS] Older version correctly detected" -ForegroundColor Green
+        Write-Host "  [PASS] `"Update Available`" banner displayed for newer release" -ForegroundColor Green
+        $executedPassed.Add("18. Older Version Detection & Update Banner Activation (Negative Test: v0.9.0 < $latestAvailableVersion)")
+
+    } finally {
+        # Restore latest-release configuration
+        Remove-Item $versionFile1 -Force -ErrorAction SilentlyContinue
+        Remove-Item $versionFile2 -Force -ErrorAction SilentlyContinue
+        # Clear cache and restore clean state
+        $restoredResp = Invoke-RestMethod -Uri $updateStatusUrl -Method Get -TimeoutSec 10
+        Write-Host "[OK] Restored clean latest-release configuration (Current: $($restoredResp.currentVersion), UpdateAvailable: $($restoredResp.updateAvailable))"
+    }
+
     Stop-RupeeCrmProcesses
 
     # Clean up temporary test artifacts

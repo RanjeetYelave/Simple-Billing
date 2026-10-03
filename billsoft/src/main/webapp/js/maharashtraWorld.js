@@ -1969,11 +1969,6 @@
     }
 
     const unlockKey = `LOC_UNLOCK_LVL_${lvl}`;
-    if (isLocationUnlockAcknowledged(unlockKey)) {
-      return false; // Already acknowledged, never re-trigger
-    }
-
-    // Acknowledge immediately to ensure single execution across tabs & games
     markLocationUnlockAcknowledged(unlockKey);
 
     const fromWorld = getWorldForLevel(gameType, lvl);

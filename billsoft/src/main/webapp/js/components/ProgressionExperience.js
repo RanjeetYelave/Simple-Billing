@@ -36,7 +36,7 @@
 }(typeof self !== 'undefined' ? self : this, function (React, MaharashtraWorld) {
   'use strict';
 
-  const { useState, useEffect, useRef, useMemo } = React;
+  const { useState, useEffect, useRef, useMemo, useCallback } = React;
   const WorldEngine = MaharashtraWorld || (typeof window !== 'undefined' ? window.MaharashtraWorld : null);
 
   function renderModalPortal(element) {
@@ -243,6 +243,8 @@
   function LocationTravelTransition({ fromLoc, toLoc, worldData, onComplete, onDismiss }) {
     const isReducedMotion = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const [stage, setStage] = useState(isReducedMotion ? 'ARRIVAL' : 'DEPARTURE');
+    const stageRef = useRef(stage);
+    stageRef.current = stage;
     const toColor = toLoc ? (toLoc.themeColor || '#38bdf8') : '#38bdf8';
     const fromColor = fromLoc ? (fromLoc.themeColor || '#64748b') : '#64748b';
     const hasCompletedRef = useRef(false);
@@ -284,10 +286,13 @@
       };
 
       const handleKeyTrap = (e) => {
-        if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
+        if (e.key === 'Escape') {
           e.preventDefault();
-          handleComplete();
-        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+          handleComplete(e);
+        } else if (stageRef.current === 'ARRIVAL' && (e.key === ' ' || e.key === 'Enter')) {
+          e.preventDefault();
+          handleComplete(e);
+        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', ' '].includes(e.key)) {
           e.preventDefault();
           e.stopPropagation();
         }
@@ -1075,35 +1080,76 @@
    */
   function ProgressionExperienceController({ worldData, gameType }) {
     const [activeEvent, setActiveEvent] = useState(null);
+    const activeEventRef = useRef(null);
     const queueRef = useRef([]);
-    const prevLocationIdRef = useRef(null);
+    const prevLocationRef = useRef(worldData && worldData.location ? worldData.location : null);
 
-    // Enqueue an event with priority: 'LOCATION' > 'MILESTONE' > 'TROPHY'
-    const enqueueEvent = (type, payload) => {
+    const processNext = useCallback(() => {
+      if (queueRef.current.length > 0) {
+        const next = queueRef.current.shift();
+        activeEventRef.current = next;
+        setActiveEvent(next);
+      } else {
+        activeEventRef.current = null;
+        setActiveEvent(null);
+      }
+    }, []);
+
+    const enqueueEvent = useCallback((type, payload) => {
+      if (!payload) return;
+
+      // Deduplicate if already transitioning to the same location
+      if (type === 'LOCATION' && payload.toLoc) {
+        if (activeEventRef.current && activeEventRef.current.type === 'LOCATION' &&
+            activeEventRef.current.payload && activeEventRef.current.payload.toLoc &&
+            activeEventRef.current.payload.toLoc.id === payload.toLoc.id) {
+          return;
+        }
+        const alreadyQueued = queueRef.current.some(item =>
+          item.type === 'LOCATION' && item.payload && item.payload.toLoc &&
+          item.payload.toLoc.id === payload.toLoc.id
+        );
+        if (alreadyQueued) return;
+      }
+
       const priorityMap = { LOCATION: 1, MILESTONE: 2, TROPHY: 3 };
       const newEvent = { type, payload, priority: priorityMap[type] || 4 };
 
-      queueRef.current.push(newEvent);
-      queueRef.current.sort((a, b) => a.priority - b.priority);
-
-      if (!activeEvent) {
-        processNext();
-      }
-    };
-
-    const processNext = () => {
-      if (queueRef.current.length > 0) {
-        const next = queueRef.current.shift();
-        setActiveEvent(next);
+      if (!activeEventRef.current) {
+        activeEventRef.current = newEvent;
+        setActiveEvent(newEvent);
       } else {
-        setActiveEvent(null);
+        queueRef.current.push(newEvent);
+        queueRef.current.sort((a, b) => a.priority - b.priority);
       }
-    };
+    }, []);
 
-    // Listen for Dedicated Location Unlock Global Events (Triggered strictly when completedLevel % 15 === 0)
+    // React to worldData location change across levels/destinations
+    useEffect(() => {
+      if (!worldData || !worldData.location) return;
+      const currentLoc = worldData.location;
+      if (!prevLocationRef.current) {
+        prevLocationRef.current = currentLoc;
+        return;
+      }
+      if (prevLocationRef.current.id !== currentLoc.id) {
+        const fromLoc = prevLocationRef.current;
+        prevLocationRef.current = currentLoc;
+        enqueueEvent('LOCATION', {
+          fromLoc,
+          toLoc: currentLoc,
+          worldData
+        });
+      }
+    }, [worldData, enqueueEvent]);
+
+    // Listen for Dedicated Location Unlock & Celebration Global Events
     useEffect(() => {
       const handleLocationUnlockEvent = (e) => {
         if (e && e.detail && e.detail.toLoc) {
+          if (e.detail.toLoc) {
+            prevLocationRef.current = e.detail.toLoc;
+          }
           enqueueEvent('LOCATION', {
             unlockKey: e.detail.unlockKey,
             fromLoc: e.detail.fromLoc,
@@ -1134,7 +1180,7 @@
         window.removeEventListener('billsoft:trophy-unlocked', handleTrophyEvent);
         window.removeEventListener('billsoft:level-milestone-reached', handleMilestoneEvent);
       };
-    }, []);
+    }, [enqueueEvent]);
 
     const handleDismissActive = () => {
       processNext();

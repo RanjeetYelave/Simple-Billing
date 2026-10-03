@@ -187,6 +187,8 @@ jobs:
                    --type msi `
                    --icon tools/assets/RupeeCRM.ico `
                    --dest msi-stage `
+                   --resource-dir installer/wix/resources `
+                   --verbose `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
                    --win-shortcut `

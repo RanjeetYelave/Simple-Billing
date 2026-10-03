@@ -101,8 +101,24 @@ Built on an embedded Spring Boot engine with a native supervisor, desktop system
 
 ### Windows Installation
 
+#### Method 1: Instant One-Command Fresh Installation (Recommended)
+Open PowerShell and run the following command:
+
+```powershell
+irm https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/main/tools/install-windows.ps1 | iex
+```
+
+This automated installer:
+- Performs a complete clean factory-reset of previous legacy versions and artifacts.
+- Automatically resolves and downloads the latest official `RupeeCRMSetup.msi` release.
+- Validates payload integrity (Compound File Binary Format and SHA-256).
+- Installs silently via Windows Installer with full diagnostic logging.
+- Starts the RupeeCRM background supervisor and verifies live backend health.
+- Opens `http://localhost:28080/` in your default browser.
+
+#### Method 2: Manual MSI Installer
 1. Download **`RupeeCRMSetup.msi`** from the latest [GitHub Release](https://github.com/RanjeetYelave/Simple-Billing/releases).
-2. Double-click the installer and follow the wizard.
+2. Double-click the installer and follow the setup wizard.
 3. RupeeCRM will start automatically in your Windows System Tray and open your billing dashboard in your default browser.
 
 #### Windows System Details:

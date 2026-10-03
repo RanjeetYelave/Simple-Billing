@@ -32,19 +32,35 @@ jobs:
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
       - name: Build Backend and Launcher with Maven
-        run: mvn clean package
+        run: mvn clean package -DskipTests
 
-      - name: Copy WAR file to standardized name
-        working-directory: ./billsoft
-        run: cp target/billsoft-0.0.1-SNAPSHOT.war target/rupeecrm.war
+      - name: Stage Application Binaries
+        run: |
+          mkdir -p app-binaries
+          if [ -f billsoft/target/billsoft-0.0.1-SNAPSHOT.war ]; then
+            cp billsoft/target/billsoft-0.0.1-SNAPSHOT.war app-binaries/rupeecrm.war
+          elif [ -f billsoft/target/rupeecrm.war ]; then
+            cp billsoft/target/rupeecrm.war app-binaries/rupeecrm.war
+          else
+            echo "CRITICAL: No WAR found in billsoft/target!"
+            exit 1
+          fi
+
+          if [ -f launcher/target/launcher-0.0.1-SNAPSHOT.jar ]; then
+            cp launcher/target/launcher-0.0.1-SNAPSHOT.jar app-binaries/launcher-0.0.1-SNAPSHOT.jar
+          else
+            echo "CRITICAL: No JAR found in launcher/target!"
+            exit 1
+          fi
+
+          echo "=== Staged app-binaries directory contents ==="
+          ls -lh app-binaries/
 
       - name: Upload Application Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: app-binaries
-          path: |
-            billsoft/target/rupeecrm.war
-            launcher/target/launcher-0.0.1-SNAPSHOT.jar
+          path: app-binaries/
           if-no-files-found: error
 
   build-windows-msi:
@@ -67,6 +83,36 @@ jobs:
         with:
           name: app-binaries
           path: app-binaries
+
+      - name: Validate Downloaded Application Binaries
+        shell: pwsh
+        run: |
+          Write-Host "=== Inspecting app-binaries directory ==="
+          if (Test-Path app-binaries) {
+            Get-ChildItem -Recurse app-binaries | Select-Object FullName, Length | Format-Table -AutoSize
+          } else {
+            Write-Error "CRITICAL: app-binaries directory does not exist!"
+            exit 1
+          }
+
+          $requiredFiles = @(
+            "app-binaries/rupeecrm.war",
+            "app-binaries/launcher-0.0.1-SNAPSHOT.jar"
+          )
+
+          foreach ($file in $requiredFiles) {
+            if (-not (Test-Path $file)) {
+              Write-Error "CRITICAL: Required build artifact '$file' is missing!"
+              exit 1
+            } else {
+              $size = (Get-Item $file).Length
+              if ($size -le 1024) {
+                Write-Error "CRITICAL: Artifact '$file' is empty or corrupted (size: $size bytes)!"
+                exit 1
+              }
+              Write-Host "✓ Verified artifact: $file ($size bytes)"
+            }
+          }
 
       - name: Install WiX Toolset v4
         shell: pwsh

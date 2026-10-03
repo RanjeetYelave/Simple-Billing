@@ -30,11 +30,24 @@ class UpdateControllerTest {
     void testCheckUpdate() throws Exception {
         Map<String, Object> response = new HashMap<>();
         response.put("updateAvailable", true);
-        when(service.checkUpdate()).thenReturn(response);
+        when(service.checkUpdate(false)).thenReturn(response);
 
         mockMvc.perform(get("/api/system/update-status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.updateAvailable").value(true));
+    }
+
+    @Test
+    void testCheckUpdateForceRefresh() throws Exception {
+        Map<String, Object> response = new HashMap<>();
+        response.put("updateAvailable", true);
+        response.put("latestVersion", "v1.2.0");
+        when(service.checkUpdate(true)).thenReturn(response);
+
+        mockMvc.perform(get("/api/system/update-status?force=true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updateAvailable").value(true))
+                .andExpect(jsonPath("$.latestVersion").value("v1.2.0"));
     }
 
     @Test

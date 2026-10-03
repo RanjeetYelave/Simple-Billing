@@ -201,11 +201,15 @@ public class UpdateService {
 
     private long lastCheckTime = 0;
     private Map<String, Object> cachedResponse = null;
-    private static final long CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+    private static final long CACHE_DURATION = 7L * 24 * 60 * 60 * 1000; // 7 days
 
     public Map<String, Object> checkUpdate() {
+        return checkUpdate(false);
+    }
+
+    public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
         long currentTime = System.currentTimeMillis();
-        if (cachedResponse != null && (currentTime - lastCheckTime) < CACHE_DURATION) {
+        if (!forceRefresh && cachedResponse != null && (currentTime - lastCheckTime) < CACHE_DURATION) {
             return cachedResponse;
         }
 

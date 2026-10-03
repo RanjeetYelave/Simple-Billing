@@ -199,4 +199,120 @@ class UpdateServiceTest {
         assertFalse((Boolean) result.get("updateAvailable"));
         assertTrue(result.containsKey("error"));
     }
+
+    @Test
+    void testCheckUpdate7DayCacheHit() {
+        Map<String, Object> mockRelease = new HashMap<>();
+        mockRelease.put("tag_name", "v1.2.0");
+        mockRelease.put("assets", Collections.singletonList(
+                new HashMap<String, Object>() {{
+                    put("name", "billsoft.war");
+                    put("browser_download_url", "http://example.com/billsoft.war");
+                }}
+        ));
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(mockRelease));
+
+        // First call: executes GitHub request
+        Map<String, Object> first = service.checkUpdate();
+        assertNotNull(first);
+        assertEquals("v1.2.0", first.get("latestVersion"));
+
+        // Second call within 7 days: uses cache, no second GitHub request
+        Map<String, Object> second = service.checkUpdate();
+        assertNotNull(second);
+        assertEquals("v1.2.0", second.get("latestVersion"));
+
+        // Verify restTemplate exchange was called only once
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(1))
+                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
+    }
+
+    @Test
+    void testCheckUpdateAfter7DaysCallsGitHubAgain() {
+        Map<String, Object> mockRelease = new HashMap<>();
+        mockRelease.put("tag_name", "v1.2.0");
+        mockRelease.put("assets", Collections.singletonList(
+                new HashMap<String, Object>() {{
+                    put("name", "billsoft.war");
+                    put("browser_download_url", "http://example.com/billsoft.war");
+                }}
+        ));
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(mockRelease));
+
+        // First call
+        service.checkUpdate();
+
+        // Simulate 8 days elapsed (past the 7-day CACHE_DURATION)
+        long eightDaysAgo = System.currentTimeMillis() - (8L * 24 * 60 * 60 * 1000);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "lastCheckTime", eightDaysAgo);
+
+        // Second call: cache expired, calls GitHub again
+        service.checkUpdate();
+
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(2))
+                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
+    }
+
+    @Test
+    void testCheckUpdateManualForceRefreshBypassesFreshCache() {
+        Map<String, Object> mockRelease = new HashMap<>();
+        mockRelease.put("tag_name", "v1.2.0");
+        mockRelease.put("assets", Collections.singletonList(
+                new HashMap<String, Object>() {{
+                    put("name", "billsoft.war");
+                    put("browser_download_url", "http://example.com/billsoft.war");
+                }}
+        ));
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(mockRelease));
+
+        // First call (normal check)
+        service.checkUpdate(false);
+
+        // Second call (manual check with forceRefresh = true)
+        Map<String, Object> manualResult = service.checkUpdate(true);
+        assertNotNull(manualResult);
+        assertEquals("v1.2.0", manualResult.get("latestVersion"));
+
+        // Verify restTemplate was called 2 times (fresh cache bypassed on demand)
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(2))
+                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
+    }
+
+    @Test
+    void testCheckUpdateConcurrency() throws Exception {
+        Map<String, Object> mockRelease = new HashMap<>();
+        mockRelease.put("tag_name", "v1.2.0");
+        mockRelease.put("assets", Collections.singletonList(
+                new HashMap<String, Object>() {{
+                    put("name", "billsoft.war");
+                    put("browser_download_url", "http://example.com/billsoft.war");
+                }}
+        ));
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(mockRelease));
+
+        int threadCount = 10;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(threadCount);
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    service.checkUpdate(false);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // In-memory cache ensures only 1 GitHub call occurs across 10 concurrent requests
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(1))
+                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
+    }
 }

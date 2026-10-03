@@ -19,8 +19,11 @@ public class UpdateController {
     }
 
     @GetMapping("/update-status")
-    public ResponseEntity<Map<String, Object>> checkUpdate() {
-        return ResponseEntity.ok(updateService.checkUpdate());
+    public ResponseEntity<Map<String, Object>> checkUpdate(
+            @RequestParam(name = "force", required = false, defaultValue = "false") boolean force,
+            @RequestParam(name = "forceRefresh", required = false, defaultValue = "false") boolean forceRefresh) {
+        boolean doForce = force || forceRefresh;
+        return ResponseEntity.ok(updateService.checkUpdate(doForce));
     }
 
     @GetMapping(value = "/update-progress", produces = "text/event-stream")

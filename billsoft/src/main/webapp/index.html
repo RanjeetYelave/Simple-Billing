@@ -33352,10 +33352,10 @@
         }
       };
 
-      const fetchUpdateInfo = () => {
+      const fetchUpdateInfo = (force = false) => {
         setLoading(true);
         setError(null);
-        API.system.updateStatus()
+        API.system.updateStatus(force)
           .then(res => {
             setInfo(res);
             setLoading(false);
@@ -33370,7 +33370,7 @@
       };
 
       useEffect(() => {
-        const t = setTimeout(() => fetchUpdateInfo(), 400);
+        const t = setTimeout(() => fetchUpdateInfo(false), 400);
         if (API.system && typeof API.system.getNetworkStatus === 'function') {
           API.system.getNetworkStatus(false).then(setNetData).catch(() => { });
         }
@@ -33524,7 +33524,7 @@
           }, 'Could not check for updates. Please verify your connection and try again.'),
           React.createElement('button', {
             className: 'btn btn-outline btn-sm',
-            onClick: fetchUpdateInfo
+            onClick: () => fetchUpdateInfo(true)
           }, 'Retry')
         ) : info ? React.createElement(Fragment, null,
           info.updateAvailable ? React.createElement('div', {
@@ -33692,7 +33692,7 @@
               className: 'btn btn-ghost btn-sm',
               style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' },
               disabled: loading,
-              onClick: fetchUpdateInfo
+              onClick: () => fetchUpdateInfo(true)
             },
               React.createElement('span', { style: { animation: loading ? 'spin 1s linear infinite' : 'none', display: 'flex' } }, Icons.refresh),
               loading ? 'Checking...' : 'Check for Updates'

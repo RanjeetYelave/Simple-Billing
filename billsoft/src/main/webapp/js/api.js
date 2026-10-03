@@ -898,7 +898,7 @@ const API = {
 
   // ─── System & Updates ───
   system: {
-    updateStatus: () => API._json('/api/system/update-status'),
+    updateStatus: (forceRefresh = false) => API._json(forceRefresh ? '/api/system/update-status?force=true' : '/api/system/update-status'),
     applyUpdate: () => API._json('/api/system/apply-update', {
       method: 'POST'
     }),

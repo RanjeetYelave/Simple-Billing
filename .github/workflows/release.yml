@@ -166,6 +166,15 @@ jobs:
       - name: Build Unified RupeeCRMSetup.msi
         shell: pwsh
         run: |
+          # Validate input files before invoking jpackage
+          if (-not (Test-Path "dist/RupeeCRM/launcher.jar")) {
+              throw "launcher.jar is missing from dist/RupeeCRM"
+          }
+
+          if (-not (Test-Path "dist/RupeeCRM/app/rupeecrm.war")) {
+              throw "rupeecrm.war is missing from dist/RupeeCRM/app"
+          }
+
           # Package Native Application and build standalone MSI Installer directly via jpackage
           jpackage --name RupeeCRM `
                    --input dist/RupeeCRM `
@@ -180,17 +189,21 @@ jobs:
                    --win-menu `
                    --win-menu-group "RupeeCRM" `
                    --win-per-user-install `
-                   --win-dir-chooser `
                    --java-options "-Djava.awt.headless=false"
 
-          $generatedMsi = Get-ChildItem -Path msi-stage -Filter "*.msi" | Select-Object -First 1
-          if (-not $generatedMsi) {
-            Write-Error "CRITICAL: jpackage failed to generate MSI installer in msi-stage!"
-            exit 1
+          $msi = Get-ChildItem "msi-stage" -Filter "*.msi" -File | Select-Object -First 1
+          if (-not $msi) {
+              throw "jpackage did not produce an MSI in msi-stage"
           }
 
-          Copy-Item $generatedMsi.FullName RupeeCRMSetup.msi
-          Write-Host "✓ Successfully generated RupeeCRMSetup.msi ($((Get-Item RupeeCRMSetup.msi).Length) bytes)"
+          Copy-Item $msi.FullName "RupeeCRMSetup.msi" -Force
+
+          if (-not (Test-Path "RupeeCRMSetup.msi")) {
+              throw "Final RupeeCRMSetup.msi was not created"
+          }
+
+          Write-Host "Created MSI: $((Get-Item RupeeCRMSetup.msi).FullName)"
+          Write-Host "Size: $((Get-Item RupeeCRMSetup.msi).Length) bytes"
 
           # Prepare direct WAR & checksum assets for in-app update pipeline
           Copy-Item app-binaries/rupeecrm.war rupeecrm.war

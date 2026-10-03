@@ -118,7 +118,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist/RupeeCRM/app
-          New-Item -ItemType Directory -Force -Path dist/RupeeCRM/jre
 
           # Copy backend WAR
           Copy-Item app-binaries/rupeecrm.war dist/RupeeCRM/app/rupeecrm.war
@@ -133,9 +132,6 @@ jobs:
             channel = "production"
           } | ConvertTo-Json
           $versionJson | Out-File -Encoding UTF8 dist/RupeeCRM/version.json
-
-          # Copy minimal bundled JRE from runner JDK
-          Copy-Item -Recurse "$env:JAVA_HOME\bin", "$env:JAVA_HOME\lib", "$env:JAVA_HOME\conf" dist/RupeeCRM/jre/
 
           # Package internal application payload
           Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
@@ -173,6 +169,14 @@ jobs:
 
           if (-not (Test-Path "dist/RupeeCRM/app/rupeecrm.war")) {
               throw "rupeecrm.war is missing from dist/RupeeCRM/app"
+          }
+
+          if (-not (Test-Path "dist/RupeeCRM/version.json")) {
+              throw "version.json is missing from dist/RupeeCRM"
+          }
+
+          if (Test-Path "dist/RupeeCRM/jre") {
+              throw "Duplicate JRE directory found in dist/RupeeCRM before jpackage!"
           }
 
           # Package Native Application and build standalone MSI Installer directly via jpackage

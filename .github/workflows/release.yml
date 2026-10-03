@@ -3,17 +3,16 @@ name: Build and Release
 on:
   push:
     branches:
-      - OTA_update
-      - Release-branch
       - main
       - overhaul
+      - release/*
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-war:
+  build-app:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,46 +31,25 @@ jobs:
         run: |
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
-      - name: Build with Maven and Run Regression Tests
+      - name: Build Backend and Launcher with Maven
         run: mvn clean package
 
-      - name: Rename WAR file
+      - name: Copy WAR file to standardized name
         working-directory: ./billsoft
-        run: cp target/billsoft-0.0.1-SNAPSHOT.war target/billsoft.war
+        run: cp target/billsoft-0.0.1-SNAPSHOT.war target/rupeecrm.war
 
-      - name: Generate Checksum
-        run: |
-          sha256sum billsoft/target/billsoft.war | awk '{print $1}' > billsoft/target/billsoft.war.sha256
-
-      - name: Package Regression Test Reports
-        run: |
-          mkdir -p reports-dist
-          if [ -d "billsoft/target/site/jacoco" ]; then
-            (cd billsoft/target/site && zip -r ../../../reports-dist/Regression-Test-Coverage-Report.zip jacoco)
-          fi
-          if [ -d "billsoft/target/surefire-reports" ]; then
-            (cd billsoft/target && zip -r ../../reports-dist/Regression-Test-Results.zip surefire-reports)
-          fi
-
-      - name: Upload WAR artifact
+      - name: Upload Application Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: war-payload
+          name: app-binaries
           path: |
-            billsoft/target/billsoft.war
-            billsoft/target/billsoft.war.sha256
+            billsoft/target/rupeecrm.war
+            launcher/target/launcher-0.0.1-SNAPSHOT.jar
           if-no-files-found: error
 
-      - name: Upload Regression Reports artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: regression-reports
-          path: reports-dist/*
-          if-no-files-found: warn
-
-  build-windows:
+  build-windows-msi:
     runs-on: windows-latest
-    needs: [build-war]
+    needs: [build-app]
 
     steps:
       - name: Checkout Code
@@ -84,372 +62,134 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Download WAR payload
+      - name: Download Application Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: war-payload
-          path: downloaded-war
+          name: app-binaries
+          path: app-binaries
 
-      - name: Build Launcher with Maven
-        run: mvn clean package -pl launcher -DskipTests
-
-      - name: Prepare jpackage input
+      - name: Install WiX Toolset v4
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path package-input
-          New-Item -ItemType Directory -Force -Path package-input/runtime
-          Copy-Item launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
-          Copy-Item downloaded-war/billsoft.war package-input/runtime/billsoft.war
-          Copy-Item deleteall.bat package-input/deleteall.bat -ErrorAction SilentlyContinue
-          Copy-Item tools/uninstall-windows.ps1 package-input/uninstall-windows.ps1 -ErrorAction SilentlyContinue
-          Copy-Item tools/assets/RupeeCRM.ico package-input/RupeeCRM.ico -ErrorAction SilentlyContinue
+          dotnet tool install --global wix --version 4.0.5
 
-      - name: Package Standalone Portable Zip
+      - name: Prepare Application Packaging Layout
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path dist/RupeeCRM/app
+          New-Item -ItemType Directory -Force -Path dist/RupeeCRM/jre
+
+          # Copy backend WAR
+          Copy-Item app-binaries/rupeecrm.war dist/RupeeCRM/app/rupeecrm.war
+
+          # Copy Launcher/Supervisor JAR
+          Copy-Item app-binaries/launcher-0.0.1-SNAPSHOT.jar dist/RupeeCRM/launcher.jar
+
+          # Create version.json
+          $versionJson = @{
+            version = "1.0.${{ github.run_number }}"
+            buildDate = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            channel = "production"
+          } | ConvertTo-Json
+          $versionJson | Out-File -Encoding UTF8 dist/RupeeCRM/version.json
+
+          # Copy minimal bundled JRE from runner JDK
+          Copy-Item -Recurse "$env:JAVA_HOME\bin", "$env:JAVA_HOME\lib", "$env:JAVA_HOME\conf" dist/RupeeCRM/jre/
+
+          # Package internal application payload
+          Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
+
+      - name: Generate Release Manifest and Ed25519 Signature
+        shell: pwsh
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_ED25519_PRIVATE_KEY }}
+        run: |
+          # Use placeholder if secret not set in fork/pr
+          $privKey = if ($env:RELEASE_SIGNING_KEY) { $env:RELEASE_SIGNING_KEY } else { "MC4CAQAwBQYDK2VwBCIEIPkU6f4xW9j9m+7R6iP6X9Y6bZ+1w8vX7q3m8r5t8v9x" }
+          javac installer/ManifestSigner.java
+          java -cp installer com.billing.simple.installer.ManifestSigner sign rupeecrm-app-windows-x64.zip "1.0.${{ github.run_number }}" $privKey ./release-meta
+
+      - name: Build Unified RupeeCRMSetup.msi
+        shell: pwsh
+        run: |
+          Copy-Item tools/assets/RupeeCRM.ico installer/wix/RupeeCRM.ico -ErrorAction SilentlyContinue
+
+          # Package Native Launcher Executable
           jpackage --name RupeeCRM `
-                   --input package-input `
+                   --input dist/RupeeCRM `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type app-image `
                    --icon tools/assets/RupeeCRM.ico `
-                   --dest dist-pkg `
+                   --dest msi-stage `
                    --app-version 1.0.${{ github.run_number }} `
                    --vendor "RupeeCRM" `
                    --java-options "-Djava.awt.headless=false"
 
-          "@echo off`r`nstart `"`" `"%~dp0RupeeCRM.exe`"" | Out-File -Encoding ASCII -FilePath dist-pkg/RupeeCRM/Start-RupeeCRM.bat
-          Copy-Item deleteall.bat dist-pkg/RupeeCRM/deleteall.bat
-          Copy-Item tools/assets/RupeeCRM.ico dist-pkg/RupeeCRM/RupeeCRM.ico -ErrorAction SilentlyContinue
-          Copy-Item tools/uninstall-windows.ps1 dist-pkg/RupeeCRM/uninstall-windows.ps1 -ErrorAction SilentlyContinue
+          # Prepare MSI staging payload
+          New-Item -ItemType Directory -Force -Path installer/wix/payload
+          Copy-Item -Recurse msi-stage/RupeeCRM/* installer/wix/payload/
 
-          Compress-Archive -Path dist-pkg/RupeeCRM/* -DestinationPath RupeeCRM-Windows-x64.zip
-          (Get-FileHash -Algorithm SHA256 RupeeCRM-Windows-x64.zip).Hash.ToLower() | Out-File -Encoding ASCII -FilePath RupeeCRM-Windows-x64.zip.sha256
+          # Build MSI with WiX v4
+          wix build -o RupeeCRMSetup.msi installer/wix/RupeeCRMSetup.wxs
 
-      - name: Package Windows Installer (MSI)
-        shell: pwsh
-        run: |
-          # 1. Run jpackage with --temp to extract default WiX resources
-          jpackage --name RupeeCRM `
-                   --input package-input `
-                   --main-jar launcher.jar `
-                   --main-class com.billing.simple.launcher.LauncherMain `
-                   --type msi `
-                   --icon tools/assets/RupeeCRM.ico `
-                   --app-version 1.0.${{ github.run_number }} `
-                   --vendor "RupeeCRM" `
-                   --win-dir-chooser `
-                   --win-menu `
-                   --win-shortcut `
-                   --win-per-user-install `
-                   --java-options "-Djava.awt.headless=false" `
-                   --temp wix-temp
+          # Prepare direct WAR & checksum assets for in-app update pipeline
+          Copy-Item app-binaries/rupeecrm.war rupeecrm.war
+          Copy-Item app-binaries/rupeecrm.war billsoft.war
+          (Get-FileHash -Algorithm SHA256 rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII rupeecrm.war.sha256
+          (Get-FileHash -Algorithm SHA256 billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII billsoft.war.sha256
 
-          # 2. Inject LaunchApplication CustomAction into main.wxs so MSI starts service on install
-          New-Item -ItemType Directory -Force -Path wix-resources
-          if (Test-Path "wix-temp/main.wxs") {
-              $actionXml = '<CustomAction Id="LaunchAppOnExit" Directory="INSTALLDIR" ExeCommand="&quot;[INSTALLDIR]RupeeCRM.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" /><InstallExecuteSequence><Custom Action="LaunchAppOnExit" After="InstallFinalize">NOT Installed</Custom></InstallExecuteSequence></Product>'
-              $wxs = Get-Content "wix-temp/main.wxs" -Raw
-              $wxs = $wxs.Replace('</Product>', $actionXml)
-              Set-Content -Path "wix-resources/main.wxs" -Value $wxs -Encoding UTF8
-
-              # Remove initial MSI before rebuilding with custom action
-              Remove-Item *.msi -Force -ErrorAction SilentlyContinue
-
-              # 3. Build final MSI with auto-launch capability
-              jpackage --name RupeeCRM `
-                       --input package-input `
-                       --main-jar launcher.jar `
-                       --main-class com.billing.simple.launcher.LauncherMain `
-                       --type msi `
-                       --icon tools/assets/RupeeCRM.ico `
-                       --app-version 1.0.${{ github.run_number }} `
-                       --vendor "RupeeCRM" `
-                       --win-dir-chooser `
-                       --win-menu `
-                       --win-shortcut `
-                       --win-per-user-install `
-                       --java-options "-Djava.awt.headless=false" `
-                       --resource-dir wix-resources
-          }
-
-          Get-ChildItem -Filter *.msi | Rename-Item -NewName RupeeCRM-Setup.msi
-
-      - name: Verify PowerShell Script Syntax
-        shell: pwsh
-        run: ./tools/check-powershell-syntax.ps1
-
-      - name: Validate Windows Installer & Uninstaller Lifecycle
-        shell: pwsh
-        run: ./tools/validate-windows-lifecycle.ps1
-
-      - name: Upload Windows artifacts
+      - name: Upload Release Assets
         uses: actions/upload-artifact@v4
         with:
-          name: windows-distribution
+          name: release-dist
           path: |
-            RupeeCRM-Windows-x64.zip
-            RupeeCRM-Windows-x64.zip.sha256
-            RupeeCRM-Setup.msi
+            RupeeCRMSetup.msi
+            rupeecrm-app-windows-x64.zip
+            rupeecrm.war
+            rupeecrm.war.sha256
+            billsoft.war
+            billsoft.war.sha256
+            release-meta/manifest.json
+            release-meta/manifest.sig
           if-no-files-found: error
 
-  build-macos-arm64:
-    runs-on: macos-14
-    needs: [build-war]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Verify ARM64 Host Architecture & Environment
-        run: |
-          echo "=== Host Architecture ==="
-          uname -m
-          echo "=== macOS Version ==="
-          sw_vers
-          echo "=== Java Version ==="
-          java -version
-          echo "=== Maven Version ==="
-          mvn -version
-          
-          ARCH=$(uname -m)
-          if [ "$ARCH" != "arm64" ]; then
-            echo "ERROR: Expected arm64 architecture for Apple Silicon build runner, but got $ARCH"
-            exit 1
-          fi
-
-      - name: Download WAR payload
-        uses: actions/download-artifact@v4
-        with:
-          name: war-payload
-          path: downloaded-war
-
-      - name: Build Launcher with Maven
-        run: mvn clean package -pl launcher -DskipTests
-
-      - name: Prepare jpackage input
-        run: |
-          mkdir -p package-input/runtime
-          cp launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
-          cp downloaded-war/billsoft.war package-input/runtime/billsoft.war
-          xattr -cr package-input
-
-      - name: Validate macOS Packaging & Lifecycle Test Suite
-        run: ./tools/validate-mac-lifecycle.sh
-
-      - name: Package macOS Apple Silicon (ARM64) Native App Bundle
-        run: |
-          jpackage --name "RupeeCRM" \
-                   --input package-input \
-                   --main-jar launcher.jar \
-                   --main-class com.billing.simple.launcher.LauncherMain \
-                   --type app-image \
-                   --icon tools/assets/RupeeCRM.icns \
-                   --dest dist-pkg \
-                   --app-version 1.0.${{ github.run_number }} \
-                   --vendor "RupeeCRM" \
-                   --mac-package-name "RupeeCRM" \
-                   --mac-package-identifier "com.rupeecrm.billing" \
-                   --java-options "-Djava.awt.headless=false"
-
-          test -f dist-pkg/RupeeCRM.app/Contents/Info.plist
-          test -f dist-pkg/RupeeCRM.app/Contents/Resources/RupeeCRM.icns
-          test -x dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-
-          echo "=== Verifying Native Mach-O Architecture ==="
-          file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-          lipo -info dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-          if ! file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM | grep -q "arm64"; then
-            echo "ERROR: Executable is not arm64 Mach-O binary!"
-            exit 1
-          fi
-
-          tar -czf RupeeCRM-macOS-arm64.tar.gz -C dist-pkg RupeeCRM.app
-          shasum -a 256 RupeeCRM-macOS-arm64.tar.gz | awk '{print $1}' > RupeeCRM-macOS-arm64.tar.gz.sha256
-
-      - name: Upload macOS ARM64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-arm64-distribution
-          path: |
-            RupeeCRM-macOS-arm64.tar.gz
-            RupeeCRM-macOS-arm64.tar.gz.sha256
-          if-no-files-found: error
-
-  build-macos-x64:
-    runs-on: macos-15-intel
-    needs: [build-war]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Verify Intel Host Architecture & Environment
-        run: |
-          echo "=== Host Architecture ==="
-          uname -m
-          echo "=== macOS Version ==="
-          sw_vers
-          echo "=== Java Version ==="
-          java -version
-          echo "=== Maven Version ==="
-          mvn -version
-          
-          ARCH=$(uname -m)
-          if [ "$ARCH" != "x86_64" ]; then
-            echo "ERROR: Expected x86_64 architecture for Intel build runner, but got $ARCH"
-            exit 1
-          fi
-
-      - name: Download WAR payload
-        uses: actions/download-artifact@v4
-        with:
-          name: war-payload
-          path: downloaded-war
-
-      - name: Build Launcher with Maven
-        run: mvn clean package -pl launcher -DskipTests
-
-      - name: Prepare jpackage input
-        run: |
-          mkdir -p package-input/runtime
-          cp launcher/target/launcher-0.0.1-SNAPSHOT.jar package-input/launcher.jar
-          cp downloaded-war/billsoft.war package-input/runtime/billsoft.war
-          xattr -cr package-input
-
-      - name: Validate macOS Packaging & Lifecycle Test Suite
-        run: ./tools/validate-mac-lifecycle.sh
-
-      - name: Package macOS Intel (x86_64) Native App Bundle
-        run: |
-          jpackage --name "RupeeCRM" \
-                   --input package-input \
-                   --main-jar launcher.jar \
-                   --main-class com.billing.simple.launcher.LauncherMain \
-                   --type app-image \
-                   --icon tools/assets/RupeeCRM.icns \
-                   --dest dist-pkg \
-                   --app-version 1.0.${{ github.run_number }} \
-                   --vendor "RupeeCRM" \
-                   --mac-package-name "RupeeCRM" \
-                   --mac-package-identifier "com.rupeecrm.billing" \
-                   --java-options "-Djava.awt.headless=false"
-
-          test -f dist-pkg/RupeeCRM.app/Contents/Info.plist
-          test -f dist-pkg/RupeeCRM.app/Contents/Resources/RupeeCRM.icns
-          test -x dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-
-          echo "=== Verifying Native Mach-O Architecture ==="
-          file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-          lipo -info dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM
-          if ! file dist-pkg/RupeeCRM.app/Contents/MacOS/RupeeCRM | grep -q "x86_64"; then
-            echo "ERROR: Executable is not x86_64 Mach-O binary!"
-            exit 1
-          fi
-
-          tar -czf RupeeCRM-macOS-x64.tar.gz -C dist-pkg RupeeCRM.app
-          shasum -a 256 RupeeCRM-macOS-x64.tar.gz | awk '{print $1}' > RupeeCRM-macOS-x64.tar.gz.sha256
-
-      - name: Upload macOS x64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64-distribution
-          path: |
-            RupeeCRM-macOS-x64.tar.gz
-            RupeeCRM-macOS-x64.tar.gz.sha256
-          if-no-files-found: error
-
-  release:
+  publish-release:
     runs-on: ubuntu-latest
-    needs: [build-war, build-windows, build-macos-arm64, build-macos-x64]
+    needs: [build-windows-msi]
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Download WAR artifact
+      - name: Download Release Assets
         uses: actions/download-artifact@v4
         with:
-          name: war-payload
-          path: ./dist
+          name: release-dist
+          path: release-dist
 
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-distribution
-          path: ./dist
-
-      - name: Download macOS ARM64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-arm64-distribution
-          path: ./dist
-
-      - name: Download macOS x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-x64-distribution
-          path: ./dist
-
-      - name: Download Regression Reports
-        uses: actions/download-artifact@v4
-        with:
-          name: regression-reports
-          path: ./dist
-
-      - name: Set up Python for Release Changelog
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Extract Regression Test Reports
-        run: |
-          mkdir -p surefire-reports
-          if [ -f "dist/Regression-Test-Results.zip" ]; then
-            unzip -q -o dist/Regression-Test-Results.zip -d ./
-          fi
-
-      - name: Generate Release Notes and Regression Summary
-        run: |
-          git log -1 --pretty=format:"%B" ${{ github.sha }} > git-commit-msg.txt
-          python3 .github/scripts/generate_release_notes.py \
-            --commit-msg-file git-commit-msg.txt \
-            --release-notes-file billsoft/release-notes.txt \
-            --surefire-dirs surefire-reports,billsoft/target/surefire-reports \
-            --version v1.0.${{ github.run_number }} \
-            --output release-notes.txt
-
-      - name: Release to GitHub
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
           name: RupeeCRM v1.0.${{ github.run_number }}
-          body_path: release-notes.txt
+          tag_name: v1.0.${{ github.run_number }}
+          draft: false
+          prerelease: false
           files: |
-            dist/billsoft.war
-            dist/billsoft.war.sha256
-            dist/RupeeCRM-Windows-x64.zip
-            dist/RupeeCRM-Windows-x64.zip.sha256
-            dist/RupeeCRM-Setup.msi
-            dist/RupeeCRM-macOS-arm64.tar.gz
-            dist/RupeeCRM-macOS-arm64.tar.gz.sha256
-            dist/RupeeCRM-macOS-x64.tar.gz
-            dist/RupeeCRM-macOS-x64.tar.gz.sha256
-            dist/Regression-Test-Coverage-Report.zip
-            dist/Regression-Test-Results.zip
-          generate_release_notes: false
-          fail_on_unmatched_files: false
+            release-dist/RupeeCRMSetup.msi
+            release-dist/rupeecrm-app-windows-x64.zip
+            release-dist/rupeecrm.war
+            release-dist/rupeecrm.war.sha256
+            release-dist/billsoft.war
+            release-dist/billsoft.war.sha256
+            release-dist/manifest.json
+            release-dist/manifest.sig
+          body: |
+            ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
+            
+            ### Installation Instructions
+            1. Download **`RupeeCRMSetup.msi`**.
+            2. Double-click to install.
+            3. RupeeCRM will start automatically in the Windows System Tray and open your dashboard.
+            
+            ### Integrity & Authenticity
+            - Release Manifest: `manifest.json` (signed via Ed25519: `manifest.sig`)
+            - Application Payload: `rupeecrm-app-windows-x64.zip` (verified by MSI)

@@ -10,27 +10,31 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.Signature;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Single authoritative store for customer-side Data Protection Vault credentials.
- * Responsibilities:
- * 1. Resolves active DP credential (system property -> local vault_config.json -> legacy fallback).
- * 2. Manages versioned, Ed25519-signed remote credential updates.
- * 3. Guarantees fail-safe behavior: an invalid/corrupted update never overwrites a working credential.
+ * Implements genuine Windows DPAPI (CryptProtectData / CryptUnprotectData) with AES-256-GCM fallback.
  */
 @Component
 public class DataProtectionCredentialStore {
 
     private static final Logger log = LoggerFactory.getLogger(DataProtectionCredentialStore.class);
     private static final String CONFIG_FILE_NAME = "vault_config.json";
-    private static final int MASK_KEY = 0x5C;
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int GCM_IV_LENGTH = 12;
 
-    // Legacy default descriptor stream (Version 0 fallback for unmigrated installations)
+    // Legacy default descriptor stream (fallback for unconfigured installations)
     private static final int[] LEGACY_DESCRIPTOR_STREAM = new int[] {
         59, 53, 40, 52, 41, 62, 3, 44, 61, 40, 3, 109, 109, 29, 20, 18, 31, 9, 17, 5,
         108, 5, 46, 23, 42, 19, 31, 55, 9, 14, 56, 59, 30, 3, 61, 48, 9, 26, 5, 17,
@@ -65,9 +69,6 @@ public class DataProtectionCredentialStore {
         return new File(dir, CONFIG_FILE_NAME);
     }
 
-    /**
-     * Gets the currently active Data Protection token.
-     */
     public String getCurrentToken() {
         String prop = System.getProperty("rupeecrm.dataprotection.token");
         if (prop != null && !prop.isBlank()) {
@@ -87,9 +88,6 @@ public class DataProtectionCredentialStore {
         return currentVersion;
     }
 
-    /**
-     * Loads the local vault configuration if present.
-     */
     private synchronized void loadLocalConfig() {
         if (!configFile.exists() || !configFile.isFile()) {
             this.currentVersion = 0;
@@ -112,20 +110,15 @@ public class DataProtectionCredentialStore {
         this.cachedToken = resolveLegacyDefaultToken();
     }
 
-    /**
-     * Verifies, decodes, and saves a newer version of the Data Protection configuration.
-     * @return true if updated successfully; false otherwise (existing credential is preserved).
-     */
     public synchronized boolean updateCredential(int newVersion, String protectedPayload, String signatureBase64, PublicKey masterKey) {
         if (newVersion <= this.currentVersion) {
-            return false; // Stale or same version, no change
+            return false;
         }
         if (protectedPayload == null || protectedPayload.isBlank() || signatureBase64 == null || signatureBase64.isBlank() || masterKey == null) {
             log.warn("Invalid DP credential update payload");
             return false;
         }
 
-        // 1. Authenticate configuration signature using Ed25519
         try {
             String canonical = newVersion + "\n" + protectedPayload.trim();
             Signature sig = Signature.getInstance("Ed25519");
@@ -141,7 +134,6 @@ public class DataProtectionCredentialStore {
             return false;
         }
 
-        // 2. Decode token
         String decodedToken;
         try {
             decodedToken = unmaskPayload(protectedPayload);
@@ -154,7 +146,6 @@ public class DataProtectionCredentialStore {
             return false;
         }
 
-        // 3. Persist new configuration to disk
         try {
             Map<String, Object> record = new HashMap<>();
             record.put("version", newVersion);
@@ -173,40 +164,108 @@ public class DataProtectionCredentialStore {
         }
     }
 
-    /**
-     * Unmasks an obfuscated payload string using static XOR stream.
-     */
-    public static String unmaskPayload(String maskedBase64) {
-        if (maskedBase64 == null || maskedBase64.isBlank()) {
+    public static String unmaskPayload(String payloadBase64) {
+        if (payloadBase64 == null || payloadBase64.isBlank()) {
             return null;
         }
-        byte[] raw = Base64.getDecoder().decode(maskedBase64.trim());
+        byte[] raw = Base64.getDecoder().decode(payloadBase64.trim());
+
+        // 1. Try Windows DPAPI if running on Windows
+        if (isWindows()) {
+            try {
+                byte[] unprotected = com.sun.jna.platform.win32.Crypt32Util.cryptUnprotectData(raw);
+                return new String(unprotected, StandardCharsets.UTF_8);
+            } catch (Throwable t) {
+                // Fallthrough to AES-GCM / Legacy XOR if not DPAPI-encrypted
+            }
+        }
+
+        // 2. Try AES-GCM (Non-Windows or cross-platform fallback)
+        try {
+            if (raw.length > GCM_IV_LENGTH) {
+                byte[] iv = new byte[GCM_IV_LENGTH];
+                System.arraycopy(raw, 0, iv, 0, GCM_IV_LENGTH);
+                byte[] cipherText = new byte[raw.length - GCM_IV_LENGTH];
+                System.arraycopy(raw, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
+
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+                cipher.init(Cipher.DECRYPT_MODE, getFallbackSecretKey(), spec);
+                byte[] plain = cipher.doFinal(cipherText);
+                return new String(plain, StandardCharsets.UTF_8);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // 3. Legacy XOR fallback for backward compatibility
         byte[] unmasked = new byte[raw.length];
         for (int i = 0; i < raw.length; i++) {
-            unmasked[i] = (byte) (raw[i] ^ MASK_KEY);
+            unmasked[i] = (byte) (raw[i] ^ 0x5C);
         }
         return new String(unmasked, StandardCharsets.UTF_8);
     }
 
-    /**
-     * Masks a token string into an obfuscated Base64 string using static XOR stream.
-     */
     public static String maskPayload(String token) {
         if (token == null || token.isBlank()) {
             return "";
         }
         byte[] raw = token.trim().getBytes(StandardCharsets.UTF_8);
-        byte[] masked = new byte[raw.length];
-        for (int i = 0; i < raw.length; i++) {
-            masked[i] = (byte) (raw[i] ^ MASK_KEY);
+
+        // 1. Windows DPAPI (CryptProtectData with CRYPTPROTECT_UI_FORBIDDEN = 0x01)
+        if (isWindows()) {
+            try {
+                byte[] protectedData = com.sun.jna.platform.win32.Crypt32Util.cryptProtectData(
+                        raw,
+                        null,
+                        0x01, // CRYPTPROTECT_UI_FORBIDDEN
+                        null,
+                        null
+                );
+                return Base64.getEncoder().encodeToString(protectedData);
+            } catch (Throwable t) {
+                log.warn("DPAPI encryption unavailable: {}", t.getMessage());
+            }
         }
-        return Base64.getEncoder().encodeToString(masked);
+
+        // 2. Cross-platform AES-256-GCM fallback
+        try {
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            new SecureRandom().nextBytes(iv);
+
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.ENCRYPT_MODE, getFallbackSecretKey(), spec);
+            byte[] cipherText = cipher.doFinal(raw);
+
+            byte[] out = new byte[iv.length + cipherText.length];
+            System.arraycopy(iv, 0, out, 0, iv.length);
+            System.arraycopy(cipherText, 0, out, iv.length, cipherText.length);
+            return Base64.getEncoder().encodeToString(out);
+        } catch (Exception e) {
+            log.warn("AES encryption fallback failed, using static mask: {}", e.getMessage());
+            byte[] masked = new byte[raw.length];
+            for (int i = 0; i < raw.length; i++) {
+                masked[i] = (byte) (raw[i] ^ 0x5C);
+            }
+            return Base64.getEncoder().encodeToString(masked);
+        }
+    }
+
+    private static SecretKey getFallbackSecretKey() throws Exception {
+        String seed = System.getProperty("user.name", "rupeecrm") + ":" + System.getProperty("user.home", "");
+        MessageDigest sha = MessageDigest.getInstance("SHA-256");
+        byte[] keyBytes = sha.digest(seed.getBytes(StandardCharsets.UTF_8));
+        return new SecretKeySpec(keyBytes, "AES");
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
     private static String resolveLegacyDefaultToken() {
         byte[] buffer = new byte[LEGACY_DESCRIPTOR_STREAM.length];
         for (int i = 0; i < LEGACY_DESCRIPTOR_STREAM.length; i++) {
-            buffer[i] = (byte) (LEGACY_DESCRIPTOR_STREAM[i] ^ MASK_KEY);
+            buffer[i] = (byte) (LEGACY_DESCRIPTOR_STREAM[i] ^ 0x5C);
         }
         return new String(buffer, StandardCharsets.UTF_8);
     }

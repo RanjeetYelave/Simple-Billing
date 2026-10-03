@@ -31,16 +31,10 @@ public final class LicensingConfig {
     }
 
     /**
-     * Resolves the local application storage directory (~/.rupeecrm).
-     * Creates the directory if it does not already exist.
+     * Resolves the authoritative application data storage directory (%LOCALAPPDATA%\RupeeCRM\data on Windows).
      */
     public static File getStorageDirectory() {
-        String userHome = System.getProperty("user.home");
-        File dir = new File(userHome, APP_DIR_NAME);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        return dir;
+        return com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
     }
 
     public static String getBranch() {

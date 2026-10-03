@@ -1,26 +1,24 @@
 package com.billing.simple.billsoft.util;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Standardized runtime application data directory resolver across macOS, Windows, and Linux.
- * Dynamic user home resolution:
- *   - macOS:   ~/Library/Application Support/RupeeCRM
- *   - Windows: %APPDATA%\SimpleBilling (or ~/.simplebilling)
- *   - Linux:   ~/.rupeecrm
+ * Authoritative runtime data directory resolver for RupeeCRM.
+ * 
+ * Standard Windows Layout:
+ *   - Base Directory:    %LOCALAPPDATA%\RupeeCRM
+ *   - Data Directory:    %LOCALAPPDATA%\RupeeCRM\data  (contains database.mv.db, mid.dat, license.lic, settings.json)
+ *   - Backups Directory: %LOCALAPPDATA%\RupeeCRM\backups (contains automated snapshots)
+ *   - Logs Directory:    %LOCALAPPDATA%\RupeeCRM\logs (contains supervisor and server logs)
+ *   - Staging Directory: %LOCALAPPDATA%\RupeeCRM\staging (contains verified download artifacts)
  *
- * Implements safe, idempotent one-time legacy migration from SimpleBilling to RupeeCRM on macOS.
- * Only migrates if the target database does NOT exist and the legacy database DOES exist.
- * Never overwrites existing target customer data.
+ * macOS Layout:
+ *   - ~/Library/Application Support/RupeeCRM/data
+ *
+ * Linux Layout:
+ *   - ~/.rupeecrm/data
  */
 public final class DataDirectoryResolver {
 
@@ -29,6 +27,70 @@ public final class DataDirectoryResolver {
     private DataDirectoryResolver() {
     }
 
+    /**
+     * Resolves the top-level persistent base directory (%LOCALAPPDATA%\RupeeCRM on Windows).
+     */
+    public static File resolveBaseDirectory() {
+        String custom = System.getProperty("RUPEECRM_BASE_DIR");
+        if (custom == null || custom.trim().isEmpty()) {
+            custom = System.getenv("RUPEECRM_BASE_DIR");
+        }
+
+        if (custom != null && !custom.trim().isEmpty()) {
+            File dir = new File(custom.trim());
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+            return dir;
+        }
+
+        // If custom data dir is set but base dir is not, derive base directory to maintain isolation
+        String customData = System.getProperty("RUPEECRM_DATA_DIR");
+        if (customData == null || customData.trim().isEmpty()) {
+            customData = System.getenv("RUPEECRM_DATA_DIR");
+        }
+        if (customData == null || customData.trim().isEmpty()) {
+            customData = System.getProperty("BILLSOFT_DATA_DIR");
+        }
+        if (customData == null || customData.trim().isEmpty()) {
+            customData = System.getenv("BILLSOFT_DATA_DIR");
+        }
+        if (customData != null && !customData.trim().isEmpty()) {
+            File dataDir = new File(customData.trim());
+            File baseDir = dataDir.getName().equalsIgnoreCase("data") && dataDir.getParentFile() != null
+                    ? dataDir.getParentFile()
+                    : dataDir;
+            if (!baseDir.exists()) {
+                baseDir.mkdirs();
+            }
+            return baseDir;
+        }
+
+        String os = System.getProperty("os.name").toLowerCase();
+        File baseDir;
+
+        if (os.contains("win")) {
+            String localAppData = System.getenv("LOCALAPPDATA");
+            if (localAppData != null && !localAppData.isEmpty()) {
+                baseDir = new File(localAppData, "RupeeCRM");
+            } else {
+                baseDir = new File(System.getProperty("user.home"), ".rupeecrm");
+            }
+        } else if (os.contains("mac")) {
+            baseDir = new File(System.getProperty("user.home"), "Library/Application Support/RupeeCRM");
+        } else {
+            baseDir = new File(System.getProperty("user.home"), ".rupeecrm");
+        }
+
+        if (!baseDir.exists()) {
+            baseDir.mkdirs();
+        }
+        return baseDir;
+    }
+
+    /**
+     * Resolves the persistent customer data directory (%LOCALAPPDATA%\RupeeCRM\data on Windows).
+     */
     public static File resolveDataDirectory() {
         String custom = System.getProperty("RUPEECRM_DATA_DIR");
         if (custom == null || custom.trim().isEmpty()) {
@@ -49,77 +111,51 @@ public final class DataDirectoryResolver {
             return dir;
         }
 
-        String os = System.getProperty("os.name").toLowerCase();
-        File targetDir;
-        File legacyDir = null;
-
-        if (os.contains("mac")) {
-            targetDir = new File(System.getProperty("user.home"), "Library/Application Support/RupeeCRM");
-            legacyDir = new File(System.getProperty("user.home"), "Library/Application Support/SimpleBilling");
-        } else if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                targetDir = new File(appData, "SimpleBilling");
-            } else {
-                targetDir = new File(System.getProperty("user.home"), ".simplebilling");
-            }
-        } else {
-            targetDir = new File(System.getProperty("user.home"), ".rupeecrm");
-            legacyDir = new File(System.getProperty("user.home"), ".simplebilling");
+        File baseDir = resolveBaseDirectory();
+        File dataDir = new File(baseDir, "data");
+        if (!dataDir.exists()) {
+            dataDir.mkdirs();
         }
-
-        if (!targetDir.exists()) {
-            targetDir.mkdirs();
-        }
-
-        // Safe One-Time Migration: Only if target database doesn't exist and legacy database DOES exist
-        if (legacyDir != null && legacyDir.exists()) {
-            migrateLegacyDataSafely(legacyDir, targetDir);
-        }
-
-        return targetDir;
+        return dataDir;
     }
 
     public static String resolveDataDirectoryPath() {
         return resolveDataDirectory().getAbsolutePath();
     }
 
-    private static void migrateLegacyDataSafely(File legacyDir, File targetDir) {
-        File targetDb = new File(targetDir, "database.mv.db");
-        File legacyDb = new File(legacyDir, "database.mv.db");
-
-        if (!targetDb.exists() && legacyDb.exists()) {
-            log.info("Detected legacy database at {}. Performing safe one-time migration to {}", legacyDir.getAbsolutePath(), targetDir.getAbsolutePath());
-            try {
-                Path sourcePath = legacyDir.toPath();
-                Path targetPath = targetDir.toPath();
-
-                Files.walkFileTree(sourcePath, new SimpleFileVisitor<Path>() {
-                    @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                        Path rel = sourcePath.relativize(dir);
-                        Path dest = targetPath.resolve(rel.toString());
-                        if (!Files.exists(dest)) {
-                            Files.createDirectories(dest);
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                        Path rel = sourcePath.relativize(file);
-                        Path dest = targetPath.resolve(rel.toString());
-                        // Strict rule: never overwrite any file that already exists in target
-                        if (!Files.exists(dest)) {
-                            Files.copy(file, dest, StandardCopyOption.COPY_ATTRIBUTES);
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-                log.info("Legacy data migration completed successfully.");
-            } catch (Exception e) {
-                log.warn("Non-fatal note: Legacy data migration encountered an issue: {}", e.getMessage());
-            }
+    /**
+     * Resolves the persistent backups directory (%LOCALAPPDATA%\RupeeCRM\backups).
+     */
+    public static File resolveBackupsDirectory() {
+        File baseDir = resolveBaseDirectory();
+        File backupsDir = new File(baseDir, "backups");
+        if (!backupsDir.exists()) {
+            backupsDir.mkdirs();
         }
+        return backupsDir;
+    }
+
+    /**
+     * Resolves the logs directory (%LOCALAPPDATA%\RupeeCRM\logs).
+     */
+    public static File resolveLogsDirectory() {
+        File baseDir = resolveBaseDirectory();
+        File logsDir = new File(baseDir, "logs");
+        if (!logsDir.exists()) {
+            logsDir.mkdirs();
+        }
+        return logsDir;
+    }
+
+    /**
+     * Resolves the atomic staging directory (%LOCALAPPDATA%\RupeeCRM\staging).
+     */
+    public static File resolveStagingDirectory() {
+        File baseDir = resolveBaseDirectory();
+        File stagingDir = new File(baseDir, "staging");
+        if (!stagingDir.exists()) {
+            stagingDir.mkdirs();
+        }
+        return stagingDir;
     }
 }

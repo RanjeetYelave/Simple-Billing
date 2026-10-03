@@ -5,8 +5,6 @@
 $ErrorActionPreference = "Stop"
 
 $scripts = @(
-    "tools/install-windows.ps1",
-    "tools/uninstall-windows.ps1",
     "tools/validate-windows-lifecycle.ps1"
 )
 

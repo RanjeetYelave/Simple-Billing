@@ -1,0 +1,15 @@
+{
+  "channel": "production",
+  "repository": {
+    "owner": "RanjeetYelave",
+    "name": "Simple-Billing"
+  },
+  "endpoints": {
+    "manifestUrl": "https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/releases/manifest.json",
+    "fallbackManifestUrl": "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases/latest"
+  },
+  "security": {
+    "algorithm": "Ed25519",
+    "publicKey": "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo="
+  }
+}

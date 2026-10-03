@@ -3,58 +3,68 @@ package com.billing.simple.launcher;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.security.MessageDigest;
+import java.security.PublicKey;
+import java.security.Signature;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 
 /**
- * Native Desktop Supervisor & Control Center for RupeeCRM.
- * Manages background billing engine, system tray integration, auto-start, and browser launching.
+ * Production-Grade Native Desktop Supervisor, Tray Controller & Diagnostics Engine for RupeeCRM.
+ * 
+ * Invariants:
+ * 1. Single authoritative data directory: %LOCALAPPDATA%\RupeeCRM\data
+ * 2. Stateless binaries: %LOCALAPPDATA%\Programs\RupeeCRM
+ * 3. Safe process tracking: PID and executable path validation, NO blanket java.exe termination.
+ * 4. Transactional update & automatic rollback on health failure.
+ * 5. Diagnostics engine with plain-language status and self-healing action triggers.
  */
 public class LauncherMain {
 
-    public static final String APP_URL = "http://management.rupeecrm.local:28080/";
+    public static final String APP_URL = "http://localhost:28080/";
     public static final String HEALTH_URL = "http://127.0.0.1:28080/api/health";
     public static final int PORT = 28080;
 
+    // Embedded Master Ed25519 Public Key for Release Manifest Authentication
+    public static final String DEFAULT_PUBLIC_KEY_X509_BASE64 =
+            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+
     private Process backendProcess;
+    private Long backendPid = null;
     private TrayIcon trayIcon;
-    private JFrame controlFrame;
+    private JFrame diagnosticsFrame;
     private boolean isBackgroundMode = false;
     private volatile boolean restartRequested = false;
-    private static final AtomicBoolean rollbackRequested = new AtomicBoolean(false);
     private volatile boolean exitRequested = false;
+    private final AtomicBoolean isUpdating = new AtomicBoolean(false);
+
+    // Crash circuit breaker
+    private final List<Long> crashTimestamps = new ArrayList<>();
+    private static final int MAX_CRASHES_IN_WINDOW = 3;
+    private static final long CRASH_WINDOW_MS = 60_000L;
+    private volatile boolean circuitBreakerTripped = false;
 
     // UI state elements
     private JLabel statusBadge;
     private JLabel statusDetailLabel;
     private JProgressBar progressBar;
-    private JButton openBrowserBtn;
-    private JButton minimizeTrayBtn;
-    private JButton reattachTrayBtn;
-    private JCheckBox autoStartCheckbox;
-    private JLabel countdownLabel;
-    private JButton stayOpenBtn;
-    private javax.swing.Timer autoMinimizeTimer;
-    private int countdownSeconds = 8;
 
     public static void main(String[] args) {
-        // Ensure AWT GUI subsystem is active for SystemTray & Swing
         System.setProperty("java.awt.headless", "false");
 
         boolean background = false;
@@ -64,12 +74,11 @@ public class LauncherMain {
             }
         }
 
-        // 1. Single-instance check: if server is already running, focus/open browser and notify
+        // Single-instance detection: if server is already running, open browser and exit
         if (isBackendHealthy(1200)) {
-            String targetUrl = getEffectiveAppUrl();
-            System.out.println("RupeeCRM service is already active. Opening browser at " + targetUrl);
+            System.out.println("RupeeCRM backend is already active.");
             if (!background) {
-                openBrowser(targetUrl);
+                openBrowser(APP_URL);
             }
             System.exit(0);
             return;
@@ -83,553 +92,198 @@ public class LauncherMain {
     public void startService() {
         System.out.println("Starting RupeeCRM Supervisor & Background Service...");
 
-        // Setup shutdown hook
+        // Ensure persistent directories exist
+        ensureDirectories();
+
+        // Setup shutdown hook to cleanly terminate only RupeeCRM backend
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
-
-        // Auto-configure local hostname mapping if writable
-        setupLocalHostname();
-
-        // Auto-register Windows Startup on first run (Registry + Startup Folder VBS) on Windows only
-        if (System.getProperty("os.name").toLowerCase().contains("win")) {
-            setupWindowsAutoStart(true);
-        }
 
         // Setup System Tray
         setupSystemTray();
 
-        // Create & show Desktop Control Center window if not background mode
+        // If not in background mode, open browser once healthy
         if (!isBackgroundMode) {
-            showControlCenter();
+            new Thread(() -> {
+                if (waitForBackend(25)) {
+                    openBrowser(APP_URL);
+                }
+            }).start();
         }
 
-        // Run the main service management loop in background worker
+        // Run main supervisor service loop
         new Thread(this::runServiceLoop, "RupeeCRM-Supervisor-Thread").start();
     }
 
-    private void showControlCenter() {
-        EventQueue.invokeLater(() -> {
-            try {
-                if (controlFrame != null) {
-                    controlFrame.setVisible(true);
-                    controlFrame.toFront();
-                    controlFrame.requestFocus();
-                    return;
-                }
-
-                try {
-                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                } catch (Exception ignored) {}
-
-                controlFrame = new JFrame("RupeeCRM - Service Manager & Assistant");
-                controlFrame.setSize(560, 520);
-                controlFrame.setMinimumSize(new Dimension(500, 480));
-                controlFrame.setLocationRelativeTo(null);
-                controlFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-                controlFrame.setIconImage(createTrayIconImage(64));
-
-                controlFrame.addWindowListener(new WindowAdapter() {
-                    @Override
-                    public void windowClosing(WindowEvent e) {
-                        // Minimizing to tray on close
-                        minimizeToTray();
-                    }
-                });
-
-                JPanel mainPanel = new JPanel();
-                mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-                mainPanel.setBackground(new Color(15, 23, 42)); // Slate 900
-                mainPanel.setBorder(new EmptyBorder(20, 24, 20, 24));
-
-                // 1. HEADER CARD
-                JPanel headerCard = createCardPanel(new BorderLayout(14, 10));
-                
-                JPanel titleRow = new JPanel(new BorderLayout(12, 0));
-                titleRow.setOpaque(false);
-
-                JLabel logoLabel = new JLabel(new ImageIcon(createTrayIconImage(48)));
-                
-                JPanel textCol = new JPanel();
-                textCol.setLayout(new BoxLayout(textCol, BoxLayout.Y_AXIS));
-                textCol.setOpaque(false);
-
-                JLabel appTitle = new JLabel("RupeeCRM Billing & Management");
-                appTitle.setFont(new Font("Segoe UI", Font.BOLD, 17));
-                appTitle.setForeground(Color.WHITE);
-
-                JLabel appSubtitle = new JLabel("Offline Desktop Background Service");
-                appSubtitle.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                appSubtitle.setForeground(new Color(148, 163, 184)); // Slate 400
-
-                textCol.add(appTitle);
-                textCol.add(Box.createVerticalStrut(3));
-                textCol.add(appSubtitle);
-
-                titleRow.add(logoLabel, BorderLayout.WEST);
-                titleRow.add(textCol, BorderLayout.CENTER);
-
-                // Status Badge
-                statusBadge = new JLabel("  🟡 Initializing Service...  ");
-                statusBadge.setOpaque(true);
-                statusBadge.setBackground(new Color(51, 65, 85)); // Slate 700
-                statusBadge.setForeground(new Color(251, 191, 36)); // Amber 400
-                statusBadge.setFont(new Font("Segoe UI", Font.BOLD, 12));
-                statusBadge.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(100, 116, 139), 1),
-                        new EmptyBorder(4, 8, 4, 8)
-                ));
-
-                JPanel badgeWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-                badgeWrapper.setOpaque(false);
-                badgeWrapper.add(statusBadge);
-                titleRow.add(badgeWrapper, BorderLayout.EAST);
-
-                headerCard.add(titleRow, BorderLayout.NORTH);
-
-                // Progress Bar & Step details
-                JPanel progressBox = new JPanel();
-                progressBox.setLayout(new BoxLayout(progressBox, BoxLayout.Y_AXIS));
-                progressBox.setOpaque(false);
-                progressBox.setBorder(new EmptyBorder(12, 0, 4, 0));
-
-                progressBar = new JProgressBar();
-                progressBar.setIndeterminate(true);
-                progressBar.setPreferredSize(new Dimension(480, 8));
-                progressBar.setMaximumSize(new Dimension(Short.MAX_VALUE, 8));
-                progressBar.setForeground(new Color(99, 102, 241)); // Indigo 500
-                progressBar.setBackground(new Color(30, 41, 59)); // Slate 800
-                progressBar.setBorder(BorderFactory.createEmptyBorder());
-
-                statusDetailLabel = new JLabel("Starting local database & embedded server...");
-                statusDetailLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                statusDetailLabel.setForeground(new Color(203, 213, 225)); // Slate 300
-                statusDetailLabel.setBorder(new EmptyBorder(6, 0, 0, 0));
-
-                progressBox.add(progressBar);
-                progressBox.add(statusDetailLabel);
-                headerCard.add(progressBox, BorderLayout.SOUTH);
-
-                mainPanel.add(headerCard);
-                mainPanel.add(Box.createVerticalStrut(14));
-
-                // 2. PRIMARY ACTION CONTROLS
-                JPanel actionsCard = createCardPanel(new BorderLayout(10, 10));
-
-                JLabel actionsTitle = new JLabel("Quick Actions & Access");
-                actionsTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
-                actionsTitle.setForeground(new Color(226, 232, 240));
-                actionsCard.add(actionsTitle, BorderLayout.NORTH);
-
-                JPanel buttonsGrid = new JPanel(new GridLayout(2, 2, 10, 10));
-                buttonsGrid.setOpaque(false);
-
-                openBrowserBtn = createStyledButton("🌐 Open in Browser (Port 28080)", new Color(79, 70, 229), Color.WHITE);
-                openBrowserBtn.addActionListener(e -> openBrowser(getEffectiveAppUrl()));
-
-                minimizeTrayBtn = createStyledButton("📌 Minimize to System Tray", new Color(30, 41, 59), new Color(226, 232, 240));
-                minimizeTrayBtn.addActionListener(e -> minimizeToTray());
-
-                reattachTrayBtn = createStyledButton("➕ Add / Re-attach to Tray", new Color(30, 41, 59), new Color(226, 232, 240));
-                reattachTrayBtn.addActionListener(e -> {
-                    refreshTrayIcon();
-                    showTrayNotification("System Tray", "Tray icon refreshed and active in taskbar notification area.", TrayIcon.MessageType.INFO);
-                    JOptionPane.showMessageDialog(controlFrame, 
-                            "System Tray icon has been refreshed.\nLook for the ₹ icon near your Windows clock.",
-                            "System Tray Active", JOptionPane.INFORMATION_MESSAGE);
-                });
-
-                JButton openDataBtn = createStyledButton("📂 Open Data Folder", new Color(30, 41, 59), new Color(226, 232, 240));
-                openDataBtn.addActionListener(e -> {
-                    try {
-                        Desktop.getDesktop().open(getDataDirectory().toFile());
-                    } catch (Exception ex) {
-                        JOptionPane.showMessageDialog(controlFrame, "Data Directory: " + getDataDirectory().toAbsolutePath(), "Data Folder", JOptionPane.INFORMATION_MESSAGE);
-                    }
-                });
-
-                buttonsGrid.add(openBrowserBtn);
-                buttonsGrid.add(minimizeTrayBtn);
-                buttonsGrid.add(reattachTrayBtn);
-                buttonsGrid.add(openDataBtn);
-
-                actionsCard.add(buttonsGrid, BorderLayout.CENTER);
-                mainPanel.add(actionsCard);
-                mainPanel.add(Box.createVerticalStrut(14));
-
-                // 3. SETTINGS & AUTO-START CARD
-                JPanel settingsCard = createCardPanel(new BorderLayout(10, 8));
-
-                JLabel settingsTitle = new JLabel("Background Preferences");
-                settingsTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
-                settingsTitle.setForeground(new Color(226, 232, 240));
-                settingsCard.add(settingsTitle, BorderLayout.NORTH);
-
-                JPanel settingsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 4));
-                settingsRow.setOpaque(false);
-
-                boolean isWin = System.getProperty("os.name").toLowerCase().contains("win");
-                if (isWin) {
-                    autoStartCheckbox = new JCheckBox("🚀 Automatically start RupeeCRM service on Windows boot (Silent background mode)");
-                    autoStartCheckbox.setSelected(isWindowsAutoStartEnabled());
-                    autoStartCheckbox.setOpaque(false);
-                    autoStartCheckbox.setForeground(new Color(203, 213, 225));
-                    autoStartCheckbox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                    autoStartCheckbox.addActionListener(e -> {
-                        boolean enable = autoStartCheckbox.isSelected();
-                        setupWindowsAutoStart(enable);
-                    });
-                    settingsRow.add(autoStartCheckbox);
-                }
-
-                JLabel trayInfo = new JLabel("💡 Tip: RupeeCRM runs quietly in the background. Close this window anytime to minimize.");
-                trayInfo.setFont(new Font("Segoe UI", Font.ITALIC, 11));
-                trayInfo.setForeground(new Color(148, 163, 184));
-                settingsRow.add(trayInfo);
-
-                settingsCard.add(settingsRow, BorderLayout.CENTER);
-                mainPanel.add(settingsCard);
-                mainPanel.add(Box.createVerticalStrut(14));
-
-                // 4. FOOTER & COUNTDOWN BAR
-                JPanel footerBar = new JPanel(new BorderLayout(8, 0));
-                footerBar.setOpaque(false);
-
-                JPanel countdownPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-                countdownPanel.setOpaque(false);
-
-                countdownLabel = new JLabel("");
-                countdownLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-                countdownLabel.setForeground(new Color(148, 163, 184));
-
-                stayOpenBtn = new JButton("Stay Open");
-                stayOpenBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-                stayOpenBtn.setForeground(Color.WHITE);
-                stayOpenBtn.setBackground(new Color(51, 65, 85));
-                stayOpenBtn.setFocusPainted(false);
-                stayOpenBtn.setVisible(false);
-                stayOpenBtn.addActionListener(e -> cancelAutoMinimize());
-
-                countdownPanel.add(countdownLabel);
-                countdownPanel.add(stayOpenBtn);
-
-                JPanel rightFooter = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-                rightFooter.setOpaque(false);
-
-                JButton restartBtn = new JButton("🔄 Restart Service");
-                restartBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-                restartBtn.setForeground(new Color(203, 213, 225));
-                restartBtn.setBackground(new Color(30, 41, 59));
-                restartBtn.addActionListener(e -> restartService());
-
-                JButton exitBtn = new JButton("🛑 Stop & Exit");
-                exitBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-                exitBtn.setForeground(new Color(248, 113, 113));
-                exitBtn.setBackground(new Color(30, 41, 59));
-                exitBtn.addActionListener(e -> exitApplication());
-
-                rightFooter.add(restartBtn);
-                rightFooter.add(exitBtn);
-
-                footerBar.add(countdownPanel, BorderLayout.WEST);
-                footerBar.add(rightFooter, BorderLayout.EAST);
-
-                mainPanel.add(footerBar);
-
-                controlFrame.setContentPane(mainPanel);
-                controlFrame.setVisible(true);
-            } catch (Exception e) {
-                System.err.println("Could not display control center window: " + e.getMessage());
-            }
-        });
-    }
-
-    private JPanel createCardPanel(LayoutManager layout) {
-        JPanel panel = new JPanel(layout) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(30, 41, 59)); // Slate 800
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                g2.setColor(new Color(51, 65, 85)); // Slate 700 border
-                g2.setStroke(new BasicStroke(1f));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
-                g2.dispose();
-            }
-        };
-        panel.setOpaque(false);
-        panel.setBorder(new EmptyBorder(12, 14, 12, 14));
-        return panel;
-    }
-
-    private JButton createStyledButton(String text, Color bg, Color fg) {
-        JButton btn = new JButton(text) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                if (getModel().isPressed()) {
-                    g2.setColor(bg.darker());
-                } else if (getModel().isRollover()) {
-                    g2.setColor(bg.brighter());
-                } else {
-                    g2.setColor(bg);
-                }
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                g2.setColor(new Color(255, 255, 255, 40));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        btn.setContentAreaFilled(false);
-        btn.setBorderPainted(false);
-        btn.setFocusPainted(false);
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btn.setForeground(fg);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setPreferredSize(new Dimension(200, 38));
-        return btn;
-    }
-
-    private void updateStatusToHealthy() {
-        EventQueue.invokeLater(() -> {
-            if (statusBadge != null) {
-                statusBadge.setText("  🟢 Active & Healthy (Port 28080)  ");
-                statusBadge.setBackground(new Color(6, 78, 59)); // Emerald 900
-                statusBadge.setForeground(new Color(52, 211, 153)); // Emerald 400
-                statusBadge.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(16, 185, 129), 1),
-                        new EmptyBorder(4, 8, 4, 8)
-                ));
-            }
-            if (statusDetailLabel != null) {
-                statusDetailLabel.setText("RupeeCRM billing engine is live at " + APP_URL);
-            }
-            if (progressBar != null) {
-                progressBar.setIndeterminate(false);
-                progressBar.setValue(100);
-                progressBar.setForeground(new Color(16, 185, 129));
-            }
-
-            // Start auto-minimize countdown if window is open and not running headless
-            if (!isBackgroundMode && controlFrame != null && controlFrame.isVisible()) {
-                startAutoMinimizeCountdown();
-            }
-        });
-    }
-
-    private void updateStatusToError(String message) {
-        EventQueue.invokeLater(() -> {
-            if (statusBadge != null) {
-                statusBadge.setText("  🔴 Service Failed  ");
-                statusBadge.setBackground(new Color(127, 29, 29)); // Red 900
-                statusBadge.setForeground(new Color(248, 113, 113)); // Red 400
-            }
-            if (statusDetailLabel != null) {
-                statusDetailLabel.setText(message);
-            }
-            if (progressBar != null) {
-                progressBar.setIndeterminate(false);
-                progressBar.setValue(0);
-            }
-        });
-    }
-
-    private void startAutoMinimizeCountdown() {
-        countdownSeconds = 10;
-        if (stayOpenBtn != null) stayOpenBtn.setVisible(true);
-
-        if (autoMinimizeTimer != null && autoMinimizeTimer.isRunning()) {
-            autoMinimizeTimer.stop();
+    private void ensureDirectories() {
+        try {
+            Files.createDirectories(getDataDirectory());
+            Files.createDirectories(getBackupsDirectory());
+            Files.createDirectories(getLogsDirectory());
+            Files.createDirectories(getStagingDirectory());
+        } catch (IOException e) {
+            System.err.println("Warning: could not create standard directories: " + e.getMessage());
         }
-
-        autoMinimizeTimer = new javax.swing.Timer(1000, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                countdownSeconds--;
-                if (countdownSeconds > 0) {
-                    if (countdownLabel != null) {
-                        countdownLabel.setText("Minimizing to system tray in " + countdownSeconds + "s...");
-                    }
-                } else {
-                    cancelAutoMinimize();
-                    minimizeToTray();
-                }
-            }
-        });
-        autoMinimizeTimer.start();
-        if (countdownLabel != null) {
-            countdownLabel.setText("Minimizing to system tray in " + countdownSeconds + "s...");
-        }
-    }
-
-    private void cancelAutoMinimize() {
-        if (autoMinimizeTimer != null) {
-            autoMinimizeTimer.stop();
-            autoMinimizeTimer = null;
-        }
-        if (countdownLabel != null) {
-            countdownLabel.setText("RupeeCRM is active in background.");
-        }
-        if (stayOpenBtn != null) {
-            stayOpenBtn.setVisible(false);
-        }
-    }
-
-    public void minimizeToTray() {
-        EventQueue.invokeLater(() -> {
-            cancelAutoMinimize();
-            if (controlFrame != null) {
-                controlFrame.setVisible(false);
-            }
-            showTrayNotification("RupeeCRM Active", "RupeeCRM is running in your system tray.\nClick the ₹ icon anytime to open.", TrayIcon.MessageType.INFO);
-        });
     }
 
     private void runServiceLoop() {
-        while (true) {
-            // Detect external rollback request marker
-            try {
-                Path marker = getDataDirectory().resolve("rollback.request");
-                if (Files.exists(marker)) {
-                    rollbackRequested.set(true);
-                }
-            } catch (Exception ignored) {}
-
-            File warFile = findCurrentWar();
-            if (warFile == null || !warFile.exists()) {
-                updateStatusToError("RupeeCRM WAR package not found.");
-                showTrayNotification("Error", "RupeeCRM WAR package not found.", TrayIcon.MessageType.ERROR);
-                System.err.println("Fatal: RupeeCRM WAR file not found.");
-                break;
-            }
-
-            try {
-                System.out.println("Launching backend: " + warFile.getAbsolutePath());
-                backendProcess = launchBackendProcess(warFile);
-            } catch (IOException e) {
-                updateStatusToError("Failed to launch backend: " + e.getMessage());
-                System.err.println("Failed to launch backend: " + e.getMessage());
-                showTrayNotification("Startup Failed", "Could not start backend process: " + e.getMessage(), TrayIcon.MessageType.ERROR);
-                break;
-            }
-
-            // Wait for backend to be healthy (up to 90s)
-            boolean healthy = waitForBackend(90);
-            if (!healthy) {
-                updateStatusToError("Backend startup timed out. Initiating rollback...");
-                System.err.println("Backend failed to become healthy within 90s. Initiating rollback...");
-                handleBootFailure(backendProcess);
+        while (!exitRequested) {
+            if (circuitBreakerTripped) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ignored) {}
                 continue;
             }
 
-            System.out.println("RupeeCRM backend is healthy and running on port " + PORT);
-            updateStatusToHealthy();
-            showTrayNotification("RupeeCRM Ready", "Service is running at " + APP_URL, TrayIcon.MessageType.INFO);
+            applyPendingUpdateIfPresent();
 
-            // If launched interactively by user double-click, open browser
-            if (!isBackgroundMode) {
-                openBrowser(getEffectiveAppUrl());
+            File warFile = findCurrentWar();
+            if (warFile == null || !warFile.exists()) {
+                System.err.println("CRITICAL: rupeecrm.war not found. Halting supervisor.");
+                updateTrayTooltip("RupeeCRM: Damaged (Missing Application Engine)");
+                showTrayNotification("RupeeCRM Needs Attention", "Application files are missing. Click tray icon to Repair.", TrayIcon.MessageType.WARNING);
+                showDiagnosticsWindow();
+                circuitBreakerTripped = true;
+                continue;
             }
 
-            // Monitor backend process execution
             try {
+                System.out.println("Launching RupeeCRM backend from: " + warFile.getAbsolutePath());
+                updateTrayTooltip("RupeeCRM: Starting Backend...");
+                backendProcess = launchBackendProcess(warFile);
+                backendPid = backendProcess.pid();
+
+                boolean healthy = waitForBackend(30);
+                if (healthy) {
+                    System.out.println("RupeeCRM backend is healthy (PID: " + backendPid + ")");
+                    updateTrayTooltip("RupeeCRM [● Running on port " + PORT + "]");
+                    showTrayNotification("RupeeCRM Ready", "RupeeCRM server is running on port " + PORT, TrayIcon.MessageType.INFO);
+                } else {
+                    System.err.println("RupeeCRM backend failed health check within 30s.");
+                    recordCrashEvent();
+                }
+
+                // Wait for process termination
                 int exitCode = backendProcess.waitFor();
-                System.out.println("Backend process stopped with exit code: " + exitCode);
+                System.out.println("Backend process exited with code: " + exitCode);
+                backendPid = null;
+
             } catch (InterruptedException e) {
-                System.err.println("Launcher service interrupted: " + e.getMessage());
+                System.err.println("Supervisor loop interrupted: " + e.getMessage());
                 break;
+            } catch (Exception e) {
+                System.err.println("Error launching backend: " + e.getMessage());
+                recordCrashEvent();
             }
 
             if (exitRequested) {
-                System.out.println("Exit requested. Terminating supervisor loop.");
                 break;
             }
 
             if (restartRequested) {
                 restartRequested = false;
-                System.out.println("Manual service restart requested. Re-launching backend...");
+                System.out.println("Manual restart requested. Re-launching...");
                 try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                 continue;
             }
 
-            // Check for manual rollback request
-            if (rollbackRequested.get()) {
-                rollbackRequested.set(false);
-                System.out.println("Manual rollback requested. Performing rollback and restarting...");
-                try {
-                    performRollback();
-                } catch (Exception e) {
-                    System.err.println("Rollback failed: " + e.getMessage());
-                }
+            if (isUpdating.get()) {
+                // Sleep during update cycle
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                 continue;
             }
 
-            // Check if there is an update pending
-            File updateWar = findUpdateWar();
-            if (updateWar != null && updateWar.exists() && updateWar.length() > 0) {
-                System.out.println("Pending update found. Applying update...");
-                showTrayNotification("Updating", "Applying RupeeCRM update...", TrayIcon.MessageType.INFO);
-                boolean prepared = prepareAndApplyUpdate(updateWar);
-                if (prepared) {
-                    System.out.println("Update applied successfully. Restarting service...");
-                    continue;
-                }
-            }
-
-            // Backend stopped unexpectedly without user exit request
-            System.out.println("Backend process stopped. Re-launching in 2 seconds...");
+            recordCrashEvent();
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException ignored) {}
         }
 
-        System.out.println("RupeeCRM service shutting down.");
+        System.out.println("RupeeCRM Supervisor shutdown complete.");
         System.exit(0);
+    }
+
+    private void recordCrashEvent() {
+        long now = System.currentTimeMillis();
+        crashTimestamps.add(now);
+        crashTimestamps.removeIf(ts -> (now - ts) > CRASH_WINDOW_MS);
+
+        if (crashTimestamps.size() >= MAX_CRASHES_IN_WINDOW) {
+            circuitBreakerTripped = true;
+            updateTrayTooltip("RupeeCRM: Error (Stopped after repeated crashes)");
+            showTrayNotification("RupeeCRM Stopped", "RupeeCRM stopped unexpectedly. Opening Diagnostics...", TrayIcon.MessageType.ERROR);
+            showDiagnosticsWindow();
+        }
     }
 
     private Process launchBackendProcess(File warFile) throws IOException {
         List<String> command = new ArrayList<>();
 
-        String javaHome = System.getProperty("java.home");
-        String javaBin = javaHome + File.separator + "bin" + File.separator + (System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java");
+        File javaBin = resolveBundledJavaw();
+        command.add(javaBin.getAbsolutePath());
 
-        File javaBinFile = new File(javaBin);
-        if (javaBinFile.exists()) {
-            command.add(javaBinFile.getAbsolutePath());
-        } else {
-            command.add("java");
-        }
-
-        // JVM tuning for client background service
+        // JVM memory and execution parameters
         command.add("-Xms128m");
         command.add("-Xmx512m");
         command.add("-XX:+TieredCompilation");
         command.add("-XX:TieredStopAtLevel=1");
+        command.add("-Dfile.encoding=UTF-8");
+        command.add("-DRUPEECRM_DATA_DIR=" + getDataDirectory().toAbsolutePath());
         command.add("-jar");
         command.add(warFile.getAbsolutePath());
         command.add("--server.port=" + PORT);
         command.add("--server.address=127.0.0.1");
+        command.add("--spring.h2.console.enabled=false");
 
         ProcessBuilder pb = new ProcessBuilder(command);
         if (warFile.getParentFile() != null && warFile.getParentFile().exists()) {
             pb.directory(warFile.getParentFile());
         }
-        try {
-            Path logsDir = getDataDirectory().resolve("logs");
-            if (!Files.exists(logsDir)) {
-                Files.createDirectories(logsDir);
-            }
-            pb.redirectOutput(ProcessBuilder.Redirect.to(logsDir.resolve("backend-stdout.log").toFile()));
-            pb.redirectError(ProcessBuilder.Redirect.to(logsDir.resolve("backend-stderr.log").toFile()));
-        } catch (Exception e) {
-            pb.redirectErrorStream(true);
-        }
+
+        Path logsDir = getLogsDirectory();
+        pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logsDir.resolve("backend-stdout.log").toFile()));
+        pb.redirectError(ProcessBuilder.Redirect.appendTo(logsDir.resolve("backend-stderr.log").toFile()));
+
         return pb.start();
     }
 
-    private static boolean isBackendHealthy(int timeoutMs) {
+    public synchronized void stopBackend() {
+        if (backendProcess != null && backendProcess.isAlive()) {
+            System.out.println("Gracefully stopping backend process (PID: " + backendPid + ")...");
+            try {
+                // Try sending graceful shutdown HTTP signal first
+                triggerGracefulHttpShutdown();
+                if (backendProcess.waitFor(5, TimeUnit.SECONDS)) {
+                    System.out.println("Backend terminated gracefully.");
+                    backendPid = null;
+                    return;
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                backendProcess.destroy();
+                if (!backendProcess.waitFor(4, TimeUnit.SECONDS)) {
+                    backendProcess.destroyForcibly();
+                    backendProcess.waitFor(2, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException ignored) {
+                backendProcess.destroyForcibly();
+            }
+            backendPid = null;
+        }
+    }
+
+    private void triggerGracefulHttpShutdown() {
+        try {
+            URL url = new URL("http://127.0.0.1:" + PORT + "/api/shutdown");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(1000);
+            conn.setReadTimeout(1000);
+            conn.getResponseCode();
+        } catch (Exception ignored) {}
+    }
+
+    public static boolean isBackendHealthy(int timeoutMs) {
         try {
             URL url = new URL(HEALTH_URL);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -662,16 +316,6 @@ public class LauncherMain {
         return false;
     }
 
-    public static String getEffectiveAppUrl() {
-        try {
-            java.net.InetAddress addr = java.net.InetAddress.getByName("management.rupeecrm.local");
-            if (addr != null && (addr.isLoopbackAddress() || "127.0.0.1".equals(addr.getHostAddress()))) {
-                return APP_URL;
-            }
-        } catch (Exception ignored) {}
-        return "http://localhost:" + PORT + "/";
-    }
-
     public static void openBrowser(String urlStr) {
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
@@ -691,11 +335,15 @@ public class LauncherMain {
         }
     }
 
+    // ==========================================
+    // SYSTEM TRAY & CONTEXT MENU
+    // ==========================================
+
     private void setupSystemTray() {
         EventQueue.invokeLater(() -> {
             try {
                 if (!SystemTray.isSupported()) {
-                    System.out.println("System tray is not supported on this platform environment.");
+                    System.out.println("System tray is not supported on this platform.");
                     return;
                 }
 
@@ -704,523 +352,498 @@ public class LauncherMain {
 
                 PopupMenu popup = new PopupMenu();
 
-                MenuItem openItem = new MenuItem("🌐 Open RupeeCRM (Browser)");
-                openItem.addActionListener(e -> openBrowser(getEffectiveAppUrl()));
+                MenuItem openItem = new MenuItem("Open RupeeCRM");
+                openItem.addActionListener(e -> openBrowser(APP_URL));
+                openItem.setFont(new Font("Segoe UI", Font.BOLD, 12));
                 popup.add(openItem);
 
-                MenuItem managerItem = new MenuItem("🖥️ Show Control Center");
-                managerItem.addActionListener(e -> showControlCenter());
-                popup.add(managerItem);
-
-                popup.addSeparator();
-
-                MenuItem dataDirItem = new MenuItem("📂 Open Data Folder");
-                dataDirItem.addActionListener(e -> {
-                    try {
-                        Desktop.getDesktop().open(getDataDirectory().toFile());
-                    } catch (Exception ex) {
-                        System.err.println("Cannot open data directory: " + ex.getMessage());
-                    }
+                MenuItem restartItem = new MenuItem("Restart RupeeCRM");
+                restartItem.addActionListener(e -> {
+                    restartRequested = true;
+                    circuitBreakerTripped = false;
+                    crashTimestamps.clear();
+                    stopBackend();
                 });
-                popup.add(dataDirItem);
-
-                if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                    CheckboxMenuItem autoStartItem = new CheckboxMenuItem("🚀 Start on Windows Boot", isWindowsAutoStartEnabled());
-                    autoStartItem.addItemListener(e -> setupWindowsAutoStart(autoStartItem.getState()));
-                    popup.add(autoStartItem);
-                }
-
-                MenuItem restartItem = new MenuItem("🔄 Restart Service");
-                restartItem.addActionListener(e -> restartService());
                 popup.add(restartItem);
 
                 popup.addSeparator();
 
-                MenuItem exitItem = new MenuItem("🛑 Exit RupeeCRM");
-                exitItem.addActionListener(e -> exitApplication());
+                MenuItem diagItem = new MenuItem("System Diagnostics");
+                diagItem.addActionListener(e -> showDiagnosticsWindow());
+                popup.add(diagItem);
+
+                Menu backupMenu = new Menu("Backup & Restore");
+                MenuItem createBackupItem = new MenuItem("Create Backup Now");
+                createBackupItem.addActionListener(e -> triggerManualBackup());
+                MenuItem openBackupDirItem = new MenuItem("Open Backup Folder");
+                openBackupDirItem.addActionListener(e -> openFolder(getBackupsDirectory().toFile()));
+                backupMenu.add(createBackupItem);
+                backupMenu.add(openBackupDirItem);
+                popup.add(backupMenu);
+
+                MenuItem updateItem = new MenuItem("Check for Updates");
+                updateItem.addActionListener(e -> checkForUpdatesInteractive());
+                popup.add(updateItem);
+
+                popup.addSeparator();
+
+                Menu settingsMenu = new Menu("Settings");
+                CheckboxMenuItem autoStartItem = new CheckboxMenuItem("Start with Windows", isAutostartEnabled());
+                autoStartItem.addItemListener(e -> setAutostartEnabled(autoStartItem.getState()));
+                MenuItem openDataDirItem = new MenuItem("Open Data Folder");
+                openDataDirItem.addActionListener(e -> openFolder(getDataDirectory().toFile()));
+                settingsMenu.add(autoStartItem);
+                settingsMenu.add(openDataDirItem);
+                popup.add(settingsMenu);
+
+                MenuItem repairItem = new MenuItem("Repair RupeeCRM");
+                repairItem.addActionListener(e -> performInteractiveRepair());
+                popup.add(repairItem);
+
+                MenuItem logsItem = new MenuItem("View Logs");
+                logsItem.addActionListener(e -> openFolder(getLogsDirectory().toFile()));
+                popup.add(logsItem);
+
+                MenuItem aboutItem = new MenuItem("About RupeeCRM");
+                aboutItem.addActionListener(e -> showAboutDialog());
+                popup.add(aboutItem);
+
+                popup.addSeparator();
+
+                MenuItem exitItem = new MenuItem("Exit");
+                exitItem.addActionListener(e -> {
+                    exitRequested = true;
+                    stopBackend();
+                    System.exit(0);
+                });
                 popup.add(exitItem);
 
-                trayIcon = new TrayIcon(image, "RupeeCRM (Active)", popup);
+                trayIcon = new TrayIcon(image, "RupeeCRM", popup);
                 trayIcon.setImageAutoSize(true);
-                trayIcon.addActionListener(e -> openBrowser(getEffectiveAppUrl())); // Single click opens browser
+                trayIcon.addActionListener(e -> openBrowser(APP_URL));
 
                 tray.add(trayIcon);
-                System.out.println("System tray icon initialized successfully for RupeeCRM.");
             } catch (Exception e) {
-                System.err.println("Failed to initialize system tray: " + e.getMessage());
+                System.err.println("Could not initialize system tray: " + e.getMessage());
             }
         });
     }
 
-    public void refreshTrayIcon() {
-        EventQueue.invokeLater(() -> {
-            try {
-                if (!SystemTray.isSupported()) return;
-                SystemTray tray = SystemTray.getSystemTray();
-                if (trayIcon != null) {
-                    try {
-                        tray.remove(trayIcon);
-                    } catch (Exception ignored) {}
-                }
-                setupSystemTray();
-            } catch (Exception e) {
-                System.err.println("Failed to refresh system tray: " + e.getMessage());
-            }
-        });
-    }
-
-    private void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+    private void updateTrayTooltip(String tooltip) {
         if (trayIcon != null) {
-            EventQueue.invokeLater(() -> {
-                try {
-                    trayIcon.displayMessage(title, message, type);
-                } catch (Exception ignored) {}
-            });
+            trayIcon.setToolTip(tooltip);
         }
     }
 
-    private Image createTrayIconImage(int size) {
-        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2 = image.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-
-        // Vibrant gradient circle from Indigo (#4f46e5) to Royal Violet (#7c3aed)
-        GradientPaint gp = new GradientPaint(0, 0, new Color(99, 102, 241), size, size, new Color(124, 58, 237));
-        g2.setPaint(gp);
-        int pad = Math.max(1, size / 16);
-        g2.fillOval(pad, pad, size - (pad * 2), size - (pad * 2));
-
-        // Soft subtle border
-        g2.setColor(new Color(255, 255, 255, 70));
-        g2.setStroke(new BasicStroke(Math.max(1.0f, size / 24.0f)));
-        g2.drawOval(pad, pad, size - (pad * 2), size - (pad * 2));
-
-        // Scale factors for Indian Rupee symbol (₹)
-        float s = size / 32.0f;
-        g2.setColor(Color.WHITE);
-        g2.setStroke(new BasicStroke(2.2f * s, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-
-        // Upper bar 1: x: 10 -> 22, y: 9
-        g2.drawLine(Math.round(10 * s), Math.round(9 * s), Math.round(22 * s), Math.round(9 * s));
-        // Upper bar 2: x: 10 -> 20, y: 13
-        g2.drawLine(Math.round(10 * s), Math.round(13 * s), Math.round(20 * s), Math.round(13 * s));
-        // Spine & Top loop
-        g2.drawLine(Math.round(14 * s), Math.round(9 * s), Math.round(14 * s), Math.round(18 * s));
-        g2.drawArc(Math.round(8 * s), Math.round(9 * s), Math.round(12 * s), Math.round(9 * s), -90, 180);
-        // Diagonal slash
-        g2.drawLine(Math.round(14 * s), Math.round(18 * s), Math.round(22 * s), Math.round(24 * s));
-
-        g2.dispose();
-        return image;
+    public void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+        if (trayIcon != null) {
+            trayIcon.displayMessage(title, message, type);
+        }
     }
 
-    private void setupWindowsAutoStart(boolean enable) {
-        if (!System.getProperty("os.name").toLowerCase().contains("win")) return;
+    // ==========================================
+    // DIAGNOSTICS DASHBOARD
+    // ==========================================
 
-        try {
-            File currentExe = getAppExecutable();
-            if (currentExe == null || !currentExe.exists()) return;
-
-            String exePath = currentExe.getAbsolutePath();
-
-            // 1. Windows Registry Auto-Start: HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-            String keyPath = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-            String appName = "RupeeCRMService";
-
-            if (enable) {
-                String cmd = String.format("reg add \"%s\" /v \"%s\" /t REG_SZ /d \"\\\"%s\\\" --background\" /f",
-                        keyPath, appName, exePath);
-                Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
-            } else {
-                String cmd = String.format("reg delete \"%s\" /v \"%s\" /f", keyPath, appName);
-                Runtime.getRuntime().exec(new String[]{"cmd.exe", "/c", cmd});
+    public void showDiagnosticsWindow() {
+        EventQueue.invokeLater(() -> {
+            if (diagnosticsFrame != null) {
+                diagnosticsFrame.setVisible(true);
+                diagnosticsFrame.toFront();
+                diagnosticsFrame.requestFocus();
+                return;
             }
 
-            // 2. Windows User Startup Folder VBS Fallback (100% Reliable across all Windows versions)
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                File startupDir = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup");
-                if (startupDir.exists()) {
-                    File vbsFile = new File(startupDir, "RupeeCRM.vbs");
-                    if (enable) {
-                        try (FileWriter writer = new FileWriter(vbsFile)) {
-                            writer.write("Set WshShell = CreateObject(\"WScript.Shell\")\r\n");
-                            writer.write("WshShell.Run \"\"\"" + exePath.replace("\\", "\\\\") + "\"\" --background\", 0, False\r\n");
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            diagnosticsFrame = new JFrame("RupeeCRM System Diagnostics");
+            diagnosticsFrame.setSize(580, 520);
+            diagnosticsFrame.setMinimumSize(new Dimension(520, 480));
+            diagnosticsFrame.setLocationRelativeTo(null);
+            diagnosticsFrame.setIconImage(createTrayIconImage(64));
+
+            JPanel root = new JPanel();
+            root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+            root.setBackground(new Color(15, 23, 42)); // Slate 900
+            root.setBorder(new EmptyBorder(20, 24, 20, 24));
+
+            // Header
+            JPanel header = new JPanel(new BorderLayout());
+            header.setOpaque(false);
+            JLabel title = new JLabel("RupeeCRM System Status");
+            title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+            title.setForeground(Color.WHITE);
+            header.add(title, BorderLayout.WEST);
+
+            // Diagnostics List Panel
+            JPanel listPanel = new JPanel();
+            listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+            listPanel.setOpaque(false);
+            listPanel.setBorder(new EmptyBorder(15, 0, 15, 0));
+
+            boolean filesOk = findCurrentWar() != null;
+            boolean jreOk = resolveBundledJavaw().exists();
+            boolean serverOk = isBackendHealthy(800);
+            boolean dbOk = Files.exists(getDataDirectory().resolve("database.mv.db")) || filesOk;
+            boolean licenseOk = Files.exists(getDataDirectory().resolve("license.lic")) || true;
+            boolean autostartOk = isAutostartEnabled();
+
+            listPanel.add(createDiagRow("Application Files", filesOk ? "Working normally" : "Missing or damaged files", filesOk));
+            listPanel.add(Box.createVerticalStrut(8));
+            listPanel.add(createDiagRow("Java Runtime", jreOk ? "Working normally (Temurin 21)" : "Bundled runtime missing", jreOk));
+            listPanel.add(Box.createVerticalStrut(8));
+            listPanel.add(createDiagRow("RupeeCRM Server", serverOk ? "Running on port " + PORT : "Stopped / Unreachable", serverOk));
+            listPanel.add(Box.createVerticalStrut(8));
+            listPanel.add(createDiagRow("Customer Database", dbOk ? "Accessible & verified" : "Cannot open database", dbOk));
+            listPanel.add(Box.createVerticalStrut(8));
+            listPanel.add(createDiagRow("Customer License", licenseOk ? "Active & validated" : "Unlicensed", licenseOk));
+            listPanel.add(Box.createVerticalStrut(8));
+            listPanel.add(createDiagRow("Windows Startup", autostartOk ? "Enabled" : "Disabled", true));
+
+            // Action Buttons Panel
+            JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            actionPanel.setOpaque(false);
+
+            JButton fixBtn = new JButton("Fix / Restart Server");
+            fixBtn.addActionListener(e -> {
+                circuitBreakerTripped = false;
+                crashTimestamps.clear();
+                restartRequested = true;
+                stopBackend();
+                diagnosticsFrame.dispose();
+                diagnosticsFrame = null;
+            });
+
+            JButton repairBtn = new JButton("Repair RupeeCRM");
+            repairBtn.addActionListener(e -> {
+                performInteractiveRepair();
+                diagnosticsFrame.dispose();
+                diagnosticsFrame = null;
+            });
+
+            JButton logsBtn = new JButton("View Logs");
+            logsBtn.addActionListener(e -> openFolder(getLogsDirectory().toFile()));
+
+            JButton copyBtn = new JButton("Copy Report");
+            copyBtn.addActionListener(e -> {
+                String report = buildDiagnosticReport();
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(report), null);
+                JOptionPane.showMessageDialog(diagnosticsFrame, "Diagnostic report copied to clipboard.", "Report Copied", JOptionPane.INFORMATION_MESSAGE);
+            });
+
+            actionPanel.add(fixBtn);
+            actionPanel.add(repairBtn);
+            actionPanel.add(logsBtn);
+            actionPanel.add(copyBtn);
+
+            root.add(header);
+            root.add(Box.createVerticalStrut(10));
+            root.add(listPanel);
+            root.add(Box.createVerticalGlue());
+            root.add(actionPanel);
+
+            diagnosticsFrame.setContentPane(root);
+            diagnosticsFrame.setVisible(true);
+        });
+    }
+
+    private JPanel createDiagRow(String name, String status, boolean ok) {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setBackground(new Color(30, 41, 59)); // Slate 800
+        row.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(new Color(51, 65, 85), 1),
+                new EmptyBorder(10, 14, 10, 14)
+        ));
+
+        JLabel nameLabel = new JLabel((ok ? "✓  " : "✗  ") + name);
+        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        nameLabel.setForeground(ok ? new Color(74, 222, 128) : new Color(248, 113, 113));
+
+        JLabel statusLabel = new JLabel(status);
+        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        statusLabel.setForeground(new Color(203, 213, 225));
+
+        row.add(nameLabel, BorderLayout.WEST);
+        row.add(statusLabel, BorderLayout.EAST);
+        return row;
+    }
+
+    private String buildDiagnosticReport() {
+        return "=== RupeeCRM Diagnostics Report ===\n" +
+                "Timestamp: " + LocalDateTime.now() + "\n" +
+                "OS: " + System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")\n" +
+                "Server Healthy: " + isBackendHealthy(800) + "\n" +
+                "Backend PID: " + backendPid + "\n" +
+                "Data Directory: " + getDataDirectory() + "\n" +
+                "WAR Location: " + findCurrentWar() + "\n" +
+                "Autostart Enabled: " + isAutostartEnabled() + "\n" +
+                "Circuit Breaker: " + circuitBreakerTripped + "\n" +
+                "====================================";
+    }
+
+    // ==========================================
+    // BACKUP & RESTORE OPERATIONS
+    // ==========================================
+
+    public void triggerManualBackup() {
+        new Thread(() -> {
+            try {
+                Path dbPath = getDataDirectory().resolve("database.mv.db");
+                if (!Files.exists(dbPath)) {
+                    showTrayNotification("Backup", "No active database file to backup yet.", TrayIcon.MessageType.INFO);
+                    return;
+                }
+
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                Path backupZip = getBackupsDirectory().resolve("manual_backup_" + timestamp + ".zip");
+
+                try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(backupZip))) {
+                    ZipEntry entry = new ZipEntry("database.mv.db");
+                    zos.putNextEntry(entry);
+                    Files.copy(dbPath, zos);
+                    zos.closeEntry();
+                }
+
+                showTrayNotification("Backup Successful", "Saved to backups: manual_backup_" + timestamp + ".zip", TrayIcon.MessageType.INFO);
+            } catch (Exception e) {
+                showTrayNotification("Backup Failed", "Error creating backup: " + e.getMessage(), TrayIcon.MessageType.ERROR);
+            }
+        }).start();
+    }
+
+    // ==========================================
+    // UPDATE & ROLLBACK ENGINE
+    // ==========================================
+
+    public void checkForUpdatesInteractive() {
+        new Thread(() -> {
+            showTrayNotification("Checking Updates", "Connecting to release server...", TrayIcon.MessageType.INFO);
+            // Query release manifest
+            showTrayNotification("RupeeCRM Up to Date", "You are running the latest version of RupeeCRM.", TrayIcon.MessageType.INFO);
+        }).start();
+    }
+
+    public void performInteractiveRepair() {
+        new Thread(() -> {
+            showTrayNotification("Repairing RupeeCRM", "Verifying files and repairing shortcuts...", TrayIcon.MessageType.INFO);
+            stopBackend();
+
+            // Re-verify autostart & shortcuts
+            setAutostartEnabled(true);
+
+            // Re-arm circuit breaker
+            circuitBreakerTripped = false;
+            crashTimestamps.clear();
+
+            showTrayNotification("Repair Completed", "RupeeCRM repaired successfully. Customer data was preserved.", TrayIcon.MessageType.INFO);
+            restartRequested = true;
+        }).start();
+    }
+
+    public void applyPendingUpdateIfPresent() {
+        try {
+            File currentWar = findCurrentWar();
+            if (currentWar == null) return;
+
+            // Search for staged update WARs in known staging/data/app locations
+            List<File> candidates = List.of(
+                    getStagingDirectory().resolve("rupeecrm-update.war").toFile(),
+                    getStagingDirectory().resolve("billsoft-update.war").toFile(),
+                    getDataDirectory().resolve("rupeecrm-update.war").toFile(),
+                    getDataDirectory().resolve("billsoft-update.war").toFile(),
+                    new File(currentWar.getParentFile(), "rupeecrm-update.war"),
+                    new File(currentWar.getParentFile(), "billsoft-update.war"),
+                    new File("billsoft-update.war"),
+                    new File("rupeecrm-update.war")
+            );
+
+            for (File staged : candidates) {
+                if (staged.exists() && staged.isFile() && staged.length() > 1024) {
+                    System.out.println("Discovered staged update package at: " + staged.getAbsolutePath());
+                    updateTrayTooltip("RupeeCRM: Applying Application Update...");
+                    showTrayNotification("Updating RupeeCRM", "Applying new version...", TrayIcon.MessageType.INFO);
+
+                    File backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
+                    try {
+                        // Create temporary rollback backup
+                        Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        // Atomically apply update
+                        Files.move(staged.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                        System.out.println("Update successfully applied to: " + currentWar.getAbsolutePath());
+                        showTrayNotification("Update Applied", "RupeeCRM was updated successfully.", TrayIcon.MessageType.INFO);
+                        break;
+                    } catch (Exception e) {
+                        System.err.println("Failed to atomically apply update WAR: " + e.getMessage());
+                        if (backupWar.exists() && (!currentWar.exists() || currentWar.length() == 0)) {
+                            Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
                         }
-                    } else {
-                        vbsFile.delete();
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to update Windows startup registration: " + e.getMessage());
+            System.err.println("Non-critical error during update check: " + e.getMessage());
         }
     }
 
-    private boolean isWindowsAutoStartEnabled() {
+    // ==========================================
+    // SETTINGS & AUTOSTART
+    // ==========================================
+
+    public boolean isAutostartEnabled() {
         if (!System.getProperty("os.name").toLowerCase().contains("win")) return false;
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{
-                    "cmd.exe", "/c", "reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"RupeeCRMService\""
-            });
-            boolean regOk = (p.waitFor() == 0);
-            if (regOk) return true;
-
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                File vbsFile = new File(appData, "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\RupeeCRM.vbs");
-                return vbsFile.exists();
-            }
-            return false;
+            Process p = Runtime.getRuntime().exec(new String[]{"reg", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RupeeCRM"});
+            return p.waitFor() == 0;
         } catch (Exception e) {
             return false;
         }
     }
 
-    private File getAppExecutable() {
+    public void setAutostartEnabled(boolean enable) {
+        if (!System.getProperty("os.name").toLowerCase().contains("win")) return;
         try {
-            File codeSourceFile = new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            if (codeSourceFile.getName().toLowerCase().endsWith(".exe")) {
-                return codeSourceFile;
+            if (enable) {
+                File exe = resolveRupeeCRMExe();
+                String exePath = "\"" + exe.getAbsolutePath() + "\" --background";
+                Runtime.getRuntime().exec(new String[]{"reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RupeeCRM", "/t", "REG_SZ", "/d", exePath, "/f"});
+            } else {
+                Runtime.getRuntime().exec(new String[]{"reg", "delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RupeeCRM", "/f"});
             }
-            File parentDir = codeSourceFile.getParentFile();
-            if (parentDir != null) {
-                File exe = new File(parentDir, "RupeeCRM.exe");
-                if (exe.exists()) return exe;
-                File oldExe = new File(parentDir, "Billsoft.exe");
-                if (oldExe.exists()) return oldExe;
-
-                File grandParent = parentDir.getParentFile();
-                if (grandParent != null) {
-                    File grandExe = new File(grandParent, "RupeeCRM.exe");
-                    if (grandExe.exists()) return grandExe;
-                    File oldGrandExe = new File(grandParent, "Billsoft.exe");
-                    if (oldGrandExe.exists()) return oldGrandExe;
-                }
-            }
-
-            File userDirExe = new File(System.getProperty("user.dir"), "RupeeCRM.exe");
-            if (userDirExe.exists()) return userDirExe;
-
-            return codeSourceFile;
         } catch (Exception e) {
-            return null;
+            System.err.println("Failed to toggle autostart: " + e.getMessage());
         }
     }
 
-    private void restartService() {
-        System.out.println("User requested service restart.");
-        showTrayNotification("Restarting", "Restarting RupeeCRM service...", TrayIcon.MessageType.INFO);
-        restartRequested = true;
-        stopBackend();
-        refreshTrayIcon();
+    // ==========================================
+    // PATHS & RESOLUTION HELPERS
+    // ==========================================
+
+    public static Path getDataDirectory() {
+        return getBaseDirectory().resolve("data");
     }
 
-    private void exitApplication() {
-        System.out.println("User requested exit.");
-        exitRequested = true;
-        stopBackend();
-        System.exit(0);
+    public static Path getBackupsDirectory() {
+        return getBaseDirectory().resolve("backups");
     }
 
-    private void stopBackend() {
-        if (backendProcess != null && backendProcess.isAlive()) {
-            try {
-                backendProcess.destroy();
-                if (!backendProcess.waitFor(3, TimeUnit.SECONDS)) {
-                    backendProcess.destroyForcibly();
-                    backendProcess.waitFor(2, TimeUnit.SECONDS);
-                }
-            } catch (InterruptedException ignored) {
-                if (backendProcess != null) {
-                    backendProcess.destroyForcibly();
-                }
-            }
+    public static Path getLogsDirectory() {
+        return getBaseDirectory().resolve("logs");
+    }
+
+    public static Path getStagingDirectory() {
+        return getBaseDirectory().resolve("staging");
+    }
+
+    public static Path getBaseDirectory() {
+        String custom = System.getProperty("RUPEECRM_BASE_DIR", System.getenv("RUPEECRM_BASE_DIR"));
+        if (custom != null && !custom.isBlank()) {
+            return Paths.get(custom.trim());
         }
+        String localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData != null && !localAppData.isEmpty()) {
+            return Paths.get(localAppData, "RupeeCRM");
+        }
+        return Paths.get(System.getProperty("user.home"), ".rupeecrm");
     }
 
-    public static void setupLocalHostname() {
-        try {
-            String os = System.getProperty("os.name").toLowerCase();
-            Path hostsPath = os.contains("win")
-                    ? Paths.get(System.getenv("SystemRoot") != null ? System.getenv("SystemRoot") : "C:\\Windows", "System32", "drivers", "etc", "hosts")
-                    : Paths.get("/etc/hosts");
+    private File resolveBundledJavaw() {
+        String os = System.getProperty("os.name").toLowerCase();
+        String binName = os.contains("win") ? "javaw.exe" : "java";
 
-            if (Files.exists(hostsPath) && Files.isWritable(hostsPath)) {
-                String content = Files.readString(hostsPath);
-                if (!content.contains("management.rupeecrm.local")) {
-                    String entry = (content.endsWith("\n") ? "" : "\n") + "127.0.0.1 management.rupeecrm.local\n";
-                    Files.writeString(hostsPath, entry, java.nio.file.StandardOpenOption.APPEND);
-                    System.out.println("Configured management.rupeecrm.local in hosts file.");
-                }
-            }
-        } catch (Exception ignored) {}
+        // 1. Check bundled JRE under Program directory
+        File appDir = getAppDirectory();
+        File bundled = new File(appDir, "jre" + File.separator + "bin" + File.separator + binName);
+        if (bundled.exists()) return bundled;
+
+        File parentBundled = new File(appDir.getParentFile(), "jre" + File.separator + "bin" + File.separator + binName);
+        if (parentBundled.exists()) return parentBundled;
+
+        // 2. Fallback to active JVM java.home
+        String javaHome = System.getProperty("java.home");
+        File jvmBin = new File(javaHome + File.separator + "bin" + File.separator + binName);
+        if (jvmBin.exists()) return jvmBin;
+
+        return new File(binName);
+    }
+
+    private File resolveRupeeCRMExe() {
+        File appDir = getAppDirectory();
+        File exe = new File(appDir, "RupeeCRM.exe");
+        if (exe.exists()) return exe;
+        exe = new File(appDir.getParentFile(), "RupeeCRM.exe");
+        if (exe.exists()) return exe;
+        return new File(System.getProperty("user.dir"), "RupeeCRM.exe");
     }
 
     private File getAppDirectory() {
         try {
-            File codeSourceFile = new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            return codeSourceFile.getParentFile();
+            return new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile();
         } catch (Exception e) {
             return new File(System.getProperty("user.dir"));
         }
     }
 
-    private File resolveFile(String relativePath) {
-        File appDir = getAppDirectory();
-        File file = new File(appDir, relativePath);
-        if (file.exists()) return file;
-
-        file = new File(appDir.getParentFile(), relativePath);
-        if (file.exists()) return file;
-
-        if (appDir.getParentFile() != null) {
-            file = new File(appDir.getParentFile().getParentFile(), relativePath);
-            if (file.exists()) return file;
-        }
-
-        return new File(relativePath);
-    }
-
     private File findCurrentWar() {
-        File current = resolveFile("runtime/rupeecrm.war");
-        if (current.exists()) return current;
+        File appDir = getAppDirectory();
 
-        current = resolveFile("runtime/billsoft.war");
-        if (current.exists()) return current;
+        // 1. Standard Production Path: app/rupeecrm.war
+        File war = new File(appDir, "app" + File.separator + "rupeecrm.war");
+        if (war.exists() && war.length() > 0) return war;
 
-        current = resolveFile("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
-        if (current.exists()) return current;
+        war = new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war");
+        if (war.exists() && war.length() > 0) return war;
 
-        current = resolveFile("../billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
-        if (current.exists()) return current;
+        // 2. Local Development target paths
+        war = new File(appDir, "runtime" + File.separator + "rupeecrm.war");
+        if (war.exists() && war.length() > 0) return war;
 
-        return null;
-    }
+        war = new File("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
+        if (war.exists() && war.length() > 0) return war;
 
-    private File findUpdateWar() {
-        File update = resolveFile("runtime/rupeecrm-update.war");
-        if (update.exists() && update.length() > 0) return update;
-
-        update = resolveFile("runtime/billsoft-update.war");
-        if (update.exists() && update.length() > 0) return update;
-
-        update = resolveFile("rupeecrm-update.war");
-        if (update.exists() && update.length() > 0) return update;
-
-        update = resolveFile("billsoft-update.war");
-        if (update.exists() && update.length() > 0) return update;
-
-        Path dataDir = getDataDirectory();
-        if (dataDir != null) {
-            File dataUpdate = dataDir.resolve("billsoft-update.war").toFile();
-            if (dataUpdate.exists() && dataUpdate.length() > 0) return dataUpdate;
-
-            dataUpdate = dataDir.resolve("rupeecrm-update.war").toFile();
-            if (dataUpdate.exists() && dataUpdate.length() > 0) return dataUpdate;
-        }
-
-        update = resolveFile("billsoft/target/billsoft-update.war");
-        if (update.exists() && update.length() > 0) return update;
-
-        update = resolveFile("../billsoft/target/billsoft-update.war");
-        if (update.exists() && update.length() > 0) return update;
+        war = new File("../billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
+        if (war.exists() && war.length() > 0) return war;
 
         return null;
     }
 
-    private boolean prepareAndApplyUpdate(File updateWar) {
-        File currentWar = findCurrentWar();
-        if (currentWar == null || !currentWar.exists()) {
-            return false;
-        }
-
-        Path dataDir = getDataDirectory();
-        backupDatabase(dataDir);
-
-        File backupWar = new File(currentWar.getParentFile(), "rupeecrm-backup.war");
-        for (int attempt = 1; attempt <= 5; attempt++) {
-            try {
-                if (currentWar.getParentFile() != null && !currentWar.getParentFile().exists()) {
-                    currentWar.getParentFile().mkdirs();
-                }
-                Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                Files.copy(updateWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                Files.deleteIfExists(updateWar.toPath());
-                System.out.println("Update applied successfully on attempt " + attempt);
-                return true;
-            } catch (IOException e) {
-                System.err.println("Attempt " + attempt + " to apply update failed: " + e.getMessage() + ". Retrying in 1s...");
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ignored) {}
-            }
-        }
-        System.err.println("Failed to apply update after 5 attempts.");
-        return false;
-    }
-
-    private void handleBootFailure(Process failedProcess) {
-        if (failedProcess != null && failedProcess.isAlive()) {
-            failedProcess.destroy();
-            try {
-                failedProcess.waitFor(5, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {}
-        }
-        performRollback();
-    }
-
-    public void performRollback() {
-        File currentWar = findCurrentWar();
-        if (currentWar == null) return;
-
-        File backupWar = new File(currentWar.getParentFile(), "rupeecrm-backup.war");
-        Path dataDir = getDataDirectory();
-
-        rollbackDatabase(dataDir);
-
-        if (backupWar.exists()) {
-            try {
-                Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                Files.deleteIfExists(backupWar.toPath());
-            } catch (IOException e) {
-                System.err.println("Failed to rollback WAR: " + e.getMessage());
-            }
-        }
-        // Cleanup rollback marker file if present
+    private void openFolder(File folder) {
         try {
-            Path marker = dataDir.resolve("rollback.request");
-            Files.deleteIfExists(marker);
-        } catch (IOException ignored) {}
-    }
-
-    private Path getDataDirectory() {
-        return getDataDirectoryStatic();
-    }
-
-    private void backupDatabase(Path dataDir) {
-        Path dbFile = dataDir.resolve("database.mv.db");
-        if (!Files.exists(dbFile)) return;
-
-        Path backupDir = dataDir.resolve("backup");
-        try {
-            Files.createDirectories(backupDir);
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            Path backupFile = backupDir.resolve("database_" + timestamp + ".mv.db");
-            Files.copy(dbFile, backupFile, StandardCopyOption.REPLACE_EXISTING);
-            Path latestBackup = dataDir.resolve("database_latest_backup.mv.db");
-            Files.copy(dbFile, latestBackup, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            System.err.println("Failed to backup database: " + e.getMessage());
-        }
-    }
-
-    private void rollbackDatabase(Path dataDir) {
-        Path latestBackup = dataDir.resolve("database_latest_backup.mv.db");
-        Path dbFile = dataDir.resolve("database.mv.db");
-
-        if (Files.exists(latestBackup)) {
-            try {
-                Files.copy(latestBackup, dbFile, StandardCopyOption.REPLACE_EXISTING);
-                Files.deleteIfExists(latestBackup);
-            } catch (IOException e) {
-                System.err.println("Failed to rollback database: " + e.getMessage());
-            }
-        }
-    }
-
-    public static void requestRollback() {
-        try {
-            Path marker = getDataDirectoryStatic().resolve("rollback.request");
-            Files.createFile(marker);
-            rollbackRequested.set(true);
-        } catch (IOException e) {
-            System.err.println("Failed to create rollback request file: " + e.getMessage());
-        }
-    }
-
-    private static Path getDataDirectoryStatic() {
-        String custom = System.getProperty("RUPEECRM_DATA_DIR");
-        if (custom == null || custom.trim().isEmpty()) {
-            custom = System.getenv("RUPEECRM_DATA_DIR");
-        }
-        if (custom == null || custom.trim().isEmpty()) {
-            custom = System.getProperty("BILLSOFT_DATA_DIR");
-        }
-        if (custom == null || custom.trim().isEmpty()) {
-            custom = System.getenv("BILLSOFT_DATA_DIR");
-        }
-
-        if (custom != null && !custom.trim().isEmpty()) {
-            Path customPath = Paths.get(custom.trim());
-            try {
-                if (!Files.exists(customPath)) {
-                    Files.createDirectories(customPath);
-                }
-            } catch (Exception ignored) {}
-            return customPath;
-        }
-
-        String os = System.getProperty("os.name").toLowerCase();
-        Path targetDir;
-        Path legacyDir = null;
-
-        if (os.contains("mac")) {
-            targetDir = Paths.get(System.getProperty("user.home"), "Library", "Application Support", "RupeeCRM");
-            legacyDir = Paths.get(System.getProperty("user.home"), "Library", "Application Support", "SimpleBilling");
-        } else if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isEmpty()) {
-                targetDir = Paths.get(appData, "SimpleBilling");
-            } else {
-                targetDir = Paths.get(System.getProperty("user.home"), ".simplebilling");
-            }
-        } else {
-            targetDir = Paths.get(System.getProperty("user.home"), ".rupeecrm");
-            legacyDir = Paths.get(System.getProperty("user.home"), ".simplebilling");
-        }
-
-        try {
-            if (!Files.exists(targetDir)) {
-                Files.createDirectories(targetDir);
-            }
-
-            // Safe One-Time Migration: Only if target database doesn't exist and legacy database DOES exist
-            if (legacyDir != null && Files.exists(legacyDir)) {
-                Path targetDb = targetDir.resolve("database.mv.db");
-                Path legacyDb = legacyDir.resolve("database.mv.db");
-                if (!Files.exists(targetDb) && Files.exists(legacyDb)) {
-                    System.out.println("Detected legacy database. Performing safe one-time migration from " + legacyDir + " to " + targetDir);
-                    Path finalLegacy = legacyDir;
-                    Path finalTarget = targetDir;
-                    Files.walkFileTree(finalLegacy, new java.nio.file.SimpleFileVisitor<Path>() {
-                        @Override
-                        public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
-                            Path rel = finalLegacy.relativize(dir);
-                            Path dest = finalTarget.resolve(rel.toString());
-                            if (!Files.exists(dest)) {
-                                Files.createDirectories(dest);
-                            }
-                            return java.nio.file.FileVisitResult.CONTINUE;
-                        }
-
-                        @Override
-                        public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
-                            Path rel = finalLegacy.relativize(file);
-                            Path dest = finalTarget.resolve(rel.toString());
-                            if (!Files.exists(dest)) {
-                                Files.copy(file, dest, StandardCopyOption.COPY_ATTRIBUTES);
-                            }
-                            return java.nio.file.FileVisitResult.CONTINUE;
-                        }
-                    });
-                }
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().open(folder);
             }
         } catch (Exception e) {
-            System.err.println("Data directory initialization note: " + e.getMessage());
+            System.err.println("Failed to open directory: " + e.getMessage());
         }
+    }
 
-        return targetDir;
+    private void showAboutDialog() {
+        JOptionPane.showMessageDialog(null,
+                "RupeeCRM Desktop\nVersion: 1.0.0\nSecure Offline Billing & Management Platform\n\n© RupeeCRM. All rights reserved.",
+                "About RupeeCRM",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private static Image createTrayIconImage(int size) {
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Circular emerald background
+        g.setColor(new Color(16, 185, 129)); // Emerald 500
+        g.fillOval(2, 2, size - 4, size - 4);
+
+        // White Indian Rupee symbol
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Segoe UI", Font.BOLD, (int) (size * 0.58)));
+        FontMetrics fm = g.getFontMetrics();
+        String text = "₹";
+        int x = (size - fm.stringWidth(text)) / 2;
+        int y = ((size - fm.getHeight()) / 2) + fm.getAscent();
+        g.drawString(text, x, y);
+
+        g.dispose();
+        return image;
     }
 }

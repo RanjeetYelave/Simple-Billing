@@ -42,15 +42,7 @@ public class AutoBackupService {
      * This directory is outside the software codebase and survives software deletion/updates.
      */
     public File getBackupDirectory() {
-        File dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
-        File backupDir = new File(dataDir, "backups");
-        if (!backupDir.exists()) {
-            boolean created = backupDir.mkdirs();
-            if (created) {
-                log.info("Created auto-backup directory at: {}", backupDir.getAbsolutePath());
-            }
-        }
-        return backupDir;
+        return com.billing.simple.billsoft.util.DataDirectoryResolver.resolveBackupsDirectory();
     }
 
     @PostConstruct

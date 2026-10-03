@@ -266,9 +266,9 @@ public class UpdateService {
                 if (assets != null) {
                     for (Map<String, Object> asset : assets) {
                         String name = (String) asset.get("name");
-                        if ("billsoft.war".equals(name)) {
+                        if ("rupeecrm.war".equals(name) || "billsoft.war".equals(name)) {
                             cachedDownloadUrl.set((String) asset.get("browser_download_url"));
-                        } else if ("billsoft.war.sha256".equals(name)) {
+                        } else if ("rupeecrm.war.sha256".equals(name) || "billsoft.war.sha256".equals(name)) {
                             cachedChecksumUrl.set((String) asset.get("browser_download_url"));
                         }
                     }
@@ -295,7 +295,8 @@ public class UpdateService {
         List<Map<String, Object>> assets = (List<Map<String, Object>>) release.get("assets");
         if (assets == null) return false;
         for (Map<String, Object> asset : assets) {
-            if ("billsoft.war".equals(asset.get("name")) && asset.get("browser_download_url") != null) {
+            String name = (String) asset.get("name");
+            if (("rupeecrm.war".equals(name) || "billsoft.war".equals(name)) && asset.get("browser_download_url") != null) {
                 return true;
             }
         }

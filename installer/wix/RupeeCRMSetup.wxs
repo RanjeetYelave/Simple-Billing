@@ -1,0 +1,78 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="RupeeCRM"
+           Manufacturer="RupeeCRM"
+           Version="1.0.0.0"
+           UpgradeCode="4F9E58A2-3670-4A9A-9988-518D1B36C87E"
+           Scope="perUser">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of RupeeCRM is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Application Icon -->
+    <Icon Id="RupeeCRMIcon" SourceFile="RupeeCRM.ico" />
+    <Property Id="ARPPRODUCTICON" Value="RupeeCRMIcon" />
+    <Property Id="ARPNOREPAIR" Value="0" />
+    <Property Id="ARPNOMODIFY" Value="0" />
+
+    <!-- Standard Windows User Folders -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="RupeeCRM">
+          <Files Include="payload\**" />
+          <Component Id="RupeeCRMExecutable" Guid="8C7B9084-263B-4AEB-865B-9642D0E6C541">
+            <File Id="RupeeCRMExe" Source="payload\RupeeCRM.exe" KeyPath="yes">
+              <Shortcut Id="DesktopShortcut"
+                        Directory="DesktopFolder"
+                        Name="RupeeCRM"
+                        Description="RupeeCRM Offline Billing &amp; Management Platform"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="RupeeCRMIcon"
+                        Advertise="no" />
+              <Shortcut Id="StartMenuShortcut"
+                        Directory="ProgramMenuFolder"
+                        Name="RupeeCRM"
+                        Description="RupeeCRM Offline Billing &amp; Management Platform"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="RupeeCRMIcon"
+                        Advertise="no" />
+            </File>
+
+            <!-- HKCU Autostart Registration -->
+            <RegistryValue Root="HKCU"
+                           Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                           Name="RupeeCRM"
+                           Value="&quot;[INSTALLFOLDER]RupeeCRM.exe&quot; --background"
+                           Type="string" />
+
+            <!-- Application Registry Key for Clean Per-User Tracking -->
+            <RegistryValue Root="HKCU"
+                           Key="Software\RupeeCRM"
+                           Name="InstallPath"
+                           Value="[INSTALLFOLDER]"
+                           Type="string" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="MainApplication" Title="RupeeCRM Core" Level="1">
+      <ComponentRef Id="RupeeCRMExecutable" />
+      <Files Include="payload\**" />
+    </Feature>
+
+    <!-- CustomAction to launch RupeeCRM automatically upon installation completion -->
+    <CustomAction Id="LaunchRupeeCRM"
+                  FileRef="RupeeCRMExe"
+                  ExeCommand=""
+                  Return="asyncNoWait" />
+
+    <InstallExecuteSequence>
+      <Custom Action="LaunchRupeeCRM" After="InstallFinalize" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>

@@ -8,16 +8,17 @@
 
 **RupeeCRM** is a modern, high-performance, **100% offline-first desktop billing, CRM, and business management platform** tailored for small-to-medium enterprises, retail stores, traders, and service businesses.
 
-Built on an embedded Spring Boot engine with a native supervisor launcher, desktop system tray integration, local H2 persistence, and an intelligent natural language search system, RupeeCRM delivers cloud-grade ERP capabilities directly to the local desktop without cloud dependency, subscription locks, or internet requirements.
+Built on an embedded Spring Boot engine with a native supervisor, desktop system tray control center, local H2 persistence, and an intelligent natural language search system, RupeeCRM delivers cloud-grade ERP capabilities directly to the local desktop without cloud dependency, subscription locks, or internet requirements.
 
 ---
 
 ## Key Highlights
 
 - **100% Offline-First Architecture**: Zero external network dependency for billing, invoicing, customer management, inventory, and reporting. All data resides securely on the local device.
+- **Single Unified MSI Installer (`RupeeCRMSetup.msi`)**: Fast, 1-click Windows installer with zero configuration. No PowerShell, manual Java installation, or ZIP extraction required.
 - **Natural Language Omnibar (NLP Engine)**: Powered by Apache OpenNLP and a custom arithmetic AST parser. Supports complex calculations, unit conversions, multi-lingual vernacular queries (English, Hindi, Marathi, Devanagari numerals), Indian numbering systems (Lakhs/Crores), and instant entity lookup.
-- **Fast Desktop Packaging**: Zero-configuration native desktop installations for **Windows (x64/ARM64)** and **macOS (Apple Silicon)** with bundled JRE runtimes (no manual Java setup required).
-- **Zero-Loss Data Isolation**: Clean separation between application binaries and customer business data (`database.mv.db`), guaranteeing seamless, risk-free updates and automated backups.
+- **Zero-Loss Data Isolation**: Clean, strict separation between replaceable application binaries (`%LOCALAPPDATA%\Programs\RupeeCRM\`) and persistent customer business data (`%LOCALAPPDATA%\RupeeCRM\data\`), guaranteeing seamless, risk-free updates and automated backups.
+- **Native Tray Control Center & Diagnostics**: One-click dashboard access, background service restart, automated health diagnostics, and safe backup/restore directly from the system tray.
 - **Complete Business Suite**: Invoicing, Customer 360, Inventory, Quotations, Challans, Planner Kanban, HR/Payroll, Financial BI, and Multi-Firm isolation in a single unified interface.
 
 ---
@@ -56,7 +57,7 @@ Built on an embedded Spring Boot engine with a native supervisor launcher, deskt
 
 ### 7. Multi-Firm & Enterprise Security
 - **Multi-Tenant / Multi-Firm Isolation**: Seamlessly manage multiple business entities within a single installation with strict data boundary isolation.
-- **Data Protection & Encrypted Tokens**: Cryptographically secured session tokens, audit logging, and automated local database snapshot backups.
+- **Data Protection & Encrypted Tokens**: Cryptographically secured session tokens via Windows DPAPI (`CryptProtectData`), audit logging, and automated local database snapshot backups.
 
 ---
 
@@ -67,29 +68,29 @@ Built on an embedded Spring Boot engine with a native supervisor launcher, deskt
 |                      User Experience                        |
 |  Responsive Web UI / Chromium Shell / Desktop Notifications |
 +-------------------------------------------------------------+
-                              |
-                              v (HTTP / REST API)
+                               |
+                               v (HTTP / REST API - 127.0.0.1:28080)
 +-------------------------------------------------------------+
 |                 RupeeCRM Supervisor Launcher                |
-|  - System Tray Integration (Windows / macOS)                |
-|  - Process Lifecycle & Health Monitoring                    |
-|  - Port Management (Default: 28080)                         |
+|  - System Tray Control Center (Windows / macOS)             |
+|  - Process Lifecycle, Health Monitoring & Self-Healing      |
+|  - Atomic Update & Rollback Engine                          |
 +-------------------------------------------------------------+
-                              |
-                              v (Embedded JVM / WAR)
+                               |
+                               v (Embedded JVM / WAR)
 +-------------------------------------------------------------+
 |               Spring Boot Core Backend Engine               |
 |  - Spring Web MVC Controllers & REST APIs                   |
 |  - OpenNLP Intent Classifier & AST Calculation Engine       |
 |  - Business Services (Invoices, Customers, Stock, HR, BI)   |
-|  - Spring Security & Data Protection Token Provider         |
+|  - Data Protection & DPAPI Credential Store                 |
 +-------------------------------------------------------------+
-                              |
-                              v (JPA / Hibernate / JDBC)
+                               |
+                               v (JPA / Hibernate / JDBC)
 +-------------------------------------------------------------+
 |                    Embedded Local Storage                   |
-|  - H2 Database Engine (%APPDATA%\SimpleBilling\database)    |
-|  - Automated Rolling Snapshots (%APPDATA%\SimpleBilling\bk) |
+|  - H2 Database (%LOCALAPPDATA%\RupeeCRM\data\database)      |
+|  - Automated Snapshots (%LOCALAPPDATA%\RupeeCRM\backups\)   |
 |  - Complete Zero-Cloud Data Privacy                         |
 +-------------------------------------------------------------+
 ```
@@ -98,17 +99,15 @@ Built on an embedded Spring Boot engine with a native supervisor launcher, deskt
 
 ## Installation Guide
 
-### Windows (1-Line Quick Installer)
+### Windows Installation
 
-Open PowerShell (**no administrator privileges required**) and run:
-
-```powershell
-irm https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overhaul/tools/install-windows.ps1 | iex
-```
+1. Download **`RupeeCRMSetup.msi`** from the latest [GitHub Release](https://github.com/RanjeetYelave/Simple-Billing/releases).
+2. Double-click the installer and follow the wizard.
+3. RupeeCRM will start automatically in your Windows System Tray and open your billing dashboard in your default browser.
 
 #### Windows System Details:
 - **OS Support**: Windows 10 or Windows 11 (64-bit x64 / AMD64). Windows on ARM64 runs via built-in x64 emulation.
-- **Zero Dependencies**: Bundles an embedded JRE. **No pre-installed Java is required.**
+- **Zero External Dependencies**: Bundles an embedded Eclipse Temurin JRE 21 runtime. **No pre-installed Java is required.**
 - **Non-Admin Installation**: Installs to `%LOCALAPPDATA%\Programs\RupeeCRM` with user-level registry auto-start (`HKCU Run`).
 
 ### macOS (Apple Silicon ARM64)
@@ -125,31 +124,30 @@ curl -fsSL https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/overha
 
 RupeeCRM strictly segregates application executables from customer business data:
 
-| Component | Windows Location | Description |
+| Component | Windows Location | Purpose / Policy |
 | :--- | :--- | :--- |
-| **Application Binaries** | `%LOCALAPPDATA%\Programs\RupeeCRM\` | Contains `RupeeCRM.exe`, embedded JRE runtime, and billing WAR engine. Replaced cleanly during updates. |
-| **Customer Data** | `%APPDATA%\SimpleBilling\` | Contains your H2 database (`database.mv.db`), historical snapshots (`backup/`), and logs. **Never deleted during updates or standard uninstalls.** |
+| **Application Binaries** | `%LOCALAPPDATA%\Programs\RupeeCRM\` | Contains `RupeeCRM.exe`, embedded JRE runtime, and billing WAR engine. Replaced cleanly during updates and repairs. |
+| **Customer Data** | `%LOCALAPPDATA%\RupeeCRM\data\` | Contains your live H2 database (`database.mv.db`), machine identity (`mid.dat`), and license (`license.lic`). **Never deleted during updates, repairs, or standard uninstalls.** |
+| **Automated Backups** | `%LOCALAPPDATA%\RupeeCRM\backups\` | Contains daily and pre-update snapshots. Preserved across all lifecycle operations. |
+| **Logs** | `%LOCALAPPDATA%\RupeeCRM\logs\` | Contains supervisor and backend diagnostic logs. |
 | **Shortcuts** | Desktop & Start Menu | `RupeeCRM.lnk` for 1-click launch. |
-| **Auto-Start** | `HKCU\...\Run` & Startup VBS | Starts RupeeCRM quietly in the background on Windows login. |
+| **Auto-Start** | `HKCU\...\Run\RupeeCRM` | Starts RupeeCRM quietly in the background on Windows login (user-toggleable in Settings). |
 
 ---
 
-## Updates & Uninstallation
+## Maintenance, Updates & Uninstallation
 
 ### Updating
-To update RupeeCRM to the latest release, simply re-run the 1-line installation command. The installer stops active background processes, cryptographically verifies the new package hash (SHA-256), atomically replaces the binaries, and restarts the supervisor without altering customer database files.
+Updates are checked automatically via the System Tray or when running `RupeeCRMSetup.msi`. Before applying an update, RupeeCRM gracefully stops the backend, verifies the release signature (Ed25519) and SHA-256 hash, creates a pre-update safety backup, and replaces the binaries. If the updated backend fails to start, the supervisor automatically rolls back to the previous version.
+
+### Repairing
+If application binaries are damaged, select **Repair RupeeCRM** in the System Tray or run `RupeeCRMSetup.msi` → **Repair**. All application binaries are restored while customer invoices, databases, and licenses are strictly preserved.
 
 ### Uninstalling
-To cleanly remove the application while preserving your database:
-
-```powershell
-.\tools\uninstall-windows.ps1
-```
-
-- Terminates RupeeCRM background processes.
-- Deletes application binaries from `%LOCALAPPDATA%\Programs\RupeeCRM`.
-- Cleans up Desktop shortcuts, Start Menu entries, and HKCU Run auto-start registrations.
-- **Preserves all invoices, customers, and data in `%APPDATA%\SimpleBilling\`.**
+To remove RupeeCRM while keeping your customer data:
+1. Open Windows **Settings** → **Installed Apps**.
+2. Select **RupeeCRM** → **Uninstall**.
+3. Application binaries, shortcuts, and autostart entries are removed, while your customer data in `%LOCALAPPDATA%\RupeeCRM\data` remains safe for future reinstall.
 
 ---
 
@@ -187,10 +185,11 @@ npm test
 ## Security & Privacy Principles
 
 1. **Local Privacy**: Your financial records, customer contacts, and transaction ledger never leave your machine.
-2. **SHA-256 Checksums**: Every release artifact is cryptographically hashed and verified before deployment.
-3. **Encrypted Transport**: Secure TLS 1.2+ transport for release asset downloads.
-4. **No Security Compromises**: Zero modifications to Windows Defender, SmartScreen, or system firewalls.
-5. **Clean Footprint**: Does not modify global environment variables (`PATH`, `JAVA_HOME`) or pollute system-level directories.
+2. **Ed25519 & SHA-256 Release Signatures**: Every release manifest is cryptographically signed and verified before deployment.
+3. **Genuine Windows DPAPI**: Critical tokens and vault credentials are encrypted using OS-level `CryptProtectData`.
+4. **H2 Production Hardening**: Production Web Console disabled; server binds exclusively to `127.0.0.1`.
+5. **Safe Process Management**: Tracks backend by PID; never executes blanket `taskkill /IM java.exe`.
+6. **Clean Footprint**: Does not modify global environment variables (`PATH`, `JAVA_HOME`) or pollute system-level directories.
 
 ---
 

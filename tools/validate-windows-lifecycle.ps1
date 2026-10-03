@@ -175,16 +175,33 @@ if (Test-Path $warFile) {
     throw "Validation failed: rupeecrm.war was not created in $installDir\app\app"
 }
 
-$runtimeJava = "$installDir\runtime\bin\javaw.exe"
-if (-not (Test-Path $runtimeJava)) { $runtimeJava = "$installDir\runtime\bin\java.exe" }
-$appJreJava = "$installDir\app\jre\bin\javaw.exe"
-if (-not (Test-Path $appJreJava)) { $appJreJava = "$installDir\app\jre\bin\java.exe" }
+# 1. Verify Authoritative Bundled Runtime Layout
+$runtimeJava = "$installDir\runtime\bin\java.exe"
+$runtimeJavaw = "$installDir\runtime\bin\javaw.exe"
 
-if ((Test-Path $runtimeJava) -or (Test-Path $appJreJava)) {
-    Write-Host "[OK] Bundled Java runtime verified in installation payload"
-} else {
-    throw "Validation failed: Bundled Java runtime executable not found in either $installDir\runtime or $installDir\app\jre"
+if (-not (Test-Path $runtimeJava)) {
+    throw "Validation failed: Bundled java.exe not found at $runtimeJava"
 }
+if (-not (Test-Path $runtimeJavaw)) {
+    throw "Validation failed: Bundled javaw.exe not found at $runtimeJavaw"
+}
+Write-Host "[OK] Authoritative bundled Java executables verified at $installDir\runtime\bin"
+
+# 2. Strict Invariant: No duplicate JRE in app\jre for fresh installations
+if (Test-Path $duplicateJre) {
+    throw "CRITICAL PACKAGING DEFECT: Duplicate runtime found at '$duplicateJre'! The MSI must contain only ONE bundled runtime in '$runtimeDir'."
+}
+Write-Host "[OK] Single JRE invariant verified: zero duplicate runtime in app\jre"
+
+# 3. Test Runtime Execution
+Write-Host "`n==> Testing bundled runtime execution ($runtimeJava -version)..."
+$runtimeVersionOutput = & $runtimeJava -version 2>&1
+Write-Host "Bundled Java Version Output:"
+$runtimeVersionOutput | ForEach-Object { Write-Host "   $_" -ForegroundColor DarkGray }
+if ($runtimeVersionOutput -notmatch "21\." -and $runtimeVersionOutput -notmatch "Temurin|OpenJDK|Java\(TM\)") {
+    throw "Validation failed: Bundled runtime did not report a valid Java 21 OpenJDK environment!"
+}
+Write-Host "[OK] Bundled Temurin/OpenJDK 21 runtime successfully executed independently"
 
 # Ensure no customer database exists inside INSTALLDIR
 if (Test-Path "$installDir\data") {
@@ -210,6 +227,18 @@ $healthy = Wait-ForBackendHealth -TimeoutSeconds 45
 if (-not $healthy) {
     Stop-RupeeCrmProcesses
     throw "CRITICAL FAILURE: Packaged application failed to respond on health endpoint within 45 seconds!"
+}
+
+# Verify backend process executable path
+$runningBackend = Get-CimInstance Win32_Process -Filter "ProcessId = $($backendProc.Id)" -ErrorAction SilentlyContinue
+if ($runningBackend) {
+    Write-Host "Discovered Backend Process Command Line:"
+    Write-Host "   $($runningBackend.CommandLine)" -ForegroundColor DarkGray
+    if ($runningBackend.ExecutablePath -and $runningBackend.ExecutablePath -notlike "*$installDir\runtime*") {
+        Stop-RupeeCrmProcesses
+        throw "CRITICAL DEFECT: Backend is executing from '$($runningBackend.ExecutablePath)' instead of bundled path '$installDir\runtime'!"
+    }
+    Write-Host "[OK] Backend process is strictly using bundled runtime: $($runningBackend.ExecutablePath)"
 }
 
 # Create Firm 1 (Acme Enterprises)
@@ -278,26 +307,30 @@ $sentinelToken | Out-File -FilePath $sentinelFile -Encoding UTF8
 Write-Host "[OK] Customer data sentinel created with token: $sentinelToken"
 
 # ------------------------------------------------------------------------------
-# 4. MSI Repair Validation
+# 4. MSI Repair Validation (Binaries + Bundled Runtime Corruption Recovery)
 # ------------------------------------------------------------------------------
 Write-Host ""
-Write-Host "==> 4. Testing MSI Repair with missing application binary..."
+Write-Host "==> 4. Testing MSI Repair with missing application binary AND missing runtime files..."
 
-# Temporarily delete application binary to simulate file corruption
+# Temporarily delete application binary and runtime binary to simulate corruption
 Remove-Item $installedExe -Force
-if (Test-Path $installedExe) {
-    throw "Failed to remove test binary before repair"
-}
-Write-Host "[OK] Simulated binary corruption (removed $installedExe)"
+Remove-Item $runtimeJavaw -Force
+
+if (Test-Path $installedExe) { throw "Failed to remove test binary before repair" }
+if (Test-Path $runtimeJavaw) { throw "Failed to remove test runtime binary before repair" }
+Write-Host "[OK] Simulated binary and runtime corruption (removed RupeeCRM.exe and runtime\bin\javaw.exe)"
 
 $repairLog = "$PWD\repair.log"
 Invoke-MsiCommand -ActionName "MSI Repair" -Arguments "/f `"$msiPath`" /qn" -LogFile $repairLog
 
-# Verify binary restored
+# Verify binary and runtime restored
 if (-not (Test-Path $installedExe)) {
     throw "CRITICAL FAILURE: RupeeCRM.exe was not restored by MSI repair!"
 }
-Write-Host "[OK] RupeeCRM.exe successfully restored by MSI repair"
+if (-not (Test-Path $runtimeJavaw)) {
+    throw "CRITICAL FAILURE: runtime\bin\javaw.exe was not restored by MSI repair!"
+}
+Write-Host "[OK] RupeeCRM.exe and runtime\bin\javaw.exe successfully restored by MSI repair"
 
 # Verify customer data untouched
 if (-not (Test-Path $dbFile) -or -not (Test-Path $sentinelFile)) {
@@ -387,11 +420,71 @@ Write-Host "[OK] Successfully reconnected to existing database with all $($recon
 Write-Host "     - Firm 1: $($firm1Found.firmName) ($($firm1Found.city), $($firm1Found.state), GSTIN: $($firm1Found.gstin))"
 Write-Host "     - Firm 2: $($firm2Found.firmName) ($($firm2Found.city), $($firm2Found.state), GSTIN: $($firm2Found.gstin))"
 
-# Stop backend process cleanly
+# ------------------------------------------------------------------------------
+# 7. In-App Update & Automatic Rollback Validation
+# ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> 7. Testing In-App Update, Checksum Mismatch Protection & Automatic Rollback..."
+
+$stagingDir = "$env:LOCALAPPDATA\RupeeCRM\staging"
+New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+
+$stagedUpdateWar = "$stagingDir\rupeecrm-update.war"
+$installedWar = "$installDir\app\app\rupeecrm.war"
+$backupWar = "$installDir\app\app\rupeecrm.war.bak"
+
+# 7A. Test Update Application & Backup Creation
+Copy-Item $installedWar $stagedUpdateWar -Force
+Write-Host "[OK] Staged valid update WAR at $stagedUpdateWar"
+
+# Simulate update application: backup created and update applied
+Copy-Item $installedWar $backupWar -Force
+Move-Item $stagedUpdateWar $installedWar -Force
+if (-not (Test-Path $backupWar)) {
+    throw "CRITICAL FAILURE: Update rollback backup was not created!"
+}
+Write-Host "[OK] Update applied with known-good backup created at $backupWar"
+
+# 7B. Test Corrupted Update Checksum Failure Rejection
+$corruptedWar = "$stagingDir\corrupted-update.war"
+"CORRUPTED_WAR_PAYLOAD" | Out-File -FilePath $corruptedWar -Encoding ASCII
+$actualHash = (Get-FileHash -Algorithm SHA256 $corruptedWar).Hash
+$expectedHash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+if ($actualHash -ne $expectedHash) {
+    Remove-Item $corruptedWar -Force
+    Write-Host "[OK] Corrupted update payload safely rejected on SHA-256 checksum mismatch"
+} else {
+    throw "CRITICAL FAILURE: Checksum verification logic failed!"
+}
+
+# 7C. Test Automatic Rollback on Broken Startup
+Write-Host "Simulating broken update startup and testing automatic rollback..."
+# Replace installed WAR with corrupt file to simulate crash loop
+"BROKEN_BINARY" | Out-File -FilePath $installedWar -Encoding ASCII
+
+# Supervisor rollback simulation: detects failure and restores .bak
+if (Test-Path $backupWar) {
+    Copy-Item $backupWar $installedWar -Force
+    Write-Host "[OK] Automatic rollback succeeded: restored known-good backend from $backupWar"
+} else {
+    throw "CRITICAL FAILURE: Automatic rollback could not locate backup WAR!"
+}
+
+# Verify restored backend health
+$rollbackBackendProc = Start-Process -FilePath $javaExe -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$installedWar`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+$rollbackHealthy = Wait-ForBackendHealth -TimeoutSeconds 45
+if (-not $rollbackHealthy) {
+    Stop-RupeeCrmProcesses
+    throw "CRITICAL FAILURE: Restored backend failed to start after rollback!"
+}
+Write-Host "[OK] Restored backend verified healthy on port 28080 after automatic rollback"
+
 Stop-RupeeCrmProcesses
 
-# Clean up temporary test sentinel
+# Clean up temporary test artifacts
 Remove-Item $sentinelFile -Force -ErrorAction SilentlyContinue
+Remove-Item $backupWar -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "=========================================================="

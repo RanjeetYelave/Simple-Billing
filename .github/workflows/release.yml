@@ -118,7 +118,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist/RupeeCRM/app
-          New-Item -ItemType Directory -Force -Path dist/RupeeCRM/jre
 
           # Copy backend WAR
           Copy-Item app-binaries/rupeecrm.war dist/RupeeCRM/app/rupeecrm.war
@@ -133,9 +132,6 @@ jobs:
             channel = "production"
           } | ConvertTo-Json
           $versionJson | Out-File -Encoding UTF8 dist/RupeeCRM/version.json
-
-          # Copy complete bundled JRE from runner JDK
-          Copy-Item -Recurse "$env:JAVA_HOME\bin", "$env:JAVA_HOME\lib", "$env:JAVA_HOME\conf" dist/RupeeCRM/jre/
 
           # Package internal application payload
           Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
@@ -179,16 +175,24 @@ jobs:
               throw "version.json is missing from dist/RupeeCRM"
           }
 
-          if (-not (Test-Path "dist/RupeeCRM/jre/bin/java.exe")) {
-              throw "Bundled JRE java.exe is missing from dist/RupeeCRM/jre/bin"
+          # Verify authoritative runner JDK runtime before packaging
+          if (-not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
+              throw "Host JDK java.exe is missing from $env:JAVA_HOME\bin"
+          }
+          if (-not (Test-Path "$env:JAVA_HOME\bin\javaw.exe")) {
+              throw "Host JDK javaw.exe is missing from $env:JAVA_HOME\bin"
           }
 
-          # Package Native Application and build standalone MSI Installer directly via jpackage
+          Write-Host "=== Verifying Bundled Runtime Execution ==="
+          & "$env:JAVA_HOME\bin\java.exe" -version
+
+          # Package Native Application and build standalone MSI Installer with full bundled Temurin runtime
           jpackage --name RupeeCRM `
                    --input dist/RupeeCRM `
                    --main-jar launcher.jar `
                    --main-class com.billing.simple.launcher.LauncherMain `
                    --type msi `
+                   --runtime-image "$env:JAVA_HOME" `
                    --icon tools/assets/RupeeCRM.ico `
                    --dest msi-stage `
                    --resource-dir installer/wix/resources `

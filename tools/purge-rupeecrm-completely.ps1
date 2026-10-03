@@ -11,15 +11,22 @@
 
 [CmdletBinding()]
 param(
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$Force,
+    [switch]$NoElevation,
+    [switch]$Diagnostics
 )
 
 # Keep console open on exit under all conditions
 function Pause-And-Exit {
     param([int]$Code = 0)
-    Write-Host ""
-    Write-Host "Press Enter to exit this window..." -ForegroundColor Gray
-    [void][System.Console]::ReadLine()
+    try {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            Write-Host ""
+            Write-Host "Press Enter to exit this window..." -ForegroundColor Gray
+            [void][System.Console]::ReadLine()
+        }
+    } catch {}
     exit $Code
 }
 
@@ -37,7 +44,7 @@ function Check-IsAdmin {
     }
 }
 
-if (-not (Check-IsAdmin)) {
+if (-not (Check-IsAdmin) -and -not $NoElevation) {
     Write-Host "======================================================================" -ForegroundColor Yellow
     Write-Host " Administrator privileges required. Requesting elevation (UAC)...    " -ForegroundColor Yellow
     Write-Host "======================================================================" -ForegroundColor Yellow
@@ -76,11 +83,18 @@ Write-Host "   - Windows Registry Keys & Startup Autostart Entries" -ForegroundC
 Write-Host "   - MSI Installer Registrations & Shortcuts" -ForegroundColor DarkYellow
 Write-Host ""
 
-if ($DryRun) {
+if ($Diagnostics) {
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host " DIAGNOSTICS AUDIT MODE - SCANNING SYSTEM STATE" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host ""
+} elseif ($DryRun) {
     Write-Host "======================================================================" -ForegroundColor Cyan
     Write-Host " DRY RUN MODE ENABLED - NO DESTRUCTIVE CHANGES WILL BE PERFORMED" -ForegroundColor Cyan
     Write-Host "======================================================================" -ForegroundColor Cyan
     Write-Host ""
+} elseif ($Force) {
+    Write-Host "Non-interactive force switch supplied. Commencing complete purge..." -ForegroundColor Red
 } else {
     $expectedPhrase = "DELETE EVERYTHING AND START FRESH"
     Write-Host "To confirm complete factory reset, type EXACTLY:" -ForegroundColor White

@@ -255,6 +255,11 @@ public class LauncherMain {
         List<String> command = new ArrayList<>();
 
         File javaBin = resolveBundledJavaw();
+        if (!javaBin.exists()) {
+            System.err.println("CRITICAL: Bundled Java runtime executable not found at: " + javaBin.getAbsolutePath());
+            throw new FileNotFoundException("Bundled Java runtime not found at: " + javaBin.getAbsolutePath());
+        }
+        System.out.println("Using authoritative bundled Java runtime: " + javaBin.getAbsolutePath());
         command.add(javaBin.getAbsolutePath());
 
         // JVM memory and execution parameters

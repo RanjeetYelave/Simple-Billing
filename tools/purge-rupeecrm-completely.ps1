@@ -19,39 +19,75 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+# Helper function to pause window before exit so window does not close immediately
+function Complete-Exit {
+    param([int]$ExitCode = 0)
+    
+    try {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            Write-Host ""
+            Write-Host "Press Enter to close this window..." -ForegroundColor Gray
+            [void][System.Console]::ReadLine()
+        }
+    } catch {}
+    
+    exit $ExitCode
+}
+
 # ==============================================================================
 # 1. ELEVATION CHECK & AUTO-RELAUNCH
 # ==============================================================================
 
 function Test-IsAdministrator {
-    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    try {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
+# Resolve current script path with robust fallbacks
+$scriptPath = $PSCommandPath
+if (-not $scriptPath) {
+    if ($PSScriptRoot -and $MyInvocation.MyCommand.Name) {
+        $scriptPath = Join-Path $PSScriptRoot $MyInvocation.MyCommand.Name
+    } elseif ($MyInvocation.MyCommand.Path) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+    } elseif ($MyInvocation.MyCommand.Definition) {
+        $scriptPath = $MyInvocation.MyCommand.Definition
+    }
 }
 
 if (-not (Test-IsAdministrator)) {
     if ($env:RUPEECRM_PURGE_RELAUNCHED -eq "1") {
-        Write-Error "CRITICAL: Failed to acquire administrative privileges after relaunch. Please run PowerShell as Administrator."
-        exit 1
+        Write-Host "CRITICAL: Administrator privileges were not acquired. Please right-click PowerShell and select 'Run as Administrator'." -ForegroundColor Red
+        Complete-Exit 1
     }
 
-    Write-Host "Elevated Administrator privileges required. Relaunching..." -ForegroundColor Yellow
-    $scriptPath = $PSCommandPath
+    Write-Host "======================================================================" -ForegroundColor Yellow
+    Write-Host " Administrator privileges required. Requesting elevation (UAC)...    " -ForegroundColor Yellow
+    Write-Host "======================================================================" -ForegroundColor Yellow
+    
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
-        $scriptPath = (Resolve-Path $MyInvocation.MyCommand.Path).Path
+        Write-Host "Could not automatically resolve script path for elevation." -ForegroundColor Red
+        Write-Host "Please open an elevated PowerShell prompt (Run as Administrator) and run:" -ForegroundColor Yellow
+        Write-Host "  powershell -ExecutionPolicy Bypass -File .\purge-rupeecrm-completely.ps1" -ForegroundColor White
+        Complete-Exit 1
     }
 
-    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+    $argList = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
     if ($DryRun) {
         $argList += " -DryRun"
     }
 
     $env:RUPEECRM_PURGE_RELAUNCHED = "1"
     try {
-        Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs -Wait
+        Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs
         exit 0
     } catch {
-        Write-Error "User cancelled Elevation prompt or RunAs failed: $($_.Exception.Message)"
-        exit 1
+        Write-Host "Elevation prompt was cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
+        Complete-Exit 1
     }
 }
 
@@ -95,7 +131,7 @@ if ($DryRun) {
     if ($userInput -cne $expectedPhrase) {
         Write-Host ""
         Write-Host "Confirmation phrase did not match. Aborting immediately with ZERO changes." -ForegroundColor Green
-        exit 0
+        Complete-Exit 0
     }
     Write-Host ""
     Write-Host "Confirmation accepted. Commencing forensic discovery and purge..." -ForegroundColor Red
@@ -105,24 +141,25 @@ if ($DryRun) {
 # 3. DISCOVERY ENGINE (ARTIFACT INVENTORY)
 # ==============================================================================
 
-class DiscoveredArtifact {
-    [string]$Category
-    [string]$PathOrName
-    [string]$Reason
-    [string]$Action
-    [object]$Data
-
-    DiscoveredArtifact([string]$cat, [string]$target, [string]$reason, [string]$action, [object]$extraData = $null) {
-        $this.Category   = $cat
-        $this.PathOrName = $target
-        $this.Reason     = $reason
-        $this.Action     = $action
-        $this.Data       = $extraData
+function New-Artifact {
+    param(
+        [string]$Category,
+        [string]$PathOrName,
+        [string]$Reason,
+        [string]$Action,
+        [object]$Data = $null
+    )
+    return [PSCustomObject]@{
+        Category   = $Category
+        PathOrName = $PathOrName
+        Reason     = $Reason
+        Action     = $Action
+        Data       = $Data
     }
 }
 
 function Find-RupeeCrmArtifacts {
-    $inventory = [System.Collections.Generic.List[DiscoveredArtifact]]::new()
+    $inventory = [System.Collections.Generic.List[object]]::new()
 
     # --------------------------------------------------------------------------
     # A. PROCESSES
@@ -148,13 +185,12 @@ function Find-RupeeCrmArtifacts {
         }
 
         if ($isRupee) {
-            $inventory.Add([DiscoveredArtifact]::new(
-                "PROCESS",
-                "$($p.Name) (PID: $($p.ProcessId))",
-                $reason,
-                "Terminate Process",
-                $p.ProcessId
-            ))
+            $inventory.Add((New-Artifact `
+                -Category "PROCESS" `
+                -PathOrName "$($p.Name) (PID: $($p.ProcessId))" `
+                -Reason $reason `
+                -Action "Terminate Process" `
+                -Data $p.ProcessId))
         }
     }
 
@@ -193,13 +229,12 @@ function Find-RupeeCrmArtifacts {
                     }
 
                     if ($isMsiMatch) {
-                        $inventory.Add([DiscoveredArtifact]::new(
-                            "MSI",
-                            "$regRoot\$keyName ($dn)",
-                            $reason,
-                            "Uninstall MSI / Deregister Product",
-                            @{ KeyPath = $sk.PSPath; ProductCode = $keyName; UninstallString = $unStr; InstallLocation = $loc }
-                        ))
+                        $inventory.Add((New-Artifact `
+                            -Category "MSI" `
+                            -PathOrName "$regRoot\$keyName ($dn)" `
+                            -Reason $reason `
+                            -Action "Uninstall MSI / Deregister Product" `
+                            -Data @{ KeyPath = $sk.PSPath; ProductCode = $keyName; UninstallString = $unStr; InstallLocation = $loc }))
                     }
                 } catch {}
             }
@@ -212,13 +247,12 @@ function Find-RupeeCrmArtifacts {
     $services = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue
     foreach ($s in $services) {
         if ($s.Name -match "^RupeeCRM" -or $s.DisplayName -match "RupeeCRM" -or ($s.PathName -and $s.PathName -match "RupeeCRM")) {
-            $inventory.Add([DiscoveredArtifact]::new(
-                "SERVICE",
-                $s.Name,
-                "Service Name/Path matches RupeeCRM: $($s.PathName)",
-                "Stop and Delete Service",
-                $s.Name
-            ))
+            $inventory.Add((New-Artifact `
+                -Category "SERVICE" `
+                -PathOrName $s.Name `
+                -Reason "Service Name/Path matches RupeeCRM: $($s.PathName)" `
+                -Action "Stop and Delete Service" `
+                -Data $s.Name))
         }
     }
 
@@ -229,13 +263,12 @@ function Find-RupeeCrmArtifacts {
         $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue
         foreach ($t in $tasks) {
             if ($t.TaskName -match "RupeeCRM" -or $t.TaskPath -match "RupeeCRM") {
-                $inventory.Add([DiscoveredArtifact]::new(
-                    "TASK",
-                    "$($t.TaskPath)$($t.TaskName)",
-                    "Task Name/Path matches RupeeCRM",
-                    "Unregister Scheduled Task",
-                    $t.TaskName
-                ))
+                $inventory.Add((New-Artifact `
+                    -Category "TASK" `
+                    -PathOrName "$($t.TaskPath)$($t.TaskName)" `
+                    -Reason "Task Name/Path matches RupeeCRM" `
+                    -Action "Unregister Scheduled Task" `
+                    -Data $t.TaskName))
             }
         }
     }
@@ -251,12 +284,11 @@ function Find-RupeeCrmArtifacts {
 
     foreach ($dir in $potentialBinDirs) {
         if ($dir -and (Test-Path $dir)) {
-            $inventory.Add([DiscoveredArtifact]::new(
-                "INSTALLATION",
-                $dir,
-                "Authoritative or legacy application binary directory",
-                "Delete Directory Tree"
-            ))
+            $inventory.Add((New-Artifact `
+                -Category "INSTALLATION" `
+                -PathOrName $dir `
+                -Reason "Authoritative or legacy application binary directory" `
+                -Action "Delete Directory Tree"))
         }
     }
 
@@ -286,12 +318,11 @@ function Find-RupeeCrmArtifacts {
 
     $uniqueDataPaths = $potentialDataPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
     foreach ($dp in $uniqueDataPaths) {
-        $inventory.Add([DiscoveredArtifact]::new(
-            "DATA",
-            $dp,
-            "Authoritative customer data, database, backups, or logs directory",
-            "Delete Data Directory Tree"
-        ))
+        $inventory.Add((New-Artifact `
+            -Category "DATA" `
+            -PathOrName $dp `
+            -Reason "Authoritative customer data, database, backups, or logs directory" `
+            -Action "Delete Data Directory Tree"))
     }
 
     # --------------------------------------------------------------------------
@@ -304,12 +335,11 @@ function Find-RupeeCrmArtifacts {
     )
     foreach ($rk in $rupeeRegKeys) {
         if (Test-Path $rk) {
-            $inventory.Add([DiscoveredArtifact]::new(
-                "REGISTRY",
-                $rk,
-                "RupeeCRM configuration registry hive",
-                "Delete Registry Key"
-            ))
+            $inventory.Add((New-Artifact `
+                -Category "REGISTRY" `
+                -PathOrName $rk `
+                -Reason "RupeeCRM configuration registry hive" `
+                -Action "Delete Registry Key"))
         }
     }
 
@@ -322,19 +352,18 @@ function Find-RupeeCrmArtifacts {
         if (Test-Path $runKey) {
             $prop = Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue
             if ($prop -and $prop.RupeeCRM) {
-                $inventory.Add([DiscoveredArtifact]::new(
-                    "STARTUP",
-                    "$runKey\RupeeCRM -> $($prop.RupeeCRM)",
-                    "RupeeCRM autostart registry entry",
-                    "Remove Registry Value",
-                    @{ KeyPath = $runKey; ValueName = "RupeeCRM" }
-                ))
+                $inventory.Add((New-Artifact `
+                    -Category "STARTUP" `
+                    -PathOrName "$runKey\RupeeCRM -> $($prop.RupeeCRM)" `
+                    -Reason "RupeeCRM autostart registry entry" `
+                    -Action "Remove Registry Value" `
+                    -Data @{ KeyPath = $runKey; ValueName = "RupeeCRM" }))
             }
         }
     }
 
     # --------------------------------------------------------------------------
-    # H. SHORTCUTS & STARTUP FOLDER ENTRIES
+    # H. SHORTCUTS & START MENU GROUPS
     # --------------------------------------------------------------------------
     $shortcutDirs = @(
         [Environment]::GetFolderPath("Desktop"),
@@ -366,24 +395,22 @@ function Find-RupeeCrmArtifacts {
                 }
 
                 if ($isMatch) {
-                    $inventory.Add([DiscoveredArtifact]::new(
-                        "SHORTCUT",
-                        $lnk.FullName,
-                        $reason,
-                        "Delete Shortcut File"
-                    ))
+                    $inventory.Add((New-Artifact `
+                        -Category "SHORTCUT" `
+                        -PathOrName $lnk.FullName `
+                        -Reason $reason `
+                        -Action "Delete Shortcut File"))
                 }
             }
 
             # Check for Start Menu folders named RupeeCRM
             $startMenuFolders = Get-ChildItem -Path $scDir -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue
             foreach ($smf in $startMenuFolders) {
-                $inventory.Add([DiscoveredArtifact]::new(
-                    "SHORTCUT",
-                    $smf.FullName,
-                    "Start Menu application group folder",
-                    "Delete Directory Tree"
-                ))
+                $inventory.Add((New-Artifact `
+                    -Category "SHORTCUT" `
+                    -PathOrName $smf.FullName `
+                    -Reason "Start Menu application group folder" `
+                    -Action "Delete Directory Tree"))
             }
         }
     }
@@ -398,13 +425,12 @@ function Find-RupeeCrmArtifacts {
         foreach ($varName in $rupeeEnvNames) {
             $val = [Environment]::GetEnvironmentVariable($varName, $target)
             if ($val) {
-                $inventory.Add([DiscoveredArtifact]::new(
-                    "ENVIRONMENT",
-                    "[$target] $varName = $val",
-                    "RupeeCRM custom environment variable",
-                    "Delete Environment Variable",
-                    @{ Target = $target; Name = $varName }
-                ))
+                $inventory.Add((New-Artifact `
+                    -Category "ENVIRONMENT" `
+                    -PathOrName "[$target] $varName = $val" `
+                    -Reason "RupeeCRM custom environment variable" `
+                    -Action "Delete Environment Variable" `
+                    -Data @{ Target = $target; Name = $varName }))
             }
         }
     }
@@ -419,12 +445,11 @@ function Find-RupeeCrmArtifacts {
                 $_.Name -like "*rupeecrm*" -or $_.Name -like "*billsoft*"
             }
             foreach ($tm in $tempMatches) {
-                $inventory.Add([DiscoveredArtifact]::new(
-                    "TEMP",
-                    $tm.FullName,
-                    "Temporary installation / update artifact",
-                    "Delete File/Directory"
-                ))
+                $inventory.Add((New-Artifact `
+                    -Category "TEMP" `
+                    -PathOrName $tm.FullName `
+                    -Reason "Temporary installation / update artifact" `
+                    -Action "Delete File/Directory"))
             }
         }
     }
@@ -478,7 +503,6 @@ function Remove-DirectoryWithRetry {
         }
     }
 
-    # Final attempt check
     return (-not (Test-Path $Path))
 }
 
@@ -735,7 +759,7 @@ if ($DryRun) {
     Write-Host "======================================================================" -ForegroundColor Cyan
     Write-Host " DRY RUN COMPLETED: No modifications were made to the system." -ForegroundColor Cyan
     Write-Host "======================================================================" -ForegroundColor Cyan
-    exit 0
+    Complete-Exit 0
 }
 
 if ($postAuditArtifacts.Count -gt 0 -or $stats.DeletionFailures -gt 0) {
@@ -750,7 +774,7 @@ if ($postAuditArtifacts.Count -gt 0 -or $stats.DeletionFailures -gt 0) {
     }
     Write-Host ""
     Write-Host "Failure: System is not in a pure pristine state. Please resolve file locks or permissions and re-run." -ForegroundColor Red
-    exit 1
+    Complete-Exit 1
 } else {
     Write-Host "======================================================================" -ForegroundColor Green
     Write-Host "                 RUPEECRM COMPLETE CLEANUP: SUCCESS                   " -ForegroundColor Green
@@ -761,5 +785,5 @@ if ($postAuditArtifacts.Count -gt 0 -or $stats.DeletionFailures -gt 0) {
     Write-Host ""
     Write-Host "The next RupeeCRM installation can be treated as a genuine first-time installation." -ForegroundColor Green
     Write-Host ""
-    exit 0
+    Complete-Exit 0
 }

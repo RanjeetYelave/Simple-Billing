@@ -228,7 +228,6 @@ jobs:
             billsoft.war
             billsoft.war.sha256
             manifest.json
-            release-meta/manifest.json
           if-no-files-found: error
 
   publish-release:
@@ -257,14 +256,14 @@ jobs:
             release-dist/billsoft.war
             release-dist/billsoft.war.sha256
             release-dist/manifest.json
-            release-dist/release-meta/manifest.json
           body: |
             ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
             
             ### Installation Instructions
             1. Download **`RupeeCRMSetup.msi`**.
-            2. Double-click to install.
-            3. RupeeCRM will start automatically in the Windows System Tray and open your dashboard.
+            2. Double-click the installer and follow the normal Windows installation prompts.
+            3. RupeeCRM starts automatically in the Windows System Tray.
+            4. A notification appears when RupeeCRM is healthy and ready to use.
             
             ### Distribution Assets & Checksums
             - **Unified Installer:** `RupeeCRMSetup.msi`

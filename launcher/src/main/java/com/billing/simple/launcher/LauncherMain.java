@@ -795,18 +795,31 @@ public class LauncherMain {
         String os = System.getProperty("os.name").toLowerCase();
         String binName = os.contains("win") ? "javaw.exe" : "java";
 
-        // 1. Check bundled JRE under Program directory
         File appDir = getAppDirectory();
+
+        // 1. Check jpackage bundled runtime under installation root (<InstallDir>/runtime/bin)
+        if (appDir.getParentFile() != null) {
+            File jpackageRuntime = new File(appDir.getParentFile(), "runtime" + File.separator + "bin" + File.separator + binName);
+            if (jpackageRuntime.exists()) return jpackageRuntime;
+        }
+        File appRuntime = new File(appDir, "runtime" + File.separator + "bin" + File.separator + binName);
+        if (appRuntime.exists()) return appRuntime;
+
+        // 2. Check legacy/bundled jre directory
         File bundled = new File(appDir, "jre" + File.separator + "bin" + File.separator + binName);
         if (bundled.exists()) return bundled;
 
-        File parentBundled = new File(appDir.getParentFile(), "jre" + File.separator + "bin" + File.separator + binName);
-        if (parentBundled.exists()) return parentBundled;
+        if (appDir.getParentFile() != null) {
+            File parentBundled = new File(appDir.getParentFile(), "jre" + File.separator + "bin" + File.separator + binName);
+            if (parentBundled.exists()) return parentBundled;
+        }
 
-        // 2. Fallback to active JVM java.home
+        // 3. Fallback to active JVM java.home
         String javaHome = System.getProperty("java.home");
-        File jvmBin = new File(javaHome + File.separator + "bin" + File.separator + binName);
-        if (jvmBin.exists()) return jvmBin;
+        if (javaHome != null) {
+            File jvmBin = new File(javaHome + File.separator + "bin" + File.separator + binName);
+            if (jvmBin.exists()) return jvmBin;
+        }
 
         return new File(binName);
     }

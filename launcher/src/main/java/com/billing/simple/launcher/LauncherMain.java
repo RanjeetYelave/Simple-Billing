@@ -40,6 +40,9 @@ public class LauncherMain {
     public static final String HEALTH_URL = "http://127.0.0.1:28080/api/health";
     public static final int PORT = 28080;
 
+    public static final String STARTUP_NOTIF_TITLE = "RupeeCRM";
+    public static final String STARTUP_NOTIF_MESSAGE = "App started successfully\nStatus: Healthy\nReady to use";
+
     // Embedded Master Ed25519 Public Key for Release Manifest Authentication
     public static final String DEFAULT_PUBLIC_KEY_X509_BASE64 =
             "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
@@ -58,6 +61,7 @@ public class LauncherMain {
     private static final int MAX_CRASHES_IN_WINDOW = 3;
     private static final long CRASH_WINDOW_MS = 60_000L;
     private volatile boolean circuitBreakerTripped = false;
+    private final AtomicBoolean startupNotificationShown = new AtomicBoolean(false);
 
     // UI state elements
     private JLabel statusBadge;
@@ -156,7 +160,7 @@ public class LauncherMain {
                 if (healthy) {
                     System.out.println("RupeeCRM backend is healthy (PID: " + backendPid + ")");
                     updateTrayTooltip("RupeeCRM [● Running on port " + PORT + "]");
-                    showTrayNotification("RupeeCRM Ready", "RupeeCRM server is running on port " + PORT, TrayIcon.MessageType.INFO);
+                    triggerStartupNotificationIfReady();
                 } else {
                     System.err.println("RupeeCRM backend failed health check within 30s.");
                     recordCrashEvent();
@@ -284,8 +288,12 @@ public class LauncherMain {
     }
 
     public static boolean isBackendHealthy(int timeoutMs) {
+        return isBackendHealthy(HEALTH_URL, timeoutMs);
+    }
+
+    public static boolean isBackendHealthy(String healthUrl, int timeoutMs) {
         try {
-            URL url = new URL(HEALTH_URL);
+            URL url = new URL(healthUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(timeoutMs);
             conn.setReadTimeout(timeoutMs);
@@ -435,9 +443,44 @@ public class LauncherMain {
         }
     }
 
+    public static boolean isBackendFullyReady(int timeoutMs) {
+        if (!isBackendHealthy(timeoutMs)) {
+            return false;
+        }
+        try {
+            URL url = new URL("http://127.0.0.1:" + PORT + "/api/health/diagnostics");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setRequestMethod("GET");
+            if (conn.getResponseCode() == 200) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return true;
+    }
+
+    public void triggerStartupNotificationIfReady() {
+        if (startupNotificationShown.compareAndSet(false, true)) {
+            try {
+                if (isBackendFullyReady(1500)) {
+                    showTrayNotification(STARTUP_NOTIF_TITLE, STARTUP_NOTIF_MESSAGE, TrayIcon.MessageType.INFO);
+                } else {
+                    startupNotificationShown.set(false);
+                }
+            } catch (Exception e) {
+                System.err.println("Non-critical error displaying startup notification: " + e.getMessage());
+            }
+        }
+    }
+
     public void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
-        if (trayIcon != null) {
-            trayIcon.displayMessage(title, message, type);
+        try {
+            if (trayIcon != null) {
+                trayIcon.displayMessage(title, message, type);
+            }
+        } catch (Exception e) {
+            System.err.println("Non-critical error displaying tray notification: " + e.getMessage());
         }
     }
 

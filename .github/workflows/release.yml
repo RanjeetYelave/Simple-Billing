@@ -145,15 +145,28 @@ jobs:
           # Package internal application payload
           Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
 
-      - name: Generate Release Manifest and Ed25519 Signature
+      - name: Generate Release Manifest
         shell: pwsh
-        env:
-          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_ED25519_PRIVATE_KEY }}
         run: |
-          # Use placeholder if secret not set in fork/pr
-          $privKey = if ($env:RELEASE_SIGNING_KEY) { $env:RELEASE_SIGNING_KEY } else { "MC4CAQAwBQYDK2VwBCIEIPkU6f4xW9j9m+7R6iP6X9Y6bZ+1w8vX7q3m8r5t8v9x" }
-          javac installer/ManifestSigner.java
-          java -cp installer com.billing.simple.installer.ManifestSigner sign rupeecrm-app-windows-x64.zip "1.0.${{ github.run_number }}" $privKey ./release-meta
+          New-Item -ItemType Directory -Force -Path release-meta
+          $pkgHash = (Get-FileHash -Algorithm SHA256 rupeecrm-app-windows-x64.zip).Hash.ToLower()
+          $pkgSize = (Get-Item rupeecrm-app-windows-x64.zip).Length
+
+          $manifest = @{
+            version = "1.0.${{ github.run_number }}"
+            releaseTag = "v1.0.${{ github.run_number }}"
+            publishedAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            minInstallerVersion = "1.0.0"
+            package = @{
+              filename = "rupeecrm-app-windows-x64.zip"
+              sha256 = $pkgHash
+              sizeBytes = $pkgSize
+            }
+          } | ConvertTo-Json -Depth 4
+
+          $manifest | Out-File -Encoding UTF8 release-meta/manifest.json
+          Write-Host "=== Generated Release Manifest ==="
+          Get-Content release-meta/manifest.json
 
       - name: Build Unified RupeeCRMSetup.msi
         shell: pwsh
@@ -197,7 +210,6 @@ jobs:
             billsoft.war
             billsoft.war.sha256
             release-meta/manifest.json
-            release-meta/manifest.sig
           if-no-files-found: error
 
   publish-release:
@@ -227,7 +239,6 @@ jobs:
             release-dist/billsoft.war
             release-dist/billsoft.war.sha256
             release-dist/manifest.json
-            release-dist/manifest.sig
           body: |
             ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
             
@@ -236,6 +247,9 @@ jobs:
             2. Double-click to install.
             3. RupeeCRM will start automatically in the Windows System Tray and open your dashboard.
             
-            ### Integrity & Authenticity
-            - Release Manifest: `manifest.json` (signed via Ed25519: `manifest.sig`)
-            - Application Payload: `rupeecrm-app-windows-x64.zip` (verified by MSI)
+            ### Distribution Assets & Checksums
+            - **Unified Installer:** `RupeeCRMSetup.msi`
+            - **Direct Update Package:** `rupeecrm.war` (SHA-256: `rupeecrm.war.sha256`)
+            - **Legacy Compatible Asset:** `billsoft.war` (SHA-256: `billsoft.war.sha256`)
+            - **Release Manifest:** `manifest.json`
+            - **Application Payload:** `rupeecrm-app-windows-x64.zip`

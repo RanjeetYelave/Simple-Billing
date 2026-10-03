@@ -131,16 +131,16 @@ $stats = @{
 
 # --- A. PROCESS CLEANUP ---
 Write-Host "`n[1/8] Checking for running RupeeCRM processes..." -ForegroundColor Cyan
-$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+$procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
     try {
         ($_.ProcessName -like "*RupeeCRM*") -or ($_.Path -and $_.Path -like "*RupeeCRM*")
     } catch { $false }
-})
+}
 
 # Also check for RupeeCRM java processes
-$javaProcs = @(Get-CimInstance Win32_Process -Filter "Name = 'java.exe' or Name = 'javaw.exe'" -ErrorAction SilentlyContinue | Where-Object {
+$javaProcs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe' or Name = 'javaw.exe'" -ErrorAction SilentlyContinue | Where-Object {
     $_.CommandLine -and ($_.CommandLine -like "*rupeecrm*" -or $_.CommandLine -like "*launcher.jar*" -or $_.CommandLine -like "*RUPEECRM_DATA_DIR*")
-})
+}
 
 foreach ($p in $procs) {
     Write-Host "  Found process: $($p.ProcessName) (PID: $($p.Id))" -ForegroundColor Yellow
@@ -176,7 +176,7 @@ foreach ($jp in $javaProcs) {
 
 # --- B. WINDOWS SERVICES ---
 Write-Host "`n[2/8] Checking for RupeeCRM Windows services..." -ForegroundColor Cyan
-$services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*RupeeCRM*" -or $_.DisplayName -like "*RupeeCRM*" })
+$services = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*RupeeCRM*" -or $_.DisplayName -like "*RupeeCRM*" }
 foreach ($s in $services) {
     Write-Host "  Found Service: $($s.Name)" -ForegroundColor Yellow
     if (-not $isReadOnly) {
@@ -197,9 +197,8 @@ foreach ($s in $services) {
 
 # --- C. SCHEDULED TASKS ---
 Write-Host "`n[3/8] Checking for RupeeCRM Scheduled Tasks..." -ForegroundColor Cyan
-$tasks = @()
 if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-    $tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*RupeeCRM*" })
+    $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*RupeeCRM*" }
     foreach ($t in $tasks) {
         Write-Host "  Found Task: $($t.TaskName)" -ForegroundColor Yellow
         if (-not $isReadOnly) {
@@ -219,7 +218,6 @@ if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
 
 # --- D. MSI INSTALLER DEREGISTRATION ---
 Write-Host "`n[4/8] Checking for RupeeCRM MSI registrations..." -ForegroundColor Cyan
-$foundMsi = @()
 $uninstallKeys = @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -233,11 +231,6 @@ foreach ($keyPath in $uninstallKeys) {
             $pub = $_.GetValue("Publisher")
             if (($dn -and $dn -like "*RupeeCRM*") -or ($pub -and $pub -eq "RupeeCRM")) {
                 $pCode = $_.PSChildName
-                $foundMsi += [PSCustomObject]@{
-                    DisplayName = $dn
-                    ProductCode = $pCode
-                    Path        = $_.PSPath
-                }
                 Write-Host "  Found MSI Registration: $dn (ProductCode: $pCode)" -ForegroundColor Yellow
                 if (-not $isReadOnly) {
                     if ($pCode -match "^\{[A-Fa-f0-9\-]+\}$") {
@@ -292,7 +285,7 @@ if (Test-Path "$env:SystemDrive\Users") {
     }
 }
 
-$uniqueDirs = @($targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)
+$uniqueDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
 foreach ($dir in $uniqueDirs) {
     Write-Host "  Found Directory: $dir" -ForegroundColor Yellow
@@ -330,16 +323,17 @@ $rupeeKeys = @(
     "HKLM:\Software\RupeeCRM",
     "HKLM:\Software\WOW6432Node\RupeeCRM"
 )
-$foundRupeeKeys = @($rupeeKeys | Where-Object { Test-Path $_ })
 
-foreach ($rk in $foundRupeeKeys) {
-    Write-Host "  Found Registry Key: $rk" -ForegroundColor Yellow
-    if (-not $isReadOnly) {
-        Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
-        $stats.Registry++
-        Write-Host "    -> Deleted" -ForegroundColor Green
-    } else {
-        Write-Host "    -> [WOULD DELETE KEY]" -ForegroundColor Gray
+foreach ($rk in $rupeeKeys) {
+    if (Test-Path $rk) {
+        Write-Host "  Found Registry Key: $rk" -ForegroundColor Yellow
+        if (-not $isReadOnly) {
+            Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
+            $stats.Registry++
+            Write-Host "    -> Deleted" -ForegroundColor Green
+        } else {
+            Write-Host "    -> [WOULD DELETE KEY]" -ForegroundColor Gray
+        }
     }
 }
 
@@ -347,17 +341,12 @@ $runKeys = @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
 )
-$foundRunEntries = @()
+
 foreach ($rk in $runKeys) {
     if (Test-Path $rk) {
         $regItem = Get-Item -Path $rk -ErrorAction SilentlyContinue
         $val = if ($regItem) { $regItem.GetValue("RupeeCRM") } else { $null }
         if ($val) {
-            $foundRunEntries += [PSCustomObject]@{
-                Path  = $rk
-                Name  = "RupeeCRM"
-                Value = $val
-            }
             Write-Host "  Found Autostart Entry: $rk\RupeeCRM -> $val" -ForegroundColor Yellow
             if (-not $isReadOnly) {
                 Remove-ItemProperty -Path $rk -Name "RupeeCRM" -Force -ErrorAction SilentlyContinue
@@ -379,12 +368,10 @@ $shortcutRoots = @(
     [Environment]::GetFolderPath("CommonPrograms")
 )
 
-$foundShortcuts = @()
-foreach ($sr in ($shortcutRoots | Select-Object -Unique)) {
+foreach ($sr in $shortcutRoots | Select-Object -Unique) {
     if ($sr -and (Test-Path $sr)) {
         # Check files
         Get-ChildItem -Path $sr -Filter "*RupeeCRM*.lnk" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $foundShortcuts += $_.FullName
             Write-Host "  Found Shortcut: $($_.FullName)" -ForegroundColor Yellow
             if (-not $isReadOnly) {
                 Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
@@ -397,7 +384,6 @@ foreach ($sr in ($shortcutRoots | Select-Object -Unique)) {
 
         # Check folders
         Get-ChildItem -Path $sr -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            $foundShortcuts += $_.FullName
             Write-Host "  Found Menu Folder: $($_.FullName)" -ForegroundColor Yellow
             if (-not $isReadOnly) {
                 Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
@@ -409,21 +395,14 @@ foreach ($sr in ($shortcutRoots | Select-Object -Unique)) {
         }
     }
 }
-$foundShortcuts = @($foundShortcuts | Select-Object -Unique)
 
 # --- H. ENVIRONMENT VARIABLES ---
 Write-Host "`n[8/8] Checking for RupeeCRM environment variables..." -ForegroundColor Cyan
 $envVars = @("RUPEECRM_DATA_DIR", "RUPEECRM_BASE_DIR", "BILLSOFT_DATA_DIR")
-$foundEnvVars = @()
 foreach ($target in @("User", "Machine")) {
     foreach ($v in $envVars) {
         $val = [Environment]::GetEnvironmentVariable($v, $target)
         if ($val) {
-            $foundEnvVars += [PSCustomObject]@{
-                Name   = $v
-                Target = $target
-                Value  = $val
-            }
             Write-Host "  Found Environment Variable: [$target] $v = $val" -ForegroundColor Yellow
             if (-not $isReadOnly) {
                 [Environment]::SetEnvironmentVariable($v, $null, $target)
@@ -458,27 +437,12 @@ Write-Host "   Failures Encountered     : $($stats.Failures)" -ForegroundColor W
 Write-Host ""
 
 if ($Diagnostics) {
-    $discoveredArtifacts = @()
-    foreach ($p in $procs) { $discoveredArtifacts += "Process: $($p.ProcessName) (PID: $($p.Id))" }
-    foreach ($jp in $javaProcs) { $discoveredArtifacts += "Backend Process: $($jp.Name) (PID: $($jp.ProcessId))" }
-    foreach ($s in $services) { $discoveredArtifacts += "Service: $($s.Name)" }
-    foreach ($t in $tasks) { $discoveredArtifacts += "Scheduled Task: $($t.TaskName)" }
-    foreach ($m in $foundMsi) { $discoveredArtifacts += "MSI Registration: $($m.DisplayName) ($($m.ProductCode))" }
-    foreach ($d in $uniqueDirs) { $discoveredArtifacts += "Directory: $d" }
-    foreach ($rk in $foundRupeeKeys) { $discoveredArtifacts += "Registry Key: $rk" }
-    foreach ($re in $foundRunEntries) { $discoveredArtifacts += "Autostart Entry: $($re.Path)\$($re.Name)" }
-    foreach ($sc in $foundShortcuts) { $discoveredArtifacts += "Shortcut: $sc" }
-    foreach ($ev in $foundEnvVars) { $discoveredArtifacts += "Environment Variable: [$($ev.Target)] $($ev.Name)=$($ev.Value)" }
-
-    if ($discoveredArtifacts.Count -gt 0) {
+    $remainingDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    $remainingKeys = $rupeeKeys | Where-Object { Test-Path $_ }
+    if ($remainingDirs.Count -gt 0 -or $remainingKeys.Count -gt 0) {
         Write-Host "======================================================================" -ForegroundColor Yellow
-        Write-Host " DIAGNOSTICS AUDIT: RupeeCRM Artifacts Discovered on System ($($discoveredArtifacts.Count) found)" -ForegroundColor Yellow
+        Write-Host " DIAGNOSTICS AUDIT: RupeeCRM Artifacts Discovered on System" -ForegroundColor Yellow
         Write-Host "======================================================================" -ForegroundColor Yellow
-        Write-Host ""
-        foreach ($art in $discoveredArtifacts) {
-            Write-Host "  [!] $art" -ForegroundColor Yellow
-        }
-        Write-Host ""
         Pause-And-Exit 1
     } else {
         Write-Host "======================================================================" -ForegroundColor Green
@@ -495,84 +459,22 @@ if ($DryRun) {
     Pause-And-Exit 0
 }
 
-# Re-scan all artifact categories to guarantee 100% removal
-$remainingProcs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-    try { ($_.ProcessName -like "*RupeeCRM*") -or ($_.Path -and $_.Path -like "*RupeeCRM*") } catch { $false }
-})
-$remainingJavaProcs = @(Get-CimInstance Win32_Process -Filter "Name = 'java.exe' or Name = 'javaw.exe'" -ErrorAction SilentlyContinue | Where-Object {
-    $_.CommandLine -and ($_.CommandLine -like "*rupeecrm*" -or $_.CommandLine -like "*launcher.jar*" -or $_.CommandLine -like "*RUPEECRM_DATA_DIR*")
-})
-$remainingServices = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*RupeeCRM*" -or $_.DisplayName -like "*RupeeCRM*" })
-$remainingTasks = if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-    @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*RupeeCRM*" })
-} else { @() }
+# Check if any directories remain
+$remainingDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+$remainingKeys = $rupeeKeys | Where-Object { Test-Path $_ }
 
-$remainingMsi = @()
-foreach ($keyPath in $uninstallKeys) {
-    if (Test-Path $keyPath) {
-        Get-ChildItem -Path $keyPath -ErrorAction SilentlyContinue | ForEach-Object {
-            $dn = $_.GetValue("DisplayName")
-            $pub = $_.GetValue("Publisher")
-            if (($dn -and $dn -like "*RupeeCRM*") -or ($pub -and $pub -eq "RupeeCRM")) {
-                $remainingMsi += "$dn ($($_.PSChildName))"
-            }
-        }
-    }
-}
-
-$remainingDirs = @($targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)
-$remainingKeys = @($rupeeKeys | Where-Object { Test-Path $_ })
-
-$remainingRun = @()
-foreach ($rk in $runKeys) {
-    if (Test-Path $rk) {
-        $regItem = Get-Item -Path $rk -ErrorAction SilentlyContinue
-        $val = if ($regItem) { $regItem.GetValue("RupeeCRM") } else { $null }
-        if ($val) {
-            $remainingRun += "$rk\RupeeCRM -> $val"
-        }
-    }
-}
-
-$remainingShortcuts = @()
-foreach ($sr in ($shortcutRoots | Select-Object -Unique)) {
-    if ($sr -and (Test-Path $sr)) {
-        Get-ChildItem -Path $sr -Filter "*RupeeCRM*.lnk" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $remainingShortcuts += $_.FullName }
-        Get-ChildItem -Path $sr -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $remainingShortcuts += $_.FullName }
-    }
-}
-$remainingShortcuts = @($remainingShortcuts | Select-Object -Unique)
-
-$remainingEnv = @()
-foreach ($target in @("User", "Machine")) {
-    foreach ($v in $envVars) {
-        $val = [Environment]::GetEnvironmentVariable($v, $target)
-        if ($val) {
-            $remainingEnv += "[$target] $v = $val"
-        }
-    }
-}
-
-$residualArtifacts = @()
-foreach ($p in $remainingProcs) { $residualArtifacts += "Process: $($p.ProcessName) (PID: $($p.Id))" }
-foreach ($jp in $remainingJavaProcs) { $residualArtifacts += "Backend Process: $($jp.Name) (PID: $($jp.ProcessId))" }
-foreach ($s in $remainingServices) { $residualArtifacts += "Service: $($s.Name)" }
-foreach ($t in $remainingTasks) { $residualArtifacts += "Scheduled Task: $($t.TaskName)" }
-foreach ($m in $remainingMsi) { $residualArtifacts += "MSI Registration: $m" }
-foreach ($d in $remainingDirs) { $residualArtifacts += "Directory: $d" }
-foreach ($rk in $remainingKeys) { $residualArtifacts += "Registry Key: $rk" }
-foreach ($rr in $remainingRun) { $residualArtifacts += "Autostart Entry: $rr" }
-foreach ($sc in $remainingShortcuts) { $residualArtifacts += "Shortcut: $sc" }
-foreach ($ev in $remainingEnv) { $residualArtifacts += "Environment Variable: $ev" }
-
-if ($residualArtifacts.Count -gt 0 -or $stats.Failures -gt 0) {
+if ($remainingDirs.Count -gt 0 -or $remainingKeys.Count -gt 0 -or $stats.Failures -gt 0) {
     Write-Host "======================================================================" -ForegroundColor Red
     Write-Host "                  RUPEECRM COMPLETE CLEANUP: FAILED                   " -ForegroundColor Red
     Write-Host "======================================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Residual artifacts found after purge ($($residualArtifacts.Count) items):" -ForegroundColor Red
-    foreach ($res in $residualArtifacts) {
-        Write-Host "  - $res" -ForegroundColor Red
+    if ($remainingDirs.Count -gt 0) {
+        Write-Host "Remaining Directories:" -ForegroundColor Red
+        $remainingDirs | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    }
+    if ($remainingKeys.Count -gt 0) {
+        Write-Host "Remaining Registry Keys:" -ForegroundColor Red
+        $remainingKeys | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     }
     Write-Host ""
     Pause-And-Exit 1

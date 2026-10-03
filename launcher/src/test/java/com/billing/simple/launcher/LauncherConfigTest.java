@@ -22,4 +22,13 @@ public class LauncherConfigTest {
     void testReadinessProbeWhenUnreachable() {
         assertFalse(LauncherMain.isBackendHealthy("http://127.0.0.1:59999/api/health", 50), "Should report false when probing unreachable port");
     }
+
+    @Test
+    void testDataDirectoryPreservationPaths() {
+        assertNotNull(LauncherMain.getDataDirectory(), "Data directory must never be null");
+        assertTrue(LauncherMain.getDataDirectory().toString().endsWith("data"), "Data directory path must be subpath data");
+        assertNotNull(LauncherMain.getBackupsDirectory(), "Backups directory must not be null");
+        assertNotNull(LauncherMain.getLogsDirectory(), "Logs directory must not be null");
+        assertNotNull(LauncherMain.getStagingDirectory(), "Staging directory must not be null");
+    }
 }

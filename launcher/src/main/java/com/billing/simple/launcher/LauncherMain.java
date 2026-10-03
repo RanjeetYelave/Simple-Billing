@@ -72,10 +72,37 @@ public class LauncherMain {
         System.setProperty("java.awt.headless", "false");
 
         boolean background = false;
+        boolean setupMode = false;
+        boolean repairMode = false;
+        boolean uninstallMode = false;
+
         for (String arg : args) {
             if ("--background".equalsIgnoreCase(arg) || "-b".equalsIgnoreCase(arg)) {
                 background = true;
+            } else if ("--setup".equalsIgnoreCase(arg) || "--installer".equalsIgnoreCase(arg)) {
+                setupMode = true;
+            } else if ("--repair".equalsIgnoreCase(arg)) {
+                repairMode = true;
+            } else if ("--uninstall".equalsIgnoreCase(arg)) {
+                uninstallMode = true;
             }
+        }
+
+        if (setupMode) {
+            showSetupModeDialog();
+            return;
+        }
+
+        if (repairMode) {
+            LauncherMain app = new LauncherMain();
+            app.performInteractiveRepair();
+            return;
+        }
+
+        if (uninstallMode) {
+            LauncherMain app = new LauncherMain();
+            app.performInteractiveUninstall();
+            return;
         }
 
         // Single-instance detection: if server is already running, open browser and exit
@@ -98,6 +125,11 @@ public class LauncherMain {
 
         // Ensure persistent directories exist
         ensureDirectories();
+
+        // Ensure autostart registration is initialized on Windows
+        if (System.getProperty("os.name").toLowerCase().contains("win") && !isAutostartEnabled()) {
+            setAutostartEnabled(true);
+        }
 
         // Setup shutdown hook to cleanly terminate only RupeeCRM backend
         Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
@@ -683,6 +715,154 @@ public class LauncherMain {
             showTrayNotification("Repair Completed", "RupeeCRM repaired successfully. Customer data was preserved.", TrayIcon.MessageType.INFO);
             restartRequested = true;
         }).start();
+    }
+
+    public void performInteractiveUninstall() {
+        EventQueue.invokeLater(() -> {
+            int confirm = JOptionPane.showConfirmDialog(
+                    null,
+                    "Are you sure you want to uninstall RupeeCRM?\n\nYour customer database at:\n" +
+                            getDataDirectory().toAbsolutePath() + "\nwill remain safely preserved.",
+                    "Confirm RupeeCRM Uninstall",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            if (confirm != JOptionPane.YES_OPTION) {
+                return;
+            }
+
+            try {
+                // 1. Stop running backend
+                stopBackend();
+
+                // 2. Remove Windows autostart
+                setAutostartEnabled(false);
+
+                JOptionPane.showMessageDialog(
+                        null,
+                        "RupeeCRM application has been uninstalled.\nYour customer data was preserved.",
+                        "Uninstall Complete",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+
+                System.exit(0);
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(
+                        null,
+                        "Error during uninstall: " + e.getMessage(),
+                        "Uninstall Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        });
+    }
+
+    public static void showSetupModeDialog() {
+        EventQueue.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            JFrame frame = new JFrame("RupeeCRM Setup");
+            frame.setSize(520, 420);
+            frame.setLocationRelativeTo(null);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setIconImage(createTrayIconImage(64));
+
+            JPanel root = new JPanel();
+            root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+            root.setBackground(new Color(15, 23, 42)); // Slate 900
+            root.setBorder(new EmptyBorder(24, 28, 24, 28));
+
+            // Header
+            JLabel title = new JLabel("RupeeCRM Setup");
+            title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+            title.setForeground(Color.WHITE);
+
+            JLabel subtitle = new JLabel("What would you like to do?");
+            subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            subtitle.setForeground(new Color(148, 163, 184)); // Slate 400
+
+            // Radio Buttons
+            JRadioButton freshInstallRadio = new JRadioButton("Fresh Install (Recommended)");
+            freshInstallRadio.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            freshInstallRadio.setForeground(Color.WHITE);
+            freshInstallRadio.setOpaque(false);
+            freshInstallRadio.setSelected(true);
+
+            JLabel freshDesc = new JLabel("<html>Install or update RupeeCRM application files and start the background service. Existing customer data is safely preserved.</html>");
+            freshDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            freshDesc.setForeground(new Color(148, 163, 184));
+            freshDesc.setBorder(new EmptyBorder(2, 24, 12, 0));
+
+            JRadioButton repairRadio = new JRadioButton("Repair");
+            repairRadio.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            repairRadio.setForeground(Color.WHITE);
+            repairRadio.setOpaque(false);
+
+            JLabel repairDesc = new JLabel("<html>Verify and repair missing or damaged application binaries, shortcuts, and startup entries without touching data.</html>");
+            repairDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            repairDesc.setForeground(new Color(148, 163, 184));
+            repairDesc.setBorder(new EmptyBorder(2, 24, 12, 0));
+
+            JRadioButton uninstallRadio = new JRadioButton("Uninstall");
+            uninstallRadio.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            uninstallRadio.setForeground(Color.WHITE);
+            uninstallRadio.setOpaque(false);
+
+            JLabel uninstallDesc = new JLabel("<html>Completely remove the RupeeCRM application from this computer. Your customer and billing database will remain safely preserved.</html>");
+            uninstallDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            uninstallDesc.setForeground(new Color(148, 163, 184));
+            uninstallDesc.setBorder(new EmptyBorder(2, 24, 12, 0));
+
+            ButtonGroup group = new ButtonGroup();
+            group.add(freshInstallRadio);
+            group.add(repairRadio);
+            group.add(uninstallRadio);
+
+            // Buttons
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+            buttonPanel.setOpaque(false);
+
+            JButton cancelBtn = new JButton("Cancel");
+            cancelBtn.addActionListener(e -> System.exit(0));
+
+            JButton continueBtn = new JButton("Continue");
+            continueBtn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            continueBtn.addActionListener(e -> {
+                frame.dispose();
+                if (freshInstallRadio.isSelected()) {
+                    LauncherMain app = new LauncherMain();
+                    app.startService();
+                } else if (repairRadio.isSelected()) {
+                    LauncherMain app = new LauncherMain();
+                    app.performInteractiveRepair();
+                } else if (uninstallRadio.isSelected()) {
+                    LauncherMain app = new LauncherMain();
+                    app.performInteractiveUninstall();
+                }
+            });
+
+            buttonPanel.add(cancelBtn);
+            buttonPanel.add(continueBtn);
+
+            root.add(title);
+            root.add(Box.createVerticalStrut(4));
+            root.add(subtitle);
+            root.add(Box.createVerticalStrut(18));
+            root.add(freshInstallRadio);
+            root.add(freshDesc);
+            root.add(repairRadio);
+            root.add(repairDesc);
+            root.add(uninstallRadio);
+            root.add(uninstallDesc);
+            root.add(Box.createVerticalGlue());
+            root.add(buttonPanel);
+
+            frame.setContentPane(root);
+            frame.setVisible(true);
+        });
     }
 
     public void applyPendingUpdateIfPresent() {

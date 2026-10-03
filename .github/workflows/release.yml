@@ -193,6 +193,7 @@ jobs:
                    --win-menu `
                    --win-menu-group "RupeeCRM" `
                    --win-per-user-install `
+                   --win-dir-chooser `
                    --java-options "-Djava.awt.headless=false"
 
           $msi = Get-ChildItem "msi-stage" -Filter "*.msi" -File | Select-Object -First 1
@@ -215,6 +216,11 @@ jobs:
           (Get-FileHash -Algorithm SHA256 rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII rupeecrm.war.sha256
           (Get-FileHash -Algorithm SHA256 billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII billsoft.war.sha256
           Copy-Item release-meta/manifest.json manifest.json
+
+      - name: Validate Windows MSI Lifecycle
+        shell: pwsh
+        run: |
+          .\tools\validate-windows-lifecycle.ps1
 
       - name: Upload Release Assets
         uses: actions/upload-artifact@v4

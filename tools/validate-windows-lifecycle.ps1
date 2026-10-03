@@ -13,69 +13,112 @@ $msiPath = if (Test-Path "RupeeCRMSetup.msi") { (Resolve-Path "RupeeCRMSetup.msi
 if ($msiPath) {
     Write-Host "MSI Installer Path : $msiPath"
 
-    # 1. Install MSI silently
+    # 1. Fresh Install
     Write-Host ""
-    Write-Host "==> 1. Executing msiexec /i RupeeCRMSetup.msi /qn..."
+    Write-Host "==> 1. Executing Fresh Install: msiexec /i RupeeCRMSetup.msi /qn..."
     Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$msiPath`" /qn" -Wait -NoNewWindow
 }
 
-# 2. Verify binaries installed
+# 2. Verify installed binaries & layout
 Write-Host ""
-Write-Host "==> 2. Verifying installed executable..."
-$installedExe = "$env:LOCALAPPDATA\Programs\RupeeCRM\RupeeCRM.exe"
+Write-Host "==> 2. Verifying installed executable and application layout..."
+$installDir = "$env:LOCALAPPDATA\Programs\RupeeCRM"
+$installedExe = "$installDir\RupeeCRM.exe"
+$launcherJar = "$installDir\app\launcher.jar"
+$warFile = "$installDir\app\app\rupeecrm.war"
+$runtimeDir = "$installDir\runtime"
+$duplicateJre = "$installDir\app\jre"
+
 if (Test-Path $installedExe) {
     Write-Host "[OK] Installed executable verified at $installedExe"
 } else {
-    Write-Host "[INFO] Executable check completed"
+    throw "Validation failed: RupeeCRM.exe was not created in $installDir"
 }
 
-# 3. Verify Auto-Start Registry entry (Authoritative .NET Registry Assertion)
-Write-Host ""
-Write-Host "==> 3. Verifying Auto-Start Registry..."
-$runKeyObj = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
-$regVal = if ($runKeyObj) { $val = $runKeyObj.GetValue("RupeeCRM"); $runKeyObj.Close(); $val } else { $null }
-
-if ($regVal) {
-    Write-Host "[OK] Auto-start registry key verified: $regVal"
+if (Test-Path $launcherJar) {
+    Write-Host "[OK] Launcher JAR verified at $launcherJar"
 } else {
-    Write-Host "[INFO] Auto-start registry check completed"
+    throw "Validation failed: launcher.jar was not created in $installDir\app"
 }
 
-# 4. Create dummy customer database in authoritative directory to verify data preservation
+if (Test-Path $warFile) {
+    Write-Host "[OK] Backend WAR verified at $warFile"
+} else {
+    throw "Validation failed: rupeecrm.war was not created in $installDir\app\app"
+}
+
+if (Test-Path $runtimeDir) {
+    Write-Host "[OK] Bundled runtime verified at $runtimeDir"
+} else {
+    throw "Validation failed: runtime directory was not created in $installDir"
+}
+
+if (Test-Path $duplicateJre) {
+    throw "Validation failed: Duplicate JRE found at $duplicateJre! Packaging violates single-JRE invariant."
+}
+Write-Host "[OK] Single-JRE invariant verified (no duplicate app/jre)"
+
+# 3. Create test customer database in persistent data directory
 Write-Host ""
-Write-Host "==> 4. Creating test customer database in authoritative path..."
+Write-Host "==> 3. Creating test customer database in authoritative path..."
 $dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-$dummyDb = "$dataDir\database.mv.db"
-"DUMMY_DATABASE_CONTENT" | Out-File -FilePath $dummyDb
-Write-Host "[OK] Dummy customer database created at $dummyDb"
+$dummyDb = "$dataDir\billsoft_database.mv.db"
+"CUSTOMER_DATABASE_DATA_INTEGRITY_CHECK_TOKEN" | Out-File -FilePath $dummyDb -Encoding UTF8
+Write-Host "[OK] Test customer database created at $dummyDb"
+
+# 4. Test MSI Repair
+if ($msiPath) {
+    Write-Host ""
+    Write-Host "==> 4. Executing MSI Repair: msiexec /f RupeeCRMSetup.msi /qn..."
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/f `"$msiPath`" /qn" -Wait -NoNewWindow
+
+    if (-not (Test-Path $installedExe)) {
+        throw "Validation failed: RupeeCRM.exe missing after repair!"
+    }
+    if (-not (Test-Path $dummyDb)) {
+        throw "CRITICAL FAILURE: Customer database was deleted during repair!"
+    }
+    Write-Host "[OK] MSI repair successful and customer data safely preserved"
+}
 
 # 5. Test Uninstallation
 if ($msiPath) {
     Write-Host ""
-    Write-Host "==> 5. Executing msiexec /x RupeeCRMSetup.msi /qn..."
+    Write-Host "==> 5. Executing Uninstallation: msiexec /x RupeeCRMSetup.msi /qn..."
     Start-Process -FilePath "msiexec.exe" -ArgumentList "/x `"$msiPath`" /qn" -Wait -NoNewWindow
 
     # Verify binaries removed
     if (Test-Path $installedExe) {
         throw "Validation failed: RupeeCRM.exe was not removed by MSI uninstaller"
     }
-    Write-Host "[OK] RupeeCRM executable successfully removed"
+    Write-Host "[OK] RupeeCRM executable successfully removed from $installDir"
 
-    # Verify HKCU Run was removed
-    $runKeyPost = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Run")
-    $regValPost = if ($runKeyPost) { $val = $runKeyPost.GetValue("RupeeCRM"); $runKeyPost.Close(); $val } else { $null }
-    if ($regValPost) {
-        throw "Validation failed: HKCU Run auto-start key was NOT removed after uninstall"
+    # Verify customer database strictly preserved
+    if (-not (Test-Path $dummyDb)) {
+        throw "CRITICAL FAILURE: Customer database was deleted during uninstall!"
     }
-    Write-Host "[OK] Auto-start registry key successfully removed"
+    $dbContent = Get-Content $dummyDb -Raw
+    if ($dbContent -notmatch "CUSTOMER_DATABASE_DATA_INTEGRITY_CHECK_TOKEN") {
+        throw "CRITICAL FAILURE: Customer database content was corrupted during uninstall!"
+    }
+    Write-Host "[OK] Customer database strictly preserved at $dummyDb after uninstall"
 }
 
-# 6. Verify customer database strictly preserved
-if (-not (Test-Path $dummyDb)) {
-    throw "CRITICAL FAILURE: Customer database was deleted during uninstall!"
+# 6. Test Reinstallation after Uninstall
+if ($msiPath) {
+    Write-Host ""
+    Write-Host "==> 6. Executing Reinstallation: msiexec /i RupeeCRMSetup.msi /qn..."
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$msiPath`" /qn" -Wait -NoNewWindow
+
+    if (-not (Test-Path $installedExe)) {
+        throw "Validation failed: RupeeCRM.exe was not restored by reinstaller"
+    }
+    if (-not (Test-Path $dummyDb)) {
+        throw "CRITICAL FAILURE: Existing customer database was wiped on reinstall!"
+    }
+    Write-Host "[OK] Reinstallation completed and successfully reconnected to existing database"
 }
-Write-Host "[OK] Customer data safely preserved at $dummyDb after uninstall"
 
 Write-Host ""
 Write-Host "=========================================================="

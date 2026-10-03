@@ -637,7 +637,7 @@ const API = {
       } catch (e) {}
       return { firmName: 'Our Business', phone: '' };
     },
-    create: (data) => API._json('/api/firm', { method: 'POST', body: data }),
+    create: (data) => API._json('/api/firm', { method: 'POST', body: data || {} }),
     update: (id, data) => API._json(`/api/firm/${id}`, { method: 'PUT', body: data }),
     savePrintPreferences: (id, prefs) => {
       if (id == null) return Promise.reject(new Error('firmId is required'));

@@ -5800,10 +5800,12 @@
         return null;
       };
       const normalizeFirmTab = (t) => {
-        if (t === 'products' || t === 'catalog' || t === 'stock') return 'inventory';
-        if (t === 'vendors') return 'parties';
+        if (t === 'products' || t === 'catalog' || t === 'stock' || t === 'inventory') return 'inventory';
+        if (t === 'customers') return 'customers';
+        if (t === 'vendors' || t === 'parties') return 'parties';
         if (t === 'paperwork' || t === 'orders' || t === 'letters' || t === 'statements' || t === 'purchases') return 'paperwork';
-        return t || 'inventory';
+        if (t === 'profile' || t === 'firm' || t === 'business' || t === 'details' || t === 'settings') return 'profile';
+        return 'profile';
       };
       const initialNav = getInitialNav();
       const [tab, setTab] = useState(() => normalizeFirmTab((initialNav && (initialNav.page === 'paperwork' || initialNav.page === 'statements' ? 'paperwork' : initialNav.tab))));
@@ -22361,7 +22363,7 @@
             setData({ ...target });
             setInitialData({ ...target });
           } else {
-            API.firm.create().then(f => {
+            API.firm.create({ firmName: 'Our Business' }).then(f => {
               API.firmId = f.id;
               setFirms([f]);
               setSelectedFirmId(f.id);
@@ -22445,15 +22447,14 @@
           return;
         }
         try {
-          const created = await API.firm.create();
-          const updated = await API.firm.update(created.id, { ...created, firmName: newFirmName.trim() });
-          setFirms(prev => [...prev, updated]);
+          const created = await API.firm.create({ firmName: newFirmName.trim() });
+          setFirms(prev => [...prev, created]);
           setShowCreateModal(false);
           setNewFirmName('');
-          API.firmId = updated.id;
-          setSelectedFirmId(updated.id);
+          API.firmId = created.id;
+          setSelectedFirmId(created.id);
           if (onFirmChanged) onFirmChanged();
-          showToast(`Firm "${updated.firmName}" created`, 'success');
+          showToast(`Firm "${created.firmName}" created`, 'success');
         } catch (e) {
           showToast('Failed to create firm', 'error');
         }

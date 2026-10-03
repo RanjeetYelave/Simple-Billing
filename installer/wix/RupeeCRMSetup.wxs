@@ -19,7 +19,6 @@
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="RupeeCRM">
-          <Files Include="payload\**" />
           <Component Id="RupeeCRMExecutable" Guid="8C7B9084-263B-4AEB-865B-9642D0E6C541">
             <File Id="RupeeCRMExe" Source="payload\RupeeCRM.exe" KeyPath="yes">
               <Shortcut Id="DesktopShortcut"
@@ -59,9 +58,14 @@
     <StandardDirectory Id="DesktopFolder" />
     <StandardDirectory Id="ProgramMenuFolder" />
 
+    <!-- Harvest all payload files into INSTALLFOLDER -->
+    <ComponentGroup Id="PayloadComponents" Directory="INSTALLFOLDER">
+      <Files Include="payload\**" />
+    </ComponentGroup>
+
     <Feature Id="MainApplication" Title="RupeeCRM Core" Level="1">
       <ComponentRef Id="RupeeCRMExecutable" />
-      <Files Include="payload\**" />
+      <ComponentGroupRef Id="PayloadComponents" />
     </Feature>
 
     <!-- CustomAction to launch RupeeCRM automatically upon installation completion -->

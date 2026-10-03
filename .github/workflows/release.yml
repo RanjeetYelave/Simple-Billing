@@ -189,6 +189,20 @@ jobs:
           New-Item -ItemType Directory -Force -Path installer/wix/payload
           Copy-Item -Recurse msi-stage/RupeeCRM/* installer/wix/payload/
 
+          # Validate MSI staging payload before WiX compilation
+          Write-Host "=== Validating WiX MSI payload directory ==="
+          if (-not (Test-Path installer/wix/payload/RupeeCRM.exe)) {
+            Write-Error "CRITICAL: installer/wix/payload/RupeeCRM.exe is missing from jpackage output!"
+            exit 1
+          }
+          $payloadFiles = Get-ChildItem -Recurse installer/wix/payload
+          Write-Host "Total payload items: $($payloadFiles.Count)"
+          if ($payloadFiles.Count -lt 5) {
+            Write-Error "CRITICAL: installer/wix/payload is empty or incomplete!"
+            exit 1
+          }
+          Write-Host "✓ Verified WiX payload readiness."
+
           # Build MSI with WiX v4
           wix build -o RupeeCRMSetup.msi installer/wix/RupeeCRMSetup.wxs
 

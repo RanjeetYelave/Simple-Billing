@@ -115,6 +115,8 @@ if ($Diagnostics) {
 # 3. DISCOVERY & PURGE EXECUTION
 # ==============================================================================
 
+$isReadOnly = $DryRun -or $Diagnostics
+
 $stats = @{
     Processes   = 0
     MSI         = 0
@@ -142,7 +144,7 @@ $javaProcs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe' or Name = 
 
 foreach ($p in $procs) {
     Write-Host "  Found process: $($p.ProcessName) (PID: $($p.Id))" -ForegroundColor Yellow
-    if (-not $DryRun) {
+    if (-not $isReadOnly) {
         try {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
             $stats.Processes++
@@ -158,7 +160,7 @@ foreach ($p in $procs) {
 
 foreach ($jp in $javaProcs) {
     Write-Host "  Found backend process: $($jp.Name) (PID: $($jp.ProcessId))" -ForegroundColor Yellow
-    if (-not $DryRun) {
+    if (-not $isReadOnly) {
         try {
             Stop-Process -Id $jp.ProcessId -Force -ErrorAction SilentlyContinue
             $stats.Processes++
@@ -177,7 +179,7 @@ Write-Host "`n[2/8] Checking for RupeeCRM Windows services..." -ForegroundColor 
 $services = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*RupeeCRM*" -or $_.DisplayName -like "*RupeeCRM*" }
 foreach ($s in $services) {
     Write-Host "  Found Service: $($s.Name)" -ForegroundColor Yellow
-    if (-not $DryRun) {
+    if (-not $isReadOnly) {
         try {
             Stop-Service -Name $s.Name -Force -ErrorAction SilentlyContinue
             Start-Sleep -Milliseconds 500
@@ -199,7 +201,7 @@ if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
     $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*RupeeCRM*" }
     foreach ($t in $tasks) {
         Write-Host "  Found Task: $($t.TaskName)" -ForegroundColor Yellow
-        if (-not $DryRun) {
+        if (-not $isReadOnly) {
             try {
                 Unregister-ScheduledTask -TaskName $t.TaskName -Confirm:$false -ErrorAction Stop
                 $stats.Tasks++
@@ -230,7 +232,7 @@ foreach ($keyPath in $uninstallKeys) {
             if (($dn -and $dn -like "*RupeeCRM*") -or ($pub -and $pub -eq "RupeeCRM")) {
                 $pCode = $_.PSChildName
                 Write-Host "  Found MSI Registration: $dn (ProductCode: $pCode)" -ForegroundColor Yellow
-                if (-not $DryRun) {
+                if (-not $isReadOnly) {
                     if ($pCode -match "^\{[A-Fa-f0-9\-]+\}$") {
                         Write-Host "    Running msiexec /x $pCode /qn..." -ForegroundColor DarkGray
                         Start-Process "msiexec.exe" -ArgumentList "/x `"$pCode`" /qn /norestart" -Wait -NoNewWindow
@@ -258,12 +260,28 @@ $targetDirs = @(
     "$env:USERPROFILE\.rupeecrm"
 )
 
+# Search temp locations for updater staging and temporary artifacts
+$tempLocations = @($env:TEMP, "$env:LOCALAPPDATA\Temp") | Select-Object -Unique
+foreach ($tLoc in $tempLocations) {
+    if ($tLoc -and (Test-Path $tLoc)) {
+        Get-ChildItem -Path $tLoc -Filter "*rupeecrm*" -ErrorAction SilentlyContinue | ForEach-Object {
+            $targetDirs += $_.FullName
+        }
+    }
+}
+
 # Search all local user profiles for roaming/local data
 if (Test-Path "$env:SystemDrive\Users") {
     Get-ChildItem -Path "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         $targetDirs += "$($_.FullName)\AppData\Local\RupeeCRM"
         $targetDirs += "$($_.FullName)\AppData\Roaming\RupeeCRM"
         $targetDirs += "$($_.FullName)\.rupeecrm"
+        $userTemp = "$($_.FullName)\AppData\Local\Temp"
+        if (Test-Path $userTemp) {
+            Get-ChildItem -Path $userTemp -Filter "*rupeecrm*" -ErrorAction SilentlyContinue | ForEach-Object {
+                $targetDirs += $_.FullName
+            }
+        }
     }
 }
 
@@ -271,7 +289,7 @@ $uniqueDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Obj
 
 foreach ($dir in $uniqueDirs) {
     Write-Host "  Found Directory: $dir" -ForegroundColor Yellow
-    if (-not $DryRun) {
+    if (-not $isReadOnly) {
         $removed = $false
         for ($i = 1; $i -le 3; $i++) {
             try {
@@ -309,7 +327,7 @@ $rupeeKeys = @(
 foreach ($rk in $rupeeKeys) {
     if (Test-Path $rk) {
         Write-Host "  Found Registry Key: $rk" -ForegroundColor Yellow
-        if (-not $DryRun) {
+        if (-not $isReadOnly) {
             Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
             $stats.Registry++
             Write-Host "    -> Deleted" -ForegroundColor Green
@@ -330,7 +348,7 @@ foreach ($rk in $runKeys) {
         $val = if ($regItem) { $regItem.GetValue("RupeeCRM") } else { $null }
         if ($val) {
             Write-Host "  Found Autostart Entry: $rk\RupeeCRM -> $val" -ForegroundColor Yellow
-            if (-not $DryRun) {
+            if (-not $isReadOnly) {
                 Remove-ItemProperty -Path $rk -Name "RupeeCRM" -Force -ErrorAction SilentlyContinue
                 $stats.Registry++
                 Write-Host "    -> Removed" -ForegroundColor Green
@@ -355,7 +373,7 @@ foreach ($sr in $shortcutRoots | Select-Object -Unique) {
         # Check files
         Get-ChildItem -Path $sr -Filter "*RupeeCRM*.lnk" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "  Found Shortcut: $($_.FullName)" -ForegroundColor Yellow
-            if (-not $DryRun) {
+            if (-not $isReadOnly) {
                 Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                 $stats.Shortcuts++
                 Write-Host "    -> Deleted" -ForegroundColor Green
@@ -367,7 +385,7 @@ foreach ($sr in $shortcutRoots | Select-Object -Unique) {
         # Check folders
         Get-ChildItem -Path $sr -Filter "RupeeCRM" -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "  Found Menu Folder: $($_.FullName)" -ForegroundColor Yellow
-            if (-not $DryRun) {
+            if (-not $isReadOnly) {
                 Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
                 $stats.Shortcuts++
                 Write-Host "    -> Deleted" -ForegroundColor Green
@@ -386,7 +404,7 @@ foreach ($target in @("User", "Machine")) {
         $val = [Environment]::GetEnvironmentVariable($v, $target)
         if ($val) {
             Write-Host "  Found Environment Variable: [$target] $v = $val" -ForegroundColor Yellow
-            if (-not $DryRun) {
+            if (-not $isReadOnly) {
                 [Environment]::SetEnvironmentVariable($v, $null, $target)
                 $stats.Environment++
                 Write-Host "    -> Cleared" -ForegroundColor Green
@@ -417,6 +435,22 @@ Write-Host "   Shortcuts Removed        : $($stats.Shortcuts)" -ForegroundColor 
 Write-Host "   Environment Vars Cleared : $($stats.Environment)" -ForegroundColor White
 Write-Host "   Failures Encountered     : $($stats.Failures)" -ForegroundColor White
 Write-Host ""
+
+if ($Diagnostics) {
+    $remainingDirs = $targetDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    $remainingKeys = $rupeeKeys | Where-Object { Test-Path $_ }
+    if ($remainingDirs.Count -gt 0 -or $remainingKeys.Count -gt 0) {
+        Write-Host "======================================================================" -ForegroundColor Yellow
+        Write-Host " DIAGNOSTICS AUDIT: RupeeCRM Artifacts Discovered on System" -ForegroundColor Yellow
+        Write-Host "======================================================================" -ForegroundColor Yellow
+        Pause-And-Exit 1
+    } else {
+        Write-Host "======================================================================" -ForegroundColor Green
+        Write-Host " DIAGNOSTICS AUDIT: Clean System (No RupeeCRM Artifacts Found)" -ForegroundColor Green
+        Write-Host "======================================================================" -ForegroundColor Green
+        Pause-And-Exit 0
+    }
+}
 
 if ($DryRun) {
     Write-Host "======================================================================" -ForegroundColor Cyan

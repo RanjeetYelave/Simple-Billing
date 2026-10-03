@@ -1,5 +1,5 @@
 # ==============================================================================
-# Windows MSI Lifecycle Validation Script for CI & Local Release Testing
+# Windows MSI Lifecycle & Data Integrity Forensic Validation Script
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -48,13 +48,7 @@ function Find-InstalledDirectory {
         return $primary
     }
 
-    # 2. Secondary fallback: %LOCALAPPDATA%\RupeeCRM
-    $secondary = "$env:LOCALAPPDATA\RupeeCRM"
-    if (Test-Path "$secondary\RupeeCRM.exe") {
-        return $secondary
-    }
-
-    # 3. Check Windows Registry uninstall keys
+    # 2. Check Windows Registry uninstall keys
     $regPaths = @(
         "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -74,18 +68,48 @@ function Find-InstalledDirectory {
         }
     }
 
-    # 4. Search candidate roots for RupeeCRM.exe
-    $searchRoots = @("$env:LOCALAPPDATA", "$env:ProgramFiles", "${env:ProgramFiles(x86)}")
-    foreach ($sr in $searchRoots) {
-        if ($sr -and (Test-Path $sr)) {
-            $found = Get-ChildItem -Path $sr -Filter "RupeeCRM.exe" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-                return $found.DirectoryName
-            }
-        }
+    # 3. Secondary fallback check (for diagnostic failure detection)
+    $secondary = "$env:LOCALAPPDATA\RupeeCRM"
+    if (Test-Path "$secondary\RupeeCRM.exe") {
+        return $secondary
     }
 
     return $null
+}
+
+function Stop-RupeeCrmProcesses {
+    Write-Host "Stopping any running RupeeCRM / background processes..."
+    Get-Process -Name "RupeeCRM", "javaw", "java" -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            $path = $_.Path
+            $path -and ($path -like "*RupeeCRM*" -or $path -like "*Simple-Billing*")
+        } catch {
+            $false
+        }
+    } | ForEach-Object {
+        Write-Host "Terminating process $($_.Name) (PID: $($_.Id))..."
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 2
+}
+
+function Wait-ForBackendHealth {
+    param([int]$TimeoutSeconds = 40)
+    
+    $url = "http://127.0.0.1:28080/api/health"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        try {
+            $resp = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 3 -ErrorAction SilentlyContinue
+            if ($resp -and ($resp.status -eq "UP" -or $resp.status -eq "OK" -or $resp.ToString().Length -gt 0)) {
+                Write-Host "[OK] RupeeCRM backend is healthy after $($sw.Elapsed.TotalSeconds.ToString('F1'))s"
+                return $true
+            }
+        } catch {
+            Start-Sleep -Milliseconds 1000
+        }
+    }
+    return $false
 }
 
 if (-not $msiPath) {
@@ -95,6 +119,9 @@ if (-not $msiPath) {
 Write-Host "MSI Installer Path : $msiPath"
 Write-Host "MSI File Size      : $((Get-Item $msiPath).Length) bytes"
 
+# Pre-cleanup running processes before test
+Stop-RupeeCrmProcesses
+
 # ------------------------------------------------------------------------------
 # 1. Fresh Installation
 # ------------------------------------------------------------------------------
@@ -102,22 +129,27 @@ $installLog = "$PWD\install.log"
 Invoke-MsiCommand -ActionName "Fresh Installation" -Arguments "/i `"$msiPath`" /qn" -LogFile $installLog
 
 # ------------------------------------------------------------------------------
-# 2. Verify Installed Directory & Binaries
+# 2. Strict Layout & Decoupled Path Verification
 # ------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "==> 2. Verifying installed executable and application layout..."
 
 $installDir = Find-InstalledDirectory
 if (-not $installDir) {
-    Write-Host "----------------- MSI LOG (Full Target Analysis) -----------------"
+    Write-Host "----------------- MSI LOG (Target Analysis) -----------------"
     if (Test-Path $installLog) {
         Select-String -Path $installLog -Pattern "INSTALLDIR|TARGETDIR|APPLICATIONFOLDER|ProductCode|UpgradeCode|Exit code" | ForEach-Object { Write-Host $_.Line }
     }
-    Write-Host "------------------------------------------------------------------"
-    throw "Validation failed: RupeeCRM.exe was not found in any expected target path ($env:LOCALAPPDATA\Programs\RupeeCRM, $env:LOCALAPPDATA\RupeeCRM, or Registry)."
+    Write-Host "-------------------------------------------------------------"
+    throw "Validation failed: RupeeCRM.exe was not found in expected target path ($env:LOCALAPPDATA\Programs\RupeeCRM)."
 }
 
 Write-Host "Discovered Installed Directory: $installDir"
+
+$expectedTarget = "$env:LOCALAPPDATA\Programs\RupeeCRM"
+if ($installDir.TrimEnd('\') -ne $expectedTarget.TrimEnd('\')) {
+    throw "CRITICAL PATH VIOLATION: RupeeCRM installed to '$installDir' instead of isolated path '$expectedTarget'! Binaries must be decoupled from data."
+}
 
 $installedExe = "$installDir\RupeeCRM.exe"
 $launcherJar  = "$installDir\app\launcher.jar"
@@ -154,61 +186,171 @@ if (Test-Path $duplicateJre) {
 }
 Write-Host "[OK] Single-JRE invariant verified (no duplicate app/jre)"
 
-# ------------------------------------------------------------------------------
-# 3. Create Test Customer Database in Authoritative Path
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "==> 3. Creating test customer database in authoritative path..."
-$dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
-New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-$dummyDb = "$dataDir\billsoft_database.mv.db"
-$dbCheckToken = "CUSTOMER_DATABASE_DATA_INTEGRITY_CHECK_TOKEN_$(Get-Random)"
-$dbCheckToken | Out-File -FilePath $dummyDb -Encoding UTF8
-Write-Host "[OK] Test customer database created at $dummyDb (Token: $dbCheckToken)"
+# Ensure no customer database exists inside INSTALLDIR
+if (Test-Path "$installDir\data") {
+    throw "CRITICAL SECURITY FAULT: Data directory was created inside INSTALLDIR ($installDir\data)! Customer data must be isolated."
+}
 
 # ------------------------------------------------------------------------------
-# 4. Test MSI Repair
+# 3. First-Run / Live Backend & Multi-Firm Setup Flow
 # ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> 3. Testing live application startup and multi-firm lifecycle..."
+
+$dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
+New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+
+# Launch backend via bundled runtime
+$javaExe = "$runtimeDir\bin\javaw.exe"
+if (-not (Test-Path $javaExe)) { $javaExe = "$runtimeDir\bin\java.exe" }
+
+$backendProc = Start-Process -FilePath $javaExe -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+Write-Host "Launched backend process (PID: $($backendProc.Id)). Waiting for health..."
+
+$healthy = Wait-ForBackendHealth -TimeoutSeconds 45
+if (-not $healthy) {
+    Stop-RupeeCrmProcesses
+    throw "CRITICAL FAILURE: Packaged application failed to respond on health endpoint within 45 seconds!"
+}
+
+# Create Firm 1 (Acme Enterprises)
+$firm1 = @{
+    firmName     = "Acme Enterprises"
+    ownerName    = "Rajesh Kumar"
+    addressLine1 = "Plot 42, MIDC Industrial Area"
+    city         = "Pune"
+    state        = "Maharashtra"
+    pincode      = "411019"
+    phone        = "+91 9823012345"
+    email        = "billing@acme-enterprises.in"
+    gstin        = "27AABCU9603R1ZM"
+} | ConvertTo-Json
+
+$createdFirm1 = Invoke-RestMethod -Uri "http://127.0.0.1:28080/api/firm" -Method Post -Body $firm1 -ContentType "application/json"
+if (-not $createdFirm1 -or -not $createdFirm1.id) {
+    Stop-RupeeCrmProcesses
+    throw "Failed to create Primary Firm 1"
+}
+Write-Host "[OK] Primary Firm 1 created successfully: $($createdFirm1.firmName) (ID: $($createdFirm1.id))"
+
+# Create Firm 2 (Bharat Trading Co)
+$firm2 = @{
+    firmName     = "Bharat Trading Co"
+    ownerName    = "Vikram Patel"
+    addressLine1 = "Shop 12, APMC Market"
+    city         = "Navi Mumbai"
+    state        = "Maharashtra"
+    pincode      = "400703"
+    phone        = "+91 9820054321"
+    email        = "accounts@bharattrading.com"
+    gstin        = "27AAGCB2314Q1Z8"
+} | ConvertTo-Json
+
+$createdFirm2 = Invoke-RestMethod -Uri "http://127.0.0.1:28080/api/firm" -Method Post -Body $firm2 -ContentType "application/json"
+if (-not $createdFirm2 -or -not $createdFirm2.id) {
+    Stop-RupeeCrmProcesses
+    throw "Failed to create Secondary Firm 2"
+}
+Write-Host "[OK] Secondary Firm 2 created successfully: $($createdFirm2.firmName) (ID: $($createdFirm2.id))"
+
+# Verify both firms present in list
+$firmList = Invoke-RestMethod -Uri "http://127.0.0.1:28080/api/firm" -Method Get
+if ($firmList.Count -lt 2) {
+    Stop-RupeeCrmProcesses
+    throw "Expected at least 2 firms, found: $($firmList.Count)"
+}
+Write-Host "[OK] Multi-firm persistence verified ($($firmList.Count) firms active)"
+
+# Stop backend process cleanly
+Stop-RupeeCrmProcesses
+
+# Verify database file created in authoritative path
+$dbFile = "$dataDir\billsoft_database.mv.db"
+if (-not (Test-Path $dbFile)) {
+    throw "CRITICAL FAILURE: Database file was not created at authoritative path $dbFile!"
+}
+$dbHashBeforeRepair = (Get-FileHash -Algorithm SHA256 $dbFile).Hash
+Write-Host "[OK] Authoritative customer database verified at $dbFile (SHA256: $dbHashBeforeRepair)"
+
+# Create a sentinel file with a unique random token
+$sentinelFile = "$dataDir\sentinel.txt"
+$sentinelToken = "SENTINEL_INTEGRITY_TOKEN_$(Get-Random)_$(Get-Date -Format 'yyyyMMddHHmmss')"
+$sentinelToken | Out-File -FilePath $sentinelFile -Encoding UTF8
+Write-Host "[OK] Customer data sentinel created with token: $sentinelToken"
+
+# ------------------------------------------------------------------------------
+# 4. MSI Repair Validation
+# ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> 4. Testing MSI Repair with missing application binary..."
+
+# Temporarily delete application binary to simulate file corruption
+Remove-Item $installedExe -Force
+if (Test-Path $installedExe) {
+    throw "Failed to remove test binary before repair"
+}
+Write-Host "[OK] Simulated binary corruption (removed $installedExe)"
+
 $repairLog = "$PWD\repair.log"
 Invoke-MsiCommand -ActionName "MSI Repair" -Arguments "/f `"$msiPath`" /qn" -LogFile $repairLog
 
+# Verify binary restored
 if (-not (Test-Path $installedExe)) {
-    throw "Validation failed: RupeeCRM.exe missing after repair!"
+    throw "CRITICAL FAILURE: RupeeCRM.exe was not restored by MSI repair!"
 }
-if (-not (Test-Path $dummyDb)) {
-    throw "CRITICAL FAILURE: Customer database was deleted during repair!"
+Write-Host "[OK] RupeeCRM.exe successfully restored by MSI repair"
+
+# Verify customer data untouched
+if (-not (Test-Path $dbFile) -or -not (Test-Path $sentinelFile)) {
+    throw "CRITICAL FAILURE: Customer database or sentinel was deleted during MSI repair!"
 }
-$repairDbContent = Get-Content $dummyDb -Raw
-if ($repairDbContent -notmatch $dbCheckToken) {
-    throw "CRITICAL FAILURE: Customer database content was corrupted during repair!"
+$sentinelAfterRepair = Get-Content $sentinelFile -Raw
+if ($sentinelAfterRepair -notmatch $sentinelToken) {
+    throw "CRITICAL FAILURE: Customer sentinel content was corrupted during MSI repair!"
 }
-Write-Host "[OK] MSI repair successful and customer data safely preserved"
+Write-Host "[OK] MSI repair safely preserved customer database and sentinel"
 
 # ------------------------------------------------------------------------------
-# 5. Test Uninstallation
+# 5. Uninstallation Validation (Critical Data Preservation Test)
 # ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> 5. Testing Uninstallation and strictly verifying customer data preservation..."
+
 $uninstallLog = "$PWD\uninstall.log"
 Invoke-MsiCommand -ActionName "Uninstallation" -Arguments "/x `"$msiPath`" /qn" -LogFile $uninstallLog
 
-# Verify binaries removed
+# Verify application binaries and folder removed
 if (Test-Path $installedExe) {
     throw "Validation failed: RupeeCRM.exe was not removed by MSI uninstaller"
 }
-Write-Host "[OK] RupeeCRM executable successfully removed from $installDir"
+if (Test-Path $expectedTarget) {
+    $remaining = Get-ChildItem -Path $expectedTarget -Recurse -File -ErrorAction SilentlyContinue
+    if ($remaining) {
+        throw "Validation failed: Application directory '$expectedTarget' still contains files after uninstall!"
+    }
+}
+Write-Host "[OK] Application binaries and install directory successfully removed from $expectedTarget"
 
-# Verify customer database strictly preserved
-if (-not (Test-Path $dummyDb)) {
+# Verify customer data STRICTLY PRESERVED
+if (-not (Test-Path $dbFile)) {
     throw "CRITICAL FAILURE: Customer database was deleted during uninstall!"
 }
-$uninstallDbContent = Get-Content $dummyDb -Raw
-if ($uninstallDbContent -notmatch $dbCheckToken) {
-    throw "CRITICAL FAILURE: Customer database content was corrupted during uninstall!"
+if (-not (Test-Path $sentinelFile)) {
+    throw "CRITICAL FAILURE: Customer sentinel file was deleted during uninstall!"
 }
-Write-Host "[OK] Customer database strictly preserved at $dummyDb after uninstall"
+
+$sentinelAfterUninstall = Get-Content $sentinelFile -Raw
+if ($sentinelAfterUninstall -notmatch $sentinelToken) {
+    throw "CRITICAL FAILURE: Customer sentinel content was altered during uninstall!"
+}
+Write-Host "[OK] Customer database ($dbFile) and sentinel strictly preserved after uninstall"
 
 # ------------------------------------------------------------------------------
-# 6. Test Reinstallation after Uninstall
+# 6. Reinstallation & Reconnection Validation
 # ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "==> 6. Testing Reinstallation and automatic database reconnection..."
+
 $reinstallLog = "$PWD\reinstall.log"
 Invoke-MsiCommand -ActionName "Reinstallation" -Arguments "/i `"$msiPath`" /qn" -LogFile $reinstallLog
 
@@ -216,16 +358,43 @@ $reinstalledDir = Find-InstalledDirectory
 if (-not $reinstalledDir -or -not (Test-Path "$reinstalledDir\RupeeCRM.exe")) {
     throw "Validation failed: RupeeCRM.exe was not restored by reinstaller"
 }
-if (-not (Test-Path $dummyDb)) {
-    throw "CRITICAL FAILURE: Existing customer database was wiped on reinstall!"
+
+# Start backend again to verify existing database reconnection
+$reinstallBackendProc = Start-Process -FilePath $javaExe -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+Write-Host "Launched reinstalled backend (PID: $($reinstallBackendProc.Id)). Waiting for health..."
+
+$reinstallHealthy = Wait-ForBackendHealth -TimeoutSeconds 45
+if (-not $reinstallHealthy) {
+    Stop-RupeeCrmProcesses
+    throw "CRITICAL FAILURE: Reinstalled application failed to become healthy!"
 }
-$reinstallDbContent = Get-Content $dummyDb -Raw
-if ($reinstallDbContent -notmatch $dbCheckToken) {
-    throw "CRITICAL FAILURE: Existing customer database content was corrupted on reinstall!"
+
+# Verify both original firms are immediately available
+$reconnectedFirms = Invoke-RestMethod -Uri "http://127.0.0.1:28080/api/firm" -Method Get
+if ($reconnectedFirms.Count -lt 2) {
+    Stop-RupeeCrmProcesses
+    throw "CRITICAL FAILURE: Existing firms were lost after reinstallation! Found count: $($reconnectedFirms.Count)"
 }
-Write-Host "[OK] Reinstallation completed and successfully reconnected to existing database"
+
+$firm1Found = $reconnectedFirms | Where-Object { $_.firmName -eq "Acme Enterprises" }
+$firm2Found = $reconnectedFirms | Where-Object { $_.firmName -eq "Bharat Trading Co" }
+
+if (-not $firm1Found -or -not $firm2Found) {
+    Stop-RupeeCrmProcesses
+    throw "CRITICAL FAILURE: Expected firms 'Acme Enterprises' and 'Bharat Trading Co' were not found in reconnected database!"
+}
+
+Write-Host "[OK] Successfully reconnected to existing database with all $($reconnectedFirms.Count) firms intact:"
+Write-Host "     - Firm 1: $($firm1Found.firmName) ($($firm1Found.city), $($firm1Found.state), GSTIN: $($firm1Found.gstin))"
+Write-Host "     - Firm 2: $($firm2Found.firmName) ($($firm2Found.city), $($firm2Found.state), GSTIN: $($firm2Found.gstin))"
+
+# Stop backend process cleanly
+Stop-RupeeCrmProcesses
+
+# Clean up temporary test sentinel
+Remove-Item $sentinelFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "=========================================================="
-Write-Host " [CI SUCCESS] All Windows MSI Lifecycle Checks Passed!"
+Write-Host " [CI SUCCESS] Complete Windows MSI Lifecycle & Forensic Checks Passed!"
 Write-Host "=========================================================="

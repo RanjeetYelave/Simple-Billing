@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path $mockTempDir | Out-Null
 "MOCK_JAR" | Out-File -FilePath "$mockCurrentDir\app\launcher.jar" -Encoding ASCII
 "MOCK_WAR" | Out-File -FilePath "$mockCurrentDir\app\app\rupeecrm.war" -Encoding ASCII
 "MOCK_JAVA" | Out-File -FilePath "$mockCurrentDir\runtime\bin\javaw.exe" -Encoding ASCII
-"MOCK_DATABASE" | Out-File -FilePath "$mockDataDir\billsoft_database.mv.db" -Encoding ASCII
+"MOCK_DATABASE" | Out-File -FilePath "$mockDataDir\database.mv.db" -Encoding ASCII
 "MOCK_BACKUP" | Out-File -FilePath "$mockBackupsDir\backup_20261003.zip" -Encoding ASCII
 "MOCK_LOG" | Out-File -FilePath "$mockLogsDir\supervisor.log" -Encoding ASCII
 "MOCK_STAGED_WAR" | Out-File -FilePath "$mockStagingDir\rupeecrm-update.war" -Encoding ASCII
@@ -51,7 +51,7 @@ Write-Host "[OK] Mock RupeeCRM environment & unrelated safety canary initialized
 # 2. Test Dry-Run Mode (Must NOT delete anything)
 Write-Host "`n==> Testing Dry-Run mode..."
 & .\tools\purge-rupeecrm-completely.ps1 -DryRun -NoElevation
-if (-not (Test-Path "$mockDataDir\billsoft_database.mv.db") -or -not (Test-Path "$mockCurrentDir\RupeeCRM.exe")) {
+if (-not (Test-Path "$mockDataDir\database.mv.db") -or -not (Test-Path "$mockCurrentDir\RupeeCRM.exe")) {
     throw "FAILURE: Dry-run mode modified or deleted mock artifacts!"
 }
 Write-Host "[OK] Dry-Run mode validated (zero modifications)."

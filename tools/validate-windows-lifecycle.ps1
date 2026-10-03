@@ -198,15 +198,16 @@ try {
     Write-Host ""
     Write-Host "==> 3. Testing live application startup with unrelated JAVA_HOME and multi-firm lifecycle..."
 
-    $dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
-    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+    $customerDataDir = Join-Path $env:LOCALAPPDATA "RupeeCRM\data"
+    $databaseFile = Join-Path $customerDataDir "database.mv.db"
+    New-Item -ItemType Directory -Force -Path $customerDataDir | Out-Null
 
     # Test with unrelated dummy JAVA_HOME to prove zero host dependency
     $prevJavaHome = $env:JAVA_HOME
     $env:JAVA_HOME = "C:\NonExistent_Unrelated_Java_Home_Canary"
 
     # Launch backend via bundled runtime
-    $backendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+    $backendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$customerDataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
     Write-Host "Launched backend process (PID: $($backendProc.Id)). Waiting for health..."
 
     $healthy = Wait-ForBackendHealth -TimeoutSeconds 45
@@ -282,16 +283,19 @@ try {
     Stop-RupeeCrmProcesses
 
     # Verify database file created in authoritative path
-    $dbFile = "$dataDir\billsoft_database.mv.db"
-    if (-not (Test-Path $dbFile)) {
-        throw "CRITICAL FAILURE: Database file was not created at authoritative path $dbFile!"
+    if (-not (Test-Path $databaseFile)) {
+        throw "CRITICAL FAILURE: Database file was not created at authoritative path $databaseFile!"
     }
-    $dbHashBeforeRepair = (Get-FileHash -Algorithm SHA256 $dbFile).Hash
-    Write-Host "[OK] Authoritative customer database verified at $dbFile (SHA256: $dbHashBeforeRepair)"
-    $executedPassed.Add("9. Customer Database Creation & Verification (%LOCALAPPDATA%\RupeeCRM\data\billsoft_database.mv.db)")
+    $dbItem = Get-Item $databaseFile
+    if ($dbItem.Length -le 0) {
+        throw "CRITICAL FAILURE: Database file at $databaseFile is empty (size <= 0 bytes)!"
+    }
+    $dbHashBeforeRepair = (Get-FileHash -Algorithm SHA256 $databaseFile).Hash
+    Write-Host "[OK] Authoritative customer database verified at $databaseFile (Size: $($dbItem.Length) bytes, SHA256: $dbHashBeforeRepair)"
+    $executedPassed.Add("9. Customer Database Creation & Verification (%LOCALAPPDATA%\RupeeCRM\data\database.mv.db)")
 
     # Create a sentinel file with a unique random token
-    $sentinelFile = "$dataDir\sentinel.txt"
+    $sentinelFile = Join-Path $customerDataDir "sentinel.txt"
     $sentinelToken = "SENTINEL_INTEGRITY_TOKEN_$(Get-Random)_$(Get-Date -Format 'yyyyMMddHHmmss')"
     $sentinelToken | Out-File -FilePath $sentinelFile -Encoding UTF8
     Write-Host "[OK] Customer data sentinel created with token: $sentinelToken"
@@ -319,7 +323,7 @@ try {
     Write-Host "[OK] RupeeCRM.exe and runtime\bin\javaw.exe successfully restored by MSI repair"
 
     # Verify customer data untouched
-    if (-not (Test-Path $dbFile) -or -not (Test-Path $sentinelFile)) {
+    if (-not (Test-Path $databaseFile) -or -not (Test-Path $sentinelFile)) {
         throw "CRITICAL FAILURE: Customer database or sentinel was deleted during MSI repair!"
     }
     $sentinelAfterRepair = Get-Content $sentinelFile -Raw
@@ -348,7 +352,7 @@ try {
     Write-Host "[OK] Application binaries and install directory successfully removed from $expectedTarget"
 
     # Verify customer data STRICTLY PRESERVED
-    if (-not (Test-Path $dbFile))       { throw "CRITICAL FAILURE: Customer database was deleted during uninstall!" }
+    if (-not (Test-Path $databaseFile)) { throw "CRITICAL FAILURE: Customer database was deleted during uninstall!" }
     if (-not (Test-Path $sentinelFile)) { throw "CRITICAL FAILURE: Customer sentinel file was deleted during uninstall!" }
 
     $sentinelAfterUninstall = Get-Content $sentinelFile -Raw
@@ -372,7 +376,7 @@ try {
     }
 
     # Start backend again to verify existing database reconnection
-    $reinstallBackendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+    $reinstallBackendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$customerDataDir`" -jar `"$warFile`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
     Write-Host "Launched reinstalled backend (PID: $($reinstallBackendProc.Id)). Waiting for health..."
 
     $reinstallHealthy = Wait-ForBackendHealth -TimeoutSeconds 45
@@ -447,7 +451,7 @@ try {
     }
 
     # Verify restored backend health
-    $rollbackBackendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$dataDir`" -jar `"$installedWar`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
+    $rollbackBackendProc = Start-Process -FilePath $runtimeJavaw -ArgumentList "-DRUPEECRM_DATA_DIR=`"$customerDataDir`" -jar `"$installedWar`" --server.port=28080 --server.address=127.0.0.1" -PassThru -NoNewWindow
     $rollbackHealthy = Wait-ForBackendHealth -TimeoutSeconds 45
     if (-not $rollbackHealthy) {
         Stop-RupeeCrmProcesses

@@ -672,7 +672,7 @@ Write-Host "    ✓ RupeeCRM backend is healthy on port 28080 (${elapsedFormatte
 Write-Host "`n==> [7/7] Validating database initialization and autostart registration..." -ForegroundColor Cyan
 
 $dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
-$dbFile  = Join-Path $dataDir "billsoft_database.mv.db"
+$dbFile  = Join-Path $dataDir "database.mv.db"
 
 if (-not (Test-Path $dbFile)) {
     throw "Critical Verification Failure: Fresh database file was not initialized at $dbFile!"

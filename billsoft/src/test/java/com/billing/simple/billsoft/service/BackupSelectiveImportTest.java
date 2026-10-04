@@ -82,6 +82,8 @@ class BackupSelectiveImportTest {
     private GoalLogRepository goalLogRepo;
     @Mock
     private BackupEntityMappingRepository backupEntityMappingRepo;
+    @Mock
+    private BackupValidationService backupValidationService;
 
     @InjectMocks
     private BackupService service;
@@ -210,7 +212,7 @@ class BackupSelectiveImportTest {
     }
 
     @Test
-    void testImportSelectiveDataCleanWipe() {
+    void testImportSelectiveDataCleanWipeIsProhibited() {
         BackupDTO backup = new BackupDTO();
         Map<String, Object> meta = new HashMap<>();
         meta.put("version", "2.0");
@@ -221,15 +223,14 @@ class BackupSelectiveImportTest {
         firm.setFirmName("Fresh Restore");
         backup.setFirmDetails(firm);
 
-        when(firmDetailsRepo.save(any(FirmDetails.class))).thenAnswer(i -> i.getArguments()[0]);
+        assertThrows(IllegalArgumentException.class, () ->
+                service.importSelectiveData(backup, null, "clean_wipe", null)
+        );
 
-        service.importSelectiveData(backup, null, "clean_wipe", null);
-
-        // Verify factory reset occurred before import
-        verify(firmDetailsRepo, times(1)).deleteAllInBatch();
-        verify(customerRepo, times(1)).deleteAllInBatch();
-        verify(productRepo, times(1)).deleteAllInBatch();
-        verify(invoiceRepo, times(1)).deleteAllInBatch();
-        verify(firmDetailsRepo, times(1)).save(any(FirmDetails.class));
+        // Verify factory reset NEVER occurred
+        verify(firmDetailsRepo, never()).deleteAllInBatch();
+        verify(customerRepo, never()).deleteAllInBatch();
+        verify(productRepo, never()).deleteAllInBatch();
+        verify(invoiceRepo, never()).deleteAllInBatch();
     }
 }

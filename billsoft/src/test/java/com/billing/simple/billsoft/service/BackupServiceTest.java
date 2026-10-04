@@ -82,6 +82,8 @@ class BackupServiceTest {
     private NotificationRepository notificationRepo;
     @Mock
     private NotificationPreferenceRepository notificationPreferenceRepo;
+    @Mock
+    private BackupValidationService backupValidationService;
 
     @InjectMocks
     private BackupService service;

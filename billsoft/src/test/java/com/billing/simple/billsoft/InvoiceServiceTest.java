@@ -23,7 +23,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -652,6 +654,83 @@ class InvoiceServiceTest {
         reloadedP = productRepo.findById(p.getId()).orElseThrow();
         assertEquals(0, new BigDecimal("50").compareTo(reloadedP.getStockQuantity()),
                 "Stock must equal original 50 without phantom duplicate restoration");
+    }
+
+    @Test
+    void testDuplicateManualInvoiceNumberRejected() {
+        Customer c = createCustomer("DuplicateCheckCust");
+        Product p = createProduct("UniqWidget", "100.00", "0.00");
+
+        InvoiceRequest req1 = new InvoiceRequest();
+        req1.setFirmId(1L);
+        req1.setCustomerId(c.getId());
+        req1.setInvoiceNumber("INV-UNIQ-MANUAL-001");
+        req1.setStatus(InvoiceStatus.UNPAID);
+        req1.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        Invoice inv1 = invoiceService.createInvoice(req1);
+        assertNotNull(inv1);
+        assertEquals("INV-UNIQ-MANUAL-001", inv1.getInvoiceNumber());
+
+        // Attempting to create another invoice with the same manual invoiceNumber must throw IllegalArgumentException
+        InvoiceRequest req2 = new InvoiceRequest();
+        req2.setFirmId(1L);
+        req2.setCustomerId(c.getId());
+        req2.setInvoiceNumber("INV-UNIQ-MANUAL-001");
+        req2.setStatus(InvoiceStatus.UNPAID);
+        req2.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> invoiceService.createInvoice(req2));
+        assertTrue(ex.getMessage().contains("already exists"), "Expected duplicate message but got: " + ex.getMessage());
+    }
+
+    @Test
+    void testDuplicateManualEstimateNumberRejected() {
+        Customer c = createCustomer("DuplicateCheckEstCust");
+        Product p = createProduct("UniqEstWidget", "100.00", "0.00");
+
+        InvoiceRequest req1 = new InvoiceRequest();
+        req1.setFirmId(1L);
+        req1.setCustomerId(c.getId());
+        req1.setEstimateNumber("EST-UNIQ-MANUAL-001");
+        req1.setStatus(InvoiceStatus.ESTIMATE);
+        req1.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        Invoice est1 = invoiceService.createInvoice(req1);
+        assertNotNull(est1);
+        assertEquals("EST-UNIQ-MANUAL-001", est1.getEstimateNumber());
+
+        // Attempting to create another estimate with the same manual estimateNumber must throw IllegalArgumentException
+        InvoiceRequest req2 = new InvoiceRequest();
+        req2.setFirmId(1L);
+        req2.setCustomerId(c.getId());
+        req2.setEstimateNumber("EST-UNIQ-MANUAL-001");
+        req2.setStatus(InvoiceStatus.ESTIMATE);
+        req2.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> invoiceService.createInvoice(req2));
+        assertTrue(ex.getMessage().contains("already exists"), "Expected duplicate message but got: " + ex.getMessage());
+    }
+
+    @Test
+    void testSequentialInvoiceNumbersAreMonotonicAndUnique() {
+        Customer c = createCustomer("SequentialCust");
+        Product p = createProduct("SeqWidget", "100.00", "0.00");
+
+        Set<String> generatedNumbers = new HashSet<>();
+        for (int i = 0; i < 5; i++) {
+            InvoiceRequest req = new InvoiceRequest();
+            req.setFirmId(1L);
+            req.setCustomerId(c.getId());
+            req.setStatus(InvoiceStatus.UNPAID);
+            req.setItems(Collections.singletonList(buildItem(p, 1)));
+
+            Invoice inv = invoiceService.createInvoice(req);
+            assertNotNull(inv.getInvoiceNumber());
+            assertTrue(generatedNumbers.add(inv.getInvoiceNumber()),
+                    "Duplicate invoice number generated: " + inv.getInvoiceNumber());
+        }
+        assertEquals(5, generatedNumbers.size());
     }
 }
 

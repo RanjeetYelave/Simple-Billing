@@ -150,17 +150,52 @@ public class InvoiceService {
     }
 
     public synchronized String generateInvoiceNumber(Long firmId) {
-        String nextNo = peekNextInvoiceNumber(firmId);
+        Long safeFirmId = (firmId != null && firmId > 0) ? firmId : 1L;
+        String configKey = "LAST_INVOICE_SEQ_" + safeFirmId;
+        long lastSeq = appConfigRepo.findById(configKey)
+                .map(AppConfig::getConfigValue)
+                .map(v -> {
+                    try {
+                        return Long.parseLong(v);
+                    } catch (Exception e) {
+                        return 0L;
+                    }
+                })
+                .orElse(0L);
+
+        if (lastSeq == 0) {
+            long dbMax = 0;
+            List<String> numbers = invoiceRepo.findInvoiceNumbersByFirmId(safeFirmId);
+            if (numbers != null) {
+                for (String num : numbers) {
+                    if (num != null && num.trim().startsWith("INV-")) {
+                        try {
+                            long seq = Long.parseLong(num.trim().substring(4).trim());
+                            if (seq > dbMax)
+                                dbMax = seq;
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+            }
+            lastSeq = dbMax;
+        }
+
+        long nextVal = lastSeq + 1;
+        String candidate = String.format("INV-%04d", nextVal);
+        while (invoiceRepo.existsByInvoiceNumberAndFirmId(candidate, safeFirmId)) {
+            nextVal++;
+            candidate = String.format("INV-%04d", nextVal);
+        }
+
         try {
-            long nextVal = Long.parseLong(nextNo.substring(4));
-            String configKey = "LAST_INVOICE_SEQ_" + (firmId != null ? firmId : 0);
             AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
             cfg.setConfigKey(configKey);
             cfg.setConfigValue(String.valueOf(nextVal));
             appConfigRepo.save(cfg);
         } catch (Exception ignored) {
         }
-        return nextNo;
+        return candidate;
     }
 
     public String peekNextEstimateNumber(Long firmId) {
@@ -208,17 +243,52 @@ public class InvoiceService {
     }
 
     public synchronized String generateEstimateNumber(Long firmId) {
-        String nextNo = peekNextEstimateNumber(firmId);
+        Long safeFirmId = (firmId != null && firmId > 0) ? firmId : 1L;
+        String configKey = "LAST_ESTIMATE_SEQ_" + safeFirmId;
+        long lastSeq = appConfigRepo.findById(configKey)
+                .map(AppConfig::getConfigValue)
+                .map(v -> {
+                    try {
+                        return Long.parseLong(v);
+                    } catch (Exception e) {
+                        return 0L;
+                    }
+                })
+                .orElse(0L);
+
+        if (lastSeq == 0) {
+            long dbMax = 0;
+            List<String> numbers = invoiceRepo.findEstimateNumbersByFirmId(safeFirmId);
+            if (numbers != null) {
+                for (String num : numbers) {
+                    if (num != null && num.trim().startsWith("EST-")) {
+                        try {
+                            long seq = Long.parseLong(num.trim().substring(4).trim());
+                            if (seq > dbMax)
+                                dbMax = seq;
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+            }
+            lastSeq = dbMax;
+        }
+
+        long nextVal = lastSeq + 1;
+        String candidate = String.format("EST-%04d", nextVal);
+        while (invoiceRepo.existsByEstimateNumberAndFirmId(candidate, safeFirmId)) {
+            nextVal++;
+            candidate = String.format("EST-%04d", nextVal);
+        }
+
         try {
-            long nextVal = Long.parseLong(nextNo.substring(4));
-            String configKey = "LAST_ESTIMATE_SEQ_" + (firmId != null ? firmId : 0);
             AppConfig cfg = appConfigRepo.findById(configKey).orElse(new AppConfig());
             cfg.setConfigKey(configKey);
             cfg.setConfigValue(String.valueOf(nextVal));
             appConfigRepo.save(cfg);
         } catch (Exception ignored) {
         }
-        return nextNo;
+        return candidate;
     }
 
     public void syncSequenceIfApplicable(Long firmId, String number, String prefix, String configKeyPrefix) {
@@ -556,7 +626,11 @@ public class InvoiceService {
         if (status == InvoiceStatus.ESTIMATE) {
             // Estimate: ONLY estimateNumber, NO invoiceNumber
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
-                invoice.setEstimateNumber(request.getEstimateNumber());
+                String estNo = request.getEstimateNumber().trim();
+                if (invoiceRepo.existsByEstimateNumberAndFirmId(estNo, effectiveFirmId)) {
+                    throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
+                }
+                invoice.setEstimateNumber(estNo);
             } else {
                 invoice.setEstimateNumber(generateEstimateNumber(effectiveFirmId));
                 request.setEstimateNumber(invoice.getEstimateNumber()); // keep dto consistent
@@ -568,13 +642,18 @@ public class InvoiceService {
             if (invNo == null || invNo.isBlank()) {
                 invNo = generateInvoiceNumber(effectiveFirmId);
                 request.setInvoiceNumber(invNo);
+            } else {
+                invNo = invNo.trim();
+                if (invoiceRepo.existsByInvoiceNumberAndFirmId(invNo, effectiveFirmId)) {
+                    throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
+                }
             }
             invoice.setInvoiceNumber(invNo);
 
             // if caller accidentally sent estimateNumber also, keep it but it's not
             // required
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
-                invoice.setEstimateNumber(request.getEstimateNumber());
+                invoice.setEstimateNumber(request.getEstimateNumber().trim());
             }
         }
 

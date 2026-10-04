@@ -26,11 +26,16 @@ public class AutoBackupService {
     private static final String LATEST_BACKUP_NAME = "autobackup_latest.json";
 
     private final BackupService backupService;
+    private final BackupValidationService backupValidationService;
     private final ObjectMapper objectMapper;
     private final Map<String, Object> lastBackupStatus = new HashMap<>();
 
-    public AutoBackupService(BackupService backupService) {
+    @org.springframework.beans.factory.annotation.Value("${app.autobackup.startup-check.enabled:true}")
+    private boolean startupCheckEnabled = true;
+
+    public AutoBackupService(BackupService backupService, BackupValidationService backupValidationService) {
         this.backupService = backupService;
+        this.backupValidationService = backupValidationService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -66,14 +71,16 @@ public class AutoBackupService {
         }
 
         // Check if startup auto-backup is needed for today
-        new Thread(() -> {
-            try {
-                Thread.sleep(2000); // Allow server startup to complete
-                ensureTodayBackup();
-            } catch (Exception e) {
-                log.warn("Startup auto-backup check encountered a non-critical error: {}", e.getMessage());
-            }
-        }, "AutoBackup-StartupCheck").start();
+        if (startupCheckEnabled) {
+            new Thread(() -> {
+                try {
+                    Thread.sleep(2000); // Allow server startup to complete
+                    ensureTodayBackup();
+                } catch (Exception e) {
+                    log.warn("Startup auto-backup check encountered a non-critical error: {}", e.getMessage());
+                }
+            }, "AutoBackup-StartupCheck").start();
+        }
     }
 
     /**
@@ -122,6 +129,9 @@ public class AutoBackupService {
             fullBackup.getMetadata().put("backupType", "DAILY_AUTO_BACKUP");
             fullBackup.getMetadata().put("generatedAt", LocalDateTime.now().toString());
 
+            // Validate exported structure before writing to disk
+            backupValidationService.validate(fullBackup);
+
             // 1. Write to temporary file first (atomic safety)
             objectMapper.writeValue(tempFile, fullBackup);
 
@@ -163,20 +173,21 @@ public class AutoBackupService {
     }
 
     /**
-     * Deletes older temporary files and previous backups so only the fresh backup is retained.
+     * Deletes only temporary staging files from previous backup generation attempts.
+     * Historical daily backups, manual backups, and other user files are never touched.
      */
     private void cleanStrayBackupFiles(File backupDir, File activeBackupFile) {
         try {
-            File[] files = backupDir.listFiles((dir, name) -> name.startsWith("autobackup_") && !name.equals(activeBackupFile.getName()));
+            File[] files = backupDir.listFiles((dir, name) -> name.startsWith("autobackup_temp_"));
             if (files != null) {
                 for (File file : files) {
                     if (file.isFile() && file.delete()) {
-                        log.debug("Pruned older backup file: {}", file.getName());
+                        log.debug("Pruned temporary backup file: {}", file.getName());
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Non-critical issue while cleaning older backups: {}", e.getMessage());
+            log.warn("Non-critical issue while cleaning temporary backup files: {}", e.getMessage());
         }
     }
 

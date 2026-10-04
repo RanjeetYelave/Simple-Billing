@@ -26,6 +26,7 @@
   <script src="js/components/SnakeClassic.js?v=20261002_v26_smooth_transition_fix"></script>
   <script src="js/components/ProgressionExperience.js?v=20261002_v26_smooth_transition_fix"></script>
   <script src="js/components/TakeABreakHub.js?v=20261002_v26_smooth_transition_fix"></script>
+  <script src="js/featureLock.js"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
   <script src="js/themeToggle.js?v=20260925_sunset_default_v1"></script>
@@ -10689,6 +10690,46 @@
         return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
       }, []);
 
+      const [dashLockTick, setDashLockTick] = useState(0);
+      useEffect(() => {
+        const handleLockChanged = () => setDashLockTick(t => t + 1);
+        window.addEventListener('billsoft:feature-lock-changed', handleLockChanged);
+        return () => window.removeEventListener('billsoft:feature-lock-changed', handleLockChanged);
+      }, []);
+
+      const prevDashSegmentRef = useRef(dashSegment);
+      useEffect(() => {
+        if (prevDashSegmentRef.current && prevDashSegmentRef.current !== dashSegment) {
+          if (prevDashSegmentRef.current === 'personal') {
+            const cfg = (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.getConfig === 'function')
+              ? window.FeatureLock.getConfig()
+              : null;
+            if (cfg && cfg.enabled && cfg.timeoutMinutes === 0) {
+              if (typeof window.FeatureLock.lock === 'function') {
+                window.FeatureLock.lock('planner');
+              }
+            }
+          }
+        }
+        prevDashSegmentRef.current = dashSegment;
+      }, [dashSegment]);
+
+      useEffect(() => {
+        return () => {
+          if (prevDashSegmentRef.current === 'personal') {
+            const cfg = (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.getConfig === 'function')
+              ? window.FeatureLock.getConfig()
+              : null;
+            if (cfg && cfg.enabled && cfg.timeoutMinutes === 0) {
+              if (typeof window.FeatureLock.lock === 'function') {
+                window.FeatureLock.lock('planner');
+              }
+            }
+          }
+        };
+      }, []);
+
+
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -11634,7 +11675,17 @@
         // ════════════════════════════════════════════════════════════════════════
         // PERSPECTIVE 2: PERSONAL VIEW (PRIVACY-SAFE SWITCH)
         // ════════════════════════════════════════════════════════════════════════
-        dashSegment === 'personal' && React.createElement(Fragment, null,
+        dashSegment === 'personal' && (
+          (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.isFeatureLocked === 'function' && window.FeatureLock.isFeatureLocked('planner'))
+            ? ((window.FeatureLock && window.FeatureLock.LockScreen)
+                ? React.createElement(window.FeatureLock.LockScreen, {
+                    key: 'lock-planner-dash',
+                    featureId: 'planner',
+                    featureTitle: 'Personal View',
+                    onUnlock: () => setDashLockTick(t => t + 1)
+                  })
+                : null)
+            : React.createElement(Fragment, null,
 
           // 4-Card Personal Wealth & Habits Executive KPI Grid
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } }, personalKpis.map((k, i) => React.createElement('div', {
@@ -12093,7 +12144,7 @@
               )
             )
           )
-        ),
+        )),
 
         // ── Announcements Card (Permanent Bottom Reference) ──
         Array.isArray(announcements) && announcements.length > 0 && React.createElement('div', {
@@ -31519,6 +31570,11 @@
 
       useEffect(() => {
         loadAuthStatus();
+        return () => {
+          if (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.setSettingsSessionAuthorized === 'function') {
+            window.FeatureLock.setSettingsSessionAuthorized(false);
+          }
+        };
       }, []);
 
       const handleTimeoutChange = (mins) => {
@@ -31695,7 +31751,12 @@
           )
         ),
 
-        // 2. Inactivity Auto-Lock & Session Timeout Card
+        // 2. App-Based Feature Lock Card (Privacy Lock for Selected Features)
+        (typeof window !== 'undefined' && window.FeatureLock && window.FeatureLock.SettingsCard)
+          ? React.createElement(window.FeatureLock.SettingsCard, null)
+          : null,
+
+        // 3. Inactivity Auto-Lock & Session Timeout Card
         React.createElement('div', { className: 'card', style: { padding: '24px 28px', opacity: authEnabled ? 1 : 0.7 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
             React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '⏱️'),
@@ -32177,6 +32238,44 @@
                 className: 'btn btn-primary btn-sm',
                 style: { textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
               }, '✉️ Send Email')
+            )
+          )
+        ),
+
+        // Feature Lock PIN Recovery Card
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px', borderRadius: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            React.createElement('div', { style: { fontSize: '1.5rem', padding: 10, borderRadius: 12, background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' } }, '🔑'),
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Feature Lock PIN Recovery'),
+              React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Assisted recovery for protected module security credentials')
+            )
+          ),
+          React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text)', lineHeight: 1.5, margin: '0 0 16px 0' } },
+            "If you have forgotten your Feature Lock PIN, please contact our support team. Recovery requires verification using the application's master credentials, which are not provided to end customers."
+          ),
+          React.createElement('div', {
+            style: {
+              background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)', padding: '14px 18px',
+              borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { fontSize: '1.2rem' } }, '✉️'),
+              React.createElement('span', { style: { fontSize: '0.90rem', fontWeight: 600, color: 'var(--text)' } }, email)
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline btn-sm',
+                onClick: handleCopyEmail,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, copied ? '✅ Copied' : '📋 Copy Email'),
+              React.createElement('a', {
+                href: `mailto:${email}?subject=Feature%20Lock%20PIN%20Recovery%20Request`,
+                className: 'btn btn-primary btn-sm',
+                style: { textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '✉️ Contact Support')
             )
           )
         ),
@@ -36631,6 +36730,60 @@
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
+      const [featureLockTick, setFeatureLockTick] = useState(0);
+      const [hasInvoicesEverMounted, setHasInvoicesEverMounted] = useState(() => {
+        const isLocked = Boolean(
+          typeof window !== 'undefined' &&
+          window.FeatureLock &&
+          typeof window.FeatureLock.isFeatureLocked === 'function' &&
+          window.FeatureLock.isFeatureLocked('invoices')
+        );
+        return !isLocked;
+      });
+
+      useEffect(() => {
+        const handleLockChanged = () => setFeatureLockTick(t => t + 1);
+        window.addEventListener('billsoft:feature-lock-changed', handleLockChanged);
+        return () => window.removeEventListener('billsoft:feature-lock-changed', handleLockChanged);
+      }, []);
+
+      useEffect(() => {
+        const isInvLocked = Boolean(
+          typeof window !== 'undefined' &&
+          window.FeatureLock &&
+          typeof window.FeatureLock.isFeatureLocked === 'function' &&
+          window.FeatureLock.isFeatureLocked('invoices')
+        );
+        if (!isInvLocked) {
+          setHasInvoicesEverMounted(true);
+        }
+      }, [featureLockTick, page]);
+
+      const prevPageRef = useRef(page);
+      useEffect(() => {
+        if (prevPageRef.current && prevPageRef.current !== page) {
+          if (prevPageRef.current === 'settings') {
+            if (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.setSettingsSessionAuthorized === 'function') {
+              window.FeatureLock.setSettingsSessionAuthorized(false);
+            }
+          }
+          const cfg = (typeof window !== 'undefined' && window.FeatureLock && typeof window.FeatureLock.getConfig === 'function')
+            ? window.FeatureLock.getConfig()
+            : null;
+          if (cfg && cfg.enabled && cfg.timeoutMinutes === 0) {
+            const prevNorm = (typeof window.FeatureLock.normalizeFeatureId === 'function')
+              ? window.FeatureLock.normalizeFeatureId(prevPageRef.current)
+              : prevPageRef.current;
+            const currentNorm = (typeof window.FeatureLock.normalizeFeatureId === 'function')
+              ? window.FeatureLock.normalizeFeatureId(page)
+              : page;
+            if (prevNorm && prevNorm !== currentNorm && typeof window.FeatureLock.lock === 'function') {
+              window.FeatureLock.lock(prevNorm);
+            }
+          }
+        }
+        prevPageRef.current = page;
+      }, [page]);
       const [editInvoiceId, setEditInvoiceId] = useState(null);
       const [editQuotationId, setEditQuotationId] = useState(null);
       const [convertedFromQuotationId, setConvertedFromQuotationId] = useState(null);
@@ -37976,6 +38129,12 @@
         settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
       };
       const current = pageComponents[page] || pageComponents.dashboard;
+      const isPageLocked = Boolean(
+        typeof window !== 'undefined' &&
+        window.FeatureLock &&
+        typeof window.FeatureLock.isFeatureLocked === 'function' &&
+        window.FeatureLock.isFeatureLocked(page)
+      );
 
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
 
@@ -38316,11 +38475,23 @@
             )
           ),
           React.createElement('div', { className: 'page-content' },
-            React.createElement('div', {
+            hasInvoicesEverMounted && React.createElement('div', {
               key: 'invoices-persistent-wrapper',
-              style: { display: page === 'invoices' ? 'block' : 'none' }
+              style: { display: (page === 'invoices' && !isPageLocked) ? 'block' : 'none' }
             }, pageComponents.invoices.comp),
-            page !== 'invoices' && current.comp
+            isPageLocked
+              ? ((window.FeatureLock && window.FeatureLock.LockScreen)
+                  ? React.createElement(window.FeatureLock.LockScreen, {
+                      key: `lock-${(window.FeatureLock && typeof window.FeatureLock.normalizeFeatureId === 'function') ? window.FeatureLock.normalizeFeatureId(page) : page}`,
+                      featureId: page,
+                      featureTitle: current.title,
+                      onUnlock: () => {
+                        setHasInvoicesEverMounted(true);
+                        setFeatureLockTick(t => t + 1);
+                      }
+                    })
+                  : null)
+              : (page !== 'invoices' && current.comp)
           )
         ),
         showInboxModal && React.createElement('div', {

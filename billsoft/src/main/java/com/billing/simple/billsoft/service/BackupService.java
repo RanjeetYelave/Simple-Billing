@@ -46,6 +46,7 @@ public class BackupService {
     private final BackupEntityMappingRepository backupEntityMappingRepo;
     private final NotificationRepository notificationRepo;
     private final NotificationPreferenceRepository notificationPreferenceRepo;
+    private final BackupValidationService backupValidationService;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -77,7 +78,8 @@ public class BackupService {
                          GoalLogRepository goalLogRepo,
                          BackupEntityMappingRepository backupEntityMappingRepo,
                          NotificationRepository notificationRepo,
-                         NotificationPreferenceRepository notificationPreferenceRepo) {
+                         NotificationPreferenceRepository notificationPreferenceRepo,
+                         BackupValidationService backupValidationService) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -109,6 +111,7 @@ public class BackupService {
         this.backupEntityMappingRepo = backupEntityMappingRepo;
         this.notificationRepo = notificationRepo;
         this.notificationPreferenceRepo = notificationPreferenceRepo;
+        this.backupValidationService = backupValidationService;
     }
 
     @Transactional(readOnly = true)
@@ -368,8 +371,11 @@ public class BackupService {
     @Transactional
     public List<FirmDetails> importSelectiveData(BackupDTO backup, Set<Long> selectedFirmIds, String mode, Long targetFirmId) {
         if (backup == null || backup.getMetadata() == null) {
-            throw new RuntimeException("Invalid backup file: Missing metadata");
+            throw new com.billing.simple.billsoft.exception.BackupValidationException("MISSING_METADATA", "Invalid backup file: Missing metadata");
         }
+
+        // 0. Preflight validation - Ensures backup is structurally valid & conflict-free BEFORE touching database
+        backupValidationService.validate(backup);
 
         boolean isFullSystem = "FULL_SYSTEM_BACKUP".equalsIgnoreCase((String) backup.getMetadata().get("type"))
                 || (backup.getAllFirms() != null && !backup.getAllFirms().isEmpty());
@@ -398,9 +404,9 @@ public class BackupService {
             targetFirmsToProcess.addAll(backupFirms);
         }
 
-        // Clean wipe mode: Factory reset first
+        // Destructive clean wipe is strictly prohibited during restore operations
         if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode)) {
-            factoryReset();
+            throw new IllegalArgumentException("Destructive clean_wipe mode is not permitted during restore operations. To reset the system, use the dedicated Factory Reset administrative procedure.");
         }
 
         Map<Long, Long> oldToNewFirmIdMap = new HashMap<>();
@@ -684,14 +690,30 @@ public class BackupService {
                     }
                     if (invoiceToUse == null && inv.getInvoiceNumber() != null && !inv.getInvoiceNumber().trim().isEmpty()) {
                         Invoice cand = invoiceRepo.findByInvoiceNumberAndFirmId(inv.getInvoiceNumber().trim(), mappedFirmId).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "INVOICE", cand.getId())) {
-                            invoiceToUse = cand;
+                        if (cand != null) {
+                            if (isTargetEntityAvailable(claimedTargetEntitiesByType, "INVOICE", cand.getId())) {
+                                invoiceToUse = cand;
+                            } else {
+                                throw new com.billing.simple.billsoft.exception.RestoreConflictException(
+                                    "INVOICE", inv.getInvoiceNumber(),
+                                    "Restore conflict: Target firm " + mappedFirmId + " already has invoice number '" 
+                                    + inv.getInvoiceNumber() + "' claimed by another record. Cannot insert duplicate invoice."
+                                );
+                            }
                         }
                     }
                     if (invoiceToUse == null && inv.getEstimateNumber() != null && !inv.getEstimateNumber().trim().isEmpty()) {
                         Invoice cand = invoiceRepo.findByEstimateNumberAndFirmId(inv.getEstimateNumber().trim(), mappedFirmId).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "INVOICE", cand.getId())) {
-                            invoiceToUse = cand;
+                        if (cand != null) {
+                            if (isTargetEntityAvailable(claimedTargetEntitiesByType, "INVOICE", cand.getId())) {
+                                invoiceToUse = cand;
+                            } else {
+                                throw new com.billing.simple.billsoft.exception.RestoreConflictException(
+                                    "INVOICE", inv.getEstimateNumber(),
+                                    "Restore conflict: Target firm " + mappedFirmId + " already has estimate number '" 
+                                    + inv.getEstimateNumber() + "' claimed by another record. Cannot insert duplicate estimate."
+                                );
+                            }
                         }
                     }
 
@@ -842,8 +864,16 @@ public class BackupService {
                     }
                     if (srToUse == null && sr.getReturnNumber() != null && !sr.getReturnNumber().trim().isEmpty()) {
                         SalesReturn cand = salesReturnRepo.findFirstByFirmIdAndReturnNumber(mappedFirmId, sr.getReturnNumber().trim()).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "SALES_RETURN", cand.getId())) {
-                            srToUse = cand;
+                        if (cand != null) {
+                            if (isTargetEntityAvailable(claimedTargetEntitiesByType, "SALES_RETURN", cand.getId())) {
+                                srToUse = cand;
+                            } else {
+                                throw new com.billing.simple.billsoft.exception.RestoreConflictException(
+                                    "SALES_RETURN", sr.getReturnNumber(),
+                                    "Restore conflict: Target firm " + mappedFirmId + " already has sales return number '" 
+                                    + sr.getReturnNumber() + "' claimed by another record."
+                                );
+                            }
                         }
                     }
 
@@ -1005,8 +1035,16 @@ public class BackupService {
                     }
                     if (poToUse == null && po.getPoNumber() != null && !po.getPoNumber().trim().isEmpty()) {
                         PurchaseOrder cand = purchaseOrderRepo.findFirstByFirmIdAndPoNumber(mappedFirmId, po.getPoNumber().trim()).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "PO", cand.getId())) {
-                            poToUse = cand;
+                        if (cand != null) {
+                            if (isTargetEntityAvailable(claimedTargetEntitiesByType, "PO", cand.getId())) {
+                                poToUse = cand;
+                            } else {
+                                throw new com.billing.simple.billsoft.exception.RestoreConflictException(
+                                    "PO", po.getPoNumber(),
+                                    "Restore conflict: Target firm " + mappedFirmId + " already has purchase order number '" 
+                                    + po.getPoNumber() + "' claimed by another record."
+                                );
+                            }
                         }
                     }
 
@@ -1535,8 +1573,15 @@ public class BackupService {
                     Long targetEmpId = oldToNewEmpMap.get(att.getEmployee().getId()).getId();
                     if (attToUse == null && targetEmpId != null && att.getDate() != null) {
                         AttendanceRecord cand = attendanceRecordRepo.findByEmployeeIdAndDate(targetEmpId, att.getDate()).orElse(null);
-                        if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "ATTENDANCE", cand.getId())) {
-                            attToUse = cand;
+                        if (cand != null) {
+                            if (isTargetEntityAvailable(claimedTargetEntitiesByType, "ATTENDANCE", cand.getId())) {
+                                attToUse = cand;
+                            } else {
+                                throw new com.billing.simple.billsoft.exception.RestoreConflictException(
+                                    "ATTENDANCE", targetEmpId + ":" + att.getDate(),
+                                    "Restore conflict: Employee ID " + targetEmpId + " already has an attendance record for date " + att.getDate()
+                                );
+                            }
                         }
                     }
 
@@ -1968,6 +2013,24 @@ public class BackupService {
                 if (ac.getConfigKey() != null) {
                     if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode) || !appConfigRepo.existsById(ac.getConfigKey()) || "SNAKE_GAME_STATE".equals(ac.getConfigKey())) {
                         appConfigRepo.save(ac);
+                    }
+                }
+            }
+        }
+
+        // Post-Restore Integrity Verification
+        for (FirmDetails rf : restoredFirms) {
+            if (rf.getId() != null) {
+                List<String> invNums = invoiceRepo.findInvoiceNumbersByFirmId(rf.getId());
+                if (invNums != null) {
+                    Set<String> uniqueInvNums = new HashSet<>();
+                    for (String num : invNums) {
+                        if (num != null && !num.trim().isEmpty() && !uniqueInvNums.add(num.trim().toUpperCase())) {
+                            throw new com.billing.simple.billsoft.exception.BackupValidationException(
+                                    "POST_RESTORE_INTEGRITY_FAILURE",
+                                    "Post-restore integrity check failed: duplicate invoice number '" + num + "' detected in firm " + rf.getId()
+                            );
+                        }
                     }
                 }
             }

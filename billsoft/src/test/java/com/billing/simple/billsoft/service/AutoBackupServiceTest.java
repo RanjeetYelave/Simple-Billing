@@ -32,7 +32,7 @@ class AutoBackupServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         System.setProperty("BILLSOFT_DATA_DIR", tempDir.toAbsolutePath().toString());
-        autoBackupService = new AutoBackupService(backupService);
+        autoBackupService = new AutoBackupService(backupService, new BackupValidationService());
     }
 
     @AfterEach

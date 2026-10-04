@@ -54,20 +54,25 @@ public class BillsoftApplication {
 					stmt.execute("ALTER TABLE invoice_payments ALTER COLUMN invoice_id SET NULL");
 				} catch (Exception ignored) {
 				}
+
+				// Enforce Required Unique Constraints
 				try {
 					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_firm_invoice_num ON invoices(firm_id, invoice_number)");
-				} catch (Exception ignored) {
+				} catch (Exception e) {
+					System.err.println("Note: uq_invoices_firm_invoice_num: " + e.getMessage());
 				}
 				try {
 					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_firm_po_num ON purchase_orders(firm_id, po_number)");
-				} catch (Exception ignored) {
+				} catch (Exception e) {
+					System.err.println("Note: uq_purchase_orders_firm_po_num: " + e.getMessage());
 				}
 				try {
 					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_returns_firm_return_num ON sales_returns(firm_id, return_number)");
-				} catch (Exception ignored) {
+				} catch (Exception e) {
+					System.err.println("Note: uq_sales_returns_firm_return_num: " + e.getMessage());
 				}
 			} catch (Exception e) {
-				System.err.println("Database migration note: " + e.getMessage());
+				System.err.println("Database schema migration notice: " + e.getMessage());
 			}
 		};
 	}

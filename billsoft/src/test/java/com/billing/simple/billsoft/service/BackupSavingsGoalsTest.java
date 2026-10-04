@@ -52,6 +52,7 @@ class BackupSavingsGoalsTest {
     @Mock private GoalRepository goalRepo;
     @Mock private GoalLogRepository goalLogRepo;
     @Mock private BackupEntityMappingRepository backupEntityMappingRepo;
+    @Mock private BackupValidationService backupValidationService;
 
     @InjectMocks
     private BackupService service;

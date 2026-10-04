@@ -76,6 +76,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     Optional<Invoice> findByConvertedInvoiceIdAndFirmId(Long convertedInvoiceId, Long firmId);
     Optional<Invoice> findByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
     Optional<Invoice> findByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
+    boolean existsByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
+    boolean existsByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
 
 
     // ── Aggregation queries for analytics ──

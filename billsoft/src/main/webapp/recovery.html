@@ -1,0 +1,2269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RupeeCRM — Diagnostic &amp; Recovery Console</title>
+  <style>
+    :root {
+      --bg-base: #020408;
+      --bg-surface: #070c18;
+      --bg-panel: #0d1527;
+      --bg-card: #111a33;
+      --border-subtle: #1e293b;
+      --border-highlight: #334155;
+      --accent-cyan: #00f2fe;
+      --accent-cyan-dim: rgba(0, 242, 254, 0.15);
+      --accent-blue: #38bdf8;
+      --accent-green: #10b981;
+      --accent-green-dim: rgba(16, 185, 129, 0.15);
+      --accent-amber: #f59e0b;
+      --accent-amber-dim: rgba(245, 158, 11, 0.15);
+      --accent-red: #ef4444;
+      --accent-red-dim: rgba(239, 68, 68, 0.15);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Access Gate (Unauthenticated State) */
+    #accessGate {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: radial-gradient(circle at center, #070e1e 0%, #020408 100%);
+    }
+
+    .gate-box {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-top: 2px solid var(--accent-cyan);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+      padding: 32px;
+    }
+
+    .gate-brand {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .gate-logo {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #fff;
+      text-transform: uppercase;
+    }
+    .gate-title {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .gate-badge {
+      display: inline-block;
+      margin-top: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      background: var(--accent-cyan-dim);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      color: var(--accent-cyan);
+      border-radius: 2px;
+    }
+
+    .gate-desc {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .gate-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .gate-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      display: block;
+      margin-bottom: 6px;
+    }
+    .gate-input {
+      width: 100%;
+      background: #020408;
+      border: 1px solid var(--border-subtle);
+      color: #fff;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .gate-input:focus {
+      border-color: var(--accent-cyan);
+    }
+    .gate-btn {
+      background: #00f2fe;
+      color: #020408;
+      border: none;
+      padding: 11px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .gate-btn:hover { background: #38bdf8; }
+    .gate-btn:active { background: #0284c7; }
+    .gate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .gate-error {
+      background: var(--accent-red-dim);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      padding: 8px 12px;
+      display: none;
+    }
+    .gate-footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Main Console Layout (Authenticated State) */
+    #consoleApp {
+      display: none;
+      height: 100vh;
+      grid-template-columns: 240px 1fr;
+      grid-template-rows: 48px 1fr;
+    }
+
+    /* Sidebar */
+    .console-sidebar {
+      grid-row: 1 / 3;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .brand-title {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: #fff;
+    }
+    .brand-subtitle {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 1px;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .nav-item:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .nav-item.active {
+      color: var(--accent-cyan);
+      background: rgba(0, 242, 254, 0.05);
+      border-left-color: var(--accent-cyan);
+      font-weight: 600;
+    }
+    .nav-num {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+    .nav-item.active .nav-num {
+      color: var(--accent-cyan);
+    }
+
+    .sidebar-footer {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .mode-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+    .mode-dot.inactive {
+      background: var(--text-muted);
+      box-shadow: none;
+    }
+
+    /* Top Bar */
+    .console-topbar {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    .topbar-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ctrl-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 5px 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .ctrl-btn:hover {
+      border-color: var(--border-highlight);
+      color: #fff;
+    }
+    .ctrl-btn:active {
+      background: var(--bg-card);
+    }
+    .ctrl-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .ctrl-btn-primary {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+    }
+    .ctrl-btn-primary:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .ctrl-btn-cyan {
+      background: var(--accent-cyan-dim);
+      border-color: rgba(0, 242, 254, 0.4);
+      color: var(--accent-cyan);
+    }
+    .ctrl-btn-cyan:hover {
+      background: rgba(0, 242, 254, 0.25);
+      border-color: var(--accent-cyan);
+      color: #fff;
+    }
+    .ctrl-btn-danger {
+      background: var(--accent-red-dim);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .ctrl-btn-danger:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: var(--accent-red);
+      color: #fff;
+    }
+
+    /* Content Area */
+    .console-content {
+      overflow-y: auto;
+      background: var(--bg-base);
+      padding: 24px 28px;
+    }
+
+    .view-pane {
+      display: none;
+      animation: fadeIn 0.12s ease-out;
+    }
+    .view-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section Titles */
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #fff;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 8px;
+    }
+
+    /* Panels & Cards */
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 2px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .panel-header {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    /* Metric Key-Value Row */
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 12px;
+    }
+    .metric-row:last-child { border-bottom: none; }
+    .metric-label {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .metric-value {
+      font-family: var(--font-mono);
+      color: #fff;
+      font-weight: 500;
+    }
+
+    /* Tech Tables */
+    .tech-table-container {
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+    .tech-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      text-align: left;
+    }
+    .tech-table th {
+      background: #090e1a;
+      color: var(--text-secondary);
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-size: 10.5px;
+    }
+    .tech-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+    }
+    .tech-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Badges */
+    .badge-ok {
+      color: #34d399;
+      background: var(--accent-green-dim);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+    .badge-warn {
+      color: #fbbf24;
+      background: var(--accent-amber-dim);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+    .badge-danger {
+      color: #fca5a5;
+      background: var(--accent-red-dim);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+
+    /* Terminal Log View */
+    .terminal-window {
+      background: #020408;
+      border: 1px solid #1e293b;
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.55;
+      color: #94a3b8;
+      height: 480px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      position: relative;
+    }
+    .terminal-line {
+      display: block;
+      padding: 1px 0;
+    }
+    .terminal-line:hover {
+      background: rgba(255, 255, 255, 0.03);
+      color: #f8fafc;
+    }
+    .log-info { color: #38bdf8; }
+    .log-warn { color: #fbbf24; }
+    .log-error { color: #f87171; }
+
+    /* Danger Actions & Warnings */
+    .danger-box {
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.04);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .warning-banner {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 14px;
+      color: #fef3c7;
+      font-size: 12px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .modal-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-top: 2px solid var(--accent-cyan);
+      width: 100%;
+      max-width: 620px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+    }
+    .modal-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .modal-body {
+      padding: 18px;
+      overflow-y: auto;
+      font-size: 12px;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .mono { font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       00. ACCESS GATE (Strictly unauthenticated gate)
+       ======================================================================== -->
+  <div id="accessGate">
+    <div class="gate-box">
+      <div class="gate-brand">
+        <div class="gate-logo">RupeeCRM</div>
+        <div class="gate-title">Diagnostic &amp; Recovery Console</div>
+        <div class="gate-badge">Diagnostic Access Restricted</div>
+      </div>
+      <div class="gate-desc">
+        Internal administrative authentication required.<br>
+        Enter your master diagnostic clearance key to establish an authenticated diagnostic session.
+      </div>
+
+      <div class="gate-form">
+        <div id="gateError" class="gate-error"></div>
+        <div>
+          <label class="gate-label" for="masterKeyInput">Master Recovery Clearance Key</label>
+          <input type="password" id="masterKeyInput" class="gate-input" placeholder="••••••••••••••••" autofocus autocomplete="off">
+        </div>
+        <button id="gateSubmitBtn" class="gate-btn" onclick="submitDiagnosticAuth()">
+          <span>[ ACCESS CONSOLE ]</span>
+        </button>
+      </div>
+
+      <div class="gate-footer">
+        Access is monitored and restricted to authorized operations personnel.
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       CONSOLE APPLICATION (Shown after authentication)
+       ======================================================================== -->
+  <div id="consoleApp">
+
+    <!-- Left Sidebar Navigation -->
+    <aside class="console-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-title">RupeeCRM</div>
+        <div class="brand-subtitle">Diagnostic Console</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-item active" onclick="switchNav('overview')">
+          <span class="nav-num">01.</span>
+          <span>OVERVIEW</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('live-console')">
+          <span class="nav-num">02.</span>
+          <span>LIVE CONSOLE</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('system-health')">
+          <span class="nav-num">03.</span>
+          <span>SYSTEM HEALTH</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('backups')">
+          <span class="nav-num">04.</span>
+          <span>BACKUPS</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('restore')">
+          <span class="nav-num">05.</span>
+          <span>RESTORE</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('emergency')">
+          <span class="nav-num">06.</span>
+          <span>EMERGENCY</span>
+        </div>
+        <div class="nav-item" onclick="switchNav('settings')">
+          <span class="nav-num">07.</span>
+          <span>SETTINGS</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="mode-indicator">
+          <div id="sidebarModeDot" class="mode-dot"></div>
+          <div>
+            <div style="font-weight:600; color:#fff;">Diagnostic Mode</div>
+            <div id="sidebarModeText" style="font-size:10px; color:var(--text-muted);">Active</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Top Bar -->
+    <header class="console-topbar">
+      <div class="topbar-title">
+        <span>RupeeCRM Diagnostic &amp; Recovery Console</span>
+        <span class="badge-ok" id="sessionStatusBadge">
+          ● ACTIVE SESSION
+        </span>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="ctrl-btn" onclick="refreshCurrentView()" title="Refresh telemetry">
+          <span>↻</span> Refresh
+        </button>
+        <button class="ctrl-btn" onclick="lockConsole()" title="Lock console and invalidate session">
+          <span>🔒</span> Lock Console
+        </button>
+        <button class="ctrl-btn" onclick="exitToMainApp()" title="Exit console (Returns to CRM — does not disable diagnostic mode)">
+          <span>⏏</span> Exit Console
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Panes -->
+    <main class="console-content">
+
+      <!-- ====================================================================
+           VIEW 01: OVERVIEW
+           ==================================================================== -->
+      <div id="view-overview" class="view-pane active">
+        <div class="section-title">
+          <span>System Overview</span>
+          <span id="overviewTimestamp" class="mono" style="font-size:11px; color:var(--text-muted);">—</span>
+        </div>
+
+        <!-- 4 Metric Panels -->
+        <div class="grid-4">
+          <!-- Application -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>Application</span>
+              <span id="ovAppBadge" class="badge-ok">UP</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">JVM Uptime</span><span id="ovUptime" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Java Version</span><span id="ovJava" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Spring Boot</span><span id="ovSpringBoot" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">OS</span><span id="ovOs" class="metric-value">—</span></div>
+          </div>
+
+          <!-- Database -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>Database (H2)</span>
+              <span id="ovDbBadge" class="badge-ok">CONNECTED</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Engine</span><span id="ovDbEngine" class="metric-value">H2 Database</span></div>
+            <div class="metric-row"><span class="metric-label">Latency</span><span id="ovDbLatency" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">State</span><span id="ovDbStatus" class="metric-value">Healthy</span></div>
+            <div class="metric-row"><span class="metric-label">Connection</span><span id="ovDbDriver" class="metric-value">—</span></div>
+          </div>
+
+          <!-- JVM Memory -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>JVM Memory</span>
+              <span id="ovJvmBadge" class="badge-ok">OK</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Used RAM</span><span id="ovMemUsed" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Free RAM</span><span id="ovMemFree" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Maximum</span><span id="ovMemMax" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">CPU Cores</span><span id="ovCores" class="metric-value">—</span></div>
+          </div>
+
+          <!-- Storage -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>Storage</span>
+              <span id="ovStorageBadge" class="badge-ok">OK</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Usable Free</span><span id="ovStorageFree" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Total Space</span><span id="ovStorageTotal" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Directory</span><span id="ovStorageDir" class="metric-value" style="font-size:10px; word-break:break-all;">—</span></div>
+          </div>
+        </div>
+
+        <!-- Compact Backup Status Overview -->
+        <div class="section-title" style="margin-top:28px;">
+          <span>Backup Sources Status</span>
+          <button class="ctrl-btn ctrl-btn-cyan" onclick="switchNav('backups')">Inspect Backup Sources →</button>
+        </div>
+
+        <div class="tech-table-container">
+          <table class="tech-table">
+            <thead>
+              <tr>
+                <th>Backup Source</th>
+                <th>Diagnostic Status</th>
+                <th>Details</th>
+                <th>Recoverability</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Live Database</strong></td>
+                <td><span id="ovLiveDbBadge" class="badge-ok">ONLINE</span></td>
+                <td id="ovLiveDbDetails">Firms: — | Customers: — | Invoices: —</td>
+                <td>Active Primary Store</td>
+              </tr>
+              <tr>
+                <td><strong>Automatic Backup</strong></td>
+                <td><span id="ovAutoBadge" class="badge-ok">DISCOVERED</span></td>
+                <td id="ovAutoDetails">autobackup_latest.json</td>
+                <td>Transactional Restore Available</td>
+              </tr>
+              <tr>
+                <td><strong>Diagnostic Snapshots</strong></td>
+                <td><span id="ovSnapBadge" class="badge-ok">AVAILABLE</span></td>
+                <td id="ovSnapDetails">— available snapshots</td>
+                <td>Point-in-Time Selective Snapshots</td>
+              </tr>
+              <tr>
+                <td><strong>Offsite Cloud Backup</strong></td>
+                <td><span id="ovOffsiteBadge" class="badge-warn">UNAVAILABLE</span></td>
+                <td id="ovOffsiteDetails">—</td>
+                <td>Off-Device AES-256 Vault</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 02: LIVE CONSOLE
+           ==================================================================== -->
+      <div id="view-live-console" class="view-pane">
+        <div class="section-title">
+          <span>Live Application Console</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span id="liveConnBadge" class="badge-ok">STREAMING</span>
+            <button id="autoScrollBtn" class="ctrl-btn" onclick="toggleAutoScroll()">Auto-scroll: ON</button>
+            <button class="ctrl-btn" onclick="clearLiveLogs()">Clear Window</button>
+            <button class="ctrl-btn" onclick="downloadDebugLogs()">Download Logs</button>
+            <button id="toggleVerboseBtn" class="ctrl-btn" onclick="toggleVerboseLogging()">Verbose: OFF</button>
+          </div>
+        </div>
+
+        <div style="position:relative;">
+          <div id="terminalLogWindow" class="terminal-window" onscroll="handleLogWindowScroll()">
+            <div class="terminal-line" style="color:var(--text-muted);">[Initializing continuous diagnostic log stream...]</div>
+          </div>
+          <button id="resumeLiveBtn" class="ctrl-btn ctrl-btn-cyan" onclick="resumeLiveScroll()" style="display:none; position:absolute; bottom:16px; right:20px; z-index:10; box-shadow:0 4px 12px rgba(0,0,0,0.8);">
+            ↓ Resume Live
+          </button>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 03: SYSTEM HEALTH
+           ==================================================================== -->
+      <div id="view-system-health" class="view-pane">
+        <div class="section-title">
+          <span>System Health &amp; Subsystems</span>
+          <button class="ctrl-btn" onclick="fetchHealthData()">↻ Refresh Metrics</button>
+        </div>
+
+        <div class="grid-2">
+          <!-- Subsystem 1: Database Engine -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>H2 Database Engine</span>
+              <span id="shDbStatus" class="badge-ok">HEALTHY</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Database Product</span><span id="shDbEngine" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Driver Version</span><span id="shDbDriver" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Round-Trip Latency</span><span id="shDbLatency" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">JDBC Connection URL</span><span id="shDbUrl" class="metric-value" style="font-size:10px; word-break:break-all;">—</span></div>
+          </div>
+
+          <!-- Subsystem 2: JVM Runtime -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>JVM Runtime Telemetry</span>
+              <span id="shJvmStatus" class="badge-ok">NORMAL</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Java Runtime</span><span id="shJavaVendor" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Java Version</span><span id="shJavaVersion" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Spring Boot Version</span><span id="shSpringBoot" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">OS Environment</span><span id="shOsInfo" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Process Uptime</span><span id="shUptime" class="metric-value">—</span></div>
+          </div>
+
+          <!-- Subsystem 3: Heap Memory Utilization -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>JVM Memory Architecture</span>
+              <span id="shMemStatus" class="badge-ok">BOUNDED</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Active Heap Allocation</span><span id="shMemUsed" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Free Reserved Heap</span><span id="shMemFree" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Maximum Configured Heap</span><span id="shMemMax" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Available CPU Cores</span><span id="shCores" class="metric-value">—</span></div>
+          </div>
+
+          <!-- Subsystem 4: Disk Storage Subsystem -->
+          <div class="panel">
+            <div class="panel-header">
+              <span>Disk Volume Telemetry</span>
+              <span id="shStorageStatus" class="badge-ok">OK</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Usable Free Space</span><span id="shStorageFree" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Total Capacity</span><span id="shStorageTotal" class="metric-value">—</span></div>
+            <div class="metric-row"><span class="metric-label">Base App Directory</span><span id="shStoragePath" class="metric-value" style="font-size:10px; word-break:break-all;">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 04: BACKUPS (Simple Sources Architecture)
+           ==================================================================== -->
+      <div id="view-backups" class="view-pane">
+        <!-- Sub-view: Backup Sources Overview -->
+        <div id="backupSourcesSubView">
+          <div class="section-title">
+            <span>Backup Sources</span>
+            <div style="display:flex; gap:8px;">
+              <button class="ctrl-btn ctrl-btn-primary" onclick="createH2Snapshot()">Create H2 Snapshot</button>
+              <button class="ctrl-btn ctrl-btn-cyan" onclick="createJsonSnapshot()">Create JSON Snapshot</button>
+            </div>
+          </div>
+
+          <!-- 4 Concrete Sources -->
+          <div class="grid-2">
+            <!-- Source 1: Live Database -->
+            <div class="panel">
+              <div class="panel-header">
+                <span>1. Live Database</span>
+                <span id="bkLiveBadge" class="badge-ok">CONNECTED</span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:12px; margin-bottom:12px;">
+                Active transactional database currently mounted by RupeeCRM.
+              </p>
+              <div class="metric-row"><span class="metric-label">Firms</span><span id="bkLiveFirms" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Customers</span><span id="bkLiveCustomers" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Invoices</span><span id="bkLiveInvoices" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Products</span><span id="bkLiveProducts" class="metric-value">—</span></div>
+              <div style="margin-top:14px;">
+                <button class="ctrl-btn" onclick="inspectLiveDb()">[ Inspect Telemetry ]</button>
+              </div>
+            </div>
+
+            <!-- Source 2: Automatic Backup -->
+            <div class="panel">
+              <div class="panel-header">
+                <span>2. Automatic Backup</span>
+                <span id="bkAutoBadge" class="badge-ok">DISCOVERED</span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:12px; margin-bottom:12px;">
+                Continuous point-in-time snapshot written periodically to local storage.
+              </p>
+              <div class="metric-row"><span class="metric-label">Artifact</span><span id="bkAutoFile" class="metric-value">autobackup_latest.json</span></div>
+              <div class="metric-row"><span class="metric-label">Last Modified</span><span id="bkAutoTime" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">File Size</span><span id="bkAutoSize" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Format</span><span class="metric-value">JSON Selective</span></div>
+              <div style="margin-top:14px; display:flex; gap:8px;">
+                <button class="ctrl-btn" onclick="inspectBackup('AUTO_LATEST')">[ Inspect ]</button>
+                <button class="ctrl-btn" onclick="downloadBackup('AUTO_LATEST')">[ Download ]</button>
+                <button class="ctrl-btn ctrl-btn-danger" onclick="openRestoreForArtifact('AUTO_LATEST')">[ Restore ]</button>
+              </div>
+            </div>
+
+            <!-- Source 3: Diagnostic Snapshots -->
+            <div class="panel">
+              <div class="panel-header">
+                <span>3. Diagnostic Snapshots</span>
+                <span id="bkSnapCountBadge" class="badge-ok">AVAILABLE</span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:12px; margin-bottom:12px;">
+                On-demand diagnostic snapshots including JSON selective backups and H2 physical archives.
+              </p>
+              <div class="metric-row"><span class="metric-label">Available Snapshots</span><span id="bkSnapTotal" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Total Storage</span><span id="bkSnapBytes" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Latest Snapshot</span><span id="bkSnapLatest" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Retention Policy</span><span class="metric-value">Max 14 generations</span></div>
+              <div style="margin-top:14px;">
+                <button class="ctrl-btn ctrl-btn-cyan" onclick="toggleSnapshotsList(true)">[ View Snapshots Catalog ] →</button>
+              </div>
+            </div>
+
+            <!-- Source 4: Offsite Cloud Backup -->
+            <div class="panel">
+              <div class="panel-header">
+                <span>4. Offsite Backup</span>
+                <span id="bkOffsiteBadge" class="badge-warn">UNAVAILABLE</span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:12px; margin-bottom:12px;">
+                Off-device encrypted cloud vault managed by Data Protection service.
+              </p>
+              <div class="metric-row"><span class="metric-label">Vault Status</span><span id="bkOffsiteStatus" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Last Successful</span><span id="bkOffsiteTime" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Payload Size</span><span id="bkOffsiteSize" class="metric-value">—</span></div>
+              <div class="metric-row"><span class="metric-label">Encryption</span><span class="metric-value">AES-256 GCM</span></div>
+              <div style="margin-top:14px; display:flex; gap:8px;">
+                <button id="bkOffsiteInspectBtn" class="ctrl-btn" onclick="inspectBackup('OFFSITE')">[ Inspect ]</button>
+                <button id="bkOffsiteDownloadBtn" class="ctrl-btn" onclick="downloadBackup('OFFSITE')">[ Download ]</button>
+                <button id="bkOffsiteRestoreBtn" class="ctrl-btn ctrl-btn-danger" onclick="openRestoreForArtifact('OFFSITE')">[ Restore ]</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-view: Diagnostic Snapshots List -->
+        <div id="snapshotsListSubView" style="display:none;">
+          <div class="section-title">
+            <span>Diagnostic Snapshots Catalog</span>
+            <button class="ctrl-btn" onclick="toggleSnapshotsList(false)">← Back to Backup Sources</button>
+          </div>
+
+          <!-- Aggregates Strip -->
+          <div style="background:#090e1a; border:1px solid #1e293b; padding:10px 16px; margin-bottom:16px; display:flex; gap:24px; flex-wrap:wrap; font-family:var(--font-mono); font-size:11px;">
+            <div>Total Snapshots: <strong id="snapListCount" style="color:var(--accent-cyan);">0</strong></div>
+            <div>Valid / Healthy: <strong id="snapListValid" style="color:#34d399;">0</strong></div>
+            <div>Quarantined / Invalid: <strong id="snapListInvalid" style="color:#f87171;">0</strong></div>
+            <div>Storage Consumed: <strong id="snapListStorage" style="color:#fff;">0 B</strong></div>
+            <div>Retention Policy: <strong style="color:var(--text-muted);">Max 14 generations</strong></div>
+          </div>
+
+          <div style="margin-bottom:8px; font-family:var(--font-mono); font-size:12px; font-weight:600; color:#38bdf8;">
+            VALID SNAPSHOTS
+          </div>
+
+          <div class="tech-table-container">
+            <table class="tech-table">
+              <thead>
+                <tr>
+                  <th>Artifact Name</th>
+                  <th>Format</th>
+                  <th>Size</th>
+                  <th>Last Modified</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="validSnapshotsTableBody">
+                <tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted);">Scanning diagnostic snapshot catalog...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-top:14px;">
+            <button id="toggleQuarantineBtn" class="ctrl-btn" onclick="toggleQuarantinedView()" style="display:none;">
+              [ Show Quarantined / Incomplete Artifacts ]
+            </button>
+          </div>
+
+          <!-- Quarantined Section (Hidden by default) -->
+          <div id="quarantinedSection" style="display:none; margin-top:16px; border:1px solid #7f1d1d; background:rgba(127,29,29,0.06); padding:16px; border-radius:2px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="color:#f87171; font-weight:700; font-family:var(--font-mono); font-size:12px;">
+                ⚠️ QUARANTINED / INCOMPLETE ARTIFACTS
+              </span>
+              <span class="badge-danger">RESTORE DISABLED</span>
+            </div>
+            <p style="color:var(--text-secondary); font-size:11.5px; margin-bottom:12px;">
+              These artifacts failed structural or metadata integrity validation (e.g. empty or test files). They are quarantined and cannot be restored.
+            </p>
+            <div class="tech-table-container" style="margin-bottom:0;">
+              <table class="tech-table">
+                <thead>
+                  <tr>
+                    <th>Artifact Name</th>
+                    <th>Format</th>
+                    <th>Size</th>
+                    <th>Validation Failure</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="quarantinedSnapshotsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 05: RESTORE (Reusing Application Flow)
+           ==================================================================== -->
+      <div id="view-restore" class="view-pane">
+        <div class="section-title">
+          <span>Transactional Database Restore</span>
+          <span class="badge-danger">TRANSACTIONAL SAFETY ACTIVE</span>
+        </div>
+
+        <div class="warning-banner">
+          <strong>⚠️ SYSTEM SAFETY WORKFLOW:</strong><br>
+          Database restore modifies live business records. To protect your data, the system strictly executes:<br>
+          1. Pre-flight structural and conflict validation &bull; 2. Mandatory pre-restore safety snapshot (aborts restore if safety snapshot fails) &bull; 3. Transactional import with automatic rollback on error &bull; 4. Post-restore integrity verification.
+        </div>
+
+        <div class="panel" style="max-width:720px; margin:0 auto;">
+          <div class="panel-header">
+            <span>Restore Specification</span>
+            <span class="badge-ok">REUSES APP RESTORE ENGINE</span>
+          </div>
+
+          <form id="restoreForm" onsubmit="executeRestoreSubmit(event)">
+            <div style="margin-bottom:16px;">
+              <label class="gate-label">1. Select Backup Source</label>
+              <div style="display:flex; gap:16px; font-family:var(--font-mono); font-size:12px; margin-top:6px;">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  <input type="radio" name="restoreSourceType" value="AUTO" checked onchange="updateRestoreArtifactOptions()"> Automatic Backup
+                </label>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  <input type="radio" name="restoreSourceType" value="SNAPSHOT" onchange="updateRestoreArtifactOptions()"> Diagnostic Snapshot
+                </label>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  <input type="radio" name="restoreSourceType" value="OFFSITE" onchange="updateRestoreArtifactOptions()"> Offsite Cloud
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-bottom:16px;">
+              <label class="gate-label" for="restoreArtifactSelect">2. Select Backup Artifact</label>
+              <select id="restoreArtifactSelect" class="gate-input" style="letter-spacing:normal;" onchange="onRestoreArtifactChanged()">
+                <option value="AUTO_LATEST">autobackup_latest.json (Automatic Backup)</option>
+              </select>
+            </div>
+
+            <!-- Step 2b: Inspection & Firm Selection Panel (Mirroring main app selective restore) -->
+            <div id="restoreInspectionBox" style="background:#040711; border:1px solid #1e293b; padding:14px; margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-family:var(--font-mono); font-size:11px; font-weight:600; color:#38bdf8;">
+                  BACKUP PAYLOAD INSPECTION
+                </span>
+                <span id="restoreInspectStatus" class="mono" style="font-size:10px; color:var(--text-muted);">Inspecting artifact...</span>
+              </div>
+              
+              <div id="restoreInspectMetrics" style="display:flex; gap:20px; font-family:var(--font-mono); font-size:11px; margin-bottom:12px; color:var(--text-secondary);">
+                <div>Customers: <strong id="inspTotalCustomers" style="color:#fff;">—</strong></div>
+                <div>Invoices: <strong id="inspTotalInvoices" style="color:#fff;">—</strong></div>
+                <div>Products: <strong id="inspTotalProducts" style="color:#fff;">—</strong></div>
+                <div>Version: <strong id="inspVersion" style="color:#fff;">—</strong></div>
+              </div>
+
+              <div style="margin-bottom:6px; font-family:var(--font-mono); font-size:11px; color:#fff;">
+                Select firm(s) to restore:
+              </div>
+              <div id="restoreFirmsList" style="max-height:140px; overflow-y:auto; border:1px solid var(--border-subtle); padding:8px; font-family:var(--font-mono); font-size:11px;">
+                <div style="color:var(--text-muted);">[Inspecting available firms...]</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom:16px;">
+              <label class="gate-label">3. Restore Execution Mode</label>
+              <div style="display:flex; gap:20px; font-family:var(--font-mono); font-size:12px; margin-top:6px;">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  <input type="radio" name="restoreMode" value="CLONE" checked>
+                  <span><strong>Clone</strong> (Restore firm with isolated ID space - Recommended)</span>
+                </label>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  <input type="radio" name="restoreMode" value="MERGE">
+                  <span><strong>Merge</strong> (Merge records into existing matching firm)</span>
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-bottom:20px;">
+              <label class="gate-label" for="restoreConfirmInput">4. Authorization Confirmation</label>
+              <div style="color:var(--text-secondary); font-size:11.5px; margin-bottom:6px;">
+                Type <strong style="color:#fff;">CONFIRM</strong> below to authorize transactional restore:
+              </div>
+              <input type="text" id="restoreConfirmInput" class="gate-input" placeholder="Type CONFIRM" autocomplete="off" oninput="validateRestoreConfirmButton()">
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:12px;">
+              <button type="button" class="ctrl-btn" onclick="switchNav('backups')">Cancel</button>
+              <button type="submit" id="restoreSubmitBtn" class="ctrl-btn ctrl-btn-danger" disabled>
+                [ EXECUTE TRANSACTIONAL RESTORE ]
+              </button>
+            </div>
+          </form>
+
+          <div id="restoreStatusBox" style="display:none; margin-top:20px; padding:12px; background:#040711; border:1px solid #334155; font-family:var(--font-mono); font-size:11px;"></div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 06: EMERGENCY (Moved Dangerous Controls Here)
+           ==================================================================== -->
+      <div id="view-emergency" class="view-pane">
+        <div class="section-title">
+          <span>Security &amp; Emergency Controls</span>
+          <span class="badge-danger">ADMINISTRATIVE CLEARANCE ONLY</span>
+        </div>
+
+        <div class="danger-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <strong style="color:#f87171; font-size:13px; text-transform:uppercase;">Emergency Password Reset</strong>
+            <span class="badge-danger">CRITICAL ACCESS</span>
+          </div>
+          <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:16px;">
+            Use this operation if administrators are locked out of the RupeeCRM business application.<br>
+            Executing this resets the internal configuration flag <code style="color:var(--accent-cyan);">auth_enabled = false</code> in the database.
+            Users will be able to access the business application without entering a password.
+          </p>
+
+          <div style="margin-bottom:14px; max-width:320px;">
+            <label class="gate-label" for="resetPasswordConfirm">Type CONFIRM to execute reset:</label>
+            <input type="text" id="resetPasswordConfirm" class="gate-input" placeholder="CONFIRM" autocomplete="off" oninput="validatePasswordResetBtn()">
+          </div>
+
+          <button id="resetPasswordBtn" class="ctrl-btn ctrl-btn-danger" onclick="executePasswordReset()" disabled>
+            [ RESET ADMINISTRATOR ACCESS (auth_enabled = false) ]
+          </button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <span>Controlled Application Restart</span>
+            <span class="badge-ok">SUPERVISOR SUPERVISED</span>
+          </div>
+          <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:16px;">
+            Signals the active JVM process to gracefully terminate with exit code 10.<br>
+            The Simple-Billing launcher supervisor process will intercept exit code 10 and automatically restart the application within seconds.
+          </p>
+          <button class="ctrl-btn ctrl-btn-danger" onclick="promptRestart()">
+            [ RESTART APPLICATION JVM (EXIT CODE 10) ]
+          </button>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VIEW 07: SETTINGS (Diagnostic Mode & Persistence)
+           ==================================================================== -->
+      <div id="view-settings" class="view-pane">
+        <div class="section-title">
+          <span>Diagnostic Session &amp; Persistence</span>
+          <span id="settingsStatusBadge" class="status-badge">Configured</span>
+        </div>
+
+        <div class="panel" style="max-width:650px;">
+          <div class="panel-header">
+            <span>Persistent Live Console (Main Application)</span>
+            <span id="settingsModeDot" class="badge-ok">ACTIVE</span>
+          </div>
+          <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:20px;">
+            When enabled, an unobtrusive floating Live Console overlay is mounted inside the normal RupeeCRM application.<br>
+            The live console displays real-time diagnostic log lines and system status without exposing master keys, database tools, or destructive recovery actions to normal users.
+          </p>
+
+          <div class="metric-row" style="padding:12px 0;">
+            <div>
+              <div style="font-weight:600; color:#fff;">Persistent Live Console</div>
+              <div style="font-size:11px; color:var(--text-muted);">Enable floating overlay in main application UI</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="persistentConsoleToggleBtn" class="ctrl-btn ctrl-btn-cyan" onclick="togglePersistentLiveConsole()">
+                [ ENABLED: ON ]
+              </button>
+            </div>
+          </div>
+
+          <div class="metric-row" style="padding:12px 0;">
+            <div>
+              <div style="font-weight:600; color:#fff;">Log Verbosity Level</div>
+              <div style="font-size:11px; color:var(--text-muted);">Normal standard logs vs. verbose trace logs</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="logLevelNormalBtn" class="ctrl-btn active" onclick="setSessionLogLevel('NORMAL')">NORMAL</button>
+              <button id="logLevelVerboseBtn" class="ctrl-btn" onclick="setSessionLogLevel('VERBOSE')">VERBOSE</button>
+            </div>
+          </div>
+
+          <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11px; color:var(--text-secondary);">
+              Server Session Status: <strong id="serverSessionStatus" style="color:var(--accent-green);">● Active</strong>
+            </div>
+            <button class="ctrl-btn ctrl-btn-danger" onclick="disableDiagnosticModeCompletely()">
+              [ Disable Diagnostic Mode ]
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: INSPECT BACKUP / ARTIFACT
+       ======================================================================== -->
+  <div id="inspectModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="inspectModalTitle">Backup Artifact Inspection</span>
+        <button class="ctrl-btn" onclick="closeInspectModal()">✕</button>
+      </div>
+      <div id="inspectModalBody" class="modal-body mono" style="white-space:pre-wrap; color:#94a3b8; line-height:1.5;">
+        Loading artifact inspection...
+      </div>
+      <div class="modal-footer">
+        <button class="ctrl-btn" onclick="closeInspectModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: GENERIC CONFIRMATION (RESTART / DANGEROUS ACTION)
+       ======================================================================== -->
+  <div id="confirmModal" class="modal-overlay">
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <span id="confirmModalTitle">System Confirmation Required</span>
+        <button class="ctrl-btn" onclick="closeConfirmModal()">✕</button>
+      </div>
+      <div id="confirmModalBody" class="modal-body" style="line-height:1.5; color:var(--text-secondary);"></div>
+      <div class="modal-footer">
+        <button class="ctrl-btn" onclick="closeConfirmModal()">Cancel</button>
+        <button id="confirmModalActionBtn" class="ctrl-btn ctrl-btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       APPLICATION JAVASCRIPT
+       ======================================================================== -->
+  <script>
+    let currentNav = 'overview';
+    let logPollInterval = null;
+    let healthPollInterval = null;
+    let autoScrollEnabled = true;
+    let verboseLoggingEnabled = false;
+    let sessionSettings = { enabled: false, logLevel: 'NORMAL' };
+    let lastScanData = null;
+    let lastLogSeq = 0;
+    let logPollFailures = 0;
+    let showQuarantined = false;
+
+    // Centralized API wrapper that automatically detects session invalidation
+    async function apiFetch(url, options = {}) {
+      const resp = await fetch(url, options);
+      if (resp.status === 401) {
+        showAccessGate();
+        showGateError('Diagnostic session has expired or is invalid. Please re-authenticate.');
+        throw new Error('UNAUTHORIZED');
+      }
+      return resp;
+    }
+
+    // 0. Initialization & Session Check
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const resp = await fetch('/api/recovery/auth/session');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.authenticated) {
+            enterAuthenticatedConsole();
+            return;
+          }
+        }
+      } catch (e) {}
+
+      showAccessGate();
+
+      document.getElementById('masterKeyInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submitDiagnosticAuth();
+      });
+    });
+
+    // 1. Authentication Handlers
+    async function submitDiagnosticAuth() {
+      const input = document.getElementById('masterKeyInput');
+      const key = (input.value || '').trim();
+
+      if (!key) {
+        showGateError('Master clearance key cannot be blank.');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/recovery/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+          // Discard key immediately from JS memory - session cookie handles all future requests
+          input.value = '';
+          enterAuthenticatedConsole();
+        } else {
+          showGateError(data.message || 'Diagnostic authentication rejected. Invalid key.');
+        }
+      } catch (err) {
+        showGateError('Network connection failure during clearance verification.');
+      }
+    }
+
+    function showGateError(msg) {
+      const errBox = document.getElementById('gateError');
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+    }
+
+    function showAccessGate() {
+      document.getElementById('accessGate').style.display = 'flex';
+      document.getElementById('consoleApp').style.display = 'none';
+      if (logPollInterval) clearInterval(logPollInterval);
+      if (healthPollInterval) clearInterval(healthPollInterval);
+    }
+
+    function enterAuthenticatedConsole() {
+      document.getElementById('accessGate').style.display = 'none';
+      document.getElementById('consoleApp').style.display = 'grid';
+      refreshAllData();
+      startPeriodicPolls();
+      fetchDiagnosticSettings();
+    }
+
+    // 2. Navigation Switching
+    function switchNav(navId) {
+      currentNav = navId;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
+
+      const pane = document.getElementById('view-' + navId);
+      if (pane) pane.classList.add('active');
+
+      const items = document.querySelectorAll('.nav-item');
+      const navMap = {
+        'overview': 0, 'live-console': 1, 'system-health': 2,
+        'backups': 3, 'restore': 4, 'emergency': 5, 'settings': 6
+      };
+      if (items[navMap[navId]]) items[navMap[navId]].classList.add('active');
+
+      if (navId === 'live-console') {
+        pollLiveLogs();
+      } else if (navId === 'backups') {
+        scanBackups();
+      } else if (navId === 'restore') {
+        prepareRestoreOptions();
+      }
+    }
+
+    // 3. Periodic Polls
+    function startPeriodicPolls() {
+      if (logPollInterval) clearInterval(logPollInterval);
+      if (healthPollInterval) clearInterval(healthPollInterval);
+
+      // Incremental live log poll every 2s
+      logPollInterval = setInterval(() => {
+        if (currentNav === 'live-console') {
+          pollLiveLogs();
+        }
+      }, 2000);
+
+      // System health poll every 8s
+      healthPollInterval = setInterval(() => {
+        fetchHealthData();
+      }, 8000);
+    }
+
+    async function refreshAllData() {
+      await fetchHealthData();
+      await scanBackups();
+      await fetchDiagnosticSettings();
+      if (currentNav === 'live-console') pollLiveLogs();
+    }
+
+    function refreshCurrentView() {
+      refreshAllData();
+    }
+
+    // 4. System Health Data
+    async function fetchHealthData() {
+      try {
+        const resp = await apiFetch('/api/recovery/health');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderHealthData(data);
+      } catch (err) {
+        console.warn('Health fetch failed:', err);
+      }
+    }
+
+    function renderHealthData(data) {
+      const now = new Date().toLocaleTimeString();
+      const tsEl = document.getElementById('overviewTimestamp');
+      if (tsEl) tsEl.textContent = 'Updated ' + now;
+
+      // Application
+      const app = data.application || {};
+      const uptimeSec = Math.floor((app.jvmUptimeMs || 0) / 1000);
+      const hours = Math.floor(uptimeSec / 3600);
+      const mins = Math.floor((uptimeSec % 3600) / 60);
+      const uptimeStr = `${hours}h ${mins}m (${uptimeSec}s)`;
+
+      setEl('ovUptime', uptimeStr);
+      setEl('ovJava', app.javaVersion || '—');
+      setEl('ovSpringBoot', app.springBootVersion || '—');
+      setEl('ovOs', `${app.osName || ''} (${app.osArch || ''})`);
+
+      setEl('shJavaVendor', app.javaVendor || '—');
+      setEl('shJavaVersion', app.javaVersion || '—');
+      setEl('shSpringBoot', app.springBootVersion || '—');
+      setEl('shOsInfo', `${app.osName || ''} ${app.osArch || ''}`);
+      setEl('shUptime', uptimeStr);
+
+      // Database
+      const db = data.database || {};
+      setEl('ovDbLatency', (db.latencyMs != null ? db.latencyMs + ' ms' : '—'));
+      setEl('ovDbDriver', db.driverName || '—');
+      setEl('shDbEngine', db.databaseProductName + ' ' + (db.databaseProductVersion || ''));
+      setEl('shDbDriver', db.driverName + ' v' + (db.driverVersion || ''));
+      setEl('shDbLatency', (db.latencyMs != null ? db.latencyMs + ' ms' : '—'));
+      setEl('shDbUrl', db.databaseUrl || '—');
+
+      // JVM Memory
+      const jvm = data.jvm || {};
+      setEl('ovMemUsed', (jvm.usedMemoryMB || 0) + ' MB');
+      setEl('ovMemFree', (jvm.freeMemoryMB || 0) + ' MB');
+      setEl('ovMemMax', (jvm.maxMemoryMB || 0) + ' MB');
+      setEl('ovCores', jvm.availableProcessors || '—');
+
+      setEl('shMemUsed', `${jvm.usedMemoryMB || 0} MB (${(jvm.usedMemoryBytes || 0).toLocaleString()} B)`);
+      setEl('shMemFree', `${jvm.freeMemoryMB || 0} MB`);
+      setEl('shMemMax', `${jvm.maxMemoryMB || 0} MB`);
+      setEl('shCores', jvm.availableProcessors + ' Cores');
+
+      // Storage
+      const st = data.storage || {};
+      setEl('ovStorageFree', st.usableSpaceGB || '—');
+      setEl('ovStorageTotal', st.totalSpaceGB || '—');
+      setEl('ovStorageDir', st.baseDirectory || '—');
+
+      setEl('shStorageFree', st.usableSpaceGB + ` (${(st.usableSpaceBytes || 0).toLocaleString()} B)`);
+      setEl('shStorageTotal', st.totalSpaceGB || '—');
+      setEl('shStoragePath', st.baseDirectory || '—');
+    }
+
+    // 5. Backup Scanner
+    async function scanBackups() {
+      try {
+        const resp = await apiFetch('/api/recovery/backups/scan');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        lastScanData = data;
+        renderBackupSources(data);
+      } catch (err) {
+        console.warn('Backup scan failed:', err);
+      }
+    }
+
+    function renderBackupSources(data) {
+      // 1. Live DB
+      const t1 = data.tier1LiveDatabase || {};
+      const liveText = `Firms: ${t1.firmCount ?? '—'} | Customers: ${t1.customerCount ?? '—'} | Invoices: ${t1.invoiceCount ?? '—'} | Products: ${t1.productCount ?? '—'}`;
+      setEl('ovLiveDbDetails', liveText);
+      setEl('bkLiveFirms', t1.firmCount ?? '—');
+      setEl('bkLiveCustomers', t1.customerCount ?? '—');
+      setEl('bkLiveInvoices', t1.invoiceCount ?? '—');
+      setEl('bkLiveProducts', t1.productCount ?? '—');
+
+      // 2. Auto Backup
+      const t2 = data.tier2AutoBackup || {};
+      if (t2.exists) {
+        const autoSize = formatBytes(t2.sizeBytes || 0);
+        const autoTime = formatTimestamp(t2.modifiedFormatted || t2.modifiedTimestamp);
+        setEl('ovAutoDetails', `autobackup_latest.json (${autoSize} • ${autoTime})`);
+        setEl('bkAutoFile', t2.filename || 'autobackup_latest.json');
+        setEl('bkAutoTime', autoTime);
+        setEl('bkAutoSize', autoSize);
+      } else {
+        setEl('ovAutoDetails', 'No autobackup discovered');
+        setEl('bkAutoTime', 'Not found');
+        setEl('bkAutoSize', '—');
+      }
+
+      // 3. Diagnostic Snapshots
+      const snapshots = data.tier2bDiagnosticSnapshots || [];
+      const snapSummary = data.tier2bSummary || {};
+      const snapCount = snapSummary.snapshotCount ?? snapshots.length;
+      const snapBytes = snapSummary.totalSizeFormatted || formatBytes(snapSummary.totalSizeBytes || 0);
+      const latestSnap = snapSummary.newestSnapshot ? formatTimestamp(snapSummary.newestSnapshot) : (snapshots[0] ? formatTimestamp(snapshots[0].modifiedFormatted) : 'None');
+
+      setEl('ovSnapDetails', `${snapCount} available snapshots (${snapBytes})`);
+      setEl('bkSnapTotal', `${snapCount} snapshots (${snapSummary.validCount ?? 0} valid, ${snapSummary.invalidCount ?? 0} quarantined)`);
+      setEl('bkSnapBytes', snapBytes);
+      setEl('bkSnapLatest', latestSnap);
+
+      // Snapshots Subview Stats
+      setEl('snapListCount', snapCount);
+      setEl('snapListValid', snapSummary.validCount ?? 0);
+      setEl('snapListInvalid', snapSummary.invalidCount ?? 0);
+      setEl('snapListStorage', snapBytes);
+
+      // Render Snapshots Table (Separating Valid vs Quarantined)
+      renderSnapshotsTables(snapshots);
+
+      // 4. Offsite Backup
+      const t3 = data.tier3OffsiteBackup || {};
+      if (t3.available && t3.active) {
+        const offTime = t3.lastSuccessfulBackup ? formatTimestamp(t3.lastSuccessfulBackup) : 'None';
+        const offSize = formatBytes(t3.sizeBytes || 0);
+        setEl('ovOffsiteBadge', 'ACTIVE');
+        setEl('ovOffsiteDetails', `Cloud Vault Active (${offTime})`);
+        setEl('bkOffsiteStatus', 'Vault Online • AES-256');
+        setEl('bkOffsiteTime', offTime);
+        setEl('bkOffsiteSize', offSize);
+        document.getElementById('bkOffsiteInspectBtn').disabled = false;
+        document.getElementById('bkOffsiteDownloadBtn').disabled = false;
+        document.getElementById('bkOffsiteRestoreBtn').disabled = false;
+      } else {
+        setEl('ovOffsiteBadge', 'INACTIVE');
+        setEl('ovOffsiteDetails', 'Data Protection vault inactive or unconfigured');
+        setEl('bkOffsiteStatus', 'Offsite Vault Inactive');
+        setEl('bkOffsiteTime', '—');
+        setEl('bkOffsiteSize', '—');
+        document.getElementById('bkOffsiteInspectBtn').disabled = true;
+        document.getElementById('bkOffsiteDownloadBtn').disabled = true;
+        document.getElementById('bkOffsiteRestoreBtn').disabled = true;
+      }
+    }
+
+    function renderSnapshotsTables(snapshots) {
+      const validTbody = document.getElementById('validSnapshotsTableBody');
+      const quarTbody = document.getElementById('quarantinedSnapshotsTableBody');
+      const toggleBtn = document.getElementById('toggleQuarantineBtn');
+      if (!validTbody) return;
+
+      const valid = [];
+      const quarantined = [];
+
+      for (const s of (snapshots || [])) {
+        if (s.status === 'VALID') {
+          valid.push(s);
+        } else {
+          quarantined.push(s);
+        }
+      }
+
+      // 1. Render Valid Table
+      if (valid.length === 0) {
+        validTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted);">No valid diagnostic snapshots discovered on disk.</td></tr>`;
+      } else {
+        let html = '';
+        for (const s of valid) {
+          const isH2 = s.type === 'H2_SNAPSHOT';
+          const typeLabel = isH2 ? 'H2 ZIP' : 'JSON';
+          const sizeStr = formatBytes(s.sizeBytes || 0);
+          const timeStr = formatTimestamp(s.modifiedFormatted || s.modifiedTimestamp);
+          const recoveryId = s.recoveryId || (isH2 ? 'H2:' + s.filename : 'DIAGNOSTIC:' + s.filename);
+
+          let restoreBtn = '';
+          if (!isH2) {
+            restoreBtn = `<button class="ctrl-btn ctrl-btn-danger" style="padding:2px 7px; font-size:10px;" title="Selective Restore" onclick="openRestoreForArtifact('${escapeHtml(recoveryId)}')">[R]</button>`;
+          } else {
+            restoreBtn = `<button class="ctrl-btn" style="padding:2px 7px; font-size:10px; opacity:0.35;" disabled title="Physical H2 snapshot requires offline restore">[—]</button>`;
+          }
+
+          html += `
+            <tr>
+              <td style="font-weight:600; color:#fff;">${escapeHtml(s.filename)}</td>
+              <td><span class="mono" style="color:${isH2 ? '#38bdf8' : 'var(--accent-cyan)'};">${typeLabel}</span></td>
+              <td>${sizeStr}</td>
+              <td>${timeStr}</td>
+              <td><span class="badge-ok">VALID</span></td>
+              <td>
+                <div style="display:flex; gap:4px;">
+                  <button class="ctrl-btn" style="padding:2px 7px; font-size:10px;" title="Inspect Payload" onclick="inspectBackup('${escapeHtml(recoveryId)}')">[I]</button>
+                  <button class="ctrl-btn" style="padding:2px 7px; font-size:10px;" title="Download Artifact" onclick="downloadBackup('${escapeHtml(recoveryId)}')">[D]</button>
+                  ${restoreBtn}
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+        validTbody.innerHTML = html;
+      }
+
+      // 2. Render Quarantined Table
+      if (quarTbody) {
+        if (quarantined.length > 0) {
+          toggleBtn.style.display = 'inline-block';
+          toggleBtn.textContent = showQuarantined
+            ? `[ Hide Quarantined Artifacts (${quarantined.length}) ]`
+            : `[ Show Quarantined / Incomplete Artifacts (${quarantined.length}) ]`;
+
+          let qHtml = '';
+          for (const s of quarantined) {
+            const isH2 = s.type === 'H2_SNAPSHOT';
+            const typeLabel = isH2 ? 'H2 ZIP' : 'JSON';
+            const sizeStr = formatBytes(s.sizeBytes || 0);
+            const reason = s.statusReason || 'Incomplete snapshot';
+            const recoveryId = s.recoveryId || (isH2 ? 'H2:' + s.filename : 'DIAGNOSTIC:' + s.filename);
+
+            qHtml += `
+              <tr>
+                <td style="color:#fca5a5;">${escapeHtml(s.filename)}</td>
+                <td><span class="mono">${typeLabel}</span></td>
+                <td>${sizeStr}</td>
+                <td><span class="badge-danger">${escapeHtml(reason)}</span></td>
+                <td>
+                  <div style="display:flex; gap:4px;">
+                    <button class="ctrl-btn" style="padding:2px 7px; font-size:10px;" title="Inspect" onclick="inspectBackup('${escapeHtml(recoveryId)}')">[I]</button>
+                    <button class="ctrl-btn" style="padding:2px 7px; font-size:10px;" title="Download" onclick="downloadBackup('${escapeHtml(recoveryId)}')">[D]</button>
+                    <button class="ctrl-btn" style="padding:2px 7px; font-size:10px; opacity:0.35;" disabled title="Restore strictly prohibited on invalid artifacts">[RESTORE BLOCKED]</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }
+          quarTbody.innerHTML = qHtml;
+        } else {
+          toggleBtn.style.display = 'none';
+          document.getElementById('quarantinedSection').style.display = 'none';
+        }
+      }
+    }
+
+    function toggleQuarantinedView() {
+      showQuarantined = !showQuarantined;
+      document.getElementById('quarantinedSection').style.display = showQuarantined ? 'block' : 'none';
+      const snapSummary = (lastScanData && lastScanData.tier2bSummary) || {};
+      const qCount = snapSummary.invalidCount ?? 0;
+      const toggleBtn = document.getElementById('toggleQuarantineBtn');
+      if (toggleBtn) {
+        toggleBtn.textContent = showQuarantined
+          ? `[ Hide Quarantined Artifacts (${qCount}) ]`
+          : `[ Show Quarantined / Incomplete Artifacts (${qCount}) ]`;
+      }
+    }
+
+    function toggleSnapshotsList(showList) {
+      document.getElementById('backupSourcesSubView').style.display = showList ? 'none' : 'block';
+      document.getElementById('snapshotsListSubView').style.display = showList ? 'block' : 'none';
+    }
+
+    // 6. Live Log Streaming
+    async function pollLiveLogs() {
+      if (currentNav !== 'live-console') return;
+      try {
+        const resp = await fetch(`/api/recovery/logs/live?sinceSeq=${lastLogSeq}&lines=100`);
+        if (!resp.ok) {
+          if (resp.status === 401) {
+            showAccessGate();
+            return;
+          }
+          logPollFailures++;
+          updateLiveConnBadge(logPollFailures > 3 ? 'OFFLINE' : 'RECONNECTING');
+          return;
+        }
+        logPollFailures = 0;
+        updateLiveConnBadge('STREAMING');
+        const data = await resp.json();
+        if (data.nextSeq != null) {
+          lastLogSeq = data.nextSeq;
+        }
+        if (Array.isArray(data.lines) && data.lines.length > 0) {
+          if (data.resyncRequired) {
+            const win = document.getElementById('terminalLogWindow');
+            if (win) {
+              win.innerHTML = '<span class="terminal-line log-warn">[Diagnostic stream resynchronized with server sequence]</span>';
+            }
+          }
+          appendLiveLogs(data.lines);
+        }
+      } catch (err) {
+        logPollFailures++;
+        updateLiveConnBadge(logPollFailures > 3 ? 'OFFLINE' : 'RECONNECTING');
+      }
+    }
+
+    function updateLiveConnBadge(state) {
+      const badge = document.getElementById('liveConnBadge');
+      if (!badge) return;
+      badge.textContent = state;
+      if (state === 'STREAMING') badge.className = 'badge-ok';
+      else if (state === 'RECONNECTING') badge.className = 'badge-warn';
+      else badge.className = 'badge-danger';
+    }
+
+    function appendLiveLogs(newLines) {
+      const win = document.getElementById('terminalLogWindow');
+      if (!win) return;
+
+      const isNearBottom = (win.scrollHeight - win.scrollTop - win.clientHeight) < 30;
+
+      let html = '';
+      for (const line of newLines) {
+        let cls = '';
+        if (line.includes('WARN')) cls = 'log-warn';
+        else if (line.includes('ERROR') || line.includes('FATAL')) cls = 'log-error';
+        else if (line.includes('INFO')) cls = 'log-info';
+        html += `<span class="terminal-line ${cls}">${escapeHtml(line)}</span>`;
+      }
+
+      // If initial placeholder is still present, clear it
+      if (win.innerHTML.includes('Initializing continuous')) {
+        win.innerHTML = '';
+      }
+
+      win.insertAdjacentHTML('beforeend', html);
+
+      // Bound DOM memory to 500 lines
+      const childCount = win.children.length;
+      if (childCount > 500) {
+        for (let i = 0; i < (childCount - 500); i++) {
+          win.removeChild(win.children[0]);
+        }
+      }
+
+      if (autoScrollEnabled && isNearBottom) {
+        win.scrollTop = win.scrollHeight;
+      }
+    }
+
+    function handleLogWindowScroll() {
+      const win = document.getElementById('terminalLogWindow');
+      const resumeBtn = document.getElementById('resumeLiveBtn');
+      if (!win || !resumeBtn) return;
+      const isNearBottom = (win.scrollHeight - win.scrollTop - win.clientHeight) < 30;
+      resumeBtn.style.display = isNearBottom ? 'none' : 'inline-flex';
+    }
+
+    function resumeLiveScroll() {
+      const win = document.getElementById('terminalLogWindow');
+      if (win) {
+        win.scrollTop = win.scrollHeight;
+        document.getElementById('resumeLiveBtn').style.display = 'none';
+      }
+    }
+
+    function toggleAutoScroll() {
+      autoScrollEnabled = !autoScrollEnabled;
+      const btn = document.getElementById('autoScrollBtn');
+      btn.textContent = 'Auto-scroll: ' + (autoScrollEnabled ? 'ON' : 'OFF');
+      if (autoScrollEnabled) resumeLiveScroll();
+    }
+
+    function clearLiveLogs() {
+      const win = document.getElementById('terminalLogWindow');
+      if (win) win.innerHTML = '<div class="terminal-line" style="color:var(--text-muted);">[Local terminal display cleared.]</div>';
+    }
+
+    function downloadDebugLogs() {
+      window.location.href = '/api/recovery/logs/download';
+    }
+
+    async function toggleVerboseLogging() {
+      verboseLoggingEnabled = !verboseLoggingEnabled;
+      try {
+        await apiFetch('/api/recovery/logs/verbose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: verboseLoggingEnabled })
+        });
+        const btn = document.getElementById('toggleVerboseBtn');
+        btn.textContent = 'Verbose: ' + (verboseLoggingEnabled ? 'ON' : 'OFF');
+      } catch (err) {
+        console.error('Verbose toggle failed:', err);
+      }
+    }
+
+    // 7. Snapshot Actions
+    async function createH2Snapshot() {
+      showConfirmModal('Create H2 Database Snapshot', 'Create a full physical H2 database binary archive (.zip) on local disk?', async () => {
+        try {
+          const resp = await apiFetch('/api/recovery/backups/snapshot/h2', { method: 'POST' });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            alert('H2 Physical Snapshot created: ' + data.filename);
+            scanBackups();
+          } else {
+            alert('Failed to create H2 snapshot: ' + (data.message || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error during snapshot creation.');
+        }
+      });
+    }
+
+    async function createJsonSnapshot() {
+      showConfirmModal('Create JSON Selective Snapshot', 'Export and validate a selective JSON point-in-time snapshot on local disk?', async () => {
+        try {
+          const resp = await apiFetch('/api/recovery/backups/snapshot/json', { method: 'POST' });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            alert('JSON Snapshot created: ' + data.filename);
+            scanBackups();
+          } else {
+            alert('Failed to create JSON snapshot: ' + (data.message || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error during snapshot creation.');
+        }
+      });
+    }
+
+    // 8. Backup Inspection & Download
+    async function inspectBackup(recoveryId) {
+      openInspectModal('Inspecting: ' + recoveryId, 'Loading inspection payload from storage...');
+      try {
+        const resp = await apiFetch(`/api/recovery/backups/inspect?recoveryId=${encodeURIComponent(recoveryId)}`);
+        const data = await resp.json();
+        document.getElementById('inspectModalBody').textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById('inspectModalBody').textContent = 'Inspection failed: ' + err.message;
+      }
+    }
+
+    function inspectLiveDb() {
+      if (!lastScanData || !lastScanData.tier1LiveDatabase) {
+        alert('Live database metrics not yet scanned.');
+        return;
+      }
+      openInspectModal('Live Database Diagnostic State', JSON.stringify(lastScanData.tier1LiveDatabase, null, 2));
+    }
+
+    function downloadBackup(recoveryId) {
+      window.location.href = `/api/recovery/backups/download?recoveryId=${encodeURIComponent(recoveryId)}`;
+    }
+
+    // 9. Application Restore Flow
+    function openRestoreForArtifact(recoveryId) {
+      switchNav('restore');
+      const radios = document.getElementsByName('restoreSourceType');
+      if (recoveryId === 'AUTO_LATEST') {
+        radios[0].checked = true;
+      } else if (recoveryId === 'OFFSITE') {
+        radios[2].checked = true;
+      } else {
+        radios[1].checked = true;
+      }
+      updateRestoreArtifactOptions(recoveryId);
+    }
+
+    function prepareRestoreOptions() {
+      updateRestoreArtifactOptions();
+    }
+
+    function updateRestoreArtifactOptions(preselectId) {
+      const select = document.getElementById('restoreArtifactSelect');
+      const radios = document.getElementsByName('restoreSourceType');
+      let chosen = 'AUTO';
+      for (const r of radios) {
+        if (r.checked) chosen = r.value;
+      }
+
+      select.innerHTML = '';
+      if (chosen === 'AUTO') {
+        const t2 = (lastScanData && lastScanData.tier2AutoBackup) || {};
+        const opt = document.createElement('option');
+        opt.value = 'AUTO_LATEST';
+        opt.textContent = `autobackup_latest.json (Automatic Backup${t2.exists ? ' • ' + formatBytes(t2.sizeBytes) : ''})`;
+        select.appendChild(opt);
+      } else if (chosen === 'SNAPSHOT') {
+        const snaps = (lastScanData && lastScanData.tier2bDiagnosticSnapshots) || [];
+        let added = 0;
+        for (const s of snaps) {
+          if (s.type === 'JSON_SNAPSHOT' && s.status === 'VALID') {
+            const opt = document.createElement('option');
+            opt.value = s.recoveryId;
+            opt.textContent = `${s.filename} (${formatBytes(s.sizeBytes)} • ${formatTimestamp(s.modifiedFormatted)})`;
+            if (preselectId && s.recoveryId === preselectId) opt.selected = true;
+            select.appendChild(opt);
+            added++;
+          }
+        }
+        if (added === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No valid restorable JSON snapshots discovered';
+          select.appendChild(opt);
+        }
+      } else if (chosen === 'OFFSITE') {
+        const opt = document.createElement('option');
+        opt.value = 'OFFSITE';
+        opt.textContent = 'Data Protection Cloud Vault (Decrypted Stream)';
+        select.appendChild(opt);
+      }
+
+      onRestoreArtifactChanged();
+    }
+
+    async function onRestoreArtifactChanged() {
+      const select = document.getElementById('restoreArtifactSelect');
+      const recoveryId = select.value;
+      validateRestoreConfirmButton();
+
+      if (!recoveryId) {
+        document.getElementById('restoreInspectMetrics').style.display = 'none';
+        document.getElementById('restoreFirmsList').innerHTML = '<div style="color:var(--text-muted);">No restorable artifact selected.</div>';
+        return;
+      }
+
+      document.getElementById('restoreInspectStatus').textContent = 'Inspecting payload...';
+      try {
+        const resp = await apiFetch(`/api/recovery/backups/inspect?recoveryId=${encodeURIComponent(recoveryId)}`);
+        const data = await resp.json();
+
+        setEl('inspTotalCustomers', data.totalCustomers ?? '0');
+        setEl('inspTotalInvoices', data.totalInvoices ?? '0');
+        setEl('inspTotalProducts', data.totalProducts ?? '0');
+        setEl('inspVersion', data.version || '1.0');
+        document.getElementById('restoreInspectMetrics').style.display = 'flex';
+
+        const firmsListEl = document.getElementById('restoreFirmsList');
+        if (Array.isArray(data.firms) && data.firms.length > 0) {
+          let fHtml = '';
+          for (const f of data.firms) {
+            fHtml += `
+              <label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer;">
+                <input type="checkbox" name="restoreFirmCheckbox" value="${f.firmId}" checked onchange="validateRestoreConfirmButton()">
+                <span><strong>${escapeHtml(f.firmName || 'Firm ' + f.firmId)}</strong> (Invoices: ${f.invoiceCount ?? 0}, Customers: ${f.customerCount ?? 0})</span>
+              </label>
+            `;
+          }
+          firmsListEl.innerHTML = fHtml;
+        } else {
+          firmsListEl.innerHTML = '<div style="color:var(--text-secondary);">Single-firm / System-level backup (Restores all data entities)</div>';
+        }
+        document.getElementById('restoreInspectStatus').textContent = '✓ Inspection complete';
+      } catch (err) {
+        document.getElementById('restoreInspectStatus').textContent = 'Inspection unavailable';
+      }
+      validateRestoreConfirmButton();
+    }
+
+    function validateRestoreConfirmButton() {
+      const input = document.getElementById('restoreConfirmInput');
+      const select = document.getElementById('restoreArtifactSelect');
+      const btn = document.getElementById('restoreSubmitBtn');
+      const isConfirmed = (input.value || '').trim() === 'CONFIRM';
+      const hasArtifact = select && select.value && select.value.length > 0;
+      btn.disabled = !(isConfirmed && hasArtifact);
+    }
+
+    async function executeRestoreSubmit(e) {
+      e.preventDefault();
+      const recoveryId = document.getElementById('restoreArtifactSelect').value;
+      const modes = document.getElementsByName('restoreMode');
+      let mode = 'CLONE';
+      for (const m of modes) {
+        if (m.checked) mode = m.value;
+      }
+      const confirmation = document.getElementById('restoreConfirmInput').value;
+
+      // Extract selected firm IDs if selective list exists
+      const firmCheckboxes = document.getElementsByName('restoreFirmCheckbox');
+      let firmIds = [];
+      for (const cb of firmCheckboxes) {
+        if (cb.checked) firmIds.push(parseInt(cb.value, 10));
+      }
+
+      showConfirmModal('EXECUTE TRANSACTIONAL RESTORE', `CRITICAL WARNING: This will restore records in '${mode}' mode from '${recoveryId}'. A mandatory pre-restore safety snapshot will automatically be taken first. Proceed?`, async () => {
+        const statusBox = document.getElementById('restoreStatusBox');
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = '<span style="color:var(--accent-cyan);">[1/3] Creating mandatory pre-restore safety snapshot...</span>';
+
+        try {
+          const resp = await apiFetch('/api/recovery/backups/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recoveryId, mode, confirmation, firmIds: firmIds.length > 0 ? firmIds : null })
+          });
+          const data = await resp.json();
+
+          if (resp.ok && data.success) {
+            statusBox.innerHTML = `
+              <span style="color:#34d399; font-weight:700;">✓ TRANSACTIONAL RESTORE SUCCESSFUL</span><br>
+              Restore Mode: ${data.mode}<br>
+              Pre-restore Snapshot: ${data.preRestoreSnapshot}<br>
+              Restored Firms Count: ${data.restoredFirmCount}<br>
+              Total Firms in Database: ${data.totalFirmsInDb}<br>
+              Message: ${data.message}
+            `;
+            document.getElementById('restoreConfirmInput').value = '';
+            validateRestoreConfirmButton();
+            scanBackups();
+          } else {
+            statusBox.innerHTML = `<span style="color:#f87171; font-weight:700;">✗ RESTORE FAILED:</span> ${data.message || 'Unknown error'}`;
+          }
+        } catch (err) {
+          statusBox.innerHTML = `<span style="color:#f87171; font-weight:700;">✗ RESTORE ERROR:</span> ${err.message}`;
+        }
+      });
+    }
+
+    // 10. Emergency Actions
+    function validatePasswordResetBtn() {
+      const input = document.getElementById('resetPasswordConfirm');
+      const btn = document.getElementById('resetPasswordBtn');
+      btn.disabled = (input.value || '').trim() !== 'CONFIRM';
+    }
+
+    async function executePasswordReset() {
+      showConfirmModal('RESET APPLICATION PASSWORDS', 'This will set auth_enabled = false in the database, allowing any user to login without a password. Proceed?', async () => {
+        try {
+          const resp = await apiFetch('/api/recovery/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmation: 'CONFIRM' })
+          });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            alert('Success: Application authentication disabled (auth_enabled = false).');
+            document.getElementById('resetPasswordConfirm').value = '';
+            validatePasswordResetBtn();
+          } else {
+            alert('Password reset failed: ' + (data.message || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error during password reset.');
+        }
+      });
+    }
+
+    function promptRestart() {
+      showConfirmModal('Controlled Application Restart', 'Signal JVM to terminate with exit code 10? The launcher supervisor will automatically relaunch the application within seconds.', async () => {
+        try {
+          await apiFetch('/api/recovery/restart', { method: 'POST' });
+          alert('Restart initiated. Application is restarting...');
+          setTimeout(() => {
+            window.location.reload();
+          }, 3500);
+        } catch (err) {
+          alert('Restart command sent.');
+        }
+      });
+    }
+
+    // 11. Settings
+    async function fetchDiagnosticSettings() {
+      try {
+        const resp = await fetch('/api/recovery/diagnostic-mode/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        sessionSettings = data;
+        renderDiagnosticSettings();
+      } catch (err) {
+        console.warn('Diagnostic status fetch failed:', err);
+      }
+    }
+
+    function renderDiagnosticSettings() {
+      const isEnabled = Boolean(sessionSettings.enabled);
+      const level = sessionSettings.logLevel || 'NORMAL';
+
+      const toggleBtn = document.getElementById('persistentConsoleToggleBtn');
+      if (toggleBtn) {
+        toggleBtn.textContent = isEnabled ? '[ ENABLED: ON ]' : '[ DISABLED: OFF ]';
+        toggleBtn.className = isEnabled ? 'ctrl-btn ctrl-btn-cyan' : 'ctrl-btn';
+      }
+
+      const normBtn = document.getElementById('logLevelNormalBtn');
+      const verbBtn = document.getElementById('logLevelVerboseBtn');
+      if (normBtn && verbBtn) {
+        if (level === 'VERBOSE') {
+          normBtn.className = 'ctrl-btn';
+          verbBtn.className = 'ctrl-btn ctrl-btn-cyan';
+        } else {
+          normBtn.className = 'ctrl-btn ctrl-btn-cyan';
+          verbBtn.className = 'ctrl-btn';
+        }
+      }
+
+      const sideDot = document.getElementById('sidebarModeDot');
+      const sideText = document.getElementById('sidebarModeText');
+      const serverStatus = document.getElementById('serverSessionStatus');
+      const settingsDot = document.getElementById('settingsModeDot');
+
+      if (sideDot && sideText) {
+        if (isEnabled) {
+          sideDot.className = 'mode-dot';
+          let expiryInfo = '';
+          if (sessionSettings.expiresAt && Number(sessionSettings.expiresAt) > 0) {
+            const expDate = new Date(Number(sessionSettings.expiresAt));
+            expiryInfo = ' (Expires ' + expDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')';
+          }
+          sideText.textContent = 'Active' + expiryInfo;
+          if (serverStatus) serverStatus.innerHTML = '<span style="color:var(--accent-green);">● Active' + expiryInfo + ' [VERBOSE]</span>';
+          if (settingsDot) { settingsDot.className = 'badge-ok'; settingsDot.textContent = 'ACTIVE' + (expiryInfo ? ' [8H]' : ''); }
+        } else {
+          sideDot.className = 'mode-dot inactive';
+          sideText.textContent = 'Inactive';
+          if (serverStatus) serverStatus.innerHTML = '<span style="color:var(--text-muted);">○ Inactive [NORMAL]</span>';
+          if (settingsDot) { settingsDot.className = 'badge-danger'; settingsDot.textContent = 'INACTIVE'; }
+        }
+      }
+    }
+
+    async function togglePersistentLiveConsole() {
+      const targetState = !sessionSettings.enabled;
+      await updatePersistentConsoleSettings(targetState, targetState ? 'VERBOSE' : 'NORMAL');
+    }
+
+    async function setSessionLogLevel(level) {
+      await updatePersistentConsoleSettings(sessionSettings.enabled, level);
+    }
+
+    async function disableDiagnosticModeCompletely() {
+      showConfirmModal('Disable Diagnostic Mode', 'Disable persistent live console in main application? Diagnostic logs will stop streaming to normal clients.', async () => {
+        await updatePersistentConsoleSettings(false, 'NORMAL');
+      });
+    }
+
+    async function updatePersistentConsoleSettings(enabled, logLevel) {
+      try {
+        const resp = await apiFetch('/api/recovery/settings/persistent-console', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled, logLevel })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          sessionSettings = data.status || { enabled, logLevel };
+          renderDiagnosticSettings();
+        } else {
+          alert('Failed to update settings: ' + (data.message || ''));
+        }
+      } catch (err) {
+        alert('Error saving settings.');
+      }
+    }
+
+    // 12. Lock & Exit
+    async function lockConsole() {
+      try {
+        await fetch('/api/recovery/auth/lock', { method: 'POST' });
+      } catch (e) {}
+      showAccessGate();
+    }
+
+    function exitToMainApp() {
+      window.location.href = '/';
+    }
+
+    // 13. Modals
+    function openInspectModal(title, content) {
+      document.getElementById('inspectModalTitle').textContent = title;
+      document.getElementById('inspectModalBody').textContent = content;
+      document.getElementById('inspectModal').style.display = 'flex';
+    }
+
+    function closeInspectModal() {
+      document.getElementById('inspectModal').style.display = 'none';
+    }
+
+    let pendingConfirmAction = null;
+    function showConfirmModal(title, text, action) {
+      document.getElementById('confirmModalTitle').textContent = title;
+      document.getElementById('confirmModalBody').textContent = text;
+      pendingConfirmAction = action;
+      const actBtn = document.getElementById('confirmModalActionBtn');
+      actBtn.onclick = async () => {
+        closeConfirmModal();
+        if (pendingConfirmAction) await pendingConfirmAction();
+      };
+      document.getElementById('confirmModal').style.display = 'flex';
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirmModal').style.display = 'none';
+      pendingConfirmAction = null;
+    }
+
+    // 14. Format Helpers
+    function setEl(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      if (!bytes || isNaN(bytes)) return '—';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+    }
+
+    function formatTimestamp(ts) {
+      if (!ts) return '—';
+      try {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return String(ts);
+        return d.toLocaleTimeString() + ' ' + d.toLocaleDateString();
+      } catch (e) {
+        return String(ts);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

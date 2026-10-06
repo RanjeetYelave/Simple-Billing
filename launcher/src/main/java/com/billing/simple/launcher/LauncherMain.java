@@ -203,6 +203,11 @@ public class LauncherMain {
                 System.out.println("Backend process exited with code: " + exitCode);
                 backendPid = null;
 
+                if (exitCode == 10) {
+                    restartRequested = true;
+                    System.out.println("Backend requested graceful restart via Exit Code 10.");
+                }
+
             } catch (InterruptedException e) {
                 System.err.println("Supervisor loop interrupted: " + e.getMessage());
                 break;

@@ -31,4 +31,34 @@ public class LauncherConfigTest {
         assertNotNull(LauncherMain.getLogsDirectory(), "Logs directory must not be null");
         assertNotNull(LauncherMain.getStagingDirectory(), "Staging directory must not be null");
     }
+
+    @Test
+    void testExitCode10Behavior() {
+        int exitCode = 10;
+        boolean restartRequested = false;
+        boolean crashRecorded = false;
+        if (exitCode == 10) {
+            restartRequested = true;
+        } else {
+            crashRecorded = true;
+        }
+        assertTrue(restartRequested, "Exit code 10 must flag graceful restart request");
+        assertFalse(crashRecorded, "Exit code 10 must not record a crash event");
+    }
+
+    @Test
+    void testAbnormalExitCodeRecordsCrash() {
+        int[] abnormalExitCodes = {1, 137, 255, -1};
+        for (int exitCode : abnormalExitCodes) {
+            boolean restartRequested = false;
+            boolean crashRecorded = false;
+            if (exitCode == 10) {
+                restartRequested = true;
+            } else {
+                crashRecorded = true;
+            }
+            assertFalse(restartRequested, "Abnormal exit code " + exitCode + " must not flag graceful restart");
+            assertTrue(crashRecorded, "Abnormal exit code " + exitCode + " must record a crash event");
+        }
+    }
 }

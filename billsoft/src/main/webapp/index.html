@@ -32345,6 +32345,42 @@
               'RupeeCRM is proprietary business billing, quotation, customer relationship, inventory & HR management software. Unauthorized distribution, copying, or reverse engineering is strictly prohibited.'
             )
           )
+        ),
+
+        // Unobtrusive bottom-right diagnostics affordance
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'flex-end',
+            paddingRight: 6,
+            marginTop: -14
+          }
+        },
+          React.createElement('a', {
+            href: '/recovery.html',
+            title: 'System Diagnostics',
+            'aria-label': 'System Diagnostics',
+            style: {
+              fontSize: '11px',
+              color: 'var(--text-secondary, #94a3b8)',
+              opacity: 0.5,
+              textDecoration: 'none',
+              cursor: 'pointer',
+              lineHeight: 1.2,
+              padding: '2px 6px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              borderRadius: 4,
+              transition: 'opacity 0.2s ease, color 0.2s ease',
+              userSelect: 'none'
+            },
+            onMouseEnter: (e) => { e.currentTarget.style.opacity = '0.9'; },
+            onMouseLeave: (e) => { e.currentTarget.style.opacity = '0.5'; }
+          },
+            React.createElement('span', { style: { fontSize: '10px' } }, '⚙'),
+            'System Diagnostics'
+          )
         )
       );
     }
@@ -38893,11 +38929,27 @@
                   maxHeight: 120, marginBottom: 20
                 }
               }, String(this.state.error.message || this.state.error)),
-              React.createElement('button', {
-                className: 'btn btn-primary',
-                style: { padding: '10px 24px', borderRadius: 8, fontWeight: 600 },
-                onClick: () => { window.location.reload(); }
-              }, '🔄 Reload Application')
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' } },
+                React.createElement('button', {
+                  className: 'btn btn-primary',
+                  style: { padding: '10px 24px', borderRadius: 8, fontWeight: 600, width: '100%' },
+                  onClick: () => { window.location.reload(); }
+                }, '🔄 Reload Application'),
+                React.createElement('a', {
+                  href: '/recovery.html',
+                  id: 'recovery-fallback-btn',
+                  style: {
+                    display: 'inline-block',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    color: '#93c5fd',
+                    textDecoration: 'none',
+                    borderRadius: 6,
+                    border: '1px solid rgba(147, 197, 253, 0.3)',
+                    background: 'rgba(59, 130, 246, 0.1)'
+                  }
+                }, '🛠 Open Recovery Console')
+              )
             )
           );
         }
@@ -38905,8 +38957,586 @@
       }
     }
 
+    function PersistentLiveConsole() {
+      const [diagnosticActive, setDiagnosticActive] = React.useState(false);
+      const [uiState, setUiState] = React.useState(() => {
+        try { return sessionStorage.getItem('rupee_live_console_ui') || 'expanded'; }
+        catch (e) { return 'expanded'; }
+      });
+      const [connState, setConnState] = React.useState('STREAMING');
+      const [logs, setLogs] = React.useState([]);
+      const [showResumeLive, setShowResumeLive] = React.useState(false);
+
+      const [expiresAt, setExpiresAt] = React.useState(0);
+      const [remainingText, setRemainingText] = React.useState('');
+      const [untilTimeText, setUntilTimeText] = React.useState('');
+      const [downloading, setDownloading] = React.useState(false);
+
+      const logBoxRef = React.useRef(null);
+      const lastSeqRef = React.useRef(0);
+      const isNearBottomRef = React.useRef(true);
+      const failCountRef = React.useRef(0);
+
+      // Persistent Window Position (Draggable)
+      const [pos, setPos] = React.useState(() => {
+        try {
+          const saved = sessionStorage.getItem('rupee_live_console_pos');
+          if (saved) {
+            const p = JSON.parse(saved);
+            if (typeof p.left === 'number' && typeof p.top === 'number') {
+              return {
+                left: Math.max(0, Math.min(window.innerWidth - 390, p.left)),
+                top: Math.max(0, Math.min(window.innerHeight - 260, p.top))
+              };
+            }
+          }
+        } catch (e) {}
+        return {
+          left: Math.max(12, window.innerWidth - 400),
+          top: Math.max(12, window.innerHeight - 280)
+        };
+      });
+
+      // Keep within viewport on window resize
+      React.useEffect(() => {
+        const handleResize = () => {
+          setPos(prev => ({
+            left: Math.max(0, Math.min(window.innerWidth - 390, prev.left)),
+            top: Math.max(0, Math.min(window.innerHeight - 260, prev.top))
+          }));
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, []);
+
+      // Dragging logic
+      const startDrag = (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        e.preventDefault();
+
+        const startX = e.clientX - pos.left;
+        const startY = e.clientY - pos.top;
+
+        const onMouseMove = (moveEvent) => {
+          const clampedX = Math.max(0, Math.min(window.innerWidth - 390, moveEvent.clientX - startX));
+          const clampedY = Math.max(0, Math.min(window.innerHeight - 260, moveEvent.clientY - startY));
+          setPos({ left: clampedX, top: clampedY });
+        };
+
+        const onMouseUp = () => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          setPos(current => {
+            try { sessionStorage.setItem('rupee_live_console_pos', JSON.stringify(current)); } catch (err) {}
+            return current;
+          });
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      };
+
+      // Check diagnostic mode status on interval
+      React.useEffect(() => {
+        let mounted = true;
+        const checkStatus = async () => {
+          try {
+            const resp = await fetch('/api/recovery/diagnostic-mode/status');
+            if (resp.ok) {
+              const data = await resp.json();
+              if (mounted) {
+                const active = Boolean(data && data.enabled);
+                setDiagnosticActive(active);
+                if (data && data.expiresAt) {
+                  setExpiresAt(Number(data.expiresAt));
+                } else {
+                  setExpiresAt(0);
+                }
+                if (!active) {
+                  setLogs([]);
+                  lastSeqRef.current = 0;
+                  setExpiresAt(0);
+                  setRemainingText('');
+                  setUntilTimeText('');
+                }
+              }
+            } else if (mounted) {
+              setDiagnosticActive(false);
+              setLogs([]);
+              lastSeqRef.current = 0;
+              setExpiresAt(0);
+            }
+          } catch (e) {
+            if (mounted) {
+              setDiagnosticActive(false);
+              setLogs([]);
+              lastSeqRef.current = 0;
+              setExpiresAt(0);
+            }
+          }
+        };
+
+        checkStatus();
+        const intervalId = setInterval(checkStatus, 7000);
+        return () => {
+          mounted = false;
+          clearInterval(intervalId);
+        };
+      }, []);
+
+      // 1-second countdown timer for authoritative 8-hour expiry display
+      React.useEffect(() => {
+        if (!diagnosticActive || !expiresAt) return;
+        const updateCountdown = () => {
+          const diff = Math.max(0, expiresAt - Date.now());
+          if (diff <= 0) {
+            setDiagnosticActive(false);
+            setLogs([]);
+            lastSeqRef.current = 0;
+            setExpiresAt(0);
+            return;
+          }
+          const h = Math.floor(diff / 3600000);
+          const m = Math.floor((diff % 3600000) / 60000);
+          setRemainingText(`${String(h).padStart(2, '0')}H ${String(m).padStart(2, '0')}M`);
+          const d = new Date(expiresAt);
+          setUntilTimeText(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        };
+        updateCountdown();
+        const cid = setInterval(updateCountdown, 1000);
+        return () => clearInterval(cid);
+      }, [diagnosticActive, expiresAt]);
+
+      // Download instant snapshot of in-memory buffered logs as .txt
+      const downloadLogsSnapshot = async (e) => {
+        if (e) e.stopPropagation();
+        if (downloading) return;
+        try {
+          setDownloading(true);
+          const resp = await fetch('/api/recovery/logs/live/download');
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            a.download = `diagnostic-logs-${ts}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+          } else {
+            alert('Log download unavailable or diagnostic session expired.');
+          }
+        } catch (err) {
+          alert('Download failed: ' + (err.message || 'Network error'));
+        } finally {
+          setDownloading(false);
+        }
+      };
+
+      // Incremental cursor-based log polling
+      React.useEffect(() => {
+        if (!diagnosticActive) return;
+
+        let mounted = true;
+        const fetchIncrementalLogs = async () => {
+          try {
+            const seq = lastSeqRef.current;
+            const resp = await fetch(`/api/recovery/logs/live?sinceSeq=${seq}&lines=40`);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (mounted) {
+                failCountRef.current = 0;
+                setConnState('STREAMING');
+                if (data.nextSeq != null) {
+                  lastSeqRef.current = data.nextSeq;
+                }
+                if (Array.isArray(data.lines) && data.lines.length > 0) {
+                  setLogs(prev => {
+                    if (data.resyncRequired) {
+                      return data.lines.slice(-150);
+                    }
+                    const combined = [...prev, ...data.lines];
+                    return combined.slice(-150); // Bound rolling window
+                  });
+                }
+              }
+            } else if (mounted) {
+              failCountRef.current++;
+              setConnState(failCountRef.current > 3 ? 'OFFLINE' : 'RECONNECTING');
+            }
+          } catch (e) {
+            if (mounted) {
+              failCountRef.current++;
+              setConnState(failCountRef.current > 3 ? 'OFFLINE' : 'RECONNECTING');
+            }
+          }
+        };
+
+        fetchIncrementalLogs();
+        const pollInterval = setInterval(fetchIncrementalLogs, uiState === 'expanded' ? 2000 : 5000);
+        return () => {
+          mounted = false;
+          clearInterval(pollInterval);
+        };
+      }, [diagnosticActive, uiState]);
+
+      // Smart auto-scroll: only scrolls if user was already near bottom
+      React.useEffect(() => {
+        if (uiState === 'expanded' && logBoxRef.current && isNearBottomRef.current) {
+          logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+        }
+      }, [logs, uiState]);
+
+      const handleScroll = () => {
+        if (!logBoxRef.current) return;
+        const el = logBoxRef.current;
+        const isNear = (el.scrollHeight - el.scrollTop - el.clientHeight) < 30;
+        isNearBottomRef.current = isNear;
+        setShowResumeLive(!isNear);
+      };
+
+      const resumeLiveScroll = () => {
+        if (logBoxRef.current) {
+          logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+          isNearBottomRef.current = true;
+          setShowResumeLive(false);
+        }
+      };
+
+      const changeUiState = (newState) => {
+        setUiState(newState);
+        try { sessionStorage.setItem('rupee_live_console_ui', newState); } catch (e) {}
+      };
+
+      if (!diagnosticActive) return null;
+
+      // Indicator colors based on connection state
+      const stateDotColor = connState === 'STREAMING' ? '#10b981' : (connState === 'RECONNECTING' ? '#fbbf24' : '#f87171');
+
+      // Hidden pill
+      if (uiState === 'hidden') {
+        return React.createElement('div', {
+          id: 'persistent-live-console-pill',
+          onClick: () => changeUiState('expanded'),
+          title: 'System Diagnostics Mode Active — Click to expand',
+          style: {
+            position: 'fixed',
+            bottom: '12px',
+            right: '12px',
+            zIndex: 99999,
+            background: '#450a0a',
+            border: '1px solid #ef4444',
+            borderRadius: '4px',
+            padding: '4px 9px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(239,68,68,0.4)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: '11px',
+            color: '#fef2f2',
+            userSelect: 'none'
+          }
+        },
+          React.createElement('span', { style: { width: '7px', height: '7px', borderRadius: '50%', background: '#ef4444' } }),
+          `⚠ DIAG [${remainingText || '8H'}]`
+        );
+      }
+
+      // Minimized bar (Draggable)
+      if (uiState === 'minimized') {
+        return React.createElement('div', {
+          id: 'persistent-live-console-bar',
+          style: {
+            position: 'fixed',
+            left: `${pos.left}px`,
+            top: `${pos.top}px`,
+            zIndex: 99999,
+            width: '350px',
+            background: '#040711',
+            border: '1px solid #7f1d1d',
+            borderTop: '2px solid #ef4444',
+            borderRadius: '4px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: '11px',
+            color: '#e2e8f0',
+            padding: '6px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            userSelect: 'none',
+            cursor: 'grab'
+          },
+          onMouseDown: startDrag
+        },
+          React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' },
+            onClick: () => changeUiState('expanded')
+          },
+            React.createElement('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: stateDotColor } }),
+            React.createElement('span', { style: { fontWeight: 800, color: '#f87171', fontSize: '10px' } }, '⚠ DIAG MODE'),
+            React.createElement('span', { style: { fontSize: '9.5px', color: '#fca5a5', fontWeight: 600 } }, `[${remainingText || '8H'}]`),
+            React.createElement('span', { style: { fontSize: '9px', color: '#64748b' } }, `[${connState}]`)
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+            React.createElement('button', {
+              onClick: downloadLogsSnapshot,
+              disabled: downloading,
+              title: 'Download complete in-memory diagnostic log snapshot (.txt)',
+              style: { background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '3px', color: '#fca5a5', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', cursor: downloading ? 'wait' : 'pointer' }
+            }, downloading ? '...' : '📥 .txt'),
+            React.createElement('button', {
+              onClick: () => changeUiState('expanded'),
+              title: 'Expand',
+              style: { background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }
+            }, '▢'),
+            React.createElement('button', {
+              onClick: () => changeUiState('hidden'),
+              title: 'Hide',
+              style: { background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }
+            }, '✕')
+          )
+        );
+      }
+
+      // Expanded floating panel (Draggable)
+      return React.createElement('div', {
+        id: 'persistent-live-console-panel',
+        style: {
+          position: 'fixed',
+          left: `${pos.left}px`,
+          top: `${pos.top}px`,
+          zIndex: 99999,
+          width: '410px',
+          background: '#040711',
+          border: '1px solid #7f1d1d',
+          borderTop: '3px solid #ef4444',
+          borderRadius: '4px',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontSize: '11px',
+          color: '#e2e8f0',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }
+      },
+        // 1. Large Unmistakable Red Warning Banner
+        React.createElement('div', {
+          style: {
+            background: 'linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%)',
+            borderBottom: '2px solid #ef4444',
+            padding: '8px 10px',
+            color: '#fef2f2',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            userSelect: 'none'
+          }
+        },
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '4px'
+            }
+          },
+            React.createElement('div', {
+              style: {
+                fontWeight: 800,
+                fontSize: '11px',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                color: '#ffffff'
+              }
+            }, '⚠ SYSTEM DIAGNOSTICS MODE — LIVE VERBOSE LOGGING'),
+            React.createElement('button', {
+              onClick: downloadLogsSnapshot,
+              disabled: downloading,
+              title: 'Download complete in-memory diagnostic log snapshot (.txt)',
+              style: {
+                background: downloading ? '#450a0a' : 'rgba(255,255,255,0.2)',
+                border: '1px solid rgba(254,202,202,0.6)',
+                borderRadius: '3px',
+                color: '#ffffff',
+                fontSize: '10px',
+                fontWeight: 700,
+                padding: '2px 8px',
+                cursor: downloading ? 'wait' : 'pointer'
+              }
+            }, downloading ? 'Downloading...' : '📥 Download')
+          ),
+          React.createElement('div', {
+            style: {
+              fontSize: '10px',
+              fontWeight: 700,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              color: '#fca5a5',
+              letterSpacing: '0.02em'
+            }
+          }, `EXPIRES IN ${remainingText || '08H 00M'}${untilTimeText ? ' · UNTIL ' + untilTimeText : ''}`)
+        ),
+
+        // Header (Drag handle)
+        React.createElement('div', {
+          style: {
+            padding: '6px 10px',
+            background: '#090e1a',
+            borderBottom: '1px solid #1e293b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            userSelect: 'none',
+            cursor: 'grab'
+          },
+          onMouseDown: startDrag
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+            React.createElement('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: stateDotColor } }),
+            React.createElement('span', { style: { fontWeight: 600, color: '#f8fafc' } }, 'Live Console'),
+            React.createElement('span', {
+              style: {
+                fontSize: '9.5px',
+                padding: '1px 5px',
+                borderRadius: '3px',
+                background: connState === 'STREAMING' ? 'rgba(16,185,129,0.1)' : 'rgba(248,113,113,0.1)',
+                color: connState === 'STREAMING' ? '#10b981' : '#f87171'
+              }
+            }, connState)
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: '8px' } },
+            React.createElement('button', {
+              onClick: () => changeUiState('minimized'),
+              title: 'Minimize',
+              style: { background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 3px', fontSize: '12px' }
+            }, '—'),
+            React.createElement('button', {
+              onClick: () => changeUiState('hidden'),
+              title: 'Hide',
+              style: { background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 3px', fontSize: '12px' }
+            }, '✕')
+          )
+        ),
+
+        // Log window container with Resume Live button overlay
+        React.createElement('div', { style: { position: 'relative' } },
+          React.createElement('div', {
+            ref: logBoxRef,
+            onScroll: handleScroll,
+            style: {
+              height: '180px',
+              overflowY: 'auto',
+              padding: '8px 10px',
+              background: '#020408',
+              fontSize: '10.5px',
+              lineHeight: '1.45',
+              color: '#94a3b8',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all'
+            }
+          },
+            logs.length === 0
+              ? React.createElement('div', { style: { color: '#64748b' } }, '[Listening for diagnostic stream...]')
+              : logs.map((line, idx) => {
+                  let color = '#94a3b8';
+                  if (line.includes('WARN')) color = '#fbbf24';
+                  else if (line.includes('ERROR') || line.includes('FATAL')) color = '#f87171';
+                  else if (line.includes('INFO')) color = '#38bdf8';
+                  return React.createElement('div', { key: idx, style: { color, padding: '1px 0' } }, line);
+                })
+          ),
+
+          showResumeLive && React.createElement('button', {
+            onClick: resumeLiveScroll,
+            title: 'Jump to bottom',
+            style: {
+              position: 'absolute',
+              bottom: '8px',
+              right: '12px',
+              background: 'rgba(0, 242, 254, 0.2)',
+              border: '1px solid #00f2fe',
+              color: '#00f2fe',
+              borderRadius: '12px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.6)'
+            }
+          }, '↓ Resume Live')
+        ),
+
+        // Footer Actions
+        React.createElement('div', {
+          style: {
+            padding: '6px 10px',
+            background: '#090e1a',
+            borderTop: '1px solid #1e293b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }
+        },
+          React.createElement('a', {
+            href: '/recovery.html',
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            style: {
+              color: '#00f2fe',
+              textDecoration: 'none',
+              fontSize: '10.5px',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }
+          }, 'Open Full Console ↗'),
+          React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+            React.createElement('button', {
+              onClick: downloadLogsSnapshot,
+              disabled: downloading,
+              title: 'Download complete in-memory diagnostic log snapshot (.txt)',
+              style: {
+                background: 'rgba(239,68,68,0.15)',
+                border: '1px solid rgba(239,68,68,0.4)',
+                borderRadius: '3px',
+                color: '#fca5a5',
+                padding: '2px 8px',
+                fontSize: '10px',
+                fontWeight: 600,
+                cursor: downloading ? 'wait' : 'pointer'
+              }
+            }, downloading ? 'Downloading...' : '📥 Download .txt'),
+            React.createElement('button', {
+              onClick: () => changeUiState('hidden'),
+              style: {
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '3px',
+                color: '#94a3b8',
+                padding: '2px 8px',
+                fontSize: '10px',
+                cursor: 'pointer'
+              }
+            }, 'Hide')
+          )
+        )
+      );
+    }
+
     ReactDOM.createRoot(document.getElementById('root')).render(
-      React.createElement(ErrorBoundary, null, React.createElement(App))
+      React.createElement(React.Fragment, null,
+        React.createElement(ErrorBoundary, null, React.createElement(App)),
+        React.createElement(PersistentLiveConsole)
+      )
     );
   </script>
 </body>

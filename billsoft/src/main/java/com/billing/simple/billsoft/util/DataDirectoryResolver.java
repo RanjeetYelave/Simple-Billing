@@ -158,4 +158,16 @@ public final class DataDirectoryResolver {
         }
         return stagingDir;
     }
+
+    /**
+     * Resolves the diagnostic snapshots directory (%LOCALAPPDATA%\RupeeCRM\diagnostic-snapshots).
+     */
+    public static File resolveDiagnosticSnapshotsDirectory() {
+        File baseDir = resolveBaseDirectory();
+        File snapshotsDir = new File(baseDir, "diagnostic-snapshots");
+        if (!snapshotsDir.exists()) {
+            snapshotsDir.mkdirs();
+        }
+        return snapshotsDir;
+    }
 }

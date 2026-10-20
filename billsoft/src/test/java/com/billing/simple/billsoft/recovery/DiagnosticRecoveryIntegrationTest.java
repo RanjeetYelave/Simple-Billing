@@ -36,7 +36,7 @@ public class DiagnosticRecoveryIntegrationTest {
 
     private static final String VALID_MASTER_KEY = "Saidarshan*1";
     private static final String INVALID_MASTER_KEY = "WrongClearanceToken123!";
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DiagnosticRecoveryIntegrationTest.class);
+    private final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DiagnosticRecoveryIntegrationTest.class);
 
     @Autowired
     private MockMvc mockMvc;
@@ -1249,12 +1249,18 @@ public class DiagnosticRecoveryIntegrationTest {
         log.info(marker);
 
         // Verify log entry was buffered in ringBuffer
-        Thread.sleep(100);
-        Map<String, Object> liveLogs = logService.getLogsSince(currentSeq, 50, false);
-        @SuppressWarnings("unchecked")
-        List<String> lines = (List<String>) liveLogs.get("lines");
-        assertTrue(lines != null && lines.stream().anyMatch(l -> l.contains(marker)),
-                "Ring buffer must capture the generated log");
+        boolean found = false;
+        for (int i = 0; i < 15; i++) {
+            Map<String, Object> liveLogs = logService.getLogsSince(currentSeq, 50, false);
+            @SuppressWarnings("unchecked")
+            List<String> lines = (List<String>) liveLogs.get("lines");
+            if (lines != null && lines.stream().anyMatch(l -> l.contains(marker))) {
+                found = true;
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertTrue(found, "Ring buffer must capture the generated log");
     }
 
     // T53: Reconnecting with ancient sinceSeq signals resync

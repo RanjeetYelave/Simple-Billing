@@ -44,6 +44,7 @@ public class DiagnosticLogService {
     private final ConcurrentLinkedDeque<LogEntry> ringBuffer = new ConcurrentLinkedDeque<>();
     private final AtomicLong sequenceCounter = new AtomicLong(0);
     private final CopyOnWriteArrayList<LogSubscriber> subscribers = new CopyOnWriteArrayList<>();
+    private volatile AppenderBase<ILoggingEvent> currentAppender;
 
     public DiagnosticLogService(DevLogService devLogService) {
         this.devLogService = devLogService;
@@ -64,7 +65,16 @@ public class DiagnosticLogService {
                 LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
                 ch.qos.logback.classic.Logger rootLogger = context.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
 
-                if (rootLogger.getAppender(APPENDER_NAME) == null) {
+                ch.qos.logback.core.Appender<ILoggingEvent> existing = rootLogger.getAppender(APPENDER_NAME);
+                if (existing != null && (existing != currentAppender || !existing.isStarted())) {
+                    try {
+                        existing.stop();
+                    } catch (Exception ignored) {}
+                    rootLogger.detachAppender(APPENDER_NAME);
+                    existing = null;
+                }
+
+                if (existing == null) {
                     AppenderBase<ILoggingEvent> appender = new AppenderBase<>() {
                         @Override
                         protected void append(ILoggingEvent eventObject) {
@@ -91,6 +101,7 @@ public class DiagnosticLogService {
                     appender.setContext(context);
                     appender.start();
                     rootLogger.addAppender(appender);
+                    this.currentAppender = appender;
                     log.info("Diagnostic continuous log stream appender attached successfully.");
                 }
             }

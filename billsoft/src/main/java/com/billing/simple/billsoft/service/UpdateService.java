@@ -44,7 +44,7 @@ public class UpdateService {
     private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
 
     public static final String DEFAULT_PUBLIC_KEY =
-            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+            "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
     @Value("${app.version:v1.0.0}")
     private String defaultVersion = "v1.0.0";

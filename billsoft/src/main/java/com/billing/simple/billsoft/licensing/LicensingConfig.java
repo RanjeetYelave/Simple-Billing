@@ -14,7 +14,7 @@ public final class LicensingConfig {
 
     // Default Master Ed25519 Public Key in X.509 Base64 format (44 bytes encoded)
     public static final String MASTER_PUBLIC_KEY_X509_BASE64 =
-            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+            "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
     // Default static GitHub registry raw URL base
     public static final String DEFAULT_REGISTRY_BASE_URL =

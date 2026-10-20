@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class UpdateCryptoTest {
 
     // Known test Ed25519 public key from launcher constant
-    private static final String PINNED_PUBKEY = "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+    private static final String PINNED_PUBKEY = "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
     @Test
     void testDecodePinnedPublicKey() throws Exception {

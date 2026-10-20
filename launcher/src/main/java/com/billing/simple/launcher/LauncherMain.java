@@ -48,7 +48,7 @@ public class LauncherMain {
 
     // Embedded Master Ed25519 Public Key for Release Manifest Authentication
     public static final String DEFAULT_PUBLIC_KEY_X509_BASE64 =
-            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+            "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
     private Process backendProcess;
     private Long backendPid = null;

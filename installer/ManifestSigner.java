@@ -103,7 +103,10 @@ public class ManifestSigner {
         } else if (privateKeyBase64 == null || privateKeyBase64.trim().isEmpty()) {
             throw new IllegalArgumentException("CRITICAL: privateKeyBase64 must not be null or empty. Production keys must be explicitly provided.");
         } else {
-            byte[] privBytes = Base64.getDecoder().decode(privateKeyBase64.trim());
+            String sanitized = privateKeyBase64.replaceAll("-----BEGIN [A-Z0-9 ]+-----", "")
+                    .replaceAll("-----END [A-Z0-9 ]+-----", "")
+                    .replaceAll("\\s+", "");
+            byte[] privBytes = Base64.getDecoder().decode(sanitized);
             PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privBytes);
             KeyFactory kf = KeyFactory.getInstance("Ed25519");
             privKey = kf.generatePrivate(keySpec);
@@ -126,9 +129,12 @@ public class ManifestSigner {
         try {
             byte[] manifestBytes = Files.readAllBytes(manifestJson);
             String sigBase64 = Files.readString(signaturePath, StandardCharsets.UTF_8).trim();
-            byte[] sigBytes = Base64.getDecoder().decode(sigBase64);
+            byte[] sigBytes = Base64.getDecoder().decode(sigBase64.replaceAll("\\s+", ""));
 
-            byte[] pubBytes = Base64.getDecoder().decode(publicKeyBase64.trim());
+            String sanitizedPub = publicKeyBase64.replaceAll("-----BEGIN [A-Z0-9 ]+-----", "")
+                    .replaceAll("-----END [A-Z0-9 ]+-----", "")
+                    .replaceAll("\\s+", "");
+            byte[] pubBytes = Base64.getDecoder().decode(sanitizedPub);
             X509EncodedKeySpec keySpec = new X509EncodedKeySpec(pubBytes);
             KeyFactory kf = KeyFactory.getInstance("Ed25519");
             PublicKey pubKey = kf.generatePublic(keySpec);

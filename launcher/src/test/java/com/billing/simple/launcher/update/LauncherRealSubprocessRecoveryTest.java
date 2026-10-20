@@ -65,7 +65,10 @@ class LauncherRealSubprocessRecoveryTest {
     private Process startSupervisorSubprocess(Path baseDir) throws Exception {
         String javaHome = System.getProperty("java.home");
         String javaBin = Paths.get(javaHome, "bin", System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java").toString();
-        String classpath = System.getProperty("java.class.path");
+        String classpath = System.getProperty("surefire.test.class.path");
+        if (classpath == null || classpath.isBlank()) {
+            classpath = System.getProperty("java.class.path");
+        }
 
         List<String> command = new ArrayList<>();
         command.add(javaBin);
@@ -133,7 +136,9 @@ class LauncherRealSubprocessRecoveryTest {
         supervisorProcess.waitFor(5, TimeUnit.SECONDS);
 
         // Assert outcomes performed by the independent external JVM
-        assertTrue(stateUpdated, "External supervisor subprocess must transition state to STATUS_ROLLED_BACK");
+        Path subLog = tempDir.resolve("logs/subprocess-supervisor.log");
+        String logContent = Files.exists(subLog) ? Files.readString(subLog) : "<no log>";
+        assertTrue(stateUpdated, "External supervisor subprocess must transition state to STATUS_ROLLED_BACK. Subprocess log:\n" + logContent);
         assertEquals("healthy-original-production-binary-v1.0.0", Files.readString(liveWar),
                 "External supervisor must restore healthy binary from backup");
 
@@ -196,7 +201,9 @@ class LauncherRealSubprocessRecoveryTest {
         secondSupervisor.destroyForcibly();
         secondSupervisor.waitFor(5, TimeUnit.SECONDS);
 
-        assertTrue(recovered, "Second supervisor subprocess must recover the interrupted transaction");
+        Path subLog = tempDir.resolve("logs/subprocess-supervisor.log");
+        String logContent = Files.exists(subLog) ? Files.readString(subLog) : "<no log>";
+        assertTrue(recovered, "Second supervisor subprocess must recover the interrupted transaction. Subprocess log:\n" + logContent);
         assertEquals("active-v1.0.0", Files.readString(liveWar), "Second supervisor must restore the binary from .bak");
         assertArrayEquals(dbBytes, Files.readAllBytes(dbFile), "Customer database must be 100% preserved");
     }
@@ -234,7 +241,9 @@ class LauncherRealSubprocessRecoveryTest {
         supervisor.destroyForcibly();
         supervisor.waitFor(5, TimeUnit.SECONDS);
 
-        assertTrue(recovered, "Supervisor subprocess must complete interrupted rollback");
+        Path subLog = tempDir.resolve("logs/subprocess-supervisor.log");
+        String logContent = Files.exists(subLog) ? Files.readString(subLog) : "<no log>";
+        assertTrue(recovered, "Supervisor subprocess must complete interrupted rollback. Subprocess log:\n" + logContent);
         assertEquals("good-backup-v1.0.0", Files.readString(liveWar), "Live binary must be restored");
     }
 
@@ -276,7 +285,9 @@ class LauncherRealSubprocessRecoveryTest {
         supervisor.destroyForcibly();
         supervisor.waitFor(5, TimeUnit.SECONDS);
 
-        assertTrue(rolledBack, "Supervisor must detect candidate failure and complete automatic rollback to STATUS_ROLLED_BACK");
+        Path subLog = tempDir.resolve("logs/subprocess-supervisor.log");
+        String logContent = Files.exists(subLog) ? Files.readString(subLog) : "<no log>";
+        assertTrue(rolledBack, "Supervisor must detect candidate failure and complete automatic rollback to STATUS_ROLLED_BACK. Subprocess log:\n" + logContent);
         assertEquals(Files.size(backupWar), Files.size(liveWar), "Live binary must match backup binary size");
     }
 }

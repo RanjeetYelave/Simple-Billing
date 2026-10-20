@@ -77,7 +77,10 @@ public class LauncherMain {
     private JProgressBar progressBar;
 
     public static void main(String[] args) {
-        System.setProperty("java.awt.headless", "false");
+        if (System.getProperty("java.awt.headless") == null) {
+            boolean hasDisplay = System.getenv("DISPLAY") != null || System.getenv("WAYLAND_DISPLAY") != null || System.getProperty("os.name").toLowerCase().contains("win");
+            System.setProperty("java.awt.headless", hasDisplay ? "false" : "true");
+        }
 
         boolean background = false;
         boolean setupMode = false;
@@ -443,98 +446,108 @@ public class LauncherMain {
     // ==========================================
 
     private void setupSystemTray() {
-        EventQueue.invokeLater(() -> {
-            try {
-                if (!SystemTray.isSupported()) {
-                    System.out.println("System tray is not supported on this platform.");
-                    return;
-                }
-
-                SystemTray tray = SystemTray.getSystemTray();
-                Image image = createTrayIconImage(32);
-
-                PopupMenu popup = new PopupMenu();
-
-                MenuItem openItem = new MenuItem("Open RupeeCRM");
-                openItem.addActionListener(e -> openBrowser(APP_URL));
-                openItem.setFont(new Font("Segoe UI", Font.BOLD, 12));
-                popup.add(openItem);
-
-                MenuItem restartItem = new MenuItem("Restart RupeeCRM");
-                restartItem.addActionListener(e -> {
-                    restartRequested = true;
-                    circuitBreakerTripped = false;
-                    crashTimestamps.clear();
-                    stopBackend();
-                });
-                popup.add(restartItem);
-
-                popup.addSeparator();
-
-                MenuItem diagItem = new MenuItem("System Diagnostics");
-                diagItem.addActionListener(e -> showDiagnosticsWindow());
-                popup.add(diagItem);
-
-                Menu backupMenu = new Menu("Backup & Restore");
-                MenuItem createBackupItem = new MenuItem("Create Backup Now");
-                createBackupItem.addActionListener(e -> triggerManualBackup());
-                MenuItem openBackupDirItem = new MenuItem("Open Backup Folder");
-                openBackupDirItem.addActionListener(e -> openFolder(getBackupsDirectory().toFile()));
-                backupMenu.add(createBackupItem);
-                backupMenu.add(openBackupDirItem);
-                popup.add(backupMenu);
-
-                MenuItem updateItem = new MenuItem("Check for Updates");
-                updateItem.addActionListener(e -> checkForUpdatesInteractive());
-                popup.add(updateItem);
-
-                popup.addSeparator();
-
-                Menu settingsMenu = new Menu("Settings");
-                CheckboxMenuItem autoStartItem = new CheckboxMenuItem("Start with Windows", isAutostartEnabled());
-                autoStartItem.addItemListener(e -> setAutostartEnabled(autoStartItem.getState()));
-                MenuItem openDataDirItem = new MenuItem("Open Data Folder");
-                openDataDirItem.addActionListener(e -> openFolder(getDataDirectory().toFile()));
-                settingsMenu.add(autoStartItem);
-                settingsMenu.add(openDataDirItem);
-                popup.add(settingsMenu);
-
-                MenuItem repairItem = new MenuItem("Repair RupeeCRM");
-                repairItem.addActionListener(e -> performInteractiveRepair());
-                popup.add(repairItem);
-
-                MenuItem logsItem = new MenuItem("View Logs");
-                logsItem.addActionListener(e -> openFolder(getLogsDirectory().toFile()));
-                popup.add(logsItem);
-
-                MenuItem aboutItem = new MenuItem("About RupeeCRM");
-                aboutItem.addActionListener(e -> showAboutDialog());
-                popup.add(aboutItem);
-
-                popup.addSeparator();
-
-                MenuItem exitItem = new MenuItem("Exit");
-                exitItem.addActionListener(e -> {
-                    exitRequested = true;
-                    stopBackend();
-                    System.exit(0);
-                });
-                popup.add(exitItem);
-
-                trayIcon = new TrayIcon(image, "RupeeCRM", popup);
-                trayIcon.setImageAutoSize(true);
-                trayIcon.addActionListener(e -> openBrowser(APP_URL));
-
-                tray.add(trayIcon);
-            } catch (Exception e) {
-                System.err.println("Could not initialize system tray: " + e.getMessage());
+        try {
+            if (GraphicsEnvironment.isHeadless()) {
+                System.out.println("Headless environment detected; skipping system tray initialization.");
+                return;
             }
-        });
+            EventQueue.invokeLater(() -> {
+                try {
+                    if (!SystemTray.isSupported()) {
+                        System.out.println("System tray is not supported on this platform.");
+                        return;
+                    }
+
+                    SystemTray tray = SystemTray.getSystemTray();
+                    Image image = createTrayIconImage(32);
+
+                    PopupMenu popup = new PopupMenu();
+
+                    MenuItem openItem = new MenuItem("Open RupeeCRM");
+                    openItem.addActionListener(e -> openBrowser(APP_URL));
+                    openItem.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                    popup.add(openItem);
+
+                    MenuItem restartItem = new MenuItem("Restart RupeeCRM");
+                    restartItem.addActionListener(e -> {
+                        restartRequested = true;
+                        circuitBreakerTripped = false;
+                        crashTimestamps.clear();
+                        stopBackend();
+                    });
+                    popup.add(restartItem);
+
+                    popup.addSeparator();
+
+                    MenuItem diagItem = new MenuItem("System Diagnostics");
+                    diagItem.addActionListener(e -> showDiagnosticsWindow());
+                    popup.add(diagItem);
+
+                    Menu backupMenu = new Menu("Backup & Restore");
+                    MenuItem createBackupItem = new MenuItem("Create Backup Now");
+                    createBackupItem.addActionListener(e -> triggerManualBackup());
+                    MenuItem openBackupDirItem = new MenuItem("Open Backup Folder");
+                    openBackupDirItem.addActionListener(e -> openFolder(getBackupsDirectory().toFile()));
+                    backupMenu.add(createBackupItem);
+                    backupMenu.add(openBackupDirItem);
+                    popup.add(backupMenu);
+
+                    MenuItem updateItem = new MenuItem("Check for Updates");
+                    updateItem.addActionListener(e -> checkForUpdatesInteractive());
+                    popup.add(updateItem);
+
+                    popup.addSeparator();
+
+                    Menu settingsMenu = new Menu("Settings");
+                    CheckboxMenuItem autoStartItem = new CheckboxMenuItem("Start with Windows", isAutostartEnabled());
+                    autoStartItem.addItemListener(e -> setAutostartEnabled(autoStartItem.getState()));
+                    MenuItem openDataDirItem = new MenuItem("Open Data Folder");
+                    openDataDirItem.addActionListener(e -> openFolder(getDataDirectory().toFile()));
+                    settingsMenu.add(autoStartItem);
+                    settingsMenu.add(openDataDirItem);
+                    popup.add(settingsMenu);
+
+                    MenuItem repairItem = new MenuItem("Repair RupeeCRM");
+                    repairItem.addActionListener(e -> performInteractiveRepair());
+                    popup.add(repairItem);
+
+                    MenuItem logsItem = new MenuItem("View Logs");
+                    logsItem.addActionListener(e -> openFolder(getLogsDirectory().toFile()));
+                    popup.add(logsItem);
+
+                    MenuItem aboutItem = new MenuItem("About RupeeCRM");
+                    aboutItem.addActionListener(e -> showAboutDialog());
+                    popup.add(aboutItem);
+
+                    popup.addSeparator();
+
+                    MenuItem exitItem = new MenuItem("Exit");
+                    exitItem.addActionListener(e -> {
+                        exitRequested = true;
+                        stopBackend();
+                        System.exit(0);
+                    });
+                    popup.add(exitItem);
+
+                    trayIcon = new TrayIcon(image, "RupeeCRM", popup);
+                    trayIcon.setImageAutoSize(true);
+                    trayIcon.addActionListener(e -> openBrowser(APP_URL));
+
+                    tray.add(trayIcon);
+                } catch (Throwable t) {
+                    System.err.println("Could not initialize system tray: " + t.getMessage());
+                }
+            });
+        } catch (Throwable t) {
+            System.err.println("System tray initialization check failed: " + t.getMessage());
+        }
     }
 
     private void updateTrayTooltip(String tooltip) {
         if (trayIcon != null) {
-            trayIcon.setToolTip(tooltip);
+            try {
+                trayIcon.setToolTip(tooltip);
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -570,11 +583,15 @@ public class LauncherMain {
     }
 
     public void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.out.println("Notification [" + type + "] " + title + ": " + message);
+            return;
+        }
         try {
             if (trayIcon != null) {
                 trayIcon.displayMessage(title, message, type);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             System.err.println("Non-critical error displaying tray notification: " + e.getMessage());
         }
     }
@@ -584,6 +601,10 @@ public class LauncherMain {
     // ==========================================
 
     public void showDiagnosticsWindow() {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.out.println("Headless environment; diagnostics window not displayed.");
+            return;
+        }
         EventQueue.invokeLater(() -> {
             if (diagnosticsFrame != null) {
                 diagnosticsFrame.setVisible(true);
@@ -797,6 +818,10 @@ public class LauncherMain {
     }
 
     public void performInteractiveUninstall() {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.err.println("Interactive uninstall cannot be displayed in headless mode.");
+            return;
+        }
         EventQueue.invokeLater(() -> {
             int confirm = JOptionPane.showConfirmDialog(
                     null,
@@ -838,6 +863,10 @@ public class LauncherMain {
     }
 
     public static void showSetupModeDialog() {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.err.println("Setup dialog cannot be displayed in headless mode.");
+            return;
+        }
         EventQueue.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -1343,6 +1372,10 @@ public class LauncherMain {
     }
 
     private void showAboutDialog() {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.out.println("RupeeCRM Desktop v1.0.0");
+            return;
+        }
         JOptionPane.showMessageDialog(null,
                 "RupeeCRM Desktop\nVersion: 1.0.0\nSecure Offline Billing & Management Platform\n\n© RupeeCRM. All rights reserved.",
                 "About RupeeCRM",

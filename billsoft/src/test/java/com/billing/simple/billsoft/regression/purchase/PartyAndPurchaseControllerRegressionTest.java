@@ -59,7 +59,7 @@ class PartyAndPurchaseControllerRegressionTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private final Long testFirmId = 1L;
+    private Long testFirmId = 1L;
     private Party testParty;
     private Product testProduct;
 
@@ -71,7 +71,8 @@ class PartyAndPurchaseControllerRegressionTest {
         firm.setFirmName("Precision Engineering Hub");
         firm.setGstin("27AAACB5566G1Z9");
         firm.setAddressLine1("Industrial Corridor, Pune");
-        firmService.create(firm);
+        FirmDetails createdFirm = firmService.create(firm);
+        testFirmId = createdFirm.getId();
 
         testParty = partyService.createParty(Party.builder()
                 .name("Standard Steel Suppliers")

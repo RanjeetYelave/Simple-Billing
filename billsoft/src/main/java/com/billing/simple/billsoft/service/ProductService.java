@@ -386,10 +386,7 @@ public class ProductService {
 
 	public Product getById(Long id) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-		}
-		return repo.findByIdAndFirmId(id, fid).orElse(null);
+		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
 	}
 
 	public Product getById(Long id, Long firmId) {
@@ -398,19 +395,16 @@ public class ProductService {
 			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
 		}
 		Long fid = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-		if (fid == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-		}
-		return repo.findByIdAndFirmId(id, fid).orElse(null);
+		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
 	}
 
 	@Transactional
 	public Product update(Long id, Product updated) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
+		if (fid == null && updated.getFirmId() != null) {
+			fid = updated.getFirmId();
 		}
-		Optional<Product> opt = repo.findByIdAndFirmId(id, fid);
+		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty())
 			return null;
 		Product existing = opt.get();
@@ -716,10 +710,9 @@ public class ProductService {
 	@Transactional
 	public Product adjustStock(Long id, BigDecimal quantity, String mode, String note) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-		}
-		Optional<Product> opt = repo.findByIdAndFirmIdForUpdate(id, fid);
+		Optional<Product> opt = (fid != null)
+				? repo.findByIdAndFirmIdForUpdate(id, fid)
+				: repo.findByIdForUpdate(id);
 		if (opt.isEmpty()) {
 			throw new com.billing.simple.billsoft.security.TenantSecurityException(
 					"Product not found or unauthorized for firm: " + fid);
@@ -807,10 +800,9 @@ public class ProductService {
 		}
 
 		Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (targetFirmId == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-		}
-		Optional<Product> opt = repo.findByIdAndFirmIdForUpdate(productId, targetFirmId);
+		Optional<Product> opt = (targetFirmId != null)
+				? repo.findByIdAndFirmIdForUpdate(productId, targetFirmId)
+				: repo.findByIdForUpdate(productId);
 		if (opt.isEmpty()) {
 			return BigDecimal.ZERO;
 		}

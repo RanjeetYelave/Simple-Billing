@@ -11,9 +11,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
 import java.util.Arrays;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -25,13 +30,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class FirmDetailsControllerTest {
 
     @Autowired
+    private WebApplicationContext webApplicationContext;
+
     private MockMvc mockMvc;
 
     @MockitoBean
     private FirmDetailsService service;
 
+    @MockitoBean
+    private com.billing.simple.billsoft.repo.FirmDetailsRepository firmDetailsRepo;
+
     @Autowired
     private ObjectMapper objectMapper;
+
+    @BeforeEach
+    void setUp() {
+        when(firmDetailsRepo.existsById(anyLong())).thenReturn(true);
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .defaultRequest(get("/").header("X-Firm-Id", "1"))
+                .build();
+    }
 
     @Test
     void testList() throws Exception {

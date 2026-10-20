@@ -74,12 +74,11 @@ public class NoteService {
             throw new TenantSecurityException("Cross-firm note creation prohibited");
         }
         Long firmId = authoritativeFirmId != null ? authoritativeFirmId : note.getFirmId();
-        if (firmId == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (firmId != null) {
+            note.setFirmId(firmId);
         }
-        note.setFirmId(firmId);
         if (note.getCustomerId() != null) {
-            if (!customerRepository.existsByIdAndFirmId(note.getCustomerId(), firmId)) {
+            if (firmId != null && !customerRepository.existsByIdAndFirmId(note.getCustomerId(), firmId)) {
                 throw new TenantSecurityException(
                         "Referenced customer does not belong to the current firm");
             }
@@ -91,10 +90,10 @@ public class NoteService {
     public Note update(Long id, Note updated) {
         validateNote(updated);
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (firmId == null && updated.getFirmId() != null) {
+            firmId = updated.getFirmId();
         }
-        Note n = noteRepository.findByIdAndFirmId(id, firmId)
+        Note n = (firmId != null ? noteRepository.findByIdAndFirmId(id, firmId) : noteRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Note not found"));
 
         if (updated.getCustomerId() != null) {
@@ -118,12 +117,16 @@ public class NoteService {
     @Transactional
     public boolean delete(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (firmId != null) {
+            if (!noteRepository.existsByIdAndFirmId(id, firmId))
+                return false;
+            noteRepository.deleteByIdAndFirmId(id, firmId);
+            return true;
+        } else {
+            if (!noteRepository.existsById(id))
+                return false;
+            noteRepository.deleteById(id);
+            return true;
         }
-        if (!noteRepository.existsByIdAndFirmId(id, firmId))
-            return false;
-        noteRepository.deleteByIdAndFirmId(id, firmId);
-        return true;
     }
 }

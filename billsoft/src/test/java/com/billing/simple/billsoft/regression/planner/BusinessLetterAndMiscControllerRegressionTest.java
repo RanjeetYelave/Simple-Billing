@@ -44,7 +44,8 @@ class BusinessLetterAndMiscControllerRegressionTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private final Long testFirmId = 1L;
+    private Long testFirmId = 1L;
+    private Long createdFirmId = 1L;
 
     @BeforeEach
     void setUp() {
@@ -54,7 +55,9 @@ class BusinessLetterAndMiscControllerRegressionTest {
         firm.setFirmName("Global Corporate Hub");
         firm.setGstin("27AAACG9988D1Z2");
         firm.setAddressLine1("Corporate Tower 4");
-        firmService.create(firm);
+        FirmDetails createdFirm = firmService.create(firm);
+        testFirmId = createdFirm.getId();
+        createdFirmId = createdFirm.getId();
     }
 
     @Test

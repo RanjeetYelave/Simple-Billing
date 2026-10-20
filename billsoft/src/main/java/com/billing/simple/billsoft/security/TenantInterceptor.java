@@ -110,16 +110,25 @@ public class TenantInterceptor implements HandlerInterceptor {
             }
         }
 
-        // 3. Enforce mandatory firm context for all business routes
-        if (clientSuppliedFirmId == null && pathFirmId == null) {
-            if (INVOICE_MIGRATION_PATTERN.matcher(uri).matches()) {
+        // 3. Special strict checks for invoice migration operations
+        if (INVOICE_MIGRATION_PATTERN.matcher(uri).matches()) {
+            if (clientSuppliedFirmId == null && pathFirmId == null) {
                 sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (X-Firm-Id) is required for invoice migration operations.");
-            } else if (uri.startsWith("/api/omnisearch")) {
-                sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (X-Firm-Id) is required for OmniSearch operations.");
-            } else {
-                sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (X-Firm-Id) is mandatory for tenant-scoped operations.");
+                return false;
             }
-            return false;
+            Long fid = pathFirmId != null ? pathFirmId : clientSuppliedFirmId;
+            if (!firmDetailsRepo.existsById(fid)) {
+                sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (" + fid + ") does not exist.");
+                return false;
+            }
+        }
+
+        // OmniSearch operations (excluding QR)
+        if (uri.startsWith("/api/omnisearch") && !uri.equals("/api/omnisearch/qr") && !uri.startsWith("/api/omnisearch/qr/")) {
+            if (clientSuppliedFirmId == null && pathFirmId == null) {
+                sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (X-Firm-Id) is required for OmniSearch operations.");
+                return false;
+            }
         }
 
         // 4. Validate cross-firm consistency if both path and header/param are provided
@@ -129,14 +138,10 @@ public class TenantInterceptor implements HandlerInterceptor {
         }
 
         Long effectiveFirmId = pathFirmId != null ? pathFirmId : clientSuppliedFirmId;
-
-        // 5. Verify firm existence in database
-        if (!firmDetailsRepo.existsById(effectiveFirmId)) {
-            sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Active firm context (" + effectiveFirmId + ") does not exist.");
-            return false;
+        if (effectiveFirmId != null) {
+            TenantContext.setCurrentFirmId(effectiveFirmId);
         }
 
-        TenantContext.setCurrentFirmId(effectiveFirmId);
         return true;
     }
 

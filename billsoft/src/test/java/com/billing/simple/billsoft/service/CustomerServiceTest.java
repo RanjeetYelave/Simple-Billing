@@ -3,6 +3,8 @@ package com.billing.simple.billsoft.service;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.repo.CustomerRepository;
 import com.billing.simple.billsoft.dtos.CustomerRequest;
+import com.billing.simple.billsoft.security.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -27,12 +29,19 @@ class CustomerServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        TenantContext.setCurrentFirmId(1L);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
     void testCreate() {
         Customer customer = new Customer();
         customer.setName("John Doe");
+        customer.setFirmId(1L);
         when(repo.save(customer)).thenReturn(customer);
 
         Customer result = service.create(customer);
@@ -58,7 +67,8 @@ class CustomerServiceTest {
         Long id = 1L;
         Customer customer = new Customer();
         customer.setId(id);
-        when(repo.findById(id)).thenReturn(Optional.of(customer));
+        customer.setFirmId(1L);
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.of(customer));
 
         Customer result = service.getById(id);
 
@@ -71,17 +81,15 @@ class CustomerServiceTest {
         Long id = 1L;
         Customer existing = new Customer();
         existing.setId(id);
+        existing.setFirmId(1L);
         existing.setName("Old Name");
 
-        Customer updated = new Customer();
-        updated.setName("New Name");
-
-        when(repo.findById(id)).thenReturn(Optional.of(existing));
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.of(existing));
         when(repo.save(existing)).thenReturn(existing);
 
         CustomerRequest req = new CustomerRequest();
-req.setName("New Name");
-Customer result = service.update(id, req);
+        req.setName("New Name");
+        Customer result = service.update(id, req);
 
         assertNotNull(result);
         assertEquals("New Name", result.getName());
@@ -90,10 +98,10 @@ Customer result = service.update(id, req);
     @Test
     void testUpdateNotFound() {
         Long id = 1L;
-        when(repo.findById(id)).thenReturn(Optional.empty());
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.empty());
 
         CustomerRequest req = new CustomerRequest();
-Customer result = service.update(id, req);
+        Customer result = service.update(id, req);
 
         assertNull(result);
     }
@@ -101,18 +109,18 @@ Customer result = service.update(id, req);
     @Test
     void testDelete() {
         Long id = 1L;
-        when(repo.existsById(id)).thenReturn(true);
+        when(repo.existsByIdAndFirmId(id, 1L)).thenReturn(true);
 
         boolean result = service.delete(id);
 
         assertTrue(result);
-        verify(repo, times(1)).deleteById(id);
+        verify(repo, times(1)).deleteByIdAndFirmId(id, 1L);
     }
 
     @Test
     void testDeleteNotFound() {
         Long id = 1L;
-        when(repo.existsById(id)).thenReturn(false);
+        when(repo.existsByIdAndFirmId(id, 1L)).thenReturn(false);
 
         boolean result = service.delete(id);
 

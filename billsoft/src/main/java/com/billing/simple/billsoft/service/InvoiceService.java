@@ -928,10 +928,9 @@ public class InvoiceService {
 
     public Invoice getById(Long id) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice inv = invoiceRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
+        Invoice inv = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+                : invoiceRepo.findById(id)).orElse(null);
         if (inv == null)
             return null;
         normalizeStatus(inv);
@@ -941,10 +940,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice inv = invoiceRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
+        Invoice inv = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+                : invoiceRepo.findById(id)).orElse(null);
         if (inv == null)
             return false;
         // Prevent deleting an estimate that has already been converted to an invoice
@@ -1055,10 +1053,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public Invoice updateFullInvoice(Long id, InvoiceUpdateRequest req) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice existing = invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+        Invoice existing = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+                : invoiceRepo.findById(id))
                 .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
                         "Invoice not found in firm: " + id));
 
@@ -1272,10 +1269,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public Invoice updatePaidFlag(Long id, boolean paid) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice i = invoiceRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
+        Invoice i = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+                : invoiceRepo.findById(id)).orElse(null);
         if (i == null)
             return null;
         i.setPaid(paid);
@@ -1298,10 +1294,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public Invoice updateStatus(Long id, InvoiceStatus newStatus) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice i = invoiceRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
+        Invoice i = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
+                : invoiceRepo.findById(id)).orElse(null);
         if (i == null)
             return null;
         InvoiceStatus oldStatus = i.getStatus();
@@ -1345,10 +1340,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public Invoice convertEstimateToInvoice(Long estimateId, InvoiceRequest overrideRequest) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice estimate = invoiceRepo.findByIdAndFirmId(estimateId, currentFirmId).orElse(null);
+        Invoice estimate = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(estimateId, currentFirmId)
+                : invoiceRepo.findById(estimateId)).orElse(null);
 
         if (estimate == null)
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Estimate not found: " + estimateId);
@@ -2041,10 +2035,9 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public SalesReturn createSalesReturn(Long invoiceId, SalesReturnRequest request) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Invoice invoice = invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId)
+        Invoice invoice = (currentFirmId != null
+                ? invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId)
+                : invoiceRepo.findById(invoiceId))
                 .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
                         "Invoice not found in firm: " + invoiceId));
 

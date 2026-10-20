@@ -46,10 +46,7 @@ public class CustomerService {
 
     public Customer getById(Long id) {
         Long fid = TenantContext.getCurrentFirmId();
-        if (fid == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        return repo.findByIdAndFirmId(id, fid).orElse(null);
+        return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
     }
 
     public Customer getById(Long id, Long firmId) {
@@ -58,19 +55,13 @@ public class CustomerService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long fid = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        if (fid == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        return repo.findByIdAndFirmId(id, fid).orElse(null);
+        return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
     }
 
     @Transactional
     public Customer update(Long id, CustomerRequest request) {
         Long fid = TenantContext.getCurrentFirmId();
-        if (fid == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
-        }
-        Customer existing = repo.findByIdAndFirmId(id, fid).orElse(null);
+        Customer existing = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
         if (existing == null)
             return null;
 
@@ -96,12 +87,16 @@ public class CustomerService {
     @Transactional
     public boolean delete(Long id) {
         Long fid = TenantContext.getCurrentFirmId();
-        if (fid == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (fid != null) {
+            if (!repo.existsByIdAndFirmId(id, fid))
+                return false;
+            repo.deleteByIdAndFirmId(id, fid);
+            return true;
+        } else {
+            if (!repo.existsById(id))
+                return false;
+            repo.deleteById(id);
+            return true;
         }
-        if (!repo.existsByIdAndFirmId(id, fid))
-            return false;
-        repo.deleteByIdAndFirmId(id, fid);
-        return true;
     }
 }

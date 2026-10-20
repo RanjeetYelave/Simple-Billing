@@ -70,11 +70,6 @@ public class EmployeeSecurityInterceptor implements HandlerInterceptor {
             } catch (NumberFormatException ignored) {}
         }
 
-        if (firmId == null) {
-            sendErrorResponse(response, HttpStatus.FORBIDDEN, "Active firm context is required for employee operations");
-            return false;
-        }
-
         // Allow PIN verification and PIN changing endpoints to bypass the X-Employee-Pin header check
         if (uri.endsWith("/verify-pin") || uri.endsWith("/change-pin")) {
             return true;
@@ -84,6 +79,11 @@ public class EmployeeSecurityInterceptor implements HandlerInterceptor {
         String clientPin = request.getHeader("X-Employee-Pin");
         if (clientPin == null || clientPin.trim().isEmpty()) {
             sendErrorResponse(response, HttpStatus.FORBIDDEN, "Missing Employee Module PIN header (X-Employee-Pin)");
+            return false;
+        }
+
+        if (firmId == null) {
+            sendErrorResponse(response, HttpStatus.FORBIDDEN, "Active firm context is required for employee operations");
             return false;
         }
 

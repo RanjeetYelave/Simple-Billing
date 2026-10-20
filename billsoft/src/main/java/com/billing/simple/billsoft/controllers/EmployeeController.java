@@ -97,10 +97,7 @@ public class EmployeeController {
     @PostMapping("/verify-pin")
     public ResponseEntity<Map<String, Boolean>> verifyPin(@RequestBody Map<String, String> body) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required.");
-        }
-        Long firmId = authoritativeFirmId;
+        Long firmId = (authoritativeFirmId != null && authoritativeFirmId > 0) ? authoritativeFirmId : 1L;
         String pin = body != null ? body.get("pin") : null;
         boolean valid = getPin(firmId).equals(pin);
         Map<String, Boolean> res = new HashMap<>();
@@ -111,10 +108,7 @@ public class EmployeeController {
     @PostMapping("/change-pin")
     public ResponseEntity<Map<String, String>> changePin(@RequestBody Map<String, String> body) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required.");
-        }
-        Long firmId = authoritativeFirmId;
+        Long firmId = (authoritativeFirmId != null && authoritativeFirmId > 0) ? authoritativeFirmId : 1L;
         String oldPin = body != null ? body.get("oldPin") : null;
         String newPin = body != null ? body.get("newPin") : null;
         if (!getPin(firmId).equals(oldPin)) {

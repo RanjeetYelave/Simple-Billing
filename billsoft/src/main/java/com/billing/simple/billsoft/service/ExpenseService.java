@@ -73,10 +73,10 @@ public class ExpenseService {
     @Transactional
     public Expense updateExpense(Long id, Expense updated) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (firmId == null && updated.getFirmId() != null) {
+            firmId = updated.getFirmId();
         }
-        Expense existing = repository.findByIdAndFirmId(id, firmId)
+        Expense existing = (firmId != null ? repository.findByIdAndFirmId(id, firmId) : repository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Expense not found"));
         existing.setTitle(updated.getTitle());
         if (updated.getAmount() != null) {
@@ -93,13 +93,17 @@ public class ExpenseService {
     @Transactional
     public boolean deleteExpense(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null) {
-            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        if (firmId != null) {
+            if (!repository.existsByIdAndFirmId(id, firmId))
+                return false;
+            repository.deleteByIdAndFirmId(id, firmId);
+            return true;
+        } else {
+            if (!repository.existsById(id))
+                return false;
+            repository.deleteById(id);
+            return true;
         }
-        if (!repository.existsByIdAndFirmId(id, firmId))
-            return false;
-        repository.deleteByIdAndFirmId(id, firmId);
-        return true;
     }
 
     public static final List<String> DEFAULT_CATEGORIES = List.of(

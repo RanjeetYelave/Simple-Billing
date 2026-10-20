@@ -4,6 +4,8 @@ import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.StockMovementRepository;
+import com.billing.simple.billsoft.security.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -34,12 +36,19 @@ class ProductServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        TenantContext.setCurrentFirmId(1L);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
     void testCreate() {
         Product product = new Product();
         product.setName("Test Product");
+        product.setFirmId(1L);
         product.setStockQuantity(BigDecimal.TEN);
         when(repo.save(product)).thenReturn(product);
 
@@ -67,7 +76,8 @@ class ProductServiceTest {
         Long id = 1L;
         Product product = new Product();
         product.setId(id);
-        when(repo.findById(id)).thenReturn(Optional.of(product));
+        product.setFirmId(1L);
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.of(product));
 
         Product result = service.getById(id);
 
@@ -80,13 +90,14 @@ class ProductServiceTest {
         Long id = 1L;
         Product existing = new Product();
         existing.setId(id);
+        existing.setFirmId(1L);
         existing.setName("Old Product");
 
         Product updated = new Product();
         updated.setName("New Product");
         updated.setPrice(new BigDecimal("100.00"));
 
-        when(repo.findById(id)).thenReturn(Optional.of(existing));
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.of(existing));
         when(repo.save(existing)).thenReturn(existing);
 
         Product result = service.update(id, updated);
@@ -99,7 +110,7 @@ class ProductServiceTest {
     @Test
     void testUpdateNotFound() {
         Long id = 1L;
-        when(repo.findById(id)).thenReturn(Optional.empty());
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.empty());
 
         Product result = service.update(id, new Product());
 
@@ -111,8 +122,9 @@ class ProductServiceTest {
         Long id = 1L;
         Product product = new Product();
         product.setId(id);
+        product.setFirmId(1L);
         product.setStockQuantity(new BigDecimal("10.000"));
-        when(repo.findById(id)).thenReturn(Optional.of(product));
+        when(repo.findByIdAndFirmIdForUpdate(id, 1L)).thenReturn(Optional.of(product));
         when(repo.save(any(Product.class))).thenReturn(product);
 
         Product result = service.adjustStock(id, new BigDecimal("5.000"), "ADD", "Restocked");
@@ -139,18 +151,21 @@ class ProductServiceTest {
     @Test
     void testDelete() {
         Long id = 1L;
-        when(repo.existsById(id)).thenReturn(true);
+        Product product = new Product();
+        product.setId(id);
+        product.setFirmId(1L);
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.of(product));
 
         boolean result = service.delete(id);
 
         assertTrue(result);
-        verify(repo, times(1)).deleteById(id);
+        verify(repo, times(1)).deleteByIdAndFirmId(id, 1L);
     }
 
     @Test
     void testDeleteNotFound() {
         Long id = 1L;
-        when(repo.existsById(id)).thenReturn(false);
+        when(repo.findByIdAndFirmId(id, 1L)).thenReturn(Optional.empty());
 
         boolean result = service.delete(id);
 

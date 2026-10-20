@@ -3,6 +3,8 @@ package com.billing.simple.billsoft.service;
 import com.billing.simple.billsoft.dtos.SalesReturnRequest;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.*;
+import com.billing.simple.billsoft.security.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -45,6 +47,12 @@ class InvoiceServiceSalesReturnTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        TenantContext.setCurrentFirmId(1L);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
@@ -69,6 +77,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(invoiceRepo.save(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Invoice updated = invoiceService.updateStatus(invoiceId, InvoiceStatus.CANCELLED);
@@ -105,6 +114,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SalesReturnRequest request = new SalesReturnRequest();
@@ -150,6 +160,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SalesReturnRequest request = new SalesReturnRequest();
@@ -175,6 +186,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setId(invoiceId);
         invoice.setStatus(InvoiceStatus.FINAL);
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
 
         SalesReturnRequest request = new SalesReturnRequest();
         request.setItems(Collections.singletonList(
@@ -206,6 +218,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(new java.util.ArrayList<>(Collections.singletonList(item)));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(customerRepo.findById(10L)).thenReturn(Optional.of(customer));
         when(customerRepo.findByIdAndFirmId(10L, 1L)).thenReturn(Optional.of(customer));
         when(invoiceRepo.save(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -235,6 +248,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SalesReturnRequest request = SalesReturnRequest.builder()
@@ -272,6 +286,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SalesReturnRequest request = SalesReturnRequest.builder()
@@ -312,6 +327,7 @@ class InvoiceServiceSalesReturnTest {
         invoice.setItems(Collections.singletonList(item));
 
         when(invoiceRepo.findById(invoiceId)).thenReturn(Optional.of(invoice));
+        when(invoiceRepo.findByIdAndFirmId(invoiceId, 1L)).thenReturn(Optional.of(invoice));
         when(salesReturnRepo.save(any(SalesReturn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SalesReturnRequest request = SalesReturnRequest.builder()

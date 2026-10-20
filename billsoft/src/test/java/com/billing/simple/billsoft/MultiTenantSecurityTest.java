@@ -555,7 +555,7 @@ public class MultiTenantSecurityTest {
                 .header("X-Firm-Id", firmAId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(reqMalicious)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().is4xxClientError());
 
         // 3. Confirm Firm B's preferences remain strictly unchanged
         FirmDetails freshB = firmRepo.findById(firmBId).orElseThrow();

@@ -52,6 +52,13 @@ public class PartyServiceImpl implements PartyService {
         Party existing = partyRepository.findByIdAndFirmId(id, updated.getFirmId())
                 .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + id));
 
+        if (updated.getVersion() != null) {
+            if (!updated.getVersion().equals(existing.getVersion())) {
+                throw new org.springframework.orm.ObjectOptimisticLockingFailureException(Party.class, id);
+            }
+            existing.setVersion(updated.getVersion());
+        }
+
         existing.setName(updated.getName());
         existing.setContactPerson(updated.getContactPerson());
         existing.setPhone(updated.getPhone());

@@ -23,6 +23,10 @@ public class Party {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long version;
+
     @Column(nullable = false)
     private Long firmId;
 
@@ -163,6 +167,7 @@ public class Party {
 
     public static class PartyBuilder {
         private Long id;
+        private Long version;
         private Long firmId;
         private String name;
         private String contactPerson;
@@ -185,6 +190,7 @@ public class Party {
         private LocalDateTime updatedAt;
 
         public PartyBuilder id(Long id) { this.id = id; return this; }
+        public PartyBuilder version(Long version) { this.version = version; return this; }
         public PartyBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
         public PartyBuilder name(String name) { this.name = name; return this; }
         public PartyBuilder contactPerson(String contactPerson) { this.contactPerson = contactPerson; return this; }
@@ -209,6 +215,7 @@ public class Party {
         public Party build() {
             Party p = new Party();
             p.id = this.id;
+            p.version = this.version;
             p.firmId = this.firmId;
             p.name = this.name;
             p.contactPerson = this.contactPerson;

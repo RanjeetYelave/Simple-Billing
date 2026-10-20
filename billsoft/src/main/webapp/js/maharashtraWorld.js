@@ -1931,6 +1931,7 @@
   }
 
   const SHOWN_UNLOCKS_KEY = 'TAKE_A_BREAK_SHOWN_LOCATION_UNLOCKS';
+  const LAST_PRESENTED_LOC_KEY = 'TAKE_A_BREAK_LAST_PRESENTED_LOC';
 
   function getAcknowledgedLocationUnlocks() {
     try {
@@ -1946,7 +1947,7 @@
 
   function markLocationUnlockAcknowledged(unlockKey) {
     try {
-      if (typeof localStorage === 'undefined') return;
+      if (typeof localStorage === 'undefined' || !unlockKey) return;
       const set = getAcknowledgedLocationUnlocks();
       set.add(unlockKey);
       localStorage.setItem(SHOWN_UNLOCKS_KEY, JSON.stringify(Array.from(set)));
@@ -1954,8 +1955,26 @@
   }
 
   function isLocationUnlockAcknowledged(unlockKey) {
+    if (!unlockKey) return true;
     const set = getAcknowledgedLocationUnlocks();
     return set.has(unlockKey);
+  }
+
+  function getLastPresentedLocationId() {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        return localStorage.getItem(LAST_PRESENTED_LOC_KEY);
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function setLastPresentedLocationId(locId) {
+    try {
+      if (typeof localStorage !== 'undefined' && locId) {
+        localStorage.setItem(LAST_PRESENTED_LOC_KEY, String(locId));
+      }
+    } catch (e) {}
   }
 
   /**
@@ -1969,11 +1988,17 @@
     }
 
     const unlockKey = `LOC_UNLOCK_LVL_${lvl}`;
-    markLocationUnlockAcknowledged(unlockKey);
+    if (isLocationUnlockAcknowledged(unlockKey)) {
+      return false;
+    }
 
     const fromWorld = getWorldForLevel(gameType, lvl);
     const toWorld = getWorldForLevel(gameType, lvl + 1);
     if (fromWorld && toWorld && fromWorld.location && toWorld.location) {
+      markLocationUnlockAcknowledged(unlockKey);
+      if (toWorld.location.id) {
+        setLastPresentedLocationId(toWorld.location.id);
+      }
       try {
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('billsoft:location-unlocked', {
@@ -2261,6 +2286,10 @@
     getAcknowledgedLocationUnlocks,
     markLocationUnlockAcknowledged,
     isLocationUnlockAcknowledged,
+    getLastPresentedLocationId,
+    setLastPresentedLocationId,
+    LAST_PRESENTED_LOC_KEY,
+    SHOWN_UNLOCKS_KEY,
     checkAndTriggerLocationUnlock
   };
 }));

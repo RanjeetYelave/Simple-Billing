@@ -1149,7 +1149,7 @@
       </div>
 
       <!-- ====================================================================
-           VIEW 06: EMERGENCY (Moved Dangerous Controls Here)
+           VIEW 06: EMERGENCY (Security & Password Reset Controls)
            ==================================================================== -->
       <div id="view-emergency" class="view-pane">
         <div class="section-title">
@@ -1157,16 +1157,27 @@
           <span class="badge-danger">ADMINISTRATIVE CLEARANCE ONLY</span>
         </div>
 
+        <!-- 1. Real Application Password Reset -->
         <div class="danger-box">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <strong style="color:#f87171; font-size:13px; text-transform:uppercase;">Emergency Password Reset</strong>
-            <span class="badge-danger">CRITICAL ACCESS</span>
+            <strong style="color:#f87171; font-size:13px; text-transform:uppercase;">Set New Application / Master Password</strong>
+            <span class="badge-danger">MASTER CREDENTIALS</span>
           </div>
           <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:16px;">
-            Use this operation if administrators are locked out of the RupeeCRM business application.<br>
-            Executing this resets the internal configuration flag <code style="color:var(--accent-cyan);">auth_enabled = false</code> in the database.
-            Users will be able to access the business application without entering a password.
+            Sets a new application-wide password / Master PIN in the database (<code style="color:var(--accent-cyan);">app_config.global_password</code>) and ensures <code style="color:var(--accent-cyan);">auth_enabled = true</code>.<br>
+            All existing active session tokens will be immediately invalidated, requiring all users to authenticate with the new credentials.
           </p>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:480px; margin-bottom:12px;">
+            <div>
+              <label class="gate-label" for="newAppPassword">New Password / PIN:</label>
+              <input type="password" id="newAppPassword" class="gate-input" placeholder="••••••••" autocomplete="new-password" oninput="validatePasswordResetBtn()">
+            </div>
+            <div>
+              <label class="gate-label" for="confirmAppPassword">Confirm New Password:</label>
+              <input type="password" id="confirmAppPassword" class="gate-input" placeholder="••••••••" autocomplete="new-password" oninput="validatePasswordResetBtn()">
+            </div>
+          </div>
 
           <div style="margin-bottom:14px; max-width:320px;">
             <label class="gate-label" for="resetPasswordConfirm">Type CONFIRM to execute reset:</label>
@@ -1174,10 +1185,44 @@
           </div>
 
           <button id="resetPasswordBtn" class="ctrl-btn ctrl-btn-danger" onclick="executePasswordReset()" disabled>
-            [ RESET ADMINISTRATOR ACCESS (auth_enabled = false) ]
+            [ SET NEW APPLICATION PASSWORD ]
           </button>
         </div>
 
+        <!-- 2. Local Feature Lock PIN Reset -->
+        <div class="panel">
+          <div class="panel-header">
+            <span>Reset Local Feature Lock PIN (Protected Modules)</span>
+            <span class="badge-warning">CLIENT STORAGE</span>
+          </div>
+          <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:14px;">
+            Clears the browser-local Feature Lock PIN stored in this browser's local storage (<code style="color:var(--accent-cyan);">billsoft_feature_lock_v1</code>).<br>
+            Protected modules (HR, Planner, Invoices, Firm Profile) will no longer prompt for a feature PIN on this machine. This does not modify server-side master credentials.
+          </p>
+          <button class="ctrl-btn" style="border-color:#eab308; color:#fde047;" onclick="resetLocalFeatureLockPin()">
+            [ RESET LOCAL FEATURE LOCK PIN ]
+          </button>
+        </div>
+
+        <!-- 3. Emergency Authentication Disable -->
+        <div class="panel">
+          <div class="panel-header">
+            <span>Emergency Authentication Disable (auth_enabled = false)</span>
+            <span class="badge-danger">SAFETY BYPASS</span>
+          </div>
+          <p style="color:var(--text-secondary); font-size:12px; line-height:1.5; margin-bottom:14px;">
+            Disables application-wide lock screen (<code style="color:var(--accent-cyan);">auth_enabled = false</code>). Anyone on the local network can open the application without entering a password.
+          </p>
+          <div style="margin-bottom:12px; max-width:320px;">
+            <label class="gate-label" for="disableAuthConfirm">Type CONFIRM to disable authentication:</label>
+            <input type="text" id="disableAuthConfirm" class="gate-input" placeholder="CONFIRM" autocomplete="off" oninput="validateDisableAuthBtn()">
+          </div>
+          <button id="disableAuthBtn" class="ctrl-btn ctrl-btn-danger" onclick="executeDisableAuth()" disabled>
+            [ DISABLE APPLICATION AUTHENTICATION ]
+          </button>
+        </div>
+
+        <!-- 4. Controlled Application Restart -->
         <div class="panel">
           <div class="panel-header">
             <span>Controlled Application Restart</span>
@@ -1289,6 +1334,7 @@
        ======================================================================== -->
   <script>
     let currentNav = 'overview';
+    let liveLogEventSource = null;
     let logPollInterval = null;
     let healthPollInterval = null;
     let autoScrollEnabled = true;
@@ -1369,7 +1415,7 @@
     function showAccessGate() {
       document.getElementById('accessGate').style.display = 'flex';
       document.getElementById('consoleApp').style.display = 'none';
-      if (logPollInterval) clearInterval(logPollInterval);
+      disconnectLiveLogsSSE();
       if (healthPollInterval) clearInterval(healthPollInterval);
     }
 
@@ -1398,25 +1444,20 @@
       if (items[navMap[navId]]) items[navMap[navId]].classList.add('active');
 
       if (navId === 'live-console') {
-        pollLiveLogs();
-      } else if (navId === 'backups') {
-        scanBackups();
-      } else if (navId === 'restore') {
-        prepareRestoreOptions();
+        connectLiveLogsSSE();
+      } else {
+        disconnectLiveLogsSSE();
+        if (navId === 'backups') {
+          scanBackups();
+        } else if (navId === 'restore') {
+          prepareRestoreOptions();
+        }
       }
     }
 
     // 3. Periodic Polls
     function startPeriodicPolls() {
-      if (logPollInterval) clearInterval(logPollInterval);
       if (healthPollInterval) clearInterval(healthPollInterval);
-
-      // Incremental live log poll every 2s
-      logPollInterval = setInterval(() => {
-        if (currentNav === 'live-console') {
-          pollLiveLogs();
-        }
-      }, 2000);
 
       // System health poll every 8s
       healthPollInterval = setInterval(() => {
@@ -1428,7 +1469,7 @@
       await fetchHealthData();
       await scanBackups();
       await fetchDiagnosticSettings();
-      if (currentNav === 'live-console') pollLiveLogs();
+      if (currentNav === 'live-console') connectLiveLogsSSE();
     }
 
     function refreshCurrentView() {
@@ -1701,37 +1742,61 @@
     }
 
     // 6. Live Log Streaming
-    async function pollLiveLogs() {
-      if (currentNav !== 'live-console') return;
-      try {
-        const resp = await fetch(`/api/recovery/logs/live?sinceSeq=${lastLogSeq}&lines=100`);
-        if (!resp.ok) {
-          if (resp.status === 401) {
-            showAccessGate();
-            return;
-          }
-          logPollFailures++;
-          updateLiveConnBadge(logPollFailures > 3 ? 'OFFLINE' : 'RECONNECTING');
-          return;
-        }
-        logPollFailures = 0;
+    function connectLiveLogsSSE() {
+      if (liveLogEventSource) return;
+      updateLiveConnBadge('CONNECTING');
+
+      const url = `/api/recovery/logs/stream?sinceSeq=${lastLogSeq}`;
+      const es = new EventSource(url);
+      liveLogEventSource = es;
+
+      es.onopen = function() {
         updateLiveConnBadge('STREAMING');
-        const data = await resp.json();
-        if (data.nextSeq != null) {
-          lastLogSeq = data.nextSeq;
-        }
-        if (Array.isArray(data.lines) && data.lines.length > 0) {
-          if (data.resyncRequired) {
-            const win = document.getElementById('terminalLogWindow');
-            if (win) {
-              win.innerHTML = '<span class="terminal-line log-warn">[Diagnostic stream resynchronized with server sequence]</span>';
-            }
+      };
+
+      es.addEventListener('log', function(e) {
+        try {
+          const entry = JSON.parse(e.data);
+          if (entry && entry.seq != null) {
+            lastLogSeq = entry.seq;
           }
-          appendLiveLogs(data.lines);
+          if (entry && entry.formatted) {
+            appendLiveLogs([entry.formatted]);
+          } else if (typeof entry === 'string') {
+            appendLiveLogs([entry]);
+          }
+        } catch (err) {
+          if (e && e.data) {
+            appendLiveLogs([e.data]);
+          }
         }
-      } catch (err) {
-        logPollFailures++;
-        updateLiveConnBadge(logPollFailures > 3 ? 'OFFLINE' : 'RECONNECTING');
+      });
+
+      es.addEventListener('resync', function(e) {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.nextSeq != null) {
+            lastLogSeq = data.nextSeq;
+          }
+          const win = document.getElementById('terminalLogWindow');
+          if (win) {
+            win.innerHTML = '<span class="terminal-line log-warn">[Diagnostic stream resynchronized with server sequence]</span>';
+          }
+        } catch (err) {
+          console.error('Failed to parse resync event:', err);
+        }
+      });
+
+      es.onerror = function() {
+        updateLiveConnBadge('RECONNECTING');
+      };
+    }
+
+    function disconnectLiveLogsSSE() {
+      if (liveLogEventSource) {
+        liveLogEventSource.close();
+        liveLogEventSource = null;
+        updateLiveConnBadge('DISCONNECTED');
       }
     }
 
@@ -2053,29 +2118,88 @@
 
     // 10. Emergency Actions
     function validatePasswordResetBtn() {
-      const input = document.getElementById('resetPasswordConfirm');
+      const p1 = (document.getElementById('newAppPassword')?.value || '').trim();
+      const p2 = (document.getElementById('confirmAppPassword')?.value || '').trim();
+      const confirmInput = (document.getElementById('resetPasswordConfirm')?.value || '').trim();
       const btn = document.getElementById('resetPasswordBtn');
-      btn.disabled = (input.value || '').trim() !== 'CONFIRM';
+      if (btn) {
+        btn.disabled = !p1 || p1 !== p2 || confirmInput !== 'CONFIRM';
+      }
     }
 
     async function executePasswordReset() {
-      showConfirmModal('RESET APPLICATION PASSWORDS', 'This will set auth_enabled = false in the database, allowing any user to login without a password. Proceed?', async () => {
+      const newPass = (document.getElementById('newAppPassword')?.value || '').trim();
+      const confirmPass = (document.getElementById('confirmAppPassword')?.value || '').trim();
+      if (!newPass) {
+        alert('Please enter a new password.');
+        return;
+      }
+      if (newPass !== confirmPass) {
+        alert('Passwords do not match.');
+        return;
+      }
+
+      showConfirmModal('SET NEW APPLICATION PASSWORD', 'This will update the master application password (global_password) in the database and invalidate all active user sessions. Proceed?', async () => {
         try {
           const resp = await apiFetch('/api/recovery/auth/reset-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmation: 'CONFIRM' })
+            body: JSON.stringify({ newPassword: newPass, confirmation: 'CONFIRM' })
           });
           const data = await resp.json();
           if (resp.ok && data.success) {
-            alert('Success: Application authentication disabled (auth_enabled = false).');
-            document.getElementById('resetPasswordConfirm').value = '';
+            alert('Success: Application password has been reset successfully. All active sessions have been invalidated.');
+            if (document.getElementById('newAppPassword')) document.getElementById('newAppPassword').value = '';
+            if (document.getElementById('confirmAppPassword')) document.getElementById('confirmAppPassword').value = '';
+            if (document.getElementById('resetPasswordConfirm')) document.getElementById('resetPasswordConfirm').value = '';
             validatePasswordResetBtn();
           } else {
             alert('Password reset failed: ' + (data.message || 'Unknown error'));
           }
         } catch (err) {
-          alert('Error during password reset.');
+          alert('Error during password reset: ' + (err.message || 'Network error'));
+        }
+      });
+    }
+
+    function resetLocalFeatureLockPin() {
+      try {
+        localStorage.removeItem('billsoft_feature_lock_v1');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('billsoft:feature-lock-changed', { detail: { enabled: false, pin: '' } }));
+        }
+        alert('Local Feature Lock PIN has been cleared on this browser.\nProtected modules will no longer require a PIN on this device.');
+      } catch (err) {
+        alert('Failed to clear local storage: ' + (err.message || 'Storage access error'));
+      }
+    }
+
+    function validateDisableAuthBtn() {
+      const input = document.getElementById('disableAuthConfirm');
+      const btn = document.getElementById('disableAuthBtn');
+      if (btn) {
+        btn.disabled = (input?.value || '').trim() !== 'CONFIRM';
+      }
+    }
+
+    async function executeDisableAuth() {
+      showConfirmModal('DISABLE APPLICATION AUTHENTICATION', 'This will set auth_enabled = false in the database, allowing any user to open the application without a password. Proceed?', async () => {
+        try {
+          const resp = await apiFetch('/api/recovery/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ disableAuth: 'true', confirmation: 'CONFIRM' })
+          });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            alert('Success: Application authentication disabled (auth_enabled = false).');
+            if (document.getElementById('disableAuthConfirm')) document.getElementById('disableAuthConfirm').value = '';
+            validateDisableAuthBtn();
+          } else {
+            alert('Operation failed: ' + (data.message || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error: ' + (err.message || 'Network error'));
         }
       });
     }
@@ -2218,8 +2342,15 @@
       pendingConfirmAction = action;
       const actBtn = document.getElementById('confirmModalActionBtn');
       actBtn.onclick = async () => {
+        const actionToRun = pendingConfirmAction;
         closeConfirmModal();
-        if (pendingConfirmAction) await pendingConfirmAction();
+        if (actionToRun) {
+          try {
+            await actionToRun();
+          } catch (e) {
+            console.error('Confirm modal action failed:', e);
+          }
+        }
       };
       document.getElementById('confirmModal').style.display = 'flex';
     }

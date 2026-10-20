@@ -29,6 +29,12 @@ public class AuthController {
         this.firmDetailsRepo = firmDetailsRepo;
     }
 
+    public void invalidateToken(String token) {
+        if (token == null) return;
+        ACTIVE_SESSIONS.remove(token);
+        try { appConfigRepo.deleteById("session_" + token); } catch (Exception ignored) {}
+    }
+
     public boolean isValidSessionToken(String token) {
         if (token == null || token.isBlank()) return false;
         LocalDateTime expiry = ACTIVE_SESSIONS.get(token);
@@ -76,7 +82,7 @@ public class AuthController {
         return token;
     }
 
-    private void invalidateAllSessions() {
+    public void invalidateAllSessions() {
         ACTIVE_SESSIONS.clear();
         try {
             appConfigRepo.findAll().stream()
@@ -105,7 +111,7 @@ public class AuthController {
         } catch (Exception ignored) {}
     }
 
-    private boolean isAuthEnabled() {
+    public boolean isAuthEnabled() {
         return appConfigRepo.findById("auth_enabled")
                 .map(AppConfig::getConfigValue)
                 .map(Boolean::parseBoolean)
@@ -239,6 +245,8 @@ public class AuthController {
         config.setConfigValue(PasswordUtil.hashPassword(newPassword));
         appConfigRepo.save(config);
 
+        invalidateAllSessions();
+
         String token = createSessionToken();
 
         response.put("success", true);
@@ -278,6 +286,8 @@ public class AuthController {
         authConfig.setConfigValue("true");
         appConfigRepo.save(authConfig);
 
+        invalidateAllSessions();
+
         String token = createSessionToken();
 
         response.put("success", true);
@@ -286,7 +296,7 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    private boolean verifyMasterPassword(String input) {
+    public boolean verifyMasterPassword(String input) {
         if (input == null || input.trim().isEmpty()) {
             return false;
         }

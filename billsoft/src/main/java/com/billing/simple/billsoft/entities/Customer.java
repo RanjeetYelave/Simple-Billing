@@ -18,6 +18,10 @@ public class Customer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long version;
+
     @Column(nullable = false)
     private String name;
 
@@ -44,6 +48,9 @@ public class Customer {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

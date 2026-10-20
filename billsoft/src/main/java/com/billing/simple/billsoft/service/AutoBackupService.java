@@ -27,19 +27,28 @@ public class AutoBackupService {
 
     private final BackupService backupService;
     private final BackupValidationService backupValidationService;
+    private final BackupRecoveryCoordinator coordinator;
     private final ObjectMapper objectMapper;
     private final Map<String, Object> lastBackupStatus = new HashMap<>();
 
     @org.springframework.beans.factory.annotation.Value("${app.autobackup.startup-check.enabled:true}")
     private boolean startupCheckEnabled = true;
 
-    public AutoBackupService(BackupService backupService, BackupValidationService backupValidationService) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AutoBackupService(BackupService backupService,
+                             BackupValidationService backupValidationService,
+                             @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator) {
         this.backupService = backupService;
         this.backupValidationService = backupValidationService;
+        this.coordinator = coordinator != null ? coordinator : new BackupRecoveryCoordinator();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
         this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
+
+    public AutoBackupService(BackupService backupService, BackupValidationService backupValidationService) {
+        this(backupService, backupValidationService, new BackupRecoveryCoordinator());
     }
 
     /**
@@ -118,6 +127,12 @@ public class AutoBackupService {
      * Executes a complete system auto-backup with atomic write and old backup deletion.
      */
     public synchronized Map<String, Object> runAutoBackup() {
+        if (!coordinator.tryLock()) {
+            log.info("Automated backup skipped: System recovery, restore, or reset operation is currently in progress.");
+            lastBackupStatus.put("status", "SKIPPED_RECOVERY_IN_PROGRESS");
+            lastBackupStatus.put("message", "Automated backup skipped: System recovery, restore, or reset operation is in progress.");
+            return new HashMap<>(lastBackupStatus);
+        }
         File backupDir = getBackupDirectory();
         long startTime = System.currentTimeMillis();
         File tempFile = new File(backupDir, "autobackup_temp_" + startTime + ".json");
@@ -169,6 +184,8 @@ public class AutoBackupService {
             lastBackupStatus.put("lastError", e.getMessage());
             lastBackupStatus.put("lastErrorTime", System.currentTimeMillis());
             return new HashMap<>(lastBackupStatus);
+        } finally {
+            coordinator.unlock();
         }
     }
 

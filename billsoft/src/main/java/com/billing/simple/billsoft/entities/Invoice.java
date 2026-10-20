@@ -21,6 +21,8 @@ import lombok.*;
     @Index(name = "idx_invoices_firm_date_id", columnList = "firmId, invoiceDate DESC, id DESC"),
     @Index(name = "idx_invoices_firm_status", columnList = "firmId, status"),
     @Index(name = "idx_invoices_firm_customer", columnList = "firmId, customer_id")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uk_inv_firm_number", columnNames = {"firmId", "invoiceNumber"})
 })
 public class Invoice {
 
@@ -30,6 +32,10 @@ public class Invoice {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long version;
 
     // ------------------------
     // INVOICE / ESTIMATE NUMBERS
@@ -68,6 +74,47 @@ public class Invoice {
 
     @Column(precision = 15, scale = 2)
     private BigDecimal totalTax;
+
+    // GST Decomposition (AUDIT-032)
+    @Column(precision = 15, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal sgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal igstAmount;
+
+    @Column(length = 100)
+    private String placeOfSupply;
+
+    // Immutable Master Data Snapshots at Document Issuance (AUDIT-036)
+    @Column(length = 255)
+    private String firmNameSnapshot;
+
+    @Column(length = 50)
+    private String firmGstinSnapshot;
+
+    @Column(length = 1000)
+    private String firmAddressSnapshot;
+
+    @Column(length = 50)
+    private String firmPhoneSnapshot;
+
+    @Column(length = 100)
+    private String firmEmailSnapshot;
+
+    @Column(length = 255)
+    private String customerNameSnapshot;
+
+    @Column(length = 50)
+    private String customerGstinSnapshot;
+
+    @Column(length = 1000)
+    private String customerAddressSnapshot;
+
+    @Column(length = 50)
+    private String customerPhoneSnapshot;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal totalDiscount;
@@ -117,7 +164,14 @@ public class Invoice {
     @Column(precision = 15, scale = 2)
     private BigDecimal roundOff;
 
+    @Column(length = 500)
     private String tags;
+
+    // ------------------------
+    // PRICING MODEL CONTEXT
+    // ------------------------
+    @Column(name = "pricing_profile_id")
+    private Long pricingProfileId;
 
     // ------------------------
     // AUDIT FIELDS
@@ -164,6 +218,9 @@ public class Invoice {
     private void normalizeDecimals() {
         subtotalWithoutTax = safe(subtotalWithoutTax);
         totalTax = safe(totalTax);
+        cgstAmount = safe(cgstAmount);
+        sgstAmount = safe(sgstAmount);
+        igstAmount = safe(igstAmount);
         totalDiscount = safe(totalDiscount);
         totalAmount = safe(totalAmount);
         invoiceDiscountValue = safe(invoiceDiscountValue);
@@ -224,4 +281,11 @@ public class Invoice {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    @PostLoad
+    public void ensureVersionNotNull() {
+        if (version == null) {
+            version = 0L;
+        }
+    }
 }

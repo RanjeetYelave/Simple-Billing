@@ -69,6 +69,11 @@ public class OmnisearchQuickHelpController {
         return ResponseEntity.ok(quickHelpService.getExpenseSummary(range, category, from, to));
     }
 
+    @GetMapping("/aging")
+    public ResponseEntity<QuickHelpResponse<AgingSummaryDTO>> getAging() {
+        return ResponseEntity.ok(quickHelpService.getAgingSummary());
+    }
+
     @GetMapping("/inventory")
     public ResponseEntity<QuickHelpResponse<InventorySummaryDTO>> getInventory(
             @RequestParam(required = false) String query,

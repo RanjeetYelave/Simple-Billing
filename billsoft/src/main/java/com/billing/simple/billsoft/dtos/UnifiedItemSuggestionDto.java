@@ -14,6 +14,7 @@ public class UnifiedItemSuggestionDto {
     private String source; // "INVENTORY" or "SAVED_ITEM"
     private String name;
     private String sku;
+    private String barcode;
     private String unit;
     private BigDecimal price;
     private BigDecimal costPrice;

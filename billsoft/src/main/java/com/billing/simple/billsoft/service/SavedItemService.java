@@ -140,7 +140,7 @@ public class SavedItemService {
     }
 
     /**
-     * Unified autocomplete search combining Inventory Products and Unpromoted Saved Items.
+     * Unified autocomplete search querying active Inventory Products.
      */
     public List<UnifiedItemSuggestionDto> searchUnifiedItems(Long firmId, String query) {
         Long targetFirmId = resolveFirmId(firmId);
@@ -148,7 +148,7 @@ public class SavedItemService {
 
         List<UnifiedItemSuggestionDto> results = new ArrayList<>();
 
-        // 1. Fetch active Inventory Products
+        // Fetch active Inventory Products
         List<Product> products = productRepo.findByFirmId(targetFirmId);
         for (Product p : products) {
             if (Boolean.TRUE.equals(p.getIsArchived())) continue;
@@ -156,7 +156,9 @@ public class SavedItemService {
             boolean matches = q.isEmpty() ||
                     (p.getName() != null && p.getName().toLowerCase().contains(q)) ||
                     (p.getSku() != null && p.getSku().toLowerCase().contains(q)) ||
-                    (p.getCategory() != null && p.getCategory().toLowerCase().contains(q));
+                    (p.getBarcode() != null && p.getBarcode().toLowerCase().contains(q)) ||
+                    (p.getCategory() != null && p.getCategory().toLowerCase().contains(q)) ||
+                    (p.getHsnCode() != null && p.getHsnCode().toLowerCase().contains(q));
 
             if (matches) {
                 String badge;
@@ -164,7 +166,7 @@ public class SavedItemService {
                     badge = "Service";
                 } else {
                     BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
-                    badge = "Inventory · Stock: " + stock.stripTrailingZeros().toPlainString() + " " + (p.getUnit() != null ? p.getUnit() : "pcs");
+                    badge = "Stock: " + stock.stripTrailingZeros().toPlainString() + " " + (p.getUnit() != null ? p.getUnit() : "pcs");
                 }
 
                 results.add(UnifiedItemSuggestionDto.builder()
@@ -173,6 +175,7 @@ public class SavedItemService {
                         .source("INVENTORY")
                         .name(p.getName())
                         .sku(p.getSku())
+                        .barcode(p.getBarcode())
                         .unit(p.getUnit())
                         .price(p.getPrice())
                         .costPrice(p.getCostPrice())
@@ -188,19 +191,11 @@ public class SavedItemService {
                         .build());
             }
         }
-
-        // 2. Fetch active Saved Items that are NOT yet promoted to an active inventory product
         List<SavedItem> savedItems = savedItemRepo.findActiveUnpromotedByFirmId(targetFirmId);
         for (SavedItem s : savedItems) {
-            if (Boolean.TRUE.equals(s.getIsArchived())) continue;
-
-            // If already promoted/linked, do not display separate duplicate suggestion
-            if (s.getCanonicalProductId() != null) continue;
-
             boolean matches = q.isEmpty() ||
                     (s.getName() != null && s.getName().toLowerCase().contains(q)) ||
-                    (s.getCategory() != null && s.getCategory().toLowerCase().contains(q)) ||
-                    (s.getHsnCode() != null && s.getHsnCode().toLowerCase().contains(q));
+                    (s.getNormalizedName() != null && s.getNormalizedName().contains(q));
 
             if (matches) {
                 results.add(UnifiedItemSuggestionDto.builder()
@@ -210,30 +205,19 @@ public class SavedItemService {
                         .name(s.getName())
                         .unit(s.getUnit())
                         .price(s.getSellingPrice())
-                        .hsnCode(s.getHsnCode())
-                        .gstPercentage(s.getGstPercentage())
-                        .category(s.getCategory())
-                        .description(s.getDescription())
                         .usageCount(s.getUsageCount())
                         .badge("Saved Item · Not in Inventory")
                         .build());
             }
         }
 
-        // Sort: Inventory products matching query first, then frequent Saved Items
         results.sort((a, b) -> {
-            boolean aInv = "INVENTORY".equals(a.getSource());
-            boolean bInv = "INVENTORY".equals(b.getSource());
-            if (aInv && !bInv) return -1;
-            if (!aInv && bInv) return 1;
-            if (!aInv && !bInv) {
-                int uA = a.getUsageCount() != null ? a.getUsageCount() : 0;
-                int uB = b.getUsageCount() != null ? b.getUsageCount() : 0;
-                return Integer.compare(uB, uA);
+            int srcComp = String.valueOf(a.getSource()).compareTo(String.valueOf(b.getSource()));
+            if (srcComp != 0) {
+                return srcComp;
             }
             return String.valueOf(a.getName()).compareToIgnoreCase(String.valueOf(b.getName()));
         });
-
         return results;
     }
 

@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -407,7 +408,7 @@ public class DiagnosticRecoveryController {
         }
     }
 
-    // 9. Password Reset (Sets auth_enabled = false)
+    // 9. Password Reset (Sets new application password or disables auth)
     @PostMapping("/auth/reset-password")
     public ResponseEntity<?> resetPassword(HttpServletRequest request,
                                            @RequestBody Map<String, String> body) {
@@ -423,16 +424,39 @@ public class DiagnosticRecoveryController {
             return ResponseEntity.badRequest().body(err);
         }
 
-        boolean success = authService.resetPassword();
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("success", success);
-        if (success) {
-            resp.put("message", "Application authentication has been disabled (auth_enabled = false). You may now access the system without a password.");
-            return ResponseEntity.ok(resp);
+        String newPassword = body != null ? body.get("newPassword") : null;
+        boolean disableAuth = body != null && "true".equalsIgnoreCase(body.get("disableAuth"));
+
+        if (newPassword != null && !newPassword.trim().isEmpty()) {
+            boolean success = authService.resetApplicationPassword(newPassword.trim());
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("success", success);
+            if (success) {
+                resp.put("message", "Application/master password has been reset successfully. All active sessions have been invalidated.");
+                return ResponseEntity.ok(resp);
+            } else {
+                resp.put("code", "PASSWORD_RESET_FAILED");
+                resp.put("message", "Failed to update global password in database.");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
+            }
+        } else if (disableAuth || (body != null && !body.containsKey("newPassword"))) {
+            boolean success = authService.disableAuthentication();
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("success", success);
+            if (success) {
+                resp.put("message", "Application authentication has been disabled (auth_enabled = false). You may now access the system without a password.");
+                return ResponseEntity.ok(resp);
+            } else {
+                resp.put("code", "PASSWORD_RESET_FAILED");
+                resp.put("message", "Failed to update configuration key in database.");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
+            }
         } else {
-            resp.put("code", "PASSWORD_RESET_FAILED");
-            resp.put("message", "Failed to update configuration key in database.");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(resp);
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("code", "INVALID_INPUT");
+            err.put("message", "New password cannot be empty.");
+            return ResponseEntity.badRequest().body(err);
         }
     }
 
@@ -581,6 +605,21 @@ public class DiagnosticRecoveryController {
         resp.put("lineCount", ((List<?>) logData.get("lines")).size());
         resp.put("connectionState", "STREAMING");
         return ResponseEntity.ok(resp);
+    }
+
+    // 16b. Persistent Real-time Live Log Streaming (Server-Sent Events)
+    @GetMapping(value = "/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> streamLiveLogs(HttpServletRequest request,
+                                                     @RequestParam(value = "sinceSeq", defaultValue = "0") long sinceSeq) {
+        boolean authorized = isAuthorized(request);
+        boolean persistentConsoleActive = sessionService.isPersistentConsoleEnabled();
+
+        if (!authorized && !persistentConsoleActive) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        boolean sanitize = !authorized;
+        return ResponseEntity.ok(logService.subscribe(sinceSeq, sanitize));
     }
 
     // 17. Live Diagnostic Log Snapshot Download (On-demand text file, does not reset cursor)

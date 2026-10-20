@@ -69,6 +69,16 @@ public class InvoiceItem {
     @Column(precision = 15, scale = 2)
     private BigDecimal gstAmount;
 
+    // GST Decomposition (AUDIT-032)
+    @Column(precision = 15, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal sgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal igstAmount;
+
     @Column(precision = 15, scale = 2)
     private BigDecimal lineTotal;
 
@@ -100,6 +110,15 @@ public class InvoiceItem {
 
         if (gstAmount != null)
             gstAmount = gstAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (cgstAmount != null)
+            cgstAmount = cgstAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (sgstAmount != null)
+            sgstAmount = sgstAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (igstAmount != null)
+            igstAmount = igstAmount.setScale(2, RoundingMode.HALF_UP);
 
         if (lineTotal != null)
             lineTotal = lineTotal.setScale(2, RoundingMode.HALF_UP);

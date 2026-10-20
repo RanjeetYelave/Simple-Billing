@@ -8,15 +8,18 @@ const API = {
   // browser client work on any configured local port without a desktop shell.
   BASE_URL: window.location.origin,
 
-  // current firm ID from localStorage
+  // current firm ID strictly tab-isolated via sessionStorage
   get firmId() {
-    const id = localStorage.getItem('currentFirmId');
+    const id = sessionStorage.getItem('currentFirmId');
     return id ? parseInt(id, 10) : null;
   },
 
   set firmId(id) {
-    if (id) localStorage.setItem('currentFirmId', id);
-    else localStorage.removeItem('currentFirmId');
+    if (id) {
+      sessionStorage.setItem('currentFirmId', String(id));
+    } else {
+      sessionStorage.removeItem('currentFirmId');
+    }
   },
 
   get token() {
@@ -61,12 +64,13 @@ const API = {
     window.dispatchEvent(new CustomEvent('billsoft:request', { detail: { count: this.sessionRequestsCount, url } }));
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
+    const authHeader = this.token ? { 'X-Auth-Token': this.token, 'Authorization': 'Bearer ' + this.token } : {};
     const firmHeader = this.firmId ? { 'X-Firm-Id': String(this.firmId) } : {};
     const pinHeader = (this.employeePin && url.includes('/api/employees')) ? { 'X-Employee-Pin': this.employeePin } : {};
 
     const config = {
       ...options,
-      headers: { ...defaultHeaders, ...firmHeader, ...pinHeader, ...options.headers },
+      headers: { ...defaultHeaders, ...authHeader, ...firmHeader, ...pinHeader, ...options.headers },
     };
 
     if (config.body && typeof config.body === 'object' && !isFormData && !(config.body instanceof Blob)) {
@@ -89,6 +93,9 @@ const API = {
       }
       const err = new Error(errorMsg);
       err.status = response.status;
+      if (response.status === 401 && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('billsoft:unauthorized'));
+      }
       throw err;
     }
     return response;
@@ -219,7 +226,17 @@ const API = {
     })),
     getVendorHistory: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders/vendor-history'))),
     batchPdfUrl: (ids) => API._qs(API.BASE_URL + `/api/purchase-orders/batch/pdf`, { ids: Array.isArray(ids) ? ids.join(',') : ids }),
-    batchZipUrl: (ids) => API._qs(API.BASE_URL + `/api/purchase-orders/batch/zip`, { ids: Array.isArray(ids) ? ids.join(',') : ids })
+    batchZipUrl: (ids) => API._qs(API.BASE_URL + `/api/purchase-orders/batch/zip`, { ids: Array.isArray(ids) ? ids.join(',') : ids }),
+    downloadBatchPdf: async (ids) => {
+      const res = await API._request(API._qs('/api/purchase-orders/batch/pdf', { ids: Array.isArray(ids) ? ids.join(',') : ids }));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
+    downloadBatchZip: async (ids) => {
+      const res = await API._request(API._qs('/api/purchase-orders/batch/zip', { ids: Array.isArray(ids) ? ids.join(',') : ids }));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/zip' });
+    }
   },
 
   // ── Business Letters (Letter Pad) ──
@@ -251,13 +268,15 @@ const API = {
   // ── Products & Inventory ──
   products: {
     list: (params = {}, firmIdOverride) => {
-      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
-      const q = typeof params === 'object' && params !== null ? { ...params } : {};
-      if (fid) q.firmId = fid;
-      const qs = new URLSearchParams(q).toString();
-      const url = qs ? `/api/products?${qs}` : '/api/products';
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._json(url, { headers });
+      return API._ensureFirmReady().then(() => {
+        const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+        const q = typeof params === 'object' && params !== null ? { ...params } : {};
+        if (fid) q.firmId = fid;
+        const qs = new URLSearchParams(q).toString();
+        const url = qs ? `/api/products?${qs}` : '/api/products';
+        const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+        return API._json(url, { headers });
+      });
     },
     get: (id) => API._json(`/api/products/${id}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/products', {
@@ -267,10 +286,91 @@ const API = {
     update: (id, data) => API._json(`/api/products/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/products/${id}`, { method: 'DELETE' }),
     summary: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/summary'))),
-    categories: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/categories'))),
+    categories: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/categories'), { headers }));
+    },
+    listUnimported: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/unimported'))),
+    importToInventory: (id) => API._ensureFirmReady().then(() => API._json(`/api/products/${id}/import-to-inventory`, { method: 'POST' })),
+    createBulk: (rows, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/bulk', { firmId: fid }), {
+        method: 'POST',
+        headers,
+        body: rows
+      }));
+    },
+    updateBulk: (rows, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/bulk', { firmId: fid }), {
+        method: 'PUT',
+        headers,
+        body: rows
+      }));
+    },
+    getEffectivePrices: (profileId, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/effective-prices', { profileId, firmId: fid }), { headers }));
+    },
     adjustStock: (id, data) => API._json(`/api/products/${id}/adjust-stock`, { method: 'POST', body: data }),
     movements: (id, params = {}) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/movements`, params))),
     allMovements: (params = {}) => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/movements', params))),
+  },
+
+  // ── Pricing Profiles & Category Rules ──
+  pricingProfiles: {
+    list: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/pricing-profiles', { firmId: fid }), { headers }));
+    },
+    create: (data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/pricing-profiles', { firmId: fid }), {
+        method: 'POST',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      }));
+    },
+    update: (id, data, firmIdOverride) => {
+      const fid = firmIdOverride || (data && data.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs(`/api/pricing-profiles/${id}`, { firmId: fid }), {
+        method: 'PUT',
+        headers,
+        body: { ...(data || {}), firmId: fid }
+      }));
+    },
+    delete: (id, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._request(API._qs(`/api/pricing-profiles/${id}`, { firmId: fid }), {
+        method: 'DELETE',
+        headers
+      }));
+    }
+  },
+
+  categoryPricingRules: {
+    list: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/pricing-rules/categories', { firmId: fid }), { headers }));
+    },
+    save: (rules, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/pricing-rules/categories', { firmId: fid }), {
+        method: 'PUT',
+        headers,
+        body: rules
+      }));
+    }
   },
 
   // ── Invoices ──
@@ -342,6 +442,15 @@ const API = {
       });
     },
     getLinkedInvoice: (id) => API._json(`/api/invoices/${id}/linked-invoice`),
+    migrationPreview: (id, targetFirmId) => API._json(`/api/invoices/${id}/migration-preview?targetFirmId=${targetFirmId}`),
+    migrate: (id, data) => API._json(`/api/invoices/${id}/migrate`, {
+      method: 'POST',
+      body: data
+    }),
+    revertMigration: (id) => API._json(`/api/invoices/${id}/revert-migration`, {
+      method: 'POST'
+    }),
+    migrationHistory: (id) => API._json(`/api/invoices/${id}/migration-history`),
     nextInvoiceNumber: (firmIdOverride) => {
       const fid = firmIdOverride || API.firmId;
       const url = fid ? `/api/invoices/next-invoice-number?firmId=${fid}` : '/api/invoices/next-invoice-number';
@@ -662,34 +771,37 @@ const API = {
   // ── Statements ──
   statements: {
     customer: (id, from, to) => {
-      return API._json(API._qs(`/api/statements/customer/${id}`, { from, to }));
+      return API._ensureFirmReady().then(() => API._json(API._qs(`/api/statements/customer/${id}`, { from, to })));
     },
     customerPdfUrl: (id, from, to) => {
       return API._qs(`/api/statements/customer/${id}/pdf`, { from, to });
     },
     customerPdf: async (id, from, to) => {
+      await API._ensureFirmReady();
       const res = await API._request(API._qs(`/api/statements/customer/${id}/pdf`, { from, to }));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
     party: (id, from, to) => {
-      return API._json(API._qs(`/api/statements/party/${id}`, { from, to }));
+      return API._ensureFirmReady().then(() => API._json(API._qs(`/api/statements/party/${id}`, { from, to })));
     },
     partyPdfUrl: (id, from, to) => {
       return API._qs(`/api/statements/party/${id}/pdf`, { from, to });
     },
     partyPdf: async (id, from, to) => {
+      await API._ensureFirmReady();
       const res = await API._request(API._qs(`/api/statements/party/${id}/pdf`, { from, to }));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
     firm: (from, to, firmId) => {
-      return API._json(API._qs('/api/statements/firm', { firmId: firmId || API.firmId, from, to }));
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/firm', { firmId: firmId || API.firmId, from, to })));
     },
     firmPdfUrl: (from, to, firmId) => {
       return API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to });
     },
     firmPdf: async (from, to, firmId) => {
+      await API._ensureFirmReady();
       const res = await API._request(API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to }));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
@@ -799,8 +911,8 @@ const API = {
       }
       return res;
     },
-    getAll: () => API._json(API._qs('/api/employees')),
-    list: () => API._json(API._qs('/api/employees')),
+    getAll: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/employees'))),
+    list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/employees'))),
     create: (data) => API._json('/api/employees', { method: 'POST', body: data }),
     update: (id, data) => API._json(`/api/employees/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/employees/${id}`, { method: 'DELETE' }),
@@ -826,9 +938,12 @@ const API = {
       return res.blob();
     },
     // F10: Employee Analytics
-    analytics: () => API._json(API._qs('/api/employees/analytics')),
+    analytics: () => {
+      if (!API.employeePin) return Promise.resolve(null);
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/employees/analytics')));
+    },
     // F2: Bulk Salary Processing
-    bulkSalary: (data) => API._json('/api/employees/bulk-salary', { method: 'POST', body: data }),
+    bulkSalary: (data) => API._ensureFirmReady().then(() => API._json('/api/employees/bulk-salary', { method: 'POST', body: data })),
     // F1: Attendance
     attendance: {
       get: (id) => API._json(`/api/employees/${id}/attendance`),
@@ -933,7 +1048,8 @@ const API = {
     stockMovements: (query, period) => API._json(API._qs('/api/omnisearch/stock-movements', { query, period })),
     ledger: (entityType, name, id) => API._json(API._qs('/api/omnisearch/ledger', { entityType, name, id })),
     aggregate: () => API._json(API._qs('/api/omnisearch/aggregate')),
-    search: (query) => API._json(API._qs('/api/omnisearch/search', { query }))
+    search: (query) => API._json(API._qs('/api/omnisearch/search', { query })),
+    aging: () => API._json(API._qs('/api/omnisearch/aging'))
   },
 
   // ─── Licensing & Expiry Snooze ───
@@ -991,6 +1107,19 @@ const API = {
     dismiss: (payload) => API._json(API._qs('/api/items/duplicates/dismiss'), { method: 'POST', body: payload }),
     merge: (payload) => API._json(API._qs('/api/items/merge'), { method: 'POST', body: payload }),
     batchMerge: (payload) => API._json(API._qs('/api/items/merge/batch'), { method: 'POST', body: payload })
+  },
+
+  // ─── Product Insights, Demand Forecasting & Smart Restocking ───
+  forecast: {
+    getInsights: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/insights`)),
+    getTrends: (productId, range = '90d') => API._json(API._qs(`/api/forecast/products/${productId}/trends`, { range })),
+    getTrajectory: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/trajectory`)),
+    getRestock: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/restock`)),
+    getRestockExplanation: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/restock/explanation`)),
+    getConfig: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/config`)),
+    updateConfig: (productId, payload) => API._json(API._qs(`/api/forecast/products/${productId}/config`), { method: 'PUT', body: payload }),
+    getRecommendations: (params = {}) => API._json(API._qs('/api/forecast/restock/recommendations', params)),
+    adminSync: () => API._json(API._qs('/api/forecast/admin/sync'), { method: 'POST' })
   }
 };
 

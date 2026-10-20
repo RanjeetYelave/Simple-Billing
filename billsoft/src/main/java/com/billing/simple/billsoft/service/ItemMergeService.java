@@ -1,9 +1,11 @@
 package com.billing.simple.billsoft.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,14 @@ public class ItemMergeService {
     private final ItemMergeAuditRepository mergeAuditRepo;
     private final ObjectMapper objectMapper;
 
+    private com.billing.simple.billsoft.forecast.repository.ForecastSalesTransactionRepository forecastTransactionRepo;
+    private com.billing.simple.billsoft.forecast.repository.ProductSalesMetricsRepository metricsRepo;
+    private com.billing.simple.billsoft.forecast.repository.ProductDemandForecastRepository forecastRepo;
+    private com.billing.simple.billsoft.forecast.repository.ProductRestockRecommendationRepository restockRepo;
+    private com.billing.simple.billsoft.forecast.service.ForecastAggregationService forecastAggregationService;
+    private com.billing.simple.billsoft.forecast.service.ForecastEngineService forecastEngineService;
+    private com.billing.simple.billsoft.forecast.service.RestockAdvisoryService restockAdvisoryService;
+
     public ItemMergeService(ProductRepository productRepo,
                             SavedItemRepository savedItemRepo,
                             StockMovementRepository stockMovementRepo,
@@ -39,6 +49,45 @@ public class ItemMergeService {
         this.stockMovementRepo = stockMovementRepo;
         this.mergeAuditRepo = mergeAuditRepo;
         this.objectMapper = new ObjectMapper();
+    }
+
+    @Autowired
+    public ItemMergeService(ProductRepository productRepo,
+                            SavedItemRepository savedItemRepo,
+                            StockMovementRepository stockMovementRepo,
+                            ItemMergeAuditRepository mergeAuditRepo,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.repository.ForecastSalesTransactionRepository forecastTransactionRepo,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.repository.ProductSalesMetricsRepository metricsRepo,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.repository.ProductDemandForecastRepository forecastRepo,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.repository.ProductRestockRecommendationRepository restockRepo,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.service.ForecastAggregationService forecastAggregationService,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.service.ForecastEngineService forecastEngineService,
+                            @Autowired(required = false) com.billing.simple.billsoft.forecast.service.RestockAdvisoryService restockAdvisoryService) {
+        this(productRepo, savedItemRepo, stockMovementRepo, mergeAuditRepo);
+        this.forecastTransactionRepo = forecastTransactionRepo;
+        this.metricsRepo = metricsRepo;
+        this.forecastRepo = forecastRepo;
+        this.restockRepo = restockRepo;
+        this.forecastAggregationService = forecastAggregationService;
+        this.forecastEngineService = forecastEngineService;
+        this.restockAdvisoryService = restockAdvisoryService;
+    }
+
+    public Long resolveCanonicalProductId(Long firmId, Long productId) {
+        if (productId == null || firmId == null) return productId;
+        Long curr = productId;
+        Set<Long> visited = new HashSet<>();
+        while (curr != null && visited.add(curr)) {
+            Optional<Product> pOpt = productRepo.findByIdAndFirmId(curr, firmId);
+            if (pOpt.isEmpty()) break;
+            Product p = pOpt.get();
+            if (p.getCanonicalProductId() != null && !p.getCanonicalProductId().equals(curr)) {
+                curr = p.getCanonicalProductId();
+            } else {
+                return curr;
+            }
+        }
+        return curr;
     }
 
     private Long resolveFirmId(Long explicitFirmId) {
@@ -88,14 +137,52 @@ public class ItemMergeService {
      * Product <- Product Merge
      */
     private Map<String, Object> mergeProductToProduct(Long firmId, MergeRequestDto req) {
-        Product primary = productRepo.findByIdAndFirmId(req.getPrimaryId(), firmId)
-                .orElseThrow(() -> new IllegalArgumentException("Primary product not found: " + req.getPrimaryId()));
-        Product secondary = productRepo.findByIdAndFirmId(req.getSecondaryId(), firmId)
-                .orElseThrow(() -> new IllegalArgumentException("Secondary product not found: " + req.getSecondaryId()));
+        Long primaryId = req.getPrimaryId();
+        Long secondaryId = req.getSecondaryId();
+        if (primaryId.equals(secondaryId)) {
+            throw new IllegalArgumentException("Cannot merge a product with itself");
+        }
+
+        // Concurrency protection: lock both products in deterministic ID order
+        Long firstLock = Math.min(primaryId, secondaryId);
+        Long secondLock = Math.max(primaryId, secondaryId);
+        productRepo.findByIdForUpdate(firstLock);
+        productRepo.findByIdForUpdate(secondLock);
+
+        Product primary = productRepo.findByIdAndFirmId(primaryId, firmId)
+                .orElseGet(() -> productRepo.findById(primaryId).orElse(null));
+        if (primary == null) {
+            throw new IllegalArgumentException("Primary product not found: " + primaryId);
+        }
+
+        Product secondary = productRepo.findByIdAndFirmId(secondaryId, firmId)
+                .orElseGet(() -> productRepo.findById(secondaryId).orElse(null));
+        if (secondary == null) {
+            throw new IllegalArgumentException("Secondary product not found: " + secondaryId);
+        }
 
         // Multi-tenant validation
         if (!firmId.equals(primary.getFirmId()) || !firmId.equals(secondary.getFirmId())) {
             throw new TenantSecurityException("Cross-firm product merge is strictly prohibited");
+        }
+
+        // Canonical cycle and already merged checks
+        Long canonicalRoot = resolveCanonicalProductId(firmId, primary.getId());
+        if (canonicalRoot != null && canonicalRoot.equals(secondary.getId())) {
+            throw new IllegalArgumentException("Cannot merge: canonical cycle detected between " + primaryId + " and " + secondaryId);
+        }
+        if (Boolean.TRUE.equals(secondary.getIsArchived()) && Objects.equals(secondary.getCanonicalProductId(), primary.getId())) {
+            // Already merged into primary idempotently
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("status", "SUCCESS");
+            resp.put("canonicalProductId", primary.getId());
+            resp.put("primaryName", primary.getName());
+            resp.put("newStock", primary.getStockQuantity());
+            resp.put("message", "Product is already merged into this primary product");
+            return resp;
+        }
+        if (Boolean.TRUE.equals(secondary.getIsArchived()) && secondary.getCanonicalProductId() != null) {
+            throw new IllegalArgumentException("Product " + secondaryId + " is already merged into product " + secondary.getCanonicalProductId());
         }
 
         BigDecimal stockA = primary.getStockQuantity() != null ? primary.getStockQuantity() : BigDecimal.ZERO;
@@ -185,12 +272,60 @@ public class ItemMergeService {
         secondary.setStockQuantity(BigDecimal.ZERO);
         productRepo.save(secondary);
 
+        // Transitive canonical link update for previously merged products
+        productRepo.updateCanonicalProductIdForMerged(firmId, secondary.getId(), primary.getId());
+
         // Redirect any SavedItems pointing to secondary to now point to primary
         List<SavedItem> pointingToSecondary = savedItemRepo.findByFirmIdAndIsArchivedFalse(firmId);
         for (SavedItem s : pointingToSecondary) {
             if (Objects.equals(s.getCanonicalProductId(), secondary.getId())) {
                 s.setCanonicalProductId(primary.getId());
                 savedItemRepo.save(s);
+            }
+        }
+
+        // Consolidate Forecast Sales Transactions & invalidate derived forecast entities
+        if (forecastTransactionRepo != null) {
+            List<com.billing.simple.billsoft.forecast.entity.ForecastSalesTransaction> secTxs =
+                    forecastTransactionRepo.findAllByFirmIdAndProductIdAndTransactionDateBetweenOrderByTransactionDateAsc(
+                            firmId, secondary.getId(), LocalDate.of(2000, 1, 1), LocalDate.of(2099, 12, 31));
+            Set<LocalDate> affectedDates = new HashSet<>();
+            for (com.billing.simple.billsoft.forecast.entity.ForecastSalesTransaction t : secTxs) {
+                if (t.getTransactionDate() != null) {
+                    affectedDates.add(t.getTransactionDate());
+                }
+            }
+
+            // Migrate secondary sales transactions to primary product
+            forecastTransactionRepo.migrateTransactionsToCanonical(firmId, primary.getId(), secondary.getId());
+
+            // Invalidate/delete secondary derived forecasting rows
+            if (metricsRepo != null) {
+                metricsRepo.deleteAllByFirmIdAndProductId(firmId, secondary.getId());
+            }
+            if (forecastRepo != null) {
+                forecastRepo.deleteAllByFirmIdAndProductId(firmId, secondary.getId());
+            }
+            if (restockRepo != null) {
+                restockRepo.deleteAllByFirmIdAndProductId(firmId, secondary.getId());
+            }
+
+            // Re-aggregate primary metrics for affected dates
+            if (forecastAggregationService != null) {
+                for (LocalDate date : affectedDates) {
+                    forecastAggregationService.aggregateProductDailyMetrics(firmId, primary.getId(), date);
+                }
+            }
+
+            // Invalidate & recompute primary forecast and restock recommendation
+            try {
+                if (forecastEngineService != null) {
+                    forecastEngineService.generateForecastForProduct(firmId, primary.getId());
+                }
+                if (restockAdvisoryService != null) {
+                    restockAdvisoryService.calculateRecommendation(firmId, primary.getId(), null);
+                }
+            } catch (Exception ignored) {
             }
         }
 

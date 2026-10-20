@@ -1124,24 +1124,12 @@
       }
     }, []);
 
-    // React to worldData location change across levels/destinations
+    // Keep prevLocationRef synchronized when worldData changes without firing spurious transitions
     useEffect(() => {
-      if (!worldData || !worldData.location) return;
-      const currentLoc = worldData.location;
-      if (!prevLocationRef.current) {
-        prevLocationRef.current = currentLoc;
-        return;
+      if (worldData && worldData.location) {
+        prevLocationRef.current = worldData.location;
       }
-      if (prevLocationRef.current.id !== currentLoc.id) {
-        const fromLoc = prevLocationRef.current;
-        prevLocationRef.current = currentLoc;
-        enqueueEvent('LOCATION', {
-          fromLoc,
-          toLoc: currentLoc,
-          worldData
-        });
-      }
-    }, [worldData, enqueueEvent]);
+    }, [worldData]);
 
     // Listen for Dedicated Location Unlock & Celebration Global Events
     useEffect(() => {
@@ -1183,6 +1171,16 @@
     }, [enqueueEvent]);
 
     const handleDismissActive = () => {
+      // If closing a location transition, ensure unlockKey and destination are acknowledged
+      if (activeEventRef.current && activeEventRef.current.type === 'LOCATION' && activeEventRef.current.payload) {
+        const payload = activeEventRef.current.payload;
+        if (payload.unlockKey && WorldEngine && typeof WorldEngine.markLocationUnlockAcknowledged === 'function') {
+          WorldEngine.markLocationUnlockAcknowledged(payload.unlockKey);
+        }
+        if (payload.toLoc && payload.toLoc.id && WorldEngine && typeof WorldEngine.setLastPresentedLocationId === 'function') {
+          WorldEngine.setLastPresentedLocationId(payload.toLoc.id);
+        }
+      }
       processNext();
     };
 

@@ -36,16 +36,18 @@ public class CustomerController {
 		if (request.getName() == null || request.getName().trim().isEmpty()) {
 			return ResponseEntity.badRequest().build();
 		}
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (request.getFirmId() != null && fid != null && !request.getFirmId().equals(fid)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm customer creation prohibited");
+		}
 		Customer customer = new Customer();
 		customer.setName(request.getName().trim());
 		customer.setPhone(request.getPhone());
 		customer.setEmail(request.getEmail());
 		customer.setAddress(request.getAddress());
 		customer.setGstin(request.getGstin());
-		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		customer.setFirmId(fid != null ? fid : request.getFirmId());
 		return ResponseEntity.ok(service.create(customer));
-
 	}
 
 	@GetMapping
@@ -63,6 +65,10 @@ public class CustomerController {
 
 	@PutMapping("/{id}")
 	public ResponseEntity<Customer> update(@PathVariable Long id, @RequestBody CustomerRequest request) {
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (request.getFirmId() != null && fid != null && !request.getFirmId().equals(fid)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm customer update prohibited");
+		}
 		Customer updated = service.update(id, request);
 		if (updated == null)
 			return ResponseEntity.notFound().build();

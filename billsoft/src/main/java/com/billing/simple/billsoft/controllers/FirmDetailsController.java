@@ -1,18 +1,14 @@
 package com.billing.simple.billsoft.controllers;
 
 import java.util.List;
+import java.util.Map;
 
+import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.billing.simple.billsoft.dtos.PrintPreferencesRequest;
 import com.billing.simple.billsoft.entities.FirmDetails;
@@ -24,9 +20,11 @@ import com.billing.simple.billsoft.service.FirmDetailsService;
 public class FirmDetailsController {
 
     private final FirmDetailsService service;
+    private final AuthController authController;
 
-    public FirmDetailsController(FirmDetailsService service) {
+    public FirmDetailsController(FirmDetailsService service, AuthController authController) {
         this.service = service;
+        this.authController = authController;
     }
 
     @GetMapping
@@ -36,6 +34,15 @@ public class FirmDetailsController {
 
     @PostMapping
     public ResponseEntity<FirmDetails> create(@RequestBody(required = false) FirmDetails details) {
+        // First-run bootstrap exception: zero firms exist in database
+        if (service.count() == 0) {
+            if (details != null) {
+                return ResponseEntity.ok(service.create(details));
+            }
+            return ResponseEntity.ok(service.create());
+        }
+
+        // Once firms exist, creating subsequent firms is supported for authenticated sessions
         if (details != null) {
             return ResponseEntity.ok(service.create(details));
         }
@@ -44,12 +51,20 @@ public class FirmDetailsController {
 
     @GetMapping("/{id}")
     public ResponseEntity<FirmDetails> get(@PathVariable Long id) {
+        Long currentFirmId = TenantContext.getCurrentFirmId();
+        if (currentFirmId != null && !currentFirmId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         FirmDetails f = service.get(id);
         return f == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(f);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<FirmDetails> update(@PathVariable Long id, @RequestBody FirmDetails details) {
+        Long currentFirmId = TenantContext.getCurrentFirmId();
+        if (currentFirmId != null && !currentFirmId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(service.update(id, details));
     }
 
@@ -60,16 +75,32 @@ public class FirmDetailsController {
         if (req == null) {
             return ResponseEntity.badRequest().build();
         }
-        Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long currentFirmId = TenantContext.getCurrentFirmId();
         if (currentFirmId != null && !currentFirmId.equals(id)) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm print preferences update prohibited");
+            throw new TenantSecurityException("Cross-firm print preferences update prohibited");
         }
         FirmDetails updated = service.updatePrintPreferences(id, req.getTheme(), req.getColor(), req.getFormat());
         return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<?> delete(@PathVariable Long id, HttpServletRequest request) {
+        Long currentFirmId = TenantContext.getCurrentFirmId();
+        if (currentFirmId != null && !currentFirmId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Cross-firm deletion prohibited"));
+        }
+        if (service.count() <= 1) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Cannot delete the only configured firm"));
+        }
+
+        String masterPassword = request.getHeader("X-Master-Password");
+        if (masterPassword == null || masterPassword.isBlank()) {
+            masterPassword = request.getParameter("masterPassword");
+        }
+        if (authController.isAuthEnabled() && !authController.verifyMasterPassword(masterPassword)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Firm deletion requires master password authorization"));
+        }
+
         service.delete(id);
         return ResponseEntity.noContent().build();
     }

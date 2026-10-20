@@ -23,6 +23,6 @@ public interface OmnisearchProductQueryRepository extends Repository<Product, Lo
     }
 
     @Query("SELECT p.id AS id, p.name AS name, p.stockQuantity AS stockQuantity, p.price AS price " +
-           "FROM Product p WHERE p.firmId = :firmId AND LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%'))")
+           "FROM Product p WHERE p.firmId = :firmId AND (p.isArchived = false OR p.isArchived IS NULL) AND LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<ProductCandidateProjection> searchCandidates(@Param("firmId") Long firmId, @Param("query") String query);
 }

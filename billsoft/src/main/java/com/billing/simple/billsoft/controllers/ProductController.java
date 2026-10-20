@@ -27,9 +27,35 @@ public class ProductController {
 		return ResponseEntity.ok(service.create(product));
 	}
 
+	@PostMapping("/bulk")
+	public ResponseEntity<List<Product>> createBulk(
+			@RequestBody List<com.billing.simple.billsoft.dtos.ProductBulkRowDto> rows,
+			@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.createBulk(rows, firmId));
+	}
+
+	@PutMapping("/bulk")
+	public ResponseEntity<com.billing.simple.billsoft.dtos.ProductBulkUpdateResponseDto> updateBulk(
+			@RequestBody com.fasterxml.jackson.databind.JsonNode body,
+			@RequestParam(required = false) Long firmId) {
+		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+		mapper.findAndRegisterModules();
+		java.util.List<com.billing.simple.billsoft.dtos.ProductBulkUpdateItemDto> rows;
+		if (body.isArray()) {
+			rows = mapper.convertValue(body, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<com.billing.simple.billsoft.dtos.ProductBulkUpdateItemDto>>() {});
+		} else if (body.has("updates") && body.get("updates").isArray()) {
+			rows = mapper.convertValue(body.get("updates"), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<com.billing.simple.billsoft.dtos.ProductBulkUpdateItemDto>>() {});
+		} else {
+			throw new IllegalArgumentException("Invalid bulk update payload: expected array or object with 'updates' array");
+		}
+		return ResponseEntity.ok(service.updateBulk(rows, firmId));
+	}
+
 	@GetMapping
 	public ResponseEntity<?> getAll(
 			@RequestParam(required = false) Long firmId,
+			@RequestParam(required = false) Boolean inInventory,
+			@RequestParam(required = false) Boolean all,
 			@RequestParam(required = false) String search,
 			@RequestParam(required = false) Integer page,
 			@RequestParam(required = false) Integer size) {
@@ -38,7 +64,27 @@ public class ProductController {
 					page != null ? page : 0, size != null ? size : 25, "name");
 			return ResponseEntity.ok(service.getPaginatedProducts(firmId, search, pageable));
 		}
-		return ResponseEntity.ok(service.getAll(firmId));
+		if (Boolean.TRUE.equals(all)) {
+			return ResponseEntity.ok(service.getAllProducts(firmId));
+		}
+		if (Boolean.FALSE.equals(inInventory)) {
+			return ResponseEntity.ok(service.getUnimportedProducts(firmId));
+		}
+		return ResponseEntity.ok(service.getAll(firmId, inInventory != null ? inInventory : true));
+	}
+
+	@GetMapping("/unimported")
+	public ResponseEntity<List<Product>> getUnimported(@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.getUnimportedProducts(firmId));
+	}
+
+	@PostMapping("/{id}/import-to-inventory")
+	public ResponseEntity<Product> importToInventory(@PathVariable Long id) {
+		Product imported = service.importToInventory(id);
+		if (imported == null) {
+			return ResponseEntity.notFound().build();
+		}
+		return ResponseEntity.ok(imported);
 	}
 
 	@GetMapping("/summary")

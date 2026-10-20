@@ -1,9 +1,11 @@
 package com.billing.simple.billsoft.recovery;
 
+import com.billing.simple.billsoft.controllers.AuthController;
 import com.billing.simple.billsoft.entities.AppConfig;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -24,13 +26,15 @@ public class DiagnosticAuthService {
     private static final String MASTER_KEY_HASH = "3680e811ded1a1831a688d594243e727a23d8bc801a9e2fa31279dba46b635ce";
 
     private final AppConfigRepository appConfigRepo;
+    private final AuthController authController;
 
     // Rate-limiting / brute force protection state
     private final AtomicInteger failedAttempts = new AtomicInteger(0);
     private volatile long lockUntilTimestamp = 0L;
 
-    public DiagnosticAuthService(AppConfigRepository appConfigRepo) {
+    public DiagnosticAuthService(AppConfigRepository appConfigRepo, @Lazy AuthController authController) {
         this.appConfigRepo = appConfigRepo;
+        this.authController = authController;
     }
 
     /**
@@ -90,20 +94,72 @@ public class DiagnosticAuthService {
     }
 
     /**
-     * Diagnostic password reset operation.
-     * Sets auth_enabled = false in app_config, preserving all other configuration.
+     * Resets the application/master password, hashes it using PasswordUtil, sets auth_enabled = true,
+     * and invalidates all active session tokens.
      */
-    public boolean resetPassword() {
+    public boolean resetApplicationPassword(String newPassword) {
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            return false;
+        }
         try {
-            AppConfig authConfig = appConfigRepo.findById("auth_enabled").orElse(new AppConfig("auth_enabled", "false"));
+            String hashed = com.billing.simple.billsoft.util.PasswordUtil.hashPassword(newPassword.trim());
+            AppConfig pwConfig = appConfigRepo.findById("global_password").orElse(new AppConfig());
+            pwConfig.setConfigKey("global_password");
+            pwConfig.setConfigValue(hashed);
+            appConfigRepo.save(pwConfig);
+
+            AppConfig authConfig = appConfigRepo.findById("auth_enabled").orElse(new AppConfig());
+            authConfig.setConfigKey("auth_enabled");
+            authConfig.setConfigValue("true");
+            appConfigRepo.save(authConfig);
+
+            invalidateSessionsSafely();
+            log.info("Diagnostic recovery reset global_password and set auth_enabled=true successfully.");
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to reset global_password in app_config: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Emergency authentication disable operation.
+     * Sets auth_enabled = false in app_config and invalidates active sessions.
+     */
+    public boolean disableAuthentication() {
+        try {
+            AppConfig authConfig = appConfigRepo.findById("auth_enabled").orElse(new AppConfig());
             authConfig.setConfigKey("auth_enabled");
             authConfig.setConfigValue("false");
             appConfigRepo.save(authConfig);
+
+            invalidateSessionsSafely();
             log.info("Diagnostic recovery reset auth_enabled to false successfully.");
             return true;
         } catch (Exception e) {
             log.error("Failed to reset auth_enabled in app_config: {}", e.getMessage(), e);
             return false;
+        }
+    }
+
+    /**
+     * Backward-compatible diagnostic reset operation (disables auth).
+     */
+    public boolean resetPassword() {
+        return disableAuthentication();
+    }
+
+    private void invalidateSessionsSafely() {
+        try {
+            if (authController != null) {
+                authController.invalidateAllSessions();
+            } else {
+                appConfigRepo.findAll().stream()
+                        .filter(c -> c.getConfigKey() != null && c.getConfigKey().startsWith("session_"))
+                        .forEach(appConfigRepo::delete);
+            }
+        } catch (Exception e) {
+            log.warn("Session invalidation encountered an error: {}", e.getMessage());
         }
     }
 

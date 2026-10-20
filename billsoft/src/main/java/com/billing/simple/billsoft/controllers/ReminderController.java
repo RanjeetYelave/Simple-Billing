@@ -19,7 +19,6 @@ public class ReminderController {
     public List<Reminder> listAll(@RequestParam(value = "firmId", required = false) Long firmId,
                                   @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId != null ? firmId : firmIdHeader;
         if (authoritativeFirmId != null) {
             return reminderService.getByFirm(authoritativeFirmId);
         }
@@ -28,11 +27,19 @@ public class ReminderController {
 
     @GetMapping("/firm/{firmId}")
     public List<Reminder> listByFirm(@PathVariable Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null || !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         return reminderService.getByFirm(firmId);
     }
 
     @GetMapping("/firm/{firmId}/active")
     public List<Reminder> listActiveByFirm(@PathVariable Long firmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null || !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         return reminderService.getActiveByFirm(firmId);
     }
 

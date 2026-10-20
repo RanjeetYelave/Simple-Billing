@@ -36,14 +36,29 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
         this.partyRepository = partyRepository;
     }
 
+    private Long resolveFirmId(Long explicitFirmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && explicitFirmId != null && !authoritativeFirmId.equals(explicitFirmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : explicitFirmId;
+        if (target == null || target <= 0) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
     @Override
     public BusinessLetter createLetter(BusinessLetter letter) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null) {
+            if (letter.getFirmId() != null && !authoritativeFirmId.equals(letter.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+            }
             letter.setFirmId(authoritativeFirmId);
         }
         if (letter.getFirmId() == null) {
-            throw new IllegalArgumentException("Firm ID is required");
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
         }
 
         // Validate recipient relationship if customer or party is linked
@@ -77,12 +92,9 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
 
     @Override
     public BusinessLetter updateLetter(Long id, BusinessLetter updated) {
-        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = updated.getFirmId();
+        Long targetFirmId = resolveFirmId(updated.getFirmId());
 
-        BusinessLetter existing = (authoritativeFirmId != null
-                ? letterRepository.findByIdAndFirmId(id, authoritativeFirmId)
-                : letterRepository.findById(id))
+        BusinessLetter existing = letterRepository.findByIdAndFirmId(id, targetFirmId)
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
 
         // Validate recipient relationship if customer or party is linked
@@ -178,17 +190,14 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
     @Override
     @Transactional(readOnly = true)
     public Optional<BusinessLetter> getLetterById(Long id, Long firmId) {
-        if (firmId != null) {
-            return letterRepository.findByIdAndFirmId(id, firmId);
-        }
-        return letterRepository.findById(id);
+        Long target = resolveFirmId(firmId);
+        return letterRepository.findByIdAndFirmId(id, target);
     }
 
     @Override
     public BusinessLetter updateStatus(Long id, Long firmId, LetterStatus status) {
-        BusinessLetter letter = (firmId != null
-                ? letterRepository.findByIdAndFirmId(id, firmId)
-                : letterRepository.findById(id))
+        Long target = resolveFirmId(firmId);
+        BusinessLetter letter = letterRepository.findByIdAndFirmId(id, target)
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
         letter.setStatus(status);
         return letterRepository.save(letter);
@@ -196,9 +205,8 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
 
     @Override
     public void deleteLetter(Long id, Long firmId) {
-        BusinessLetter letter = (firmId != null
-                ? letterRepository.findByIdAndFirmId(id, firmId)
-                : letterRepository.findById(id))
+        Long target = resolveFirmId(firmId);
+        BusinessLetter letter = letterRepository.findByIdAndFirmId(id, target)
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
         letterRepository.delete(letter);
     }
@@ -206,7 +214,8 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
     @Override
     @Transactional(readOnly = true)
     public String generateNextLetterNumber(Long firmId) {
-        long count = letterRepository.countByFirmId(firmId);
+        Long target = resolveFirmId(firmId);
+        long count = letterRepository.countByFirmId(target);
         int currentYear = LocalDate.now().getYear();
         return String.format("LTR-%d-%04d", currentYear, count + 1);
     }
@@ -214,9 +223,8 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
     @Override
     @Transactional(readOnly = true)
     public byte[] generateLetterPdf(Long id, Long firmId) throws Exception {
-        BusinessLetter letter = (firmId != null
-                ? letterRepository.findByIdAndFirmId(id, firmId)
-                : letterRepository.findById(id))
+        Long target = resolveFirmId(firmId);
+        BusinessLetter letter = letterRepository.findByIdAndFirmId(id, target)
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
         return pdfService.generatePdf(letter);
     }

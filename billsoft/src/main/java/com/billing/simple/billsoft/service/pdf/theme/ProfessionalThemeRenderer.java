@@ -156,16 +156,17 @@ public class ProfessionalThemeRenderer {
         }
 
         // Bill to inside right grid
-        Customer cust = invoice != null ? invoice.getCustomer() : null;
         rightCell.addElement(new Paragraph(" ", smallMuted));
         rightCell.addElement(new Paragraph("CUSTOMER (BILL TO):", new Font(Font.HELVETICA, 7.5f * scale, Font.BOLD, primary)));
-        String custName = cust != null && cust.getName() != null && !cust.getName().isBlank() ? cust.getName().toUpperCase() : "CASH CUSTOMER";
-        rightCell.addElement(new Paragraph(custName, boldText));
-        if (cust != null) {
-            if (cust.getAddress() != null && !cust.getAddress().isBlank()) rightCell.addElement(new Paragraph(cust.getAddress(), smallMuted));
-            if (cust.getPhone() != null && !cust.getPhone().isBlank()) rightCell.addElement(new Paragraph("Ph: " + cust.getPhone(), smallMuted));
-            if (cust.getGstin() != null && !cust.getGstin().isBlank()) rightCell.addElement(new Paragraph("GSTIN: " + cust.getGstin(), boldText));
-        }
+        String custName = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerName(invoice);
+        rightCell.addElement(new Paragraph(custName.toUpperCase(), boldText));
+
+        String custAddress = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerAddress(invoice);
+        if (custAddress != null && !custAddress.isBlank()) rightCell.addElement(new Paragraph(custAddress, smallMuted));
+        String custPhone = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerPhone(invoice);
+        if (custPhone != null && !custPhone.isBlank()) rightCell.addElement(new Paragraph("Ph: " + custPhone, smallMuted));
+        String custGstin = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerGstin(invoice);
+        if (custGstin != null && !custGstin.isBlank()) rightCell.addElement(new Paragraph("GSTIN: " + custGstin, boldText));
 
         infoGrid.addCell(rightCell);
         doc.add(infoGrid);

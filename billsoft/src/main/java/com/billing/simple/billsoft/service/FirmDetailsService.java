@@ -137,6 +137,10 @@ public class FirmDetailsService {
         repo.deleteById(id);
     }
 
+    public long count() {
+        return repo.count();
+    }
+
     private String nullIfBlank(String s) {
         if (s == null) return null;
         return s.trim().isEmpty() ? null : s.trim();

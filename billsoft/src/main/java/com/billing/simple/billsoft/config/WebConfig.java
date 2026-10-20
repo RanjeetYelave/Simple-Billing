@@ -11,9 +11,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
+    private final com.billing.simple.billsoft.security.EmployeeSecurityInterceptor employeeSecurityInterceptor;
 
-    public WebConfig(TenantInterceptor tenantInterceptor) {
+    public WebConfig(TenantInterceptor tenantInterceptor,
+                     com.billing.simple.billsoft.security.EmployeeSecurityInterceptor employeeSecurityInterceptor) {
         this.tenantInterceptor = tenantInterceptor;
+        this.employeeSecurityInterceptor = employeeSecurityInterceptor;
     }
 
     @Override
@@ -21,6 +24,10 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(tenantInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns("/api/recovery/**");
+
+        registry.addInterceptor(employeeSecurityInterceptor)
+                .addPathPatterns("/api/employees/**")
+                .excludePathPatterns("/api/employees/verify-pin", "/api/employees/change-pin");
     }
 
     @Override

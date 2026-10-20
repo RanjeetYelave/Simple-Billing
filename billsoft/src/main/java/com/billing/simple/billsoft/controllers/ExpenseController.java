@@ -25,22 +25,28 @@ public class ExpenseController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (page != null || size != null) {
             org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(
                     page != null ? page : 0, size != null ? size : 25, "expenseDate");
-            return ResponseEntity.ok(service.getPaginatedExpenses(authoritativeFirmId, from, to, pageable));
+            return ResponseEntity.ok(service.getPaginatedExpenses(target, from, to, pageable));
         }
-        return ResponseEntity.ok(service.getExpensesByFirm(authoritativeFirmId));
+        return ResponseEntity.ok(service.getExpensesByFirm(target));
     }
 
     @GetMapping("/firm/{firmId}")
     public List<Expense> listByFirmPath(@PathVariable Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && !authoritativeFirmId.equals(firmId)) {
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        if (!authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
         }
-        return service.getExpensesByFirm(authoritativeFirmId != null ? authoritativeFirmId : firmId);
+        return service.getExpensesByFirm(authoritativeFirmId);
     }
 
     @GetMapping("/{id}")
@@ -69,14 +75,20 @@ public class ExpenseController {
     @GetMapping("/summary")
     public Map<String, Object> summary(@RequestParam(required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
-        return service.getSummaryByFirm(authoritativeFirmId);
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        return service.getSummaryByFirm(target);
     }
 
     @GetMapping("/categories")
     public List<String> categories(@RequestParam(required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
-        return service.getCategoriesByFirm(authoritativeFirmId);
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        return service.getCategoriesByFirm(target);
     }
 }

@@ -36,6 +36,18 @@ public class StatementsController {
         this.firmRepo = firmRepo;
     }
 
+    private Long resolveAuthoritativeFirmId(Long clientFirmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
+        if (target == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<CustomerStatementResponse> customerStatement(
             @RequestParam(name = "firmId", required = false) Long firmId,
@@ -45,7 +57,8 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(statementService.getCustomerStatement(firmId, customerId, from, to));
+        Long effFirmId = resolveAuthoritativeFirmId(firmId);
+        return ResponseEntity.ok(statementService.getCustomerStatement(effFirmId, customerId, from, to));
     }
 
     @GetMapping("/customer/{customerId}/pdf")
@@ -57,9 +70,10 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        byte[] pdf = statementService.generateCustomerStatementPdf(firmId, customerId, from, to);
+        Long effFirmId = resolveAuthoritativeFirmId(firmId);
+        byte[] pdf = statementService.generateCustomerStatementPdf(effFirmId, customerId, from, to);
 
-        Customer cust = customerRepo.findById(customerId).orElse(null);
+        Customer cust = customerRepo.findByIdAndFirmId(customerId, effFirmId).orElse(null);
         String custName = (cust != null && cust.getName() != null && !cust.getName().trim().isEmpty())
                 ? cust.getName().trim().replaceAll("[^a-zA-Z0-9_-]", "_")
                 : "Customer_" + customerId;
@@ -85,7 +99,8 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(statementService.getFirmStatement(firmId, from, to));
+        Long effFirmId = resolveAuthoritativeFirmId(firmId);
+        return ResponseEntity.ok(statementService.getFirmStatement(effFirmId, from, to));
     }
 
     @GetMapping("/firm/pdf")
@@ -96,13 +111,10 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        byte[] pdf = statementService.generateFirmStatementPdf(firmId, from, to);
+        Long effFirmId = resolveAuthoritativeFirmId(firmId);
+        byte[] pdf = statementService.generateFirmStatementPdf(effFirmId, from, to);
 
-        FirmDetails firm = firmId != null ? firmRepo.findById(firmId).orElse(null) : null;
-        if (firm == null) {
-            List<FirmDetails> list = firmRepo.findAll();
-            if (!list.isEmpty()) firm = list.get(0);
-        }
+        FirmDetails firm = firmRepo.findById(effFirmId).orElse(null);
         String firmName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().trim().isEmpty())
                 ? firm.getFirmName().trim().replaceAll("[^a-zA-Z0-9_-]", "_")
                 : "Firm_Statement";
@@ -130,8 +142,8 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        return ResponseEntity.ok(statementService.getPartyStatement(firmId, partyId, from, to));
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        return ResponseEntity.ok(statementService.getPartyStatement(effFirmId, partyId, from, to));
     }
 
     @GetMapping("/party/{partyId}/pdf")
@@ -144,8 +156,8 @@ public class StatementsController {
             @RequestParam(name = "to", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) throws Exception {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        byte[] pdf = statementService.generatePartyStatementPdf(firmId, partyId, from, to);
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        byte[] pdf = statementService.generatePartyStatementPdf(effFirmId, partyId, from, to);
 
         String dateStr = (from != null || to != null)
                 ? (from != null ? from.toString() : "Start") + "_to_" + (to != null ? to.toString() : LocalDate.now().toString())

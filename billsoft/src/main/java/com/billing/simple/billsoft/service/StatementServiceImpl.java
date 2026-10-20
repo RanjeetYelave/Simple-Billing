@@ -90,28 +90,30 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public CustomerStatementResponse getCustomerStatement(Long firmId, Long customerId, LocalDate from, LocalDate to) {
-        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         Customer customer;
         if (authoritativeFirmId != null) {
             customer = customerRepo.findByIdAndFirmId(customerId, authoritativeFirmId)
                     .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Customer not found or unauthorized"));
+        } else if (firmId != null) {
+            customer = customerRepo.findByIdAndFirmId(customerId, firmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Customer not found or unauthorized"));
         } else {
             customer = customerRepo.findById(customerId)
                     .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + customerId));
+            if (customer.getFirmId() == null) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to access customer statement");
+            }
         }
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : (firmId != null ? firmId : customer.getFirmId());
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        List<Invoice> all;
-        if (authoritativeFirmId != null) {
-            all = invoiceRepo.findByFirmIdAndCustomer_Id(authoritativeFirmId, customerId);
-        } else {
-            all = invoiceRepo.findByCustomer_Id(customerId);
-        }
+        List<Invoice> all = invoiceRepo.findByFirmIdAndCustomer_Id(targetFirmId, customerId);
 
         // Only Invoices (skip estimates/drafts/cancelled)
         List<Invoice> invoices = all.stream()
@@ -122,14 +124,10 @@ public class StatementServiceImpl implements StatementService {
                 .collect(Collectors.toList());
 
         // Fetch all payments for customer
-        List<InvoicePayment> paymentList = (authoritativeFirmId != null)
-                ? invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(authoritativeFirmId, customerId)
-                : invoicePaymentRepo.findByCustomerIdOrderByPaymentDateAscIdAsc(customerId);
+        List<InvoicePayment> paymentList = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(targetFirmId, customerId);
 
         // Fetch all sales returns / credit notes for customer
-        List<SalesReturn> returnList = (authoritativeFirmId != null)
-                ? salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(authoritativeFirmId, customerId)
-                : salesReturnRepo.findByCustomerIdOrderByReturnDateAscIdAsc(customerId);
+        List<SalesReturn> returnList = salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(targetFirmId, customerId);
 
         Map<Long, Invoice> invoiceById = invoices.stream().collect(Collectors.toMap(Invoice::getId, i -> i, (a, b) -> a));
         Set<Long> invoicesWithPayments = paymentList.stream()
@@ -273,11 +271,16 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception {
-        CustomerStatementResponse data = getCustomerStatement(firmId, customerId, from, to);
-        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : null;
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (targetFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to generate customer statement PDF");
+        }
+        CustomerStatementResponse data = getCustomerStatement(targetFirmId, customerId, from, to);
+        FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
         Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -350,22 +353,20 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to) {
-        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-        if (authoritativeFirmId == null) {
-            authoritativeFirmId = firmRepo.findAll().stream().findFirst().map(FirmDetails::getId).orElse(1L);
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
         }
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : (firmId != null ? firmId : firmRepo.findAll().stream().findFirst().map(FirmDetails::getId).orElse(1L));
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
 
-        final Long targetFirmId = authoritativeFirmId;
         FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
         // 1. Invoices
         List<Invoice> invoiceList = invoiceRepo.findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(
-                authoritativeFirmId,
+                targetFirmId,
                 fromDate.atStartOfDay(),
                 toDate.plusDays(1).atStartOfDay()
         );
@@ -662,12 +663,14 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : (firmId != null ? firmId : firmRepo.findAll().stream().findFirst().map(FirmDetails::getId).orElse(1L));
 
-        FirmStatementResponse data = getFirmStatement(firmId, from, to);
-        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
+        FirmStatementResponse data = getFirmStatement(targetFirmId, from, to);
+        FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
         Document doc = new Document(PageSize.A4, 28, 28, 32, 32);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -918,20 +921,22 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public PartyStatementResponse getPartyStatement(Long firmId, Long partyId, LocalDate from, LocalDate to) {
-        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         Party party;
         if (authoritativeFirmId != null) {
             party = partyRepo.findByIdAndFirmId(partyId, authoritativeFirmId)
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
+        } else if (firmId != null) {
+            party = partyRepo.findByIdAndFirmId(partyId, firmId)
                     .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found or unauthorized: " + partyId));
         } else {
             party = partyRepo.findById(partyId)
                     .orElseThrow(() -> new IllegalArgumentException("Party not found: " + partyId));
         }
-
-        final Long targetFirmId = (authoritativeFirmId != null) ? authoritativeFirmId : (party.getFirmId() != null ? party.getFirmId() : 1L);
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : (firmId != null ? firmId : (party.getFirmId() != null ? party.getFirmId() : 1L));
 
         LocalDate toDate = (to == null) ? LocalDate.now() : to;
         LocalDate fromDate = (from == null) ? LocalDate.of(1970, 1, 1) : from;
@@ -1032,11 +1037,13 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception {
-        PartyStatementResponse data = getPartyStatement(firmId, partyId, from, to);
-        final Long authoritativeFirmId = (com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() != null)
-                ? com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId()
-                : firmId;
-        FirmDetails firm = (authoritativeFirmId != null) ? firmRepo.findById(authoritativeFirmId).orElse(null) : firmRepo.findAll().stream().findFirst().orElse(null);
+        final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        final Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : (firmId != null ? firmId : 1L);
+        PartyStatementResponse data = getPartyStatement(targetFirmId, partyId, from, to);
+        FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 28, 28, 28, 28);

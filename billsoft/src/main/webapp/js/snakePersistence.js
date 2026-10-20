@@ -188,8 +188,9 @@
    */
   async function loadFromBackend() {
     try {
+      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
       const res = await fetch(CONFIG_API_URL, {
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json', ...authHeaders }
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -208,9 +209,10 @@
   async function flushToBackend(state) {
     if (!state) return;
     try {
+      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
       await fetch(CONFIG_API_URL, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ value: JSON.stringify(state) })
       });
     } catch (e) {
@@ -272,6 +274,36 @@
     }
   }
 
+  const EPOCH_API_URL = '/api/app-config/FACTORY_RESET_EPOCH';
+  const RESET_EPOCH_STORAGE_KEY = 'SNAKE_RESET_EPOCH';
+
+  /**
+   * Check if backend was reset via factory reset and invalidate stale localStorage if so.
+   */
+  async function checkAndEnforceResetEpoch() {
+    try {
+      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
+      const res = await fetch(EPOCH_API_URL, {
+        headers: { 'Accept': 'application/json', ...authHeaders }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.exists && data.value) {
+          const serverEpoch = Number(data.value);
+          const localEpoch = Number(localStorage.getItem(RESET_EPOCH_STORAGE_KEY) || '0');
+          if (serverEpoch > localEpoch) {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.setItem(RESET_EPOCH_STORAGE_KEY, String(serverEpoch));
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[SnakePersistence] Failed to verify reset epoch:', e);
+    }
+    return false;
+  }
+
   /**
    * Load and recover progression state using the recovery hierarchy:
    * 1. Check localStorage and AppConfig.
@@ -279,6 +311,7 @@
    * 3. Fallback to valid copy or clean default state.
    */
   async function loadAndRecoverState() {
+    await checkAndEnforceResetEpoch();
     const local = loadFromLocalStorage();
     let remote = null;
 
@@ -326,7 +359,9 @@
       saveToLocalStorage(cleanState);
       if (typeof localStorage !== 'undefined') {
         try {
+          localStorage.setItem(RESET_EPOCH_STORAGE_KEY, String(Date.now()));
           localStorage.removeItem('TAKE_A_BREAK_SHOWN_LOCATION_UNLOCKS');
+          localStorage.removeItem('TAKE_A_BREAK_LAST_PRESENTED_LOC');
         } catch (e) {}
       }
 

@@ -33,5 +33,14 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
     long countByFirmId(Long firmId);
 
     List<StockMovement> findByReferenceTypeAndReferenceId(String referenceType, String referenceId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sm.productId, SUM(sm.quantityChange) FROM StockMovement sm " +
+           "WHERE sm.firmId = :firmId AND sm.referenceType = 'INVOICE' " +
+           "AND (sm.referenceId = :invoiceNumber OR sm.referenceId = :invoiceIdStr) " +
+           "GROUP BY sm.productId")
+    List<Object[]> sumQuantityChangeByProductIdForInvoice(
+            @org.springframework.data.repository.query.Param("firmId") Long firmId,
+            @org.springframework.data.repository.query.Param("invoiceNumber") String invoiceNumber,
+            @org.springframework.data.repository.query.Param("invoiceIdStr") String invoiceIdStr);
 }
 

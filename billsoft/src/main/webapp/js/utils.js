@@ -160,17 +160,32 @@ const BillsoftUtils = {
   },
 
   downloadPdfUrl(url, filename) {
-    // Navigate directly to the server URL.
-    // Since the backend returns Content-Disposition: attachment, the browser
-    // will download the file — and use the filename from the server header.
     const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
-    const a = document.createElement('a');
-    a.style.cssText = 'display:none;position:fixed;top:-100px;left:-100px';
-    a.href = fullUrl;
-    // Do NOT set a.download here — let the server Content-Disposition drive the filename
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1000);
+    const headers = {};
+    if (typeof API !== 'undefined') {
+      if (API.token) {
+        headers['X-Auth-Token'] = API.token;
+        headers['Authorization'] = 'Bearer ' + API.token;
+      }
+      if (API.firmId) {
+        headers['X-Firm-Id'] = String(API.firmId);
+      }
+    }
+
+    fetch(fullUrl, { headers })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        this.downloadBlob(blob, filename || 'Document.pdf');
+      })
+      .catch(err => {
+        console.error('Authenticated downloadPdfUrl failed:', err);
+        if (typeof showToast === 'function') {
+          showToast(`Download failed: ${err.message || 'Error'}`, 'error');
+        }
+      });
   },
 
   downloadBlob(blob, filename) {
@@ -1594,17 +1609,21 @@ const BillsoftSearchEngine = {
     if (!detail || !detail.page) return;
     let target = { ...detail };
     const legacyTab = target.tab;
-    if (target.page === 'paperwork' || target.page === 'purchases' || target.page === 'orders' || target.page === 'statements' || target.page === 'letters') {
+    const legacySubTab = target.subTab;
+    if (target.page === 'orders' || target.page === 'purchases' || target.page === 'po') {
       target.page = 'firm';
-      target.tab = 'paperwork';
-      target.subTab = target.subTab || (
-        legacyTab === 'orders' || legacyTab === 'letters' || legacyTab === 'statements'
-          ? legacyTab
-          : (detail.page === 'statements' ? 'statements' : (detail.page === 'letters' ? 'letters' : 'orders'))
-      );
-    } else if (target.page === 'firm' && (target.tab === 'orders' || target.tab === 'letters' || target.tab === 'statements')) {
-      target.subTab = target.subTab || target.tab;
-      target.tab = 'paperwork';
+      target.tab = 'orders';
+    } else if (target.page === 'letters' || target.page === 'letter-pad' || target.page === 'letterpad') {
+      target.page = 'firm';
+      target.tab = 'letters';
+    } else if (target.page === 'statements' || target.page === 'ledgers') {
+      target.page = 'firm';
+      target.tab = 'statements';
+    } else if (target.page === 'paperwork') {
+      target.page = 'firm';
+      target.tab = legacySubTab || (legacyTab && legacyTab !== 'paperwork' ? legacyTab : 'orders');
+    } else if (target.page === 'firm' && target.tab === 'paperwork') {
+      target.tab = legacySubTab || 'orders';
     }
     window.__billsoftPendingNav = { ...target, ts: Date.now() };
     window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: target }));
@@ -1753,7 +1772,7 @@ const BillsoftSearchEngine = {
       icon: '📊',
       badge: 'Ledger',
       slashCommand: '/khata',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' },
+      target: { page: 'firm', tab: 'statements', statementMode: 'customer' },
       keywords: [
         // Slash commands & Shorthands
         '/khata', '/due', '/debt', '/custstat', '/ledger', '/vasooli', '/udhari', '/receivables', 'khata', 'due', 'debt', 'custstat', 'ledger', 'vasooli', 'udhari',
@@ -1767,7 +1786,7 @@ const BillsoftSearchEngine = {
         'statment', 'stetement', 'statemnt', 'hisabkitab', 'hisabb', 'udharii', 'udhari list', 'clint statement', 'ledgr', 'legder', 'baaki list', 'khata book', 'hisaab kitaab', 'hisab ktab', 'hisab kithab', 'khta'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'statements', statementMode: 'customer' });
       }
     },
     {
@@ -1778,7 +1797,7 @@ const BillsoftSearchEngine = {
       icon: '🏭',
       badge: 'Vendor Khata',
       slashCommand: '/venstat',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party' },
+      target: { page: 'firm', tab: 'statements', statementMode: 'party' },
       keywords: [
         // Slash commands & Shorthands
         '/venstat', '/suppstat', '/payables', '/supplierkhata', '/partykhata', '/creditors', 'venstat', 'suppstat', 'payables', 'creditors',
@@ -1792,7 +1811,7 @@ const BillsoftSearchEngine = {
         'suplier statment', 'vendr ledger', 'puravatha hisab', 'party statment', 'deena baki', 'vender hisab'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'party' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'statements', statementMode: 'party' });
       }
     },
     {
@@ -1803,7 +1822,7 @@ const BillsoftSearchEngine = {
       icon: '📑',
       badge: 'Audit Journal',
       slashCommand: '/daybook',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'firm' },
+      target: { page: 'firm', tab: 'statements', statementMode: 'firm' },
       keywords: [
         // Slash commands & Shorthands
         '/daybook', '/journal', '/rojnamcha', '/audit', '/cashbook', '/masterledger', 'daybook', 'journal', 'rojnamcha', 'cashbook',
@@ -1817,7 +1836,7 @@ const BillsoftSearchEngine = {
         'jornal', 'rozkird', 'rojnamchaa', 'daybook', 'cashbok', 'rojkirdh'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'firm' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'statements', statementMode: 'firm' });
       }
     },
     {
@@ -1828,7 +1847,7 @@ const BillsoftSearchEngine = {
       icon: '📋',
       badge: 'Procurement',
       slashCommand: '/po',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'orders' },
+      target: { page: 'firm', tab: 'orders' },
       keywords: [
         // Slash commands & Shorthands
         '/po', '/buy', '/order', '/procure', '/purchaseorder', '/newpo', 'po', 'buy', 'purchase',
@@ -1842,7 +1861,7 @@ const BillsoftSearchEngine = {
         'purchas', 'purhase', 'prchase', 'purchse', 'purcahse', 'puchase order', 'purches', 'po ordr', 'po order', 'kharedi ordr', 'purchese'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'orders' });
       }
     },
     {
@@ -1853,7 +1872,7 @@ const BillsoftSearchEngine = {
       icon: '📦',
       badge: 'Procurement',
       slashCommand: '/allpo',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'orders' },
+      target: { page: 'firm', tab: 'orders' },
       keywords: [
         '/allpo', '/orders', '/purchases', '/polist', 'allpo', 'orders', 'purchases',
         'all purchase orders', 'po list', 'view po', 'inward orders', 'supplier orders list', 'purchases log',
@@ -1861,7 +1880,7 @@ const BillsoftSearchEngine = {
         'sarva kharedi', 'kharedi yadi', 'puravatha orders yadi', 'सर्व खरेदी ऑर्डर', 'खरेदी नोंद'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'orders' });
       }
     },
     {
@@ -1872,7 +1891,7 @@ const BillsoftSearchEngine = {
       icon: '✉️',
       badge: 'Letters',
       slashCommand: '/letter',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'letters' },
+      target: { page: 'firm', tab: 'letters' },
       keywords: [
         // Slash commands & Shorthands
         '/letter', '/notice', '/chithi', '/memo', '/letterhead', '/certificate', 'letter', 'notice', 'memo',
@@ -1886,7 +1905,7 @@ const BillsoftSearchEngine = {
         'letr', 'leter', 'lettar', 'letrhead', 'letrpad', 'offical letter', 'lettr', 'patrr', 'leterhead'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'letters' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'letters' });
       }
     },
     {
@@ -1897,7 +1916,7 @@ const BillsoftSearchEngine = {
       icon: '📁',
       badge: 'Letters',
       slashCommand: '/letters',
-      target: { page: 'firm', tab: 'paperwork', subTab: 'letters' },
+      target: { page: 'firm', tab: 'letters' },
       keywords: [
         '/letters', '/notices', '/allletters', '/patravyavahar', 'letters', 'notices',
         'all letters', 'view letters', 'saved letters', 'letter history', 'notice register',
@@ -1905,7 +1924,7 @@ const BillsoftSearchEngine = {
         'sarva patre', 'patravyavahar nond', 'सर्व पत्रे', 'कागदपत्रे यादी'
       ],
       action: (ctx) => {
-        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'letters' });
+        BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'letters' });
       }
     },
     {
@@ -5859,7 +5878,7 @@ const BillsoftSearchEngine = {
           icon: '💰',
           badge: 'Outstanding Dues',
           action: () => {
-            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' });
+            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'statements', statementMode: 'customer' });
           }
         });
       } else if (bizMetrics.type === 'low_stock') {
@@ -5870,7 +5889,7 @@ const BillsoftSearchEngine = {
           icon: '⚠️',
           badge: 'Inventory Alert',
           action: () => {
-            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'paperwork', subTab: 'orders' });
+            BillsoftSearchEngine.dispatchNavigate({ page: 'firm', tab: 'orders' });
           }
         });
       }

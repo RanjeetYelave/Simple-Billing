@@ -76,8 +76,9 @@ public class EmployeeController {
         this.leaveRepo = leaveRepo;
     }
 
-    private String getPin() {
-        return appConfigRepo.findById("EMPLOYEE_MODULE_PIN")
+    public String getPin(Long firmId) {
+        Long safeFirmId = (firmId != null && firmId > 0) ? firmId : 1L;
+        return appConfigRepo.findById("EMPLOYEE_MODULE_PIN_" + safeFirmId)
                 .map(AppConfig::getConfigValue)
                 .orElse("0000");
     }
@@ -88,16 +89,20 @@ public class EmployeeController {
             return employeeRepo.findByIdAndFirmId(id, firmId)
                     .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found or unauthorized"));
         }
-        return employeeRepo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+        return employeeRepo.findById(id).orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found"));
     }
 
     // ─── PIN Endpoints ───
 
     @PostMapping("/verify-pin")
     public ResponseEntity<Map<String, Boolean>> verifyPin(@RequestBody Map<String, String> body) {
-        String pin = body.get("pin");
-        boolean valid = getPin().equals(pin);
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required.");
+        }
+        Long firmId = authoritativeFirmId;
+        String pin = body != null ? body.get("pin") : null;
+        boolean valid = getPin(firmId).equals(pin);
         Map<String, Boolean> res = new HashMap<>();
         res.put("valid", valid);
         return ResponseEntity.ok(res);
@@ -105,17 +110,26 @@ public class EmployeeController {
 
     @PostMapping("/change-pin")
     public ResponseEntity<Map<String, String>> changePin(@RequestBody Map<String, String> body) {
-        String oldPin = body.get("oldPin");
-        String newPin = body.get("newPin");
-        if (!getPin().equals(oldPin)) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is strictly required.");
+        }
+        Long firmId = authoritativeFirmId;
+        String oldPin = body != null ? body.get("oldPin") : null;
+        String newPin = body != null ? body.get("newPin") : null;
+        if (!getPin(firmId).equals(oldPin)) {
             return ResponseEntity.badRequest().body(Map.of("error", "Incorrect old PIN"));
         }
-        AppConfig config = appConfigRepo.findById("EMPLOYEE_MODULE_PIN").orElseGet(() -> {
+        if (newPin == null || newPin.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "New PIN cannot be empty"));
+        }
+        String configKey = "EMPLOYEE_MODULE_PIN_" + firmId;
+        AppConfig config = appConfigRepo.findById(configKey).orElseGet(() -> {
             AppConfig newConfig = new AppConfig();
-            newConfig.setConfigKey("EMPLOYEE_MODULE_PIN");
+            newConfig.setConfigKey(configKey);
             return newConfig;
         });
-        config.setConfigValue(newPin);
+        config.setConfigValue(newPin.trim());
         appConfigRepo.save(config);
         return ResponseEntity.ok(Map.of("status", "success"));
     }
@@ -125,7 +139,9 @@ public class EmployeeController {
     @GetMapping
     public List<EmployeeDTO> getEmployees(@RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         if (authoritativeFirmId == null) {
             return java.util.Collections.emptyList();
         }
@@ -140,7 +156,9 @@ public class EmployeeController {
     @GetMapping("/analytics")
     public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(@RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         if (authoritativeFirmId == null) {
             return ResponseEntity.badRequest().build();
         }
@@ -196,14 +214,17 @@ public class EmployeeController {
     @Transactional
     public ResponseEntity<Map<String, Integer>> applyPendingPromotions(@RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         List<PromotionRecord> unapplied = promotionRepo.findByIsAppliedFalse();
         LocalDate today = LocalDate.now();
         int count = 0;
         for (PromotionRecord p : unapplied) {
             Employee emp = p.getEmployee();
             if (emp == null) continue;
-            if (authoritativeFirmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(authoritativeFirmId)) continue;
+            if (effectiveFirmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(effectiveFirmId)) continue;
             if (!p.getEffectiveDate().isAfter(today)) {
                 if (p.getNewRole() != null && !p.getNewRole().isEmpty()) {
                     emp.setRole(p.getNewRole());
@@ -233,10 +254,15 @@ public class EmployeeController {
             return ResponseEntity.badRequest().build();
         }
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = dto.getFirmId();
+        if (authoritativeFirmId != null) {
+            if (dto.getFirmId() != null && !authoritativeFirmId.equals(dto.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm employee creation prohibited");
+            }
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : dto.getFirmId();
 
         Employee emp = new Employee();
-        emp.setFirmId(authoritativeFirmId);
+        emp.setFirmId(effectiveFirmId);
         emp.setName(dto.getName().trim());
         emp.setPhone(dto.getPhone());
         emp.setRole(dto.getRole());
@@ -687,7 +713,9 @@ public class EmployeeController {
     @GetMapping("/export/csv")
     public ResponseEntity<byte[]> exportEmployeesCsv(@RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
         if (authoritativeFirmId == null) {
             return ResponseEntity.badRequest().build();
         }
@@ -864,6 +892,9 @@ public class EmployeeController {
     public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
         com.billing.simple.billsoft.entities.EmployeeDocument doc = documentRepo.findById(docId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+        if (doc.getEmployee() == null) {
+            return ResponseEntity.notFound().build();
+        }
         getAuthorizedEmployee(doc.getEmployee().getId());
         documentRepo.deleteById(docId);
         return ResponseEntity.ok(Map.of("status", "deleted"));
@@ -883,9 +914,10 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.EmployeeDocument> docOpt = documentRepo.findById(docId);
         if (docOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.EmployeeDocument doc = docOpt.get();
-        if (doc.getEmployee() != null) {
-            getAuthorizedEmployee(doc.getEmployee().getId());
+        if (doc.getEmployee() == null) {
+            return ResponseEntity.notFound().build();
         }
+        getAuthorizedEmployee(doc.getEmployee().getId());
         
         String b64 = doc.getDataBase64();
         if (b64 == null || b64.isBlank()) return ResponseEntity.notFound().build();
@@ -938,9 +970,10 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
         if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
-        if (l.getEmployee() != null) {
-            getAuthorizedEmployee(l.getEmployee().getId());
+        if (l.getEmployee() == null) {
+            return ResponseEntity.notFound().build();
         }
+        getAuthorizedEmployee(l.getEmployee().getId());
         l.setStatus("APPROVED");
         return ResponseEntity.ok(leaveRepo.save(l));
     }
@@ -950,9 +983,10 @@ public class EmployeeController {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
         if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
-        if (l.getEmployee() != null) {
-            getAuthorizedEmployee(l.getEmployee().getId());
+        if (l.getEmployee() == null) {
+            return ResponseEntity.notFound().build();
         }
+        getAuthorizedEmployee(l.getEmployee().getId());
         l.setStatus("REJECTED");
         l.setReason(body.get("reason"));
         return ResponseEntity.ok(leaveRepo.save(l));

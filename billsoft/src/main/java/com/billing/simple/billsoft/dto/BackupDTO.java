@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.dto;
 
 import com.billing.simple.billsoft.entities.*;
+import com.billing.simple.billsoft.forecast.entity.ForecastProduct;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
@@ -37,6 +38,11 @@ public class BackupDTO {
     private List<FirmDetails> allFirms;
     private List<SalesReturn> salesReturns;
     private List<GoalLog> goalLogs;
+    private List<PricingProfile> pricingProfiles;
+    private List<CategoryPricingRule> categoryPricingRules;
+    private List<SavedItem> savedItems;
+    private List<ForecastProduct> forecastProducts;
+    private List<InvoiceMigrationRecord> invoiceMigrationRecords;
 
     public Long getSourceFirmId() {
         if (metadata != null && metadata.get("sourceFirmId") != null) {
@@ -289,5 +295,45 @@ public class BackupDTO {
 
     public void setNotificationPreferences(List<NotificationPreference> notificationPreferences) {
         this.notificationPreferences = notificationPreferences;
+    }
+
+    public List<PricingProfile> getPricingProfiles() {
+        return pricingProfiles;
+    }
+
+    public void setPricingProfiles(List<PricingProfile> pricingProfiles) {
+        this.pricingProfiles = pricingProfiles;
+    }
+
+    public List<CategoryPricingRule> getCategoryPricingRules() {
+        return categoryPricingRules;
+    }
+
+    public void setCategoryPricingRules(List<CategoryPricingRule> categoryPricingRules) {
+        this.categoryPricingRules = categoryPricingRules;
+    }
+
+    public List<SavedItem> getSavedItems() {
+        return savedItems;
+    }
+
+    public void setSavedItems(List<SavedItem> savedItems) {
+        this.savedItems = savedItems;
+    }
+
+    public List<ForecastProduct> getForecastProducts() {
+        return forecastProducts;
+    }
+
+    public void setForecastProducts(List<ForecastProduct> forecastProducts) {
+        this.forecastProducts = forecastProducts;
+    }
+
+    public List<InvoiceMigrationRecord> getInvoiceMigrationRecords() {
+        return invoiceMigrationRecords;
+    }
+
+    public void setInvoiceMigrationRecords(List<InvoiceMigrationRecord> invoiceMigrationRecords) {
+        this.invoiceMigrationRecords = invoiceMigrationRecords;
     }
 }

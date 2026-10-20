@@ -2780,13 +2780,13 @@
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'invoices', subTab: 'quotations' } };
       }
       if (/^\/khata\b|\bopen\s*statements\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'statements', statementMode: 'customer' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'statements', statementMode: 'customer' } };
       }
       if (/^\/pay\b|\bopen\s*payroll\b|\btankha\s*(?:kholo|page|tab)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'hr', hrTab: 'payroll' } };
       }
       if (/^\/po\b|\bcreate\s*purchase\s*order\b|\bsupplier\s*order\b/i.test(lower)) {
-        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'paperwork', subTab: 'orders' } };
+        return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'firm', tab: 'orders' } };
       }
       if (/^\/goal\b|^\/goals\b|^\/habit\b|^\/habits\b|^\/streak\b|^\/streaks\b|^\/target\b|\b(?:goals?|habits?|streaks?|targets?|lakshya|dhyey)\b/i.test(lower) && !/\d+/.test(lower) && !/\b(summary|total|report|status)\b/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_SLASH', target: { page: 'planner', plannerTab: 'goals' } };
@@ -2862,6 +2862,10 @@
       if (/\b(open|go\s*to)\s*(?:the\s*)?expenses?\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'planner', plannerTab: 'expenses' } };
       if (/\b(open|go\s*to)\s*(?:the\s*)?(?:parties|vendors?)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'parties' } };
       if (/\b(open|go\s*to)\s*(?:the\s*)?(?:staff|employees?|hr)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'hr', hrTab: 'staff' } };
+      if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:purchase\s*orders?|po\s*desk|all\s*pos?|pos?|purchases)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'orders' } };
+      if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:statements?|ledgers?|khata|khatavani)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'statements' } };
+      if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:letters?|letter\s*pad|letterpad)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'letters' } };
+      if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:smart\s*reorder|reorder\s*queue|product\s*intelligence|forecast|replenishment)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'products' } };
       if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:snake\s*classic|snakes?|classic\s*snake|classic\s*game|classic|arcade|circuit\s*connect|circuit|game\s*zone|games\s*hub|mini\s*games|minigames|take\s*a\s*break|take\s*break|break|games?|play)\b/i.test(lower) || /^\s*(?:snake|snakes|snake\s*classic|classic|arcade|circuit|circuit\s*connect|take\s*a\s*break|take\s*break|break|game\s*zone|games\s*hub|mini\s*games|minigames|game|games|play)\s*$/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'circuit_connect' } };
       }
@@ -3153,7 +3157,7 @@
             },
             actions: [
               { label: 'View Invoices', route: 'invoices' },
-              { label: 'View Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
+              { label: 'View Ledger', route: 'firm', tab: 'statements' }
             ]
           };
         }
@@ -3489,7 +3493,7 @@
             category: 'QUICK_HELP',
             capabilityId,
             domain: 'EXPENSE',
-            apiEndpoint: '/api/omnisearch/expense',
+            apiEndpoint: '/api/omnisearch/expenses',
             apiParams: { threshold, op: isAbove ? 'GTE' : 'LTE' },
             title: `💸 ${filtered.length} Expense(s) ${opLabel} ₹${threshold.toLocaleString('en-IN')} (Total: ₹${totalAmt.toLocaleString('en-IN')})`,
             subtitle: filtered.slice(0, 3).map(e => `${e.title || e.category || 'Expense'}: ₹${(parseFloat(e.amount || 0)).toLocaleString('en-IN')}`).join(' • ') || `No expenses ${opLabel.toLowerCase()} ₹${threshold.toLocaleString('en-IN')}`,
@@ -3598,7 +3602,7 @@
               data: { customerName: c.name, balance: bal, phone: c.phone, customerId: c.id, city: c.city, gstin: c.gstin },
               actions: [
                 { label: 'View Profile', route: 'firm', tab: 'customers' },
-                { label: 'Open Ledger', route: 'firm', tab: 'paperwork', subTab: 'statements' }
+                { label: 'Open Ledger', route: 'firm', tab: 'statements' }
               ]
             };
           }
@@ -4162,7 +4166,7 @@
             subtitle: `Supplier order logs & procurement requests`,
             data: { totalPoAmount: totalPoVal, poCount: pos.length },
             actions: [
-              { label: 'Purchase Orders', route: 'firm', tab: 'paperwork', subTab: 'orders' }
+              { label: 'Purchase Orders', route: 'firm', tab: 'orders' }
             ]
           };
         }
@@ -4201,7 +4205,7 @@
             subtitle: `Complete debit, credit, invoice, and payment history`,
             data: { entityName, entityType: isVendor ? 'VENDOR' : 'CUSTOMER' },
             actions: [
-              { label: 'Open Statements', route: 'firm', tab: 'paperwork', subTab: 'statements' }
+              { label: 'Open Statements', route: 'firm', tab: 'statements' }
             ]
           };
         }

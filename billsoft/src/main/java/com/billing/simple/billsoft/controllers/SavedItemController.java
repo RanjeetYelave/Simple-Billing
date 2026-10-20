@@ -43,38 +43,35 @@ public class SavedItemController {
     }
 
     /**
-     * List all active Saved Items for the current firm.
+     * Deprecated legacy endpoint. Saved items have been unified into Products.
      */
+    @Deprecated
     @GetMapping("/api/saved-items")
     public ResponseEntity<List<SavedItem>> getAllSavedItems(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
-        Long firmId = firmHeader != null ? firmHeader : TenantContext.getCurrentFirmId();
-        return ResponseEntity.ok(savedItemService.getAllSavedItems(firmId));
+        return ResponseEntity.ok(java.util.Collections.emptyList());
     }
 
     /**
-     * Promote a Saved Item to a real Inventory Product.
+     * Deprecated legacy endpoint.
      */
+    @Deprecated
     @PostMapping("/api/saved-items/{id}/promote")
-    public ResponseEntity<Product> promoteSavedItem(
+    public ResponseEntity<Void> promoteSavedItem(
             @PathVariable("id") Long id,
-            @RequestBody PromoteSavedItemRequestDto req,
+            @RequestBody(required = false) PromoteSavedItemRequestDto req,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
-        Long firmId = firmHeader != null ? firmHeader : TenantContext.getCurrentFirmId();
-        req.setSavedItemId(id);
-        Product created = savedItemService.promoteToProduct(firmId, req);
-        return ResponseEntity.ok(created);
+        return ResponseEntity.ok().build();
     }
 
     /**
-     * Archive/Delete a Saved Item.
+     * Deprecated legacy endpoint.
      */
+    @Deprecated
     @DeleteMapping("/api/saved-items/{id}")
     public ResponseEntity<Void> archiveSavedItem(
             @PathVariable("id") Long id,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
-        Long firmId = firmHeader != null ? firmHeader : TenantContext.getCurrentFirmId();
-        savedItemService.archiveSavedItem(firmId, id);
         return ResponseEntity.noContent().build();
     }
 

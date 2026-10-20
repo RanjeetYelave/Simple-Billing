@@ -24,8 +24,16 @@ public class InvoiceRequest {
     private String paymentMethod;
     private String currency = "INR";
     private Boolean roundOff;
-    private String tags;
     private String invoiceDate;
+    private String tags;
+    private Long pricingProfileId;
+    private String placeOfSupply;
+
+    public String getPlaceOfSupply() { return placeOfSupply; }
+    public void setPlaceOfSupply(String placeOfSupply) { this.placeOfSupply = placeOfSupply; }
+
+    public Long getPricingProfileId() { return pricingProfileId; }
+    public void setPricingProfileId(Long pricingProfileId) { this.pricingProfileId = pricingProfileId; }
 
     public Long getFirmId() { return firmId; }
     public void setFirmId(Long firmId) { this.firmId = firmId; }

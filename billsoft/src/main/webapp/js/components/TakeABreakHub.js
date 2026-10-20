@@ -114,7 +114,25 @@
   }
 
   function TakeABreakHubInner() {
-    const [activeLevel, setActiveLevel] = useState(1);
+    const [activeLevel, setActiveLevel] = useState(() => {
+      try {
+        if (typeof SnakePersistence !== 'undefined' && SnakePersistence.loadFromLocalStorage) {
+          const saved = SnakePersistence.loadFromLocalStorage();
+          if (saved && typeof saved.currentLevel === 'number') {
+            return Math.max(1, Math.floor(saved.currentLevel));
+          }
+        } else if (typeof localStorage !== 'undefined') {
+          const raw = localStorage.getItem('SNAKE_GAME_STATE');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.currentLevel === 'number') {
+              return Math.max(1, Math.floor(parsed.currentLevel));
+            }
+          }
+        }
+      } catch (e) {}
+      return 1;
+    });
     const [isSnakeEnabled, setIsSnakeEnabled] = useState(() => {
       try {
         if (typeof localStorage === 'undefined') return true;

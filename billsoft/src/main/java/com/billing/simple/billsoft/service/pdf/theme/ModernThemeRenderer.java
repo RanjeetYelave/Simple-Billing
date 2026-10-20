@@ -162,19 +162,19 @@ public class ModernThemeRenderer {
         cardCell.setBorderWidth(1f);
         cardCell.setPadding(8f * scale);
 
-        Customer cust = invoice != null ? invoice.getCustomer() : null;
         Paragraph pBillToLabel = new Paragraph("BILLED TO", new Font(Font.HELVETICA, 7.5f * scale, Font.BOLD, primary));
         pBillToLabel.setSpacingAfter(2f);
         cardCell.addElement(pBillToLabel);
 
-        String custName = cust != null && cust.getName() != null && !cust.getName().isBlank() ? cust.getName().toUpperCase() : "CASH CUSTOMER";
-        cardCell.addElement(new Paragraph(custName, boldText));
+        String custName = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerName(invoice);
+        cardCell.addElement(new Paragraph(custName.toUpperCase(), boldText));
 
-        if (cust != null) {
-            if (cust.getAddress() != null && !cust.getAddress().isBlank()) cardCell.addElement(new Paragraph(cust.getAddress(), normalText));
-            if (cust.getPhone() != null && !cust.getPhone().isBlank()) cardCell.addElement(new Paragraph("Phone: " + cust.getPhone(), smallMuted));
-            if (cust.getGstin() != null && !cust.getGstin().isBlank()) cardCell.addElement(new Paragraph("GSTIN: " + cust.getGstin(), boldText));
-        }
+        String custAddress = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerAddress(invoice);
+        if (custAddress != null && !custAddress.isBlank()) cardCell.addElement(new Paragraph(custAddress, normalText));
+        String custPhone = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerPhone(invoice);
+        if (custPhone != null && !custPhone.isBlank()) cardCell.addElement(new Paragraph("Phone: " + custPhone, smallMuted));
+        String custGstin = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerGstin(invoice);
+        if (custGstin != null && !custGstin.isBlank()) cardCell.addElement(new Paragraph("GSTIN: " + custGstin, boldText));
         billToCard.addCell(cardCell);
         doc.add(billToCard);
 

@@ -65,6 +65,16 @@ public class SalesReturnItem {
     @Column(precision = 15, scale = 2)
     private BigDecimal gstAmount;
 
+    // GST Decomposition (AUDIT-032)
+    @Column(precision = 15, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal sgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal igstAmount;
+
     @Column(precision = 15, scale = 2)
     private BigDecimal refundTotal;
 
@@ -104,6 +114,15 @@ public class SalesReturnItem {
     public BigDecimal getGstAmount() { return gstAmount; }
     public void setGstAmount(BigDecimal gstAmount) { this.gstAmount = gstAmount; }
 
+    public BigDecimal getCgstAmount() { return cgstAmount; }
+    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
+
+    public BigDecimal getSgstAmount() { return sgstAmount; }
+    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
+
+    public BigDecimal getIgstAmount() { return igstAmount; }
+    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
+
     public BigDecimal getRefundTotal() { return refundTotal; }
     public void setRefundTotal(BigDecimal refundTotal) { this.refundTotal = refundTotal; }
 
@@ -124,6 +143,9 @@ public class SalesReturnItem {
         private BigDecimal discountValue;
         private BigDecimal gstPercent;
         private BigDecimal gstAmount;
+        private BigDecimal cgstAmount;
+        private BigDecimal sgstAmount;
+        private BigDecimal igstAmount;
         private BigDecimal refundTotal;
 
         public SalesReturnItemBuilder id(Long id) { this.id = id; return this; }
@@ -138,6 +160,9 @@ public class SalesReturnItem {
         public SalesReturnItemBuilder discountValue(BigDecimal discountValue) { this.discountValue = discountValue; return this; }
         public SalesReturnItemBuilder gstPercent(BigDecimal gstPercent) { this.gstPercent = gstPercent; return this; }
         public SalesReturnItemBuilder gstAmount(BigDecimal gstAmount) { this.gstAmount = gstAmount; return this; }
+        public SalesReturnItemBuilder cgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; return this; }
+        public SalesReturnItemBuilder sgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; return this; }
+        public SalesReturnItemBuilder igstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; return this; }
         public SalesReturnItemBuilder refundTotal(BigDecimal refundTotal) { this.refundTotal = refundTotal; return this; }
 
         public SalesReturnItem build() {
@@ -154,6 +179,9 @@ public class SalesReturnItem {
             item.discountValue = this.discountValue;
             item.gstPercent = this.gstPercent;
             item.gstAmount = this.gstAmount;
+            item.cgstAmount = this.cgstAmount;
+            item.sgstAmount = this.sgstAmount;
+            item.igstAmount = this.igstAmount;
             item.refundTotal = this.refundTotal;
             return item;
         }

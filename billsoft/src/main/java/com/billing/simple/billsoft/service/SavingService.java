@@ -38,14 +38,22 @@ public class SavingService {
     }
 
     public List<SavingRecord> getSavingsByFirm(Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (target == null) return Collections.emptyList();
         return repository.findByFirmIdOrderBySavingDateDescIdDesc(target);
     }
 
     public PageResponse<SavingRecord> getPaginatedSavings(Long firmId, LocalDate from, LocalDate to,
             Pageable pageable) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (target == null) return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
         Page<SavingRecord> page;
         if (from != null && to != null) {
@@ -57,16 +65,27 @@ public class SavingService {
     }
 
     public SavingRecord getSavingById(Long id, Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        return (target != null ? repository.findByIdAndFirmId(id, target) : repository.findById(id)).orElse(null);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (target == null) return null;
+        return repository.findByIdAndFirmId(id, target).orElse(null);
     }
 
     @Transactional
     public SavingRecord createSaving(SavingRecord saving) {
-        Long firmId = saving.getFirmId() != null ? saving.getFirmId() : TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            saving.setFirmId(firmId);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            if (saving.getFirmId() != null && !authoritativeFirmId.equals(saving.getFirmId())) {
+                throw new TenantSecurityException("Cross-firm saving creation prohibited");
+            }
+            saving.setFirmId(authoritativeFirmId);
+        } else {
+            throw new TenantSecurityException("Active firm context is required");
         }
+        Long firmId = authoritativeFirmId;
         if (saving.getSavingDate() == null) {
             saving.setSavingDate(LocalDate.now());
         }
@@ -119,7 +138,10 @@ public class SavingService {
     @Transactional
     public SavingRecord updateSaving(Long id, SavingRecord updated) {
         Long firmId = TenantContext.getCurrentFirmId();
-        SavingRecord existing = (firmId != null ? repository.findByIdAndFirmId(id, firmId) : repository.findById(id))
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is required");
+        }
+        SavingRecord existing = repository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Saving record not found"));
 
         Long oldGoalId = existing.getGoalId();
@@ -185,29 +207,30 @@ public class SavingService {
     @Transactional
     public boolean deleteSaving(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        SavingRecord existing = (firmId != null ? repository.findByIdAndFirmId(id, firmId) : repository.findById(id)).orElse(null);
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is required");
+        }
+        SavingRecord existing = repository.findByIdAndFirmId(id, firmId).orElse(null);
 
         if (existing == null)
             return false;
 
         Long linkedGoalId = existing.getGoalId();
-        Long effFirmId = existing.getFirmId();
+        repository.deleteByIdAndFirmId(id, firmId);
 
-        if (firmId != null) {
-            repository.deleteByIdAndFirmId(id, firmId);
-        } else {
-            repository.deleteById(id);
-        }
-
-        if (linkedGoalId != null && effFirmId != null) {
-            goalService.recalculateSavingsGoal(effFirmId, linkedGoalId);
+        if (linkedGoalId != null) {
+            goalService.recalculateSavingsGoal(firmId, linkedGoalId);
         }
 
         return true;
     }
 
     public List<String> getCategoriesByFirm(Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (target == null) return new ArrayList<>(DEFAULT_CATEGORIES);
         Set<String> categories = new LinkedHashSet<>(DEFAULT_CATEGORIES);
         List<SavingRecord> list = repository.findByFirmIdOrderBySavingDateDescIdDesc(target);

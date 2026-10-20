@@ -31,8 +31,10 @@ public class OmnisearchNluController {
     public ResponseEntity<byte[]> getQrImage(@RequestParam("data") String data,
                                             @RequestParam(value = "size", defaultValue = "260") int size) {
         try {
+            // AUDIT-043: Enforce safe bounding on QR matrix dimensions to prevent heap exhaustion DoS
+            int safeSize = Math.min(Math.max(size, 64), 1024);
             com.google.zxing.qrcode.QRCodeWriter qrCodeWriter = new com.google.zxing.qrcode.QRCodeWriter();
-            com.google.zxing.common.BitMatrix bitMatrix = qrCodeWriter.encode(data, com.google.zxing.BarcodeFormat.QR_CODE, size, size);
+            com.google.zxing.common.BitMatrix bitMatrix = qrCodeWriter.encode(data, com.google.zxing.BarcodeFormat.QR_CODE, safeSize, safeSize);
             java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
             com.google.zxing.client.j2se.MatrixToImageWriter.writeToStream(bitMatrix, "PNG", outputStream);
             return ResponseEntity.ok()

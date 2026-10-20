@@ -41,6 +41,11 @@ public class OmnisearchQuickHelpService {
     private final SalaryRecordRepository salaryRepo;
     private final EmployeeAdvanceRepository advanceRepo;
     private final StockMovementRepository stockMovementRepo;
+    private com.billing.simple.billsoft.service.CustomerBalanceService balanceService;
+
+    public void setBalanceService(com.billing.simple.billsoft.service.CustomerBalanceService balanceService) {
+        this.balanceService = balanceService;
+    }
 
     public OmnisearchQuickHelpService(
             CustomerRepository customerRepo,
@@ -57,7 +62,8 @@ public class OmnisearchQuickHelpService {
             SalesReturnRepository salesReturnRepo,
             SalaryRecordRepository salaryRepo,
             EmployeeAdvanceRepository advanceRepo,
-            StockMovementRepository stockMovementRepo
+            StockMovementRepository stockMovementRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.CustomerBalanceService balanceService
     ) {
         this.customerRepo = customerRepo;
         this.invoiceRepo = invoiceRepo;
@@ -74,6 +80,7 @@ public class OmnisearchQuickHelpService {
         this.salaryRepo = salaryRepo;
         this.advanceRepo = advanceRepo;
         this.stockMovementRepo = stockMovementRepo;
+        this.balanceService = balanceService;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -238,7 +245,7 @@ public class OmnisearchQuickHelpService {
         return response;
     }
 
-    private CustomerQuickHelpDTO assembleCustomerDetails(Long firmId, Customer customer) {
+    public CustomerQuickHelpDTO assembleCustomerDetails(Long firmId, Customer customer) {
         CustomerQuickHelpDTO dto = new CustomerQuickHelpDTO();
         dto.setId(customer.getId());
         dto.setName(customer.getName());
@@ -252,15 +259,38 @@ public class OmnisearchQuickHelpService {
                 .filter(i -> i.getStatus() != InvoiceStatus.ESTIMATE && i.getStatus() != InvoiceStatus.DRAFT && i.getStatus() != InvoiceStatus.CANCELLED)
                 .collect(Collectors.toList());
 
-        BigDecimal totalSales = BigDecimal.ZERO;
+        com.billing.simple.billsoft.dtos.CustomerBalanceSummary bal;
+        if (balanceService != null) {
+            bal = balanceService.getCustomerBalance(firmId, customer.getId());
+        } else {
+            List<SalesReturn> returns = salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(firmId, customer.getId());
+            BigDecimal retSum = (returns != null) ? returns.stream().map(SalesReturn::getTotalRefundAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : BigDecimal.ZERO;
+            List<InvoicePayment> allPmts = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customer.getId());
+            Set<Long> withPmt = allPmts.stream().map(InvoicePayment::getInvoiceId).filter(Objects::nonNull).collect(Collectors.toSet());
+            BigDecimal legPaid = validInvoices.stream().filter(i -> Boolean.TRUE.equals(i.getPaid()) && !withPmt.contains(i.getId())).map(Invoice::getTotalAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal pmtSum = allPmts.stream().map(InvoicePayment::getAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add).add(legPaid);
+            BigDecimal billed = validInvoices.stream().map(Invoice::getTotalAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            bal = com.billing.simple.billsoft.dtos.CustomerBalanceSummary.builder()
+                    .customerId(customer.getId())
+                    .firmId(firmId)
+                    .totalBilled(billed)
+                    .totalPaid(pmtSum)
+                    .totalReturns(retSum)
+                    .closingBalance(billed.subtract(pmtSum).subtract(retSum))
+                    .build();
+        }
+
+        BigDecimal totalSales = bal.getTotalBilled();
+        BigDecimal totalPaid = bal.getTotalPaid();
+        BigDecimal totalReturnCredit = bal.getTotalReturns();
+        BigDecimal outstanding = bal.getClosingBalance();
+
         long unpaidCount = 0;
         long overdueCount = 0;
         LocalDate today = LocalDate.now();
         LocalDate lastTxDate = null;
 
         for (Invoice inv : validInvoices) {
-            BigDecimal amt = inv.getTotalAmount() != null ? inv.getTotalAmount() : BigDecimal.ZERO;
-            totalSales = totalSales.add(amt);
             if (inv.getInvoiceDate() != null) {
                 LocalDate invDate = inv.getInvoiceDate().toLocalDate();
                 if (lastTxDate == null || invDate.isAfter(lastTxDate)) {
@@ -270,33 +300,16 @@ public class OmnisearchQuickHelpService {
         }
 
         List<InvoicePayment> payments = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customer.getId());
-        BigDecimal totalPaid = BigDecimal.ZERO;
         LocalDate lastPayDate = null;
         BigDecimal lastPayAmt = BigDecimal.ZERO;
 
         for (InvoicePayment p : payments) {
-            if (p.getAmount() != null) {
-                totalPaid = totalPaid.add(p.getAmount());
-                if (p.getPaymentDate() != null) {
+            if (p.getAmount() != null && p.getPaymentDate() != null) {
+                if (lastPayDate == null || !p.getPaymentDate().isBefore(lastPayDate)) {
                     lastPayDate = p.getPaymentDate();
                     lastPayAmt = p.getAmount();
                 }
             }
-        }
-
-        List<SalesReturn> returns = salesReturnRepo.findByFirmIdOrderByReturnDateDescIdDesc(firmId);
-        BigDecimal totalReturnCredit = BigDecimal.ZERO;
-        for (SalesReturn sr : returns) {
-            if (sr.getCustomer() != null && customer.getId().equals(sr.getCustomer().getId())) {
-                if (sr.getTotalRefundAmount() != null) {
-                    totalReturnCredit = totalReturnCredit.add(sr.getTotalRefundAmount());
-                }
-            }
-        }
-
-        BigDecimal outstanding = totalSales.subtract(totalPaid).subtract(totalReturnCredit);
-        if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
-            outstanding = BigDecimal.ZERO;
         }
 
         // Calculate unpaid and overdue invoices based on balance
@@ -327,9 +340,12 @@ public class OmnisearchQuickHelpService {
             sumDTO.setDueDate(inv.getDueDate());
             sumDTO.setTotalAmount(inv.getTotalAmount() != null ? inv.getTotalAmount() : BigDecimal.ZERO);
             BigDecimal pAmt = invPaidMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            if (pAmt.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
+                pAmt = sumDTO.getTotalAmount();
+            }
             sumDTO.setPaidAmount(pAmt);
-            BigDecimal bal = sumDTO.getTotalAmount().subtract(pAmt);
-            sumDTO.setBalanceAmount(bal.compareTo(BigDecimal.ZERO) > 0 ? bal : BigDecimal.ZERO);
+            BigDecimal invBal = sumDTO.getTotalAmount().subtract(pAmt);
+            sumDTO.setBalanceAmount(invBal.compareTo(BigDecimal.ZERO) > 0 ? invBal : BigDecimal.ZERO);
             sumDTO.setStatus(inv.getStatus() != null ? inv.getStatus().name() : "FINAL");
 
             boolean isOverdue = inv.getDueDate() != null && inv.getDueDate().isBefore(today) && sumDTO.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0;
@@ -413,7 +429,7 @@ public class OmnisearchQuickHelpService {
         summary.put("poCount", dto.getTotalPurchaseOrderCount());
         response.setSummary(summary);
 
-        response.getDeepLinks().add(new QuickHelpAction("📋 View POs", "📦", "NAVIGATE", Map.of("page", "firm", "tab", "paperwork", "subTab", "orders", "partyId", party.getId())));
+        response.getDeepLinks().add(new QuickHelpAction("📋 View POs", "📦", "NAVIGATE", Map.of("page", "firm", "tab", "orders", "subTab", "orders", "partyId", party.getId())));
 
         return response;
     }
@@ -783,7 +799,7 @@ public class OmnisearchQuickHelpService {
         QuickHelpResponse<InventorySummaryDTO> response = new QuickHelpResponse<>();
         response.setCapabilityId("QH_INVENTORY_INFO");
 
-        List<Product> allProducts = productRepo.findByFirmId(firmId);
+        List<Product> allProducts = productRepo.findByFirmIdAndIsArchivedFalseOrderByNameAsc(firmId);
         List<Product> lowStockList = productRepo.findLowStockProductsByFirmId(firmId);
 
         InventorySummaryDTO dto = new InventorySummaryDTO();
@@ -816,7 +832,7 @@ public class OmnisearchQuickHelpService {
 
         if (productNameOrCategory != null && !productNameOrCategory.trim().isEmpty()) {
             String query = productNameOrCategory.trim();
-            List<Product> matched = productRepo.findTop5ByFirmIdAndNameContainingIgnoreCaseOrderByNameAsc(firmId, query);
+            List<Product> matched = productRepo.findTop5ByFirmIdAndIsArchivedFalseAndNameContainingIgnoreCaseOrderByNameAsc(firmId, query);
             dto.setMatchedProducts(matched.stream().map(this::toProductSummaryDTO).collect(Collectors.toList()));
         }
 
@@ -1471,7 +1487,7 @@ public class OmnisearchQuickHelpService {
             dto.setEntityName(c.getName());
             dto.setOpeningBalance(BigDecimal.ZERO);
             dto.setTotalDebits(cDTO.getTotalSales());
-            dto.setTotalCredits(cDTO.getTotalPaid());
+            dto.setTotalCredits(cDTO.getTotalPaid().add(cDTO.getTotalReturnCredit() != null ? cDTO.getTotalReturnCredit() : BigDecimal.ZERO));
             dto.setClosingBalance(cDTO.getCurrentOutstanding());
         }
 
@@ -1545,7 +1561,7 @@ public class OmnisearchQuickHelpService {
         }).collect(Collectors.toList()));
 
         // 4. Products
-        List<Product> prods = productRepo.findTop5ByFirmIdAndNameContainingIgnoreCaseOrderByNameAsc(firmId, q);
+        List<Product> prods = productRepo.findTop5ByFirmIdAndIsArchivedFalseAndNameContainingIgnoreCaseOrderByNameAsc(firmId, q);
         dto.setProducts(prods.stream().map(p -> {
             Map<String, Object> m = new HashMap<>();
             m.put("id", p.getId());
@@ -1588,6 +1604,172 @@ public class OmnisearchQuickHelpService {
         int totalMatches = dto.getEmployees().size() + dto.getCustomers().size() + dto.getVendors().size() + dto.getProducts().size() + dto.getInvoices().size() + dto.getExpenses().size();
         response.setTitle("🔍 Found " + totalMatches + " Result(s) for \"" + q + "\"");
         response.setSubtitle("Staff: " + dto.getEmployees().size() + " • Customers: " + dto.getCustomers().size() + " • Items: " + dto.getProducts().size());
+
+        return response;
+    }
+
+    public QuickHelpResponse<AgingSummaryDTO> getAgingSummary() {
+        Long firmId = TenantContext.getRequiredFirmId();
+        QuickHelpResponse<AgingSummaryDTO> response = new QuickHelpResponse<>();
+        response.setCapabilityId("QH_AGING_SUMMARY");
+        response.setCategory("QUICK_HELP");
+
+        AgingSummaryDTO dto = new AgingSummaryDTO();
+        LocalDate today = LocalDate.now();
+
+        List<Customer> customers = customerRepo.findByFirmId(firmId);
+        BigDecimal totalReceivable = BigDecimal.ZERO;
+        BigDecimal totalCustomerCredits = BigDecimal.ZERO;
+        BigDecimal bucket0_30 = BigDecimal.ZERO;
+        BigDecimal bucket31_60 = BigDecimal.ZERO;
+        BigDecimal bucket61_90 = BigDecimal.ZERO;
+        BigDecimal bucket90plus = BigDecimal.ZERO;
+        int customerOwingCount = 0;
+        int activeInvoiceCount = 0;
+
+        for (Customer customer : customers) {
+            BigDecimal closingBalance = BigDecimal.ZERO;
+            if (balanceService != null) {
+                var balSummary = balanceService.getCustomerBalance(firmId, customer.getId());
+                if (balSummary != null && balSummary.getClosingBalance() != null) {
+                    closingBalance = balSummary.getClosingBalance();
+                }
+            }
+
+            if (closingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                totalCustomerCredits = totalCustomerCredits.add(closingBalance.abs());
+                continue;
+            }
+
+            if (closingBalance.compareTo(BigDecimal.ZERO) > 0) {
+                customerOwingCount++;
+                totalReceivable = totalReceivable.add(closingBalance);
+
+                CustomerAgingItemDTO item = new CustomerAgingItemDTO();
+                item.setCustomerId(customer.getId());
+                item.setCustomerName(customer.getName());
+                item.setCustomerPhone(customer.getPhone());
+                item.setClosingBalance(closingBalance);
+
+                // Fetch customer's active issued invoices (excluding DRAFT, ESTIMATE, CANCELLED)
+                List<Invoice> activeInvoices = invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customer.getId()).stream()
+                        .filter(i -> i.getInvoiceDate() != null)
+                        .filter(i -> i.getStatus() != com.billing.simple.billsoft.entities.InvoiceStatus.ESTIMATE)
+                        .filter(i -> i.getStatus() != com.billing.simple.billsoft.entities.InvoiceStatus.DRAFT)
+                        .filter(i -> i.getStatus() != com.billing.simple.billsoft.entities.InvoiceStatus.CANCELLED)
+                        .sorted(Comparator.comparing(Invoice::getInvoiceDate).thenComparing(Invoice::getId))
+                        .collect(Collectors.toList());
+
+                activeInvoiceCount += activeInvoices.size();
+
+                // Compute payments + returns to allocate against invoices in FIFO order
+                BigDecimal payments = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customer.getId()).stream()
+                        .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                // Add legacy direct-paid invoices without payment records
+                Set<Long> invoicesWithPayments = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customer.getId()).stream()
+                        .map(com.billing.simple.billsoft.entities.InvoicePayment::getInvoiceId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+                BigDecimal directPaidSum = activeInvoices.stream()
+                        .filter(i -> Boolean.TRUE.equals(i.getPaid()) && !invoicesWithPayments.contains(i.getId()))
+                        .map(i -> i.getTotalAmount() != null ? i.getTotalAmount() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal returnsSum = salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(firmId, customer.getId()).stream()
+                        .map(sr -> sr.getTotalRefundAmount() != null ? sr.getTotalRefundAmount() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal totalCredits = payments.add(directPaidSum).add(returnsSum);
+
+                // Allocate credits against invoices in FIFO order
+                BigDecimal remainingCredits = totalCredits;
+                BigDecimal custB0_30 = BigDecimal.ZERO;
+                BigDecimal custB31_60 = BigDecimal.ZERO;
+                BigDecimal custB61_90 = BigDecimal.ZERO;
+                BigDecimal custB90plus = BigDecimal.ZERO;
+                BigDecimal allocatedTotal = BigDecimal.ZERO;
+
+                for (Invoice inv : activeInvoices) {
+                    BigDecimal invTotal = inv.getTotalAmount() != null ? inv.getTotalAmount() : BigDecimal.ZERO;
+                    if (invTotal.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    BigDecimal unpaidOnInv;
+                    if (remainingCredits.compareTo(invTotal) >= 0) {
+                        remainingCredits = remainingCredits.subtract(invTotal);
+                        unpaidOnInv = BigDecimal.ZERO;
+                    } else {
+                        unpaidOnInv = invTotal.subtract(remainingCredits);
+                        remainingCredits = BigDecimal.ZERO;
+                    }
+
+                    if (unpaidOnInv.compareTo(BigDecimal.ZERO) > 0) {
+                        LocalDate invDate = inv.getInvoiceDate() != null ? inv.getInvoiceDate().toLocalDate() : today;
+                        long days = java.time.temporal.ChronoUnit.DAYS.between(invDate, today);
+                        if (days <= 30) {
+                            custB0_30 = custB0_30.add(unpaidOnInv);
+                        } else if (days <= 60) {
+                            custB31_60 = custB31_60.add(unpaidOnInv);
+                        } else if (days <= 90) {
+                            custB61_90 = custB61_90.add(unpaidOnInv);
+                        } else {
+                            custB90plus = custB90plus.add(unpaidOnInv);
+                        }
+                        allocatedTotal = allocatedTotal.add(unpaidOnInv);
+                    }
+                }
+
+                // If customer has closing balance but no active invoices (e.g. legacy opening balance),
+                // bucket the unallocated closing balance into 0-30 days
+                if (allocatedTotal.compareTo(closingBalance) < 0) {
+                    BigDecimal unbucketed = closingBalance.subtract(allocatedTotal);
+                    custB0_30 = custB0_30.add(unbucketed);
+                }
+
+                item.getBuckets().put("0-30", custB0_30.setScale(2, RoundingMode.HALF_UP));
+                item.getBuckets().put("31-60", custB31_60.setScale(2, RoundingMode.HALF_UP));
+                item.getBuckets().put("61-90", custB61_90.setScale(2, RoundingMode.HALF_UP));
+                item.getBuckets().put("90+", custB90plus.setScale(2, RoundingMode.HALF_UP));
+                dto.getCustomerBreakdown().add(item);
+
+                bucket0_30 = bucket0_30.add(custB0_30);
+                bucket31_60 = bucket31_60.add(custB31_60);
+                bucket61_90 = bucket61_90.add(custB61_90);
+                bucket90plus = bucket90plus.add(custB90plus);
+            }
+        }
+
+        BigDecimal netReceivable = totalReceivable.subtract(totalCustomerCredits);
+
+        dto.setTotalReceivable(totalReceivable.setScale(2, RoundingMode.HALF_UP));
+        dto.setTotalCustomerCredits(totalCustomerCredits.setScale(2, RoundingMode.HALF_UP));
+        dto.setNetReceivable(netReceivable.setScale(2, RoundingMode.HALF_UP));
+        dto.setCustomerCount(customerOwingCount);
+        dto.setInvoiceCount(activeInvoiceCount);
+
+        dto.getBuckets().put("0-30", bucket0_30.setScale(2, RoundingMode.HALF_UP));
+        dto.getBuckets().put("31-60", bucket31_60.setScale(2, RoundingMode.HALF_UP));
+        dto.getBuckets().put("61-90", bucket61_90.setScale(2, RoundingMode.HALF_UP));
+        dto.getBuckets().put("90+", bucket90plus.setScale(2, RoundingMode.HALF_UP));
+
+        response.setData(dto);
+        response.setTitle("⏳ Accounts Receivable Aging (Total Due: ₹" + totalReceivable.setScale(2, RoundingMode.HALF_UP).toPlainString() + ")");
+        response.setSubtitle("0-30d: ₹" + bucket0_30.setScale(2, RoundingMode.HALF_UP).toPlainString() +
+                " • 31-60d: ₹" + bucket31_60.setScale(2, RoundingMode.HALF_UP).toPlainString() +
+                " • 61-90d: ₹" + bucket61_90.setScale(2, RoundingMode.HALF_UP).toPlainString() +
+                " • 90d+: ₹" + bucket90plus.setScale(2, RoundingMode.HALF_UP).toPlainString());
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalReceivable", dto.getTotalReceivable());
+        summary.put("netReceivable", dto.getNetReceivable());
+        summary.put("customerCredits", dto.getTotalCustomerCredits());
+        summary.put("buckets", dto.getBuckets());
+        summary.put("owingCustomers", customerOwingCount);
+        response.setSummary(summary);
+
+        response.getDeepLinks().add(new QuickHelpAction("📄 Statements", "📊", "NAVIGATE", Map.of("page", "firm", "tab", "statements")));
 
         return response;
     }

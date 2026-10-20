@@ -26,9 +26,6 @@ public class NoteService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long target = authoritativeFirmId != null ? authoritativeFirmId : explicitFirmId;
-        if (target == null || target <= 0) {
-            throw new TenantSecurityException("Active firm context is required");
-        }
         return target;
     }
 
@@ -43,7 +40,7 @@ public class NoteService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        return target != null ? noteRepository.findByFirmId(target) : noteRepository.findAll();
+        return target != null ? noteRepository.findByFirmId(target) : java.util.Collections.emptyList();
     }
 
     public static int countCodePoints(String s) {
@@ -72,14 +69,19 @@ public class NoteService {
 
     public Note create(Note note) {
         validateNote(note);
-        Long firmId = note.getFirmId() != null ? note.getFirmId() : TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            note.setFirmId(firmId);
-            if (note.getCustomerId() != null) {
-                if (!customerRepository.existsByIdAndFirmId(note.getCustomerId(), firmId)) {
-                    throw new TenantSecurityException(
-                            "Referenced customer does not belong to the current firm");
-                }
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && note.getFirmId() != null && !authoritativeFirmId.equals(note.getFirmId())) {
+            throw new TenantSecurityException("Cross-firm note creation prohibited");
+        }
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : note.getFirmId();
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        }
+        note.setFirmId(firmId);
+        if (note.getCustomerId() != null) {
+            if (!customerRepository.existsByIdAndFirmId(note.getCustomerId(), firmId)) {
+                throw new TenantSecurityException(
+                        "Referenced customer does not belong to the current firm");
             }
         }
         return noteRepository.save(note);
@@ -89,7 +91,10 @@ public class NoteService {
     public Note update(Long id, Note updated) {
         validateNote(updated);
         Long firmId = TenantContext.getCurrentFirmId();
-        Note n = (firmId != null ? noteRepository.findByIdAndFirmId(id, firmId) : noteRepository.findById(id))
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        }
+        Note n = noteRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Note not found"));
 
         if (updated.getCustomerId() != null) {
@@ -113,16 +118,12 @@ public class NoteService {
     @Transactional
     public boolean delete(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            if (!noteRepository.existsByIdAndFirmId(id, firmId))
-                return false;
-            noteRepository.deleteByIdAndFirmId(id, firmId);
-            return true;
-        } else {
-            if (!noteRepository.existsById(id))
-                return false;
-            noteRepository.deleteById(id);
-            return true;
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
         }
+        if (!noteRepository.existsByIdAndFirmId(id, firmId))
+            return false;
+        noteRepository.deleteByIdAndFirmId(id, firmId);
+        return true;
     }
 }

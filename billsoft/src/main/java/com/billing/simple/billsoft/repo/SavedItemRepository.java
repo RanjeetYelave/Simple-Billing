@@ -14,6 +14,10 @@ import com.billing.simple.billsoft.entities.SavedItem;
 @Repository
 public interface SavedItemRepository extends JpaRepository<SavedItem, Long> {
 
+    List<SavedItem> findByFirmId(Long firmId);
+
+    Optional<SavedItem> findByFirmIdAndNormalizedName(Long firmId, String normalizedName);
+
     List<SavedItem> findByFirmIdAndIsArchivedFalse(Long firmId);
 
     List<SavedItem> findByFirmIdAndIsArchivedFalseOrderByUsageCountDescLastUsedAtDesc(Long firmId);

@@ -3,14 +3,18 @@ package com.billing.simple.billsoft.service;
 import com.billing.simple.billsoft.dto.BackupDTO;
 import com.billing.simple.billsoft.dto.BackupInspectionDTO;
 import com.billing.simple.billsoft.entities.*;
+import com.billing.simple.billsoft.forecast.entity.ForecastProduct;
+import com.billing.simple.billsoft.forecast.repository.*;
 import com.billing.simple.billsoft.repo.*;
 import com.billing.simple.billsoft.repositories.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class BackupService {
@@ -47,6 +51,20 @@ public class BackupService {
     private final NotificationRepository notificationRepo;
     private final NotificationPreferenceRepository notificationPreferenceRepo;
     private final BackupValidationService backupValidationService;
+    private final PricingProfileRepository pricingProfileRepo;
+    private final CategoryPricingRuleRepository categoryPricingRuleRepo;
+    private final SavedItemRepository savedItemRepo;
+    private final ForecastProductRepository forecastProductRepo;
+    private final ForecastSalesTransactionRepository forecastSalesTransactionRepo;
+    private final ProductSalesMetricsRepository productSalesMetricsRepo;
+    private final ForecastModelRunRepository forecastModelRunRepo;
+    private final ProductDemandForecastRepository productDemandForecastRepo;
+    private final ProductRestockRecommendationRepository productRestockRecommendationRepo;
+    private final ItemMergeAuditRepository itemMergeAuditRepo;
+    private final ItemDuplicateDismissalRepository itemDuplicateDismissalRepo;
+    private final InvoiceMigrationRecordRepository invoiceMigrationRecordRepo;
+    private final BackupRecoveryCoordinator coordinator;
+    private final ObjectMapper objectMapper;
 
     public BackupService(FirmDetailsRepository firmDetailsRepo,
                          CustomerRepository customerRepo,
@@ -79,7 +97,21 @@ public class BackupService {
                          BackupEntityMappingRepository backupEntityMappingRepo,
                          NotificationRepository notificationRepo,
                          NotificationPreferenceRepository notificationPreferenceRepo,
-                         BackupValidationService backupValidationService) {
+                         BackupValidationService backupValidationService,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) PricingProfileRepository pricingProfileRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) CategoryPricingRuleRepository categoryPricingRuleRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) SavedItemRepository savedItemRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ForecastProductRepository forecastProductRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ForecastSalesTransactionRepository forecastSalesTransactionRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ProductSalesMetricsRepository productSalesMetricsRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ForecastModelRunRepository forecastModelRunRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ProductDemandForecastRepository productDemandForecastRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ProductRestockRecommendationRepository productRestockRecommendationRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ItemMergeAuditRepository itemMergeAuditRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ItemDuplicateDismissalRepository itemDuplicateDismissalRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) InvoiceMigrationRecordRepository invoiceMigrationRecordRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ObjectMapper objectMapper) {
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -112,6 +144,20 @@ public class BackupService {
         this.notificationRepo = notificationRepo;
         this.notificationPreferenceRepo = notificationPreferenceRepo;
         this.backupValidationService = backupValidationService;
+        this.pricingProfileRepo = pricingProfileRepo;
+        this.categoryPricingRuleRepo = categoryPricingRuleRepo;
+        this.savedItemRepo = savedItemRepo;
+        this.forecastProductRepo = forecastProductRepo;
+        this.forecastSalesTransactionRepo = forecastSalesTransactionRepo;
+        this.productSalesMetricsRepo = productSalesMetricsRepo;
+        this.forecastModelRunRepo = forecastModelRunRepo;
+        this.productDemandForecastRepo = productDemandForecastRepo;
+        this.productRestockRecommendationRepo = productRestockRecommendationRepo;
+        this.itemMergeAuditRepo = itemMergeAuditRepo;
+        this.itemDuplicateDismissalRepo = itemDuplicateDismissalRepo;
+        this.invoiceMigrationRecordRepo = invoiceMigrationRecordRepo;
+        this.coordinator = coordinator != null ? coordinator : new BackupRecoveryCoordinator();
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
     }
 
     @Transactional(readOnly = true)
@@ -182,7 +228,22 @@ public class BackupService {
         backup.setNotifications(notificationRepo.findByFirmId(firmId));
         notificationPreferenceRepo.findByFirmId(firmId).ifPresent(pref -> backup.setNotificationPreferences(Collections.singletonList(pref)));
         backup.setAppConfigs(appConfigRepo.findAll());
-        backup.setSalesReturns(salesReturnRepo.findByFirmIdOrderByReturnDateDescIdDesc(firmId));
+        backup.setSalesReturns(salesReturnRepo.findAllByFirmIdWithItems(firmId));
+        if (pricingProfileRepo != null) {
+            backup.setPricingProfiles(pricingProfileRepo.findByFirmIdOrderByIdAsc(firmId));
+        }
+        if (categoryPricingRuleRepo != null) {
+            backup.setCategoryPricingRules(categoryPricingRuleRepo.findByFirmId(firmId));
+        }
+        if (savedItemRepo != null) {
+            backup.setSavedItems(savedItemRepo.findByFirmId(firmId));
+        }
+        if (forecastProductRepo != null) {
+            backup.setForecastProducts(forecastProductRepo.findByFirmId(firmId));
+        }
+
+        // Decision B1: Strict isolation - cross-firm migration history and source-firm snapshots are excluded from single-firm tenant exports
+        backup.setInvoiceMigrationRecords(null);
 
         return backup;
     }
@@ -232,7 +293,22 @@ public class BackupService {
         backup.setNotifications(notificationRepo.findAll());
         backup.setNotificationPreferences(notificationPreferenceRepo.findAll());
         backup.setAppConfigs(appConfigRepo.findAll());
-        backup.setSalesReturns(salesReturnRepo.findAll());
+        backup.setSalesReturns(salesReturnRepo.findAllWithItems());
+        if (pricingProfileRepo != null) {
+            backup.setPricingProfiles(pricingProfileRepo.findAll());
+        }
+        if (categoryPricingRuleRepo != null) {
+            backup.setCategoryPricingRules(categoryPricingRuleRepo.findAll());
+        }
+        if (savedItemRepo != null) {
+            backup.setSavedItems(savedItemRepo.findAll());
+        }
+        if (forecastProductRepo != null) {
+            backup.setForecastProducts(forecastProductRepo.findAll());
+        }
+        if (invoiceMigrationRecordRepo != null) {
+            backup.setInvoiceMigrationRecords(invoiceMigrationRecordRepo.findAllByOrderByIdAsc());
+        }
 
         return backup;
     }
@@ -363,6 +439,9 @@ public class BackupService {
         totalStats.put("totalGoals", backup.getGoals() != null ? backup.getGoals().size() : 0);
         totalStats.put("totalGoalLogs", backup.getGoalLogs() != null ? backup.getGoalLogs().size() : 0);
         totalStats.put("totalLetters", backup.getBusinessLetters() != null ? backup.getBusinessLetters().size() : 0);
+        totalStats.put("totalSavedItems", backup.getSavedItems() != null ? backup.getSavedItems().size() : 0);
+        totalStats.put("totalForecastProducts", backup.getForecastProducts() != null ? backup.getForecastProducts().size() : 0);
+        totalStats.put("totalMigrationRecords", backup.getInvoiceMigrationRecords() != null ? backup.getInvoiceMigrationRecords().size() : 0);
         dto.setTotalStats(totalStats);
 
         return dto;
@@ -370,48 +449,95 @@ public class BackupService {
 
     @Transactional
     public List<FirmDetails> importSelectiveData(BackupDTO backup, Set<Long> selectedFirmIds, String mode, Long targetFirmId) {
-        if (backup == null || backup.getMetadata() == null) {
-            throw new com.billing.simple.billsoft.exception.BackupValidationException("MISSING_METADATA", "Invalid backup file: Missing metadata");
+        boolean locked;
+        try {
+            locked = coordinator.tryLock(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for backup/recovery lock", e);
         }
-
-        // 0. Preflight validation - Ensures backup is structurally valid & conflict-free BEFORE touching database
-        backupValidationService.validate(backup);
-
-        boolean isFullSystem = "FULL_SYSTEM_BACKUP".equalsIgnoreCase((String) backup.getMetadata().get("type"))
-                || (backup.getAllFirms() != null && !backup.getAllFirms().isEmpty());
-
-        List<FirmDetails> backupFirms = new ArrayList<>();
-        if (isFullSystem && backup.getAllFirms() != null && !backup.getAllFirms().isEmpty()) {
-            backupFirms.addAll(backup.getAllFirms());
-        } else if (backup.getFirmDetails() != null) {
-            backupFirms.add(backup.getFirmDetails());
-        } else {
-            FirmDetails fallback = new FirmDetails();
-            fallback.setFirmName("Restored Firm");
-            backupFirms.add(fallback);
+        if (!locked) {
+            throw new IllegalStateException("A backup, recovery, or restore operation is currently in progress. Please retry shortly.");
         }
+        try {
+            if (backup == null || backup.getMetadata() == null) {
+                throw new com.billing.simple.billsoft.exception.BackupValidationException("MISSING_METADATA", "Invalid backup file: Missing metadata");
+            }
 
-        // Filter firms by selectedFirmIds if provided
-        List<FirmDetails> targetFirmsToProcess = new ArrayList<>();
-        if (selectedFirmIds != null && !selectedFirmIds.isEmpty()) {
-            for (FirmDetails f : backupFirms) {
-                if (f.getId() != null && selectedFirmIds.contains(f.getId())) {
-                    targetFirmsToProcess.add(f);
+            // 0. Preflight validation - Ensures backup is structurally valid & conflict-free BEFORE touching database
+            backupValidationService.validate(backup);
+
+            boolean isFullSystem = "FULL_SYSTEM_BACKUP".equalsIgnoreCase((String) backup.getMetadata().get("type"))
+                    || (backup.getAllFirms() != null && !backup.getAllFirms().isEmpty());
+
+            List<FirmDetails> backupFirms = new ArrayList<>();
+            if (isFullSystem && backup.getAllFirms() != null && !backup.getAllFirms().isEmpty()) {
+                backupFirms.addAll(backup.getAllFirms());
+            } else if (backup.getFirmDetails() != null) {
+                backupFirms.add(backup.getFirmDetails());
+            } else {
+                FirmDetails fallback = new FirmDetails();
+                fallback.setFirmName("Restored Firm");
+                backupFirms.add(fallback);
+            }
+
+            // Filter firms by selectedFirmIds if provided
+            List<FirmDetails> targetFirmsToProcess = new ArrayList<>();
+            if (selectedFirmIds != null && !selectedFirmIds.isEmpty()) {
+                Set<Long> availableFirmIds = new HashSet<>();
+                for (FirmDetails f : backupFirms) {
+                    if (f.getId() != null) {
+                        availableFirmIds.add(f.getId());
+                    }
+                }
+                Set<Long> missingFirmIds = new HashSet<>(selectedFirmIds);
+                missingFirmIds.removeAll(availableFirmIds);
+                if (!missingFirmIds.isEmpty()) {
+                    throw new IllegalArgumentException("Selected source firm(s) " + missingFirmIds + " not found in backup file.");
+                }
+                for (FirmDetails f : backupFirms) {
+                    if (f.getId() != null && selectedFirmIds.contains(f.getId())) {
+                        targetFirmsToProcess.add(f);
+                    }
+                }
+            } else {
+                if (targetFirmId != null && backupFirms.size() > 1) {
+                    boolean targetExistsInBackup = backupFirms.stream()
+                            .anyMatch(f -> Objects.equals(f.getId(), targetFirmId));
+                    if (targetExistsInBackup) {
+                        for (FirmDetails f : backupFirms) {
+                            if (Objects.equals(f.getId(), targetFirmId)) {
+                                targetFirmsToProcess.add(f);
+                                break;
+                            }
+                        }
+                    } else {
+                        throw new IllegalArgumentException("Multi-firm backup contains " + backupFirms.size()
+                                + " firms. Explicit source firm selection is required to import into target firm " + targetFirmId + ".");
+                    }
+                } else {
+                    targetFirmsToProcess.addAll(backupFirms);
                 }
             }
-        }
-        if (targetFirmsToProcess.isEmpty()) {
-            targetFirmsToProcess.addAll(backupFirms);
-        }
 
-        // Destructive clean wipe is strictly prohibited during restore operations
-        if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode)) {
-            throw new IllegalArgumentException("Destructive clean_wipe mode is not permitted during restore operations. To reset the system, use the dedicated Factory Reset administrative procedure.");
-        }
+            if (targetFirmId != null && targetFirmsToProcess.size() > 1) {
+                throw new IllegalArgumentException("Cannot restore multiple source firms into a single target firm " + targetFirmId + ".");
+            }
 
-        Map<Long, Long> oldToNewFirmIdMap = new HashMap<>();
-        List<FirmDetails> restoredFirms = new ArrayList<>();
-        Map<String, Set<Long>> claimedTargetEntitiesByType = new HashMap<>();
+            // Safe first-run initialization: Uninitialized database with zero firms adapts to non-destructive clone restore.
+            // Destructive clean wipe is otherwise strictly prohibited during restore operations.
+            if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode)) {
+                if (firmDetailsRepo.count() == 0) {
+                    mode = "clone";
+                } else {
+                    throw new IllegalArgumentException("Destructive clean_wipe mode is not permitted during restore operations. To reset the system, use the dedicated Factory Reset administrative procedure.");
+                }
+            }
+
+            Map<Long, Long> oldToNewFirmIdMap = new HashMap<>();
+            List<FirmDetails> restoredFirms = new ArrayList<>();
+            Map<String, Set<Long>> claimedTargetEntitiesByType = new HashMap<>();
+            List<PendingProductFk> pendingProductFks = new ArrayList<>();
 
         for (FirmDetails f : targetFirmsToProcess) {
             Long oldFirmId = f.getId() != null ? f.getId() : -1L;
@@ -467,6 +593,42 @@ public class BackupService {
             }
         }
 
+        if (targetFirmsToProcess.size() == 1 && backupFirms.size() <= 1) {
+            // In single-firm backup, legacy entities may have null/unspecified firmId (-1L) or arbitrary source firmId
+            Long singleMappedId = oldToNewFirmIdMap.values().iterator().next();
+            oldToNewFirmIdMap.put(-1L, singleMappedId);
+            if (backup.getSourceFirmId() != null) {
+                oldToNewFirmIdMap.put(backup.getSourceFirmId(), singleMappedId);
+            }
+            if (backup.getFirmDetails() != null && backup.getFirmDetails().getId() != null) {
+                oldToNewFirmIdMap.put(backup.getFirmDetails().getId(), singleMappedId);
+            }
+            if (targetFirmId != null) {
+                oldToNewFirmIdMap.put(targetFirmId, singleMappedId);
+            }
+            // Auto-map all entity firm IDs in single-firm backup
+            if (backup.getCustomers() != null) {
+                for (Customer c : backup.getCustomers()) {
+                    if (c.getFirmId() != null) oldToNewFirmIdMap.put(c.getFirmId(), singleMappedId);
+                }
+            }
+            if (backup.getProducts() != null) {
+                for (Product p : backup.getProducts()) {
+                    if (p.getFirmId() != null) oldToNewFirmIdMap.put(p.getFirmId(), singleMappedId);
+                }
+            }
+            if (backup.getInvoices() != null) {
+                for (Invoice inv : backup.getInvoices()) {
+                    if (inv.getFirmId() != null) oldToNewFirmIdMap.put(inv.getFirmId(), singleMappedId);
+                }
+            }
+            if (backup.getNotifications() != null) {
+                for (Notification n : backup.getNotifications()) {
+                    if (n.getFirmId() != null) oldToNewFirmIdMap.put(n.getFirmId(), singleMappedId);
+                }
+            }
+        }
+
         Long defaultTargetFirmId = targetFirmId != null ? targetFirmId : (!restoredFirms.isEmpty() && restoredFirms.get(0).getId() != null ? restoredFirms.get(0).getId() : 1L);
 
         String backupSourceId = "firm_" + (defaultTargetFirmId != null ? defaultTargetFirmId : "default");
@@ -482,14 +644,94 @@ public class BackupService {
             }
         }
 
+        // 0.5. Pricing Profiles and Category Pricing Rules
+        Map<Long, PricingProfile> oldToNewPricingProfileMap = new HashMap<>();
+        if (pricingProfileRepo != null && backup.getPricingProfiles() != null) {
+            for (PricingProfile pp : backup.getPricingProfiles()) {
+                Long oldFid = pp.getFirmId() != null ? pp.getFirmId() : -1L;
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, pp.getId(), "PRICING_PROFILE", mappedFirmId);
+                    PricingProfile profileToUse = null;
+
+                    if (mappedTargetEntityId != null) {
+                        profileToUse = pricingProfileRepo.findByIdAndFirmId(mappedTargetEntityId, mappedFirmId).orElse(null);
+                    }
+                    if (profileToUse == null && pp.getCode() != null) {
+                        profileToUse = pricingProfileRepo.findByFirmIdAndCode(mappedFirmId, pp.getCode().trim().toUpperCase()).orElse(null);
+                    }
+
+                    if (profileToUse != null) {
+                        if (pp.getName() != null) profileToUse.setName(pp.getName());
+                        if (pp.getDescription() != null) profileToUse.setDescription(pp.getDescription());
+                        if (pp.getIsDefault() != null) profileToUse.setIsDefault(pp.getIsDefault());
+                        if (pp.getIsActive() != null) profileToUse.setIsActive(pp.getIsActive());
+                        profileToUse = pricingProfileRepo.save(profileToUse);
+                    } else {
+                        PricingProfile newPp = PricingProfile.builder()
+                                .firmId(mappedFirmId)
+                                .name(pp.getName() != null ? pp.getName() : (pp.getCode() != null ? pp.getCode() : "Profile"))
+                                .code(pp.getCode() != null ? pp.getCode().trim().toUpperCase() : ("PP_" + System.currentTimeMillis()))
+                                .description(pp.getDescription())
+                                .isDefault(Boolean.TRUE.equals(pp.getIsDefault()))
+                                .isActive(pp.getIsActive() != null ? pp.getIsActive() : true)
+                                .build();
+                        profileToUse = pricingProfileRepo.save(newPp);
+                    }
+
+                    recordEntityMapping(backupSourceId, pp.getId(), "PRICING_PROFILE", mappedFirmId, profileToUse.getId());
+                    markTargetEntityClaimed(claimedTargetEntitiesByType, "PRICING_PROFILE", profileToUse.getId());
+                    if (pp.getId() != null) {
+                        oldToNewPricingProfileMap.put(pp.getId(), profileToUse);
+                    }
+                }
+            }
+        }
+
+        if (categoryPricingRuleRepo != null && backup.getCategoryPricingRules() != null) {
+            for (CategoryPricingRule rule : backup.getCategoryPricingRules()) {
+                Long oldFid = rule.getFirmId() != null ? rule.getFirmId() : -1L;
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport && rule.getCategoryName() != null) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedProfileId = null;
+                    if (rule.getPricingProfileId() != null && oldToNewPricingProfileMap.containsKey(rule.getPricingProfileId())) {
+                        mappedProfileId = oldToNewPricingProfileMap.get(rule.getPricingProfileId()).getId();
+                    } else if (rule.getPricingProfileId() != null) {
+                        mappedProfileId = rule.getPricingProfileId();
+                    }
+
+                    if (mappedProfileId != null) {
+                        CategoryPricingRule cand = categoryPricingRuleRepo.findByFirmIdAndCategoryNameIgnoreCaseAndPricingProfileId(
+                                mappedFirmId, rule.getCategoryName().trim(), mappedProfileId).orElse(null);
+                        if (cand != null) {
+                            cand.setAdjustmentType(rule.getAdjustmentType() != null ? rule.getAdjustmentType() : "PERCENT");
+                            cand.setAdjustmentValue(rule.getAdjustmentValue() != null ? rule.getAdjustmentValue() : java.math.BigDecimal.ZERO);
+                            categoryPricingRuleRepo.save(cand);
+                        } else {
+                            CategoryPricingRule newRule = CategoryPricingRule.builder()
+                                    .firmId(mappedFirmId)
+                                    .categoryName(rule.getCategoryName().trim())
+                                    .pricingProfileId(mappedProfileId)
+                                    .adjustmentType(rule.getAdjustmentType() != null ? rule.getAdjustmentType() : "PERCENT")
+                                    .adjustmentValue(rule.getAdjustmentValue() != null ? rule.getAdjustmentValue() : java.math.BigDecimal.ZERO)
+                                    .build();
+                            categoryPricingRuleRepo.save(newRule);
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Customers (Primary identity: Stable source ID; Secondary: Phone or Name)
         Map<Long, Customer> oldToNewCustomerMap = new HashMap<>();
         if (backup.getCustomers() != null) {
             for (Customer c : backup.getCustomers()) {
                 Long oldFid = c.getFirmId() != null ? c.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, c.getId(), "CUSTOMER", mappedFirmId);
                     Customer customerToUse = null;
 
@@ -545,9 +787,9 @@ public class BackupService {
         if (backup.getProducts() != null) {
             for (Product p : backup.getProducts()) {
                 Long oldFid = p.getFirmId() != null ? p.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, p.getId(), "PRODUCT", mappedFirmId);
                     Product productToUse = null;
 
@@ -577,6 +819,8 @@ public class BackupService {
                         if (p.getCostPrice() != null && productToUse.getCostPrice() == null) productToUse.setCostPrice(p.getCostPrice());
                         if (p.getHsnCode() != null && productToUse.getHsnCode() == null) productToUse.setHsnCode(p.getHsnCode());
                         if (p.getGstPercentage() != null && productToUse.getGstPercentage() == null) productToUse.setGstPercentage(p.getGstPercentage());
+                        if (p.getInInventory() != null) productToUse.setInInventory(p.getInInventory());
+                        if (p.getIsArchived() != null) productToUse.setIsArchived(p.getIsArchived());
                         productToUse = productRepo.save(productToUse);
                     } else {
                         Product newP = Product.builder()
@@ -594,8 +838,14 @@ public class BackupService {
                                 .hsnCode(p.getHsnCode())
                                 .gstPercentage(p.getGstPercentage())
                                 .description(p.getDescription())
+                                .inInventory(p.getInInventory() != null ? p.getInInventory() : true)
+                                .isArchived(p.getIsArchived() != null ? p.getIsArchived() : false)
                                 .build();
                         productToUse = productRepo.save(newP);
+                    }
+
+                    if (p.getPreferredPartyId() != null || p.getCanonicalProductId() != null) {
+                        pendingProductFks.add(new PendingProductFk(productToUse.getId(), p.getPreferredPartyId(), p.getCanonicalProductId(), oldFid, mappedFirmId));
                     }
 
                     recordEntityMapping(backupSourceId, p.getId(), "PRODUCT", mappedFirmId, productToUse.getId());
@@ -611,11 +861,12 @@ public class BackupService {
         if (backup.getStockMovements() != null) {
             for (StockMovement sm : backup.getStockMovements()) {
                 Long oldFid = sm.getFirmId() != null ? sm.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem
-                        || oldToNewFirmIdMap.containsKey(oldFid)
-                        || (sm.getProductId() != null && oldToNewProductMap.containsKey(sm.getProductId()));
+                Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                if (mappedFirmId == null && sm.getProductId() != null && oldToNewProductMap.containsKey(sm.getProductId())) {
+                    mappedFirmId = oldToNewProductMap.get(sm.getProductId()).getFirmId();
+                }
+                boolean shouldImport = mappedFirmId != null;
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
                     Long newProdId = sm.getProductId();
                     if (sm.getProductId() != null && oldToNewProductMap.containsKey(sm.getProductId())) {
                         newProdId = oldToNewProductMap.get(sm.getProductId()).getId();
@@ -674,9 +925,9 @@ public class BackupService {
         if (backup.getInvoices() != null) {
             for (Invoice inv : backup.getInvoices()) {
                 Long oldFid = inv.getFirmId() != null ? inv.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, inv.getId(), "INVOICE", mappedFirmId);
                     Invoice invoiceToUse = null;
 
@@ -741,6 +992,31 @@ public class BackupService {
                         newInv.setCurrency(inv.getCurrency() != null ? inv.getCurrency() : "INR");
                         newInv.setTags(inv.getTags());
 
+                        // AUDIT-032: Place of Supply & Tax Decomposition
+                        newInv.setPlaceOfSupply(inv.getPlaceOfSupply());
+                        newInv.setCgstAmount(inv.getCgstAmount());
+                        newInv.setSgstAmount(inv.getSgstAmount());
+                        newInv.setIgstAmount(inv.getIgstAmount());
+
+                        // AUDIT-036: Historical Master Data Snapshots
+                        newInv.setCustomerNameSnapshot(inv.getCustomerNameSnapshot());
+                        newInv.setCustomerGstinSnapshot(inv.getCustomerGstinSnapshot());
+                        newInv.setCustomerAddressSnapshot(inv.getCustomerAddressSnapshot());
+                        newInv.setCustomerPhoneSnapshot(inv.getCustomerPhoneSnapshot());
+                        newInv.setFirmNameSnapshot(inv.getFirmNameSnapshot());
+                        newInv.setFirmGstinSnapshot(inv.getFirmGstinSnapshot());
+                        newInv.setFirmAddressSnapshot(inv.getFirmAddressSnapshot());
+                        newInv.setFirmPhoneSnapshot(inv.getFirmPhoneSnapshot());
+                        newInv.setFirmEmailSnapshot(inv.getFirmEmailSnapshot());
+
+                        if (inv.getPricingProfileId() != null) {
+                            if (oldToNewPricingProfileMap.containsKey(inv.getPricingProfileId())) {
+                                newInv.setPricingProfileId(oldToNewPricingProfileMap.get(inv.getPricingProfileId()).getId());
+                            } else {
+                                newInv.setPricingProfileId(inv.getPricingProfileId());
+                            }
+                        }
+
                         if (inv.getCustomer() != null && oldToNewCustomerMap.containsKey(inv.getCustomer().getId())) {
                             newInv.setCustomer(oldToNewCustomerMap.get(inv.getCustomer().getId()));
                         }
@@ -759,6 +1035,9 @@ public class BackupService {
                                 newItem.setTaxableAmount(item.getTaxableAmount());
                                 newItem.setGstPercent(item.getGstPercent());
                                 newItem.setGstAmount(item.getGstAmount());
+                                newItem.setCgstAmount(item.getCgstAmount());
+                                newItem.setSgstAmount(item.getSgstAmount());
+                                newItem.setIgstAmount(item.getIgstAmount());
                                 newItem.setLineTotal(item.getLineTotal());
 
                                 if (item.getProduct() != null && oldToNewProductMap.containsKey(item.getProduct().getId())) {
@@ -784,11 +1063,12 @@ public class BackupService {
         if (backup.getInvoicePayments() != null) {
             for (InvoicePayment ip : backup.getInvoicePayments()) {
                 Long oldFid = ip.getFirmId() != null ? ip.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem
-                        || oldToNewFirmIdMap.containsKey(oldFid)
-                        || (ip.getInvoiceId() != null && oldToNewInvoiceMap.containsKey(ip.getInvoiceId()));
+                Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                if (mappedFirmId == null && ip.getInvoiceId() != null && oldToNewInvoiceMap.containsKey(ip.getInvoiceId())) {
+                    mappedFirmId = oldToNewInvoiceMap.get(ip.getInvoiceId()).getFirmId();
+                }
+                boolean shouldImport = mappedFirmId != null;
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
                     Long newInvoiceId = ip.getInvoiceId();
                     if (ip.getInvoiceId() != null && oldToNewInvoiceMap.containsKey(ip.getInvoiceId())) {
                         newInvoiceId = oldToNewInvoiceMap.get(ip.getInvoiceId()).getId();
@@ -846,11 +1126,12 @@ public class BackupService {
         if (backup.getSalesReturns() != null) {
             for (SalesReturn sr : backup.getSalesReturns()) {
                 Long oldFid = sr.getFirmId() != null ? sr.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem
-                        || oldToNewFirmIdMap.containsKey(oldFid)
-                        || (sr.getInvoice() != null && oldToNewInvoiceMap.containsKey(sr.getInvoice().getId()));
+                Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                if (mappedFirmId == null && sr.getInvoice() != null && oldToNewInvoiceMap.containsKey(sr.getInvoice().getId())) {
+                    mappedFirmId = oldToNewInvoiceMap.get(sr.getInvoice().getId()).getFirmId();
+                }
+                boolean shouldImport = mappedFirmId != null;
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, sr.getId(), "SALES_RETURN", mappedFirmId);
                     SalesReturn srToUse = null;
 
@@ -909,6 +1190,9 @@ public class BackupService {
                                 .penaltyAmount(sr.getPenaltyAmount())
                                 .penaltyReason(sr.getPenaltyReason())
                                 .totalRefundAmount(sr.getTotalRefundAmount())
+                                .cgstAmount(sr.getCgstAmount())
+                                .sgstAmount(sr.getSgstAmount())
+                                .igstAmount(sr.getIgstAmount())
                                 .notes(sr.getNotes())
                                 .items(new ArrayList<>())
                                 .build();
@@ -930,6 +1214,9 @@ public class BackupService {
                                         .discountValue(item.getDiscountValue())
                                         .gstPercent(item.getGstPercent())
                                         .gstAmount(item.getGstAmount())
+                                        .cgstAmount(item.getCgstAmount())
+                                        .sgstAmount(item.getSgstAmount())
+                                        .igstAmount(item.getIgstAmount())
                                         .refundTotal(item.getRefundTotal())
                                         .build();
                                 newSr.getItems().add(newItem);
@@ -949,9 +1236,9 @@ public class BackupService {
         if (backup.getParties() != null) {
             for (Party party : backup.getParties()) {
                 Long oldFid = party.getFirmId() != null ? party.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, party.getId(), "PARTY", mappedFirmId);
                     Party partyToUse = null;
 
@@ -1014,14 +1301,147 @@ public class BackupService {
             }
         }
 
+        // 5.5 Second-pass FK resolution for restored Products (preferredPartyId and canonicalProductId)
+        for (PendingProductFk pending : pendingProductFks) {
+            Product prod = productRepo.findByIdAndFirmId(pending.newProductId, pending.mappedFirmId).orElse(null);
+            if (prod != null) {
+                boolean changed = false;
+                if (pending.oldPreferredPartyId != null) {
+                    Long mappedPartyId = null;
+                    if (oldToNewPartyMap.containsKey(pending.oldPreferredPartyId)) {
+                        mappedPartyId = oldToNewPartyMap.get(pending.oldPreferredPartyId).getId();
+                    } else if (Objects.equals(pending.oldFirmId, pending.mappedFirmId)
+                            && partyRepo.findByIdAndFirmId(pending.oldPreferredPartyId, pending.mappedFirmId).isPresent()) {
+                        mappedPartyId = pending.oldPreferredPartyId;
+                    }
+                    prod.setPreferredPartyId(mappedPartyId);
+                    changed = true;
+                }
+                if (pending.oldCanonicalProductId != null) {
+                    Long mappedCanonicalId = null;
+                    if (oldToNewProductMap.containsKey(pending.oldCanonicalProductId)) {
+                        mappedCanonicalId = oldToNewProductMap.get(pending.oldCanonicalProductId).getId();
+                    } else if (Objects.equals(pending.oldFirmId, pending.mappedFirmId)
+                            && productRepo.findByIdAndFirmId(pending.oldCanonicalProductId, pending.mappedFirmId).isPresent()) {
+                        mappedCanonicalId = pending.oldCanonicalProductId;
+                    }
+                    prod.setCanonicalProductId(mappedCanonicalId);
+                    changed = true;
+                }
+                if (changed) {
+                    productRepo.save(prod);
+                }
+            }
+        }
+
+        // 5.6 Saved Items (AUDIT-004)
+        if (savedItemRepo != null && backup.getSavedItems() != null) {
+            for (SavedItem si : backup.getSavedItems()) {
+                Long oldFid = si.getFirmId() != null ? si.getFirmId() : -1L;
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedCanonicalId = null;
+                    if (si.getCanonicalProductId() != null && oldToNewProductMap.containsKey(si.getCanonicalProductId())) {
+                        mappedCanonicalId = oldToNewProductMap.get(si.getCanonicalProductId()).getId();
+                    } else if (Objects.equals(oldFid, mappedFirmId) && si.getCanonicalProductId() != null
+                            && productRepo.findByIdAndFirmId(si.getCanonicalProductId(), mappedFirmId).isPresent()) {
+                        mappedCanonicalId = si.getCanonicalProductId();
+                    }
+
+                    String norm = si.getNormalizedName();
+                    if (norm == null || norm.trim().isEmpty()) {
+                        norm = si.getName() != null ? si.getName().trim().toLowerCase() : "";
+                    }
+
+                    SavedItem existing = null;
+                    if (!norm.isEmpty()) {
+                        existing = savedItemRepo.findByFirmIdAndNormalizedName(mappedFirmId, norm).orElse(null);
+                    }
+
+                    if (existing != null) {
+                        if (si.getSellingPrice() != null && existing.getSellingPrice() == null) existing.setSellingPrice(si.getSellingPrice());
+                        if (si.getGstPercentage() != null && existing.getGstPercentage() == null) existing.setGstPercentage(si.getGstPercentage());
+                        if (si.getHsnCode() != null && existing.getHsnCode() == null) existing.setHsnCode(si.getHsnCode());
+                        if (mappedCanonicalId != null) existing.setCanonicalProductId(mappedCanonicalId);
+                        if (si.getIsArchived() != null) existing.setIsArchived(si.getIsArchived());
+                        savedItemRepo.save(existing);
+                    } else {
+                        SavedItem newSi = SavedItem.builder()
+                                .firmId(mappedFirmId)
+                                .name(si.getName() != null ? si.getName() : "Item")
+                                .normalizedName(norm)
+                                .unit(si.getUnit() != null ? si.getUnit() : "pcs")
+                                .sellingPrice(si.getSellingPrice())
+                                .gstPercentage(si.getGstPercentage())
+                                .hsnCode(si.getHsnCode())
+                                .category(si.getCategory())
+                                .description(si.getDescription())
+                                .usageCount(si.getUsageCount() != null ? si.getUsageCount() : 1)
+                                .canonicalProductId(mappedCanonicalId)
+                                .isArchived(Boolean.TRUE.equals(si.getIsArchived()))
+                                .firstUsedAt(si.getFirstUsedAt())
+                                .lastUsedAt(si.getLastUsedAt())
+                                .build();
+                        savedItemRepo.save(newSi);
+                    }
+                }
+            }
+        }
+
+        // 5.7 Forecast Product User Overrides / Configuration (AUDIT-004)
+        if (forecastProductRepo != null && backup.getForecastProducts() != null) {
+            for (ForecastProduct fp : backup.getForecastProducts()) {
+                Long oldFid = fp.getFirmId() != null ? fp.getFirmId() : -1L;
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
+                if (shouldImport && fp.getProductId() != null) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedProdId = null;
+                    if (oldToNewProductMap.containsKey(fp.getProductId())) {
+                        mappedProdId = oldToNewProductMap.get(fp.getProductId()).getId();
+                    } else if (Objects.equals(oldFid, mappedFirmId)
+                            && productRepo.findByIdAndFirmId(fp.getProductId(), mappedFirmId).isPresent()) {
+                        mappedProdId = fp.getProductId();
+                    }
+
+                    if (mappedProdId != null) {
+                        ForecastProduct existing = forecastProductRepo.findByFirmIdAndProductId(mappedFirmId, mappedProdId).orElse(null);
+                        if (existing != null) {
+                            if (fp.getForecastEnabled() != null) existing.setForecastEnabled(fp.getForecastEnabled());
+                            if (fp.getLeadTimeDays() != null) existing.setLeadTimeDays(fp.getLeadTimeDays());
+                            if (fp.getReviewPeriodDays() != null) existing.setReviewPeriodDays(fp.getReviewPeriodDays());
+                            if (fp.getMinimumOrderQty() != null) existing.setMinimumOrderQty(fp.getMinimumOrderQty());
+                            if (fp.getPackSize() != null) existing.setPackSize(fp.getPackSize());
+                            if (fp.getSafetyStockOverride() != null) existing.setSafetyStockOverride(fp.getSafetyStockOverride());
+                            if (fp.getModelOverride() != null) existing.setModelOverride(fp.getModelOverride());
+                            forecastProductRepo.save(existing);
+                        } else {
+                            ForecastProduct newFp = ForecastProduct.builder()
+                                    .firmId(mappedFirmId)
+                                    .productId(mappedProdId)
+                                    .forecastEnabled(fp.getForecastEnabled() != null ? fp.getForecastEnabled() : true)
+                                    .leadTimeDays(fp.getLeadTimeDays())
+                                    .reviewPeriodDays(fp.getReviewPeriodDays())
+                                    .minimumOrderQty(fp.getMinimumOrderQty())
+                                    .packSize(fp.getPackSize())
+                                    .safetyStockOverride(fp.getSafetyStockOverride())
+                                    .modelOverride(fp.getModelOverride())
+                                    .build();
+                            forecastProductRepo.save(newFp);
+                        }
+                    }
+                }
+            }
+        }
+
         // 6. Purchase Orders (Primary: Stable Source ID; Secondary: True Business Key poNumber)
         Map<Long, PurchaseOrder> oldToNewPoMap = new HashMap<>();
         if (backup.getPurchaseOrders() != null) {
             for (PurchaseOrder po : backup.getPurchaseOrders()) {
                 Long oldFid = po.getFirmId() != null ? po.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, po.getId(), "PO", mappedFirmId);
                     PurchaseOrder poToUse = null;
 
@@ -1125,9 +1545,9 @@ public class BackupService {
         if (backup.getPartyPayments() != null) {
             for (PartyPayment pp : backup.getPartyPayments()) {
                 Long oldFid = pp.getFirmId() != null ? pp.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long newPartyId = pp.getPartyId();
                     if (pp.getPartyId() != null && oldToNewPartyMap.containsKey(pp.getPartyId())) {
                         newPartyId = oldToNewPartyMap.get(pp.getPartyId()).getId();
@@ -1186,9 +1606,9 @@ public class BackupService {
         if (backup.getReminders() != null) {
             for (Reminder rem : backup.getReminders()) {
                 Long oldFid = rem.getFirmId() != null ? rem.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, rem.getId(), "REMINDER", mappedFirmId);
                     Reminder remToUse = null;
 
@@ -1247,9 +1667,9 @@ public class BackupService {
         if (backup.getNotes() != null) {
             for (Note note : backup.getNotes()) {
                 Long oldFid = note.getFirmId() != null ? note.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, note.getId(), "NOTE", mappedFirmId);
                     Note noteToUse = null;
 
@@ -1291,9 +1711,9 @@ public class BackupService {
         if (backup.getExpenses() != null) {
             for (Expense exp : backup.getExpenses()) {
                 Long oldFid = exp.getFirmId() != null ? exp.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, exp.getId(), "EXPENSE", mappedFirmId);
                     Expense expToUse = null;
 
@@ -1335,9 +1755,9 @@ public class BackupService {
         if (backup.getGoals() != null) {
             for (Goal g : backup.getGoals()) {
                 Long oldFid = g.getFirmId() != null ? g.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, g.getId(), "GOAL", mappedFirmId);
                     Goal goalToUse = null;
 
@@ -1391,9 +1811,9 @@ public class BackupService {
         if (backup.getSavings() != null) {
             for (SavingRecord sav : backup.getSavings()) {
                 Long oldFid = sav.getFirmId() != null ? sav.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, sav.getId(), "SAVING", mappedFirmId);
                     SavingRecord savToUse = null;
 
@@ -1437,9 +1857,9 @@ public class BackupService {
         if (backup.getGoalLogs() != null) {
             for (GoalLog gl : backup.getGoalLogs()) {
                 Long oldFid = gl.getFirmId() != null ? gl.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, gl.getId(), "GOAL_LOG", mappedFirmId);
                     GoalLog glToUse = null;
 
@@ -1486,9 +1906,9 @@ public class BackupService {
         if (backup.getEmployees() != null) {
             for (Employee emp : backup.getEmployees()) {
                 Long oldFid = emp.getFirmId() != null ? emp.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, emp.getId(), "EMPLOYEE", mappedFirmId);
                     Employee empToUse = null;
 
@@ -1818,9 +2238,9 @@ public class BackupService {
         if (backup.getBusinessLetters() != null) {
             for (BusinessLetter bl : backup.getBusinessLetters()) {
                 Long oldFid = bl.getFirmId() != null ? bl.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, bl.getId(), "BUSINESS_LETTER", mappedFirmId);
                     BusinessLetter blToUse = null;
 
@@ -1896,9 +2316,9 @@ public class BackupService {
         if (backup.getNotifications() != null) {
             for (Notification notif : backup.getNotifications()) {
                 Long oldFid = notif.getFirmId() != null ? notif.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedTargetEntityId = getMappedTargetEntityId(backupSourceId, notif.getId(), "NOTIFICATION", mappedFirmId);
                     Notification notifToUse = null;
 
@@ -1967,9 +2387,9 @@ public class BackupService {
         if (backup.getNotificationPreferences() != null) {
             for (NotificationPreference pref : backup.getNotificationPreferences()) {
                 Long oldFid = pref.getFirmId() != null ? pref.getFirmId() : -1L;
-                boolean shouldImport = !isFullSystem || oldToNewFirmIdMap.containsKey(oldFid);
+                boolean shouldImport = oldToNewFirmIdMap.containsKey(oldFid);
                 if (shouldImport) {
-                    Long mappedFirmId = !isFullSystem ? defaultTargetFirmId : oldToNewFirmIdMap.getOrDefault(oldFid, defaultTargetFirmId);
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     NotificationPreference prefToUse = notificationPreferenceRepo.findByFirmId(mappedFirmId).orElse(null);
                     if (prefToUse != null) {
                         prefToUse.setEnabled(pref.isEnabled());
@@ -2007,13 +2427,204 @@ public class BackupService {
             }
         }
 
-        // 15. App Configs
+        // 15. App Configs (AUDIT-033 & Snake lifecycle)
         if (backup.getAppConfigs() != null) {
             for (AppConfig ac : backup.getAppConfigs()) {
-                if (ac.getConfigKey() != null) {
-                    if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode) || !appConfigRepo.existsById(ac.getConfigKey()) || "SNAKE_GAME_STATE".equals(ac.getConfigKey())) {
-                        appConfigRepo.save(ac);
+                if (ac.getConfigKey() == null) continue;
+                String rawKey = ac.getConfigKey().trim();
+
+                // AUDIT-035: Never restore sensitive keys or factory reset epoch from backup
+                if (isSensitiveConfigKey(rawKey) || "FACTORY_RESET_EPOCH".equalsIgnoreCase(rawKey)) {
+                    continue;
+                }
+
+                // Remap firm-scoped keys if needed
+                Long oldFid = extractFirmIdFromConfigKey(rawKey);
+                String targetKey = rawKey;
+                if (oldFid != null) {
+                    if (!oldToNewFirmIdMap.containsKey(oldFid)) {
+                        continue;
                     }
+                    Long newFid = oldToNewFirmIdMap.get(oldFid);
+                    if (rawKey.startsWith("LAST_") && rawKey.contains("_SEQ_")) {
+                        String[] parts = rawKey.split("_");
+                        if (parts.length >= 4 && parts[3].equals(String.valueOf(oldFid))) {
+                            parts[3] = String.valueOf(newFid);
+                            targetKey = String.join("_", parts);
+                        }
+                    } else {
+                        int lastUnderscore = rawKey.lastIndexOf('_');
+                        if (lastUnderscore >= 0) {
+                            targetKey = rawKey.substring(0, lastUnderscore + 1) + newFid;
+                        }
+                    }
+                }
+
+                if ("SNAKE_GAME_STATE".equals(targetKey)) {
+                    // Revision-aware Snake restore: older backup must not overwrite newer progression
+                    mergeSnakeGameState(ac.getConfigValue());
+                } else if (isSequenceCounterKey(targetKey)) {
+                    // Sequence counter: mergedValue = max(existingValue, backupValue)
+                    Optional<AppConfig> existingOpt = appConfigRepo.findById(targetKey);
+                    if (existingOpt.isPresent()) {
+                        AppConfig existing = existingOpt.get();
+                        long existingVal = parseLongSafe(existing.getConfigValue());
+                        long backupVal = parseLongSafe(ac.getConfigValue());
+                        long mergedVal = Math.max(existingVal, backupVal);
+                        existing.setConfigValue(String.valueOf(mergedVal));
+                        appConfigRepo.save(existing);
+                    } else {
+                        AppConfig newAc = new AppConfig();
+                        newAc.setConfigKey(targetKey);
+                        newAc.setConfigValue(ac.getConfigValue());
+                        appConfigRepo.save(newAc);
+                    }
+                } else {
+                    // Normal configuration key: in clone/clean mode or if not present in DB, save
+                    if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode) || !appConfigRepo.existsById(targetKey)) {
+                        AppConfig newAc = new AppConfig();
+                        newAc.setConfigKey(targetKey);
+                        newAc.setConfigValue(ac.getConfigValue());
+                        appConfigRepo.save(newAc);
+                    }
+                }
+            }
+        }
+
+        // 17. Invoice Migration Records Lifecycle & Clean-up (Decisions A1, B1 & Audit 10B)
+        if (invoiceMigrationRecordRepo != null && !oldToNewInvoiceMap.isEmpty()) {
+            // Requirement 2: Clean up obsolete/stale migration records for any invoice actually restored or replaced
+            // by the current import, even when the backup contains no migration records (e.g., tenant exports).
+            // Unrelated invoice migration history in the database is strictly preserved.
+            Set<Long> targetRestoredInvoiceIds = oldToNewInvoiceMap.values().stream()
+                    .map(Invoice::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            for (Long invId : targetRestoredInvoiceIds) {
+                List<InvoiceMigrationRecord> existing = invoiceMigrationRecordRepo.findByInvoiceIdOrderByCreatedAtDesc(invId);
+                if (existing != null && !existing.isEmpty()) {
+                    invoiceMigrationRecordRepo.deleteAll(existing);
+                }
+            }
+        }
+
+        if (invoiceMigrationRecordRepo != null && backup.getInvoiceMigrationRecords() != null && !backup.getInvoiceMigrationRecords().isEmpty()) {
+            List<InvoiceMigrationRecord> rawRecords = backup.getInvoiceMigrationRecords();
+
+            // Requirement 3: Deterministic dependency ordering (topological parent-before-child resolution)
+            List<InvoiceMigrationRecord> sortedRecords = new ArrayList<>(rawRecords);
+            sortedRecords.sort(Comparator.comparing(InvoiceMigrationRecord::getId, Comparator.nullsLast(Long::compareTo))
+                    .thenComparing(InvoiceMigrationRecord::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)));
+
+            Set<Long> backupRecordIds = rawRecords.stream()
+                    .map(InvoiceMigrationRecord::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            List<InvoiceMigrationRecord> orderedRecords = new ArrayList<>();
+            Set<Long> resolvedOldIds = new HashSet<>();
+            Set<InvoiceMigrationRecord> remaining = new LinkedHashSet<>(sortedRecords);
+
+            int maxIterations = remaining.size() + 1;
+            while (!remaining.isEmpty() && maxIterations-- > 0) {
+                List<InvoiceMigrationRecord> readyInThisPass = new ArrayList<>();
+                for (InvoiceMigrationRecord rec : remaining) {
+                    Long parentId = rec.getParentMigrationId();
+                    if (parentId == null || !backupRecordIds.contains(parentId) || resolvedOldIds.contains(parentId)) {
+                        readyInThisPass.add(rec);
+                    }
+                }
+                if (readyInThisPass.isEmpty()) {
+                    // Cyclic or broken chain fallback: append remaining in deterministic sorted order
+                    orderedRecords.addAll(remaining);
+                    break;
+                }
+                for (InvoiceMigrationRecord r : readyInThisPass) {
+                    orderedRecords.add(r);
+                    if (r.getId() != null) {
+                        resolvedOldIds.add(r.getId());
+                    }
+                    remaining.remove(r);
+                }
+            }
+
+            Map<Long, Long> oldToNewMigrationRecordIdMap = new HashMap<>();
+            com.fasterxml.jackson.databind.ObjectMapper migMapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+
+            for (InvoiceMigrationRecord rec : orderedRecords) {
+                Long oldInvoiceId = rec.getInvoiceId();
+                if (oldInvoiceId == null || !oldToNewInvoiceMap.containsKey(oldInvoiceId)) {
+                    // Invoice was not mapped or not imported, skip orphaned migration record
+                    continue;
+                }
+
+                Long oldSourceFid = rec.getSourceFirmId();
+                Long oldTargetFid = rec.getTargetFirmId();
+
+                // Requirement 4: Selective restore safety - both participating firms must be mapped
+                if (oldSourceFid == null || !oldToNewFirmIdMap.containsKey(oldSourceFid)
+                        || oldTargetFid == null || !oldToNewFirmIdMap.containsKey(oldTargetFid)) {
+                    // Fail-safe: Skip records whose cross-firm relationship cannot be faithfully represented
+                    continue;
+                }
+
+                Long mappedInvoiceId = oldToNewInvoiceMap.get(oldInvoiceId).getId();
+                Long mappedSourceFirmId = oldToNewFirmIdMap.get(oldSourceFid);
+                Long mappedTargetFirmId = oldToNewFirmIdMap.get(oldTargetFid);
+
+                // Remap preMigrationSnapshot JSON if firm IDs or invoice IDs have changed
+                String updatedSnapshot = rec.getPreMigrationSnapshot();
+                if (updatedSnapshot != null && !updatedSnapshot.isBlank()) {
+                    try {
+                        com.billing.simple.billsoft.dtos.migration.InvoiceSnapshotDTO snapshotObj =
+                                migMapper.readValue(updatedSnapshot, com.billing.simple.billsoft.dtos.migration.InvoiceSnapshotDTO.class);
+                        boolean snapshotChanged = false;
+                        if (snapshotObj.getSourceFirmId() != null && oldToNewFirmIdMap.containsKey(snapshotObj.getSourceFirmId())) {
+                            snapshotObj.setSourceFirmId(oldToNewFirmIdMap.get(snapshotObj.getSourceFirmId()));
+                            snapshotChanged = true;
+                        }
+                        if (snapshotObj.getInvoiceId() != null && oldToNewInvoiceMap.containsKey(snapshotObj.getInvoiceId())) {
+                            snapshotObj.setInvoiceId(oldToNewInvoiceMap.get(snapshotObj.getInvoiceId()).getId());
+                            snapshotChanged = true;
+                        }
+                        if (snapshotChanged) {
+                            updatedSnapshot = migMapper.writeValueAsString(snapshotObj);
+                        }
+                    } catch (Exception e) {
+                        org.slf4j.LoggerFactory.getLogger(BackupService.class).warn("Snapshot remapping exception: {}", e.getMessage(), e);
+                    }
+                }
+
+                Long oldParentId = rec.getParentMigrationId();
+                Long mappedParentId = null;
+                if (oldParentId != null) {
+                    if (oldToNewMigrationRecordIdMap.containsKey(oldParentId)) {
+                        mappedParentId = oldToNewMigrationRecordIdMap.get(oldParentId);
+                    } else {
+                        // Safe missing parent handling: never attach to mismatched or unrelated parent ID
+                        mappedParentId = null;
+                    }
+                }
+
+                InvoiceMigrationRecord newRec = InvoiceMigrationRecord.builder()
+                        .invoiceId(mappedInvoiceId)
+                        .sourceFirmId(mappedSourceFirmId)
+                        .targetFirmId(mappedTargetFirmId)
+                        .sourceInvoiceNumber(rec.getSourceInvoiceNumber())
+                        .targetInvoiceNumber(rec.getTargetInvoiceNumber())
+                        .isRevert(rec.getIsRevert())
+                        .parentMigrationId(mappedParentId)
+                        .status(rec.getStatus())
+                        .preMigrationSnapshot(updatedSnapshot)
+                        .migratedBy(rec.getMigratedBy())
+                        .createdAt(rec.getCreatedAt())
+                        .build();
+
+                InvoiceMigrationRecord savedRec = invoiceMigrationRecordRepo.save(newRec);
+                if (rec.getId() != null) {
+                    oldToNewMigrationRecordIdMap.put(rec.getId(), savedRec.getId());
                 }
             }
         }
@@ -2037,6 +2648,9 @@ public class BackupService {
         }
 
         return restoredFirms;
+        } finally {
+            coordinator.unlock();
+        }
     }
 
     @Transactional
@@ -2046,51 +2660,183 @@ public class BackupService {
 
     @Transactional
     public void factoryReset() {
-        // Child tables referencing returns & invoices
-        salesReturnItemRepo.deleteAllInBatch();
-        salesReturnRepo.deleteAllInBatch();
-        invoicePaymentRepo.deleteAllInBatch();
-        invoiceItemRepo.deleteAllInBatch();
-        invoiceRepo.deleteAllInBatch();
+        boolean locked = coordinator.tryLock();
+        if (!locked) {
+            throw new IllegalStateException("A backup, recovery, or restore operation is currently in progress. Please wait.");
+        }
+        try {
+            // Stage 1: Forecasting derived & user tables (FK parents to Stage 6 products)
+            if (productDemandForecastRepo != null) productDemandForecastRepo.deleteAllInBatch();
+            if (productRestockRecommendationRepo != null) productRestockRecommendationRepo.deleteAllInBatch();
+            if (forecastModelRunRepo != null) forecastModelRunRepo.deleteAllInBatch();
+            if (productSalesMetricsRepo != null) productSalesMetricsRepo.deleteAllInBatch();
+            if (forecastSalesTransactionRepo != null) forecastSalesTransactionRepo.deleteAllInBatch();
+            if (forecastProductRepo != null) forecastProductRepo.deleteAllInBatch();
 
-        // Stock Movements
-        stockMovementRepo.deleteAllInBatch();
+            // Stage 2: Invoice migration records, pricing profiles & rules, deduplication, saved items
+            if (invoiceMigrationRecordRepo != null) invoiceMigrationRecordRepo.deleteAllInBatch();
+            if (categoryPricingRuleRepo != null) categoryPricingRuleRepo.deleteAllInBatch();
+            if (pricingProfileRepo != null) pricingProfileRepo.deleteAllInBatch();
+            if (itemMergeAuditRepo != null) itemMergeAuditRepo.deleteAllInBatch();
+            if (itemDuplicateDismissalRepo != null) itemDuplicateDismissalRepo.deleteAllInBatch();
+            if (savedItemRepo != null) savedItemRepo.deleteAllInBatch();
 
-        // Vendor & PO Records
-        partyPaymentRepo.deleteAllInBatch();
-        purchaseOrderItemRepo.deleteAllInBatch();
-        purchaseOrderRepo.deleteAllInBatch();
-        partyRepo.deleteAllInBatch();
+            // Stage 3: Child tables referencing returns & invoices
+            salesReturnItemRepo.deleteAllInBatch();
+            salesReturnRepo.deleteAllInBatch();
+            invoicePaymentRepo.deleteAllInBatch();
+            invoiceItemRepo.deleteAllInBatch();
+            invoiceRepo.deleteAllInBatch();
 
-        // Business Letters
-        businessLetterRepo.deleteAllInBatch();
+            // Stage 4: Stock Movements & PO records & Parties
+            stockMovementRepo.deleteAllInBatch();
+            partyPaymentRepo.deleteAllInBatch();
+            purchaseOrderItemRepo.deleteAllInBatch();
+            purchaseOrderRepo.deleteAllInBatch();
+            partyRepo.deleteAllInBatch();
 
-        // Child tables referencing employees
-        attendanceRecordRepo.deleteAllInBatch();
-        leaveRecordRepo.deleteAllInBatch();
-        employeeDocumentRepo.deleteAllInBatch();
-        salaryRepo.deleteAllInBatch();
-        promotionRepo.deleteAllInBatch();
-        advanceRepo.deleteAllInBatch();
-        employeeRepo.deleteAllInBatch();
+            // Stage 5: Business Letters, HR/Employees, Operations
+            businessLetterRepo.deleteAllInBatch();
+            attendanceRecordRepo.deleteAllInBatch();
+            leaveRecordRepo.deleteAllInBatch();
+            employeeDocumentRepo.deleteAllInBatch();
+            salaryRepo.deleteAllInBatch();
+            promotionRepo.deleteAllInBatch();
+            advanceRepo.deleteAllInBatch();
+            employeeRepo.deleteAllInBatch();
 
-        // Operational business records
-        goalLogRepo.deleteAllInBatch();
-        savingRepo.deleteAllInBatch();
-        goalRepo.deleteAllInBatch();
-        expenseRepo.deleteAllInBatch();
-        reminderRepo.deleteAllInBatch();
-        notificationRepo.deleteAllInBatch();
-        notificationPreferenceRepo.deleteAllInBatch();
-        noteRepo.deleteAllInBatch();
+            goalLogRepo.deleteAllInBatch();
+            savingRepo.deleteAllInBatch();
+            goalRepo.deleteAllInBatch();
+            expenseRepo.deleteAllInBatch();
+            reminderRepo.deleteAllInBatch();
+            notificationRepo.deleteAllInBatch();
+            notificationPreferenceRepo.deleteAllInBatch();
+            noteRepo.deleteAllInBatch();
 
-        // Core business catalogs & firms
-        productRepo.deleteAllInBatch();
-        customerRepo.deleteAllInBatch();
-        firmDetailsRepo.deleteAllInBatch();
-        appConfigRepo.deleteAllInBatch();
-        if (backupEntityMappingRepo != null) {
-            backupEntityMappingRepo.deleteAllInBatch();
+            // Stage 6: Core catalogs & firms & configs
+            productRepo.deleteAllInBatch();
+            customerRepo.deleteAllInBatch();
+            firmDetailsRepo.deleteAllInBatch();
+            appConfigRepo.deleteAllInBatch();
+            if (backupEntityMappingRepo != null) {
+                backupEntityMappingRepo.deleteAllInBatch();
+            }
+
+            // Post-reset epoch marker to invalidate stale client-side localStorage
+            AppConfig epoch = new AppConfig();
+            epoch.setConfigKey("FACTORY_RESET_EPOCH");
+            epoch.setConfigValue(String.valueOf(System.currentTimeMillis()));
+            appConfigRepo.save(epoch);
+        } finally {
+            coordinator.unlock();
+        }
+    }
+
+    private boolean isSensitiveConfigKey(String key) {
+        if (key == null) return false;
+        String upper = key.trim().toUpperCase();
+        if (upper.startsWith("EMPLOYEE_MODULE_PIN_")) {
+            return false;
+        }
+        if (upper.equals("GLOBAL_PASSWORD") || upper.equals("BACKUP_CLOUD_CREDENTIALS")
+                || upper.equals("BACKUP_CLOUD_SECRET") || upper.equals("BACKUP_CLOUD_ACCESS_KEY")
+                || upper.equals("LICENSE_KEY") || upper.equals("FACTORY_RESET_EPOCH")) {
+            return true;
+        }
+        if (key.trim().toLowerCase().startsWith("session_")) return true;
+        if (upper.contains("PASSWORD")) return true;
+        if (upper.contains("SECRET")) return true;
+        if (upper.contains("CREDENTIAL")) return true;
+        if (upper.contains("PIN")) return true;
+        if (upper.contains("HASH")) return true;
+        return upper.contains("TOKEN") && !upper.equals("SNAKE_GAME_STATE");
+    }
+
+    private boolean isSequenceCounterKey(String key) {
+        if (key == null) return false;
+        String upper = key.trim().toUpperCase();
+        return upper.startsWith("LAST_") || upper.contains("_SEQ_");
+    }
+
+    private Long extractFirmIdFromConfigKey(String key) {
+        if (key == null) return null;
+        if (key.startsWith("LAST_") && key.contains("_SEQ_")) {
+            String[] parts = key.split("_");
+            if (parts.length >= 4) {
+                try {
+                    return Long.parseLong(parts[3]);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        int lastUnderscore = key.lastIndexOf('_');
+        if (lastUnderscore >= 0 && lastUnderscore < key.length() - 1) {
+            String suffix = key.substring(lastUnderscore + 1);
+            try {
+                return Long.parseLong(suffix);
+            } catch (NumberFormatException ignored) {}
+        }
+        return null;
+    }
+
+    private long parseLongSafe(String str) {
+        if (str == null || str.trim().isEmpty()) return 0L;
+        try {
+            return Long.parseLong(str.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private void mergeSnakeGameState(String backupJson) {
+        if (backupJson == null || backupJson.trim().isEmpty()) return;
+        Optional<AppConfig> existingOpt = appConfigRepo.findById("SNAKE_GAME_STATE");
+        if (!existingOpt.isPresent() || existingOpt.get().getConfigValue() == null || existingOpt.get().getConfigValue().trim().isEmpty()) {
+            AppConfig sc = new AppConfig();
+            sc.setConfigKey("SNAKE_GAME_STATE");
+            sc.setConfigValue(backupJson);
+            appConfigRepo.save(sc);
+            return;
+        }
+
+        try {
+            long backupRev = extractSnakeRevision(backupJson);
+            long existingRev = extractSnakeRevision(existingOpt.get().getConfigValue());
+            if (backupRev > existingRev) {
+                AppConfig sc = existingOpt.get();
+                sc.setConfigValue(backupJson);
+                appConfigRepo.save(sc);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private long extractSnakeRevision(String json) {
+        if (json == null || json.trim().isEmpty()) return 0L;
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(json);
+            if (root.has("stateRevision")) {
+                return root.get("stateRevision").asLong(0L);
+            }
+            if (root.has("updatedAt")) {
+                return root.get("updatedAt").asLong(0L);
+            }
+        } catch (Exception ignored) {}
+        return 0L;
+    }
+
+    private static class PendingProductFk {
+        final Long newProductId;
+        final Long oldPreferredPartyId;
+        final Long oldCanonicalProductId;
+        final Long oldFirmId;
+        final Long mappedFirmId;
+
+        PendingProductFk(Long newProductId, Long oldPreferredPartyId, Long oldCanonicalProductId, Long oldFirmId, Long mappedFirmId) {
+            this.newProductId = newProductId;
+            this.oldPreferredPartyId = oldPreferredPartyId;
+            this.oldCanonicalProductId = oldCanonicalProductId;
+            this.oldFirmId = oldFirmId;
+            this.mappedFirmId = mappedFirmId;
         }
     }
 

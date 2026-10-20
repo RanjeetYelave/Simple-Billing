@@ -4,6 +4,9 @@ import com.billing.simple.billsoft.dtos.ApiDiagnosticsResponse;
 import com.billing.simple.billsoft.service.ApiDiagnosticsService;
 import com.billing.simple.billsoft.service.AutoBackupService;
 import com.billing.simple.billsoft.service.SystemMetricsService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +27,8 @@ import java.util.Map;
 @RestController
 @CrossOrigin
 public class HealthController {
+
+    private static final Logger log = LoggerFactory.getLogger(HealthController.class);
 
     private final SystemMetricsService systemMetricsService;
     private final AutoBackupService autoBackupService;
@@ -101,7 +106,12 @@ public class HealthController {
      * into a single lightweight HTTP call to eliminate redundant background network polling.
      */
     @GetMapping({"/api/system/heartbeat", "/api/health/heartbeat"})
-    public ResponseEntity<Map<String, Object>> heartbeat(@RequestParam(required = false) Long firmId) {
+    public ResponseEntity<Map<String, Object>> heartbeat(@RequestParam(required = false) Long firmId,
+                                                         HttpServletRequest request) {
+        if (log.isInfoEnabled()) {
+            String qs = request != null ? request.getQueryString() : null;
+            log.info("System heartbeat check: firmId={}, query={}", firmId, qs != null ? qs : "none");
+        }
         Map<String, Object> metricsData = systemMetricsService != null ? systemMetricsService.getMetricsSnapshot() : Map.of();
         Map<String, Object> backupData = autoBackupService != null ? autoBackupService.ensureTodayBackup() : Map.of();
         Map<String, Object> diagData = buildDiagnosticsData(backupData);

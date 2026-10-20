@@ -11,15 +11,23 @@ import com.billing.simple.billsoft.entities.Customer;
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
+    List<Customer> findByFirmId(Long firmId);
+
     List<Customer> findByFirmIdOrderByNameAsc(Long firmId);
 
     Optional<Customer> findByIdAndFirmId(Long id, Long firmId);
 
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
+    List<Customer> findByFirmIdAndGstinIgnoreCase(Long firmId, String gstin);
+
+    List<Customer> findByFirmIdAndPhone(Long firmId, String phone);
+
     Optional<Customer> findFirstByFirmIdAndPhone(Long firmId, String phone);
 
     Optional<Customer> findFirstByFirmIdAndPhoneAndNameIgnoreCase(Long firmId, String phone, String name);
+
+    List<Customer> findByFirmIdAndNameIgnoreCase(Long firmId, String name);
 
     Optional<Customer> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
 

@@ -834,4 +834,65 @@ public final class OmnisearchQuickHelpDTOs {
         public List<Map<String, Object>> getExpenses() { return expenses; }
         public void setExpenses(List<Map<String, Object>> expenses) { this.expenses = expenses; }
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // 17. AGING SUMMARY DTO (Accounts Receivable Aging)
+    // ─────────────────────────────────────────────────────────────
+    public static class AgingSummaryDTO {
+        private BigDecimal totalReceivable = BigDecimal.ZERO;
+        private BigDecimal totalCustomerCredits = BigDecimal.ZERO;
+        private BigDecimal netReceivable = BigDecimal.ZERO;
+        private Map<String, BigDecimal> buckets = new HashMap<>(); // "0-30", "31-60", "61-90", "90+"
+        private int customerCount = 0;
+        private int invoiceCount = 0;
+        private List<CustomerAgingItemDTO> customerBreakdown = new ArrayList<>();
+
+        public AgingSummaryDTO() {
+            buckets.put("0-30", BigDecimal.ZERO);
+            buckets.put("31-60", BigDecimal.ZERO);
+            buckets.put("61-90", BigDecimal.ZERO);
+            buckets.put("90+", BigDecimal.ZERO);
+        }
+
+        public BigDecimal getTotalReceivable() { return totalReceivable; }
+        public void setTotalReceivable(BigDecimal totalReceivable) { this.totalReceivable = totalReceivable; }
+        public BigDecimal getTotalCustomerCredits() { return totalCustomerCredits; }
+        public void setTotalCustomerCredits(BigDecimal totalCustomerCredits) { this.totalCustomerCredits = totalCustomerCredits; }
+        public BigDecimal getNetReceivable() { return netReceivable; }
+        public void setNetReceivable(BigDecimal netReceivable) { this.netReceivable = netReceivable; }
+        public Map<String, BigDecimal> getBuckets() { return buckets; }
+        public void setBuckets(Map<String, BigDecimal> buckets) { this.buckets = buckets; }
+        public int getCustomerCount() { return customerCount; }
+        public void setCustomerCount(int customerCount) { this.customerCount = customerCount; }
+        public int getInvoiceCount() { return invoiceCount; }
+        public void setInvoiceCount(int invoiceCount) { this.invoiceCount = invoiceCount; }
+        public List<CustomerAgingItemDTO> getCustomerBreakdown() { return customerBreakdown; }
+        public void setCustomerBreakdown(List<CustomerAgingItemDTO> customerBreakdown) { this.customerBreakdown = customerBreakdown; }
+    }
+
+    public static class CustomerAgingItemDTO {
+        private Long customerId;
+        private String customerName;
+        private String customerPhone;
+        private BigDecimal closingBalance = BigDecimal.ZERO;
+        private Map<String, BigDecimal> buckets = new HashMap<>();
+
+        public CustomerAgingItemDTO() {
+            buckets.put("0-30", BigDecimal.ZERO);
+            buckets.put("31-60", BigDecimal.ZERO);
+            buckets.put("61-90", BigDecimal.ZERO);
+            buckets.put("90+", BigDecimal.ZERO);
+        }
+
+        public Long getCustomerId() { return customerId; }
+        public void setCustomerId(Long customerId) { this.customerId = customerId; }
+        public String getCustomerName() { return customerName; }
+        public void setCustomerName(String customerName) { this.customerName = customerName; }
+        public String getCustomerPhone() { return customerPhone; }
+        public void setCustomerPhone(String customerPhone) { this.customerPhone = customerPhone; }
+        public BigDecimal getClosingBalance() { return closingBalance; }
+        public void setClosingBalance(BigDecimal closingBalance) { this.closingBalance = closingBalance; }
+        public Map<String, BigDecimal> getBuckets() { return buckets; }
+        public void setBuckets(Map<String, BigDecimal> buckets) { this.buckets = buckets; }
+    }
 }

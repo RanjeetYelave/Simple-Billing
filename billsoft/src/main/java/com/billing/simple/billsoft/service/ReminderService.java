@@ -30,9 +30,6 @@ public class ReminderService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long target = authoritativeFirmId != null ? authoritativeFirmId : explicitFirmId;
-        if (target == null || target <= 0) {
-            throw new TenantSecurityException("Active firm context is required");
-        }
         return target;
     }
 
@@ -42,32 +39,27 @@ public class ReminderService {
     }
 
     public List<Reminder> getByFirm(Long firmId) {
-        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
-            throw new TenantSecurityException("Cross-firm access prohibited");
-        }
-        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        return target != null ? reminderRepository.findByFirmId(target) : reminderRepository.findAll();
+        Long authoritativeFirmId = resolveFirmId(firmId);
+        return authoritativeFirmId != null ? reminderRepository.findByFirmId(authoritativeFirmId) : java.util.Collections.emptyList();
     }
 
     public List<Reminder> getActiveByFirm(Long firmId) {
-        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
-            throw new TenantSecurityException("Cross-firm access prohibited");
-        }
-        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        return target != null ? reminderRepository.findByFirmIdAndCompletedFalse(target) : reminderRepository.findByCompletedFalse();
+        Long authoritativeFirmId = resolveFirmId(firmId);
+        return authoritativeFirmId != null ? reminderRepository.findByFirmIdAndCompletedFalse(authoritativeFirmId) : java.util.Collections.emptyList();
     }
 
     public Reminder create(Reminder reminder) {
-        Long firmId = reminder.getFirmId() != null ? reminder.getFirmId() : TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            reminder.setFirmId(firmId);
-            if (reminder.getCustomerId() != null) {
-                if (!customerRepository.existsByIdAndFirmId(reminder.getCustomerId(), firmId)) {
-                    throw new TenantSecurityException(
-                            "Referenced customer does not belong to the current firm");
-                }
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            if (reminder.getFirmId() != null && !authoritativeFirmId.equals(reminder.getFirmId())) {
+                throw new TenantSecurityException("Cross-firm reminder creation prohibited");
+            }
+            reminder.setFirmId(authoritativeFirmId);
+        }
+
+        if (reminder.getCustomerId() != null && reminder.getFirmId() != null) {
+            if (!customerRepository.existsByIdAndFirmId(reminder.getCustomerId(), reminder.getFirmId())) {
+                throw new TenantSecurityException("Referenced customer does not belong to the current firm");
             }
         }
         return reminderRepository.save(reminder);
@@ -128,7 +120,7 @@ public class ReminderService {
         }
         if (notificationService != null && r.getId() != null) {
             String typeStr = (r.getType() != null && "task".equalsIgnoreCase(r.getType())) ? "task" : "reminder";
-            notificationService.resolveByEventKey(r.getFirmId(), "planner:" + typeStr + ":" + r.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+            notificationService.resolveByEventKey(firmId, "planner:" + typeStr + ":" + r.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
         }
         return true;
     }
@@ -145,7 +137,10 @@ public class ReminderService {
         Reminder saved = reminderRepository.save(r);
         if (notificationService != null && saved.getId() != null) {
             String typeStr = (saved.getType() != null && "task".equalsIgnoreCase(saved.getType())) ? "task" : "reminder";
-            notificationService.resolveByEventKey(saved.getFirmId(), "planner:" + typeStr + ":" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
+            Long notifFirmId = saved.getFirmId() != null ? saved.getFirmId() : firmId;
+            if (notifFirmId != null) {
+                notificationService.resolveByEventKey(notifFirmId, "planner:" + typeStr + ":" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
+            }
         }
         return saved;
     }

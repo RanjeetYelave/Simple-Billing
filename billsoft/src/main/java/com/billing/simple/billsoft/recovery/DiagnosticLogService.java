@@ -8,6 +8,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.time.Instant;
@@ -16,6 +17,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -41,6 +43,7 @@ public class DiagnosticLogService {
     private final DevLogService devLogService;
     private final ConcurrentLinkedDeque<LogEntry> ringBuffer = new ConcurrentLinkedDeque<>();
     private final AtomicLong sequenceCounter = new AtomicLong(0);
+    private final CopyOnWriteArrayList<LogSubscriber> subscribers = new CopyOnWriteArrayList<>();
 
     public DiagnosticLogService(DevLogService devLogService) {
         this.devLogService = devLogService;
@@ -76,6 +79,7 @@ public class DiagnosticLogService {
                                 while (ringBuffer.size() > MAX_BUFFER_CAPACITY) {
                                     ringBuffer.pollFirst();
                                 }
+                                broadcastToSubscribers(entry);
                             } catch (Exception ignored) {}
                         }
                     };
@@ -235,6 +239,70 @@ public class DiagnosticLogService {
 
     public Map<String, Object> getStatus() {
         return devLogService.getStatus();
+    }
+
+    public SseEmitter subscribe(long sinceSeq, boolean sanitize) {
+        SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30-min timeout
+        LogSubscriber subscriber = new LogSubscriber(emitter, sanitize);
+        subscribers.add(subscriber);
+
+        emitter.onCompletion(() -> subscribers.remove(subscriber));
+        emitter.onTimeout(() -> {
+            emitter.complete();
+            subscribers.remove(subscriber);
+        });
+        emitter.onError(e -> {
+            emitter.complete();
+            subscribers.remove(subscriber);
+        });
+
+        // Replay initial snapshot
+        try {
+            Map<String, Object> initial = getLogsSince(sinceSeq, 200, sanitize);
+            @SuppressWarnings("unchecked")
+            List<String> lines = (List<String>) initial.get("lines");
+            if (lines != null) {
+                for (String line : lines) {
+                    emitter.send(SseEmitter.event().name("log").data(line));
+                }
+            }
+            if (Boolean.TRUE.equals(initial.get("resyncRequired"))) {
+                emitter.send(SseEmitter.event().name("resync").data("true"));
+            }
+        } catch (Exception e) {
+            log.debug("Failed to send initial SSE log snapshot: {}", e.getMessage());
+        }
+
+        return emitter;
+    }
+
+    private void broadcastToSubscribers(LogEntry entry) {
+        if (subscribers.isEmpty()) return;
+        List<LogSubscriber> dead = new ArrayList<>();
+        for (LogSubscriber sub : subscribers) {
+            try {
+                String line = sub.isSanitize() ? sanitizeLine(entry.getFormatted()) : entry.getFormatted();
+                sub.getEmitter().send(SseEmitter.event().name("log").data(line));
+            } catch (Exception e) {
+                dead.add(sub);
+            }
+        }
+        if (!dead.isEmpty()) {
+            subscribers.removeAll(dead);
+        }
+    }
+
+    private static class LogSubscriber {
+        private final SseEmitter emitter;
+        private final boolean sanitize;
+
+        public LogSubscriber(SseEmitter emitter, boolean sanitize) {
+            this.emitter = emitter;
+            this.sanitize = sanitize;
+        }
+
+        public SseEmitter getEmitter() { return emitter; }
+        public boolean isSanitize() { return sanitize; }
     }
 
     public static class LogEntry {

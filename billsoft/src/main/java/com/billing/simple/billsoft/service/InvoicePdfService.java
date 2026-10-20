@@ -98,12 +98,63 @@ public class InvoicePdfService {
     }
 
     private FirmDetails getFirm(Invoice invoice) {
-        try {
-            Long firmId = invoice != null ? invoice.getFirmId() : null;
-            return firmId != null ? firmService.get(firmId) : firmService.getFirst();
-        } catch (Exception e) {
-            return null;
+        Long invoiceFirmId = invoice != null ? invoice.getFirmId() : null;
+        Long contextFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+
+        Long effectiveFirmId = invoiceFirmId != null ? invoiceFirmId : contextFirmId;
+
+        boolean hasSnapshot = invoice != null && (
+                (invoice.getFirmNameSnapshot() != null && !invoice.getFirmNameSnapshot().isBlank()) ||
+                (invoice.getFirmGstinSnapshot() != null && !invoice.getFirmGstinSnapshot().isBlank()) ||
+                (invoice.getFirmAddressSnapshot() != null && !invoice.getFirmAddressSnapshot().isBlank()) ||
+                (invoice.getFirmPhoneSnapshot() != null && !invoice.getFirmPhoneSnapshot().isBlank()) ||
+                (invoice.getFirmEmailSnapshot() != null && !invoice.getFirmEmailSnapshot().isBlank())
+        );
+
+        if (effectiveFirmId == null && !hasSnapshot) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                    "Active firm context is required for invoice PDF generation");
         }
+
+        FirmDetails liveFirm = null;
+        if (effectiveFirmId != null) {
+            try {
+                liveFirm = firmService.get(effectiveFirmId);
+            } catch (Exception e) {
+                // fall back to snapshot check below
+            }
+        }
+
+        if (hasSnapshot) {
+            FirmDetails snapshottedFirm = new FirmDetails();
+            if (liveFirm != null) {
+                org.springframework.beans.BeanUtils.copyProperties(liveFirm, snapshottedFirm);
+            } else if (effectiveFirmId != null) {
+                snapshottedFirm.setId(effectiveFirmId);
+            }
+            if (invoice.getFirmNameSnapshot() != null && !invoice.getFirmNameSnapshot().isBlank()) {
+                snapshottedFirm.setFirmName(invoice.getFirmNameSnapshot());
+            }
+            if (invoice.getFirmGstinSnapshot() != null && !invoice.getFirmGstinSnapshot().isBlank()) {
+                snapshottedFirm.setGstin(invoice.getFirmGstinSnapshot());
+            }
+            if (invoice.getFirmAddressSnapshot() != null && !invoice.getFirmAddressSnapshot().isBlank()) {
+                snapshottedFirm.setAddressLine1(invoice.getFirmAddressSnapshot());
+                snapshottedFirm.setAddressLine2(null);
+                snapshottedFirm.setCity(null);
+                snapshottedFirm.setState(null);
+                snapshottedFirm.setPincode(null);
+            }
+            if (invoice.getFirmPhoneSnapshot() != null && !invoice.getFirmPhoneSnapshot().isBlank()) {
+                snapshottedFirm.setPhone(invoice.getFirmPhoneSnapshot());
+            }
+            if (invoice.getFirmEmailSnapshot() != null && !invoice.getFirmEmailSnapshot().isBlank()) {
+                snapshottedFirm.setEmail(invoice.getFirmEmailSnapshot());
+            }
+            return snapshottedFirm;
+        }
+
+        return liveFirm;
     }
 
     private byte[] renderClassic(Invoice invoice, FirmDetails firm, InvoicePrintOptions options) throws Exception {
@@ -267,21 +318,20 @@ public class InvoicePdfService {
         billToContent.setPadding(6f);
         billToContent.setPaddingLeft(8f);
 
-        Customer cust = invoice != null ? invoice.getCustomer() : null;
-        String custName = cust != null && cust.getName() != null && !cust.getName().isBlank()
-                ? cust.getName().toUpperCase() : "CASH CUSTOMER";
-        billToContent.addElement(new Paragraph(custName, boldText));
+        String custName = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerName(invoice);
+        billToContent.addElement(new Paragraph(custName.toUpperCase(), boldText));
 
-        if (cust != null) {
-            if (cust.getAddress() != null && !cust.getAddress().isBlank()) {
-                billToContent.addElement(new Paragraph(cust.getAddress(), normalText));
-            }
-            if (cust.getPhone() != null && !cust.getPhone().isBlank()) {
-                billToContent.addElement(new Paragraph("Phone: " + cust.getPhone(), normalText));
-            }
-            if (cust.getGstin() != null && !cust.getGstin().isBlank()) {
-                billToContent.addElement(new Paragraph("GSTIN: " + cust.getGstin(), boldText));
-            }
+        String custAddress = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerAddress(invoice);
+        if (custAddress != null && !custAddress.isBlank()) {
+            billToContent.addElement(new Paragraph(custAddress, normalText));
+        }
+        String custPhone = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerPhone(invoice);
+        if (custPhone != null && !custPhone.isBlank()) {
+            billToContent.addElement(new Paragraph("Phone: " + custPhone, normalText));
+        }
+        String custGstin = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerGstin(invoice);
+        if (custGstin != null && !custGstin.isBlank()) {
+            billToContent.addElement(new Paragraph("GSTIN: " + custGstin, boldText));
         }
         leftBillTo.addCell(billToContent);
 

@@ -28,4 +28,6 @@ public interface InvoiceItemRepository extends JpaRepository<InvoiceItem, Long> 
     List<Object[]> findTopProductsAll(@Param("statuses") List<InvoiceStatus> statuses, Pageable pageable);
 
     List<InvoiceItem> findByInvoice_IdAndInvoice_FirmId(Long invoiceId, Long firmId);
+
+    boolean existsByProduct_Id(Long productId);
 }

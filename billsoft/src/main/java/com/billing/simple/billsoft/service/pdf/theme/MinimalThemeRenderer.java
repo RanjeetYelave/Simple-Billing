@@ -159,15 +159,16 @@ public class MinimalThemeRenderer {
 
         PdfPCell custCell = new PdfPCell();
         custCell.setBorder(Rectangle.NO_BORDER);
-        Customer cust = invoice != null ? invoice.getCustomer() : null;
         custCell.addElement(new Paragraph("BILLED TO", new Font(Font.HELVETICA, 7.5f * scale, Font.BOLD, primary)));
-        String custName = cust != null && cust.getName() != null && !cust.getName().isBlank() ? cust.getName().toUpperCase() : "CASH CUSTOMER";
-        custCell.addElement(new Paragraph(custName, boldText));
-        if (cust != null) {
-            if (cust.getAddress() != null && !cust.getAddress().isBlank()) custCell.addElement(new Paragraph(cust.getAddress(), smallMuted));
-            if (cust.getPhone() != null && !cust.getPhone().isBlank()) custCell.addElement(new Paragraph("Phone: " + cust.getPhone(), smallMuted));
-            if (cust.getGstin() != null && !cust.getGstin().isBlank()) custCell.addElement(new Paragraph("GSTIN: " + cust.getGstin(), boldText));
-        }
+        String custName = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerName(invoice);
+        custCell.addElement(new Paragraph(custName.toUpperCase(), boldText));
+
+        String custAddress = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerAddress(invoice);
+        if (custAddress != null && !custAddress.isBlank()) custCell.addElement(new Paragraph(custAddress, smallMuted));
+        String custPhone = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerPhone(invoice);
+        if (custPhone != null && !custPhone.isBlank()) custCell.addElement(new Paragraph("Phone: " + custPhone, smallMuted));
+        String custGstin = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerGstin(invoice);
+        if (custGstin != null && !custGstin.isBlank()) custCell.addElement(new Paragraph("GSTIN: " + custGstin, boldText));
         billToTable.addCell(custCell);
 
         PdfPCell emptyRight = new PdfPCell();

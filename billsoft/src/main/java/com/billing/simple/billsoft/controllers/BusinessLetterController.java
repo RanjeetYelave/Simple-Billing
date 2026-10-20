@@ -24,6 +24,18 @@ public class BusinessLetterController {
         this.letterService = letterService;
     }
 
+    private Long resolveAuthoritativeFirmId(Long clientFirmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
+        if (target == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
     @GetMapping
     public ResponseEntity<?> list(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
@@ -37,8 +49,10 @@ public class BusinessLetterController {
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "size", required = false) Integer size) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
+        Long firmId;
+        try {
+            firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException e) {
             return ResponseEntity.badRequest().build();
         }
         if (page != null || size != null) {
@@ -55,7 +69,7 @@ public class BusinessLetterController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         return letterService.getLetterById(id, firmId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -66,10 +80,7 @@ public class BusinessLetterController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         String nextNo = letterService.generateNextLetterNumber(firmId);
         return ResponseEntity.ok(Map.of("nextNumber", nextNo));
     }
@@ -79,12 +90,8 @@ public class BusinessLetterController {
             @RequestBody BusinessLetter letter,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
 
-        if (letter.getFirmId() == null && firmIdHeader != null) {
-            letter.setFirmId(firmIdHeader);
-        }
-        if (letter.getFirmId() == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(letter.getFirmId() != null ? letter.getFirmId() : firmIdHeader);
+        letter.setFirmId(firmId);
         try {
             return ResponseEntity.ok(letterService.createLetter(letter));
         } catch (IllegalArgumentException e) {
@@ -98,9 +105,8 @@ public class BusinessLetterController {
             @RequestBody BusinessLetter letter,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
 
-        if (letter.getFirmId() == null && firmIdHeader != null) {
-            letter.setFirmId(firmIdHeader);
-        }
+        Long firmId = resolveAuthoritativeFirmId(letter.getFirmId() != null ? letter.getFirmId() : firmIdHeader);
+        letter.setFirmId(firmId);
         try {
             return ResponseEntity.ok(letterService.updateLetter(id, letter));
         } catch (IllegalArgumentException e) {
@@ -116,7 +122,7 @@ public class BusinessLetterController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         String statusStr = null;
         if (body != null && body.containsKey("status")) {
             statusStr = body.get("status");
@@ -142,7 +148,7 @@ public class BusinessLetterController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             letterService.deleteLetter(id, firmId);
             return ResponseEntity.noContent().build();
@@ -157,7 +163,7 @@ public class BusinessLetterController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
 
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             byte[] pdfBytes = letterService.generateLetterPdf(id, firmId);
             HttpHeaders headers = new HttpHeaders();

@@ -5,6 +5,7 @@ import com.billing.simple.billsoft.dataprotection.DataProtectionService;
 import com.billing.simple.billsoft.dto.BackupDTO;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.repo.FirmDetailsRepository;
+import com.billing.simple.billsoft.service.BackupRecoveryCoordinator;
 import com.billing.simple.billsoft.service.BackupService;
 import com.billing.simple.billsoft.service.BackupValidationService;
 import com.billing.simple.billsoft.util.DataDirectoryResolver;
@@ -49,8 +50,8 @@ public class DiagnosticBackupOrchestrator {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
 
-    // Concurrency guard: prevents simultaneous restore or snapshot collisions
-    private final ReentrantLock recoveryOperationLock = new ReentrantLock();
+    // Concurrency guard: centralized coordinator preventing simultaneous restore or snapshot collisions
+    private final BackupRecoveryCoordinator coordinator;
 
     @Autowired
     public DiagnosticBackupOrchestrator(DataSource dataSource,
@@ -60,7 +61,8 @@ public class DiagnosticBackupOrchestrator {
                                         FirmDetailsRepository firmDetailsRepo,
                                         @Autowired(required = false) DataProtectionService dataProtectionService,
                                         @Autowired(required = false) DataProtectionEntitlement dataProtectionEntitlement,
-                                        ObjectMapper objectMapper) {
+                                        ObjectMapper objectMapper,
+                                        @Autowired(required = false) BackupRecoveryCoordinator coordinator) {
         this.dataSource = dataSource;
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -70,13 +72,14 @@ public class DiagnosticBackupOrchestrator {
         this.dataProtectionService = dataProtectionService;
         this.dataProtectionEntitlement = dataProtectionEntitlement;
         this.objectMapper = objectMapper;
+        this.coordinator = coordinator != null ? coordinator : new BackupRecoveryCoordinator();
     }
 
     /**
      * Creates an H2 native binary snapshot using BACKUP TO with concurrency locking.
      */
     public Map<String, Object> createH2Snapshot() {
-        if (!recoveryOperationLock.tryLock()) {
+        if (!coordinator.tryLock()) {
             throw new IllegalStateException("Another recovery or snapshot operation is currently in progress. Please wait for it to complete.");
         }
         try {
@@ -101,7 +104,7 @@ public class DiagnosticBackupOrchestrator {
             result.put("recoveryId", "H2:" + filename);
             return result;
         } finally {
-            recoveryOperationLock.unlock();
+            coordinator.unlock();
         }
     }
 
@@ -109,7 +112,7 @@ public class DiagnosticBackupOrchestrator {
      * Creates a validated JSON diagnostic snapshot using atomic staging, retention cleanup, and concurrency locking.
      */
     public Map<String, Object> createJsonSnapshot() throws Exception {
-        if (!recoveryOperationLock.tryLock()) {
+        if (!coordinator.tryLock()) {
             throw new IllegalStateException("Another recovery or snapshot operation is currently in progress. Please wait for it to complete.");
         }
         File tempStageFile = null;
@@ -158,7 +161,7 @@ public class DiagnosticBackupOrchestrator {
             if (tempStageFile != null && tempStageFile.exists()) {
                 tempStageFile.delete();
             }
-            recoveryOperationLock.unlock();
+            coordinator.unlock();
         }
     }
 
@@ -180,7 +183,7 @@ public class DiagnosticBackupOrchestrator {
     }
 
     public Map<String, Object> restoreBackup(String recoveryId, List<Long> firmIds, String mode, Long targetFirmId, String confirmation) throws Exception {
-        if (!recoveryOperationLock.tryLock()) {
+        if (!coordinator.tryLock()) {
             throw new IllegalStateException("Another recovery or snapshot operation is currently in progress. Please wait for it to complete.");
         }
         try {
@@ -277,7 +280,7 @@ public class DiagnosticBackupOrchestrator {
             result.put("message", "Backup restored successfully in " + effectiveMode + " mode.");
             return result;
         } finally {
-            recoveryOperationLock.unlock();
+            coordinator.unlock();
         }
     }
 

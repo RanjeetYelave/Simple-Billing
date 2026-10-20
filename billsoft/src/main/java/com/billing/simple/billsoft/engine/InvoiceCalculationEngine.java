@@ -13,15 +13,33 @@ import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.Customer;
+import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.Invoice;
 import com.billing.simple.billsoft.entities.InvoiceItem;
 import com.billing.simple.billsoft.entities.InvoiceStatus;
 import com.billing.simple.billsoft.entities.Product;
+import com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver;
+import com.billing.simple.billsoft.util.GstStateUtils;
+
+import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Single source of truth for ALL invoice calculations.
  */
+@Component
 public class InvoiceCalculationEngine {
+
+    private final com.billing.simple.billsoft.service.ProductPricingService pricingService;
+
+    public InvoiceCalculationEngine() {
+        this.pricingService = null;
+    }
+
+    @Autowired
+    public InvoiceCalculationEngine(@Autowired(required = false) com.billing.simple.billsoft.service.ProductPricingService pricingService) {
+        this.pricingService = pricingService;
+    }
 
     private static final int SCALE = 2;
     private static final int CALC_SCALE = 10;
@@ -42,6 +60,17 @@ public class InvoiceCalculationEngine {
             List<Product> productList,
             InvoiceRequest request,
             boolean isUpdateMode
+    ) {
+        return calculate(invoice, customer, productList, request, isUpdateMode, null);
+    }
+
+    public Invoice calculate(
+            Invoice invoice,
+            Customer customer,
+            List<Product> productList,
+            InvoiceRequest request,
+            boolean isUpdateMode,
+            FirmDetails firm
     ) {
         invoice.setCustomer(customer);
 
@@ -93,6 +122,16 @@ public class InvoiceCalculationEngine {
             }
         }
 
+        Long profileId = request.getPricingProfileId();
+        if (profileId != null) {
+            invoice.setPricingProfileId(profileId);
+        } else if (!isUpdateMode && invoice.getFirmId() != null && pricingService != null) {
+            Long defaultProfileId = pricingService.getDefaultProfileId(invoice.getFirmId());
+            if (defaultProfileId != null) {
+                invoice.setPricingProfileId(defaultProfileId);
+            }
+        }
+
         // Validate customer firm ownership
         if (customer != null && customer.getFirmId() != null && invoice.getFirmId() != null) {
             if (!customer.getFirmId().equals(invoice.getFirmId())) {
@@ -100,11 +139,20 @@ public class InvoiceCalculationEngine {
             }
         }
 
+        /* ---------------------------
+           PLACE OF SUPPLY RESOLUTION (AUDIT-032)
+        ---------------------------- */
+        String sellerState = GstStateUtils.resolveSellerStateCode(firm);
+        String pos = GstStateUtils.resolvePlaceOfSupply(request.getPlaceOfSupply(), customer, sellerState);
+        invoice.setPlaceOfSupply(pos);
+        boolean isInterState = GstStateUtils.isInterState(sellerState, pos);
+
         /* ======================================================================
            ⚠️ METADATA-ONLY UPDATE CASE
            If request.items is NULL -> keep existing items & totals
         ====================================================================== */
         if (request.getItems() == null && invoice.getItems() != null && !invoice.getItems().isEmpty()) {
+            InvoiceMasterDataResolver.captureSnapshotsAtIssuance(invoice, customer, firm);
             return invoice;
         }
 
@@ -122,7 +170,7 @@ public class InvoiceCalculationEngine {
                         throw new com.billing.simple.billsoft.security.TenantSecurityException("Product (ID " + product.getId() + ", " + product.getName() + ") belongs to a different firm.");
                     }
                 }
-                InvoiceItem item = buildItem(ri, product);
+                InvoiceItem item = buildItem(ri, product, invoice.getPricingProfileId(), invoice.getFirmId());
                 if (item != null) {
                     item.setInvoice(invoice);
                     items.add(item);
@@ -186,7 +234,6 @@ public class InvoiceCalculationEngine {
                     BigDecimal newTaxable = itemTaxable.subtract(share);
                     if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
                     it.setTaxableAmount(newTaxable);
-                    it.setDiscountValue(nz(it.getDiscountValue()).add(share));
                     remaining = ZERO;
                 } else {
                     BigDecimal share = itemTaxable
@@ -199,7 +246,6 @@ public class InvoiceCalculationEngine {
                     BigDecimal newTaxable = itemTaxable.subtract(share);
                     if (newTaxable.compareTo(ZERO) < 0) newTaxable = ZERO;
                     it.setTaxableAmount(newTaxable);
-                    it.setDiscountValue(nz(it.getDiscountValue()).add(share));
 
                     remaining = remaining.subtract(share);
                 }
@@ -207,12 +253,17 @@ public class InvoiceCalculationEngine {
         }
 
         /* ---------------------------
-           FINAL TOTALS
+           FINAL TOTALS & GST BREAKDOWN (AUDIT-032)
            - GST calculated AFTER all discounts
            - gstPercent falls back to product GST if null
+           - Intra-state: 50% CGST + 50% SGST
+           - Inter-state: 100% IGST
         ---------------------------- */
         BigDecimal finalTaxable = ZERO;
         BigDecimal gstTotal = ZERO;
+        BigDecimal totalCgst = ZERO;
+        BigDecimal totalSgst = ZERO;
+        BigDecimal totalIgst = ZERO;
 
         for (InvoiceItem it : items) {
             BigDecimal taxable = nz(it.getTaxableAmount());
@@ -228,11 +279,25 @@ public class InvoiceCalculationEngine {
             BigDecimal gstAmt = pctOf(taxable, gstPercent);
             it.setGstAmount(gstAmt);
 
+            if (isInterState) {
+                it.setIgstAmount(gstAmt);
+                it.setCgstAmount(ZERO);
+                it.setSgstAmount(ZERO);
+            } else {
+                BigDecimal half = gstAmt.divide(BigDecimal.valueOf(2), SCALE, RoundingMode.HALF_UP);
+                it.setCgstAmount(half);
+                it.setSgstAmount(gstAmt.subtract(half));
+                it.setIgstAmount(ZERO);
+            }
+
             BigDecimal lineTotal = taxable.add(gstAmt).setScale(SCALE, RoundingMode.HALF_UP);
             it.setLineTotal(lineTotal);
 
             finalTaxable = finalTaxable.add(taxable);
             gstTotal = gstTotal.add(gstAmt);
+            totalCgst = totalCgst.add(nz(it.getCgstAmount()));
+            totalSgst = totalSgst.add(nz(it.getSgstAmount()));
+            totalIgst = totalIgst.add(nz(it.getIgstAmount()));
         }
 
         BigDecimal grand = finalTaxable.add(gstTotal);
@@ -253,7 +318,13 @@ public class InvoiceCalculationEngine {
         invoice.setSubtotalWithoutTax(rawSubtotal);       // BEFORE any discounts
         invoice.setTotalDiscount(totalDiscount);
         invoice.setTotalTax(gstTotal);
+        invoice.setCgstAmount(totalCgst);
+        invoice.setSgstAmount(totalSgst);
+        invoice.setIgstAmount(totalIgst);
         invoice.setTotalAmount(grand);
+
+        // Capture immutable master data snapshots if document is finalized (AUDIT-036)
+        InvoiceMasterDataResolver.captureSnapshotsAtIssuance(invoice, customer, firm);
 
         if (request.getInvoiceDiscount() != null) {
             invoice.setInvoiceDiscountType(request.getInvoiceDiscount().getType());
@@ -272,7 +343,7 @@ public class InvoiceCalculationEngine {
     /* ======================================================================
        ITEM BUILDER
        ====================================================================== */
-    private InvoiceItem buildItem(InvoiceRequestItem req, Product product) {
+    private InvoiceItem buildItem(InvoiceRequestItem req, Product product, Long pricingProfileId, Long firmId) {
         InvoiceItem item = new InvoiceItem();
 
         item.setProduct(product);
@@ -288,12 +359,17 @@ public class InvoiceCalculationEngine {
         item.setHsnCode(req.getHsnCode() != null && !req.getHsnCode().isBlank() ? req.getHsnCode()
                 : (product != null ? product.getHsnCode() : null));
 
-        BigDecimal price = req.getPricePerUnit() != null
-                ? req.getPricePerUnit()
-                : (product != null ? nz(product.getPrice()) : ZERO);
-
-        if (price.compareTo(ZERO) < 0) {
-            price = ZERO;
+        BigDecimal price;
+        if (req.getPricePerUnit() != null) {
+            if (req.getPricePerUnit().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Price per unit cannot be negative for item: " +
+                        (req.getProductName() != null ? req.getProductName() : (product != null ? product.getName() : "Unknown")));
+            }
+            price = req.getPricePerUnit();
+        } else if (pricingService != null && product != null) {
+            price = pricingService.calculateEffectivePrice(product, pricingProfileId, firmId);
+        } else {
+            price = (product != null ? nz(product.getPrice()) : ZERO);
         }
 
         price = price.setScale(SCALE, RoundingMode.HALF_UP);

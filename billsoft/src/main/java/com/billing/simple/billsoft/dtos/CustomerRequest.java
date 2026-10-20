@@ -8,6 +8,7 @@ public class CustomerRequest {
     private String address;
     private String gstin;
     private Long firmId;
+    private Long version;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -26,4 +27,7 @@ public class CustomerRequest {
 
     public Long getFirmId() { return firmId; }
     public void setFirmId(Long firmId) { this.firmId = firmId; }
+
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 }

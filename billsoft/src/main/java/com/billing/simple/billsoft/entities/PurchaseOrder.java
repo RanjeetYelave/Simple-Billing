@@ -23,12 +23,18 @@ import java.util.List;
 @Table(name = "purchase_orders", indexes = {
     @Index(name = "idx_po_firm_party_status", columnList = "firmId, party_id, status"),
     @Index(name = "idx_po_firm_date_id", columnList = "firmId, poDate DESC, id DESC")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uk_po_firm_number", columnNames = {"firmId", "poNumber"})
 })
 public class PurchaseOrder {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long version;
 
     @Column(nullable = false)
     private Long firmId;
@@ -308,6 +314,7 @@ public class PurchaseOrder {
 
     public static class PurchaseOrderBuilder {
         private Long id;
+        private Long version;
         private Long firmId;
         private String poNumber;
         private LocalDate poDate;
@@ -340,6 +347,7 @@ public class PurchaseOrder {
         private LocalDateTime updatedAt;
 
         public PurchaseOrderBuilder id(Long id) { this.id = id; return this; }
+        public PurchaseOrderBuilder version(Long version) { this.version = version; return this; }
         public PurchaseOrderBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
         public PurchaseOrderBuilder poNumber(String poNumber) { this.poNumber = poNumber; return this; }
         public PurchaseOrderBuilder poDate(LocalDate poDate) { this.poDate = poDate; return this; }
@@ -374,6 +382,7 @@ public class PurchaseOrder {
         public PurchaseOrder build() {
             PurchaseOrder po = new PurchaseOrder();
             po.id = this.id;
+            po.version = this.version;
             po.firmId = this.firmId;
             po.poNumber = this.poNumber;
             po.poDate = this.poDate;

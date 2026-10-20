@@ -1377,7 +1377,7 @@ tbody tr:hover {
   inset: 0;
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1454,7 +1454,7 @@ tbody tr:hover {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 9999;
+  z-index: 20000;
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
@@ -2284,8 +2284,17 @@ input:checked+.slider:before {
 
 @media (max-width: 1024px) {
   .topbar-search-pill {
-    max-width: 200px;
-    min-width: 150px;
+    max-width: 180px;
+    min-width: 120px;
+  }
+  .topbar-right {
+    gap: 8px;
+  }
+  .firm-switch-select {
+    max-width: 140px;
+  }
+  .topbar-firm {
+    display: none;
   }
 }
 
@@ -2449,6 +2458,293 @@ input:checked+.slider:before {
 .sub-tabs-bar .btn {
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.page-content:has(.firm-viewport-container) {
+  padding-top: 14px;
+  padding-bottom: 28px;
+}
+
+/* ── Firm Tab Scoped Zero-Scroll Responsive Architecture ── */
+.firm-viewport-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.firm-viewport-container .sub-tabs-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.firm-viewport-container .sub-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+.firm-viewport-container .sub-tabs-bar .btn {
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.firm-workspace-pane {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Firm Capsule Metric Ribbon for High-Density KPI Display */
+.firm-kpi-ribbon {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+.firm-kpi-ribbon-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: default;
+  transition: all 0.15s ease;
+}
+.firm-kpi-ribbon-item.clickable {
+  cursor: pointer;
+}
+.firm-kpi-ribbon-item.clickable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.firm-kpi-ribbon-item.active-filter {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  font-weight: 600;
+}
+.firm-kpi-ribbon-val {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Firm Table Container & Docked Pagination */
+.firm-table-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.firm-table-card .table-container {
+  overflow-x: auto;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.firm-table-card thead th,
+:root.classic .firm-table-card thead th,
+:root.classic-dark .firm-table-card thead th {
+  padding: 5px 8px !important;
+  font-size: 0.74rem;
+}
+.firm-table-card tbody td,
+:root.classic .firm-table-card tbody td,
+:root.classic-dark .firm-table-card tbody td {
+  padding: 4px 8px !important;
+}
+.firm-docked-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  min-height: 32px;
+}
+
+/* Compact Stock Stepper */
+.compact-stock-stepper {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px;
+}
+.compact-stock-stepper button {
+  background: none;
+  border: none;
+  padding: 2px 7px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+.compact-stock-stepper button:hover {
+  background: var(--bg-hover);
+}
+.compact-stock-stepper .stepper-val {
+  padding: 2px 6px;
+  font-weight: 600;
+  min-width: 48px;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Firm Profile & Statements Viewport Optimizations */
+.firm-viewport-container .firm-profile-hero {
+  padding: 10px 16px;
+  gap: 12px;
+}
+.firm-viewport-container .firm-hero-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 1.15rem;
+}
+.firm-viewport-container .firm-deck-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.firm-viewport-container .firm-deck-card {
+  padding: 8px 10px;
+}
+.firm-viewport-container .statement-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.firm-viewport-container .statement-summary-item {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex: 1 1 160px;
+}
+.firm-viewport-container .statement-summary-item .label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.firm-viewport-container .statement-summary-item .value {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.firm-viewport-container .table-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.firm-viewport-container .letter-creator-container {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+.firm-viewport-container .po-creator-container {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+.po-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  width: 100%;
+}
+.firm-viewport-container .firm-profile-container {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+/* ── Unified Firm Zero-Scroll Workbench Architecture ── */
+.firm-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  height: calc(100vh - 170px);
+  max-height: calc(100vh - 170px);
+  box-sizing: border-box;
+}
+
+.firm-master-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+.firm-master-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.firm-inspector-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  gap: 10px;
+}
+
+.firm-toolbar-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.firm-selectable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-left-color 0.15s ease;
+  border-left: 3px solid transparent;
+}
+.firm-selectable-row:hover {
+  background: var(--bg-hover) !important;
+}
+.firm-selectable-row.is-selected {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-left: 3px solid #6366f1 !important;
 }
 
 /* ── Industrial Planner & Kanban Board Styles ── */
@@ -9215,4 +9511,221 @@ body.dark-mode .wa-target-btn.active {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PRODUCT INTELLIGENCE & DEMAND FORECASTING & SMART RESTOCKING
+   ═══════════════════════════════════════════════════════════════════ */
+
+.forecast-hub-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.forecast-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.forecast-kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.forecast-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: var(--primary-light, #c7d2fe);
+}
+
+.forecast-kpi-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.forecast-kpi-val {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.forecast-kpi-sub {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+/* Badges */
+.badge-urgency-out-of-stock {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-urgency-critical {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-urgency-reorder {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-urgency-healthy {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-conf-high {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+}
+
+.badge-conf-medium {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+}
+
+.badge-conf-low {
+  background: rgba(107, 114, 128, 0.12);
+  color: #4b5563;
+  border: 1px solid rgba(107, 114, 128, 0.25);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+}
+
+/* Product Detail Drawer */
+.forecast-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1100;
+  display: flex;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.forecast-drawer-panel {
+  width: 100%;
+  max-width: 820px;
+  height: 100%;
+  background: var(--bg-card, #ffffff);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.forecast-drawer-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-card);
+}
+
+.forecast-drawer-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.forecast-section-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.forecast-chart-wrapper {
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .forecast-drawer-panel {
+    max-width: 100%;
+  }
+}
+
+/* AUDIT-2026-P2-03: Diagnostics live console stacking tier (under modals and toasts) */
+#persistent-live-console-pill,
+#persistent-live-console-bar,
+#persistent-live-console-panel {
+  z-index: 900 !important;
 }

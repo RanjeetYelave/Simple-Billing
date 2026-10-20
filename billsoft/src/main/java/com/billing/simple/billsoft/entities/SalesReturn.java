@@ -24,6 +24,8 @@ import java.util.List;
     @Index(name = "idx_sales_return_firm_date_id", columnList = "firmId, returnDate DESC, id DESC"),
     @Index(name = "idx_sales_return_firm_cust", columnList = "firmId, customer_id"),
     @Index(name = "idx_sales_return_invoice_id", columnList = "invoice_id")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uk_sales_return_firm_number", columnNames = {"firmId", "returnNumber"})
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class SalesReturn {
@@ -61,6 +63,16 @@ public class SalesReturn {
 
     @Column(precision = 15, scale = 2)
     private BigDecimal taxAmount;
+
+    // GST Decomposition (AUDIT-032)
+    @Column(precision = 15, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal sgstAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal igstAmount;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal excludedTaxAmount;
@@ -146,6 +158,15 @@ public class SalesReturn {
     public BigDecimal getTotalRefundAmount() { return totalRefundAmount; }
     public void setTotalRefundAmount(BigDecimal totalRefundAmount) { this.totalRefundAmount = totalRefundAmount; }
 
+    public BigDecimal getCgstAmount() { return cgstAmount; }
+    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
+
+    public BigDecimal getSgstAmount() { return sgstAmount; }
+    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
+
+    public BigDecimal getIgstAmount() { return igstAmount; }
+    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
+
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
@@ -177,6 +198,9 @@ public class SalesReturn {
         private BigDecimal penaltyAmount;
         private String penaltyReason;
         private BigDecimal totalRefundAmount;
+        private BigDecimal cgstAmount;
+        private BigDecimal sgstAmount;
+        private BigDecimal igstAmount;
         private String notes;
         private List<SalesReturnItem> items = new ArrayList<>();
         private LocalDateTime createdAt;
@@ -196,6 +220,9 @@ public class SalesReturn {
         public SalesReturnBuilder penaltyAmount(BigDecimal penaltyAmount) { this.penaltyAmount = penaltyAmount; return this; }
         public SalesReturnBuilder penaltyReason(String penaltyReason) { this.penaltyReason = penaltyReason; return this; }
         public SalesReturnBuilder totalRefundAmount(BigDecimal totalRefundAmount) { this.totalRefundAmount = totalRefundAmount; return this; }
+        public SalesReturnBuilder cgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; return this; }
+        public SalesReturnBuilder sgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; return this; }
+        public SalesReturnBuilder igstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; return this; }
         public SalesReturnBuilder notes(String notes) { this.notes = notes; return this; }
         public SalesReturnBuilder items(List<SalesReturnItem> items) { this.items = items; return this; }
         public SalesReturnBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
@@ -217,6 +244,9 @@ public class SalesReturn {
             sr.penaltyAmount = this.penaltyAmount;
             sr.penaltyReason = this.penaltyReason;
             sr.totalRefundAmount = this.totalRefundAmount;
+            sr.cgstAmount = this.cgstAmount;
+            sr.sgstAmount = this.sgstAmount;
+            sr.igstAmount = this.igstAmount;
             sr.notes = this.notes;
             sr.items = this.items != null ? this.items : new ArrayList<>();
             sr.createdAt = this.createdAt;

@@ -43,12 +43,21 @@ public class ExpenseService {
     }
 
     public Expense getExpenseById(Long id, Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        return (target != null ? repository.findByIdAndFirmId(id, target) : repository.findById(id)).orElse(null);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (target == null) return null;
+        return repository.findByIdAndFirmId(id, target).orElse(null);
     }
 
     public Expense createExpense(Expense expense) {
-        Long firmId = expense.getFirmId() != null ? expense.getFirmId() : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && expense.getFirmId() != null && !authoritativeFirmId.equals(expense.getFirmId())) {
+            throw new TenantSecurityException("Cross-firm expense creation prohibited");
+        }
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : expense.getFirmId();
         if (firmId != null) {
             expense.setFirmId(firmId);
         }
@@ -64,7 +73,10 @@ public class ExpenseService {
     @Transactional
     public Expense updateExpense(Long id, Expense updated) {
         Long firmId = TenantContext.getCurrentFirmId();
-        Expense existing = (firmId != null ? repository.findByIdAndFirmId(id, firmId) : repository.findById(id))
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
+        }
+        Expense existing = repository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Expense not found"));
         existing.setTitle(updated.getTitle());
         if (updated.getAmount() != null) {
@@ -81,17 +93,13 @@ public class ExpenseService {
     @Transactional
     public boolean deleteExpense(Long id) {
         Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            if (!repository.existsByIdAndFirmId(id, firmId))
-                return false;
-            repository.deleteByIdAndFirmId(id, firmId);
-            return true;
-        } else {
-            if (!repository.existsById(id))
-                return false;
-            repository.deleteById(id);
-            return true;
+        if (firmId == null) {
+            throw new TenantSecurityException("Active firm context is strictly required for this operation.");
         }
+        if (!repository.existsByIdAndFirmId(id, firmId))
+            return false;
+        repository.deleteByIdAndFirmId(id, firmId);
+        return true;
     }
 
     public static final List<String> DEFAULT_CATEGORIES = List.of(

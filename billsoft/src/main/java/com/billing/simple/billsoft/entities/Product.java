@@ -20,6 +20,10 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long version;
+
     @Column(nullable = false)
     private String name;
 
@@ -82,6 +86,11 @@ public class Product {
     @Column(name = "canonical_product_id")
     private Long canonicalProductId;
 
+    // Flag indicating whether product is actively imported/tracked in Inventory
+    @Builder.Default
+    @Column(name = "in_inventory")
+    private Boolean inInventory = true;
+
     @Builder.Default
     @Column(name = "is_archived")
     private Boolean isArchived = false;
@@ -93,7 +102,10 @@ public class Product {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
-        if (this.stockQuantity == null || this.stockQuantity.compareTo(BigDecimal.ZERO) < 0) {
+        if (this.inInventory == null) {
+            this.inInventory = true;
+        }
+        if (this.stockQuantity == null) {
             this.stockQuantity = BigDecimal.ZERO;
         }
         if (this.minStockLevel == null || this.minStockLevel.compareTo(BigDecimal.ZERO) < 0) {
@@ -110,7 +122,7 @@ public class Product {
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();
-        if (this.stockQuantity == null || this.stockQuantity.compareTo(BigDecimal.ZERO) < 0) {
+        if (this.stockQuantity == null) {
             this.stockQuantity = BigDecimal.ZERO;
         }
         if (this.minStockLevel != null && this.minStockLevel.compareTo(BigDecimal.ZERO) < 0) {
@@ -152,6 +164,8 @@ public class Product {
     public void setFirmId(Long firmId) { this.firmId = firmId; }
     public Long getCanonicalProductId() { return canonicalProductId; }
     public void setCanonicalProductId(Long canonicalProductId) { this.canonicalProductId = canonicalProductId; }
+    public Boolean getInInventory() { return inInventory; }
+    public void setInInventory(Boolean inInventory) { this.inInventory = inInventory; }
     public Boolean getIsArchived() { return isArchived; }
     public void setIsArchived(Boolean isArchived) { this.isArchived = isArchived; }
     public LocalDateTime getCreatedAt() { return createdAt; }
@@ -165,6 +179,7 @@ public class Product {
 
     public static class ProductBuilder {
         private Long id;
+        private Long version;
         private String name;
         private BigDecimal price;
         private BigDecimal costPrice;
@@ -181,11 +196,13 @@ public class Product {
         private Long preferredPartyId;
         private Long firmId;
         private Long canonicalProductId;
+        private Boolean inInventory = true;
         private Boolean isArchived = false;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
         public ProductBuilder id(Long id) { this.id = id; return this; }
+        public ProductBuilder version(Long version) { this.version = version; return this; }
         public ProductBuilder name(String name) { this.name = name; return this; }
         public ProductBuilder price(BigDecimal price) { this.price = price; return this; }
         public ProductBuilder costPrice(BigDecimal costPrice) { this.costPrice = costPrice; return this; }
@@ -202,6 +219,7 @@ public class Product {
         public ProductBuilder preferredPartyId(Long preferredPartyId) { this.preferredPartyId = preferredPartyId; return this; }
         public ProductBuilder firmId(Long firmId) { this.firmId = firmId; return this; }
         public ProductBuilder canonicalProductId(Long canonicalProductId) { this.canonicalProductId = canonicalProductId; return this; }
+        public ProductBuilder inInventory(Boolean inInventory) { this.inInventory = inInventory; return this; }
         public ProductBuilder isArchived(Boolean isArchived) { this.isArchived = isArchived; return this; }
         public ProductBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProductBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
@@ -209,6 +227,7 @@ public class Product {
         public Product build() {
             Product p = new Product();
             p.id = this.id;
+            p.version = this.version;
             p.name = this.name;
             p.price = this.price;
             p.costPrice = this.costPrice;
@@ -225,6 +244,7 @@ public class Product {
             p.preferredPartyId = this.preferredPartyId;
             p.firmId = this.firmId;
             p.canonicalProductId = this.canonicalProductId;
+            p.inInventory = this.inInventory != null ? this.inInventory : true;
             p.isArchived = this.isArchived != null ? this.isArchived : false;
             p.createdAt = this.createdAt;
             p.updatedAt = this.updatedAt;

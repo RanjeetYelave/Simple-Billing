@@ -23,8 +23,13 @@ public class GoalController {
     @GetMapping
     public List<Goal> listByFirm(@RequestParam(required = false) Long firmId) {
         Long authoritativeFirmId = TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = firmId;
-        return service.getGoalsByFirm(authoritativeFirmId);
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        if (authoritativeFirmId != null) {
+            return service.getGoalsByFirm(authoritativeFirmId);
+        }
+        return java.util.Collections.emptyList();
     }
 
     @GetMapping("/{id}")

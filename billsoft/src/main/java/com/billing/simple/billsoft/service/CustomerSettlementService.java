@@ -26,6 +26,7 @@ public class CustomerSettlementService {
     private final InvoiceRepository invoiceRepo;
     private final InvoicePaymentRepository invoicePaymentRepo;
     private final SalesReturnRepository salesReturnRepo;
+    private final CustomerBalanceService balanceService;
     private final javax.sql.DataSource dataSource;
 
     private static final int SCALE = 2;
@@ -35,11 +36,13 @@ public class CustomerSettlementService {
             InvoiceRepository invoiceRepo,
             InvoicePaymentRepository invoicePaymentRepo,
             SalesReturnRepository salesReturnRepo,
+            CustomerBalanceService balanceService,
             javax.sql.DataSource dataSource) {
         this.customerRepo = customerRepo;
         this.invoiceRepo = invoiceRepo;
         this.invoicePaymentRepo = invoicePaymentRepo;
         this.salesReturnRepo = salesReturnRepo;
+        this.balanceService = balanceService;
         this.dataSource = dataSource;
     }
 
@@ -83,6 +86,8 @@ public class CustomerSettlementService {
         Customer customer = customerRepo.findByIdAndFirmId(customerId, firmId)
                 .orElseThrow(() -> new TenantSecurityException("Customer #" + customerId + " not found in firm"));
 
+        CustomerBalanceSummary balanceSummary = balanceService.getCustomerBalance(firmId, customerId);
+
         List<Invoice> allInvoices = invoiceRepo.findByFirmIdAndCustomer_Id(firmId, customerId);
         List<InvoicePayment> allPayments = invoicePaymentRepo.findByFirmIdAndCustomerIdOrderByPaymentDateAscIdAsc(firmId, customerId);
         List<SalesReturn> allReturns = salesReturnRepo.findByFirmIdAndCustomerIdOrderByReturnDateAscIdAsc(firmId, customerId);
@@ -117,9 +122,11 @@ public class CustomerSettlementService {
         long paidCount = 0;
         long validInvoiceCount = 0;
 
-        // Process valid active invoices (ignoring ESTIMATE and CANCELLED)
+        // Process valid active invoices (ignoring DRAFT, ESTIMATE, and CANCELLED)
         for (Invoice inv : allInvoices) {
-            if (inv.getStatus() == InvoiceStatus.ESTIMATE || inv.getStatus() == InvoiceStatus.CANCELLED) {
+            if (inv.getStatus() == InvoiceStatus.DRAFT
+                    || inv.getStatus() == InvoiceStatus.ESTIMATE
+                    || inv.getStatus() == InvoiceStatus.CANCELLED) {
                 continue;
             }
             validInvoiceCount++;
@@ -205,9 +212,9 @@ public class CustomerSettlementService {
 
         return Customer360Response.builder()
                 .customer(customer)
-                .totalBilled(totalBilled.setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
-                .totalPaid(totalPaid.setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
-                .netBalance(netBalance.setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
+                .totalBilled(balanceSummary.getTotalBilled().setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
+                .totalPaid(balanceSummary.getTotalPaid().setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
+                .netBalance(balanceSummary.getClosingBalance().setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
                 .unallocatedCredit(unallocatedCredit.setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
                 .overdueAmount(overdueAmount.setScale(SCALE, RoundingMode.HALF_UP).doubleValue())
                 .invoiceCount(validInvoiceCount)

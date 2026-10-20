@@ -25,6 +25,7 @@ import com.lowagie.text.Image;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -35,6 +36,35 @@ public class Thermal80mmRenderer {
     private static final Color TEXT_DARK = new Color(0, 0, 0);
     private static final Color TEXT_MUTED = new Color(75, 85, 99);
     private static final Color SEPARATOR_COLOR = new Color(156, 163, 175);
+
+    private static volatile BaseFont cachedBaseFont;
+    private static final Object FONT_LOCK = new Object();
+
+    public static BaseFont getBaseFont() {
+        if (cachedBaseFont != null) {
+            return cachedBaseFont;
+        }
+        synchronized (FONT_LOCK) {
+            if (cachedBaseFont != null) {
+                return cachedBaseFont;
+            }
+            try (java.io.InputStream is = Thermal80mmRenderer.class.getResourceAsStream("/fonts/Poppins-Regular.ttf")) {
+                if (is != null) {
+                    byte[] fontBytes = is.readAllBytes();
+                    cachedBaseFont = BaseFont.createFont("Poppins-Regular.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, fontBytes, null);
+                    return cachedBaseFont;
+                }
+            } catch (Exception e) {
+                // fall through to fallback
+            }
+            try {
+                cachedBaseFont = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.WINANSI, BaseFont.NOT_EMBEDDED);
+            } catch (Exception ex) {
+                throw new RuntimeException("Failed to initialize thermal base font", ex);
+            }
+            return cachedBaseFont;
+        }
+    }
 
     public static byte[] render(Invoice invoice, FirmDetails firm, InvoicePrintOptions options) throws Exception {
         // 80mm width = 226.77 pt
@@ -47,12 +77,13 @@ public class Thermal80mmRenderer {
         PdfWriter.getInstance(doc, baos);
         doc.open();
 
-        Font storeNameFont = new Font(Font.HELVETICA, 11f, Font.BOLD, TEXT_DARK);
-        Font titleFont = new Font(Font.HELVETICA, 9f, Font.BOLD, TEXT_DARK);
-        Font boldFont = new Font(Font.HELVETICA, 7.5f, Font.BOLD, TEXT_DARK);
-        Font normalFont = new Font(Font.HELVETICA, 7f, Font.NORMAL, TEXT_DARK);
-        Font smallFont = new Font(Font.HELVETICA, 6.5f, Font.NORMAL, TEXT_MUTED);
-        Font totalFont = new Font(Font.HELVETICA, 9f, Font.BOLD, TEXT_DARK);
+        BaseFont bf = getBaseFont();
+        Font storeNameFont = new Font(bf, 11f, Font.BOLD, TEXT_DARK);
+        Font titleFont = new Font(bf, 9f, Font.BOLD, TEXT_DARK);
+        Font boldFont = new Font(bf, 7.5f, Font.BOLD, TEXT_DARK);
+        Font normalFont = new Font(bf, 7f, Font.NORMAL, TEXT_DARK);
+        Font smallFont = new Font(bf, 6.5f, Font.NORMAL, TEXT_MUTED);
+        Font totalFont = new Font(bf, 9f, Font.BOLD, TEXT_DARK);
 
         boolean isEstimate = invoice != null && invoice.getStatus() != null && invoice.getStatus().name().equalsIgnoreCase("ESTIMATE");
         String docTitle = isEstimate ? "--- ESTIMATE / QUOTATION ---" : "--- TAX INVOICE ---";
@@ -112,14 +143,14 @@ public class Thermal80mmRenderer {
         String dateStr = (invoice != null && invoice.getInvoiceDate() != null) ? invoice.getInvoiceDate().format(DATE_FMT) : "-";
         metaTbl.addCell(makeNoBorderCell("Date: " + dateStr, normalFont, Element.ALIGN_RIGHT));
 
-        Customer cust = invoice != null ? invoice.getCustomer() : null;
-        String custName = cust != null && cust.getName() != null && !cust.getName().isBlank() ? cust.getName().toUpperCase() : "CASH CUSTOMER";
-        PdfPCell custCell = makeNoBorderCell("Cust: " + custName, boldFont, Element.ALIGN_LEFT);
+        String custName = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerName(invoice);
+        PdfPCell custCell = makeNoBorderCell("Cust: " + custName.toUpperCase(), boldFont, Element.ALIGN_LEFT);
         custCell.setColspan(2);
         metaTbl.addCell(custCell);
 
-        if (cust != null && cust.getGstin() != null && !cust.getGstin().isBlank()) {
-            PdfPCell cGst = makeNoBorderCell("Cust GST: " + cust.getGstin(), smallFont, Element.ALIGN_LEFT);
+        String custGstin = com.billing.simple.billsoft.service.pdf.InvoiceMasterDataResolver.getCustomerGstin(invoice);
+        if (custGstin != null && !custGstin.isBlank()) {
+            PdfPCell cGst = makeNoBorderCell("Cust GST: " + custGstin, smallFont, Element.ALIGN_LEFT);
             cGst.setColspan(2);
             metaTbl.addCell(cGst);
         }

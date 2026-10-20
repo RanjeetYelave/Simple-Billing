@@ -25,4 +25,6 @@ public interface SalesReturnItemRepository extends JpaRepository<SalesReturnItem
 
     @Query("SELECT sri.product.id, SUM(COALESCE(sri.returnQty, 0)) FROM SalesReturnItem sri WHERE sri.salesReturn.invoice.id = :invoiceId AND sri.product IS NOT NULL GROUP BY sri.product.id")
     List<Object[]> sumReturnedQtyByProductIdForInvoice(@Param("invoiceId") Long invoiceId);
+
+    boolean existsByProduct_Id(Long productId);
 }

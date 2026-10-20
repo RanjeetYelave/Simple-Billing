@@ -18,7 +18,10 @@ public class BillsoftApplication {
 
 	@Bean
 	public RestTemplate restTemplate() {
-		return new RestTemplate();
+		org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+		factory.setConnectTimeout(4000);
+		factory.setReadTimeout(6000);
+		return new RestTemplate(factory);
 	}
 
 	@Bean
@@ -47,11 +50,67 @@ public class BillsoftApplication {
 				} catch (Exception ignored) {
 				}
 				try {
+					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS in_inventory BOOLEAN DEFAULT TRUE NOT NULL");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("UPDATE products SET in_inventory = TRUE WHERE in_inventory IS NULL");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE NOT NULL");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("UPDATE products SET is_archived = FALSE WHERE is_archived IS NULL");
+				} catch (Exception ignored) {
+				}
+				try {
 					stmt.execute("ALTER TABLE invoice_payments ALTER COLUMN invoice_id DROP NOT NULL");
 				} catch (Exception ignored) {
 				}
 				try {
 					stmt.execute("ALTER TABLE invoice_payments ALTER COLUMN invoice_id SET NULL");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("ALTER TABLE invoices ALTER COLUMN version SET DEFAULT 0");
+				} catch (Exception ignored) {
+				}
+				try {
+					stmt.execute("UPDATE invoices SET version = 0 WHERE version IS NULL");
+				} catch (Exception ignored) {
+				}
+
+				// AUDIT-032 & AUDIT-036: Add GST breakdown and master data snapshot columns
+				try {
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS place_of_supply VARCHAR(100)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_name_snapshot VARCHAR(255)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_gstin_snapshot VARCHAR(50)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_address_snapshot VARCHAR(1000)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_phone_snapshot VARCHAR(50)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_email_snapshot VARCHAR(100)");
+
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name_snapshot VARCHAR(255)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_gstin_snapshot VARCHAR(50)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_address_snapshot VARCHAR(1000)");
+					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_phone_snapshot VARCHAR(50)");
+
+					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+
+					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+
+					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
 				} catch (Exception ignored) {
 				}
 

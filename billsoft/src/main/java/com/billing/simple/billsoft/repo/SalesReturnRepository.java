@@ -17,11 +17,21 @@ public interface SalesReturnRepository extends JpaRepository<SalesReturn, Long> 
 
     List<SalesReturn> findByFirmIdOrderByReturnDateDescIdDesc(Long firmId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT sr FROM SalesReturn sr LEFT JOIN FETCH sr.items WHERE sr.firmId = :firmId ORDER BY sr.returnDate DESC, sr.id DESC")
+    List<SalesReturn> findAllByFirmIdWithItems(@org.springframework.data.repository.query.Param("firmId") Long firmId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT sr FROM SalesReturn sr LEFT JOIN FETCH sr.items")
+    List<SalesReturn> findAllWithItems();
+
     Page<SalesReturn> findByFirmIdOrderByReturnDateDescCreatedAtDesc(Long firmId, Pageable pageable);
 
     Optional<SalesReturn> findByIdAndFirmId(Long id, Long firmId);
 
     Optional<SalesReturn> findFirstByFirmIdAndReturnNumber(Long firmId, String returnNumber);
+
+    boolean existsByReturnNumberAndFirmId(String returnNumber, Long firmId);
+
+    boolean existsByFirmIdAndReturnNumber(Long firmId, String returnNumber);
 
     boolean existsByIdAndFirmId(Long id, Long firmId);
 

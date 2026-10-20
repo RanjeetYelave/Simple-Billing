@@ -35,10 +35,14 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PurchaseOrderPdfService pdfService;
     private final com.billing.simple.billsoft.service.ProductService productService;
     private final ProductRepository productRepository;
+    private final com.billing.simple.billsoft.service.DocumentSequenceService sequenceService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     @org.springframework.context.annotation.Lazy
     private com.billing.simple.billsoft.service.NotificationService notificationService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository poRepository,
                                     PurchaseOrderItemRepository poItemRepository,
@@ -46,7 +50,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                     PartyPaymentRepository partyPaymentRepository,
                                     PurchaseOrderPdfService pdfService,
                                     com.billing.simple.billsoft.service.ProductService productService,
-                                    ProductRepository productRepository) {
+                                    ProductRepository productRepository,
+                                    @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.DocumentSequenceService sequenceService) {
         this.poRepository = poRepository;
         this.poItemRepository = poItemRepository;
         this.partyRepository = partyRepository;
@@ -54,6 +59,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         this.pdfService = pdfService;
         this.productService = productService;
         this.productRepository = productRepository;
+        this.sequenceService = sequenceService;
     }
 
     @Override
@@ -84,6 +90,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (po.getPoNumber() == null || po.getPoNumber().trim().isEmpty()) {
             po.setPoNumber(generateNextPoNumber(po.getFirmId()));
+        } else if (sequenceService != null) {
+            sequenceService.syncSequenceIfApplicable(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER, po.getFirmId(), po.getPoNumber(), po.getPoDate());
         }
 
         if (po.getItems() != null) {
@@ -118,6 +126,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             handleStockAdjustment(savedPo, null, PurchaseOrderStatus.RECEIVED);
         }
 
+        publishPoUpdatedEvent(savedPo, null, savedPo.getStatus());
         return savedPo;
     }
 
@@ -130,6 +139,13 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 ? poRepository.findByIdAndFirmId(id, authoritativeFirmId)
                 : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
+
+        if (updated.getVersion() != null) {
+            if (!updated.getVersion().equals(existing.getVersion())) {
+                throw new org.springframework.orm.ObjectOptimisticLockingFailureException(PurchaseOrder.class, id);
+            }
+            existing.setVersion(updated.getVersion());
+        }
 
         PurchaseOrderStatus oldStatus = existing.getStatus();
 
@@ -199,6 +215,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder savedPo = poRepository.save(existing);
         syncPartyPayment(savedPo);
         handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
+        publishPoUpdatedEvent(savedPo, oldStatus, savedPo.getStatus());
         return savedPo;
     }
 
@@ -263,6 +280,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder saved = poRepository.save(po);
 
         handleStockAdjustment(saved, oldStatus, status);
+        publishPoUpdatedEvent(saved, oldStatus, status);
         if (notificationService != null && saved != null && saved.getId() != null) {
             if (status == PurchaseOrderStatus.RECEIVED) {
                 notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
@@ -283,11 +301,26 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             handleStockAdjustment(po, PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.CANCELLED);
         }
 
+        publishPoUpdatedEvent(po, po.getStatus(), PurchaseOrderStatus.CANCELLED);
         partyPaymentRepository.deleteByPurchaseOrderId(po.getId());
         poRepository.delete(po);
         if (notificationService != null && po.getId() != null) {
             notificationService.resolveByEventKey(po.getFirmId(), "purchase:po:delivery:" + po.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
         }
+    }
+
+    private void publishPoUpdatedEvent(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {
+        if (eventPublisher == null || po == null || po.getId() == null) return;
+        java.util.Set<Long> productIds = new java.util.HashSet<>();
+        if (po.getItems() != null) {
+            for (PurchaseOrderItem it : po.getItems()) {
+                if (it.getProductId() != null) {
+                    productIds.add(it.getProductId());
+                }
+            }
+        }
+        eventPublisher.publishEvent(new com.billing.simple.billsoft.events.PurchaseOrderUpdatedEvent(
+                po.getId(), po.getFirmId(), newStatus, oldStatus, productIds));
     }
 
     private void handleStockAdjustment(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {
@@ -296,7 +329,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         // If transitioning to RECEIVED from another status (or on initial creation as RECEIVED), increase inventory stock
         if (newStatus == PurchaseOrderStatus.RECEIVED && oldStatus != PurchaseOrderStatus.RECEIVED) {
             for (PurchaseOrderItem item : po.getItems()) {
-                Long prodId = resolveOrCreateProduct(item, po.getFirmId(), true);
+                Long prodId = resolveOrCreateProduct(item, po, po.getFirmId(), true);
 
                 if (prodId != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
                     productService.recordStockMovement(
@@ -317,7 +350,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT) or upon deletion, reverse stock
         else if (oldStatus == PurchaseOrderStatus.RECEIVED && newStatus != PurchaseOrderStatus.RECEIVED) {
             for (PurchaseOrderItem item : po.getItems()) {
-                Long prodId = resolveOrCreateProduct(item, po.getFirmId(), false);
+                Long prodId = resolveOrCreateProduct(item, po, po.getFirmId(), false);
 
                 if (prodId != null && item.getQuantity() != null && item.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
                     productService.recordStockMovement(
@@ -334,8 +367,20 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
     }
 
-    private Long resolveOrCreateProduct(PurchaseOrderItem item, Long firmId, boolean autoCreate) {
+    private Long resolveOrCreateProduct(PurchaseOrderItem item, PurchaseOrder po, Long firmId, boolean autoCreate) {
+        Long vendorId = null;
+        if (po != null && po.getParty() != null) {
+            if (firmId != null && firmId.equals(po.getParty().getFirmId())) {
+                vendorId = po.getParty().getId();
+            }
+        }
+
         if (item.getProductId() != null) {
+            Product p = productRepository.findByIdAndFirmId(item.getProductId(), firmId).orElse(null);
+            if (p != null && p.getPreferredPartyId() == null && vendorId != null) {
+                p.setPreferredPartyId(vendorId);
+                productRepository.save(p);
+            }
             return item.getProductId();
         }
         if (item.getProductName() == null || item.getProductName().trim().isEmpty()) {
@@ -347,6 +392,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         for (Product p : prods) {
             if (p.getName() != null && p.getName().trim().equalsIgnoreCase(name)) {
                 item.setProductId(p.getId());
+                if (p.getPreferredPartyId() == null && vendorId != null) {
+                    p.setPreferredPartyId(vendorId);
+                    productRepository.save(p);
+                }
                 return p.getId();
             }
         }
@@ -359,7 +408,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                     .hsnCode(item.getHsnCode())
                     .unit(item.getUnit() != null && !item.getUnit().trim().isEmpty() ? item.getUnit() : "pcs")
                     .itemType("GOODS")
-                    .price(item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO)
+                    .preferredPartyId(vendorId)
+                    .price(BigDecimal.ZERO)
                     .costPrice(item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO)
                     .gstPercentage(item.getGstPercent() != null ? item.getGstPercent() : BigDecimal.ZERO)
                     .stockQuantity(BigDecimal.ZERO)
@@ -418,8 +468,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public String generateNextPoNumber(Long firmId) {
+        if (sequenceService != null) {
+            return sequenceService.generateNextNumber(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER, firmId);
+        }
         long count = poRepository.countByFirmId(firmId);
         int currentYear = LocalDate.now().getYear();
         return String.format("PO-%d-%04d", currentYear, count + 1);

@@ -34,15 +34,31 @@ public class GoalService {
     }
 
     private Long resolveFirmId(Long explicitFirmId) {
-        Long target = explicitFirmId != null ? explicitFirmId : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && explicitFirmId != null && !authoritativeFirmId.equals(explicitFirmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : explicitFirmId;
         if (target == null || target <= 0) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
         }
         return target;
     }
 
+    private Long requireActiveFirm() {
+        Long firmId = TenantContext.getCurrentFirmId();
+        if (firmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return firmId;
+    }
+
     public List<Goal> getGoalsByFirm(Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (target == null) return Collections.emptyList();
         List<Goal> list = goalRepository.findByFirmIdOrderByCreatedAtDesc(target);
         // Auto-update QUIT_HABIT streak days dynamically if active
@@ -63,16 +79,27 @@ public class GoalService {
     }
 
     public Goal getGoalById(Long id, Long firmId) {
-        Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        return (target != null ? goalRepository.findByIdAndFirmId(id, target) : goalRepository.findById(id)).orElse(null);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (target == null) return null;
+        return goalRepository.findByIdAndFirmId(id, target).orElse(null);
     }
 
     @Transactional
     public Goal createGoal(Goal goal) {
-        Long firmId = goal.getFirmId() != null ? goal.getFirmId() : TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            goal.setFirmId(firmId);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            if (goal.getFirmId() != null && !authoritativeFirmId.equals(goal.getFirmId())) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm goal creation prohibited");
+            }
+            goal.setFirmId(authoritativeFirmId);
+        } else {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
         }
+        Long firmId = authoritativeFirmId;
         if (goal.getStartDate() == null) {
             goal.setStartDate(LocalDate.now());
         }
@@ -112,7 +139,7 @@ public class GoalService {
                 }
             }
             recalculateSavingsGoal(effFirmId, saved.getId());
-            saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
+            saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId).orElse(saved) : saved);
         }
 
         // Write initial baseline log
@@ -137,8 +164,8 @@ public class GoalService {
 
     @Transactional
     public Goal updateGoal(Long id, Goal updated) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+        Long firmId = requireActiveFirm();
+        Goal existing = goalRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         existing.setTitle(updated.getTitle());
@@ -183,32 +210,26 @@ public class GoalService {
                 }
             }
             recalculateSavingsGoal(effFirmId, saved.getId());
-            saved = (effFirmId != null ? goalRepository.findByIdAndFirmId(saved.getId(), effFirmId) : goalRepository.findById(saved.getId())).orElse(saved);
+            saved = goalRepository.findByIdAndFirmId(saved.getId(), effFirmId).orElse(saved);
         }
         return saved;
     }
 
     @Transactional
     public boolean deleteGoal(Long id) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId != null) {
-            if (!goalRepository.existsByIdAndFirmId(id, firmId)) return false;
-            // De-link savings without deleting monetary records
-            savingRepository.clearGoalIdByFirmIdAndGoalId(firmId, id);
-            goalLogRepository.deleteByGoalIdAndFirmId(id, firmId);
-            goalRepository.deleteByIdAndFirmId(id, firmId);
-            return true;
-        }
-        if (!goalRepository.existsById(id)) return false;
-        goalLogRepository.deleteByGoalId(id);
-        goalRepository.deleteById(id);
+        Long firmId = requireActiveFirm();
+        if (!goalRepository.existsByIdAndFirmId(id, firmId)) return false;
+        // De-link savings without deleting monetary records
+        savingRepository.clearGoalIdByFirmIdAndGoalId(firmId, id);
+        goalLogRepository.deleteByGoalIdAndFirmId(id, firmId);
+        goalRepository.deleteByIdAndFirmId(id, firmId);
         return true;
     }
 
     @Transactional
     public Goal checkInHabit(Long id) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+        Long firmId = requireActiveFirm();
+        Goal existing = goalRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         LocalDate today = LocalDate.now();
@@ -260,8 +281,8 @@ public class GoalService {
 
     @Transactional
     public Goal addStreakDays(Long id, int days) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+        Long firmId = requireActiveFirm();
+        Goal existing = goalRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (days <= 0)
@@ -304,8 +325,8 @@ public class GoalService {
 
     @Transactional
     public Goal incrementProgress(Long id, BigDecimal delta, LocalDate logDate, String notes) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+        Long firmId = requireActiveFirm();
+        Goal existing = goalRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (delta == null)
@@ -345,8 +366,8 @@ public class GoalService {
 
     @Transactional
     public Goal resetQuitHabit(Long id) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal existing = (firmId != null ? goalRepository.findByIdAndFirmId(id, firmId) : goalRepository.findById(id))
+        Long firmId = requireActiveFirm();
+        Goal existing = goalRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         int prevStreak = existing.getCurrentStreak() != null ? existing.getCurrentStreak() : 0;
@@ -373,8 +394,8 @@ public class GoalService {
 
     @Transactional
     public Goal addSavingsToGoal(Long goalId, BigDecimal amount, String paymentMode, String notes) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+        Long firmId = requireActiveFirm();
+        Goal goal = goalRepository.findByIdAndFirmId(goalId, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -398,7 +419,7 @@ public class GoalService {
             recalculateSavingsGoal(goal.getFirmId(), goal.getId());
         }
 
-        Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
+        Goal updatedGoal = goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal);
 
         GoalLog log = GoalLog.builder()
                 .firmId(updatedGoal.getFirmId())
@@ -416,8 +437,8 @@ public class GoalService {
 
     @Transactional
     public Goal deductSavingsFromGoal(Long goalId, BigDecimal amount, String paymentMode, String notes) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+        Long firmId = requireActiveFirm();
+        Goal goal = goalRepository.findByIdAndFirmId(goalId, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -443,7 +464,7 @@ public class GoalService {
             recalculateSavingsGoal(goal.getFirmId(), goal.getId());
         }
 
-        Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
+        Goal updatedGoal = goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal);
 
         GoalLog log = GoalLog.builder()
                 .firmId(updatedGoal.getFirmId())
@@ -461,8 +482,8 @@ public class GoalService {
 
     @Transactional
     public Goal reconcileGoalBalance(Long goalId, BigDecimal targetValue, String notes) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId))
+        Long firmId = requireActiveFirm();
+        Goal goal = goalRepository.findByIdAndFirmId(goalId, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
 
         if (targetValue == null || targetValue.compareTo(BigDecimal.ZERO) < 0) {
@@ -497,7 +518,7 @@ public class GoalService {
                 goalRepository.save(goal);
             }
 
-            Goal updatedGoal = (firmId != null ? goalRepository.findByIdAndFirmId(goal.getId(), firmId) : goalRepository.findById(goal.getId())).orElse(goal);
+            Goal updatedGoal = goalRepository.findByIdAndFirmId(goal.getId(), firmId).orElse(goal);
 
             GoalLog log = GoalLog.builder()
                     .firmId(updatedGoal.getFirmId())
@@ -555,15 +576,15 @@ public class GoalService {
     }
 
     public List<SavingRecord> getLinkedSavingsForGoal(Long goalId) {
-        Long firmId = TenantContext.getCurrentFirmId();
+        Long firmId = requireActiveFirm();
         if (goalId == null)
             return List.of();
-        return firmId != null ? savingRepository.findByFirmIdAndGoalId(firmId, goalId) : savingRepository.findByGoalId(goalId);
+        return savingRepository.findByFirmIdAndGoalId(firmId, goalId);
     }
 
     public Map<String, Object> getGoalTimeline(Long goalId) {
-        Long firmId = TenantContext.getCurrentFirmId();
-        Goal goal = (firmId != null ? goalRepository.findByIdAndFirmId(goalId, firmId) : goalRepository.findById(goalId)).orElse(null);
+        Long firmId = requireActiveFirm();
+        Goal goal = goalRepository.findByIdAndFirmId(goalId, firmId).orElse(null);
 
         if (goal == null) {
             return Map.of("points", List.of());
@@ -573,7 +594,7 @@ public class GoalService {
 
         if (goal.getGoalType() == GoalType.SAVINGS_TARGET) {
             // Strictly financial: build chronological ledger from SavingRecord
-            List<SavingRecord> records = (firmId != null ? savingRepository.findByFirmIdAndGoalId(firmId, goalId) : savingRepository.findByGoalId(goalId));
+            List<SavingRecord> records = savingRepository.findByFirmIdAndGoalId(firmId, goalId);
 
             // Sort by savingDate ASC, id ASC
             records = new ArrayList<>(records);
@@ -619,9 +640,7 @@ public class GoalService {
             }
         } else {
             // Habit or Milestone: build chronological ledger from GoalLog
-            List<GoalLog> logs = (firmId != null)
-                    ? goalLogRepository.findByGoalIdAndFirmIdOrderByLogDateAscCreatedAtAsc(goalId, firmId)
-                    : goalLogRepository.findByGoalIdOrderByLogDateAscCreatedAtAsc(goalId);
+            List<GoalLog> logs = goalLogRepository.findByGoalIdAndFirmIdOrderByLogDateAscCreatedAtAsc(goalId, firmId);
 
             if (logs.isEmpty()) {
                 BigDecimal currentVal = goal.getGoalType() == GoalType.LIFE_MILESTONE

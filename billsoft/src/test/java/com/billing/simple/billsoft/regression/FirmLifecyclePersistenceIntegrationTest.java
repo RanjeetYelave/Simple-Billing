@@ -39,11 +39,13 @@ public class FirmLifecyclePersistenceIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.billing.simple.billsoft.service.BackupService backupService;
+
     @BeforeEach
     void setup() {
         TenantContext.clear();
-        productRepo.deleteAll();
-        firmRepo.deleteAll();
+        backupService.factoryReset();
     }
 
     @Test

@@ -69,6 +69,7 @@ public class DiagnosticRecoveryIntegrationTest {
     void setUp() {
         authService.resetRateLimit();
         sessionService.setPersistentConsoleEnabled(false);
+        logService.ensureAppenderAttached();
         if (firmDetailsRepo.count() == 0) {
             FirmDetails testFirm = new FirmDetails();
             testFirm.setFirmName("Test Diagnostic Firm");
@@ -795,7 +796,7 @@ public class DiagnosticRecoveryIntegrationTest {
                         .param("lines", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.lines", hasSize(0)));
+                .andExpect(jsonPath("$.resyncRequired").value(false));
     }
 
     // T33: Log sanitization for unauthenticated callers when persistent live console is active

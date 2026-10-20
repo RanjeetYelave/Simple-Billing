@@ -54,7 +54,11 @@ public class DiagnosticLogService {
         attachLiveLogAppender();
     }
 
-    private void attachLiveLogAppender() {
+    public synchronized void ensureAppenderAttached() {
+        attachLiveLogAppender();
+    }
+
+    public synchronized void attachLiveLogAppender() {
         try {
             if (LoggerFactory.getILoggerFactory() instanceof LoggerContext) {
                 LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
@@ -115,6 +119,7 @@ public class DiagnosticLogService {
      * If the client cursor falls behind or has an invalid future sequence, returns resyncRequired: true.
      */
     public Map<String, Object> getLogsSince(long sinceSeq, int maxLines, boolean sanitize) {
+        ensureAppenderAttached();
         int limit = Math.min(Math.max(maxLines, 1), 500);
         List<String> lines = new ArrayList<>();
         long nextSeq = sinceSeq;
@@ -126,7 +131,7 @@ public class DiagnosticLogService {
 
         boolean resyncRequired = false;
         if (sinceSeq > 0) {
-            if (latestSeq > 0 && sinceSeq > latestSeq) {
+            if (sinceSeq > latestSeq) {
                 // Client sequence is from the future or previous server run
                 resyncRequired = true;
             } else if (oldestSeq > 0 && sinceSeq < oldestSeq - 1) {
@@ -187,7 +192,23 @@ public class DiagnosticLogService {
      * Does NOT alter sequenceCounter, ringBuffer, or client cursors.
      */
     public String exportAllBufferedLogs(boolean sanitize) {
+        ensureAppenderAttached();
         List<LogEntry> snapshot = new ArrayList<>(ringBuffer);
+        if (snapshot.isEmpty()) {
+            List<String> fileLines = getRecentLogs(500);
+            StringBuilder sb = new StringBuilder(fileLines.size() * 160);
+            for (int i = 0; i < fileLines.size(); i++) {
+                String line = fileLines.get(i);
+                if (sanitize) {
+                    line = sanitizeLine(line);
+                }
+                sb.append(line);
+                if (i < fileLines.size() - 1) {
+                    sb.append("\n");
+                }
+            }
+            return sb.toString();
+        }
         StringBuilder sb = new StringBuilder(snapshot.size() * 160);
         for (int i = 0; i < snapshot.size(); i++) {
             LogEntry entry = snapshot.get(i);
@@ -242,6 +263,7 @@ public class DiagnosticLogService {
     }
 
     public SseEmitter subscribe(long sinceSeq, boolean sanitize) {
+        ensureAppenderAttached();
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30-min timeout
         LogSubscriber subscriber = new LogSubscriber(emitter, sanitize);
         subscribers.add(subscriber);

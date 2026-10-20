@@ -136,28 +136,32 @@ jobs:
           # Package internal application payload
           Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
 
-      - name: Generate Release Manifest
+      - name: Generate Signed Release Manifest
         shell: pwsh
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
         run: |
           New-Item -ItemType Directory -Force -Path release-meta
-          $pkgHash = (Get-FileHash -Algorithm SHA256 rupeecrm-app-windows-x64.zip).Hash.ToLower()
-          $pkgSize = (Get-Item rupeecrm-app-windows-x64.zip).Length
 
-          $manifest = @{
-            version = "1.0.${{ github.run_number }}"
-            releaseTag = "v1.0.${{ github.run_number }}"
-            publishedAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-            minInstallerVersion = "1.0.0"
-            package = @{
-              filename = "rupeecrm-app-windows-x64.zip"
-              sha256 = $pkgHash
-              sizeBytes = $pkgSize
-            }
-          } | ConvertTo-Json -Depth 4
+          # Compile ManifestSigner utility
+          javac installer/ManifestSigner.java -d .
 
-          $manifest | Out-File -Encoding UTF8 release-meta/manifest.json
+          if (-not $env:UPDATE_SIGNING_PRIVATE_KEY -or $env:UPDATE_SIGNING_PRIVATE_KEY.Trim() -eq "") {
+              throw "CRITICAL SECURITY ERROR: UPDATE_SIGNING_PRIVATE_KEY secret is missing or empty! Releases cannot proceed with unsigned or forged update manifests."
+          }
+
+          $releaseNotes = "RupeeCRM v1.0.${{ github.run_number }} production release with automated integrity verification."
+
+          java -cp . com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" "$env:UPDATE_SIGNING_PRIVATE_KEY" release-meta "$releaseNotes"
+
+          # Verify signature against pinned public key
+          $pubKey = "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo="
+          java -cp . com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$pubKey"
+
           Write-Host "=== Generated Release Manifest ==="
           Get-Content release-meta/manifest.json
+          Write-Host "=== Generated Detached Signature ==="
+          Get-Content release-meta/manifest.sig
 
       - name: Build Unified RupeeCRMSetup.msi
         shell: pwsh
@@ -226,6 +230,7 @@ jobs:
           (Get-FileHash -Algorithm SHA256 rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII rupeecrm.war.sha256
           (Get-FileHash -Algorithm SHA256 billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII billsoft.war.sha256
           Copy-Item release-meta/manifest.json manifest.json
+          Copy-Item release-meta/manifest.sig manifest.sig
 
       - name: Validate Windows MSI Lifecycle
         shell: pwsh
@@ -249,6 +254,7 @@ jobs:
             billsoft.war
             billsoft.war.sha256
             manifest.json
+            manifest.sig
           if-no-files-found: error
 
   publish-release:
@@ -277,6 +283,7 @@ jobs:
             release-dist/billsoft.war
             release-dist/billsoft.war.sha256
             release-dist/manifest.json
+            release-dist/manifest.sig
           body: |
             ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
             
@@ -291,4 +298,5 @@ jobs:
             - **Direct Update Package:** `rupeecrm.war` (SHA-256: `rupeecrm.war.sha256`)
             - **Legacy Compatible Asset:** `billsoft.war` (SHA-256: `billsoft.war.sha256`)
             - **Release Manifest:** `manifest.json`
+            - **Manifest Signature (Ed25519):** `manifest.sig`
             - **Application Payload:** `rupeecrm-app-windows-x64.zip`

@@ -1,22 +1,27 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.update.UpdateCrypto;
+import com.billing.simple.billsoft.update.UpdateManifest;
+import com.billing.simple.billsoft.update.UpdateState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.HashMap;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.util.Base64;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 class UpdateServiceTest {
@@ -25,116 +30,150 @@ class UpdateServiceTest {
     private RestTemplate restTemplate;
 
     private UpdateService service;
+    private KeyPair testKeyPair;
+    private String testPublicKeyBase64;
 
     @TempDir
     Path tempDir;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        testKeyPair = kpg.generateKeyPair();
+        testPublicKeyBase64 = Base64.getEncoder().encodeToString(testKeyPair.getPublic().getEncoded());
+
         service = new UpdateService(restTemplate);
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "defaultVersion", "v1.0.0");
+        ReflectionTestUtils.setField(service, "defaultVersion", "v1.0.0");
+        ReflectionTestUtils.setField(service, "manifestUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.json");
+        ReflectionTestUtils.setField(service, "signatureUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.sig");
+        ReflectionTestUtils.setField(service, "publicKeyBase64", testPublicKeyBase64);
+    }
+
+    private void mockManifestAndSignature(UpdateManifest manifest) throws Exception {
+        byte[] manifestBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+        String signature = UpdateCrypto.sign(manifestBytes, testKeyPair.getPrivate());
+
+        when(restTemplate.getForObject(contains("manifest.json"), eq(byte[].class)))
+                .thenReturn(manifestBytes);
+        when(restTemplate.getForObject(contains("manifest.sig"), eq(String.class)))
+                .thenReturn(signature);
     }
 
     @Test
-    void testCheckUpdate() {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.1.0");
-        mockRelease.put("body", "## What's New\nAdded Smart Reorder.\n\n## Regression Test Summary\n| Total | 277 |");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
-        Map<String, Object> result = service.checkUpdate();
-        assertNotNull(result);
-        assertEquals("v1.1.0", result.get("latestVersion"));
-        assertTrue((Boolean) result.get("updateAvailable"));
-        assertEquals("Added Smart Reorder.", result.get("releaseNotes"));
-    }
-
-    @Test
-    void testCheckUpdateSkippedReleasesDirectJump() {
-        // Customer installed v1.0.0, available: v1.1.0, v1.2.0, v1.3.0
-        Map<String, Object> rel1 = new HashMap<>();
-        rel1.put("tag_name", "v1.1.0");
-        rel1.put("body", "## What's New\nv1.1 features");
-        rel1.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/v1.1/billsoft.war");
-                }}
-        ));
-
-        Map<String, Object> rel2 = new HashMap<>();
-        rel2.put("tag_name", "v1.2.0");
-        rel2.put("body", "## What's New\nv1.2 features");
-        rel2.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/v1.2/billsoft.war");
-                }}
-        ));
-
-        Map<String, Object> rel3 = new HashMap<>();
-        rel3.put("tag_name", "v1.3.0");
-        rel3.put("body", "## What's New\n* Added Smart Reorder\n* Improved PDF generation\n\n## Regression Test Summary\n| Total | 570 |");
-        rel3.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/v1.3/billsoft.war");
-                }}
-        ));
-
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(java.util.Arrays.asList(rel1, rel2, rel3)));
+    void testCheckUpdateValidSignedManifest() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "1.1.0", "v1.1.0", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "• Added Smart Reorder\n• PDF generation fixes"
+        );
+        mockManifestAndSignature(manifest);
 
         Map<String, Object> result = service.checkUpdate();
         assertNotNull(result);
-        assertEquals("v1.3.0", result.get("latestVersion"));
+        assertEquals("1.1.0", result.get("latestVersion"));
         assertTrue((Boolean) result.get("updateAvailable"));
-        assertEquals("* Added Smart Reorder\n* Improved PDF generation", result.get("releaseNotes"));
+        assertTrue(((String) result.get("releaseNotes")).contains("Smart Reorder"));
     }
 
     @Test
-    void testCheckUpdateNoNewerInstalledEqualsLatest() {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.0.0");
-        mockRelease.put("body", "Initial Release");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
+    void testCheckUpdateTamperedSignatureFails() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "1.1.0", "v1.1.0", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "Valid notes"
+        );
+        byte[] manifestBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+
+        // Sign with a DIFFERENT ephemeral keypair so signature verification fails against testPublicKeyBase64
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair attackerKey = kpg.generateKeyPair();
+        String fakeSignature = UpdateCrypto.sign(manifestBytes, attackerKey.getPrivate());
+
+        when(restTemplate.getForObject(contains("manifest.json"), eq(byte[].class)))
+                .thenReturn(manifestBytes);
+        when(restTemplate.getForObject(contains("manifest.sig"), eq(String.class)))
+                .thenReturn(fakeSignature);
+
         Map<String, Object> result = service.checkUpdate();
         assertNotNull(result);
         assertFalse((Boolean) result.get("updateAvailable"));
-        assertEquals("v1.0.0", result.get("latestVersion"));
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).toLowerCase().contains("verification failed") ||
+                   ((String) result.get("error")).toLowerCase().contains("signature"));
     }
 
     @Test
-    void testCheckUpdateDowngradePreventionInstalledNewerThanLatest() {
-        // Installed is v1.0.0 (or simulated higher), release is v0.9.5
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v0.9.5");
-        mockRelease.put("body", "Older version");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
+    void testCheckUpdateNoNewerInstalledEqualsLatest() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "1.0.0", "v1.0.0", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "Initial release"
+        );
+        mockManifestAndSignature(manifest);
+
         Map<String, Object> result = service.checkUpdate();
         assertNotNull(result);
         assertFalse((Boolean) result.get("updateAvailable"));
+        assertEquals("1.0.0", result.get("latestVersion"));
+    }
+
+    @Test
+    void testCheckUpdateDowngradePrevention() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "0.9.5", "v0.9.5", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "Older release"
+        );
+        mockManifestAndSignature(manifest);
+
+        Map<String, Object> result = service.checkUpdate();
+        assertNotNull(result);
+        assertFalse((Boolean) result.get("updateAvailable"));
+    }
+
+    @Test
+    void testCheckUpdateCacheHit() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "1.2.0", "v1.2.0", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "Notes"
+        );
+        mockManifestAndSignature(manifest);
+
+        // First call
+        Map<String, Object> first = service.checkUpdate(false);
+        assertEquals("1.2.0", first.get("latestVersion"));
+
+        // Second call within cache window: uses cache
+        Map<String, Object> second = service.checkUpdate(false);
+        assertEquals("1.2.0", second.get("latestVersion"));
+
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(1))
+                .getForObject(contains("manifest.json"), eq(byte[].class));
+    }
+
+    @Test
+    void testCheckUpdateManualForceRefreshBypassesFreshCache() throws Exception {
+        UpdateManifest manifest = new UpdateManifest(
+                1, "1.2.0", "v1.2.0", "2026-10-19T14:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://example.com/rupeecrm.war",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                25_000_000L, "Notes"
+        );
+        mockManifestAndSignature(manifest);
+
+        service.checkUpdate(false);
+        service.checkUpdate(true);
+
+        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(2))
+                .getForObject(contains("manifest.json"), eq(byte[].class));
     }
 
     @Test
@@ -151,168 +190,67 @@ class UpdateServiceTest {
 
     @Test
     void testExtractCustomerChangelog() {
-        String fullReleaseBody = "## What's New\n\nAdded Smart Reorder with multi-vendor PO support.\n\nImproved invoice PDF generation.\nFixed stock calculation issue.\n\n## Regression Test Summary\n| Test Area | Tests | Passed |\n|---|---:|---:|\n| Total | 570 | 570 |\n\n### 📦 Distribution Artifacts\n- RupeeCRM-Setup.msi";
+        String fullReleaseBody = "Added Smart Reorder with multi-vendor PO support.";
         String extracted = UpdateService.extractCustomerChangelog(fullReleaseBody);
-        assertEquals("Added Smart Reorder with multi-vendor PO support.\n\nImproved invoice PDF generation.\nFixed stock calculation issue.", extracted);
-
-        // Fallback when no markdown headers
-        String simpleBody = "Bugfixes and performance improvements.";
-        assertEquals("Bugfixes and performance improvements.", UpdateService.extractCustomerChangelog(simpleBody));
-
-        // Empty body
+        assertEquals("Added Smart Reorder with multi-vendor PO support.", extracted);
         assertEquals("", UpdateService.extractCustomerChangelog(""));
         assertEquals("", UpdateService.extractCustomerChangelog(null));
     }
 
     @Test
-    void testCheckUpdateInvalidReleaseSkippedIfNoWarAsset() {
-        Map<String, Object> invalidRel = new HashMap<>();
-        invalidRel.put("tag_name", "v2.0.0");
-        invalidRel.put("body", "Draft release without assets");
-        invalidRel.put("assets", Collections.emptyList());
+    void testCheckForUpdateCompleteSuccessReporting() throws Exception {
+        Path stateFile = service.getStateFilePath();
+        Files.createDirectories(stateFile.getParent());
 
-        Map<String, Object> validRel = new HashMap<>();
-        validRel.put("tag_name", "v1.2.0");
-        validRel.put("body", "Valid release");
-        validRel.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/v1.2/billsoft.war");
-                }}
-        ));
+        UpdateState state = new UpdateState();
+        state.setStatus(UpdateState.STATUS_COMMITTED);
+        state.setCurrentVersion("1.0.0");
+        state.setTargetVersion("1.1.0");
+        state.saveAtomic(stateFile);
 
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(java.util.Arrays.asList(invalidRel, validRel)));
+        Map<String, Object> complete = service.checkForUpdateComplete();
+        assertTrue((Boolean) complete.get("justUpdated"));
+        assertEquals("1.1.0", complete.get("updatedVersion"));
 
-        Map<String, Object> result = service.checkUpdate();
-        assertNotNull(result);
-        assertEquals("v1.2.0", result.get("latestVersion"));
-        assertTrue((Boolean) result.get("updateAvailable"));
+        // Version should now report updated version
+        assertEquals("1.1.0", service.getCurrentVersion());
     }
 
     @Test
-    void testCheckUpdateError() {
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenThrow(new RuntimeException("API error"));
-        Map<String, Object> result = service.checkUpdate();
-        assertNotNull(result);
-        assertFalse((Boolean) result.get("updateAvailable"));
-        assertTrue(result.containsKey("error"));
+    void testCheckForUpdateCompleteRollbackReporting() throws Exception {
+        Path stateFile = service.getStateFilePath();
+        Files.createDirectories(stateFile.getParent());
+
+        UpdateState state = new UpdateState();
+        state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+        state.setCurrentVersion("1.0.0");
+        state.setTargetVersion("1.1.0");
+        state.setErrorMessage("Health check timeout after update");
+        state.saveAtomic(stateFile);
+
+        Map<String, Object> complete = service.checkForUpdateComplete();
+        assertFalse((Boolean) complete.get("justUpdated"));
+        assertTrue((Boolean) complete.get("rolledBack"));
+        assertTrue((Boolean) complete.get("justRolledBack"));
+        assertEquals("1.1.0", complete.get("failedVersion"));
+        assertEquals("1.0.0", complete.get("currentVersion"));
+        assertEquals("Health check timeout after update", complete.get("errorMessage"));
+
+        // Current version remains original version
+        assertEquals("1.0.0", service.getCurrentVersion());
     }
 
     @Test
-    void testCheckUpdate7DayCacheHit() {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.2.0");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
+    void testDownloadArtifactToPartDeletesPartFileOnFailure() throws Exception {
+        Path destWar = tempDir.resolve("rupeecrm-update.war");
+        Path partWar = tempDir.resolve("rupeecrm-update.war.part");
 
-        // First call: executes GitHub request
-        Map<String, Object> first = service.checkUpdate();
-        assertNotNull(first);
-        assertEquals("v1.2.0", first.get("latestVersion"));
+        // Attempting to download from invalid or unreachable URL throws exception and cleans up .part file
+        assertThrows(Exception.class, () -> {
+            service.downloadArtifactToPart("https://127.0.0.1:9/non-existent-artifact.war", partWar, 1000L, "1.1.0");
+        });
 
-        // Second call within 7 days: uses cache, no second GitHub request
-        Map<String, Object> second = service.checkUpdate();
-        assertNotNull(second);
-        assertEquals("v1.2.0", second.get("latestVersion"));
-
-        // Verify restTemplate exchange was called only once
-        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(1))
-                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
-    }
-
-    @Test
-    void testCheckUpdateAfter7DaysCallsGitHubAgain() {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.2.0");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
-
-        // First call
-        service.checkUpdate();
-
-        // Simulate 8 days elapsed (past the 7-day CACHE_DURATION)
-        long eightDaysAgo = System.currentTimeMillis() - (8L * 24 * 60 * 60 * 1000);
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "lastCheckTime", eightDaysAgo);
-
-        // Second call: cache expired, calls GitHub again
-        service.checkUpdate();
-
-        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(2))
-                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
-    }
-
-    @Test
-    void testCheckUpdateManualForceRefreshBypassesFreshCache() {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.2.0");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
-
-        // First call (normal check)
-        service.checkUpdate(false);
-
-        // Second call (manual check with forceRefresh = true)
-        Map<String, Object> manualResult = service.checkUpdate(true);
-        assertNotNull(manualResult);
-        assertEquals("v1.2.0", manualResult.get("latestVersion"));
-
-        // Verify restTemplate was called 2 times (fresh cache bypassed on demand)
-        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(2))
-                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
-    }
-
-    @Test
-    void testCheckUpdateConcurrency() throws Exception {
-        Map<String, Object> mockRelease = new HashMap<>();
-        mockRelease.put("tag_name", "v1.2.0");
-        mockRelease.put("assets", Collections.singletonList(
-                new HashMap<String, Object>() {{
-                    put("name", "billsoft.war");
-                    put("browser_download_url", "http://example.com/billsoft.war");
-                }}
-        ));
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class)))
-                .thenReturn(ResponseEntity.ok(mockRelease));
-
-        int threadCount = 10;
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(threadCount);
-
-        for (int i = 0; i < threadCount; i++) {
-            executor.submit(() -> {
-                try {
-                    service.checkUpdate(false);
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-
-        latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
-        executor.shutdown();
-
-        // In-memory cache ensures only 1 GitHub call occurs across 10 concurrent requests
-        org.mockito.Mockito.verify(restTemplate, org.mockito.Mockito.times(1))
-                .exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Object.class));
+        assertFalse(Files.exists(partWar), "The .part temporary download file must be cleaned up on failure");
+        assertFalse(Files.exists(destWar), "The target destination file must not exist if download failed");
     }
 }

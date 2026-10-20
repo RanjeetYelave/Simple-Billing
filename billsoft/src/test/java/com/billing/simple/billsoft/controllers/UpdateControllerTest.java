@@ -58,4 +58,47 @@ class UpdateControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
     }
+
+    @Test
+    void testApplyUpdateConflict() throws Exception {
+        when(service.startUpdateAsync()).thenReturn(false);
+
+        mockMvc.perform(post("/api/system/apply-update"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void testCreateProgressTicket() throws Exception {
+        mockMvc.perform(post("/api/system/update-progress-ticket"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticket").isNotEmpty())
+                .andExpect(jsonPath("$.expiresInSeconds").value(60));
+    }
+
+    @Test
+    void testUpdateProgressWithValidTicket() throws Exception {
+        when(service.createProgressEmitter()).thenReturn(new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(5000L));
+
+        // 1. Create a ticket
+        String responseStr = mockMvc.perform(post("/api/system/update-progress-ticket"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String ticket = new com.fasterxml.jackson.databind.ObjectMapper().readTree(responseStr).get("ticket").asText();
+
+        // 2. Access /update-progress with ticket
+        mockMvc.perform(get("/api/system/update-progress?ticket=" + ticket))
+                .andExpect(status().isOk());
+
+        // 3. Single-use consumption: same ticket again MUST fail with 401
+        mockMvc.perform(get("/api/system/update-progress?ticket=" + ticket))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void testUpdateProgressWithInvalidTicketReturns401() throws Exception {
+        mockMvc.perform(get("/api/system/update-progress?ticket=invalid-or-forged-ticket-12345"))
+                .andExpect(status().isUnauthorized());
+    }
 }

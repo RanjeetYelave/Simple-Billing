@@ -23,6 +23,9 @@ import java.util.zip.ZipOutputStream;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import com.billing.simple.launcher.update.UpdateCrypto;
+import com.billing.simple.launcher.update.UpdateManifest;
+import com.billing.simple.launcher.update.UpdateState;
 
 /**
  * Production-Grade Native Desktop Supervisor, Tray Controller & Diagnostics Engine for RupeeCRM.
@@ -55,6 +58,11 @@ public class LauncherMain {
     private volatile boolean restartRequested = false;
     private volatile boolean exitRequested = false;
     private final AtomicBoolean isUpdating = new AtomicBoolean(false);
+
+    // Candidate update tracking
+    private volatile boolean isCandidateLaunch = false;
+    private volatile String candidateVersion = null;
+    private volatile File activeBackupWar = null;
 
     // Crash circuit breaker
     private final List<Long> crashTimestamps = new ArrayList<>();
@@ -170,6 +178,7 @@ public class LauncherMain {
                 continue;
             }
 
+            recoverInterruptedTransactionIfPresent();
             applyPendingUpdateIfPresent();
 
             File warFile = findCurrentWar();
@@ -193,9 +202,53 @@ public class LauncherMain {
                     System.out.println("RupeeCRM backend is healthy (PID: " + backendPid + ")");
                     updateTrayTooltip("RupeeCRM [● Running on port " + PORT + "]");
                     triggerStartupNotificationIfReady();
+
+                    if (isCandidateLaunch) {
+                        Path stateFile = getStagingDirectory().resolve("update-state.json");
+                        UpdateState state = UpdateState.load(stateFile);
+                        state.setStatus(UpdateState.STATUS_COMMITTED);
+                        try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+
+                        if (activeBackupWar != null && activeBackupWar.exists()) {
+                            activeBackupWar.delete();
+                        }
+                        isCandidateLaunch = false;
+                        showTrayNotification("Update Succeeded", "RupeeCRM updated successfully to v" + candidateVersion, TrayIcon.MessageType.INFO);
+                    }
                 } else {
                     System.err.println("RupeeCRM backend failed health check within 30s.");
-                    recordCrashEvent();
+                    if (isCandidateLaunch && activeBackupWar != null && activeBackupWar.exists()) {
+                        System.err.println("CRITICAL: Candidate version v" + candidateVersion + " failed startup health probe. Initiating supervisor rollback to " + activeBackupWar.getName());
+                        updateTrayTooltip("RupeeCRM: Rolling back to previous version...");
+                        showTrayNotification("Update Failed - Rolling Back", "The new version failed to start. Restoring previous version...", TrayIcon.MessageType.WARNING);
+
+                        stopBackend();
+
+                        Path stateFile = getStagingDirectory().resolve("update-state.json");
+                        UpdateState state = UpdateState.load(stateFile);
+                        state.setStatus(UpdateState.STATUS_ROLLBACK_IN_PROGRESS);
+                        try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+
+                        try {
+                            Files.copy(activeBackupWar.toPath(), warFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            System.out.println("Rollback restored binary: " + warFile.getAbsolutePath());
+                            state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+                            state.setErrorMessage("Version v" + candidateVersion + " failed health check; rolled back to previous binary");
+                            state.saveAtomic(stateFile);
+                            showTrayNotification("Previous Version Restored", "RupeeCRM restored your previous working version. Customer data was safely preserved.", TrayIcon.MessageType.INFO);
+                        } catch (Exception e) {
+                            System.err.println("CRITICAL: Failed to restore backup binary: " + e.getMessage());
+                            state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
+                            state.setErrorMessage("Rollback restore failed: " + e.getMessage());
+                            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                        }
+
+                        isCandidateLaunch = false;
+                        restartRequested = true;
+                        continue;
+                    } else {
+                        recordCrashEvent();
+                    }
                 }
 
                 // Wait for process termination
@@ -705,9 +758,25 @@ public class LauncherMain {
     public void checkForUpdatesInteractive() {
         new Thread(() -> {
             showTrayNotification("Checking Updates", "Connecting to release server...", TrayIcon.MessageType.INFO);
-            // Query release manifest
-            showTrayNotification("RupeeCRM Up to Date", "You are running the latest version of RupeeCRM.", TrayIcon.MessageType.INFO);
-        }).start();
+            try {
+                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-status?force=true");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(12000);
+                conn.setRequestMethod("GET");
+                if (conn.getResponseCode() == 200) {
+                    String json = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    if (json.contains("\"updateAvailable\":true")) {
+                        showTrayNotification("Update Available", "A newer version of RupeeCRM is available. Open RupeeCRM to install.", TrayIcon.MessageType.INFO);
+                        return;
+                    } else {
+                        showTrayNotification("RupeeCRM Up to Date", "You are running the latest version of RupeeCRM.", TrayIcon.MessageType.INFO);
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
+            showTrayNotification("Update Check Unavailable", "Could not check for updates. The application service may be starting or offline.", TrayIcon.MessageType.WARNING);
+        }, "tray-update-check-thread").start();
     }
 
     public void performInteractiveRepair() {
@@ -875,48 +944,180 @@ public class LauncherMain {
         });
     }
 
-    public void applyPendingUpdateIfPresent() {
+    public void recoverInterruptedTransactionIfPresent() {
         try {
+            Path stateFile = getStagingDirectory().resolve("update-state.json");
+            if (!Files.exists(stateFile)) {
+                return;
+            }
+
+            UpdateState state = UpdateState.load(stateFile);
+            String status = state.getStatus();
+            if (status == null || UpdateState.STATUS_IDLE.equals(status) || UpdateState.STATUS_COMMITTED.equals(status)) {
+                return;
+            }
+
             File currentWar = findCurrentWar();
-            if (currentWar == null) return;
+            String backupPathStr = state.getBackupArtifactPath();
+            File backupWar = (backupPathStr != null && !backupPathStr.isBlank()) ? new File(backupPathStr) : null;
+            if (backupWar == null && currentWar != null) {
+                backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
+            }
 
-            // Search for staged update WARs in known staging/data/app locations
-            List<File> candidates = List.of(
-                    getStagingDirectory().resolve("rupeecrm-update.war").toFile(),
-                    getStagingDirectory().resolve("billsoft-update.war").toFile(),
-                    getDataDirectory().resolve("rupeecrm-update.war").toFile(),
-                    getDataDirectory().resolve("billsoft-update.war").toFile(),
-                    new File(currentWar.getParentFile(), "rupeecrm-update.war"),
-                    new File(currentWar.getParentFile(), "billsoft-update.war"),
-                    new File("billsoft-update.war"),
-                    new File("rupeecrm-update.war")
-            );
-
-            for (File staged : candidates) {
-                if (staged.exists() && staged.isFile() && staged.length() > 1024) {
-                    System.out.println("Discovered staged update package at: " + staged.getAbsolutePath());
-                    updateTrayTooltip("RupeeCRM: Applying Application Update...");
-                    showTrayNotification("Updating RupeeCRM", "Applying new version...", TrayIcon.MessageType.INFO);
-
-                    File backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
-                    try {
-                        // Create temporary rollback backup
-                        Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        // Atomically apply update
-                        Files.move(staged.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                        System.out.println("Update successfully applied to: " + currentWar.getAbsolutePath());
-                        showTrayNotification("Update Applied", "RupeeCRM was updated successfully.", TrayIcon.MessageType.INFO);
-                        break;
-                    } catch (Exception e) {
-                        System.err.println("Failed to atomically apply update WAR: " + e.getMessage());
-                        if (backupWar.exists() && (!currentWar.exists() || currentWar.length() == 0)) {
-                            Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        }
-                    }
+            if (UpdateState.STATUS_STARTING_NEW_VERSION.equals(status)) {
+                if (backupWar != null && backupWar.exists() && backupWar.length() > 0) {
+                    this.isCandidateLaunch = true;
+                    this.candidateVersion = state.getTargetVersion();
+                    this.activeBackupWar = backupWar;
+                    System.out.println("RECOVERY: Resumed candidate update monitoring for v" + candidateVersion + " following supervisor restart.");
+                } else if (currentWar != null && currentWar.exists()) {
+                    state.setStatus(UpdateState.STATUS_COMMITTED);
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    System.out.println("RECOVERY: Candidate update marked committed (no backup pending).");
+                }
+            } else if (UpdateState.STATUS_ACTIVATION_STARTED.equals(status) || UpdateState.STATUS_ROLLBACK_IN_PROGRESS.equals(status)) {
+                if (backupWar != null && backupWar.exists() && backupWar.length() > 0 && currentWar != null) {
+                    System.err.println("RECOVERY: Crash detected during update activation/rollback. Restoring backup binary from " + backupWar.getAbsolutePath());
+                    Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+                    state.setErrorMessage("Interrupted update transaction recovered; restored previous working binary");
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    System.out.println("RECOVERY: Successfully restored backup binary: " + currentWar.getAbsolutePath());
+                } else {
+                    System.err.println("CRITICAL RECOVERY ERROR: Interrupted update activation/rollback detected, but backup binary is missing or corrupted!");
+                    state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
+                    state.setErrorMessage("Interrupted update recovery failed: backup binary missing or corrupted (" + (backupWar != null ? backupWar.getAbsolutePath() : "null") + ")");
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 }
             }
         } catch (Exception e) {
-            System.err.println("Non-critical error during update check: " + e.getMessage());
+            System.err.println("RECOVERY WARNING: Exception while checking for interrupted update transaction: " + e.getMessage());
+        }
+    }
+
+    private boolean isTestModeAllowed() {
+        return System.getProperty("RUPEECRM_BASE_DIR") != null ||
+               Boolean.getBoolean("app.test.mode") ||
+               System.getProperty("app.update.test-override-key") != null;
+    }
+
+    public boolean isCandidateLaunch() { return isCandidateLaunch; }
+    public String getCandidateVersion() { return candidateVersion; }
+    public File getActiveBackupWar() { return activeBackupWar; }
+
+    public boolean applyPendingUpdateIfPresent() {
+        try {
+            Path handoffToken = getStagingDirectory().resolve("update.handoff");
+            if (!Files.exists(handoffToken)) {
+                // No handoff requested, do not modify active binary
+                return false;
+            }
+
+            Path stateFile = getStagingDirectory().resolve("update-state.json");
+            UpdateState state = UpdateState.load(stateFile);
+
+            Path txDir = getStagingDirectory().resolve("update-tx");
+            Path manifestFile = txDir.resolve("manifest.json");
+            Path sigFile = txDir.resolve("manifest.sig");
+
+            if (!Files.exists(manifestFile) || !Files.exists(sigFile)) {
+                System.err.println("REJECTED: Staged update missing manifest.json or manifest.sig");
+                Files.deleteIfExists(handoffToken);
+                return false;
+            }
+
+            // 1. Independent cryptographic verification in Launcher
+            byte[] manifestBytes = Files.readAllBytes(manifestFile);
+            String sigBase64 = Files.readString(sigFile, StandardCharsets.UTF_8).trim();
+            String pubKeyBase64 = DEFAULT_PUBLIC_KEY_X509_BASE64;
+            if (isTestModeAllowed()) {
+                pubKeyBase64 = System.getProperty("app.update.public-key", DEFAULT_PUBLIC_KEY_X509_BASE64);
+            }
+            PublicKey pubKey = UpdateCrypto.decodePublicKey(pubKeyBase64);
+            UpdateManifest manifest;
+            try {
+                manifest = UpdateManifest.parseAndVerify(manifestBytes, sigBase64, pubKey);
+            } catch (Exception e) {
+                System.err.println("SECURITY REJECTION: Launcher manifest signature verification failed: " + e.getMessage());
+                Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
+                state.setErrorMessage("Launcher signature verification failed: " + e.getMessage());
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                return false;
+            }
+
+            // 2. Independent staged artifact verification
+            Path stagedWar = txDir.resolve(manifest.getArtifactFilename());
+            if (!Files.exists(stagedWar) || !Files.isRegularFile(stagedWar)) {
+                System.err.println("REJECTED: Staged artifact not found: " + stagedWar);
+                Files.deleteIfExists(handoffToken);
+                return false;
+            }
+
+            long stagedSize = Files.size(stagedWar);
+            if (stagedSize != manifest.getArtifactSizeBytes()) {
+                System.err.println("REJECTED: Staged size mismatch: " + stagedSize + " != " + manifest.getArtifactSizeBytes());
+                Files.deleteIfExists(handoffToken);
+                return false;
+            }
+
+            String stagedHash = UpdateCrypto.computeSha256(stagedWar);
+            if (!manifest.getArtifactSha256().equalsIgnoreCase(stagedHash)) {
+                System.err.println("REJECTED: Staged SHA-256 digest mismatch: " + stagedHash + " != " + manifest.getArtifactSha256());
+                Files.deleteIfExists(handoffToken);
+                return false;
+            }
+
+            if (!UpdateCrypto.isZipFile(stagedWar)) {
+                System.err.println("REJECTED: Staged artifact failed ZIP magic check");
+                Files.deleteIfExists(handoffToken);
+                return false;
+            }
+
+            File currentWar = findCurrentWar();
+            if (currentWar == null || !currentWar.exists()) {
+                System.err.println("REJECTED: Current live WAR not found");
+                return false;
+            }
+
+            // 3. Create and verify old WAR backup
+            File backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
+            Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            if (!backupWar.exists() || backupWar.length() != currentWar.length()) {
+                System.err.println("REJECTED: Failed to create valid backup of current binary");
+                return false;
+            }
+
+            updateTrayTooltip("RupeeCRM: Applying Application Update (v" + manifest.getAppVersion() + ")...");
+            showTrayNotification("Updating RupeeCRM", "Applying new version v" + manifest.getAppVersion() + "...", TrayIcon.MessageType.INFO);
+
+            state.setStatus(UpdateState.STATUS_ACTIVATION_STARTED);
+            state.setBackupArtifactPath(backupWar.getAbsolutePath());
+            state.setTargetVersion(manifest.getAppVersion());
+            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+
+            // 4. Atomically replace WAR
+            try {
+                Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (Exception e) {
+                Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            state.setStatus(UpdateState.STATUS_STARTING_NEW_VERSION);
+            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+
+            // Delete handoff token
+            Files.deleteIfExists(handoffToken);
+
+            this.isCandidateLaunch = true;
+            this.candidateVersion = manifest.getAppVersion();
+            this.activeBackupWar = backupWar;
+
+            System.out.println("Update successfully activated: " + currentWar.getAbsolutePath() + " (v" + candidateVersion + ")");
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error applying pending update: " + e.getMessage());
+            return false;
         }
     }
 
@@ -970,15 +1171,51 @@ public class LauncherMain {
     }
 
     public static Path getBaseDirectory() {
-        String custom = System.getProperty("RUPEECRM_BASE_DIR", System.getenv("RUPEECRM_BASE_DIR"));
+        String custom = System.getProperty("RUPEECRM_BASE_DIR");
+        if (custom == null || custom.isBlank()) {
+            custom = System.getenv("RUPEECRM_BASE_DIR");
+        }
         if (custom != null && !custom.isBlank()) {
             return Paths.get(custom.trim());
         }
-        String localAppData = System.getenv("LOCALAPPDATA");
-        if (localAppData != null && !localAppData.isEmpty()) {
-            return Paths.get(localAppData, "RupeeCRM");
+
+        String customData = System.getProperty("RUPEECRM_DATA_DIR");
+        if (customData == null || customData.isBlank()) {
+            customData = System.getenv("RUPEECRM_DATA_DIR");
         }
-        return Paths.get(System.getProperty("user.home"), ".rupeecrm");
+        if (customData == null || customData.isBlank()) {
+            customData = System.getProperty("BILLSOFT_DATA_DIR");
+        }
+        if (customData == null || customData.isBlank()) {
+            customData = System.getenv("BILLSOFT_DATA_DIR");
+        }
+        if (customData != null && !customData.isBlank()) {
+            Path dataDir = Paths.get(customData.trim());
+            if (dataDir.getFileName() != null && dataDir.getFileName().toString().equalsIgnoreCase("data") && dataDir.getParent() != null) {
+                return dataDir.getParent();
+            }
+            return dataDir;
+        }
+
+        return resolveBaseDirectoryForOs(
+                System.getProperty("os.name"),
+                System.getenv("LOCALAPPDATA"),
+                System.getProperty("user.home"));
+    }
+
+    public static Path resolveBaseDirectoryForOs(String osName, String localAppData, String userHome) {
+        String os = (osName != null ? osName : "").toLowerCase();
+        if (os.contains("win")) {
+            if (localAppData != null && !localAppData.isBlank()) {
+                return Paths.get(localAppData, "RupeeCRM");
+            } else {
+                return Paths.get(userHome != null ? userHome : System.getProperty("user.home"), ".rupeecrm");
+            }
+        } else if (os.contains("mac")) {
+            return Paths.get(userHome != null ? userHome : System.getProperty("user.home"), "Library/Application Support/RupeeCRM");
+        } else {
+            return Paths.get(userHome != null ? userHome : System.getProperty("user.home"), ".rupeecrm");
+        }
     }
 
     public static File resolveAuthoritativeJava(boolean preferJavaw) {
@@ -1065,10 +1302,18 @@ public class LauncherMain {
     }
 
     private File findCurrentWar() {
+        // 1. Base Directory path (production / test environment)
+        Path base = getBaseDirectory();
+        File war = base.resolve("app").resolve("rupeecrm.war").toFile();
+        if (war.exists() && war.length() > 0) return war;
+
+        war = base.resolve("rupeecrm.war").toFile();
+        if (war.exists() && war.length() > 0) return war;
+
         File appDir = getAppDirectory();
 
-        // 1. Standard Production Path: app/rupeecrm.war
-        File war = new File(appDir, "app" + File.separator + "rupeecrm.war");
+        // 2. Standard Production Installation Path: app/rupeecrm.war
+        war = new File(appDir, "app" + File.separator + "rupeecrm.war");
         if (war.exists() && war.length() > 0) return war;
 
         war = new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war");

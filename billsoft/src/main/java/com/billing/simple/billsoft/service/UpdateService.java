@@ -1,110 +1,537 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.update.UpdateCrypto;
+import com.billing.simple.billsoft.update.UpdateLockManager;
+import com.billing.simple.billsoft.update.UpdateManifest;
+import com.billing.simple.billsoft.update.UpdateState;
+import com.billing.simple.billsoft.util.DataDirectoryResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
+import javax.sql.DataSource;
+import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.StandardCopyOption;
+import java.security.PublicKey;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Enterprise-grade OTA update engine for RupeeCRM.
+ * Enforces cryptographic Ed25519 manifest verification, atomic .part downloads,
+ * OS-level transaction locking, online H2 database quarantine snapshots, and safe handoff.
+ */
 @Service
 public class UpdateService {
 
+    private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
+
+    public static final String DEFAULT_PUBLIC_KEY =
+            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+
     @Value("${app.version:v1.0.0}")
-    private String defaultVersion;
+    private String defaultVersion = "v1.0.0";
 
     @Value("${app.update.check.enabled:true}")
     private boolean updateCheckEnabled = true;
 
+    @Value("${app.update.manifest-url:https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.json}")
+    private String manifestUrl;
+
+    @Value("${app.update.signature-url:https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.sig}")
+    private String signatureUrl;
+
+    @Value("${app.update.public-key:" + DEFAULT_PUBLIC_KEY + "}")
+    private String publicKeyBase64;
+
     private final RestTemplate restTemplate;
+    private final DataSource dataSource;
 
-    public UpdateService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
-
-    public UpdateService() {
-        this.restTemplate = new RestTemplate();
-    }
-
-    private static final String GITHUB_API_URL = "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases/latest";
-    private static final String UPDATE_MARKER_FILE = ".billsoft-updated";
-    private static final String VERSION_FILE = ".billsoft-version";
-
-    // --- Progress tracking ---
+    // Progress tracking
     private final AtomicReference<String> progressStatus = new AtomicReference<>("idle");
     private final AtomicInteger progressPercent = new AtomicInteger(0);
     private final AtomicReference<String> progressMessage = new AtomicReference<>("");
     private final AtomicReference<String> progressLatestVersion = new AtomicReference<>("");
     private final AtomicReference<String> progressSpeed = new AtomicReference<>("");
     private final AtomicReference<String> progressSize = new AtomicReference<>("");
-    private final AtomicReference<String> cachedDownloadUrl = new AtomicReference<>("");
-    private final AtomicReference<String> cachedChecksumUrl = new AtomicReference<>("");
-    // Emitter used for Server‑Sent Events
+    private final AtomicBoolean updateInProgress = new AtomicBoolean(false);
+
     private volatile SseEmitter progressEmitter;
 
-    /**
-     * Get the current version from the persisted version file, falling back to the
-     * default version baked into application.properties.
-     */
-    private String getCurrentVersion() {
-        try {
-            Path versionFile = getVersionFilePath();
-            if (Files.exists(versionFile)) {
-                String version = new String(Files.readAllBytes(versionFile)).trim();
-                if (!version.isEmpty()) {
-                    return version;
-                }
+    // In-memory cache for update check (5 minutes max)
+    private long lastCheckTime = 0;
+    private Map<String, Object> cachedResponse = null;
+    private static final long CACHE_DURATION_MS = 5L * 60 * 1000; // 5 minutes
+
+    // Cached verified manifest from latest check
+    private final AtomicReference<UpdateManifest> latestVerifiedManifest = new AtomicReference<>(null);
+    private final AtomicReference<byte[]> latestVerifiedManifestBytes = new AtomicReference<>(null);
+    private final AtomicReference<String> latestVerifiedSignature = new AtomicReference<>(null);
+
+    @Autowired
+    public UpdateService(RestTemplate restTemplate, @Autowired(required = false) DataSource dataSource) {
+        if (restTemplate != null) {
+            this.restTemplate = restTemplate;
+        } else {
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(4000);
+            factory.setReadTimeout(6000);
+            this.restTemplate = new RestTemplate(factory);
+        }
+        this.dataSource = dataSource;
+    }
+
+    public UpdateService(RestTemplate restTemplate) {
+        this(restTemplate, null);
+    }
+
+    public UpdateService() {
+        this(null, null);
+    }
+
+    public Path getStagingDirectory() {
+        return DataDirectoryResolver.resolveStagingDirectory().toPath();
+    }
+
+    public Path getTxDirectory() {
+        return getStagingDirectory().resolve("update-tx");
+    }
+
+    public Path getLockFilePath() {
+        return getStagingDirectory().resolve("update.lock");
+    }
+
+    public Path getStateFilePath() {
+        return getStagingDirectory().resolve("update-state.json");
+    }
+
+    public Path getHandoffFilePath() {
+        return getStagingDirectory().resolve("update.handoff");
+    }
+
+    public String getCurrentVersion() {
+        // Read from durable state or default version
+        Path stateFile = getStateFilePath();
+        if (Files.exists(stateFile)) {
+            UpdateState state = UpdateState.load(stateFile);
+            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) && state.getTargetVersion() != null && !state.getTargetVersion().isEmpty()) {
+                return state.getTargetVersion();
             }
-        } catch (Exception ignored) {
+            if (state.getCurrentVersion() != null && !state.getCurrentVersion().trim().isEmpty()) {
+                return state.getCurrentVersion().trim();
+            }
         }
         return defaultVersion;
     }
 
-    /**
-     * Persist the new version to the version file so it survives WAR replacement.
-     */
-    private void saveCurrentVersion(String version) {
+    public synchronized Map<String, Object> checkUpdate() {
+        return checkUpdate(false);
+    }
+
+    public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && cachedResponse != null && (now - lastCheckTime) < CACHE_DURATION_MS) {
+            return cachedResponse;
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("automaticInstallSupported", true);
+        String currentVer = getCurrentVersion();
+        response.put("currentVersion", currentVer);
+
+        if (!updateCheckEnabled || "true".equalsIgnoreCase(System.getenv("DISABLE_UPDATE_CHECK")) || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
+            response.put("updateAvailable", false);
+            response.put("message", "Update check is disabled by configuration");
+            return response;
+        }
+
         try {
-            Path versionFile = getVersionFilePath();
-            if (versionFile.getParent() != null) {
-                Files.createDirectories(versionFile.getParent());
+            // 1. Fetch manifest.json via restTemplate
+            byte[] manifestBytes = restTemplate.getForObject(manifestUrl, byte[].class);
+            if (manifestBytes == null || manifestBytes.length == 0) {
+                throw new IllegalStateException("Empty manifest received from " + manifestUrl);
             }
-            Files.write(versionFile, version.getBytes());
-        } catch (Exception ignored) {
+
+            // 2. Fetch manifest.sig via restTemplate
+            String sigBase64 = restTemplate.getForObject(signatureUrl, String.class);
+            if (sigBase64 == null || sigBase64.trim().isEmpty()) {
+                throw new IllegalStateException("Empty signature received from " + signatureUrl);
+            }
+
+            // 3. Cryptographically verify manifest before parsing or trusting
+            PublicKey trustedKey = UpdateCrypto.decodePublicKey(publicKeyBase64);
+            UpdateManifest manifest = UpdateManifest.parseAndVerify(manifestBytes, sigBase64.trim(), trustedKey);
+            latestVerifiedManifest.set(manifest);
+            latestVerifiedManifestBytes.set(manifestBytes);
+            latestVerifiedSignature.set(sigBase64.trim());
+
+            String latestVer = manifest.getAppVersion();
+            response.put("latestVersion", latestVer);
+            response.put("releaseTag", manifest.getReleaseTag());
+            response.put("releaseNotes", manifest.getReleaseNotes());
+            response.put("publishedAt", manifest.getPublishedAt());
+
+            int cmp = compareVersions(latestVer, currentVer);
+            boolean available = cmp > 0;
+            response.put("updateAvailable", available);
+            response.put("downloadUrl", "internal");
+
+            lastCheckTime = now;
+            cachedResponse = new HashMap<>(response);
+            return response;
+        } catch (Exception e) {
+            log.warn("Update check failed: {}", e.getMessage());
+            response.put("updateAvailable", false);
+            response.put("error", "Update check failed: " + e.getMessage());
+            return response;
         }
     }
 
     /**
-     * Create a fresh SSE emitter and set it. Called when the client connects to the SSE endpoint.
-     * Sends an initial "connected" event so the frontend knows the emitter is registered.
+     * Initiates the update download and verification asynchronously.
+     * Returns true if started, false if an update is already running or no update was discovered.
      */
+    public boolean startUpdateAsync() {
+        UpdateManifest manifest = latestVerifiedManifest.get();
+        if (manifest == null) {
+            // Trigger checkUpdate to discover latest verified manifest
+            Map<String, Object> check = checkUpdate(true);
+            if (!Boolean.TRUE.equals(check.get("updateAvailable"))) {
+                setProgress("error", 0, "No new update available to install.");
+                return false;
+            }
+            manifest = latestVerifiedManifest.get();
+            if (manifest == null) {
+                setProgress("error", 0, "Failed to obtain verified update manifest.");
+                return false;
+            }
+        }
+
+        if (updateInProgress.get()) {
+            return false;
+        }
+
+        final UpdateManifest targetManifest = manifest;
+        Thread downloadThread = new Thread(() -> executeUpdatePipeline(targetManifest), "ota-updater-thread");
+        downloadThread.setDaemon(true);
+        downloadThread.start();
+        return true;
+    }
+
+    public boolean applyUpdate() {
+        return startUpdateAsync();
+    }
+
+    private void executeUpdatePipeline(UpdateManifest manifest) {
+        if (!updateInProgress.compareAndSet(false, true)) {
+            setProgress("error", 0, "An update transaction is already in progress.");
+            return;
+        }
+
+        Path lockFile = getLockFilePath();
+        try (UpdateLockManager.LockHandle lock = UpdateLockManager.tryAcquire(lockFile)) {
+            if (lock == null) {
+                setProgress("error", 0, "Update lock contention: another update process is running.");
+                return;
+            }
+
+            Path txDir = getTxDirectory();
+            Files.createDirectories(txDir);
+
+            // Clean up any stale partial files
+            Path partFile = txDir.resolve("rupeecrm-update.war.part");
+            Files.deleteIfExists(partFile);
+
+            Path finalWar = txDir.resolve("rupeecrm-update.war");
+            Files.deleteIfExists(finalWar);
+
+            // Initialize durable state
+            UpdateState state = new UpdateState();
+            state.setStatus(UpdateState.STATUS_DOWNLOADING);
+            state.setCurrentVersion(getCurrentVersion());
+            state.setTargetVersion(manifest.getAppVersion());
+            state.setExpectedSha256(manifest.getArtifactSha256());
+            state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
+            state.saveAtomic(getStateFilePath());
+
+            setProgress("downloading", 0, "Starting download...", manifest.getAppVersion());
+
+            // 1. Download artifact to .part file with progress monitoring
+            downloadArtifactToPart(manifest.getArtifactUrl(), partFile, manifest.getArtifactSizeBytes(), manifest.getAppVersion());
+
+            // 2. Validate artifact size
+            long actualSize = Files.size(partFile);
+            if (actualSize != manifest.getArtifactSizeBytes()) {
+                Files.deleteIfExists(partFile);
+                throw new IllegalStateException("Downloaded artifact size (" + actualSize + " bytes) does not match manifest (" + manifest.getArtifactSizeBytes() + " bytes)");
+            }
+
+            // 3. Validate SHA-256 digest
+            setProgress("verifying", 92, "Verifying cryptographic SHA-256 digest...", manifest.getAppVersion());
+            String actualHash = UpdateCrypto.computeSha256(partFile);
+            if (!manifest.getArtifactSha256().equalsIgnoreCase(actualHash)) {
+                Files.deleteIfExists(partFile);
+                throw new IllegalStateException("Artifact SHA-256 digest mismatch (expected: " + manifest.getArtifactSha256() + ", actual: " + actualHash + ")");
+            }
+
+            // 4. Validate ZIP / WAR format magic bytes
+            setProgress("verifying", 95, "Verifying package structure...", manifest.getAppVersion());
+            if (!UpdateCrypto.isZipFile(partFile)) {
+                Files.deleteIfExists(partFile);
+                throw new IllegalStateException("Downloaded artifact is not a valid ZIP/WAR archive");
+            }
+
+            // 5. Atomic promotion of .part to final staged war
+            try {
+                Files.move(partFile, finalWar, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (Exception e) {
+                Files.move(partFile, finalWar, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            // Save verified manifest and signature into txDir for Launcher independent verification
+            byte[] mBytes = latestVerifiedManifestBytes.get();
+            if (mBytes == null) {
+                mBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+            }
+            Files.write(txDir.resolve("manifest.json"), mBytes);
+            String sig = latestVerifiedSignature.get();
+            if (sig != null) {
+                Files.writeString(txDir.resolve("manifest.sig"), sig, StandardCharsets.UTF_8);
+            }
+
+            // 6. Pre-update Quarantine Database Snapshot
+            setProgress("verifying", 97, "Creating pre-update database quarantine snapshot...", manifest.getAppVersion());
+            Path quarantineBackup = createQuarantineDatabaseBackup(state.getTransactionId());
+            if (quarantineBackup != null) {
+                state.setQuarantineBackupPath(quarantineBackup.toAbsolutePath().toString());
+            }
+
+            // 7. Update durable journal to VERIFIED_STAGED
+            state.setStatus(UpdateState.STATUS_VERIFIED_STAGED);
+            state.setStagedArtifactPath(finalWar.toAbsolutePath().toString());
+            state.saveAtomic(getStateFilePath());
+
+            // 8. Create handoff token for supervisor
+            Path handoff = getHandoffFilePath();
+            String handoffData = "transactionId=" + state.getTransactionId() + "\n" +
+                    "targetVersion=" + manifest.getAppVersion() + "\n" +
+                    "timestamp=" + System.currentTimeMillis() + "\n";
+            Files.writeString(handoff, handoffData, StandardCharsets.UTF_8);
+
+            state.setStatus(UpdateState.STATUS_HANDOFF_REQUESTED);
+            state.saveAtomic(getStateFilePath());
+
+            // 9. Notify frontend and trigger graceful restart via Exit Code 10
+            setProgress("restarting", 100, "Update verified and staged. Restarting service to activate...", manifest.getAppVersion());
+
+            new Thread(() -> {
+                try {
+                    Thread.sleep(1200);
+                    log.info("Requesting supervisor update restart via Exit Code 10");
+                    System.exit(10);
+                } catch (Exception ignored) {}
+            }, "ota-restart-exit-thread").start();
+
+        } catch (Exception e) {
+            log.error("Update pipeline failed: {}", e.getMessage(), e);
+            setProgress("error", 0, "Update failed: " + e.getMessage());
+            UpdateState state = UpdateState.load(getStateFilePath());
+            state.setStatus(UpdateState.STATUS_IDLE);
+            state.setErrorMessage(e.getMessage());
+            try {
+                state.saveAtomic(getStateFilePath());
+            } catch (Exception ignored) {}
+        } finally {
+            updateInProgress.set(false);
+        }
+    }
+
+    void downloadArtifactToPart(String downloadUrl, Path partFile, long expectedSize, String targetVersion) throws Exception {
+        String currentUrl = downloadUrl;
+        HttpURLConnection conn = null;
+        int redirectCount = 0;
+        final int MAX_REDIRECTS = 5;
+
+        try {
+            while (true) {
+                URI uri = new URI(currentUrl);
+                String scheme = uri.getScheme();
+                if (scheme == null || (!scheme.equalsIgnoreCase("https") && !scheme.equalsIgnoreCase("http"))) {
+                    throw new SecurityException("Insecure or unsupported download URL scheme: " + currentUrl);
+                }
+                String host = uri.getHost();
+                if ("http".equalsIgnoreCase(scheme) && host != null && !host.equals("127.0.0.1") && !host.equals("localhost") && !host.equals("::1")) {
+                    throw new SecurityException("Plaintext HTTP downloads are prohibited for non-loopback hosts: " + currentUrl);
+                }
+
+                URL url = uri.toURL();
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(15_000);
+                conn.setReadTimeout(30_000);
+                conn.setRequestProperty("User-Agent", "RupeeCRM-Updater");
+                conn.setInstanceFollowRedirects(false); // Handle redirects explicitly for security
+                conn.connect();
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+                    responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                    responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                    responseCode == 307 || responseCode == 308) {
+
+                    redirectCount++;
+                    if (redirectCount > MAX_REDIRECTS) {
+                        throw new IllegalStateException("Too many redirects (exceeded " + MAX_REDIRECTS + ")");
+                    }
+                    String newLocation = conn.getHeaderField("Location");
+                    if (newLocation == null || newLocation.isBlank()) {
+                        throw new IllegalStateException("Redirect HTTP " + responseCode + " missing Location header");
+                    }
+                    URI newUri = uri.resolve(newLocation);
+                    String newScheme = newUri.getScheme();
+                    if ("http".equalsIgnoreCase(newScheme) && !"http".equalsIgnoreCase(scheme)) {
+                        throw new SecurityException("Insecure redirect downgrade from HTTPS to HTTP: " + newUri);
+                    }
+                    currentUrl = newUri.toString();
+                    conn.disconnect();
+                    continue;
+                }
+
+                if (responseCode < 200 || responseCode >= 300) {
+                    throw new IllegalStateException("Failed to download update artifact (HTTP " + responseCode + ")");
+                }
+                break;
+            }
+
+            long totalBytesRead = 0;
+            long startTime = System.currentTimeMillis();
+            long lastUpdate = startTime;
+
+            try (InputStream in = conn.getInputStream();
+                 OutputStream out = Files.newOutputStream(partFile)) {
+
+                byte[] buffer = new byte[32768];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                    totalBytesRead += read;
+
+                    if (totalBytesRead > UpdateManifest.MAX_ARTIFACT_SIZE_BYTES) {
+                        throw new IllegalStateException("Artifact exceeded maximum allowed size of 250MB");
+                    }
+
+                    long now = System.currentTimeMillis();
+                    if (now - lastUpdate > 200) {
+                        lastUpdate = now;
+                        int percent = (expectedSize > 0) ? (int) (totalBytesRead * 90 / expectedSize) : 0;
+                        long elapsed = Math.max(1, (now - startTime) / 1000);
+                        double mb = totalBytesRead / (1024.0 * 1024.0);
+                        double speed = mb / elapsed;
+
+                        String speedStr = String.format("%.2f MB/s", speed);
+                        String sizeStr = String.format("%.1f MB / %.1f MB", mb, expectedSize / (1024.0 * 1024.0));
+                        setProgress("downloading", percent, "Downloading update...", targetVersion, speedStr, sizeStr);
+                    }
+                }
+            }
+            setProgress("downloading", 90, "Download complete", targetVersion);
+        } catch (Exception e) {
+            Files.deleteIfExists(partFile);
+            throw e;
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private Path createQuarantineDatabaseBackup(String txId) {
+        if (dataSource == null) {
+            return null;
+        }
+        try {
+            File backupsDir = DataDirectoryResolver.resolveBackupsDirectory();
+            Path targetZip = backupsDir.toPath().resolve("pre-update-backup-" + txId + ".zip");
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                String escapedPath = targetZip.toFile().getAbsolutePath().replace("'", "''");
+                stmt.execute("BACKUP TO '" + escapedPath + "'");
+            }
+            if (Files.exists(targetZip) && Files.size(targetZip) > 0) {
+                log.info("Created pre-update quarantine database backup: {}", targetZip);
+                return targetZip;
+            }
+        } catch (Exception e) {
+            log.warn("Non-fatal: could not create quarantine database backup: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    public Map<String, Object> checkForUpdateComplete() {
+        Map<String, Object> result = new HashMap<>();
+        Path stateFile = getStateFilePath();
+        if (Files.exists(stateFile)) {
+            UpdateState state = UpdateState.load(stateFile);
+            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus())) {
+                String updatedVer = (state.getTargetVersion() != null && !state.getTargetVersion().isEmpty())
+                        ? state.getTargetVersion() : state.getCurrentVersion();
+                result.put("justUpdated", true);
+                result.put("updatedVersion", updatedVer);
+                state.setCurrentVersion(updatedVer);
+                state.setTargetVersion("");
+                state.setStatus(UpdateState.STATUS_IDLE);
+                try {
+                    state.saveAtomic(stateFile);
+                } catch (Exception ignored) {}
+                return result;
+            } else if (UpdateState.STATUS_ROLLED_BACK.equals(state.getStatus())) {
+                result.put("justUpdated", false);
+                result.put("justRolledBack", true);
+                result.put("rolledBack", true);
+                result.put("currentVersion", state.getCurrentVersion());
+                result.put("failedVersion", state.getTargetVersion());
+                result.put("errorMessage", state.getErrorMessage());
+                result.put("quarantineBackupPath", state.getQuarantineBackupPath());
+                state.setTargetVersion("");
+                state.setStatus(UpdateState.STATUS_IDLE);
+                try {
+                    state.saveAtomic(stateFile);
+                } catch (Exception ignored) {}
+                return result;
+            }
+        }
+        result.put("justUpdated", false);
+        result.put("justRolledBack", false);
+        return result;
+    }
+
     public SseEmitter createProgressEmitter() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
         this.progressEmitter = emitter;
-        // When the emitter completes or errors, clear our reference
-        emitter.onCompletion(() -> {
-            this.progressEmitter = null;
-        });
-        emitter.onError(e -> {
-            this.progressEmitter = null;
-        });
-        // Send a "connected" event immediately so the frontend knows we're ready
+        emitter.onCompletion(() -> this.progressEmitter = null);
+        emitter.onError(e -> this.progressEmitter = null);
         try {
             emitter.send(SseEmitter.event().name("connected").data("{}"));
-        } catch (Exception e) {
+            if (!"idle".equals(progressStatus.get())) {
+                emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
+            }
+        } catch (Exception ignored) {
             this.progressEmitter = null;
         }
         return emitter;
@@ -112,17 +539,6 @@ public class UpdateService {
 
     public void setProgressEmitter(SseEmitter emitter) {
         this.progressEmitter = emitter;
-    }
-
-    private void sendProgressEvent() {
-        SseEmitter emitter = this.progressEmitter;
-        if (emitter != null) {
-            try {
-                emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
-            } catch (Exception e) {
-                this.progressEmitter = null;
-            }
-        }
     }
 
     public Map<String, Object> getProgress() {
@@ -149,204 +565,53 @@ public class UpdateService {
         progressPercent.set(percent);
         if (message != null) progressMessage.set(message);
         if (latestVersion != null) progressLatestVersion.set(latestVersion);
-        if (speed != null && !speed.isEmpty()) progressSpeed.set(speed);
-        if (size != null && !size.isEmpty()) progressSize.set(size);
+        if (speed != null) progressSpeed.set(speed);
+        if (size != null) progressSize.set(size);
         sendProgressEvent();
     }
 
-    /**
-     * Check if an update was just completed (marker file exists).
-     * This survives restarts so the UI can show "Update Complete!".
-     */
-    public Map<String, Object> checkForUpdateComplete() {
-        Map<String, Object> result = new HashMap<>();
-        Path marker = getMarkerPath();
-        if (Files.exists(marker)) {
+    private void sendProgressEvent() {
+        SseEmitter emitter = this.progressEmitter;
+        if (emitter != null) {
             try {
-                String version = new String(Files.readAllBytes(marker));
-                result.put("justUpdated", true);
-                result.put("updatedVersion", version);
-                // Delete the marker so it only shows once
-                Files.deleteIfExists(marker);
+                emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
             } catch (Exception e) {
-                result.put("justUpdated", false);
+                this.progressEmitter = null;
             }
-        } else {
-            result.put("justUpdated", false);
         }
-        return result;
     }
 
-    private Path getMarkerPath() {
-        try {
-            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            java.io.File parentDir = codeSourceFile.getParentFile();
-            if (parentDir != null && isWritableDirectory(parentDir)) {
-                return parentDir.toPath().resolve(UPDATE_MARKER_FILE);
-            }
-        } catch (Exception ignored) {}
-        return getDataDirectory().resolve(UPDATE_MARKER_FILE);
-    }
+    private byte[] fetchUrlBytes(String urlString, int connectTimeout, int readTimeout, int maxBytes) throws Exception {
+        URL url = new URI(urlString).toURL();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(connectTimeout);
+        conn.setReadTimeout(readTimeout);
+        conn.setRequestProperty("User-Agent", "RupeeCRM-Updater");
+        conn.connect();
 
-    private Path getVersionFilePath() {
-        try {
-            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            java.io.File parentDir = codeSourceFile.getParentFile();
-            if (parentDir != null && isWritableDirectory(parentDir)) {
-                return parentDir.toPath().resolve(VERSION_FILE);
-            }
-        } catch (Exception ignored) {}
-        return getDataDirectory().resolve(VERSION_FILE);
-    }
-
-    private long lastCheckTime = 0;
-    private Map<String, Object> cachedResponse = null;
-    private static final long CACHE_DURATION = 7L * 24 * 60 * 60 * 1000; // 7 days
-
-    public Map<String, Object> checkUpdate() {
-        return checkUpdate(false);
-    }
-
-    public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
-        long currentTime = System.currentTimeMillis();
-        if (!forceRefresh && cachedResponse != null && (currentTime - lastCheckTime) < CACHE_DURATION) {
-            return cachedResponse;
+        int code = conn.getResponseCode();
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException("HTTP " + code + " from " + urlString);
         }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("automaticInstallSupported", true);
-        String currentVersion = getCurrentVersion();
-        response.put("currentVersion", currentVersion);
-
-        if (!updateCheckEnabled || "true".equalsIgnoreCase(System.getenv("DISABLE_UPDATE_CHECK")) || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
-            response.put("updateAvailable", false);
-            return response;
+        try (InputStream in = conn.getInputStream()) {
+            byte[] bytes = in.readNBytes(maxBytes + 1);
+            if (bytes.length > maxBytes) {
+                throw new IllegalStateException("Response from " + urlString + " exceeded limit of " + maxBytes + " bytes");
+            }
+            return bytes;
         }
+    }
 
+    private String fetchUrlString(String urlString, int connectTimeout, int readTimeout) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("User-Agent", "Billsoft-App");
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-            
-            ResponseEntity<Object> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Object.class);
-            Object body = githubResponse.getBody();
-            Map<String, Object> selectedRelease = null;
-
-            if (body instanceof List) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> releases = (List<Map<String, Object>>) body;
-                for (Map<String, Object> rel : releases) {
-                    if (rel != null && rel.containsKey("tag_name") && hasWarAsset(rel)) {
-                        String relVer = (String) rel.get("tag_name");
-                        if (selectedRelease == null) {
-                            selectedRelease = rel;
-                        } else {
-                            String selVer = (String) selectedRelease.get("tag_name");
-                            if (compareVersions(relVer, selVer) > 0) {
-                                selectedRelease = rel;
-                            }
-                        }
-                    }
-                }
-            } else if (body instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> singleRel = (Map<String, Object>) body;
-                if (singleRel.containsKey("tag_name")) {
-                    selectedRelease = singleRel;
-                }
-            }
-
-            if (selectedRelease != null && selectedRelease.containsKey("tag_name")) {
-                String latestVersion = (String) selectedRelease.get("tag_name");
-                response.put("latestVersion", latestVersion);
-
-                int cmp = compareVersions(latestVersion, currentVersion);
-                boolean updateAvailable = cmp > 0;
-                response.put("updateAvailable", updateAvailable);
-                response.put("releaseNotes", extractCustomerChangelog((String) selectedRelease.get("body")));
-
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> assets = (List<Map<String, Object>>) selectedRelease.get("assets");
-                if (assets != null) {
-                    for (Map<String, Object> asset : assets) {
-                        String name = (String) asset.get("name");
-                        if ("rupeecrm.war".equals(name) || "billsoft.war".equals(name)) {
-                            cachedDownloadUrl.set((String) asset.get("browser_download_url"));
-                        } else if ("rupeecrm.war.sha256".equals(name) || "billsoft.war.sha256".equals(name)) {
-                            cachedChecksumUrl.set((String) asset.get("browser_download_url"));
-                        }
-                    }
-                }
-                if (!cachedDownloadUrl.get().isEmpty()) {
-                    response.put("downloadUrl", "internal");
-                }
-                
-                lastCheckTime = currentTime;
-                cachedResponse = new HashMap<>(response);
-            }
+            byte[] bytes = fetchUrlBytes(urlString, connectTimeout, readTimeout, 100_000);
+            return new String(bytes, StandardCharsets.UTF_8).trim();
         } catch (Exception e) {
-            response.put("updateAvailable", false);
-            response.put("error", "GitHub API Error: " + e.getMessage());
-            System.err.println("Update check failed: " + e.getMessage());
-            return response;
-        }
-        return response;
-    }
-
-    private boolean hasWarAsset(Map<String, Object> release) {
-        if (release == null || !release.containsKey("assets")) return false;
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> assets = (List<Map<String, Object>>) release.get("assets");
-        if (assets == null) return false;
-        for (Map<String, Object> asset : assets) {
-            String name = (String) asset.get("name");
-            if (("rupeecrm.war".equals(name) || "billsoft.war".equals(name)) && asset.get("browser_download_url") != null) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Clean and extract customer-facing What's New notes from the release body.
-     * Excludes internal CI regression tables and distribution asset lists from the customer update dialog.
-     */
-    public static String extractCustomerChangelog(String rawBody) {
-        if (rawBody == null || rawBody.trim().isEmpty()) {
             return "";
         }
-        String body = rawBody.trim();
-
-        if (body.contains("## What's New")) {
-            int startIdx = body.indexOf("## What's New") + "## What's New".length();
-            int endIdx = body.length();
-            if (body.contains("## Regression Test Summary")) {
-                endIdx = body.indexOf("## Regression Test Summary");
-            } else if (body.contains("### 📦 Distribution Artifacts")) {
-                endIdx = body.indexOf("### 📦 Distribution Artifacts");
-            }
-            String whatsNew = body.substring(startIdx, Math.max(startIdx, endIdx)).trim();
-            if (!whatsNew.isEmpty()) {
-                return whatsNew;
-            }
-        }
-
-        if (body.contains("## Regression Test Summary")) {
-            return body.substring(0, body.indexOf("## Regression Test Summary")).trim();
-        }
-        if (body.contains("### 📦 Distribution Artifacts")) {
-            return body.substring(0, body.indexOf("### 📦 Distribution Artifacts")).trim();
-        }
-        return body;
     }
 
-    /**
-     * Semantic version comparison supporting arbitrary segment counts (e.g. v1.0.3 vs v1.0.0, 1.0.12 vs 1.0.9).
-     * Returns:
-     *   > 0 if v1 > v2
-     *   0 if v1 == v2
-     *   < 0 if v1 < v2
-     */
     public static int compareVersions(String v1, String v2) {
         if (v1 == null && v2 == null) return 0;
         if (v1 == null) return -1;
@@ -355,329 +620,39 @@ public class UpdateService {
         String norm1 = v1.replaceAll("^[vV]", "").trim();
         String norm2 = v2.replaceAll("^[vV]", "").trim();
 
-        // Separate base version from pre-release/build suffix (e.g. 1.0.0-SNAPSHOT -> base: 1.0.0, suffix: SNAPSHOT)
         String[] split1 = norm1.split("[-+]", 2);
         String[] split2 = norm2.split("[-+]", 2);
 
-        String base1 = split1[0];
-        String base2 = split2[0];
-
-        String[] parts1 = base1.split("\\.");
-        String[] parts2 = base2.split("\\.");
+        String[] parts1 = split1[0].split("\\.");
+        String[] parts2 = split2[0].split("\\.");
 
         int maxLen = Math.max(parts1.length, parts2.length);
         for (int i = 0; i < maxLen; i++) {
             long num1 = 0;
             long num2 = 0;
             if (i < parts1.length && !parts1[i].trim().isEmpty()) {
-                try {
-                    num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", ""));
-                } catch (NumberFormatException ignored) {}
+                try { num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
             }
             if (i < parts2.length && !parts2[i].trim().isEmpty()) {
-                try {
-                    num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", ""));
-                } catch (NumberFormatException ignored) {}
+                try { num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
             }
             if (num1 != num2) {
                 return Long.compare(num1, num2);
             }
         }
 
-        // Base versions are numerically equal; check pre-release tags (release > pre-release)
         boolean hasSuffix1 = split1.length > 1 && !split1[1].isEmpty();
         boolean hasSuffix2 = split2.length > 1 && !split2[1].isEmpty();
 
-        if (!hasSuffix1 && hasSuffix2) {
-            return 1; // 1.0.0 > 1.0.0-SNAPSHOT
-        } else if (hasSuffix1 && !hasSuffix2) {
-            return -1; // 1.0.0-SNAPSHOT < 1.0.0
-        } else if (hasSuffix1 && hasSuffix2) {
-            return split1[1].compareToIgnoreCase(split2[1]);
-        }
+        if (!hasSuffix1 && hasSuffix2) return 1;
+        if (hasSuffix1 && !hasSuffix2) return -1;
+        if (hasSuffix1 && hasSuffix2) return split1[1].compareToIgnoreCase(split2[1]);
 
         return 0;
     }
 
-    /**
-     * Normalize version string by stripping leading 'v' or 'V' for comparison.
-     */
-    private String normalizeVersion(String version) {
-        if (version == null)
-            return "";
-        return version.replaceAll("^[vV]", "").trim();
-    }
-
-    /**
-     * Start the update download asynchronously and return immediately.
-     * The actual download + restart runs on a background thread.
-     * Progress is sent via the SSE emitter (client must connect to SSE first).
-     */
-    public boolean startUpdateAsync() {
-        String downloadUrl = cachedDownloadUrl.get();
-        if (downloadUrl == null || downloadUrl.isEmpty()) {
-            setProgress("error", 0, "Update failed: No download URL found. Please check for updates again.");
-            return false;
-        }
-
-        // Run the download on a separate thread so the HTTP response returns immediately
-        new Thread(() -> {
-            try {
-                performDownload(downloadUrl);
-            } catch (Exception e) {
-                e.printStackTrace();
-                setProgress("error", 0, "Update failed: " + e.getMessage());
-            }
-        }, "update-download-thread").start();
-
-        return true;
-    }
-
-    /**
-     * The actual download logic, extracted to run on a background thread.
-     */
-    private void performDownload(String downloadUrl) throws Exception {
-        String latestVersion = "";
-        // Try to get the latest version from the release for display purposes
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("User-Agent", "Billsoft-App");
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-            
-            ResponseEntity<Map> githubResponse = restTemplate.exchange(GITHUB_API_URL, HttpMethod.GET, entity, Map.class);
-            Map<String, Object> githubRelease = githubResponse.getBody();
-            
-            if (githubRelease != null && githubRelease.containsKey("tag_name")) {
-                latestVersion = (String) githubRelease.get("tag_name");
-            }
-        } catch (Exception ignored) {
-        }
-
-        setProgress("downloading", 0, "Starting download...", latestVersion);
-        // Ensure SSE client receives the initial state
-        sendProgressEvent();
-
-        java.net.URL url = new java.net.URI(downloadUrl).toURL();
-        Path targetPath = getUpdateFilePath();
-
-        // Cleanup: Delete any old or partial update file before starting a new download
-        java.io.File oldUpdate = targetPath.toFile();
-        if (oldUpdate.exists()) {
-            oldUpdate.delete();
-        }
-
-        // Download the file with progress tracking
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(30000);
-        conn.setReadTimeout(30000);
-        conn.connect();
-
-        int fileSize = conn.getContentLength();
-        long totalBytesRead = 0;
-        long startTime = System.currentTimeMillis();
-
-        try (java.io.InputStream in = conn.getInputStream();
-                java.io.FileOutputStream out = new java.io.FileOutputStream(targetPath.toFile())) {
-
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            long lastUpdateTime = System.currentTimeMillis();
-
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-                totalBytesRead += bytesRead;
-
-                long now = System.currentTimeMillis();
-                // Update progress every 200ms for smoothness
-                if (now - lastUpdateTime > 200) {
-                    lastUpdateTime = now;
-                    int percent = (fileSize > 0) ? (int) (totalBytesRead * 100 / fileSize) : 0;
-
-                    long elapsed = (now - startTime) / 1000;
-                    double downloadMb = totalBytesRead / (1024.0 * 1024.0);
-                    double speedMbps = elapsed > 0 ? downloadMb / elapsed : 0;
-
-                    String speedStr = String.format("%.2f MB/s", speedMbps);
-                    String sizeStr = (fileSize > 0)
-                            ? String.format("%.1f MB / %.1f MB", downloadMb, fileSize / (1024.0 * 1024.0))
-                            : String.format("%.1f MB downloaded", downloadMb);
-
-                    String eta = "";
-                    if (fileSize > 0 && speedMbps > 0) {
-                        int remainingSec = (int) (((fileSize / (1024.0 * 1024.0)) - downloadMb) / speedMbps);
-                        if (remainingSec > 0)
-                            eta = " | ~" + remainingSec + "s remaining";
-                    }
-
-                    setProgress("downloading", percent,
-                            "Downloading update..." + eta,
-                            latestVersion, speedStr, sizeStr);
-                }
-            }
-            // Final 100% progress for download
-            String finalSizeStr = (fileSize > 0)
-                    ? String.format("%.1f MB / %.1f MB", totalBytesRead / (1024.0 * 1024.0),
-                            fileSize / (1024.0 * 1024.0))
-                    : String.format("%.1f MB", totalBytesRead / (1024.0 * 1024.0));
-            setProgress("downloading", 100, "Download complete", latestVersion, "", finalSizeStr);
-        }
-
-        // Verify the downloaded file exists and has content
-        if (!Files.exists(targetPath) || Files.size(targetPath) == 0) {
-            setProgress("error", 0, "Update failed: Downloaded file is empty");
-            return;
-        }
-
-        // Verify SHA-256 Checksum if URL is set
-        String checksumUrl = cachedChecksumUrl.get();
-        if (checksumUrl != null && !checksumUrl.isEmpty()) {
-            setProgress("downloading", 90, "Verifying checksum...", latestVersion);
-            try {
-                String expectedHash = downloadExpectedHash(checksumUrl);
-                String actualHash = computeSha256(targetPath);
-                if (!expectedHash.equalsIgnoreCase(actualHash)) {
-                    Files.deleteIfExists(targetPath);
-                    setProgress("error", 0, "Update failed: SHA-256 checksum mismatch (expected: " + expectedHash + ", got: " + actualHash + ")");
-                    return;
-                }
-            } catch (Exception e) {
-                Files.deleteIfExists(targetPath);
-                setProgress("error", 0, "Update failed during checksum verification: " + e.getMessage());
-                return;
-            }
-        }
-
-        // Installation phase
-        setProgress("installing", 90, "Installing update...", latestVersion);
-        Thread.sleep(100);
-
-        setProgress("installing", 95, "Finalizing installation...", latestVersion);
-        // Notify SSE client about installation stage
-        sendProgressEvent();
-
-        // Persist the new version BEFORE writing the marker file.
-        // This version file lives outside the WAR and survives replacement.
-        if (latestVersion != null && !latestVersion.isEmpty()) {
-            saveCurrentVersion(latestVersion);
-        }
-
-        // Write a marker file so after restart the UI can show "Update Complete!"
-        try {
-            Files.write(getMarkerPath(), latestVersion.getBytes());
-        } catch (Exception ignored) {
-        }
-
-        Thread.sleep(100);
-
-        // Shutdown phase
-        setProgress("restarting", 100, "Restarting application...", latestVersion);
-        // Notify SSE client that we are about to restart
-        sendProgressEvent();
-
-        // Spin up a separate thread to shutdown the application after a brief delay
-        // This gives the SSE event time to reach the client
-        new Thread(() -> {
-            try {
-                Thread.sleep(1000);
-                System.exit(0);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }).start();
-    }
-
-    /**
-     * Old synchronous applyUpdate - kept for backward compatibility but now starts async.
-     */
-    public boolean applyUpdate() {
-        return startUpdateAsync();
-    }
-
-    private String downloadExpectedHash(String urlString) throws Exception {
-        java.net.URL url = new java.net.URI(urlString).toURL();
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(10000);
-        conn.setRequestProperty("User-Agent", "Billsoft-App");
-        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()))) {
-            String line = reader.readLine();
-            if (line != null) {
-                return line.trim();
-            }
-        }
-        throw new IOException("Failed to read expected hash from " + urlString);
-    }
-
-    private String computeSha256(Path file) throws Exception {
-        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-        try (java.io.InputStream is = Files.newInputStream(file)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = is.read(buffer)) != -1) {
-                digest.update(buffer, 0, read);
-            }
-        }
-        byte[] hash = digest.digest();
-        StringBuilder hexString = new StringBuilder();
-        for (byte b : hash) {
-            String hex = Integer.toHexString(0xff & b);
-            if (hex.length() == 1) {
-                hexString.append('0');
-            }
-            hexString.append(hex);
-        }
-        return hexString.toString();
-    }
-
-    private Path getDataDirectory() {
-        return com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory().toPath();
-    }
-
-    private Path getUpdateFilePath() {
-        // 1. Try parent directory of running code source if it's a writable non-system directory
-        try {
-            java.io.File codeSourceFile = new java.io.File(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            java.io.File parentDir = codeSourceFile.getParentFile();
-            if (parentDir != null && isWritableDirectory(parentDir)) {
-                return parentDir.toPath().resolve("billsoft-update.war");
-            }
-        } catch (Exception ignored) {}
-
-        // 2. Try runtime subdirectory or app directory if writable
-        try {
-            java.io.File userDir = new java.io.File(System.getProperty("user.dir"));
-            if (isWritableDirectory(userDir)) {
-                java.io.File runtimeDir = new java.io.File(userDir, "runtime");
-                if (runtimeDir.exists() && isWritableDirectory(runtimeDir)) {
-                    return runtimeDir.toPath().resolve("billsoft-update.war");
-                }
-                return userDir.toPath().resolve("billsoft-update.war");
-            }
-        } catch (Exception ignored) {}
-
-        // 3. Fallback to user AppData data directory (guaranteed writable on all Windows/Mac systems)
-        Path dataDir = getDataDirectory();
-        try {
-            Files.createDirectories(dataDir);
-        } catch (Exception ignored) {}
-        return dataDir.resolve("billsoft-update.war");
-    }
-
-    private boolean isWritableDirectory(java.io.File dir) {
-        if (dir == null || !dir.exists() || !dir.isDirectory()) return false;
-        String path = dir.getAbsolutePath().toLowerCase();
-        if (path.contains("system32") || path.contains("windows\\system") || path.contains("windows/system")) {
-            return false;
-        }
-        try {
-            java.io.File testFile = new java.io.File(dir, ".write_test_" + System.currentTimeMillis());
-            if (testFile.createNewFile()) {
-                testFile.delete();
-                return true;
-            }
-        } catch (Exception e) {
-            return false;
-        }
-        return false;
+    public static String extractCustomerChangelog(String rawBody) {
+        if (rawBody == null || rawBody.trim().isEmpty()) return "";
+        return rawBody.trim();
     }
 }

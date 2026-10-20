@@ -61,4 +61,44 @@ public class LauncherConfigTest {
             assertTrue(crashRecorded, "Abnormal exit code " + exitCode + " must record a crash event");
         }
     }
+
+    @Test
+    void testOsBaseDirectoryResolution_MacOS() {
+        java.nio.file.Path macPath = LauncherMain.resolveBaseDirectoryForOs("Mac OS X", null, "/Users/testuser");
+        assertEquals("/Users/testuser/Library/Application Support/RupeeCRM", macPath.toString());
+    }
+
+    @Test
+    void testOsBaseDirectoryResolution_WindowsWithLocalAppData() {
+        java.nio.file.Path winPath = LauncherMain.resolveBaseDirectoryForOs("Windows 11", "C:\\Users\\testuser\\AppData\\Local", "C:\\Users\\testuser");
+        assertEquals("C:\\Users\\testuser\\AppData\\Local/RupeeCRM".replace('/', java.io.File.separatorChar), winPath.toString());
+    }
+
+    @Test
+    void testOsBaseDirectoryResolution_WindowsFallback() {
+        java.nio.file.Path winFallback = LauncherMain.resolveBaseDirectoryForOs("Windows 10", null, "C:\\Users\\testuser");
+        assertEquals("C:\\Users\\testuser/.rupeecrm".replace('/', java.io.File.separatorChar), winFallback.toString());
+    }
+
+    @Test
+    void testOsBaseDirectoryResolution_Linux() {
+        java.nio.file.Path linuxPath = LauncherMain.resolveBaseDirectoryForOs("Linux", null, "/home/testuser");
+        assertEquals("/home/testuser/.rupeecrm", linuxPath.toString());
+    }
+
+    @Test
+    void testCustomBaseDirOverride() {
+        String original = System.getProperty("RUPEECRM_BASE_DIR");
+        try {
+            System.setProperty("RUPEECRM_BASE_DIR", "/custom/base/dir");
+            assertEquals(java.nio.file.Paths.get("/custom/base/dir"), LauncherMain.getBaseDirectory());
+            assertEquals(java.nio.file.Paths.get("/custom/base/dir/data"), LauncherMain.getDataDirectory());
+        } finally {
+            if (original != null) {
+                System.setProperty("RUPEECRM_BASE_DIR", original);
+            } else {
+                System.clearProperty("RUPEECRM_BASE_DIR");
+            }
+        }
+    }
 }

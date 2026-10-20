@@ -5,8 +5,8 @@
     "name": "Simple-Billing"
   },
   "endpoints": {
-    "manifestUrl": "https://raw.githubusercontent.com/RanjeetYelave/Simple-Billing/releases/manifest.json",
-    "fallbackManifestUrl": "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases/latest"
+    "manifestUrl": "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.json",
+    "signatureUrl": "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.sig"
   },
   "security": {
     "algorithm": "Ed25519",

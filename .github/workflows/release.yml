@@ -139,24 +139,29 @@ jobs:
       - name: Generate Signed Release Manifest
         shell: pwsh
         env:
-          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY || secrets.RELEASE_SIGNING_PRIVATE_KEY || secrets.UPDATE_SIGNING_KEY }}
         run: |
           New-Item -ItemType Directory -Force -Path release-meta
+          New-Item -ItemType Directory -Force -Path build-tools
 
-          # Compile ManifestSigner utility
-          javac installer/ManifestSigner.java -d .
+          # Compile ManifestSigner utility into isolated build-tools directory
+          javac installer/ManifestSigner.java -d build-tools
 
           if (-not $env:UPDATE_SIGNING_PRIVATE_KEY -or $env:UPDATE_SIGNING_PRIVATE_KEY.Trim() -eq "") {
-              throw "CRITICAL SECURITY ERROR: UPDATE_SIGNING_PRIVATE_KEY secret is missing or empty! Releases cannot proceed with unsigned or forged update manifests."
+              throw "CRITICAL SECURITY ERROR: UPDATE_SIGNING_PRIVATE_KEY secret is missing or empty! Releases cannot proceed with unsigned or forged update manifests. Please configure UPDATE_SIGNING_PRIVATE_KEY in GitHub Repository Settings -> Secrets and variables -> Actions."
           }
 
           $releaseNotes = "RupeeCRM v1.0.${{ github.run_number }} production release with automated integrity verification."
 
-          java -cp . com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" "$env:UPDATE_SIGNING_PRIVATE_KEY" release-meta "$releaseNotes"
+          # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
+          java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" --env release-meta "$releaseNotes"
 
-          # Verify signature against pinned public key
+          # Verify signature against pinned production Ed25519 public key
           $pubKey = "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo="
-          java -cp . com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$pubKey"
+          java -cp build-tools com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$pubKey"
+
+          # Clean up temporary build-tools directory so compiled classes are not packaged or published
+          Remove-Item -Recurse -Force build-tools
 
           Write-Host "=== Generated Release Manifest ==="
           Get-Content release-meta/manifest.json

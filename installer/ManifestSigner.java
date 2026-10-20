@@ -28,12 +28,15 @@ public class ManifestSigner {
         String command = args[0];
         if ("sign".equalsIgnoreCase(command)) {
             if (args.length < 5) {
-                System.err.println("Error: sign requires <warPath> <version> <privateKeyBase64> <outputDir> [releaseNotes]");
+                System.err.println("Error: sign requires <warPath> <version> <privateKeyBase64|--env> <outputDir> [releaseNotes]");
                 System.exit(1);
             }
             Path warPath = Paths.get(args[1]);
             String version = args[2].replaceAll("^[vV]", "").trim();
             String privateKeyBase64 = args[3];
+            if ("--env".equalsIgnoreCase(privateKeyBase64) || "env".equalsIgnoreCase(privateKeyBase64) || "env:UPDATE_SIGNING_PRIVATE_KEY".equalsIgnoreCase(privateKeyBase64)) {
+                privateKeyBase64 = System.getenv("UPDATE_SIGNING_PRIVATE_KEY");
+            }
             Path outputDir = Paths.get(args[4]);
             String releaseNotes = args.length > 5 ? args[5] : "Release notes are not available for this version.";
 

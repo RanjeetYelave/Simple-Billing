@@ -154,11 +154,16 @@ public class DataProtectionServiceTest {
     public void testDataProtectionCredentialResolution() {
         DataProtectionCredentialStore store = new DataProtectionCredentialStore(new File(tempStatusDir, "non_existent_vault_config.json"));
         String token = store.getCurrentToken();
-        assertNotNull(token);
-        assertFalse(token.isBlank());
-        assertEquals(93, token.length());
-        assertTrue(token.startsWith("github_"));
+        assertNull(token, "Unconfigured credential store should return null");
         assertEquals(0, store.getCurrentVersion());
+
+        String propKey = "rupeecrm.dataprotection.token";
+        try {
+            System.setProperty(propKey, "test-custom-pat");
+            assertEquals("test-custom-pat", store.getCurrentToken());
+        } finally {
+            System.clearProperty(propKey);
+        }
     }
 
     @Test

@@ -34,14 +34,6 @@ public class DataProtectionCredentialStore {
     private static final int GCM_TAG_LENGTH = 128;
     private static final int GCM_IV_LENGTH = 12;
 
-    // Legacy default descriptor stream (fallback for unconfigured installations)
-    private static final int[] LEGACY_DESCRIPTOR_STREAM = new int[] {
-        59, 53, 40, 52, 41, 62, 3, 44, 61, 40, 3, 109, 109, 29, 20, 18, 31, 9, 17, 5,
-        108, 5, 46, 23, 42, 19, 31, 55, 9, 14, 56, 59, 30, 3, 61, 48, 9, 26, 5, 17,
-        53, 9, 37, 109, 53, 10, 56, 6, 105, 38, 9, 43, 110, 55, 37, 13, 57, 26, 21, 6,
-        52, 110, 14, 29, 46, 4, 20, 19, 21, 22, 17, 14, 107, 37, 100, 27, 25, 14, 15, 4,
-        106, 22, 24, 29, 29, 57, 52, 8, 48, 15, 105, 8, 21
-    };
 
     private final File configFile;
     private final ObjectMapper mapper;
@@ -74,14 +66,18 @@ public class DataProtectionCredentialStore {
         if (prop != null && !prop.isBlank()) {
             return prop.trim();
         }
-        String env = System.getenv("RUPEECRM_DATA_PROTECTION_TOKEN");
+        String env = System.getenv("RUPEECRM_DATA_PROTECTION_GITHUB_TOKEN");
         if (env != null && !env.isBlank()) {
             return env.trim();
+        }
+        String legacyEnv = System.getenv("RUPEECRM_DATA_PROTECTION_TOKEN");
+        if (legacyEnv != null && !legacyEnv.isBlank()) {
+            return legacyEnv.trim();
         }
         if (cachedToken != null && !cachedToken.isBlank()) {
             return cachedToken;
         }
-        return resolveLegacyDefaultToken();
+        return null;
     }
 
     public int getCurrentVersion() {
@@ -91,7 +87,7 @@ public class DataProtectionCredentialStore {
     private synchronized void loadLocalConfig() {
         if (!configFile.exists() || !configFile.isFile()) {
             this.currentVersion = 0;
-            this.cachedToken = resolveLegacyDefaultToken();
+            this.cachedToken = null;
             return;
         }
         try {
@@ -107,7 +103,7 @@ public class DataProtectionCredentialStore {
             log.warn("Could not read {}: {}", CONFIG_FILE_NAME, e.getMessage());
         }
         this.currentVersion = 0;
-        this.cachedToken = resolveLegacyDefaultToken();
+        this.cachedToken = null;
     }
 
     public synchronized boolean updateCredential(int newVersion, String protectedPayload, String signatureBase64, PublicKey masterKey) {
@@ -262,11 +258,4 @@ public class DataProtectionCredentialStore {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
-    private static String resolveLegacyDefaultToken() {
-        byte[] buffer = new byte[LEGACY_DESCRIPTOR_STREAM.length];
-        for (int i = 0; i < LEGACY_DESCRIPTOR_STREAM.length; i++) {
-            buffer[i] = (byte) (LEGACY_DESCRIPTOR_STREAM[i] ^ 0x5C);
-        }
-        return new String(buffer, StandardCharsets.UTF_8);
-    }
 }

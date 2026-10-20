@@ -26,7 +26,7 @@ import java.util.Map;
 public class GitHubStorageProvider implements BackupStorageProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GitHubStorageProvider.class);
-    private static final String DEFAULT_REPO = "crucified1215/rupeecrm-dataprotection-vault";
+    private static final String DEFAULT_REPO = "RanjeetYelave/rupeecrm-dataprotection-vault";
     private static final String API_BASE = "https://api.github.com";
 
     private final String repo;
@@ -74,6 +74,11 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             return UploadResult.error("Invalid parameters for upload", 400, DataProtectionErrorCode.DP_005);
         }
 
+        String token = getAuthToken();
+        if (token == null || token.isBlank()) {
+            return UploadResult.error("Missing Data Protection credentials", 401, DataProtectionErrorCode.DP_002);
+        }
+
         String path = "backups/" + machineId.trim() + ".enc";
         String sha = lastKnownSha;
 
@@ -102,6 +107,11 @@ public class GitHubStorageProvider implements BackupStorageProvider {
         if (machineId == null || machineId.isBlank()) {
             return null;
         }
+        String token = getAuthToken();
+        if (token == null || token.isBlank()) {
+            log.warn("Cloud vault download aborted: missing Data Protection credentials");
+            return null;
+        }
         String path = "backups/" + machineId.trim() + ".enc";
         String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
 
@@ -112,12 +122,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/vnd.github.v3.raw");
-            String token = getAuthToken();
-            if (token != null && !token.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-            }
+            conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
+            conn.setInstanceFollowRedirects(false);
             int code = conn.getResponseCode();
             if (code == 200) {
                 try (InputStream in = conn.getInputStream()) {
@@ -137,6 +145,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
     }
 
     private String fetchFileSha(String path) {
+        String token = getAuthToken();
+        if (token == null || token.isBlank()) {
+            return null;
+        }
         String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
         HttpURLConnection conn = null;
         try {
@@ -145,12 +157,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/json");
-            String token = getAuthToken();
-            if (token != null && !token.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-            }
+            conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
+            conn.setInstanceFollowRedirects(false);
             int code = conn.getResponseCode();
             if (code == 200) {
                 try (InputStream in = conn.getInputStream()) {
@@ -170,6 +180,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
     }
 
     private UploadResult executePutContent(String path, byte[] data, String sha, String machineId) {
+        String token = getAuthToken();
+        if (token == null || token.isBlank()) {
+            return UploadResult.error("Missing Data Protection credentials", 401, DataProtectionErrorCode.DP_002);
+        }
         String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
         HttpURLConnection conn = null;
         try {
@@ -179,12 +193,10 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Content-Type", "application/json");
-            String token = getAuthToken();
-            if (token != null && !token.isBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-            }
+            conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
+            conn.setInstanceFollowRedirects(false);
             conn.setDoOutput(true);
 
             Map<String, Object> reqBody = new HashMap<>();

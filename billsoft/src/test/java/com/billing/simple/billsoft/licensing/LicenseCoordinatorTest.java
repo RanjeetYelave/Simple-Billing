@@ -239,4 +239,166 @@ public class LicenseCoordinatorTest {
         assertEquals(com.billing.simple.billsoft.entities.Notification.GLOBAL_FIRM_ID, captured.getFirmId());
         assertFalse(captured.getEventKey().contains(machineId), "Event key must NOT contain machine ID");
     }
+
+    @Test
+    void testFetchWithClassification_FastFailOnTerminalFailure_DoesNotAttemptFallback() {
+        java.util.concurrent.atomic.AtomicInteger httpCallCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            @Override
+            public ClassifiedFetchResult fetchHttpClassified(String urlStr, long deadlineNanos) {
+                httpCallCount.incrementAndGet();
+                return new ClassifiedFetchResult(FetchClassification.CONNECTION_FAILURE, -1, null, 10);
+            }
+        };
+
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(3500);
+        ClassifiedFetchResult result = testCoordinator.fetchRegistryWithFallback("licenses/test.lic", deadline);
+
+        assertEquals(FetchClassification.CONNECTION_FAILURE, result.getClassification());
+        assertTrue(result.isTerminalNetworkFailure());
+        // Verify only 1 attempt was made (fallback was not called because primary was a terminal failure)
+        assertEquals(1, httpCallCount.get(), "Terminal network failure must fast-fail without attempting secondary fallback URL");
+    }
+
+    @Test
+    void testFetchWithClassification_NonTerminal404_AttemptsFallback() {
+        java.util.concurrent.atomic.AtomicInteger httpCallCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            @Override
+            public ClassifiedFetchResult fetchHttpClassified(String urlStr, long deadlineNanos) {
+                int count = httpCallCount.incrementAndGet();
+                if (count == 1) {
+                    return new ClassifiedFetchResult(FetchClassification.RESOURCE_NOT_FOUND, 404, null, 10);
+                } else {
+                    return new ClassifiedFetchResult(FetchClassification.SUCCESS, 200, "{\"status\":\"ACTIVE\"}", 15);
+                }
+            }
+        };
+
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(3500);
+        ClassifiedFetchResult result = testCoordinator.fetchRegistryWithFallback("licenses/test.lic", deadline);
+
+        assertEquals(FetchClassification.SUCCESS, result.getClassification());
+        assertEquals(2, httpCallCount.get(), "Non-terminal 404 should attempt secondary fallback URL within budget");
+    }
+
+    @Test
+    void testFetchWithClassification_DistinguishesHttp403FromHttp404() {
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            @Override
+            public ClassifiedFetchResult fetchHttpClassified(String urlStr, long deadlineNanos) {
+                if (urlStr.contains("403")) {
+                    return new ClassifiedFetchResult(FetchClassification.FORBIDDEN_OR_UNAUTHORIZED, 403, null, 10);
+                }
+                return new ClassifiedFetchResult(FetchClassification.RESOURCE_NOT_FOUND, 404, null, 10);
+            }
+        };
+
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(3500);
+        ClassifiedFetchResult res403 = testCoordinator.fetchHttpClassified("https://example.com/403", deadline);
+        ClassifiedFetchResult res404 = testCoordinator.fetchHttpClassified("https://example.com/404", deadline);
+
+        assertEquals(FetchClassification.FORBIDDEN_OR_UNAUTHORIZED, res403.getClassification());
+        assertEquals(403, res403.getHttpStatusCode());
+        assertEquals(FetchClassification.RESOURCE_NOT_FOUND, res404.getClassification());
+        assertEquals(404, res404.getHttpStatusCode());
+        assertNotEquals(res403.getClassification(), res404.getClassification());
+    }
+
+    @Test
+    void testFetchWithClassification_EnforcesDeadlineCeiling() {
+        java.util.concurrent.atomic.AtomicInteger httpCallCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            @Override
+            public ClassifiedFetchResult fetchHttpClassified(String urlStr, long deadlineNanos) {
+                httpCallCount.incrementAndGet();
+                return new ClassifiedFetchResult(FetchClassification.SUCCESS, 200, "OK", 5);
+            }
+        };
+
+        // Pass an already expired deadline
+        long expiredDeadline = System.nanoTime() - java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(100);
+        ClassifiedFetchResult result = testCoordinator.fetchRegistryWithFallback("licenses/test.lic", expiredDeadline);
+
+        assertEquals(FetchClassification.OVERALL_DEADLINE_EXCEEDED, result.getClassification());
+        assertTrue(result.isTerminalNetworkFailure());
+        assertEquals(0, httpCallCount.get(), "Expired deadline must abort before making any HTTP call");
+    }
+
+    @Test
+    void testSyncWithRegistry_TerminalNetworkFailure_PreservesValidLocalLicense() throws Exception {
+        String machineId = machineIdentity.getMachineId();
+        LicensePayload validLocal = new LicensePayload(
+                "LIC-LOCAL-001", machineId, "Store", "RupeeCRM", "PRO", MembershipPlan.GOLD,
+                LicenseStatus.ACTIVE, 5, Instant.now(), null, null, null
+        );
+        validLocal.setSignature(signLicense(validLocal));
+        licenseStorage.saveLocalLicense(validLocal);
+
+        LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
+            @Override
+            public ClassifiedFetchResult fetchWithClassification(String subPath, long deadlineNanos) {
+                return new ClassifiedFetchResult(FetchClassification.CONNECTION_FAILURE, -1, null, 50);
+            }
+        };
+
+        // Startup offline is valid
+        assertTrue(testCoordinator.validateOnStartup());
+        assertEquals(ValidationResult.VALID, testCoordinator.getCurrentValidationResult());
+
+        // Perform forced sync during complete network failure
+        boolean syncOutcome = testCoordinator.syncWithRegistry(true);
+        assertFalse(syncOutcome, "Sync must return false on terminal network failure");
+
+        // Existing local license must be completely preserved!
+        assertEquals(ValidationResult.VALID, testCoordinator.getCurrentValidationResult());
+        assertNotNull(testCoordinator.getActiveLicense());
+        assertEquals("LIC-LOCAL-001", testCoordinator.getActiveLicense().getLicenseId());
+        assertEquals(5, testCoordinator.getActiveLicense().getRevision());
+    }
+
+    @Test
+    void testLicenseTokenResolutionAndCredentialIsolation() {
+        String licProp = "rupeecrm.licensing.token";
+        String dpProp = "rupeecrm.dataprotection.token";
+        try {
+            System.clearProperty(licProp);
+            System.clearProperty(dpProp);
+
+            assertNull(LicensingConfig.getLicenseAuthToken(), "Unconfigured licensing token should be null");
+
+            System.setProperty(dpProp, "dp-secret-only");
+            assertNull(LicensingConfig.getLicenseAuthToken(), "Data protection token must not leak into licensing config");
+
+            System.setProperty(licProp, "lic-secret-only");
+            assertEquals("lic-secret-only", LicensingConfig.getLicenseAuthToken());
+        } finally {
+            System.clearProperty(licProp);
+            System.clearProperty(dpProp);
+        }
+    }
+
+    @Test
+    void testOfflineSignedLicenseValidationWorksWithoutToken() throws Exception {
+        // Guarantee no token is configured
+        System.clearProperty("rupeecrm.licensing.token");
+
+        String machineId = machineIdentity.getMachineId();
+        LicensePayload offlineLicense = new LicensePayload(
+                "LIC-OFFLINE-999", machineId, "Offline Shop", "RupeeCRM", "PRO", MembershipPlan.GOLD,
+                LicenseStatus.ACTIVE, 1, Instant.now(), null, null, null
+        );
+        offlineLicense.setSignature(signLicense(offlineLicense));
+        licenseStorage.saveLocalLicense(offlineLicense);
+
+        LicenseCoordinator offlineCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage);
+        try {
+            assertTrue(offlineCoordinator.validateOnStartup(), "Offline signed license validation must succeed without token");
+            assertEquals(ValidationResult.VALID, offlineCoordinator.getCurrentValidationResult());
+            assertNotNull(offlineCoordinator.getActiveLicense());
+            assertEquals("LIC-OFFLINE-999", offlineCoordinator.getActiveLicense().getLicenseId());
+        } finally {
+            offlineCoordinator.shutdown();
+        }
+    }
 }

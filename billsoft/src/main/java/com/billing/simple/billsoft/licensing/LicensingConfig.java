@@ -56,4 +56,20 @@ public final class LicensingConfig {
         }
         return "https://api.github.com/repos/RanjeetYelave/license-registry/contents";
     }
+
+    public static String getLicenseAuthToken() {
+        String prop = System.getProperty("rupeecrm.licensing.token");
+        if (prop != null && !prop.isBlank()) {
+            return prop.trim();
+        }
+        String env = System.getenv("RUPEECRM_LICENSE_GITHUB_TOKEN");
+        if (env != null && !env.isBlank()) {
+            return env.trim();
+        }
+        String legacyEnv = System.getenv("RUPEECRM_LICENSING_TOKEN");
+        if (legacyEnv != null && !legacyEnv.isBlank()) {
+            return legacyEnv.trim();
+        }
+        return null;
+    }
 }

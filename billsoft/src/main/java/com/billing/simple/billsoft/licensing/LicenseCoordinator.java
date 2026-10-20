@@ -31,6 +31,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class LicenseCoordinator implements DataProtectionEntitlement {
 
+    public static final long TOTAL_BUDGET_MS = 3500L;
+
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Kolkata");
     private static final int NON_EMI_SYNC_INTERVAL_DAYS = 30;
     private static final int ACTIVE_EMI_SYNC_INTERVAL_DAYS = 3;
@@ -44,6 +46,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     private final ScheduledExecutorService scheduler;
 
     private final AtomicBoolean inFlightSyncLock = new AtomicBoolean(false);
+    private final Function<String, String> defaultFetcher = this::fetchRegistryFileDefault;
     private Function<String, String> registryFetcher;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -79,7 +82,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             t.setDaemon(true);
             return t;
         });
-        this.registryFetcher = this::fetchRegistryFileDefault;
+        this.registryFetcher = defaultFetcher;
     }
 
     public void setNotificationService(com.billing.simple.billsoft.service.NotificationService notificationService) {
@@ -87,7 +90,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
     }
 
     public void setRegistryFetcher(Function<String, String> customFetcher) {
-        this.registryFetcher = customFetcher != null ? customFetcher : this::fetchRegistryFileDefault;
+        this.registryFetcher = customFetcher != null ? customFetcher : defaultFetcher;
     }
 
     /**
@@ -202,56 +205,70 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                 }
             }
 
+            long startNanos = System.nanoTime();
+            long deadlineNanos = startNanos + TimeUnit.MILLISECONDS.toNanos(TOTAL_BUDGET_MS);
+            boolean terminalNetworkFailureEncountered = false;
+
             String machineId = machineIdentity.getMachineId();
 
-            // 1. Fetch remote license from registry
+            // 1. Fetch remote license from registry within deadline
             try {
-                String body = registryFetcher.apply("licenses/" + machineId + ".lic");
+                ClassifiedFetchResult licenseResult = fetchWithClassification("licenses/" + machineId + ".lic", deadlineNanos);
+                if (licenseResult.isTerminalNetworkFailure()) {
+                    terminalNetworkFailureEncountered = true;
+                }
+                String body = licenseResult.getBody();
 
                 if (body != null && !body.isBlank()) {
                     String cleanJson = deobfuscateIfNeeded(body.trim());
-                    LicensePayload remoteLicense = mapper.readValue(cleanJson, LicensePayload.class);
-                    ValidationResult remoteVerify = licenseVerifier.verifyLicense(remoteLicense, machineId);
+                    LicensePayload remoteLicense = null;
+                    try {
+                        remoteLicense = mapper.readValue(cleanJson, LicensePayload.class);
+                    } catch (Exception parseEx) {
+                        // Malformed payload preserves existing local license
+                    }
+                    if (remoteLicense != null) {
+                        ValidationResult remoteVerify = licenseVerifier.verifyLicense(remoteLicense, machineId);
 
-                    if (remoteVerify.isValid() || remoteVerify == ValidationResult.EMI_RESTRICTED ||
-                            remoteVerify == ValidationResult.SUSPENDED || remoteVerify == ValidationResult.REVOKED) {
-                        
-                        int localHighest = licenseStorage.getHighestRevision();
-                        String localLicId = licenseStorage.getRecordedLicenseId();
-                        if (localLicId == null && activeLicense != null) {
-                            localLicId = activeLicense.getLicenseId();
-                        }
-                        boolean isNewLicenseId = (localLicId == null || !localLicId.equals(remoteLicense.getLicenseId()));
-
-                        // Reject rollback attempts for the same license ID
-                        if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
-                            licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
-
-                            if (activeLicense == null || !licenseStorage.getLicenseFile().exists() || isNewLicenseId || remoteLicense.getRevision() >= activeLicense.getRevision()) {
-                                licenseStorage.saveLocalLicense(remoteLicense);
-                                this.activeLicense = remoteLicense;
+                        if (remoteVerify.isValid() || remoteVerify == ValidationResult.EMI_RESTRICTED ||
+                                remoteVerify == ValidationResult.SUSPENDED || remoteVerify == ValidationResult.REVOKED) {
+                            int localHighest = licenseStorage.getHighestRevision();
+                            String localLicId = licenseStorage.getRecordedLicenseId();
+                            if (localLicId == null && activeLicense != null) {
+                                localLicId = activeLicense.getLicenseId();
                             }
+                            boolean isNewLicenseId = (localLicId == null || !localLicId.equals(remoteLicense.getLicenseId()));
 
-                            if (remoteLicense.getStatus() == LicenseStatus.SUSPENDED) {
-                                notifyStatusChange(ValidationResult.SUSPENDED);
+                            // Reject rollback attempts for the same license ID
+                            if (isNewLicenseId || remoteLicense.getRevision() >= localHighest) {
+                                licenseStorage.updateSyncState(today, remoteLicense.getRevision(), remoteLicense.getLicenseId());
+
+                                if (activeLicense == null || !licenseStorage.getLicenseFile().exists() || isNewLicenseId || remoteLicense.getRevision() >= activeLicense.getRevision()) {
+                                    licenseStorage.saveLocalLicense(remoteLicense);
+                                    this.activeLicense = remoteLicense;
+                                }
+
+                                if (remoteLicense.getStatus() == LicenseStatus.SUSPENDED) {
+                                    notifyStatusChange(ValidationResult.SUSPENDED);
+                                    return true;
+                                }
+                                if (remoteLicense.getStatus() == LicenseStatus.REVOKED) {
+                                    notifyStatusChange(ValidationResult.REVOKED);
+                                    return true;
+                                }
+                                if (remoteVerify == ValidationResult.EMI_RESTRICTED) {
+                                    notifyStatusChange(ValidationResult.EMI_RESTRICTED);
+                                    return true;
+                                }
+
+                                if (licenseVerifier.isExpired(remoteLicense, Instant.now())) {
+                                    notifyStatusChange(ValidationResult.EXPIRED);
+                                    return true;
+                                }
+
+                                notifyStatusChange(ValidationResult.VALID);
                                 return true;
                             }
-                            if (remoteLicense.getStatus() == LicenseStatus.REVOKED) {
-                                notifyStatusChange(ValidationResult.REVOKED);
-                                return true;
-                            }
-                            if (remoteVerify == ValidationResult.EMI_RESTRICTED) {
-                                notifyStatusChange(ValidationResult.EMI_RESTRICTED);
-                                return true;
-                            }
-
-                            if (licenseVerifier.isExpired(remoteLicense, Instant.now())) {
-                                notifyStatusChange(ValidationResult.EXPIRED);
-                                return true;
-                            }
-
-                            notifyStatusChange(ValidationResult.VALID);
-                            return true;
                         }
                     }
                 }
@@ -259,9 +276,18 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                 // Fail-open network resiliency: Network/DNS/HTTP error preserves existing valid local license
             }
 
+            // If terminal network failure was encountered or budget is exhausted, abort secondary stages
+            if (terminalNetworkFailureEncountered || System.nanoTime() >= deadlineNanos) {
+                return false;
+            }
+
             // 2. Fetch customer inbox messages
             try {
-                String msgBody = registryFetcher.apply("messages/" + machineId + ".json");
+                ClassifiedFetchResult msgResult = fetchWithClassification("messages/" + machineId + ".json", deadlineNanos);
+                if (msgResult.isTerminalNetworkFailure()) {
+                    terminalNetworkFailureEncountered = true;
+                }
+                String msgBody = msgResult.getBody();
                 if (msgBody != null && !msgBody.isBlank()) {
                     CustomerMessageEnvelope env = mapper.readValue(msgBody, CustomerMessageEnvelope.class);
                     if (env.getMessages() != null) {
@@ -307,9 +333,14 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             } catch (Exception ignored) {
             }
 
+            if (terminalNetworkFailureEncountered || System.nanoTime() >= deadlineNanos) {
+                return false;
+            }
+
             // 3. Fetch Data Protection configuration
             try {
-                String vaultConfigBody = registryFetcher.apply("config/vault-config.json");
+                ClassifiedFetchResult vaultResult = fetchWithClassification("config/vault-config.json", deadlineNanos);
+                String vaultConfigBody = vaultResult.getBody();
                 if (vaultConfigBody != null && !vaultConfigBody.isBlank()) {
                     JsonNode root = mapper.readTree(vaultConfigBody);
                     if (root.has("version") && root.has("protectedPayload") && root.has("signature")) {
@@ -335,18 +366,71 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
         }
     }
 
-    private String fetchRegistryFileDefault(String subPath) {
-        String rawBase = LicensingConfig.getRegistryBaseUrl();
-        String result = fetchHttpText(rawBase + "/" + subPath);
-        if (result != null && !result.isBlank()) {
-            return result;
+    public ClassifiedFetchResult fetchWithClassification(String subPath, long deadlineNanos) {
+        if (this.registryFetcher != null && this.registryFetcher != this.defaultFetcher) {
+            long start = System.nanoTime();
+            try {
+                String body = registryFetcher.apply(subPath);
+                long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                if (body != null && !body.isBlank()) {
+                    return new ClassifiedFetchResult(FetchClassification.SUCCESS, 200, body, elapsed);
+                } else {
+                    return new ClassifiedFetchResult(FetchClassification.RESOURCE_NOT_FOUND, 404, null, elapsed);
+                }
+            } catch (Exception e) {
+                long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                return new ClassifiedFetchResult(FetchClassification.CONNECTION_FAILURE, -1, null, elapsed);
+            }
         }
-        String apiBase = LicensingConfig.getApiBaseUrl();
-        String branch = LicensingConfig.getBranch();
-        return fetchHttpText(apiBase + "/" + subPath + "?ref=" + branch);
+        return fetchRegistryWithFallback(subPath, deadlineNanos);
     }
 
-    private String fetchHttpText(String urlStr) {
+    public ClassifiedFetchResult fetchRegistryWithFallback(String subPath, long deadlineNanos) {
+        long now = System.nanoTime();
+        if (now >= deadlineNanos) {
+            return new ClassifiedFetchResult(FetchClassification.OVERALL_DEADLINE_EXCEEDED, -1, null, 0);
+        }
+
+        String rawBase = LicensingConfig.getRegistryBaseUrl();
+        String primaryUrl = rawBase + "/" + subPath;
+
+        ClassifiedFetchResult primaryResult = fetchHttpClassified(primaryUrl, deadlineNanos);
+        if (primaryResult.isSuccess()) {
+            return primaryResult;
+        }
+
+        // Fast-fail: If primary failed with a terminal network failure (timeout, DNS failure, connection refused),
+        // or overall deadline exceeded, DO NOT attempt fallback URL.
+        if (primaryResult.isTerminalNetworkFailure()) {
+            return primaryResult;
+        }
+
+        if (System.nanoTime() >= deadlineNanos) {
+            return new ClassifiedFetchResult(FetchClassification.OVERALL_DEADLINE_EXCEEDED, -1, null,
+                    primaryResult.getElapsedMillis());
+        }
+
+        String apiBase = LicensingConfig.getApiBaseUrl();
+        String branch = LicensingConfig.getBranch();
+        String fallbackUrl = apiBase + "/" + subPath + "?ref=" + branch;
+
+        return fetchHttpClassified(fallbackUrl, deadlineNanos);
+    }
+
+    public ClassifiedFetchResult fetchHttpClassified(String urlStr, long deadlineNanos) {
+        long callStart = System.nanoTime();
+        long remainingNanos = deadlineNanos - callStart;
+        if (remainingNanos <= 0) {
+            return new ClassifiedFetchResult(FetchClassification.OVERALL_DEADLINE_EXCEEDED, -1, null, 0);
+        }
+        long remainingMs = TimeUnit.NANOSECONDS.toMillis(remainingNanos);
+        if (remainingMs < 50) {
+            return new ClassifiedFetchResult(FetchClassification.OVERALL_DEADLINE_EXCEEDED, -1, null, 0);
+        }
+
+        int connectTimeout = (int) Math.min(Math.max(remainingMs / 2, 200), 1750);
+        int readTimeout = (int) Math.min(Math.max(remainingMs - connectTimeout, 200), 1750);
+
         HttpURLConnection conn = null;
         try {
             URL url = URI.create(urlStr).toURL();
@@ -354,22 +438,89 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
             conn.setRequestProperty("Accept", "application/vnd.github.v3.raw, application/json, text/plain, */*");
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4000);
-            conn.setInstanceFollowRedirects(true);
+
+            String token = LicensingConfig.getLicenseAuthToken();
+            if (token != null && !token.isBlank() && isTrustedGitHubHost(url.getHost())) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+            }
+
+            conn.setConnectTimeout(connectTimeout);
+            conn.setReadTimeout(readTimeout);
+            conn.setInstanceFollowRedirects(false);
+
             int code = conn.getResponseCode();
-            if (code == 200) {
-                try (InputStream in = conn.getInputStream()) {
-                    return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStart);
+
+            if ((code == 301 || code == 302 || code == 307 || code == 308)) {
+                String location = conn.getHeaderField("Location");
+                if (location != null && !location.isBlank() && (deadlineNanos - System.nanoTime()) > 0) {
+                    URL nextUrl = URI.create(location).toURL();
+                    conn.disconnect();
+                    conn = (HttpURLConnection) nextUrl.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("User-Agent", "RupeeCRM-Desktop/1.0");
+                    conn.setRequestProperty("Accept", "application/vnd.github.v3.raw, application/json, text/plain, */*");
+                    if (token != null && !token.isBlank() && isTrustedGitHubHost(nextUrl.getHost())) {
+                        conn.setRequestProperty("Authorization", "Bearer " + token);
+                    }
+                    conn.setConnectTimeout(connectTimeout);
+                    conn.setReadTimeout(readTimeout);
+                    conn.setInstanceFollowRedirects(false);
+                    code = conn.getResponseCode();
+                    elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStart);
                 }
             }
-        } catch (Exception ignored) {
+
+            if (code == 200) {
+                try (InputStream in = conn.getInputStream()) {
+                    String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                    return new ClassifiedFetchResult(FetchClassification.SUCCESS, code, body, elapsed);
+                }
+            } else if (code == 404) {
+                return new ClassifiedFetchResult(FetchClassification.RESOURCE_NOT_FOUND, code, null, elapsed);
+            } else if (code == 403 || code == 401) {
+                return new ClassifiedFetchResult(FetchClassification.FORBIDDEN_OR_UNAUTHORIZED, code, null, elapsed);
+            } else if (code >= 500 && code < 600) {
+                return new ClassifiedFetchResult(FetchClassification.SERVER_ERROR, code, null, elapsed);
+            } else {
+                return new ClassifiedFetchResult(FetchClassification.SERVER_ERROR, code, null, elapsed);
+            }
+        } catch (java.net.SocketTimeoutException e) {
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStart);
+            FetchClassification classification = elapsed >= connectTimeout ? FetchClassification.CONNECT_TIMEOUT : FetchClassification.READ_TIMEOUT;
+            return new ClassifiedFetchResult(classification, -1, null, elapsed);
+        } catch (java.net.UnknownHostException | java.net.ConnectException | java.net.NoRouteToHostException e) {
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStart);
+            return new ClassifiedFetchResult(FetchClassification.CONNECTION_FAILURE, -1, null, elapsed);
+        } catch (Exception e) {
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStart);
+            return new ClassifiedFetchResult(FetchClassification.CONNECTION_FAILURE, -1, null, elapsed);
         } finally {
             if (conn != null) {
-                conn.disconnect();
+                try {
+                    conn.disconnect();
+                } catch (Exception ignored) {}
             }
         }
-        return null;
+    }
+
+    private static boolean isTrustedGitHubHost(String host) {
+        if (host == null) {
+            return false;
+        }
+        return host.equalsIgnoreCase("api.github.com") || host.equalsIgnoreCase("raw.githubusercontent.com");
+    }
+
+    private String fetchRegistryFileDefault(String subPath) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TOTAL_BUDGET_MS);
+        ClassifiedFetchResult res = fetchRegistryWithFallback(subPath, deadlineNanos);
+        return res.getBody();
+    }
+
+    private String fetchHttpText(String urlStr) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TOTAL_BUDGET_MS);
+        ClassifiedFetchResult res = fetchHttpClassified(urlStr, deadlineNanos);
+        return res.getBody();
     }
 
     /**

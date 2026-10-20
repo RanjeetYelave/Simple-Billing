@@ -48,8 +48,24 @@ public class DataProtectionCredentialStoreTest {
         DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
         assertEquals(0, store.getCurrentVersion());
         String token = store.getCurrentToken();
-        assertNotNull(token);
-        assertTrue(token.startsWith("github_pat_"));
+        assertNull(token, "Unconfigured credential store should return null rather than hardcoded credentials");
+    }
+
+    @Test
+    public void testDynamicPropertyResolutionAndIsolation() {
+        String propKey = "rupeecrm.dataprotection.token";
+        String licPropKey = "rupeecrm.licensing.token";
+        try {
+            System.setProperty(licPropKey, "license-secret-token");
+            DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
+            assertNull(store.getCurrentToken(), "License token must not leak into Data Protection store");
+
+            System.setProperty(propKey, "dp-secret-token");
+            assertEquals("dp-secret-token", store.getCurrentToken());
+        } finally {
+            System.clearProperty(propKey);
+            System.clearProperty(licPropKey);
+        }
     }
 
     @Test

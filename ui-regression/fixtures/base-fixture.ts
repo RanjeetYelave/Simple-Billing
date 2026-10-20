@@ -85,6 +85,9 @@ export class RupeeCRMAppHelper {
             localStorage.setItem(versionKey, version);
             localStorage.setItem(acceptedAtKey, new Date().toISOString());
           }
+          if (!sessionStorage.getItem('employeePin')) {
+            sessionStorage.setItem('employeePin', '0000');
+          }
         },
         {
           statusKey:     EULA_STORAGE_KEY,

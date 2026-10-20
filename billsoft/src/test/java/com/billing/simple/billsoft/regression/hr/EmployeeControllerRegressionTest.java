@@ -60,6 +60,13 @@ class EmployeeControllerRegressionTest {
         firm.setGstin("27AAACG1234D1Z5");
         firm.setAddressLine1("Tech Park Phase 1");
         firmService.create(firm);
+
+        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(testFirmId);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        com.billing.simple.billsoft.security.TenantContext.clear();
     }
 
     @Test

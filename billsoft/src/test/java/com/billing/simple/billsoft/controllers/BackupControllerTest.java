@@ -112,4 +112,35 @@ class BackupControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
     }
+
+    @Test
+    void testImport_MultiFirmWithoutSourceFirmId_ReturnsHttp400BadRequest() throws Exception {
+        String multiFirmJson = "{\"allFirms\":[{\"id\":1,\"firmName\":\"F1\"},{\"id\":2,\"firmName\":\"F2\"}]}";
+        MockMultipartFile file = new MockMultipartFile("file", "multifirm.json", "application/json", multiFirmJson.getBytes());
+
+        mockMvc.perform(multipart("/api/backup/import")
+                .file(file)
+                .param("firmId", "1")
+                .param("mode", "merge"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.errorCode").value("AMBIGUOUS_MULTI_FIRM_BACKUP"));
+    }
+
+    @Test
+    void testImport_WhenRestoreConflictException_ReturnsHttp409ConflictWithStructuredJson() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "conflict.json", "application/json", "{\"metadata\":{}}".getBytes());
+        org.mockito.Mockito.doThrow(new com.billing.simple.billsoft.exception.RestoreConflictException(
+                "INVOICE", "INV-2026-001", "Invoice number INV-2026-001 already exists in target firm"
+        )).when(service).importData(any(), any(), anyBoolean());
+
+        mockMvc.perform(multipart("/api/backup/import")
+                .file(file)
+                .param("mode", "merge"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value("conflict"))
+                .andExpect(jsonPath("$.entityType").value("INVOICE"))
+                .andExpect(jsonPath("$.conflictKey").value("INV-2026-001"))
+                .andExpect(jsonPath("$.error").value("Invoice number INV-2026-001 already exists in target firm"));
+    }
 }

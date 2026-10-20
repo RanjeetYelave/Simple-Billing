@@ -38,6 +38,9 @@ class InventoryStockRegressionTest {
     @Autowired
     private com.billing.simple.billsoft.service.BackupService backupService;
 
+    @Autowired
+    private com.billing.simple.billsoft.repo.AppConfigRepository appConfigRepo;
+
     private final Long testFirmId = 1L;
 
     @BeforeEach
@@ -66,8 +69,8 @@ class InventoryStockRegressionTest {
     }
 
     @Test
-    @DisplayName("Should clamp stock to zero and prevent negative numbers on over-deduction")
-    void shouldClampStockToZeroOnOverDeduction() {
+    @DisplayName("AUDIT-026: Should enforce shortage policy - reject in strict mode, allow full deduction in negative mode")
+    void shouldEnforceStockShortagePolicyOnOverDeduction() {
         Product p = productService.create(Product.builder()
                 .name("Limited Spare Bolt")
                 .price(BigDecimal.valueOf(20.00))
@@ -76,15 +79,29 @@ class InventoryStockRegressionTest {
                 .itemType("GOODS")
                 .build());
 
-        // 1. Manual deduction of 10 from stock of 5
+        // 1. In strict mode (default), deducting 10 from stock of 5 throws InsufficientStockException
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.billing.simple.billsoft.exception.InsufficientStockException.class,
+                () -> productService.adjustStock(p.getId(), BigDecimal.valueOf(10.0), "DEDUCT", "Excess test deduction")
+        );
+
+        // 2. Programmatic deduction of 15 also throws InsufficientStockException in strict mode
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.billing.simple.billsoft.exception.InsufficientStockException.class,
+                () -> productService.recordStockMovement(p.getId(), testFirmId, "INVOICE_SALE", BigDecimal.valueOf(-15.0), "INVOICE", "INV-9999", "Sale")
+        );
+
+        // 3. Enable negative stock for firm
+        appConfigRepo.save(new com.billing.simple.billsoft.entities.AppConfig("INVENTORY_ALLOW_NEGATIVE_STOCK_" + testFirmId, "true"));
+
+        // 4. Manual deduction of 10 from stock of 5 succeeds and sets stock to -5 (exact deduction, no clamping)
         Product adjusted = productService.adjustStock(p.getId(), BigDecimal.valueOf(10.0), "DEDUCT", "Excess test deduction");
-        assertThat(adjusted.getStockQuantity()).isEqualByComparingTo("0.000");
+        assertThat(adjusted.getStockQuantity()).isEqualByComparingTo("-5.000");
 
-        // 2. Programmatic deduction of another 15
+        // 5. Programmatic deduction of another 15 sets stock to -20
         productService.recordStockMovement(p.getId(), testFirmId, "INVOICE_SALE", BigDecimal.valueOf(-15.0), "INVOICE", "INV-9999", "Sale");
-
         Product afterSale = productService.getById(p.getId());
-        assertThat(afterSale.getStockQuantity()).isEqualByComparingTo("0.000");
+        assertThat(afterSale.getStockQuantity()).isEqualByComparingTo("-20.000");
     }
 
     @Test

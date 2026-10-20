@@ -49,7 +49,12 @@ public class EmployeeControllerTest {
 
     @BeforeEach
     void setUp() {
-        // Ensure default PIN is present for the PIN endpoints.
+        // Ensure default PIN is present for firm 1 and global fallback
+        AppConfig pinConfig1 = new AppConfig();
+        pinConfig1.setConfigKey("EMPLOYEE_MODULE_PIN_1");
+        pinConfig1.setConfigValue("0000");
+        appConfigRepo.save(pinConfig1);
+
         AppConfig pinConfig = new AppConfig();
         pinConfig.setConfigKey("EMPLOYEE_MODULE_PIN");
         pinConfig.setConfigValue("0000");
@@ -59,6 +64,7 @@ public class EmployeeControllerTest {
     @Test
     void verifyPin_success() throws Exception {
         mockMvc.perform(post("/api/employees/verify-pin")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"pin\": \"0000\"}"))
                 .andExpect(status().isOk())
@@ -69,7 +75,7 @@ public class EmployeeControllerTest {
     void accessEmployees_invalidPin_returnsForbidden() throws Exception {
         mockMvc.perform(get("/api/employees").param("firmId", "1")
                 .header("X-Employee-Pin", "9999"))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -82,6 +88,7 @@ public class EmployeeControllerTest {
         String json = objectMapper.writeValueAsString(dto);
         mockMvc.perform(post("/api/employees")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isBadRequest());
@@ -100,6 +107,7 @@ public class EmployeeControllerTest {
         String json = objectMapper.writeValueAsString(dto);
         MvcResult result = mockMvc.perform(post("/api/employees")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -123,6 +131,7 @@ public class EmployeeControllerTest {
         String json = objectMapper.writeValueAsString(dto);
         MvcResult createResult = mockMvc.perform(post("/api/employees")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -143,6 +152,7 @@ public class EmployeeControllerTest {
         // Apply pending promotions.
         mockMvc.perform(post("/api/employees/apply-promotions")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .param("firmId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.appliedCount").value(1));
@@ -160,6 +170,7 @@ public class EmployeeControllerTest {
 
         MvcResult createResult = mockMvc.perform(post("/api/employees")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isOk())
@@ -170,6 +181,7 @@ public class EmployeeControllerTest {
 
         mockMvc.perform(post("/api/employees/" + saved.getId() + "/promotions")
                 .header("X-Employee-Pin", "0000")
+                .header("X-Firm-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(promoJson))
                 .andExpect(status().isOk())

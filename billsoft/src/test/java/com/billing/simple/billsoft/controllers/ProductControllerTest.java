@@ -4,13 +4,15 @@ import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -21,19 +23,23 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
-@AutoConfigureMockMvc
+@ExtendWith(MockitoExtension.class)
 class ProductControllerTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockitoBean
+    @Mock
     private ProductService service;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @InjectMocks
+    private ProductController controller;
+
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
 
     @Test
     void testCreate() throws Exception {
@@ -50,7 +56,7 @@ class ProductControllerTest {
 
     @Test
     void testGetAll() throws Exception {
-        when(service.getAll(any())).thenReturn(Arrays.asList(new Product(), new Product()));
+        when(service.getAll(any(), any())).thenReturn(Arrays.asList(new Product(), new Product()));
 
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
@@ -169,6 +175,29 @@ class ProductControllerTest {
                 .content(objectMapper.writeValueAsString(p)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Updated"));
+    }
+
+    @Test
+    void testUpdateBulk() throws Exception {
+        Product p = Product.builder().id(101L).name("Bulk Updated").build();
+        com.billing.simple.billsoft.dtos.ProductBulkUpdateResponseDto resp = com.billing.simple.billsoft.dtos.ProductBulkUpdateResponseDto.builder()
+                .updatedCount(1)
+                .products(Collections.singletonList(p))
+                .message("Successfully updated 1 products")
+                .build();
+
+        when(service.updateBulk(any(), any())).thenReturn(resp);
+
+        List<Map<String, Object>> rows = Collections.singletonList(
+                Map.of("productId", 101, "name", "Bulk Updated", "category", "Plumbing")
+        );
+
+        mockMvc.perform(put("/api/products/bulk")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(rows)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updatedCount").value(1))
+                .andExpect(jsonPath("$.products[0].name").value("Bulk Updated"));
     }
 
     @Test

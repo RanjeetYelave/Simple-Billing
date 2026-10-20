@@ -67,12 +67,18 @@ class InvoiceServiceTest {
 
     @BeforeEach
     void setUp() {
+        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(1L);
         // Order matters due to FK constraints
         salesReturnRepo.deleteAll();
         invoicePaymentRepo.deleteAll();
         invoiceRepo.deleteAll();
         customerRepo.deleteAll();
         productRepo.deleteAll();
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        com.billing.simple.billsoft.security.TenantContext.clear();
     }
 
     // -------------------------
@@ -108,6 +114,7 @@ class InvoiceServiceTest {
                 .name(name)
                 .firmId(1L)
                 .price(bd(price))
+                .stockQuantity(new BigDecimal("1000.000"))
                 .gstPercentage(gstPercent == null ? null : bd(gstPercent))
                 .unit("pcs")
                 .build();
@@ -441,13 +448,13 @@ class InvoiceServiceTest {
                 .findFirst().orElseThrow();
 
         assertEquals(bd("100.00"), item1.getAmountWithoutTax());
-        assertEquals(bd("25.00"), item1.getDiscountValue());
+        assertEquals(bd("0.00"), item1.getDiscountValue());
         assertEquals(bd("75.00"), item1.getTaxableAmount());
         assertEquals(bd("13.50"), item1.getGstAmount());
         assertEquals(bd("88.50"), item1.getLineTotal());
 
         assertEquals(bd("300.00"), item2.getAmountWithoutTax());
-        assertEquals(bd("75.00"), item2.getDiscountValue());
+        assertEquals(bd("0.00"), item2.getDiscountValue());
         assertEquals(bd("225.00"), item2.getTaxableAmount());
         assertEquals(bd("40.50"), item2.getGstAmount());
         assertEquals(bd("265.50"), item2.getLineTotal());

@@ -289,6 +289,7 @@ class PersistenceAndDataDurabilityRegressionTest {
         prod.setName("Original Hardware Item");
         prod.setPrice(new BigDecimal("1000.00"));
         prod.setGstPercentage(new BigDecimal("10.00"));
+        prod.setStockQuantity(new BigDecimal("100.000"));
         prod.setFirmId(firmAId);
         Product savedProd = productService.create(prod);
 
@@ -312,6 +313,7 @@ class PersistenceAndDataDurabilityRegressionTest {
         assertThat(originalTotal).isEqualByComparingTo(new BigDecimal("5500.00"));
 
         // Now mutate the catalog: Increase product price to 5000.00 and rename
+        savedProd = productRepo.findById(savedProd.getId()).orElseThrow();
         savedProd.setPrice(new BigDecimal("5000.00"));
         savedProd.setName("Renamed High-End Hardware Item");
         productRepo.save(savedProd);

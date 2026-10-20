@@ -31,8 +31,16 @@ class CustomerControllerTest {
     @MockitoBean
     private CustomerService service;
 
+    @MockitoBean
+    private com.billing.simple.billsoft.repo.FirmDetailsRepository firmDetailsRepo;
+
     @Autowired
     private ObjectMapper objectMapper;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        when(firmDetailsRepo.existsById(1L)).thenReturn(true);
+    }
 
     @Test
     void testCreate() throws Exception {
@@ -41,6 +49,7 @@ class CustomerControllerTest {
         when(service.create(any(Customer.class))).thenReturn(customer);
 
         mockMvc.perform(post("/api/customers")
+                .header("X-Firm-Id", 1L)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(customer)))
                 .andExpect(status().isOk())
@@ -51,7 +60,7 @@ class CustomerControllerTest {
     void testGetAll() throws Exception {
         when(service.getAll(any())).thenReturn(Arrays.asList(new Customer(), new Customer()));
 
-        mockMvc.perform(get("/api/customers"))
+        mockMvc.perform(get("/api/customers").header("X-Firm-Id", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
     }
@@ -62,7 +71,7 @@ class CustomerControllerTest {
         c.setId(1L);
         when(service.getById(1L)).thenReturn(c);
 
-        mockMvc.perform(get("/api/customers/1"))
+        mockMvc.perform(get("/api/customers/1").header("X-Firm-Id", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
     }
@@ -76,6 +85,7 @@ class CustomerControllerTest {
         when(service.update(eq(1L), any(CustomerRequest.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/customers/1")
+                .header("X-Firm-Id", 1L)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
@@ -86,7 +96,7 @@ class CustomerControllerTest {
     void testDelete() throws Exception {
         when(service.delete(1L)).thenReturn(true);
 
-        mockMvc.perform(delete("/api/customers/1"))
+        mockMvc.perform(delete("/api/customers/1").header("X-Firm-Id", 1L))
                 .andExpect(status().isNoContent());
     }
 }

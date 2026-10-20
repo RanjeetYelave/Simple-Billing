@@ -61,7 +61,7 @@ public class AuthControllerTest {
 
         // 3. Unauthenticated request to /api/notes without firmId or token gets rejected
         mockMvc.perform(get("/api/notes"))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized());
 
         // 4. Login with invalid password fails
         mockMvc.perform(post("/api/auth/login")
@@ -85,6 +85,7 @@ public class AuthControllerTest {
 
         // 6. Request with valid X-Auth-Token succeeds
         mockMvc.perform(get("/api/notes")
+                .header("X-Auth-Token", token)
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
 

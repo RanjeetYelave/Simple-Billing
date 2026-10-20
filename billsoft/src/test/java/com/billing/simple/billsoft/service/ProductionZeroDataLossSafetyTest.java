@@ -246,6 +246,7 @@ class ProductionZeroDataLossSafetyTest {
     // =========================================================================
     @Test
     void test5_AutoRestore_RejectsCleanWipeMode() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
         BackupDTO backup = new BackupDTO();
         Map<String, Object> meta = new HashMap<>();
         meta.put("version", "1.0");

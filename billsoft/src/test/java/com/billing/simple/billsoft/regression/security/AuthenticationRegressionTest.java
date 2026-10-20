@@ -94,4 +94,10 @@ class AuthenticationRegressionTest {
         assertThat(upgradedConfig.getConfigValue()).contains(":");
         assertThat(PasswordUtil.checkPassword(rawPassword, upgradedConfig.getConfigValue())).isTrue();
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        configRepo.deleteAll();
+        authController.invalidateAllSessions();
+    }
 }

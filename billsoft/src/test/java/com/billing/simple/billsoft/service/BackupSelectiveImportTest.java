@@ -212,7 +212,8 @@ class BackupSelectiveImportTest {
     }
 
     @Test
-    void testImportSelectiveDataCleanWipeIsProhibited() {
+    void testImportSelectiveDataCleanWipeIsProhibitedWhenFirmsExist() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
         BackupDTO backup = new BackupDTO();
         Map<String, Object> meta = new HashMap<>();
         meta.put("version", "2.0");
@@ -232,5 +233,224 @@ class BackupSelectiveImportTest {
         verify(customerRepo, never()).deleteAllInBatch();
         verify(productRepo, never()).deleteAllInBatch();
         verify(invoiceRepo, never()).deleteAllInBatch();
+    }
+
+    @Test
+    void testImportSelectiveDataCleanWipeOnFirstRunAdaptsToClone() {
+        when(firmDetailsRepo.count()).thenReturn(0L);
+        when(firmDetailsRepo.save(any(FirmDetails.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BackupDTO backup = new BackupDTO();
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("version", "2.0");
+        backup.setMetadata(meta);
+
+        FirmDetails firm = new FirmDetails();
+        firm.setId(1L);
+        firm.setFirmName("Fresh Restore");
+        backup.setFirmDetails(firm);
+
+        assertDoesNotThrow(() ->
+                service.importSelectiveData(backup, null, "clean_wipe", null)
+        );
+    }
+
+    @Test
+    void testImportSelectiveData_MultiFirmWithoutSelectionTargetingFirm_ThrowsIllegalArgumentException() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        FirmDetails targetFirm = new FirmDetails();
+        targetFirm.setId(10L);
+        targetFirm.setFirmName("Target Live Firm");
+        when(firmDetailsRepo.findById(10L)).thenReturn(Optional.of(targetFirm));
+
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        FirmDetails f2 = new FirmDetails(); f2.setId(2L); f2.setFirmName("Firm 2");
+        backup.setAllFirms(Arrays.asList(f1, f2));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                service.importSelectiveData(backup, null, "merge", 10L)
+        );
+        assertTrue(ex.getMessage().contains("Explicit source firm selection is required"));
+    }
+
+    @Test
+    void testImportSelectiveData_MultiFirmWithUnknownSelection_ThrowsIllegalArgumentException() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        FirmDetails f2 = new FirmDetails(); f2.setId(2L); f2.setFirmName("Firm 2");
+        backup.setAllFirms(Arrays.asList(f1, f2));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                service.importSelectiveData(backup, Collections.singleton(999L), "merge", null)
+        );
+        assertTrue(ex.getMessage().contains("Selected source firm(s) [999] not found"));
+    }
+
+    @Test
+    void testImportSelectiveData_MultiFirmWithPartialUnknownSelection_ThrowsIllegalArgumentException() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        FirmDetails f2 = new FirmDetails(); f2.setId(2L); f2.setFirmName("Firm 2");
+        backup.setAllFirms(Arrays.asList(f1, f2));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                service.importSelectiveData(backup, new HashSet<>(Arrays.asList(1L, 999L)), "merge", null)
+        );
+        assertTrue(ex.getMessage().contains("Selected source firm(s) [999] not found"));
+    }
+
+    @Test
+    void testImportSelectiveData_UnselectedFirmRecordsNeverImportedOrSaved() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        FirmDetails targetFirm = new FirmDetails();
+        targetFirm.setId(10L);
+        targetFirm.setFirmName("Target Firm 10");
+        when(firmDetailsRepo.findById(10L)).thenReturn(Optional.of(targetFirm));
+
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        FirmDetails f2 = new FirmDetails(); f2.setId(2L); f2.setFirmName("Firm 2");
+        backup.setAllFirms(Arrays.asList(f1, f2));
+
+        Customer c1 = new Customer(); c1.setId(101L); c1.setFirmId(1L); c1.setName("Cust 1");
+        Customer c2 = new Customer(); c2.setId(201L); c2.setFirmId(2L); c2.setName("Cust 2");
+        backup.setCustomers(Arrays.asList(c1, c2));
+
+        Product p1 = Product.builder().firmId(1L).name("Prod 1").price(BigDecimal.TEN).build(); p1.setId(102L);
+        Product p2 = Product.builder().firmId(2L).name("Prod 2").price(BigDecimal.TEN).build(); p2.setId(202L);
+        backup.setProducts(Arrays.asList(p1, p2));
+
+        Invoice inv1 = new Invoice(); inv1.setId(103L); inv1.setFirmId(1L); inv1.setInvoiceNumber("INV-F1");
+        Invoice inv2 = new Invoice(); inv2.setId(203L); inv2.setFirmId(2L); inv2.setInvoiceNumber("INV-F2");
+        backup.setInvoices(Arrays.asList(inv1, inv2));
+
+        BusinessLetter bl1 = BusinessLetter.builder().firmId(1L).letterNumber("LTR-1").recipientName("R1").build(); bl1.setId(104L);
+        BusinessLetter bl2 = BusinessLetter.builder().firmId(2L).letterNumber("LTR-2").recipientName("R2").build(); bl2.setId(204L);
+        backup.setBusinessLetters(Arrays.asList(bl1, bl2));
+
+        List<Customer> savedCustomers = new ArrayList<>();
+        List<Product> savedProducts = new ArrayList<>();
+        List<Invoice> savedInvoices = new ArrayList<>();
+        List<BusinessLetter> savedLetters = new ArrayList<>();
+
+        when(customerRepo.save(any(Customer.class))).thenAnswer(i -> {
+            Customer c = i.getArgument(0);
+            savedCustomers.add(c);
+            return c;
+        });
+        when(productRepo.save(any(Product.class))).thenAnswer(i -> {
+            Product p = i.getArgument(0);
+            savedProducts.add(p);
+            return p;
+        });
+        when(invoiceRepo.save(any(Invoice.class))).thenAnswer(i -> {
+            Invoice inv = i.getArgument(0);
+            inv.setId(555L);
+            savedInvoices.add(inv);
+            return inv;
+        });
+        when(businessLetterRepo.save(any(BusinessLetter.class))).thenAnswer(i -> {
+            BusinessLetter bl = i.getArgument(0);
+            savedLetters.add(bl);
+            return bl;
+        });
+
+        // Import only Firm 1 into Target Firm 10
+        service.importSelectiveData(backup, Collections.singleton(1L), "merge", 10L);
+
+        // Verify: only records belonging to selected firm 1 were saved, mapped to target firm 10
+        assertEquals(1, savedCustomers.size());
+        assertEquals("Cust 1", savedCustomers.get(0).getName());
+        assertEquals(10L, savedCustomers.get(0).getFirmId());
+
+        assertEquals(1, savedProducts.size());
+        assertEquals("Prod 1", savedProducts.get(0).getName());
+        assertEquals(10L, savedProducts.get(0).getFirmId());
+
+        assertEquals(1, savedInvoices.size());
+        assertEquals("INV-F1", savedInvoices.get(0).getInvoiceNumber());
+        assertEquals(10L, savedInvoices.get(0).getFirmId());
+
+        assertEquals(1, savedLetters.size());
+        assertEquals("LTR-1", savedLetters.get(0).getLetterNumber());
+        assertEquals(10L, savedLetters.get(0).getFirmId());
+    }
+
+    @Test
+    void testImportSelectiveData_DuplicateInvoiceNumberWithinSelectedFirm_ThrowsRestoreConflictException() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        FirmDetails targetFirm = new FirmDetails();
+        targetFirm.setId(10L);
+        targetFirm.setFirmName("Target Firm 10");
+        when(firmDetailsRepo.findById(10L)).thenReturn(Optional.of(targetFirm));
+
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        backup.setAllFirms(Collections.singletonList(f1));
+
+        Invoice inv1 = new Invoice(); inv1.setId(101L); inv1.setFirmId(1L); inv1.setInvoiceNumber("INV-DUP-01");
+        Invoice inv2 = new Invoice(); inv2.setId(102L); inv2.setFirmId(1L); inv2.setInvoiceNumber("INV-DUP-01");
+        backup.setInvoices(Arrays.asList(inv1, inv2));
+
+        Invoice liveInvoice = new Invoice();
+        liveInvoice.setId(999L);
+        liveInvoice.setFirmId(10L);
+        liveInvoice.setInvoiceNumber("INV-DUP-01");
+
+        when(invoiceRepo.findByInvoiceNumberAndFirmId("INV-DUP-01", 10L)).thenReturn(Optional.of(liveInvoice));
+        when(invoiceRepo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        com.billing.simple.billsoft.exception.RestoreConflictException ex = assertThrows(
+                com.billing.simple.billsoft.exception.RestoreConflictException.class,
+                () -> service.importSelectiveData(backup, Collections.singleton(1L), "merge", 10L)
+        );
+        assertEquals("INVOICE", ex.getEntityType());
+        assertEquals("INV-DUP-01", ex.getConflictKey());
+    }
+
+    @Test
+    void testImportSelectiveData_DuplicateInvoiceNumberInUnselectedFirm_IgnoredAndDoesNotConflict() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        FirmDetails targetFirm = new FirmDetails();
+        targetFirm.setId(10L);
+        targetFirm.setFirmName("Target Firm 10");
+        when(firmDetailsRepo.findById(10L)).thenReturn(Optional.of(targetFirm));
+
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        FirmDetails f1 = new FirmDetails(); f1.setId(1L); f1.setFirmName("Firm 1");
+        FirmDetails f2 = new FirmDetails(); f2.setId(2L); f2.setFirmName("Firm 2");
+        backup.setAllFirms(Arrays.asList(f1, f2));
+
+        // Selected Firm 1 has INV-UNIQUE-01
+        Invoice inv1 = new Invoice(); inv1.setId(101L); inv1.setFirmId(1L); inv1.setInvoiceNumber("INV-UNIQUE-01");
+        // Unselected Firm 2 has INV-DUP-01 which collides with live firm's invoice
+        Invoice inv2 = new Invoice(); inv2.setId(201L); inv2.setFirmId(2L); inv2.setInvoiceNumber("INV-DUP-01");
+        backup.setInvoices(Arrays.asList(inv1, inv2));
+
+        Invoice liveInvoice = new Invoice();
+        liveInvoice.setId(999L);
+        liveInvoice.setFirmId(10L);
+        liveInvoice.setInvoiceNumber("INV-DUP-01");
+
+        when(invoiceRepo.findByInvoiceNumberAndFirmId("INV-DUP-01", 10L)).thenReturn(Optional.of(liveInvoice));
+        when(invoiceRepo.save(any(Invoice.class))).thenAnswer(i -> {
+            Invoice inv = i.getArgument(0);
+            inv.setId(777L);
+            return inv;
+        });
+
+        // Only Firm 1 is imported into target firm 10
+        assertDoesNotThrow(() ->
+                service.importSelectiveData(backup, Collections.singleton(1L), "merge", 10L)
+        );
     }
 }

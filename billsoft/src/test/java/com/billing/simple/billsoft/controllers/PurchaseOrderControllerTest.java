@@ -33,11 +33,19 @@ class PurchaseOrderControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private com.billing.simple.billsoft.repo.AppConfigRepository configRepo;
+
     @MockitoBean
     private PurchaseOrderService service;
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        configRepo.deleteAll();
+    }
 
     @Test
     void testCreate() throws Exception {

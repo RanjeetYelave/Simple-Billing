@@ -60,7 +60,7 @@ class AuthorizationFilterRegressionTest {
 
         mockMvc.perform(get("/api/customers?firmId=1")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -85,5 +85,66 @@ class AuthorizationFilterRegressionTest {
                 .header("X-Auth-Token", token)
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Should return 401 for Statements endpoints when auth is enabled and token is missing")
+    void shouldBlockStatementsWhenAuthEnabledAndNoToken() throws Exception {
+        AppConfig aCfg = new AppConfig();
+        aCfg.setConfigKey("auth_enabled");
+        aCfg.setConfigValue("true");
+        configRepo.save(aCfg);
+
+        AppConfig pCfg = new AppConfig();
+        pCfg.setConfigKey("global_password");
+        pCfg.setConfigValue("salt:hash");
+        configRepo.save(pCfg);
+
+        mockMvc.perform(get("/api/statements/firm?firmId=1")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/statements/customer/1?firmId=1")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/statements/party/1?firmId=1")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Should permit Statements endpoints when auth is enabled and valid token or Bearer header is supplied")
+    void shouldPermitStatementsWithValidToken() throws Exception {
+        String setupJson = "{\"password\":\"MyPass#2026\"}";
+        String response = mockMvc
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/auth/enable")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(setupJson))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(response);
+        String token = node.get("token").asText();
+
+        // 1. X-Auth-Token header
+        mockMvc.perform(get("/api/statements/firm?firmId=1")
+                .header("X-Auth-Token", token)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+
+        // 2. Authorization Bearer header
+        mockMvc.perform(get("/api/statements/firm?firmId=1")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        configRepo.deleteAll();
     }
 }

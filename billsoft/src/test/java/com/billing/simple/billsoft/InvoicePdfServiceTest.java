@@ -49,6 +49,7 @@ public class InvoicePdfServiceTest {
 
     private Invoice sampleInvoice() {
         Invoice inv = new Invoice();
+        inv.setFirmId(1L);
         inv.setStatus(InvoiceStatus.FINAL);
         inv.setInvoiceNumber("INV-010");
         inv.setInvoiceDate(LocalDateTime.now());

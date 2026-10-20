@@ -418,7 +418,8 @@ public class MultiTenantSecurityTest {
     @DisplayName("10. Firm A cannot access Firm B employee/payroll information")
     void testFirmACannotAccessFirmBEmployeePayroll() throws Exception {
         mockMvc.perform(get("/api/employees/" + employeeB.getId() + "/salaries")
-                .header("X-Firm-Id", firmAId))
+                .header("X-Firm-Id", firmAId)
+                .header("X-Employee-Pin", "0000"))
                 .andExpect(status().isBadRequest());
     }
 

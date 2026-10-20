@@ -261,7 +261,7 @@ public class DiagnosticRecoveryIntegrationTest {
 
     // Password Reset Verification
     @Test
-    @DisplayName("Password reset sets auth_enabled=false in database")
+    @DisplayName("Password reset sets auth_enabled=false when disableAuth or default confirmation used")
     void testPasswordResetOperation() throws Exception {
         // Set auth_enabled = true first
         AppConfig authConfig = new AppConfig("auth_enabled", "true");
@@ -277,6 +277,92 @@ public class DiagnosticRecoveryIntegrationTest {
         AppConfig updated = appConfigRepo.findById("auth_enabled").orElse(null);
         assertNotNull(updated);
         assertEquals("false", updated.getConfigValue(), "auth_enabled must be false after reset");
+    }
+
+    @Test
+    @DisplayName("Password reset sets new global_password, sets auth_enabled=true, and invalidates old sessions")
+    void testApplicationPasswordResetFlow() throws Exception {
+        // 1. Set initial password "InitialOldSecret99" and enable auth
+        String oldPass = "InitialOldSecret99";
+        String initialHashed = com.billing.simple.billsoft.util.PasswordUtil.hashPassword(oldPass);
+        appConfigRepo.save(new AppConfig("global_password", initialHashed));
+        appConfigRepo.save(new AppConfig("auth_enabled", "true"));
+
+        // 2. Login with old password to obtain an active session token
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"" + oldPass + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.token").isString())
+                .andReturn();
+
+        String oldToken = objectMapper.readTree(loginResult.getResponse().getContentAsString()).get("token").asText();
+        assertNotNull(oldToken);
+        assertTrue(appConfigRepo.findById("session_" + oldToken).isPresent(), "Old session must be persisted in DB");
+
+        // 3. Reset application password via Diagnostics API to "BrandNewSecurePass123"
+        String newPass = "BrandNewSecurePass123";
+        mockMvc.perform(post("/api/recovery/auth/reset-password")
+                        .header("X-Diagnostic-Key", VALID_MASTER_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"" + newPass + "\",\"confirmation\":\"CONFIRM\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        // 4. Verify global_password changed in database and auth_enabled is true
+        AppConfig updatedPassConfig = appConfigRepo.findById("global_password").orElse(null);
+        assertNotNull(updatedPassConfig);
+        assertTrue(com.billing.simple.billsoft.util.PasswordUtil.checkPassword(newPass, updatedPassConfig.getConfigValue()));
+        assertFalse(com.billing.simple.billsoft.util.PasswordUtil.checkPassword(oldPass, updatedPassConfig.getConfigValue()));
+
+        AppConfig updatedAuthConfig = appConfigRepo.findById("auth_enabled").orElse(null);
+        assertNotNull(updatedAuthConfig);
+        assertEquals("true", updatedAuthConfig.getConfigValue());
+
+        // 5. Verify old session token was invalidated from DB
+        assertFalse(appConfigRepo.findById("session_" + oldToken).isPresent(), "Old session token must be purged after reset");
+
+        // 6. Verify old password fails login
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"" + oldPass + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        // 7. Verify new password succeeds login and returns fresh token
+        MvcResult newLoginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"" + newPass + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.token").isString())
+                .andReturn();
+
+        String newToken = objectMapper.readTree(newLoginResult.getResponse().getContentAsString()).get("token").asText();
+        assertNotNull(newToken);
+        assertNotEquals(oldToken, newToken);
+        assertTrue(appConfigRepo.findById("session_" + newToken).isPresent(), "New session token must be persisted in DB");
+    }
+
+    @Test
+    @DisplayName("Password reset requires explicit CONFIRM and non-empty newPassword")
+    void testPasswordResetValidation() throws Exception {
+        // Missing CONFIRM
+        mockMvc.perform(post("/api/recovery/auth/reset-password")
+                        .header("X-Diagnostic-Key", VALID_MASTER_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"SomePass123\",\"confirmation\":\"WRONG\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CONFIRMATION_REQUIRED"));
+
+        // Empty password with empty string
+        mockMvc.perform(post("/api/recovery/auth/reset-password")
+                        .header("X-Diagnostic-Key", VALID_MASTER_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"   \",\"confirmation\":\"CONFIRM\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     // T13: Rate limit brute-force delay and cooldown
@@ -754,11 +840,12 @@ public class DiagnosticRecoveryIntegrationTest {
         Map<?, ?> firstSnap = (Map<?, ?>) snapshots.get(0);
         String recoveryId = (String) firstSnap.get("recoveryId");
 
+        Long existingFirmId = firmDetailsRepo.findAll().isEmpty() ? 1L : firmDetailsRepo.findAll().get(0).getId();
         // Execute restore with firmIds scoping and CONFIRM token
         mockMvc.perform(post("/api/recovery/backups/restore")
                         .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"recoveryId\":\"" + recoveryId + "\",\"mode\":\"CLONE\",\"firmIds\":[1],\"confirmation\":\"CONFIRM\"}"))
+                        .content("{\"recoveryId\":\"" + recoveryId + "\",\"mode\":\"CLONE\",\"firmIds\":[" + existingFirmId + "],\"confirmation\":\"CONFIRM\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.mode").value("clone"))
@@ -1107,6 +1194,80 @@ public class DiagnosticRecoveryIntegrationTest {
         assertFalse(restartedService.isPersistentConsoleEnabled(), "Expired session must come back disabled");
         assertEquals("NORMAL", restartedService.getLogLevel(), "Logging must come back NORMAL");
         assertEquals(0L, restartedService.getExpiresAt(), "expiresAt must be cleared to 0");
+    }
+
+    // T49: SSE endpoint rejects unauthenticated request when persistent console is disabled
+    @Test
+    @DisplayName("T49: GET /api/recovery/logs/stream returns 401 when unauthorized and persistent console is disabled")
+    void testSseStreamRejectsUnauthorizedClient() throws Exception {
+        sessionService.setPersistentConsoleEnabled(false);
+        mockMvc.perform(get("/api/recovery/logs/stream"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // T50: SSE endpoint returns text/event-stream for authorized diagnostic client
+    @Test
+    @DisplayName("T50: GET /api/recovery/logs/stream returns text/event-stream for authorized diagnostic client")
+    void testSseStreamAuthorizedClient() throws Exception {
+        MvcResult mvcResult = mockMvc.perform(get("/api/recovery/logs/stream")
+                        .header("X-Diagnostic-Key", VALID_MASTER_KEY))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith(MediaType.TEXT_EVENT_STREAM_VALUE)))
+                .andReturn();
+
+        assertNotNull(mvcResult.getResponse());
+    }
+
+    // T51: SSE endpoint allows connection when persistent console is enabled
+    @Test
+    @DisplayName("T51: GET /api/recovery/logs/stream returns text/event-stream when persistent console is enabled")
+    void testSseStreamAllowedWhenPersistentConsoleEnabled() throws Exception {
+        sessionService.setPersistentConsoleEnabled(true);
+        MvcResult mvcResult = mockMvc.perform(get("/api/recovery/logs/stream"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith(MediaType.TEXT_EVENT_STREAM_VALUE)))
+                .andReturn();
+
+        assertNotNull(mvcResult.getResponse());
+    }
+
+    // T52: DiagnosticLogService subscription registers and delivers log events via SseEmitter
+    @Test
+    @DisplayName("T52: DiagnosticLogService subscribes and receives log stream correctly")
+    void testDiagnosticLogServiceSubscribeAndStream() throws Exception {
+        Map<String, Object> initial = logService.getLogsSince(0, 1, false);
+        long currentSeq = ((Number) initial.get("nextSeq")).longValue();
+
+        // Subscribe to stream
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                logService.subscribe(currentSeq, false);
+        assertNotNull(emitter);
+
+        // Generate log entry
+        String marker = "SSE_UNIT_TEST_MARKER_" + System.currentTimeMillis();
+        log.info(marker);
+
+        // Verify log entry was buffered in ringBuffer
+        Thread.sleep(100);
+        Map<String, Object> liveLogs = logService.getLogsSince(currentSeq, 50, false);
+        @SuppressWarnings("unchecked")
+        List<String> lines = (List<String>) liveLogs.get("lines");
+        assertTrue(lines != null && lines.stream().anyMatch(l -> l.contains(marker)),
+                "Ring buffer must capture the generated log");
+    }
+
+    // T53: Reconnecting with ancient sinceSeq signals resync
+    @Test
+    @DisplayName("T53: DiagnosticLogService handles sequence replay and resync cleanly")
+    void testDiagnosticLogServiceReplayAndResync() {
+        // Since sequence far in future or evicted should be handled cleanly
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitterFuture =
+                logService.subscribe(999999999L, false);
+        assertNotNull(emitterFuture);
+
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitterZero =
+                logService.subscribe(0L, false);
+        assertNotNull(emitterZero);
     }
 }
 

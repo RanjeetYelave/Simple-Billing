@@ -4,7 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RupeeCRM - Business Billing & Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css?v=20260920_header_opt_a_v1" />
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
@@ -107,44 +109,46 @@
       }
     }
 
-    // ─── Exact RupeeCRM Vector Brand Icon & Logo ───
-    function RupeeCRMIcon({ size = 36, className = '', style = {} }) {
-      const chevronD = "M 0 0 H 156 A 18 18 0 0 1 174 18 V 174 C 134.3 174 102 141.7 102 102 V 72 H 72 C 32.3 72 0 39.7 0 0 Z";
-      return React.createElement('svg', {
-        xmlns: 'http://www.w3.org/2000/svg',
+    // ─── Exact RupeeCRM 3D Gold Coin Brand Icon (Reference Image 2) ───
+    if (typeof window !== 'undefined' && !window.triggerCoinCelebration) {
+      window.triggerCoinCelebration = function() {
+        try {
+          window.dispatchEvent(new CustomEvent('billsoft:coin-celebrate'));
+          const coins = document.querySelectorAll('.rcrm-coin');
+          coins.forEach(c => {
+            c.classList.remove('rcrm-coin-celebrate');
+            void c.offsetWidth;
+            c.classList.add('rcrm-coin-celebrate');
+            setTimeout(() => c.classList.remove('rcrm-coin-celebrate'), 1300);
+          });
+        } catch (e) {
+          console.warn('Coin celebration trigger error:', e);
+        }
+      };
+    }
+
+    function RupeeCRMIcon({ size = 36, className = '', style = {}, spinning = false }) {
+      const [celebrating, setCelebrating] = useState(false);
+
+      useEffect(() => {
+        const onCelebrate = () => {
+          setCelebrating(true);
+          const t = setTimeout(() => setCelebrating(false), 1300);
+          return () => clearTimeout(t);
+        };
+        window.addEventListener('billsoft:coin-celebrate', onCelebrate);
+        return () => window.removeEventListener('billsoft:coin-celebrate', onCelebrate);
+      }, []);
+
+      const src = size > 64 ? 'images/rupee_coin_3d_256.png' : (size > 32 ? 'images/rupee_coin_3d_128.png' : 'images/rupee_coin_3d_64.png');
+      return React.createElement('img', {
+        src: src,
         width: size,
         height: size,
-        viewBox: '0 0 447 447',
-        className: className,
-        style: { display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, overflow: 'visible', ...style }
-      },
-        React.createElement('defs', null,
-          React.createElement('linearGradient', { id: 'rcrmChevronTop', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#38bdf8' }),
-            React.createElement('stop', { offset: '35%', stopColor: '#2563eb' }),
-            React.createElement('stop', { offset: '100%', stopColor: '#1d4ed8' })
-          ),
-          React.createElement('linearGradient', { id: 'rcrmChevronMid', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#60a5fa' }),
-            React.createElement('stop', { offset: '45%', stopColor: '#2563eb' }),
-            React.createElement('stop', { offset: '100%', stopColor: '#1e40af' })
-          ),
-          React.createElement('linearGradient', { id: 'rcrmChevronBot', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            React.createElement('stop', { offset: '0%', stopColor: '#2563eb' }),
-            React.createElement('stop', { offset: '60%', stopColor: '#1d4ed8' }),
-            React.createElement('stop', { offset: '100%', stopColor: '#1e40af' })
-          )
-        ),
-        React.createElement('g', { transform: 'translate(216, 56)' },
-          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronTop)' })
-        ),
-        React.createElement('g', { transform: 'translate(136, 136)' },
-          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronMid)' })
-        ),
-        React.createElement('g', { transform: 'translate(56, 216)' },
-          React.createElement('path', { d: chevronD, fill: 'url(#rcrmChevronBot)' })
-        )
-      );
+        className: `rcrm-coin ${spinning ? 'rcrm-coin-spin' : ''} ${celebrating ? 'rcrm-coin-celebrate' : ''} ${className}`.trim(),
+        alt: 'RupeeCRM',
+        style: { display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, objectFit: 'contain', userSelect: 'none', WebkitUserDrag: 'none', ...style }
+      });
     }
 
     // Retro 3D Brandmark Logo Component (Active during Classic / Classic-Dark Theme)
@@ -232,8 +236,10 @@
         return React.createElement(RupeeCRMRetroLogo, { size, showWordmark, isDark: theme === 'classic-dark', className, style });
       }
 
-      const textColor = isDarkBg ? '#ffffff' : '#0f172a';
-      const taglineColor = isDarkBg ? '#94a3b8' : '#64748b';
+      const isDark = (theme === 'dark-1') || (isDarkBg && theme !== 'light-1');
+      const textColor = isDark ? '#FFFFFF' : '#17201B';
+      const crmColor = isDark ? '#D4AF37' : '#234B30';
+      const taglineColor = isDark ? '#A1A1AA' : '#5C635E';
 
       if (!showWordmark) {
         return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
@@ -243,11 +249,11 @@
         className: `rupeecrm-logo-wrapper ${className}`,
         style: { display: 'inline-flex', alignItems: 'center', gap: Math.round(size * 0.28), textDecoration: 'none', ...style }
       },
-        React.createElement(RupeeCRMIcon, { size: size }),
+        React.createElement(RupeeCRMIcon, { size: size, className: 'rcrm-brand-glint' }),
         React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', fontSize: `${Math.round(size * 0.72)}px`, fontWeight: 800, letterSpacing: '-0.03em', fontFamily: 'system-ui, -apple-system, sans-serif' } },
             React.createElement('span', { style: { color: textColor } }, 'Rupee'),
-            React.createElement('span', { style: { color: '#00c875', marginLeft: 1 } }, 'CRM')
+            React.createElement('span', { style: { color: crmColor, marginLeft: 2, fontWeight: 900 } }, 'CRM')
           ),
           showTagline && React.createElement('div', { style: { fontSize: `${Math.max(10, Math.round(size * 0.24))}px`, color: taglineColor, marginTop: 4, fontWeight: 500, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement('span', { style: { opacity: 0.5 } }, '—'),
@@ -270,12 +276,7 @@
         const normType = (type || 'info').toLowerCase();
         switch (normType) {
           case 'success':
-            return React.createElement('svg', {
-              width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
-              strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round'
-            },
-              React.createElement('polyline', { points: '20 6 9 17 4 12' })
-            );
+            return React.createElement(RupeeCRMIcon, { size: 16, className: 'rcrm-coin-glint' });
           case 'error':
           case 'danger':
             return React.createElement('svg', {
@@ -4797,13 +4798,14 @@
           ),
           onQuickCreate && React.createElement('div', { style: { padding: '0 16px 12px 16px' } },
             React.createElement('div', {
+              className: 'sidebar-quick-create',
               style: {
                 display: 'flex',
                 width: '100%',
                 background: 'var(--primary)',
-                borderRadius: 'var(--radius)',
+                borderRadius: 'var(--radius-pill, 9999px)',
                 overflow: 'hidden',
-                boxShadow: 'var(--shadow)'
+                boxShadow: 'var(--shadow-sm)'
               }
             },
               // Left half: + Invoice
@@ -7275,6 +7277,15 @@
         return 'goals';
       }); // 'goals' | 'board' | 'expenses' | 'savings'
 
+      const [plannerWorkspaceTab, setPlannerWorkspaceTab] = useState(() => {
+        if (initialNav) {
+          if (initialNav.plannerTab === 'reminders' || initialNav.tab === 'reminders') return 'reminders';
+          if (initialNav.plannerTab === 'notes' || initialNav.plannerTab === 'memos' || initialNav.tab === 'notes' || initialNav.tab === 'memos') return 'notes';
+        }
+        return 'tasks';
+      }); // 'tasks' | 'reminders' | 'notes'
+      const [taskStatusFilter, setTaskStatusFilter] = useState('ALL'); // 'ALL' | 'TODO' | 'IN_PROGRESS' | 'OVERDUE'
+
       const [showCompletedArchive, setShowCompletedArchive] = useState(false);
       const [expandedGoalId, setExpandedGoalId] = useState(null); // Track opened history drawer
       const [goalDrawerView, setGoalDrawerView] = useState({}); // goalId -> 'graph' | 'ledger'
@@ -7292,7 +7303,10 @@
           const target = e.detail.trackerSubTab || e.detail.plannerTab || e.detail.tab;
           if (target === 'expenses') setActiveTab('expenses');
           else if (target === 'savings') setActiveTab('savings');
-          else if (target === 'board' || target === 'notes' || target === 'memos' || target === 'tasks' || target === 'reminders') setActiveTab('board');
+          else if (target === 'tasks') { setActiveTab('board'); setPlannerWorkspaceTab('tasks'); }
+          else if (target === 'reminders') { setActiveTab('board'); setPlannerWorkspaceTab('reminders'); }
+          else if (target === 'notes' || target === 'memos') { setActiveTab('board'); setPlannerWorkspaceTab('notes'); }
+          else if (target === 'board') { setActiveTab('board'); setPlannerWorkspaceTab('tasks'); }
           else if (target === 'goals' || target === 'trackers') setActiveTab('goals');
         };
         if (initialNav) {
@@ -7526,16 +7540,27 @@
         });
       }, [notes, searchQuery, activeTag, boardFromDate, boardToDate]);
 
+      // Filtered Tasks with status filter
+      const displayedTasks = useMemo(() => {
+        return filteredTasks.filter(t => {
+          if (taskStatusFilter === 'ALL') return true;
+          if (taskStatusFilter === 'TODO') return (t.status || 'TODO') === 'TODO';
+          if (taskStatusFilter === 'IN_PROGRESS') return t.status === 'IN_PROGRESS';
+          if (taskStatusFilter === 'OVERDUE') return t.dueDate && t.dueDate.split('T')[0] < BillsoftUtils.todayStr();
+          return true;
+        });
+      }, [filteredTasks, taskStatusFilter]);
+
       // Pagination calculations
-      const reminderPageSize = 5;
+      const reminderPageSize = 8;
       const reminderTotalPages = Math.max(1, Math.ceil(filteredReminders.length / reminderPageSize));
       const safeReminderPage = Math.min(Math.max(1, reminderPage), reminderTotalPages);
 
-      const taskPageSize = 5;
-      const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
+      const taskPageSize = 8;
+      const taskTotalPages = Math.max(1, Math.ceil(displayedTasks.length / taskPageSize));
       const safeTaskPage = Math.min(Math.max(1, taskPage), taskTotalPages);
 
-      const notePageSize = 5;
+      const notePageSize = 8;
       const noteTotalPages = Math.max(1, Math.ceil(filteredNotes.length / notePageSize));
       const safeNotePage = Math.min(Math.max(1, notePage), noteTotalPages);
 
@@ -8176,267 +8201,289 @@
             )
           ),
 
-          // 3. Modern 3-Column Kanban Board
-          React.createElement('div', { className: 'planner-kanban-board' },
-            // Column 1: Reminders
-            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #f59e0b' } },
-              React.createElement('div', { className: 'planner-kanban-header' },
-                React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#f59e0b', boxShadow: '0 0 8px rgba(245,158,11,0.6)' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, 'Active Reminders'),
-                  React.createElement('span', { className: 'planner-col-badge' }, filteredReminders.length)
-                ),
-                React.createElement('button', {
-                  className: 'btn btn-xs btn-outline',
-                  style: { borderColor: '#f59e0b', color: '#d97706', fontWeight: 600, padding: '2px 8px' },
-                  onClick: () => openCreateModal('reminder')
-                }, '+ New')
-              ),
-              React.createElement('div', { className: 'planner-card-list' },
-                filteredReminders.length > 0 ? (
-                  filteredReminders.slice((safeReminderPage - 1) * reminderPageSize, safeReminderPage * reminderPageSize).map(r => {
-                    const isOverdue = r.dueDate && r.dueDate.split('T')[0] < BillsoftUtils.todayStr();
-                    const isCardExpanded = Boolean(expandedCardNotes[r.id]);
-                    const noteStr = r.note || r.notes || '';
-                    const isLongNote = noteStr.length > 100 || noteStr.includes('\n');
-                    return React.createElement('div', { key: r.id, className: 'planner-card', style: { borderLeft: '3px solid #f59e0b' } },
-                      React.createElement('div', { className: 'planner-card-header' },
-                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 } },
-                          React.createElement('input', {
-                            type: 'checkbox',
-                            checked: false,
-                            onChange: () => onMarkDone(r.id),
-                            title: 'Mark completed',
-                            style: { marginTop: 3, cursor: 'pointer', accentColor: '#f59e0b', width: 16, height: 16 }
-                          }),
-                          React.createElement('div', { className: 'planner-card-title' }, r.title)
-                        ),
-                        React.createElement('div', { style: { display: 'flex', gap: 2, alignItems: 'center' } },
-                          noteStr && React.createElement('button', {
-                            className: 'btn btn-ghost btn-xs',
-                            style: { padding: '2px 5px', fontSize: '0.75rem', color: '#d97706' },
-                            onClick: () => setReadingModalItem({ type: 'reminder', item: r }),
-                            title: 'Full View / Expand Reminder Note'
-                          }, '🔍'),
-                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('reminder', r), title: 'Edit' }, '✏️'),
-                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'reminder', id: r.id, title: r.title }), title: 'Delete' }, '🗑️')
-                        )
-                      ),
-                      noteStr && React.createElement('div', {
-                        className: 'planner-card-body',
-                        style: isCardExpanded ? { maxHeight: 'none' } : {}
-                      }, noteStr),
-                      isLongNote && React.createElement('div', { style: { marginTop: 3 } },
-                        React.createElement('button', {
-                          className: 'btn btn-link btn-xs',
-                          style: { padding: 0, fontSize: '0.72rem', color: '#d97706', fontWeight: 600 },
-                          onClick: () => setExpandedCardNotes(prev => ({ ...prev, [r.id]: !prev[r.id] }))
-                        }, isCardExpanded ? '▲ Show less' : '▼ Read more')
-                      ),
-                      React.createElement('div', { className: 'planner-card-meta' },
-                        r.dueDate && React.createElement('span', {
-                          className: 'planner-meta-badge',
-                          style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
-                        }, `${isOverdue ? '⚠️ Overdue: ' : '📅 Due: '}${r.dueDate.split('T')[0]}`),
-                        renderTags(r.tags)
-                      ),
-                      renderAssociations(r.customerId, r.firmId)
-                    );
-                  })
-                ) : (
-                  React.createElement('div', { className: 'planner-empty-col' },
-                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '🔔'),
-                    React.createElement('span', { style: { fontWeight: 600 } }, 'No pending reminders'),
-                    React.createElement('button', {
-                      className: 'btn btn-outline btn-xs',
-                      style: { fontSize: '0.75rem', marginTop: 6, borderColor: '#f59e0b', color: '#d97706' },
-                      onClick: () => openCreateModal('reminder')
-                    }, '+ Add Reminder')
-                  )
-                )
-              ),
-              filteredReminders.length > reminderPageSize && React.createElement(PaginationControls, {
-                currentPage: safeReminderPage,
-                totalPages: reminderTotalPages,
-                totalItems: filteredReminders.length,
-                compact: true,
-                onPageChange: setReminderPage
-              })
+          // 3. Unified Operational Workspace (Tasks, Reminders, Notes & SOPs)
+          React.createElement('div', { className: 'planner-workspace-shell' },
+            // Sub-nav for the 3 operational views
+            React.createElement('div', { className: 'planner-workspace-subnav' },
+              React.createElement('button', {
+                className: `planner-subnav-btn${plannerWorkspaceTab === 'tasks' ? ' active' : ''}`,
+                onClick: () => setPlannerWorkspaceTab('tasks')
+              }, '📋 Tasks Pipeline', React.createElement('span', { className: 'badge', style: { marginLeft: 6 } }, filteredTasks.length)),
+              React.createElement('button', {
+                className: `planner-subnav-btn${plannerWorkspaceTab === 'reminders' ? ' active' : ''}`,
+                onClick: () => setPlannerWorkspaceTab('reminders')
+              }, '🔔 Reminders', React.createElement('span', { className: 'badge', style: { marginLeft: 6 } }, filteredReminders.length)),
+              React.createElement('button', {
+                className: `planner-subnav-btn${plannerWorkspaceTab === 'notes' ? ' active' : ''}`,
+                onClick: () => setPlannerWorkspaceTab('notes')
+              }, '📝 Notes & SOPs', React.createElement('span', { className: 'badge', style: { marginLeft: 6 } }, filteredNotes.length))
             ),
 
-            // Column 2: Tasks
-            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #6366f1' } },
-              React.createElement('div', { className: 'planner-kanban-header' },
-                React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#6366f1', boxShadow: '0 0 8px rgba(99,102,241,0.6)' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, 'Task Pipeline'),
-                  React.createElement('span', { className: 'planner-col-badge' }, filteredTasks.length)
+            // VIEW 1: TASKS
+            plannerWorkspaceTab === 'tasks' && React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 } },
+                React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                  [
+                    { id: 'ALL', label: `All (${filteredTasks.length})` },
+                    { id: 'TODO', label: `🟡 To Do (${filteredTasks.filter(t => (t.status || 'TODO') === 'TODO').length})` },
+                    { id: 'IN_PROGRESS', label: `🔵 In Progress (${filteredTasks.filter(t => t.status === 'IN_PROGRESS').length})` },
+                    { id: 'OVERDUE', label: `⚠️ Overdue (${filteredTasks.filter(t => t.dueDate && t.dueDate.split('T')[0] < BillsoftUtils.todayStr()).length})` }
+                  ].map(tab => React.createElement('button', {
+                    key: tab.id,
+                    className: `tab${taskStatusFilter === tab.id ? ' active' : ''}`,
+                    style: { padding: '4px 12px', fontSize: '0.8rem', borderRadius: 8 },
+                    onClick: () => setTaskStatusFilter(tab.id)
+                  }, tab.label))
                 ),
                 React.createElement('button', {
-                  className: 'btn btn-xs btn-primary',
-                  style: { fontWeight: 600, padding: '2px 8px' },
+                  className: 'btn btn-primary btn-sm',
                   onClick: () => openCreateModal('task')
-                }, '+ New')
+                }, '📋 + Add Task')
               ),
-              React.createElement('div', { className: 'planner-card-list' },
-                filteredTasks.length > 0 ? (
-                  filteredTasks.slice((safeTaskPage - 1) * taskPageSize, safeTaskPage * taskPageSize).map(t => {
-                    const isOverdue = t.dueDate && t.dueDate.split('T')[0] < BillsoftUtils.todayStr();
-                    const isCardExpanded = Boolean(expandedCardNotes[t.id]);
-                    const noteStr = t.note || t.notes || '';
-                    const isLongNote = noteStr.length > 100 || noteStr.includes('\n');
-                    return React.createElement('div', { key: t.id, className: 'planner-card', style: { borderLeft: '3px solid #6366f1' } },
-                      React.createElement('div', { className: 'planner-card-header' },
-                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 } },
-                          React.createElement('input', {
-                            type: 'checkbox',
-                            checked: false,
-                            onChange: () => handleStatusChangeInline(t, 'DONE'),
-                            title: 'Mark task done',
-                            style: { marginTop: 3, cursor: 'pointer', accentColor: 'var(--primary)', width: 16, height: 16 }
-                          }),
-                          React.createElement('div', { className: 'planner-card-title' }, t.title)
-                        ),
-                        React.createElement('div', { style: { display: 'flex', gap: 2, alignItems: 'center' } },
-                          noteStr && React.createElement('button', {
-                            className: 'btn btn-ghost btn-xs',
-                            style: { padding: '2px 5px', fontSize: '0.75rem', color: 'var(--primary)' },
-                            onClick: () => setReadingModalItem({ type: 'task', item: t }),
-                            title: 'Full View / Expand Task Note'
-                          }, '🔍'),
-                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('task', t), title: 'Edit' }, '✏️'),
-                          React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'task', id: t.id, title: t.title }), title: 'Delete' }, '🗑️')
-                        )
-                      ),
-                      noteStr && React.createElement('div', {
-                        className: 'planner-card-body',
-                        style: isCardExpanded ? { maxHeight: 'none' } : {}
-                      }, noteStr),
-                      isLongNote && React.createElement('div', { style: { marginTop: 3 } },
-                        React.createElement('button', {
-                          className: 'btn btn-link btn-xs',
-                          style: { padding: 0, fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 },
-                          onClick: () => setExpandedCardNotes(prev => ({ ...prev, [t.id]: !prev[t.id] }))
-                        }, isCardExpanded ? '▲ Show less' : '▼ Read more')
-                      ),
-                      React.createElement('div', { style: { marginTop: 8 } },
-                        React.createElement('select', {
-                          className: 'select select-xs w-full',
-                          value: t.status || 'TODO',
-                          onChange: e => handleStatusChangeInline(t, e.target.value),
-                          style: {
-                            fontWeight: 600,
-                            borderRadius: 6,
-                            backgroundColor: t.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.08)' : (t.status === 'DONE' ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-secondary)'),
-                            borderColor: t.status === 'IN_PROGRESS' ? '#3b82f6' : (t.status === 'DONE' ? '#10b981' : 'var(--border)')
-                          }
-                        },
-                          React.createElement('option', { value: 'TODO' }, '🟡 To Do'),
-                          React.createElement('option', { value: 'IN_PROGRESS' }, '🔵 In Progress'),
-                          React.createElement('option', { value: 'DONE' }, '🟢 Done')
-                        )
-                      ),
-                      React.createElement('div', { className: 'planner-card-meta' },
-                        t.dueDate && React.createElement('span', {
-                          className: 'planner-meta-badge',
-                          style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
-                        }, `${isOverdue ? '⚠️ Due: ' : '📅 Due: '}${t.dueDate.split('T')[0]}`),
-                        renderTags(t.tags)
-                      ),
-                      renderAssociations(t.customerId, t.firmId)
-                    );
-                  })
-                ) : (
-                  React.createElement('div', { className: 'planner-empty-col' },
-                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '📋'),
-                    React.createElement('span', { style: { fontWeight: 600 } }, 'No tasks in pipeline'),
-                    React.createElement('button', {
-                      className: 'btn btn-primary btn-xs',
-                      style: { fontSize: '0.75rem', marginTop: 6 },
-                      onClick: () => openCreateModal('task')
-                    }, '+ Add Task')
+              displayedTasks.length > 0 ? React.createElement(Fragment, null,
+                React.createElement('div', { style: { overflowX: 'auto' } },
+                  React.createElement('table', { className: 'planner-op-table' },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { width: 44, textAlign: 'center' } }, 'Done'),
+                        React.createElement('th', null, 'Task Title & Note'),
+                        React.createElement('th', { style: { width: 140 } }, 'Pipeline Status'),
+                        React.createElement('th', { style: { width: 130 } }, 'Due Date'),
+                        React.createElement('th', { style: { width: 150 } }, 'Tags / Firm'),
+                        React.createElement('th', { style: { width: 90, textAlign: 'right' } }, 'Actions')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      displayedTasks.slice((safeTaskPage - 1) * taskPageSize, safeTaskPage * taskPageSize).map(t => {
+                        const isOverdue = t.dueDate && t.dueDate.split('T')[0] < BillsoftUtils.todayStr();
+                        const noteStr = t.note || t.notes || '';
+                        return React.createElement('tr', { key: t.id },
+                          React.createElement('td', { style: { textAlign: 'center' } },
+                            React.createElement('input', {
+                              type: 'checkbox',
+                              checked: false,
+                              onChange: () => handleStatusChangeInline(t, 'DONE'),
+                              title: 'Mark complete',
+                              style: { cursor: 'pointer', accentColor: 'var(--success)', width: 17, height: 17 }
+                            })
+                          ),
+                          React.createElement('td', null,
+                            React.createElement('div', { style: { fontWeight: 700, color: 'var(--text)', fontSize: '0.92rem' } }, t.title),
+                            noteStr && React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 } },
+                              React.createElement('span', { style: { maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, noteStr),
+                              React.createElement('button', {
+                                className: 'btn btn-link btn-xs',
+                                style: { padding: 0, fontSize: '0.74rem' },
+                                onClick: () => setReadingModalItem({ type: 'task', item: t })
+                              }, '🔍 Full View')
+                            )
+                          ),
+                          React.createElement('td', null,
+                            React.createElement('select', {
+                              className: 'select select-sm',
+                              style: {
+                                padding: '3px 8px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                borderRadius: 6,
+                                borderColor: t.status === 'IN_PROGRESS' ? '#3b82f6' : 'var(--border)'
+                              },
+                              value: t.status || 'TODO',
+                              onChange: (e) => handleStatusChangeInline(t, e.target.value)
+                            },
+                              React.createElement('option', { value: 'TODO' }, '🟡 To Do'),
+                              React.createElement('option', { value: 'IN_PROGRESS' }, '🔵 In Progress'),
+                              React.createElement('option', { value: 'DONE' }, '🟢 Done')
+                            )
+                          ),
+                          React.createElement('td', null,
+                            t.dueDate ? React.createElement('span', {
+                              className: 'badge',
+                              style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+                            }, `${isOverdue ? '⚠️ ' : '📅 '}${t.dueDate.split('T')[0]}`) : React.createElement('span', { style: { color: 'var(--text-muted)', fontSize: '0.76rem' } }, 'No deadline')
+                          ),
+                          React.createElement('td', null,
+                            renderTags(t.tags),
+                            renderAssociations(t.customerId, t.firmId)
+                          ),
+                          React.createElement('td', { style: { textAlign: 'right' } },
+                            React.createElement('div', { style: { display: 'inline-flex', gap: 4 } },
+                              React.createElement('button', { className: 'btn btn-ghost btn-xs', onClick: () => openEditModal('task', t), title: 'Edit' }, '✏️'),
+                              React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'task', id: t.id, title: t.title }), title: 'Delete' }, '🗑️')
+                            )
+                          )
+                        );
+                      })
+                    )
                   )
-                )
-              ),
-              filteredTasks.length > taskPageSize && React.createElement(PaginationControls, {
-                currentPage: safeTaskPage,
-                totalPages: taskTotalPages,
-                totalItems: filteredTasks.length,
-                compact: true,
-                onPageChange: setTaskPage
-              })
+                ),
+                displayedTasks.length > taskPageSize && React.createElement(PaginationControls, {
+                  currentPage: safeTaskPage,
+                  totalPages: taskTotalPages,
+                  totalItems: displayedTasks.length,
+                  compact: true,
+                  onPageChange: setTaskPage
+                })
+              ) : React.createElement('div', { style: { textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' } },
+                React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📋'),
+                React.createElement('div', { style: { fontWeight: 600 } }, 'No tasks found in this view'),
+                React.createElement('button', { className: 'btn btn-primary btn-sm', style: { marginTop: 12 }, onClick: () => openCreateModal('task') }, '📋 + Add New Task')
+              )
             ),
 
-            // Column 3: Notes
-            React.createElement('div', { className: 'planner-kanban-col', style: { borderTop: '3px solid #8b5cf6' } },
-              React.createElement('div', { className: 'planner-kanban-header' },
-                React.createElement('div', { className: 'planner-col-title-group' },
-                  React.createElement('span', { className: 'planner-col-dot', style: { background: '#8b5cf6', boxShadow: '0 0 8px rgba(139,92,246,0.6)' } }),
-                  React.createElement('span', { className: 'planner-col-title' }, 'Notes & Memos'),
-                  React.createElement('span', { className: 'planner-col-badge' }, filteredNotes.length)
-                ),
+            // VIEW 2: REMINDERS
+            plannerWorkspaceTab === 'reminders' && React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+                React.createElement('div', { style: { fontWeight: 700, color: 'var(--text)' } }, `Active Reminders (${filteredReminders.length})`),
                 React.createElement('button', {
-                  className: 'btn btn-xs btn-outline',
-                  style: { borderColor: '#8b5cf6', color: '#7c3aed', fontWeight: 600, padding: '2px 8px' },
-                  onClick: () => openCreateModal('note')
-                }, '+ New')
+                  className: 'btn btn-primary btn-sm',
+                  onClick: () => openCreateModal('reminder')
+                }, '🔔 + Add Reminder')
               ),
-              React.createElement('div', { className: 'planner-card-list' },
-                filteredNotes.length > 0 ? (
+              filteredReminders.length > 0 ? React.createElement(Fragment, null,
+                React.createElement('div', { style: { overflowX: 'auto' } },
+                  React.createElement('table', { className: 'planner-op-table' },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { width: 44, textAlign: 'center' } }, 'Done'),
+                        React.createElement('th', null, 'Reminder Title & Details'),
+                        React.createElement('th', { style: { width: 140 } }, 'Due Date'),
+                        React.createElement('th', { style: { width: 160 } }, 'Tags / Firm'),
+                        React.createElement('th', { style: { width: 90, textAlign: 'right' } }, 'Actions')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      filteredReminders.slice((safeReminderPage - 1) * reminderPageSize, safeReminderPage * reminderPageSize).map(r => {
+                        const isOverdue = r.dueDate && r.dueDate.split('T')[0] < BillsoftUtils.todayStr();
+                        const noteStr = r.note || r.notes || '';
+                        return React.createElement('tr', { key: r.id },
+                          React.createElement('td', { style: { textAlign: 'center' } },
+                            React.createElement('input', {
+                              type: 'checkbox',
+                              checked: false,
+                              onChange: () => onMarkDone(r.id),
+                              title: 'Mark completed',
+                              style: { cursor: 'pointer', accentColor: 'var(--success)', width: 17, height: 17 }
+                            })
+                          ),
+                          React.createElement('td', null,
+                            React.createElement('div', { style: { fontWeight: 700, color: 'var(--text)', fontSize: '0.92rem' } }, r.title),
+                            noteStr && React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 } },
+                              React.createElement('span', { style: { maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, noteStr),
+                              React.createElement('button', {
+                                className: 'btn btn-link btn-xs',
+                                style: { padding: 0, fontSize: '0.74rem' },
+                                onClick: () => setReadingModalItem({ type: 'reminder', item: r })
+                              }, '🔍 Full View')
+                            )
+                          ),
+                          React.createElement('td', null,
+                            r.dueDate ? React.createElement('span', {
+                              className: 'badge',
+                              style: isOverdue ? { background: '#fee2e2', color: '#991b1b', fontWeight: 700 } : { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+                            }, `${isOverdue ? '⚠️ ' : '📅 '}${r.dueDate.split('T')[0]}`) : React.createElement('span', { style: { color: 'var(--text-muted)', fontSize: '0.76rem' } }, 'No deadline')
+                          ),
+                          React.createElement('td', null,
+                            renderTags(r.tags),
+                            renderAssociations(r.customerId, r.firmId)
+                          ),
+                          React.createElement('td', { style: { textAlign: 'right' } },
+                            React.createElement('div', { style: { display: 'inline-flex', gap: 4 } },
+                              React.createElement('button', { className: 'btn btn-ghost btn-xs', onClick: () => openEditModal('reminder', r), title: 'Edit' }, '✏️'),
+                              React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'reminder', id: r.id, title: r.title }), title: 'Delete' }, '🗑️')
+                            )
+                          )
+                        );
+                      })
+                    )
+                  )
+                ),
+                filteredReminders.length > reminderPageSize && React.createElement(PaginationControls, {
+                  currentPage: safeReminderPage,
+                  totalPages: reminderTotalPages,
+                  totalItems: filteredReminders.length,
+                  compact: true,
+                  onPageChange: setReminderPage
+                })
+              ) : React.createElement('div', { style: { textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' } },
+                React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '🔔'),
+                React.createElement('div', { style: { fontWeight: 600 } }, 'No pending reminders'),
+                React.createElement('button', { className: 'btn btn-primary btn-sm', style: { marginTop: 12 }, onClick: () => openCreateModal('reminder') }, '🔔 + Add Reminder')
+              )
+            ),
+
+            // VIEW 3: NOTES & SOPS
+            plannerWorkspaceTab === 'notes' && React.createElement(Fragment, null,
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+                React.createElement('div', { style: { fontWeight: 700, color: 'var(--text)' } }, `Operational Notes & SOPs (${filteredNotes.length})`),
+                React.createElement('button', {
+                  className: 'btn btn-primary btn-sm',
+                  onClick: () => openCreateModal('note')
+                }, '📝 + Add Note')
+              ),
+              filteredNotes.length > 0 ? React.createElement(Fragment, null,
+                React.createElement('div', { className: 'planner-notes-grid' },
                   filteredNotes.slice((safeNotePage - 1) * notePageSize, safeNotePage * notePageSize).map(n => {
                     const isCardExpanded = Boolean(expandedCardNotes[n.id]);
                     const contentStr = n.content || '';
-                    const isLongContent = contentStr.length > 100 || contentStr.includes('\n');
-                    return React.createElement('div', { key: n.id, className: 'planner-card', style: { borderLeft: '3px solid #8b5cf6' } },
-                      React.createElement('div', { className: 'planner-card-header' },
-                        React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-                          React.createElement('div', { className: 'planner-card-title' }, n.title)
-                        ),
-                        React.createElement('div', { style: { display: 'flex', gap: 2, alignItems: 'center' } },
+                    const isLongNote = contentStr.length > 120 || contentStr.includes('\n');
+                    return React.createElement('div', { key: n.id, className: 'planner-note-card' },
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 } },
+                        React.createElement('div', { style: { fontWeight: 700, color: 'var(--text)', fontSize: '0.95rem' } }, n.title),
+                        React.createElement('div', { style: { display: 'flex', gap: 4 } },
                           React.createElement('button', {
                             className: 'btn btn-ghost btn-xs',
-                            style: { padding: '2px 5px', fontSize: '0.75rem', color: '#7c3aed' },
-                            onClick: () => setReadingModalItem({ type: 'note', item: n }),
-                            title: 'Full View / Expand Memo & Note'
-                          }, '🔍'),
+                            style: { padding: '2px 6px', fontSize: '0.75rem' },
+                            onClick: () => {
+                              navigator.clipboard.writeText(contentStr);
+                              window.showToast('Note copied to clipboard!', 'success');
+                            },
+                            title: 'Copy Note'
+                          }, '📋'),
                           React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem' }, onClick: () => openEditModal('note', n), title: 'Edit' }, '✏️'),
                           React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { padding: '2px 6px', fontSize: '0.75rem', color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'note', id: n.id, title: n.title }), title: 'Delete' }, '🗑️')
                         )
                       ),
-                      contentStr && React.createElement('div', {
-                        className: 'planner-card-body',
-                        style: isCardExpanded ? { maxHeight: 'none' } : {}
+                      React.createElement('div', {
+                        style: {
+                          fontSize: '0.84rem',
+                          color: 'var(--text-secondary)',
+                          whiteSpace: 'pre-wrap',
+                          maxHeight: isCardExpanded ? 'none' : '100px',
+                          overflow: 'hidden',
+                          lineHeight: 1.45
+                        }
                       }, contentStr),
-                      isLongContent && React.createElement('div', { style: { marginTop: 3 } },
+                      isLongNote && React.createElement('div', null,
                         React.createElement('button', {
                           className: 'btn btn-link btn-xs',
-                          style: { padding: 0, fontSize: '0.72rem', color: '#7c3aed', fontWeight: 600 },
+                          style: { padding: 0, fontSize: '0.74rem', fontWeight: 600 },
                           onClick: () => setExpandedCardNotes(prev => ({ ...prev, [n.id]: !prev[n.id] }))
-                        }, isCardExpanded ? '▲ Show less' : '▼ Read full note')
+                        }, isCardExpanded ? '▲ Collapse' : '▼ Read more')
                       ),
-                      React.createElement('div', { className: 'planner-card-meta' }, renderTags(n.tags)),
-                      renderAssociations(n.customerId, n.firmId)
+                      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border-light)' } },
+                        renderTags(n.tags),
+                        React.createElement('button', {
+                          className: 'btn btn-link btn-xs',
+                          style: { padding: 0, fontSize: '0.72rem' },
+                          onClick: () => setReadingModalItem({ type: 'note', item: n })
+                        }, '🔍 Full View')
+                      )
                     );
                   })
-                ) : (
-                  React.createElement('div', { className: 'planner-empty-col' },
-                    React.createElement('span', { style: { fontSize: '1.6rem' } }, '📝'),
-                    React.createElement('span', { style: { fontWeight: 600 } }, 'No notes saved'),
-                    React.createElement('button', {
-                      className: 'btn btn-outline btn-xs',
-                      style: { fontSize: '0.75rem', marginTop: 6, borderColor: '#8b5cf6', color: '#7c3aed' },
-                      onClick: () => openCreateModal('note')
-                    }, '+ Add Note')
-                  )
-                )
-              ),
-              filteredNotes.length > notePageSize && React.createElement(PaginationControls, {
-                currentPage: safeNotePage,
-                totalPages: noteTotalPages,
-                totalItems: filteredNotes.length,
-                compact: true,
-                onPageChange: setNotePage
-              })
+                ),
+                filteredNotes.length > notePageSize && React.createElement(PaginationControls, {
+                  currentPage: safeNotePage,
+                  totalPages: noteTotalPages,
+                  totalItems: filteredNotes.length,
+                  compact: true,
+                  onPageChange: setNotePage
+                })
+              ) : React.createElement('div', { style: { textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' } },
+                React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📝'),
+                React.createElement('div', { style: { fontWeight: 600 } }, 'No operational notes saved'),
+                React.createElement('button', { className: 'btn btn-primary btn-sm', style: { marginTop: 12 }, onClick: () => openCreateModal('note') }, '📝 + Add Note')
+              )
             )
           ),
 
@@ -8503,9 +8550,48 @@
         ),
 
         // ════════════════════════════════════════
-        // TAB: EXPENSE TRACKER
+        // TAB: EXPENSE TRACKER & FINANCIAL WORKSPACE
         // ════════════════════════════════════════
         activeTab === 'expenses' && React.createElement(Fragment, null,
+          // Shared Financial Overview Ribbon
+          React.createElement('div', { className: 'financial-hub-summary-row', style: { marginBottom: 20 } },
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Total Monthly Spend'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '💸')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: 'var(--danger, #DC2626)' } }, BillsoftUtils.formatCurrency(expenseStats.totalThisMonth)),
+              React.createElement('div', { className: 'financial-kpi-sub' }, `All-Time: ${BillsoftUtils.formatCurrency(expenseStats.totalAllTime)} • ${expenseStats.count} entries`)
+            ),
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Monthly Reserves'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '💰')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: 'var(--primary, #234B30)' } }, BillsoftUtils.formatCurrency(savingStats.totalThisMonth)),
+              React.createElement('div', { className: 'financial-kpi-sub' }, `All-Time: ${BillsoftUtils.formatCurrency(savingStats.totalAllTime)} • ${savingStats.count} deposits`)
+            ),
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Net Savings Rate'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '📊')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: savingStats.totalThisMonth >= expenseStats.totalThisMonth ? 'var(--primary)' : 'var(--warning, #D97706)' } },
+                `${((savingStats.totalThisMonth / ((expenseStats.totalThisMonth + savingStats.totalThisMonth) || 1)) * 100).toFixed(1)}%`
+              ),
+              React.createElement('div', { className: 'financial-kpi-sub' },
+                `Net Position: ${BillsoftUtils.formatCurrency(savingStats.totalThisMonth - expenseStats.totalThisMonth)}`
+              )
+            )
+          ),
+          // Sub-nav for financial workspace
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { className: 'planner-segmented-nav', style: { margin: 0 } },
+              React.createElement('button', { className: 'planner-segmented-btn active', onClick: () => setActiveTab('expenses') }, '💸 Expenses Outflow'),
+              React.createElement('button', { className: 'planner-segmented-btn', onClick: () => setActiveTab('savings') }, '💰 Savings & Reserves')
+            ),
+            React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: () => openCreateModal('expense') }, '💸 + Record Expense')
+          ),
           // Financial Outflow Summary Ribbon
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
             React.createElement('div', { className: 'kpi-card kpi-red' },
@@ -8746,25 +8832,31 @@
         // TAB: GOALS & HABITS (iOS Progress App Inspired)
         // ════════════════════════════════════════
         activeTab === 'goals' && React.createElement(Fragment, null,
-          // Financial & Habit Goals Summary Ribbon
-          React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 20 } },
-            React.createElement('div', { className: 'kpi-card kpi-blue' },
-              React.createElement('div', { className: 'kpi-icon' }, '🎯'),
-              React.createElement('div', { className: 'kpi-label' }, 'Active Goals'),
-              React.createElement('div', { className: 'kpi-value' }, `${activeGoalsCount} Active`),
-              React.createElement('div', { className: 'kpi-sub' }, `${goals.filter(g => g.status === 'ACHIEVED').length} Achieved • ${goals.length} Total`)
+          // Financial & Habit Goals Modern KPI Cards
+          React.createElement('div', { className: 'financial-hub-summary-row', style: { marginBottom: 20 } },
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Active Goals'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '🎯')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: 'var(--primary)' } }, `${activeGoalsCount} Active`),
+              React.createElement('div', { className: 'financial-kpi-sub' }, `${goals.filter(g => g.status === 'ACHIEVED').length} Achieved • ${goals.length} Total Targets`)
             ),
-            React.createElement('div', { className: 'kpi-card kpi-amber' },
-              React.createElement('div', { className: 'kpi-icon' }, '🔥'),
-              React.createElement('div', { className: 'kpi-label' }, 'Longest Habit Streak'),
-              React.createElement('div', { className: 'kpi-value' }, `${bestStreak} Days`),
-              React.createElement('div', { className: 'kpi-sub' }, 'Continuous daily consistency')
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Longest Habit Streak'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '🔥')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: '#D97706' } }, `${bestStreak} Days`),
+              React.createElement('div', { className: 'financial-kpi-sub' }, 'Continuous daily streak discipline')
             ),
-            React.createElement('div', { className: 'kpi-card kpi-green' },
-              React.createElement('div', { className: 'kpi-icon' }, '💰'),
-              React.createElement('div', { className: 'kpi-label' }, 'Total Savings Accumulated'),
-              React.createElement('div', { className: 'kpi-value' }, BillsoftUtils.formatCurrency(savingStats.totalAllTime)),
-              React.createElement('div', { className: 'kpi-sub' }, `${savingsGoalsOptions.length} savings targets`)
+            React.createElement('div', { className: 'financial-kpi-card' },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Total Savings Accumulated'),
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '💰')
+              ),
+              React.createElement('div', { className: 'financial-kpi-val', style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(savingStats.totalAllTime)),
+              React.createElement('div', { className: 'financial-kpi-sub' }, `${savingsGoalsOptions.length} linked reserve targets`)
             )
           ),
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 } },
@@ -8826,254 +8918,182 @@
 
                 return React.createElement('div', {
                   key: g.id,
-                  className: 'progress-app-card',
-                  style: { borderTop: `4px solid ${cardColor}` }
+                  className: 'goal-card-compact',
+                  style: { borderTop: `3px solid ${cardColor}` }
                 },
-                  // 1. Card Header
-                  React.createElement('div', { className: 'progress-card-header' },
-                    React.createElement('div', { className: 'progress-card-icon-title' },
+                  // 1. Dual-Tier Compact Header
+                  React.createElement('div', { className: 'goal-compact-header' },
+                    React.createElement('div', { className: 'goal-compact-title-group' },
                       React.createElement('div', {
-                        className: 'progress-card-icon',
+                        className: 'goal-compact-icon',
                         style: { background: `${cardColor}18`, color: cardColor }
                       }, g.icon || (isSavings ? '💰' : (isHabit ? '🔥' : (isQuit ? '🌿' : '🎯')))),
-                      React.createElement('div', { className: 'progress-card-title-group' },
-                        React.createElement('div', { className: 'progress-card-title' }, g.title),
+                      React.createElement('div', { style: { minWidth: 0, flex: 1 } },
+                        React.createElement('div', { className: 'goal-compact-title', title: g.title }, g.title),
                         React.createElement('span', {
-                          className: 'progress-card-type-chip',
+                          className: 'goal-compact-type-badge',
                           style: { background: `${cardColor}15`, color: cardColor }
                         },
                           isSavings ? '💰 Savings Target' : (isHabit ? '🔥 Daily Streak' : (isQuit ? '🌿 Clean Counter' : '🎯 Milestone'))
                         )
                       )
                     ),
-                    React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                    React.createElement('div', { style: { display: 'flex', gap: 2, alignItems: 'center' } },
                       React.createElement('button', { className: 'btn btn-ghost btn-xs', onClick: () => openEditModal('goal', g), title: 'Edit Goal' }, '✏️'),
                       React.createElement('button', { className: 'btn btn-ghost btn-xs', style: { color: 'var(--danger)' }, onClick: () => setDeleteConfirmItem({ type: 'goal', id: g.id, title: g.title }), title: 'Delete Goal' }, '🗑️')
                     )
                   ),
 
-                  // Tags if present
-                  g.tags && React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
-                    g.tags.split(',').map((t, idx) => React.createElement('span', {
-                      key: idx,
-                      style: { fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontWeight: 600 }
-                    }, `#${t.trim()}`))
-                  ),
-
-                  // 2. Values & Percent Row
-                  React.createElement('div', { className: 'progress-values-row' },
+                  // 2. Metrics & Percent Row with Tabular Numerals
+                  React.createElement('div', { className: 'goal-compact-metrics-row' },
                     React.createElement('div', null,
                       isSavings && React.createElement(Fragment, null,
-                        React.createElement('div', { className: 'progress-val-current' }, BillsoftUtils.formatCurrency(curVal)),
-                        React.createElement('div', { className: 'progress-val-target' }, `Target: ${BillsoftUtils.formatCurrency(tgtVal)}`)
+                        React.createElement('div', { className: 'goal-compact-current-val' }, BillsoftUtils.formatCurrency(curVal)),
+                        React.createElement('div', { className: 'goal-compact-target-val' }, `Target: ${BillsoftUtils.formatCurrency(tgtVal)}`)
                       ),
                       isHabit && React.createElement(Fragment, null,
-                        React.createElement('div', { className: 'progress-val-current', style: { color: '#d97706' } }, `🔥 ${g.currentStreak || 0} Days`),
-                        React.createElement('div', { className: 'progress-val-target' }, `Personal Best: ${g.longestStreak || 0} days`)
+                        React.createElement('div', { className: 'goal-compact-current-val', style: { color: '#d97706' } }, `🔥 ${g.currentStreak || 0} Days`),
+                        React.createElement('div', { className: 'goal-compact-target-val' }, `Personal Best: ${g.longestStreak || 0} days`)
                       ),
                       isQuit && React.createElement(Fragment, null,
-                        React.createElement('div', { className: 'progress-val-current', style: { color: '#7c3aed' } }, `🌿 ${g.currentStreak || 0} Days Clean`),
-                        React.createElement('div', { className: 'progress-val-target' }, `Started: ${g.startDate || 'Recent'}`)
+                        React.createElement('div', { className: 'goal-compact-current-val', style: { color: '#7c3aed' } }, `🌿 ${g.currentStreak || 0} Days Clean`),
+                        React.createElement('div', { className: 'goal-compact-target-val' }, `Started: ${g.startDate || 'Recent'}`)
                       ),
                       isMilestone && React.createElement(Fragment, null,
-                        React.createElement('div', { className: 'progress-val-current' }, `${curVal} / ${tgtVal} ${g.unit || ''}`),
-                        React.createElement('div', { className: 'progress-val-target' },
+                        React.createElement('div', { className: 'goal-compact-current-val' }, `${curVal} / ${tgtVal} ${g.unit || ''}`),
+                        React.createElement('div', { className: 'goal-compact-target-val' },
                           (tgtVal > 0 && curVal < tgtVal)
                             ? `${(tgtVal - curVal).toFixed(tgtVal % 1 === 0 && curVal % 1 === 0 ? 0 : 1)} ${g.unit || ''} remaining`
                             : (curVal >= tgtVal && tgtVal > 0 ? '🏆 Completed!' : `Target: ${tgtVal} ${g.unit || ''}`)
                         )
                       )
                     ),
-                    React.createElement('div', { className: 'progress-percent-pill', style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : {} },
+                    React.createElement('div', { className: 'goal-compact-pct-pill', style: isAchieved ? { background: '#d1fae5', color: '#065f46' } : {} },
                       isAchieved ? '🏆 Achieved!' : (tgtVal > 0 ? `${pct}% Complete` : 'In Progress')
                     )
                   ),
 
-                  // 3. Progress Pill Filling Track
-                  React.createElement('div', { className: 'progress-pill-track' },
+                  // 3. Precision 8px Progress Track
+                  React.createElement('div', { className: 'goal-compact-track' },
                     React.createElement('div', {
-                      className: `progress-pill-fill${isAchieved ? '' : ' striped'}`,
+                      className: 'goal-compact-fill',
                       style: {
                         width: `${pct}%`,
-                        background: isAchieved ? '#10b981' : `linear-gradient(90deg, ${cardColor}cc, ${cardColor})`
+                        background: isAchieved ? '#10b981' : `linear-gradient(90deg, #D4AF37 0%, ${cardColor} 100%)`
                       }
                     })
                   ),
 
-                  // Multi-segment mini pills for habit streaks
-                  isHabit && React.createElement('div', { className: 'progress-segmented-pills' },
-                    [...Array(7)].map((_, i) => {
-                      const filled = (g.currentStreak || 0) >= (7 - i);
-                      return React.createElement('div', {
-                        key: i,
-                        className: `progress-segment-pill${filled ? ' active' : ''}`
-                      });
-                    })
+                  // Meta Countdown / Tags
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: 'var(--text-secondary)' } },
+                    daysRemaining != null ? React.createElement('span', null,
+                      daysRemaining > 0 ? `⏳ ${daysRemaining}d left` : (daysRemaining === 0 ? '⏰ Due Today!' : `⚠️ Passed by ${Math.abs(daysRemaining)}d`)
+                    ) : React.createElement('span', null, `Started ${g.startDate || 'recently'}`),
+                    g.tags && React.createElement('span', { style: { fontWeight: 600 } }, `#${g.tags.split(',')[0].trim()}`)
                   ),
 
-                  // 4. Meta Footer: Target Countdown & Remarks
-                  React.createElement('div', { className: 'progress-card-footer' },
-                    daysRemaining != null ? React.createElement('span', { className: 'progress-countdown-pill' },
-                      daysRemaining > 0 ? `⏳ ${daysRemaining} days left` : (daysRemaining === 0 ? '⏰ Due Today!' : `⚠️ Passed target by ${Math.abs(daysRemaining)}d`)
-                    ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, `Started ${g.startDate || 'recently'}`),
-                    g.notes && React.createElement('span', { style: { fontStyle: 'italic', maxWidth: '50%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, g.notes)
-                  ),
+                  // 4. Compact Footer with ONE Dominant Primary Action
+                  React.createElement('div', { className: 'goal-compact-footer-actions' },
+                    // Primary Dominant Action
+                    isSavings && React.createElement('button', {
+                      className: 'btn btn-primary btn-sm',
+                      style: { fontWeight: 700, padding: '4px 12px' },
+                      onClick: () => {
+                        openCreateModal('saving');
+                        setFormGoalId(String(g.id));
+                        setFormTitle(`${g.title} Deposit`);
+                        setFormCategory(g.title);
+                      }
+                    }, '➕ Deposit'),
+                    isHabit && React.createElement('button', {
+                      className: 'btn btn-primary btn-sm',
+                      style: { fontWeight: 700, padding: '4px 12px' },
+                      disabled: isCheckedInToday,
+                      onClick: () => onCheckInGoal(g.id)
+                    }, isCheckedInToday ? '✓ Done Today' : '🔥 Check In'),
+                    isQuit && React.createElement('button', {
+                      className: 'btn btn-primary btn-sm',
+                      style: { fontWeight: 700, padding: '4px 12px' },
+                      onClick: () => onCheckInGoal(g.id)
+                    }, '🌿 Day Clean!'),
+                    isMilestone && React.createElement('button', {
+                      className: 'btn btn-primary btn-sm',
+                      style: { fontWeight: 700, padding: '4px 12px' },
+                      onClick: () => onIncrementGoal(g.id, 1)
+                    }, `+1 ${g.unit ? (g.unit.endsWith('s') && g.unit.length > 2 ? g.unit.slice(0, -1) : g.unit) : 'Unit'}`),
 
-                  // 5. One-Tap Quick Action Pill Ribbon
-                  React.createElement('div', { className: 'progress-quick-ribbon' },
-                    // Savings Goal Quick Actions
-                    isSavings && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => {
-                          if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
-                          else {
-                            onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                    // Grouped Secondary Actions
+                    React.createElement('div', { className: 'goal-compact-action-group' },
+                      isSavings && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          onClick: () => {
+                            if (onQuickSavingGoal) onQuickSavingGoal(g.id, 1000);
+                            else onCreateSaving({ title: `${g.title} Contribution`, amount: 1000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
                           }
-                        }
-                      }, '💰 +₹1k'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => {
-                          if (onQuickSavingGoal) onQuickSavingGoal(g.id, 5000);
-                          else {
-                            onCreateSaving({ title: `${g.title} Contribution`, amount: 5000, category: g.title, savingDate: BillsoftUtils.todayStr(), paymentMode: 'UPI', goalId: g.id });
+                        }, '+₹1k'),
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          style: { color: 'var(--danger)' },
+                          onClick: () => setDeductModal({ isOpen: true, goal: g, amount: 1000, paymentMode: 'UPI', notes: '' })
+                        }, 'Deduct'),
+                        React.createElement('button', {
+                          className: `btn btn-xs ${isExpanded ? 'btn-primary' : 'btn-outline'}`,
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 ${linkedSavings.length} ${isExpanded ? '▲' : '▼'}`)
+                      ),
+                      isHabit && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          onClick: () => onIncrementStreakGoal ? onIncrementStreakGoal(g.id, 7) : onCheckInGoal(g.id)
+                        }, '+7d'),
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          style: { color: 'var(--danger)' },
+                          onClick: async () => {
+                            const confirmed = await (window.showConfirm ? window.showConfirm({
+                              title: 'Reset Habit Streak',
+                              message: `Reset streak for "${g.title}"?`,
+                              confirmText: 'Reset',
+                              isDanger: true
+                            }) : Promise.resolve(confirm(`Reset habit streak for "${g.title}"?`)));
+                            if (confirmed) onResetGoal(g.id);
                           }
-                        }
-                      }, '💰 +₹5k'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => {
-                          openCreateModal('saving');
-                          setFormGoalId(String(g.id));
-                          setFormTitle(`${g.title} Deposit`);
-                          setFormCategory(g.title);
-                        }
-                      }, '➕ Deposit'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: 'var(--danger)', borderColor: 'rgba(220,38,38,0.3)' },
-                        onClick: () => setDeductModal({ isOpen: true, goal: g, amount: 1000, paymentMode: 'UPI', notes: '' })
-                      }, '💸 Deduct'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
-                        onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(curVal), notes: '' })
-                      }, '🎯 Update To ₹'),
-                      React.createElement('button', {
-                        className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
-                        style: { marginLeft: 'auto' },
-                        onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                      }, `📈 / 📜 History (${linkedSavings.length}) ${isExpanded ? '▲' : '▼'}`)
-                    ),
-
-                    // Habit Streak Quick Actions
-                    isHabit && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        className: `progress-quick-pill-btn${isCheckedInToday ? '' : ' flame'}`,
-                        disabled: isCheckedInToday,
-                        onClick: () => onCheckInGoal(g.id)
-                      }, isCheckedInToday ? '✓ Checked in today' : '🔥 Check In Today'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => {
-                          if (onIncrementStreakGoal) onIncrementStreakGoal(g.id, 7);
-                          else onCheckInGoal(g.id);
-                        }
-                      }, '+1 Week (+7d)'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => {
-                          if (onIncrementStreakGoal) onIncrementStreakGoal(g.id, 30);
-                          else onCheckInGoal(g.id);
-                        }
-                      }, '+1 Month (+30d)'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
-                        onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(g.currentStreak || 0), notes: '' })
-                      }, '🎯 Set Streak To'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: 'var(--danger)' },
-                        onClick: async () => {
-                          const confirmed = await (window.showConfirm ? window.showConfirm({
-                            title: 'Reset Habit Streak',
-                            message: `Reset active streak for "${g.title}"?\n\nYour milestone history and longest streak of ${g.longestStreak || 0} days will remain intact.`,
-                            confirmText: 'Reset Streak',
-                            cancelText: 'Keep Streak',
-                            isDanger: true,
-                            icon: '🔥'
-                          }) : Promise.resolve(confirm(`Reset habit streak for "${g.title}"?`)));
-                          if (confirmed) onResetGoal(g.id);
-                        }
-                      }, '↺ Reset'),
-                      React.createElement('button', {
-                        className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
-                        style: { marginLeft: 'auto' },
-                        onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                      }, `📈 History ${isExpanded ? '▲' : '▼'}`)
-                    ),
-
-                    // Quit Habit Quick Actions
-                    isQuit && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn flame',
-                        onClick: () => onCheckInGoal(g.id)
-                      }, '🌿 Another Day Clean!'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
-                        onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(g.currentStreak || 0), notes: '' })
-                      }, '🎯 Set Days Clean'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: 'var(--danger)' },
-                        onClick: async () => {
-                          const confirmed = await (window.showConfirm ? window.showConfirm({
-                            title: 'Reset Clean Timer',
-                            message: `Reset relapse timer for "${g.title}"?\n\nStay strong, forgive yourself, and start fresh today!`,
-                            confirmText: 'Reset & Start Fresh',
-                            cancelText: 'Cancel',
-                            isDanger: true,
-                            icon: '🌿'
-                          }) : Promise.resolve(confirm(`Reset relapse timer for "${g.title}"? Stay strong and start fresh!`)));
-                          if (confirmed) onResetGoal(g.id);
-                        }
-                      }, '↺ Relapse Reset'),
-                      React.createElement('button', {
-                        className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
-                        style: { marginLeft: 'auto' },
-                        onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                      }, `📈 History ${isExpanded ? '▲' : '▼'}`)
-                    ),
-
-                    // Progress Tracker / Life Milestone Quick Actions
-                    isMilestone && React.createElement(Fragment, null,
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn primary',
-                        onClick: () => onIncrementGoal(g.id, 1)
-                      }, `+1 ${g.unit ? (g.unit.endsWith('s') && g.unit.length > 2 ? g.unit.slice(0, -1) : g.unit) : 'Unit'}`),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        onClick: () => setLogProgressModal({
-                          isOpen: true,
-                          goal: g,
-                          delta: 1,
-                          logDate: BillsoftUtils.todayStr(),
-                          notes: ''
-                        })
-                      }, '📝 Log Progress'),
-                      React.createElement('button', {
-                        className: 'progress-quick-pill-btn',
-                        style: { color: '#4f46e5', borderColor: 'rgba(99,102,241,0.3)' },
-                        onClick: () => setReconcileModal({ isOpen: true, goal: g, targetValue: String(curVal), notes: '' })
-                      }, '🎯 Set Count'),
-                      React.createElement('button', {
-                        className: `progress-quick-pill-btn${isExpanded ? ' primary' : ''}`,
-                        style: { marginLeft: 'auto' },
-                        onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
-                      }, `📈 / 📜 History ${isExpanded ? '▲' : '▼'}`)
+                        }, 'Reset'),
+                        React.createElement('button', {
+                          className: `btn btn-xs ${isExpanded ? 'btn-primary' : 'btn-outline'}`,
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 ${isExpanded ? '▲' : '▼'}`)
+                      ),
+                      isQuit && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          style: { color: 'var(--danger)' },
+                          onClick: async () => {
+                            const confirmed = await (window.showConfirm ? window.showConfirm({
+                              title: 'Reset Clean Timer',
+                              message: `Reset relapse timer for "${g.title}"?`,
+                              confirmText: 'Reset',
+                              isDanger: true
+                            }) : Promise.resolve(confirm(`Reset relapse timer for "${g.title}"?`)));
+                            if (confirmed) onResetGoal(g.id);
+                          }
+                        }, 'Relapse'),
+                        React.createElement('button', {
+                          className: `btn btn-xs ${isExpanded ? 'btn-primary' : 'btn-outline'}`,
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 ${isExpanded ? '▲' : '▼'}`)
+                      ),
+                      isMilestone && React.createElement(Fragment, null,
+                        React.createElement('button', {
+                          className: 'btn btn-outline btn-xs',
+                          onClick: () => setLogProgressModal({ isOpen: true, goal: g, delta: 1, logDate: BillsoftUtils.todayStr(), notes: '' })
+                        }, 'Log'),
+                        React.createElement('button', {
+                          className: `btn btn-xs ${isExpanded ? 'btn-primary' : 'btn-outline'}`,
+                          onClick: () => setExpandedGoalId(isExpanded ? null : g.id)
+                        }, `📈 ${isExpanded ? '▲' : '▼'}`)
+                      )
                     )
                   ),
 
@@ -10137,29 +10157,30 @@
               }),
               React.createElement('span', { style: { position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, fontSize: '0.85rem' } }, '🔍')
             ),
-            // Status Tabs
-            React.createElement('div', { style: { display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 4 } },
-              [
-                { id: 'ALL', label: 'All' },
-                { id: 'UNREAD', label: `Unread (${unreadTotal})` },
-                { id: 'ACTIONABLE', label: 'Actionable' },
-                { id: 'SNOOZED', label: 'Snoozed' },
-                { id: 'DISMISSED', label: 'Dismissed' }
-              ].map(tab => React.createElement('button', {
-                key: tab.id,
-                className: `btn btn-sm ${statusFilter === tab.id ? 'btn-primary' : 'btn-ghost'}`,
-                style: { fontSize: '0.72rem', padding: '3px 8px', whiteSpace: 'nowrap', borderRadius: 6 },
-                onClick: () => setStatusFilter(tab.id)
-              }, tab.label))
-            ),
-            // Category Filter Pills
-            React.createElement('div', { style: { display: 'flex', gap: 4, overflowX: 'auto', paddingTop: 6 } },
-              [{ id: 'ALL', label: 'All Categories' }, ...Object.keys(categoryConfig).map(k => ({ id: k, label: categoryConfig[k].icon + ' ' + categoryConfig[k].label }))].map(cat => React.createElement('button', {
-                key: cat.id,
-                className: `badge ${categoryFilter === cat.id ? 'badge-primary' : 'badge-ghost'}`,
-                style: { fontSize: '0.68rem', cursor: 'pointer', padding: '3px 8px', borderRadius: 12, border: categoryFilter === cat.id ? '1px solid var(--primary)' : '1px solid var(--border)', background: categoryFilter === cat.id ? 'var(--primary-light)' : 'transparent', color: categoryFilter === cat.id ? 'var(--primary)' : 'var(--text-secondary)' },
-                onClick: () => setCategoryFilter(cat.id)
-              }, cat.label))
+            // Consolidated Filter Strip
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+              React.createElement('div', { className: 'inbox-filter-strip', style: { margin: 0, padding: 0 } },
+                [
+                  { id: 'ALL', label: 'All' },
+                  { id: 'UNREAD', label: `Unread (${unreadTotal})` },
+                  { id: 'ACTIONABLE', label: 'Actionable' },
+                  { id: 'SNOOZED', label: 'Snoozed' }
+                ].map(tab => React.createElement('button', {
+                  key: tab.id,
+                  className: `tab${statusFilter === tab.id ? ' active' : ''}`,
+                  style: { fontSize: '0.74rem', padding: '3px 10px', borderRadius: 6 },
+                  onClick: () => setStatusFilter(tab.id)
+                }, tab.label))
+              ),
+              React.createElement('select', {
+                className: 'select select-sm',
+                style: { fontSize: '0.74rem', padding: '2px 8px', height: 28, maxWidth: 130 },
+                value: categoryFilter,
+                onChange: e => setCategoryFilter(e.target.value)
+              },
+                React.createElement('option', { value: 'ALL' }, 'All Categories'),
+                Object.keys(categoryConfig).map(k => React.createElement('option', { key: k, value: k }, `${categoryConfig[k].icon} ${categoryConfig[k].label}`))
+              )
             )
           ),
           // List Items
@@ -10943,7 +10964,29 @@
           API.employees && API.employees.analytics ? API.employees.analytics() : Promise.resolve(null),
           API.system && API.system.updateStatus ? API.system.updateStatus() : Promise.resolve(null)
         ]).then(([kpiRes, poRes, prodRes, partyRes, custRes, empRes, updateRes]) => {
-          if (kpiRes.status === 'fulfilled' && kpiRes.value) setData(kpiRes.value);
+          if (kpiRes.status === 'fulfilled' && kpiRes.value) {
+            setData(kpiRes.value);
+          } else {
+            setData({
+              totalBusiness: 0,
+              totalPaid: 0,
+              totalPending: 0,
+              businessToday: 0,
+              businessThisWeek: 0,
+              businessThisMonth: 0,
+              businessThisYear: 0,
+              unpaidInvoiceCount: 0,
+              overdueInvoiceCount: 0,
+              vendorPayables: 0,
+              openPoCount: 0,
+              totalVendors: 0,
+              totalInventoryCostValue: 0,
+              lowStockCount: 0,
+              totalProducts: 0,
+              quotePipelineValue: 0,
+              quoteCount: 0
+            });
+          }
           if (poRes.status === 'fulfilled') setPurchaseOrders(norm(poRes.value));
           if (prodRes.status === 'fulfilled') setProducts(norm(prodRes.value));
           if (partyRes.status === 'fulfilled') setParties(norm(partyRes.value));
@@ -13977,7 +14020,7 @@
 
       if (loading) return React.createElement('div', { className: 'loading-screen' }, React.createElement('div', { className: 'spinner' }), React.createElement('span', null, 'Loading form...'));
 
-      return React.createElement('div', { ref: formContainerRef, className: 'invoice-form', onKeyDown: handleFormKeyDown, style: { paddingBottom: 100 } },
+      return React.createElement('div', { ref: formContainerRef, className: 'invoice-form invoice-builder-card', onKeyDown: handleFormKeyDown, style: { paddingBottom: 100 } },
 
         showCompletionPopup && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCompletionPopup(false) },
           React.createElement('div', { className: 'modal', onClick: e => e.stopPropagation() },
@@ -14126,7 +14169,28 @@
           )
         ),
 
-        React.createElement('div', { className: 'invoice-form-header' },
+        React.createElement('div', { className: 'invoice-header-row' },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+            React.createElement('img', {
+              src: 'images/rupee_coin_3d_128.png',
+              alt: 'RupeeCRM',
+              style: { width: 44, height: 44, objectFit: 'contain', filter: 'drop-shadow(0 4px 8px rgba(212,175,55,0.35))' }
+            }),
+            React.createElement('div', { className: 'invoice-title-block' },
+              React.createElement('h2', null, isEstimate ? 'SALES QUOTATION' : 'TAX INVOICE'),
+              React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 } },
+                currentEditId ? `#${form.invoiceNumber || form.estimateNumber || currentEditId}` : 'New Billing Document'
+              )
+            )
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            React.createElement('span', { className: `badge ${form.paid ? 'badge-success' : 'badge-primary'}`, style: { fontSize: '0.78rem', padding: '4px 10px', fontWeight: 700 } },
+              isEstimate ? 'PRO FORMA / QUOTATION' : (form.paid ? 'PAID INVOICE' : 'OFFICIAL INVOICE')
+            )
+          )
+        ),
+
+        React.createElement('div', { className: 'invoice-form-header invoice-zone-header' },
 
           React.createElement('div', { className: 'card invoice-customer-card' },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 } },
@@ -14217,22 +14281,22 @@
         ),
 
         React.createElement('div', { className: 'card', style: { marginBottom: 24 } },
-          React.createElement('div', { className: 'card-header' },
+          React.createElement('div', { className: 'card-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
             React.createElement('div', { className: 'card-title' }, 'Line Items'),
-            React.createElement('button', { type: 'button', className: 'btn btn-sm btn-primary-outline', onClick: () => addItem(true) }, '+ Add Item')
+            React.createElement('span', { className: 'badge', style: { background: 'var(--primary-light)', color: 'var(--primary)', fontWeight: 700, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem' } }, `${(form.items || []).length} ${(form.items || []).length === 1 ? 'item' : 'items'}`)
           ),
           React.createElement('div', { className: 'table-container', style: { overflow: 'visible' } },
-            React.createElement('table', { className: 'invoice-items-table' },
+            React.createElement('table', { className: 'invoice-items-table invoice-table' },
               React.createElement('thead', null,
                 React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '30%' } }, 'Product'),
+                  React.createElement('th', { style: { width: '34%' } }, 'Product'),
                   React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
-                  React.createElement('th', null, 'Qty'),
-                  React.createElement('th', null, 'Price'),
-                  React.createElement('th', null, 'Disc'),
-                  React.createElement('th', null, 'GST%'),
-                  React.createElement('th', null, 'Total'),
-                  React.createElement('th', null)
+                  React.createElement('th', { style: { width: '8%' } }, 'Qty'),
+                  React.createElement('th', { style: { width: '12%' } }, 'Price'),
+                  React.createElement('th', { style: { width: '10%' } }, 'Disc'),
+                  React.createElement('th', { style: { width: '8%' } }, 'GST%'),
+                  React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Total'),
+                  React.createElement('th', { style: { width: '4%' } })
                 )
               ),
               React.createElement('tbody', null,
@@ -14425,7 +14489,7 @@
             React.createElement('textarea', { className: 'textarea', placeholder: 'Customer Note...', value: form.customerNote, onChange: e => setForm(f => ({ ...f, customerNote: e.target.value })), style: { marginBottom: 12 } }),
             React.createElement('textarea', { className: 'textarea', placeholder: 'Terms & Conditions...', value: form.termsAndConditions, onChange: e => setForm(f => ({ ...f, termsAndConditions: e.target.value })) })
           ),
-          React.createElement('div', { className: 'summary-panel' },
+          React.createElement('div', { className: 'summary-panel totals-box' },
             React.createElement('div', { className: 'card-title', style: { marginBottom: 12 } }, 'Summary'),
             createSumRow('Subtotal', calcTotals.subtotal),
             calcTotals.itemDiscount > 0 && createSumRow('Item Discount', -calcTotals.itemDiscount),
@@ -14483,19 +14547,21 @@
               createSumRow('Tax (GST)', calcTotals.gstAmount),
               createSumRow('Total Discount', -calcTotals.totalDiscount)
             ),
-            React.createElement('div', { className: 'summary-row total' },
+            React.createElement('div', { className: 'summary-row total totals-row grand-total' },
               React.createElement('span', { className: 'summary-label' }, 'Grand Total'),
               React.createElement('span', { className: 'summary-value' }, BillsoftUtils.formatCurrency(calcTotals.totalAmount))
             )
           )
         ),
-        React.createElement('div', { className: 'form-actions invoice-form-bottom-actions' },
-          React.createElement('div', { style: { fontSize: '0.9rem', color: 'var(--text-secondary)' } }, 'Press TAB on last item row to finish'),
-          React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+        React.createElement('div', { className: 'form-actions invoice-form-bottom-actions invoice-bottom-dock' },
+          React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('span', { style: { opacity: 0.8 } }, '⌨️'),
+            'Press TAB on last item row to finish'
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' } },
             !isEstimate && !currentEditId && React.createElement('button', {
               type: 'button',
-              className: 'btn btn-outline',
-              style: { borderColor: 'var(--text-secondary)', color: 'var(--text-secondary)' },
+              className: 'btn btn-ghost',
               onClick: () => handleSave(false, false, true),
               disabled: saving || submitDisabled
             }, '📝 Save as Draft'),
@@ -14521,10 +14587,11 @@
               }, '🔒 Editing Locked (Return Filed)')
             ) : React.createElement('button', {
               type: 'button',
-              className: 'btn btn-primary btn-lg',
+              className: `btn ${form.paid ? 'btn-gold' : 'btn-primary'} btn-lg`,
+              style: { fontWeight: 700, minWidth: 150 },
               onClick: () => handleSave(false, false, false),
               disabled: saving || submitDisabled
-            }, saving ? 'Saving...' : (currentEditId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : (form.paid ? 'Save Paid Invoice' : 'Save Invoice')))),
+            }, saving ? 'Saving...' : (currentEditId ? (isEstimate ? 'Update Quotation' : 'Update Invoice') : (isEstimate ? 'Save Quotation' : (form.paid ? '✓ Save Paid Invoice' : 'Save Invoice')))),
 
             currentEditId && migrationHistory && migrationHistory.length > 0 && migrationHistory[0].status === 'ACTIVE' && React.createElement('button', {
               type: 'button',
@@ -18200,34 +18267,42 @@
               'Track live stock quantities, cost valuation, product catalog, and movement ledger.'
             )
           ),
-          React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
-            React.createElement('button', {
-              id: 'btn-bulk-import',
-              className: 'btn btn-outline',
-              onClick: openBulkImport,
-              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(16, 185, 129, 0.08)', color: '#059669', borderColor: 'rgba(16, 185, 129, 0.3)', fontWeight: 600 }
-            }, '📥 Bulk Items Import'),
-            React.createElement('button', {
-              id: 'btn-duplicates-merge',
-              className: 'btn btn-outline',
-              onClick: openDuplicates,
-              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(245, 158, 11, 0.08)', color: '#d97706', borderColor: 'rgba(245, 158, 11, 0.3)', fontWeight: 600 }
-            }, '🔍 Duplicates & Merge'),
-            React.createElement('button', {
-              className: 'btn btn-secondary',
-              onClick: () => setInventoryTab('SMART_REORDER'),
-              style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', borderColor: 'rgba(99, 102, 241, 0.3)', fontWeight: 600 }
-            }, 'Smart Reorder Queue'),
-            React.createElement('button', { className: 'btn btn-outline', onClick: () => openHistory(null), style: { display: 'flex', alignItems: 'center', gap: 6 } },
-              '📜 Movement Ledger'
+          React.createElement('div', { className: 'inventory-canonical-toolbar' },
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+              React.createElement('button', {
+                id: 'btn-bulk-import',
+                className: 'btn btn-outline btn-sm',
+                onClick: openBulkImport,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '📥 Bulk Import'),
+              React.createElement('button', {
+                className: 'btn btn-outline btn-sm',
+                onClick: () => setShowBulkAddModal(true),
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '➕ Bulk Add'),
+              React.createElement('button', {
+                id: 'btn-duplicates-merge',
+                className: 'btn btn-outline btn-sm',
+                onClick: openDuplicates,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '🔍 Duplicates'),
+              React.createElement('button', {
+                className: 'btn btn-outline btn-sm',
+                onClick: () => openHistory(null),
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+              }, '📜 Movement Ledger')
             ),
-            React.createElement('button', {
-              className: 'btn btn-outline',
-              onClick: () => setShowBulkAddModal(true),
-              style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
-            }, '➕ Bulk Add'),
-            React.createElement('button', { className: 'btn btn-primary', onClick: openCreate, style: { display: 'flex', alignItems: 'center', gap: 6 } },
-              '+ Add Product'
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('button', {
+                className: 'btn btn-gold btn-sm',
+                onClick: () => setInventoryTab('SMART_REORDER'),
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }
+              }, '⚡ Smart Reorder'),
+              React.createElement('button', {
+                className: 'btn btn-primary btn-sm',
+                onClick: openCreate,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }
+              }, '➕ Add Product')
             )
           )
         ),
@@ -36573,38 +36648,13 @@
 
           // Liquid Glass Reload Capsule
           React.createElement('div', { className: `rcrm-liquid-reload-capsule${isComplete ? ' completed' : ''}` },
-            // Liquid Spinner / Check
+            // Rupee Gold Coin Spinner / Check
             React.createElement('div', { className: `rcrm-liquid-reload-icon-wrap${isComplete ? ' done' : ''}` },
-              !isComplete ? (
-                React.createElement('svg', {
-                  className: 'rcrm-liquid-spinner-svg',
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '2.5',
-                  strokeLinecap: 'round'
-                },
-                  React.createElement('circle', {
-                    cx: '12',
-                    cy: '12',
-                    r: '9',
-                    strokeDasharray: '38 18',
-                    className: 'rcrm-spinner-circle'
-                  })
-                )
-              ) : (
-                React.createElement('svg', {
-                  className: 'rcrm-liquid-check-svg',
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '3',
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round'
-                },
-                  React.createElement('polyline', { points: '20 6 9 17 4 12' })
-                )
-              )
+              React.createElement(RupeeCRMIcon, {
+                size: 22,
+                spinning: !isComplete,
+                className: isComplete ? 'rcrm-coin-glint' : ''
+              })
             ),
 
             // Message Text
@@ -37217,6 +37267,9 @@
         if (!msgStr) return;
 
         const normType = (toastType || 'info').toLowerCase() === 'danger' ? 'error' : (toastType || 'info').toLowerCase();
+        if (normType === 'success' && typeof window !== 'undefined' && typeof window.triggerCoinCelebration === 'function') {
+          window.triggerCoinCelebration();
+        }
         const dedupKey = normType + ':' + msgStr.replace(/\s+/g, ' ');
         const toastId = BillsoftUtils.generateId ? BillsoftUtils.generateId() : ('t_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4));
         const now = Date.now();
@@ -37498,6 +37551,7 @@
         if (p !== 'new-invoice') { setEditInvoiceId(null); setCloneInvoiceId(null); }
         if (p !== 'new-quotation') { setEditQuotationId(null); setConvertedFromQuotationId(null); }
       };
+      window.appNavigate = navigate;
       const handleEditInvoice = (id) => { setEditInvoiceId(id); setEditQuotationId(null); setConvertedFromQuotationId(null); setCloneInvoiceId(null); setPage('invoices'); };
       const handleCloneInvoice = (id) => { setCloneInvoiceId(id); setEditInvoiceId(null); setEditQuotationId(null); setConvertedFromQuotationId(null); setPage('invoices'); setInvoiceSubTab('create'); };
       const handleMarkReminderDone = (id) => {
@@ -38027,6 +38081,7 @@
         setInvoiceSubTab('create');
         setPage('invoices');
       };
+      window.handleQuickCreate = handleQuickCreate;
 
       useEffect(() => {
         const handleNavSubtab = (e) => {

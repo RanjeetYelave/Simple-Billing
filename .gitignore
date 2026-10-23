@@ -122,6 +122,7 @@ playwright/.cache/
 *.tmp
 *.scratch
 *.bak
+scratch/
 
 ###############################################################
 # STANDALONE OPERATOR TOOLS

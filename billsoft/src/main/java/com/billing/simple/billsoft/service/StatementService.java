@@ -12,11 +12,17 @@ public interface StatementService {
 
     byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception;
 
+    byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception;
+
     FirmStatementResponse getFirmStatement(Long firmId, LocalDate from, LocalDate to);
 
     byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception;
 
+    byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception;
+
     PartyStatementResponse getPartyStatement(Long firmId, Long partyId, LocalDate from, LocalDate to);
 
     byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception;
+
+    byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception;
 }

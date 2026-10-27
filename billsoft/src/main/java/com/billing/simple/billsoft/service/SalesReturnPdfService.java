@@ -1,9 +1,15 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.dtos.InvoicePrintOptions;
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.FirmDetails;
 import com.billing.simple.billsoft.entities.SalesReturn;
 import com.billing.simple.billsoft.entities.SalesReturnItem;
+import com.billing.simple.billsoft.enums.InvoiceColorPalette;
+import com.billing.simple.billsoft.enums.InvoiceTheme;
+import com.billing.simple.billsoft.enums.PrintFormat;
+import com.billing.simple.billsoft.service.pdf.core.DocumentThemeHelper;
+import com.billing.simple.billsoft.service.pdf.core.UniversalPageNumberHelper;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 import org.springframework.stereotype.Service;
@@ -15,7 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
- * Generates official Credit Note / Sales Return Slip PDFs.
+ * Generates official Credit Note / Sales Return Slip PDFs with multi-theme and multi-format support.
  */
 @Service
 public class SalesReturnPdfService {
@@ -23,73 +29,100 @@ public class SalesReturnPdfService {
     private final FirmDetailsService firmService;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
-    // Palette
-    private static final Color HEADER_RED = new Color(220, 38, 38);   // #dc2626
-    private static final Color DARK_BORDER = new Color(75, 85, 99);   // #4b5563
-    private static final Color LIGHT_BORDER = new Color(209, 213, 219); // #d1d5db
-    private static final Color TEXT_DARK = new Color(17, 24, 39);     // #111827
-    private static final Color TEXT_MUTED = new Color(107, 114, 128); // #6b7280
-
     public SalesReturnPdfService(FirmDetailsService firmService) {
         this.firmService = firmService;
     }
 
     public byte[] generatePdf(SalesReturn salesReturn, String size) throws Exception {
-        Rectangle pageSize = (size != null && size.equalsIgnoreCase("A5")) ? PageSize.A5 : PageSize.A4;
+        return generatePdf(salesReturn, size, null, null, null);
+    }
+
+    public byte[] generatePdf(SalesReturn salesReturn, String size, String formatStr, String themeStr, String colorStr) throws Exception {
+        FirmDetails firm = null;
+        try {
+            Long firmId = salesReturn != null ? salesReturn.getFirmId() : null;
+            firm = firmId != null ? firmService.get(firmId) : firmService.getFirst();
+        } catch (Exception ignored) {
+            firm = null;
+        }
+
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(size, formatStr, themeStr, colorStr, firm);
+
+        if (options.getFormat() == PrintFormat.THERMAL_80MM) {
+            return renderThermal80mm(salesReturn, firm, options);
+        }
+
+        return renderPagedPdf(salesReturn, firm, options);
+    }
+
+    private byte[] renderPagedPdf(SalesReturn salesReturn, FirmDetails firm, InvoicePrintOptions options) throws Exception {
+        InvoiceTheme theme = options.getTheme();
+        InvoiceColorPalette palette = options.getColorPalette();
+        Color primaryColor = palette.getPrimaryColor();
+        Color lightTint = palette.getLightTintColor();
+
+        Rectangle pageSize = (options.getFormat() == PrintFormat.A5) ? PageSize.A5 : PageSize.A4;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(pageSize, 28, 28, 28, 36);
         PdfWriter writer = PdfWriter.getInstance(doc, baos);
 
-        PageNumberHelper pageHelper = new PageNumberHelper();
-        writer.setPageEvent(pageHelper);
-
+        writer.setPageEvent(new UniversalPageNumberHelper(8f));
         doc.open();
 
-        FirmDetails firm = null;
-        try {
-            Long firmId = salesReturn.getFirmId();
-            firm = firmId != null ? firmService.get(firmId) : firmService.getFirst();
-        } catch (Exception e) {
-            firm = null;
-        }
         Customer cust = salesReturn.getCustomer();
+        float scale = (options.getFormat() == PrintFormat.A5) ? 0.85f : 1.0f;
 
-        // 1. Header Table
+        Font firmTitleFont = new Font(Font.HELVETICA, 14 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font firmSubFont = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
+        Font docTypeFont = new Font(Font.HELVETICA, 13 * scale, Font.BOLD, primaryColor);
+        Font metaFont = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
+        Font metaBold = new Font(Font.HELVETICA, 8.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+
+        // 1. Professional Banner (if Professional theme)
+        if (theme == InvoiceTheme.PROFESSIONAL) {
+            doc.add(DocumentThemeHelper.createProfessionalBanner("CREDIT NOTE / SALES RETURN", primaryColor, scale));
+        }
+
+        // 2. Header Block
         PdfPTable headerTable = new PdfPTable(2);
         headerTable.setWidthPercentage(100);
         headerTable.setWidths(new float[]{60, 40});
 
-        Font firmTitleFont = new Font(Font.HELVETICA, 14, Font.BOLD, TEXT_DARK);
-        Font firmSubFont = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, TEXT_MUTED);
-        Font docTypeFont = new Font(Font.HELVETICA, 14, Font.BOLD, HEADER_RED);
-        Font metaFont = new Font(Font.HELVETICA, 9, Font.NORMAL, TEXT_DARK);
-        Font metaBold = new Font(Font.HELVETICA, 9, Font.BOLD, TEXT_DARK);
-
-        // Left Cell: Firm
         PdfPCell leftCell = new PdfPCell();
         leftCell.setBorder(Rectangle.NO_BORDER);
-        String firmName = (firm != null && firm.getFirmName() != null) ? firm.getFirmName() : "Enterprise Billing";
+
+        Image logo = (firm != null) ? DocumentThemeHelper.loadLogoImage(firm.getLogoBase64(), 100 * scale, 45 * scale) : null;
+        if (logo != null) {
+            leftCell.addElement(logo);
+        }
+
+        String firmName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().isBlank())
+                ? firm.getFirmName() : "Enterprise Billing";
         leftCell.addElement(new Paragraph(firmName, firmTitleFont));
+
         if (firm != null) {
-            String addr = (firm.getAddressLine1() != null ? firm.getAddressLine1() : "") + (firm.getAddressLine2() != null ? ", " + firm.getAddressLine2() : "");
+            String addr = (firm.getAddressLine1() != null ? firm.getAddressLine1() : "") +
+                    (firm.getAddressLine2() != null ? ", " + firm.getAddressLine2() : "");
             if (!addr.isBlank()) leftCell.addElement(new Paragraph(addr, firmSubFont));
-            if (firm.getPhone() != null) leftCell.addElement(new Paragraph("Phone: " + firm.getPhone(), firmSubFont));
-            if (firm.getGstin() != null) leftCell.addElement(new Paragraph("GSTIN: " + firm.getGstin(), firmSubFont));
+            if (firm.getPhone() != null && !firm.getPhone().isBlank()) leftCell.addElement(new Paragraph("Phone: " + firm.getPhone(), firmSubFont));
+            if (firm.getGstin() != null && !firm.getGstin().isBlank()) leftCell.addElement(new Paragraph("GSTIN: " + firm.getGstin(), firmSubFont));
         }
         headerTable.addCell(leftCell);
 
-        // Right Cell: Return Note info
         PdfPCell rightCell = new PdfPCell();
         rightCell.setBorder(Rectangle.NO_BORDER);
         rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph pDocType = new Paragraph("CREDIT NOTE / SALES RETURN", docTypeFont);
-        pDocType.setAlignment(Element.ALIGN_RIGHT);
-        rightCell.addElement(pDocType);
+
+        if (theme != InvoiceTheme.PROFESSIONAL) {
+            Paragraph pDocType = new Paragraph("CREDIT NOTE / SALES RETURN", docTypeFont);
+            pDocType.setAlignment(Element.ALIGN_RIGHT);
+            rightCell.addElement(pDocType);
+        }
 
         Paragraph pNo = new Paragraph();
         pNo.setAlignment(Element.ALIGN_RIGHT);
-        pNo.add(new Chunk("Credit Note No: ", metaBold));
-        pNo.add(new Chunk(salesReturn.getReturnNumber(), metaFont));
+        pNo.add(new Chunk("Credit Note #: ", metaBold));
+        pNo.add(new Chunk(salesReturn.getReturnNumber() != null ? salesReturn.getReturnNumber() : "—", metaFont));
         rightCell.addElement(pNo);
 
         Paragraph pDate = new Paragraph();
@@ -102,26 +135,39 @@ public class SalesReturnPdfService {
             Paragraph pInv = new Paragraph();
             pInv.setAlignment(Element.ALIGN_RIGHT);
             pInv.add(new Chunk("Ref Invoice: ", metaBold));
-            pInv.add(new Chunk(salesReturn.getInvoice().getInvoiceNumber() != null ? salesReturn.getInvoice().getInvoiceNumber() : "#" + salesReturn.getInvoice().getId(), metaFont));
+            String invNum = salesReturn.getInvoice().getInvoiceNumber() != null
+                    ? salesReturn.getInvoice().getInvoiceNumber() : "#" + salesReturn.getInvoice().getId();
+            pInv.add(new Chunk(invNum, metaFont));
             rightCell.addElement(pInv);
         }
 
         headerTable.addCell(rightCell);
         doc.add(headerTable);
-
         doc.add(new Paragraph(" "));
 
-        // 2. Customer & Reason Box
+        // 3. Customer & Return Details Box
         PdfPTable partyTable = new PdfPTable(2);
         partyTable.setWidthPercentage(100);
         partyTable.setWidths(new float[]{55, 45});
 
         PdfPCell billToCell = new PdfPCell();
-        billToCell.setBorder(Rectangle.BOX);
-        billToCell.setBorderColor(LIGHT_BORDER);
-        billToCell.setPadding(8);
-        billToCell.addElement(new Paragraph("CUSTOMER DETAILS", new Font(Font.HELVETICA, 8, Font.BOLD, HEADER_RED)));
-        billToCell.addElement(new Paragraph(cust != null ? cust.getName() : "Direct Customer", new Font(Font.HELVETICA, 9.5f, Font.BOLD, TEXT_DARK)));
+        billToCell.setPadding(8 * scale);
+        if (theme == InvoiceTheme.MINIMAL) {
+            billToCell.setBorder(Rectangle.BOTTOM);
+            billToCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+            billToCell.setBackgroundColor(Color.WHITE);
+        } else if (theme == InvoiceTheme.MODERN) {
+            billToCell.setBorder(Rectangle.BOX);
+            billToCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+            billToCell.setBackgroundColor(lightTint);
+        } else {
+            billToCell.setBorder(Rectangle.BOX);
+            billToCell.setBorderColor(DocumentThemeHelper.BORDER_COLOR);
+            billToCell.setBackgroundColor(Color.WHITE);
+        }
+
+        billToCell.addElement(new Paragraph("CUSTOMER DETAILS", new Font(Font.HELVETICA, 8 * scale, Font.BOLD, primaryColor)));
+        billToCell.addElement(new Paragraph(cust != null ? cust.getName() : "Direct Customer", new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK)));
         if (cust != null) {
             if (cust.getAddress() != null) billToCell.addElement(new Paragraph(cust.getAddress(), firmSubFont));
             if (cust.getPhone() != null) billToCell.addElement(new Paragraph("Phone: " + cust.getPhone(), firmSubFont));
@@ -130,69 +176,80 @@ public class SalesReturnPdfService {
         partyTable.addCell(billToCell);
 
         PdfPCell reasonCell = new PdfPCell();
-        reasonCell.setBorder(Rectangle.BOX);
-        reasonCell.setBorderColor(LIGHT_BORDER);
-        reasonCell.setPadding(8);
-        reasonCell.addElement(new Paragraph("RETURN DETAILS", new Font(Font.HELVETICA, 8, Font.BOLD, HEADER_RED)));
+        reasonCell.setPadding(8 * scale);
+        if (theme == InvoiceTheme.MINIMAL) {
+            reasonCell.setBorder(Rectangle.BOTTOM);
+            reasonCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+            reasonCell.setBackgroundColor(Color.WHITE);
+        } else if (theme == InvoiceTheme.MODERN) {
+            reasonCell.setBorder(Rectangle.BOX);
+            reasonCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+            reasonCell.setBackgroundColor(lightTint);
+        } else {
+            reasonCell.setBorder(Rectangle.BOX);
+            reasonCell.setBorderColor(DocumentThemeHelper.BORDER_COLOR);
+            reasonCell.setBackgroundColor(Color.WHITE);
+        }
+
+        reasonCell.addElement(new Paragraph("RETURN DETAILS", new Font(Font.HELVETICA, 8 * scale, Font.BOLD, primaryColor)));
         reasonCell.addElement(new Paragraph("Reason: " + (salesReturn.getReason() != null ? salesReturn.getReason() : "Customer Return"), metaFont));
         reasonCell.addElement(new Paragraph("Refund Mode: " + (salesReturn.getRefundMode() != null ? salesReturn.getRefundMode() : "CASH"), metaFont));
         if (salesReturn.getNotes() != null && !salesReturn.getNotes().isBlank()) {
             reasonCell.addElement(new Paragraph("Notes: " + salesReturn.getNotes(), firmSubFont));
         }
         partyTable.addCell(reasonCell);
-
         doc.add(partyTable);
         doc.add(new Paragraph(" "));
 
-        // 3. Returned Items Table
+        // 4. Returned Items Table
         PdfPTable itemsTable = new PdfPTable(7);
         itemsTable.setWidthPercentage(100);
         itemsTable.setWidths(new float[]{6, 38, 12, 10, 14, 10, 14});
         itemsTable.setHeaderRows(1);
-        itemsTable.setSplitRows(true);
-        itemsTable.setSplitLate(false);
 
         String[] headers = {"#", "Item Description", "HSN/SAC", "Qty", "Rate (₹)", "GST %", "Refund (₹)"};
+        Font thFont = new Font(Font.HELVETICA, 8f * scale, Font.BOLD, (theme == InvoiceTheme.MINIMAL) ? primaryColor : Color.WHITE);
+
         for (String h : headers) {
-            PdfPCell cell = new PdfPCell(new Phrase(h, new Font(Font.HELVETICA, 8.5f, Font.BOLD, Color.WHITE)));
-            cell.setBackgroundColor(HEADER_RED);
-            cell.setPadding(5);
-            cell.setHorizontalAlignment(h.equals("Item Description") ? Element.ALIGN_LEFT : Element.ALIGN_CENTER);
-            itemsTable.addCell(cell);
+            int align = h.equals("Item Description") ? Element.ALIGN_LEFT :
+                    (h.contains("Rate") || h.contains("Refund")) ? Element.ALIGN_RIGHT : Element.ALIGN_CENTER;
+            itemsTable.addCell(DocumentThemeHelper.createHeaderCell(h, theme, primaryColor, thFont, align, scale));
         }
 
         List<SalesReturnItem> items = salesReturn.getItems();
-        Font rowFont = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, TEXT_DARK);
-        for (int i = 0; i < items.size(); i++) {
-            SalesReturnItem item = items.get(i);
-            Color bg = (i % 2 == 0) ? Color.WHITE : new Color(249, 250, 251);
+        Font rowFont = new Font(Font.HELVETICA, 8f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
 
-            itemsTable.addCell(createCell(String.valueOf(i + 1), rowFont, Element.ALIGN_CENTER, bg));
-            itemsTable.addCell(createCell(item.getProductName(), rowFont, Element.ALIGN_LEFT, bg));
-            itemsTable.addCell(createCell(item.getHsnCode() != null ? item.getHsnCode() : "—", rowFont, Element.ALIGN_CENTER, bg));
-            itemsTable.addCell(createCell(String.valueOf(item.getReturnQty()) + (item.getUnit() != null ? " " + item.getUnit() : ""), rowFont, Element.ALIGN_CENTER, bg));
-            itemsTable.addCell(createCell(item.getUnitPrice() != null ? String.format("%.2f", item.getUnitPrice()) : "0.00", rowFont, Element.ALIGN_RIGHT, bg));
-            itemsTable.addCell(createCell(item.getGstPercent() != null ? item.getGstPercent() + "%" : "0%", rowFont, Element.ALIGN_CENTER, bg));
-            itemsTable.addCell(createCell(item.getRefundTotal() != null ? String.format("%.2f", item.getRefundTotal()) : "0.00", rowFont, Element.ALIGN_RIGHT, bg));
+        if (items != null) {
+            for (int i = 0; i < items.size(); i++) {
+                SalesReturnItem item = items.get(i);
+                boolean isEven = (i % 2 == 1);
+
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(String.valueOf(i + 1), rowFont), theme, isEven, Element.ALIGN_CENTER, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(item.getProductName() != null ? item.getProductName() : "", rowFont), theme, isEven, Element.ALIGN_LEFT, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(item.getHsnCode() != null ? item.getHsnCode() : "—", rowFont), theme, isEven, Element.ALIGN_CENTER, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(String.valueOf(item.getReturnQty()) + (item.getUnit() != null ? " " + item.getUnit() : ""), rowFont), theme, isEven, Element.ALIGN_CENTER, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(item.getUnitPrice() != null ? String.format("%.2f", item.getUnitPrice()) : "0.00", rowFont), theme, isEven, Element.ALIGN_RIGHT, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(item.getGstPercent() != null ? item.getGstPercent() + "%" : "0%", rowFont), theme, isEven, Element.ALIGN_CENTER, scale));
+                itemsTable.addCell(DocumentThemeHelper.createDataCell(new Phrase(item.getRefundTotal() != null ? String.format("%.2f", item.getRefundTotal()) : "0.00", rowFont), theme, isEven, Element.ALIGN_RIGHT, scale));
+            }
         }
-
         doc.add(itemsTable);
 
-        // 4. Summary Table
+        // 5. Summary Table
         PdfPTable summaryTable = new PdfPTable(2);
         summaryTable.setWidthPercentage(48);
         summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
         summaryTable.setKeepTogether(true);
-        summaryTable.setSpacingBefore(10);
+        summaryTable.setSpacingBefore(10 * scale);
 
-        Font sumLabel = new Font(Font.HELVETICA, 9, Font.NORMAL, TEXT_DARK);
-        Font sumDeduct = new Font(Font.HELVETICA, 9, Font.NORMAL, HEADER_RED);
-        Font sumBold = new Font(Font.HELVETICA, 9.5f, Font.BOLD, HEADER_RED);
+        Font sumLabel = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
+        Font sumDeduct = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, new Color(220, 38, 38));
+        Font sumBold = new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, primaryColor);
 
         if (salesReturn.getExcludedTaxAmount() != null && salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal grossValue = salesReturn.getSubtotal().add(salesReturn.getExcludedTaxAmount());
-            addSummaryRow(summaryTable, "Gross Return Value (Incl. GST):", grossValue, sumLabel, false);
-            addSummaryRow(summaryTable, "Less: GST / Tax Deduction:", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
+            addSummaryRow(summaryTable, "Gross Return (Incl. GST):", grossValue, sumLabel, false);
+            addSummaryRow(summaryTable, "Less GST / Tax Deduction:", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
         } else {
             addSummaryRow(summaryTable, "Taxable Return Amount:", salesReturn.getSubtotal(), sumLabel, false);
             if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -207,19 +264,18 @@ public class SalesReturnPdfService {
         }
 
         addSummaryRow(summaryTable, "Total Refund / Credit:", salesReturn.getTotalRefundAmount(), sumBold, false);
-
         doc.add(summaryTable);
 
-        // 5. Signoff
+        // 6. Signoff
         PdfPTable signTable = new PdfPTable(2);
         signTable.setWidthPercentage(100);
         signTable.setKeepTogether(true);
-        signTable.setSpacingBefore(20);
+        signTable.setSpacingBefore(20 * scale);
 
         PdfPCell signLeft = new PdfPCell(new Phrase("Customer Signature / Acknowledgement\n\n\n_______________________", metaFont));
         signLeft.setBorder(Rectangle.NO_BORDER);
 
-        PdfPCell signRight = new PdfPCell(new Phrase("For " + (firm != null && firm.getFirmName() != null ? firm.getFirmName() : "Enterprise") + "\n\n\nAuthorized Signatory", metaFont));
+        PdfPCell signRight = new PdfPCell(new Phrase("For " + firmName + "\n\n\nAuthorized Signatory", metaFont));
         signRight.setBorder(Rectangle.NO_BORDER);
         signRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
@@ -231,13 +287,146 @@ public class SalesReturnPdfService {
         return baos.toByteArray();
     }
 
-    private PdfPCell createCell(String text, Font font, int align, Color bg) {
-        PdfPCell cell = new PdfPCell(new Phrase(text != null ? text : "", font));
-        cell.setHorizontalAlignment(align);
-        cell.setBackgroundColor(bg);
-        cell.setBorderColor(LIGHT_BORDER);
-        cell.setPadding(5);
-        return cell;
+    private byte[] renderThermal80mm(SalesReturn salesReturn, FirmDetails firm, InvoicePrintOptions options) throws Exception {
+        // Dynamic roll height based on content
+        int itemCount = (salesReturn != null && salesReturn.getItems() != null) ? salesReturn.getItems().size() : 1;
+        float baseHeight = 240f;
+        float calculatedHeight = Math.max(260f, baseHeight + (itemCount * 24f));
+        Rectangle pageSize = new Rectangle(226.77f, calculatedHeight);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Document doc = new Document(pageSize, 8, 8, 10, 10);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+        doc.open();
+
+        Font storeTitleFont = new Font(Font.HELVETICA, 10f, Font.BOLD, Color.BLACK);
+        Font subFont = new Font(Font.HELVETICA, 7f, Font.NORMAL, Color.BLACK);
+        Font boldSubFont = new Font(Font.HELVETICA, 7.5f, Font.BOLD, Color.BLACK);
+        Font itemFont = new Font(Font.HELVETICA, 6.8f, Font.NORMAL, Color.BLACK);
+
+        String firmName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().isBlank())
+                ? firm.getFirmName() : "STORE COUNTER";
+
+        Paragraph pTitle = new Paragraph(firmName, storeTitleFont);
+        pTitle.setAlignment(Element.ALIGN_CENTER);
+        doc.add(pTitle);
+
+        if (firm != null) {
+            String addr = (firm.getAddressLine1() != null ? firm.getAddressLine1() : "");
+            if (firm.getCity() != null) addr += (addr.isEmpty() ? "" : ", ") + firm.getCity();
+            if (!addr.isBlank()) {
+                Paragraph pAddr = new Paragraph(addr, subFont);
+                pAddr.setAlignment(Element.ALIGN_CENTER);
+                doc.add(pAddr);
+            }
+            if (firm.getGstin() != null && !firm.getGstin().isBlank()) {
+                Paragraph pGstin = new Paragraph("GSTIN: " + firm.getGstin(), subFont);
+                pGstin.setAlignment(Element.ALIGN_CENTER);
+                doc.add(pGstin);
+            }
+            if (firm.getPhone() != null && !firm.getPhone().isBlank()) {
+                Paragraph pPhone = new Paragraph("Phone: " + firm.getPhone(), subFont);
+                pPhone.setAlignment(Element.ALIGN_CENTER);
+                doc.add(pPhone);
+            }
+        }
+
+        Paragraph pDashes = new Paragraph("---------------------------------------------------------", subFont);
+        pDashes.setAlignment(Element.ALIGN_CENTER);
+        doc.add(pDashes);
+
+        Paragraph pHeader = new Paragraph("CREDIT NOTE / RETURN RECEIPT", boldSubFont);
+        pHeader.setAlignment(Element.ALIGN_CENTER);
+        doc.add(pHeader);
+
+        Paragraph pMeta = new Paragraph();
+        pMeta.add(new Chunk("CN #: " + (salesReturn.getReturnNumber() != null ? salesReturn.getReturnNumber() : "—") + "\n", boldSubFont));
+        pMeta.add(new Chunk("Date: " + (salesReturn.getReturnDate() != null ? salesReturn.getReturnDate().format(DATE_FMT) : "") + "\n", subFont));
+        if (salesReturn.getInvoice() != null) {
+            String invNum = salesReturn.getInvoice().getInvoiceNumber() != null
+                    ? salesReturn.getInvoice().getInvoiceNumber() : "#" + salesReturn.getInvoice().getId();
+            pMeta.add(new Chunk("Ref Inv: " + invNum + "\n", subFont));
+        }
+        Customer cust = salesReturn.getCustomer();
+        if (cust != null) {
+            pMeta.add(new Chunk("Customer: " + cust.getName() + "\n", subFont));
+            if (cust.getPhone() != null) pMeta.add(new Chunk("Phone: " + cust.getPhone() + "\n", subFont));
+        }
+        doc.add(pMeta);
+        doc.add(pDashes);
+
+        // Items Table
+        PdfPTable table = new PdfPTable(3);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{50, 20, 30});
+
+        PdfPCell h1 = new PdfPCell(new Phrase("ITEM", boldSubFont));
+        h1.setBorder(Rectangle.NO_BORDER);
+        PdfPCell h2 = new PdfPCell(new Phrase("QTY", boldSubFont));
+        h2.setBorder(Rectangle.NO_BORDER);
+        h2.setHorizontalAlignment(Element.ALIGN_CENTER);
+        PdfPCell h3 = new PdfPCell(new Phrase("REFUND", boldSubFont));
+        h3.setBorder(Rectangle.NO_BORDER);
+        h3.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+        table.addCell(h1);
+        table.addCell(h2);
+        table.addCell(h3);
+
+        List<SalesReturnItem> items = salesReturn.getItems();
+        if (items != null) {
+            for (SalesReturnItem item : items) {
+                PdfPCell c1 = new PdfPCell(new Phrase(item.getProductName(), itemFont));
+                c1.setBorder(Rectangle.NO_BORDER);
+                PdfPCell c2 = new PdfPCell(new Phrase(String.valueOf(item.getReturnQty()), itemFont));
+                c2.setBorder(Rectangle.NO_BORDER);
+                c2.setHorizontalAlignment(Element.ALIGN_CENTER);
+                PdfPCell c3 = new PdfPCell(new Phrase(String.format("%.2f", item.getRefundTotal() != null ? item.getRefundTotal() : BigDecimal.ZERO), itemFont));
+                c3.setBorder(Rectangle.NO_BORDER);
+                c3.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+                table.addCell(c1);
+                table.addCell(c2);
+                table.addCell(c3);
+            }
+        }
+        doc.add(table);
+        doc.add(pDashes);
+
+        // Summary
+        PdfPTable sumTable = new PdfPTable(2);
+        sumTable.setWidthPercentage(100);
+        sumTable.setWidths(new float[]{60, 40});
+
+        addThermalRow(sumTable, "Taxable Return:", salesReturn.getSubtotal(), subFont);
+        if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+            addThermalRow(sumTable, "GST Refund:", salesReturn.getTaxAmount(), subFont);
+        }
+        if (salesReturn.getPenaltyAmount() != null && salesReturn.getPenaltyAmount().compareTo(BigDecimal.ZERO) > 0) {
+            addThermalRow(sumTable, "Less Deduction:", salesReturn.getPenaltyAmount().negate(), subFont);
+        }
+        addThermalRow(sumTable, "TOTAL REFUND:", salesReturn.getTotalRefundAmount(), boldSubFont);
+        doc.add(sumTable);
+
+        doc.add(pDashes);
+        Paragraph pFooter = new Paragraph();
+        pFooter.setAlignment(Element.ALIGN_CENTER);
+        pFooter.add(new Chunk("Refund Mode: " + (salesReturn.getRefundMode() != null ? salesReturn.getRefundMode() : "CASH") + "\n", subFont));
+        if (salesReturn.getReason() != null) pFooter.add(new Chunk("Reason: " + salesReturn.getReason() + "\n", subFont));
+        pFooter.add(new Chunk("\nThank You! Please Retain Slip.\n", subFont));
+        doc.add(pFooter);
+
+        doc.close();
+        return baos.toByteArray();
+    }
+
+    private void addThermalRow(PdfPTable table, String label, BigDecimal amt, Font font) {
+        PdfPCell c1 = new PdfPCell(new Phrase(label, font));
+        c1.setBorder(Rectangle.NO_BORDER);
+        PdfPCell c2 = new PdfPCell(new Phrase(amt != null ? String.format("₹ %.2f", amt) : "₹ 0.00", font));
+        c2.setBorder(Rectangle.NO_BORDER);
+        c2.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        table.addCell(c1);
+        table.addCell(c2);
     }
 
     private void addSummaryRow(PdfPTable table, String label, BigDecimal amt, Font font, boolean isDeduction) {
@@ -252,51 +441,5 @@ public class SalesReturnPdfService {
         c2.setHorizontalAlignment(Element.ALIGN_RIGHT);
         c2.setPadding(3);
         table.addCell(c2);
-    }
-
-    private static class PageNumberHelper extends PdfPageEventHelper {
-        private PdfTemplate totalPagesTemplate;
-        private BaseFont baseFont;
-
-        @Override
-        public void onOpenDocument(PdfWriter writer, Document document) {
-            try {
-                baseFont = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.WINANSI, BaseFont.NOT_EMBEDDED);
-                totalPagesTemplate = writer.getDirectContent().createTemplate(50, 50);
-            } catch (Exception e) {
-                // fallback
-            }
-        }
-
-        @Override
-        public void onEndPage(PdfWriter writer, Document document) {
-            PdfContentByte cb = writer.getDirectContent();
-            String pageText = "Page " + writer.getPageNumber() + " of ";
-            float textSize = 8f;
-            float textWidth = baseFont.getWidthPoint(pageText, textSize);
-
-            float x = (document.right() + document.left()) / 2f - (textWidth / 2f);
-            float y = document.bottom() - 14;
-
-            cb.beginText();
-            cb.setFontAndSize(baseFont, textSize);
-            cb.setColorFill(new Color(156, 163, 175));
-            cb.setTextMatrix(x, y);
-            cb.showText(pageText);
-            cb.endText();
-
-            cb.addTemplate(totalPagesTemplate, x + textWidth, y);
-        }
-
-        @Override
-        public void onCloseDocument(PdfWriter writer, Document document) {
-            if (totalPagesTemplate != null && baseFont != null) {
-                totalPagesTemplate.beginText();
-                totalPagesTemplate.setFontAndSize(baseFont, 8f);
-                totalPagesTemplate.setColorFill(new Color(156, 163, 175));
-                totalPagesTemplate.showText(String.valueOf(writer.getPageNumber() - 1));
-                totalPagesTemplate.endText();
-            }
-        }
     }
 }

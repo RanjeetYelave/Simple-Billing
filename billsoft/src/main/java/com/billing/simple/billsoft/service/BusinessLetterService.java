@@ -29,4 +29,6 @@ public interface BusinessLetterService {
     String generateNextLetterNumber(Long firmId);
 
     byte[] generateLetterPdf(Long id, Long firmId) throws Exception;
+
+    byte[] generateLetterPdf(Long id, Long firmId, String theme, String color, String format) throws Exception;
 }

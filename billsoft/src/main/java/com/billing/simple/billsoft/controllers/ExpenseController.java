@@ -12,9 +12,16 @@ import java.util.Map;
 @RequestMapping("/api/expenses")
 public class ExpenseController {
     private final ExpenseService service;
+    private final com.billing.simple.billsoft.service.PlannerPdfService plannerPdfService;
+    private final com.billing.simple.billsoft.repo.FirmDetailsRepository firmRepo;
 
-    public ExpenseController(ExpenseService service) {
+    public ExpenseController(
+            ExpenseService service,
+            com.billing.simple.billsoft.service.PlannerPdfService plannerPdfService,
+            com.billing.simple.billsoft.repo.FirmDetailsRepository firmRepo) {
         this.service = service;
+        this.plannerPdfService = plannerPdfService;
+        this.firmRepo = firmRepo;
     }
 
     @GetMapping
@@ -91,4 +98,50 @@ public class ExpenseController {
         Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         return service.getCategoriesByFirm(target);
     }
+
+    @GetMapping("/statement/pdf")
+    public ResponseEntity<byte[]> statementPdf(
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color) throws Exception {
+
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        List<Expense> expenses = service.getExpensesByFirm(target);
+        if (from != null || to != null || (category != null && !category.isBlank() && !"ALL".equalsIgnoreCase(category))) {
+            expenses = expenses.stream()
+                    .filter(e -> e.getExpenseDate() != null)
+                    .filter(e -> from == null || !e.getExpenseDate().isBefore(from))
+                    .filter(e -> to == null || !e.getExpenseDate().isAfter(to))
+                    .filter(e -> category == null || category.isBlank() || "ALL".equalsIgnoreCase(category) || (e.getCategory() != null && e.getCategory().equalsIgnoreCase(category)))
+                    .collect(java.util.stream.Collectors.toList());
+        }
+
+        com.billing.simple.billsoft.entities.FirmDetails firm = target != null ? firmRepo.findById(target).orElse(null) : null;
+        byte[] pdf = plannerPdfService.generateExpenseStatementPdf(expenses, from, to, category, firm, null, format, theme, color);
+
+        String firmName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().trim().isEmpty())
+                ? firm.getFirmName().trim().replaceAll("[^a-zA-Z0-9_-]", "_")
+                : "Expense_Statement";
+        String dateStr = (from != null || to != null)
+                ? (from != null ? from.toString() : "Start") + "_to_" + (to != null ? to.toString() : java.time.LocalDate.now().toString())
+                : "All_Time";
+        String filename = firmName + "_Expenses_" + dateStr + ".pdf";
+
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+        headers.add(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdf);
+    }
 }
+

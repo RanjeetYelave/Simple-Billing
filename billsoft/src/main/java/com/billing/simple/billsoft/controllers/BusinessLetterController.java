@@ -161,11 +161,14 @@ public class BusinessLetterController {
     public ResponseEntity<byte[]> downloadPdf(
             @PathVariable Long id,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
-            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
+            @RequestParam(value = "theme", required = false) String theme,
+            @RequestParam(value = "color", required = false) String color,
+            @RequestParam(value = "format", required = false) String format) {
 
         Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
-            byte[] pdfBytes = letterService.generateLetterPdf(id, firmId);
+            byte[] pdfBytes = letterService.generateLetterPdf(id, firmId, theme, color, format);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Letter-" + id + ".pdf\"");

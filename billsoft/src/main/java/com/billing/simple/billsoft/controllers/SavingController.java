@@ -17,9 +17,16 @@ import java.util.Map;
 @RequestMapping("/api/savings")
 public class SavingController {
     private final SavingService service;
+    private final com.billing.simple.billsoft.service.PlannerPdfService plannerPdfService;
+    private final com.billing.simple.billsoft.repo.FirmDetailsRepository firmRepo;
 
-    public SavingController(SavingService service) {
+    public SavingController(
+            SavingService service,
+            com.billing.simple.billsoft.service.PlannerPdfService plannerPdfService,
+            com.billing.simple.billsoft.repo.FirmDetailsRepository firmRepo) {
         this.service = service;
+        this.plannerPdfService = plannerPdfService;
+        this.firmRepo = firmRepo;
     }
 
     @GetMapping
@@ -83,5 +90,50 @@ public class SavingController {
         Long authoritativeFirmId = TenantContext.getCurrentFirmId();
         if (authoritativeFirmId == null) authoritativeFirmId = firmId;
         return service.getCategoriesByFirm(authoritativeFirmId);
+    }
+
+    @GetMapping("/ledger/pdf")
+    public ResponseEntity<byte[]> ledgerPdf(
+            @RequestParam(required = false) Long firmId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color) throws Exception {
+
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        List<SavingRecord> savings = service.getSavingsByFirm(target);
+        if (from != null || to != null || (category != null && !category.isBlank() && !"ALL".equalsIgnoreCase(category))) {
+            savings = savings.stream()
+                    .filter(s -> s.getSavingDate() != null)
+                    .filter(s -> from == null || !s.getSavingDate().isBefore(from))
+                    .filter(s -> to == null || !s.getSavingDate().isAfter(to))
+                    .filter(s -> category == null || category.isBlank() || "ALL".equalsIgnoreCase(category) || (s.getCategory() != null && s.getCategory().equalsIgnoreCase(category)))
+                    .collect(java.util.stream.Collectors.toList());
+        }
+
+        com.billing.simple.billsoft.entities.FirmDetails firm = target != null ? firmRepo.findById(target).orElse(null) : null;
+        byte[] pdf = plannerPdfService.generateSavingsLedgerPdf(savings, from, to, category, firm, null, format, theme, color);
+
+        String firmName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().trim().isEmpty())
+                ? firm.getFirmName().trim().replaceAll("[^a-zA-Z0-9_-]", "_")
+                : "Savings_Ledger";
+        String dateStr = (from != null || to != null)
+                ? (from != null ? from.toString() : "Start") + "_to_" + (to != null ? to.toString() : LocalDate.now().toString())
+                : "All_Time";
+        String filename = firmName + "_Savings_" + dateStr + ".pdf";
+
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+        headers.add(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdf);
     }
 }

@@ -1,7 +1,13 @@
 package com.billing.simple.billsoft.service;
 
+import com.billing.simple.billsoft.dtos.InvoicePrintOptions;
 import com.billing.simple.billsoft.entities.BusinessLetter;
 import com.billing.simple.billsoft.entities.FirmDetails;
+import com.billing.simple.billsoft.enums.InvoiceColorPalette;
+import com.billing.simple.billsoft.enums.InvoiceTheme;
+import com.billing.simple.billsoft.enums.PrintFormat;
+import com.billing.simple.billsoft.service.pdf.core.DocumentThemeHelper;
+import com.billing.simple.billsoft.service.pdf.core.UniversalPageNumberHelper;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
@@ -12,7 +18,6 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
 
 @Service
 public class BusinessLetterPdfService {
@@ -20,33 +25,21 @@ public class BusinessLetterPdfService {
     private final FirmDetailsService firmService;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
-    private static final Color THEME_PRIMARY = new Color(79, 70, 229); // #4f46e5
-    private static final Color TEXT_DARK = new Color(17, 24, 39);      // #111827
-    private static final Color TEXT_MUTED = new Color(107, 114, 128);  // #6b7280
-
     public BusinessLetterPdfService(FirmDetailsService firmService) {
         this.firmService = firmService;
     }
 
     public byte[] generatePdf(BusinessLetter letter) throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
-        PdfWriter.getInstance(doc, baos);
-        doc.open();
+        return generatePdf(letter, null, null, null, null);
+    }
 
-        Font firmTitleFont = new Font(Font.HELVETICA, 16, Font.BOLD, THEME_PRIMARY);
-        Font firmSubFont = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, TEXT_MUTED);
-        Font boldFont = new Font(Font.HELVETICA, 10, Font.BOLD, TEXT_DARK);
-        Font normalFont = new Font(Font.HELVETICA, 9.5f, Font.NORMAL, TEXT_DARK);
-        Font subjectFont = new Font(Font.HELVETICA, 10.5f, Font.BOLD, TEXT_DARK);
-        Font smallFont = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, TEXT_MUTED);
-
-        boolean isCustomSender = "CUSTOM".equalsIgnoreCase(letter.getSenderType());
+    public byte[] generatePdf(BusinessLetter letter, String size, String format, String theme, String color) throws Exception {
+        boolean isCustomSender = letter != null && "CUSTOM".equalsIgnoreCase(letter.getSenderType());
         FirmDetails firm = null;
 
         if (!isCustomSender) {
             try {
-                if (letter.getFirmId() != null) {
+                if (letter != null && letter.getFirmId() != null) {
                     firm = firmService.get(letter.getFirmId());
                 }
                 if (firm == null) {
@@ -54,6 +47,29 @@ public class BusinessLetterPdfService {
                 }
             } catch (Exception ignored) {}
         }
+
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(size, format, theme, color, firm);
+        InvoiceTheme themeEnum = options.getTheme();
+        InvoiceColorPalette palette = options.getColorPalette();
+        Color primaryColor = palette.getPrimaryColor();
+        Color lightTint = palette.getLightTintColor();
+
+        Rectangle pageSize = (options.getFormat() == PrintFormat.A5) ? PageSize.A5 : PageSize.A4;
+        float scale = (options.getFormat() == PrintFormat.A5) ? 0.85f : 1.0f;
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Document doc = new Document(pageSize, 36 * scale, 36 * scale, 36 * scale, 36 * scale);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+
+        writer.setPageEvent(new UniversalPageNumberHelper(8f * scale));
+        doc.open();
+
+        Font firmTitleFont = new Font(Font.HELVETICA, 16 * scale, Font.BOLD, primaryColor);
+        Font firmSubFont = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
+        Font boldFont = new Font(Font.HELVETICA, 10 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font normalFont = new Font(Font.HELVETICA, 9.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
+        Font subjectFont = new Font(Font.HELVETICA, 10.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font smallFont = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
 
         String senderDisplayName;
         if (isCustomSender) {
@@ -67,26 +83,25 @@ public class BusinessLetterPdfService {
         }
 
         // 1. Official Letterhead Header
-        if (letter.getIncludeHeader() == null || letter.getIncludeHeader()) {
+        if (letter == null || letter.getIncludeHeader() == null || letter.getIncludeHeader()) {
+            if (themeEnum == InvoiceTheme.PROFESSIONAL) {
+                doc.add(DocumentThemeHelper.createProfessionalBanner(senderDisplayName, primaryColor, scale));
+            }
+
             PdfPTable headerTable = new PdfPTable(new float[]{65, 35});
             headerTable.setWidthPercentage(100);
 
             PdfPCell leftCell = new PdfPCell();
             leftCell.setBorder(Rectangle.NO_BORDER);
 
-            // Optional Logo (for firm sender)
             if (!isCustomSender && firm != null && firm.getLogoBase64() != null && !firm.getLogoBase64().trim().isEmpty()) {
-                try {
-                    String cleanBase64 = firm.getLogoBase64();
-                    if (cleanBase64.contains(",")) cleanBase64 = cleanBase64.split(",")[1];
-                    byte[] imgBytes = Base64.getDecoder().decode(cleanBase64);
-                    Image logo = Image.getInstance(imgBytes);
-                    logo.scaleToFit(90, 45);
-                    leftCell.addElement(logo);
-                } catch (Exception ignored) {}
+                Image logo = DocumentThemeHelper.loadLogoImage(firm.getLogoBase64(), 90 * scale, 45 * scale);
+                if (logo != null) leftCell.addElement(logo);
             }
 
-            leftCell.addElement(new Paragraph(senderDisplayName, firmTitleFont));
+            if (themeEnum != InvoiceTheme.PROFESSIONAL) {
+                leftCell.addElement(new Paragraph(senderDisplayName, firmTitleFont));
+            }
 
             if (isCustomSender) {
                 if (letter.getSenderName() != null && !letter.getSenderName().trim().isEmpty() && !letter.getSenderName().equals(senderDisplayName)) {
@@ -148,12 +163,12 @@ public class BusinessLetterPdfService {
             // Dividing Line
             PdfPTable divTable = new PdfPTable(1);
             divTable.setWidthPercentage(100);
-            divTable.setSpacingBefore(8f);
-            divTable.setSpacingAfter(14f);
+            divTable.setSpacingBefore(6f * scale);
+            divTable.setSpacingAfter(12f * scale);
             PdfPCell divCell = new PdfPCell();
             divCell.setBorder(Rectangle.TOP);
-            divCell.setBorderWidth(1.5f);
-            divCell.setBorderColor(THEME_PRIMARY);
+            divCell.setBorderWidth(themeEnum == InvoiceTheme.MINIMAL ? 1.0f : 1.5f);
+            divCell.setBorderColor(themeEnum == InvoiceTheme.MINIMAL ? DocumentThemeHelper.BORDER_LIGHT : primaryColor);
             divCell.setFixedHeight(2f);
             divTable.addCell(divCell);
             doc.add(divTable);
@@ -164,14 +179,15 @@ public class BusinessLetterPdfService {
         // 2. Reference Number & Date Line
         PdfPTable refTable = new PdfPTable(new float[]{50, 50});
         refTable.setWidthPercentage(100);
-        refTable.setSpacingAfter(14f);
+        refTable.setSpacingAfter(12f * scale);
 
-        String letterNo = letter.getLetterNumber() != null ? letter.getLetterNumber() : "LTR-XXXX";
+        String letterNo = letter != null && letter.getLetterNumber() != null ? letter.getLetterNumber() : "LTR-XXXX";
         PdfPCell refCell = new PdfPCell(new Phrase("Ref No: " + letterNo, boldFont));
         refCell.setBorder(Rectangle.NO_BORDER);
         refTable.addCell(refCell);
 
-        String dateStr = letter.getLetterDate() != null ? letter.getLetterDate().format(DATE_FORMATTER) : LocalDate.now().format(DATE_FORMATTER);
+        String dateStr = letter != null && letter.getLetterDate() != null
+                ? letter.getLetterDate().format(DATE_FORMATTER) : LocalDate.now().format(DATE_FORMATTER);
         PdfPCell dateCell = new PdfPCell(new Phrase("Date: " + dateStr, boldFont));
         dateCell.setBorder(Rectangle.NO_BORDER);
         dateCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -183,43 +199,45 @@ public class BusinessLetterPdfService {
         toP.setSpacingAfter(3f);
         doc.add(toP);
 
-        if (letter.getRecipientName() != null && !letter.getRecipientName().isEmpty()) {
-            doc.add(new Paragraph(letter.getRecipientName(), boldFont));
-        }
-        if (letter.getRecipientDesignation() != null && !letter.getRecipientDesignation().isEmpty()) {
-            doc.add(new Paragraph(letter.getRecipientDesignation(), normalFont));
-        }
-        if (letter.getRecipientCompany() != null && !letter.getRecipientCompany().isEmpty()) {
-            doc.add(new Paragraph(letter.getRecipientCompany(), boldFont));
-        }
-        if (letter.getRecipientAddress() != null && !letter.getRecipientAddress().isEmpty()) {
-            doc.add(new Paragraph(letter.getRecipientAddress(), normalFont));
-        }
-        if (letter.getRecipientPhone() != null && !letter.getRecipientPhone().isEmpty()) {
-            doc.add(new Paragraph("Phone: " + letter.getRecipientPhone(), smallFont));
-        }
-        if (letter.getRecipientEmail() != null && !letter.getRecipientEmail().isEmpty()) {
-            doc.add(new Paragraph("Email: " + letter.getRecipientEmail(), smallFont));
+        if (letter != null) {
+            if (letter.getRecipientName() != null && !letter.getRecipientName().isEmpty()) {
+                doc.add(new Paragraph(letter.getRecipientName(), boldFont));
+            }
+            if (letter.getRecipientDesignation() != null && !letter.getRecipientDesignation().isEmpty()) {
+                doc.add(new Paragraph(letter.getRecipientDesignation(), normalFont));
+            }
+            if (letter.getRecipientCompany() != null && !letter.getRecipientCompany().isEmpty()) {
+                doc.add(new Paragraph(letter.getRecipientCompany(), boldFont));
+            }
+            if (letter.getRecipientAddress() != null && !letter.getRecipientAddress().isEmpty()) {
+                doc.add(new Paragraph(letter.getRecipientAddress(), normalFont));
+            }
+            if (letter.getRecipientPhone() != null && !letter.getRecipientPhone().isEmpty()) {
+                doc.add(new Paragraph("Phone: " + letter.getRecipientPhone(), smallFont));
+            }
+            if (letter.getRecipientEmail() != null && !letter.getRecipientEmail().isEmpty()) {
+                doc.add(new Paragraph("Email: " + letter.getRecipientEmail(), smallFont));
+            }
         }
 
         doc.add(new Paragraph("\n"));
 
         // 4. Subject Line
-        if (letter.getSubject() != null && !letter.getSubject().isEmpty()) {
+        if (letter != null && letter.getSubject() != null && !letter.getSubject().isEmpty()) {
             Paragraph subjP = new Paragraph("Subject: " + letter.getSubject(), subjectFont);
-            subjP.setSpacingAfter(12f);
+            subjP.setSpacingAfter(10f * scale);
             doc.add(subjP);
         }
 
         // 5. Letter Body / Content
-        String content = letter.getContent() != null ? letter.getContent() : "";
+        String content = letter != null && letter.getContent() != null ? letter.getContent() : "";
         String[] paragraphs = content.split("\n\n|\r\n\r\n|\n");
         for (String para : paragraphs) {
             String trimmed = para.trim();
             if (!trimmed.isEmpty()) {
                 Paragraph p = new Paragraph(trimmed, normalFont);
-                p.setLeading(14f);
-                p.setSpacingAfter(10f);
+                p.setLeading(14f * scale);
+                p.setSpacingAfter(10f * scale);
                 doc.add(p);
             }
         }
@@ -227,10 +245,10 @@ public class BusinessLetterPdfService {
         doc.add(new Paragraph("\n"));
 
         // 6. Signatory Closing Footer
-        if (letter.getIncludeFooter() == null || letter.getIncludeFooter()) {
+        if (letter == null || letter.getIncludeFooter() == null || letter.getIncludeFooter()) {
             PdfPTable signTable = new PdfPTable(new float[]{60, 40});
             signTable.setWidthPercentage(100);
-            signTable.setSpacingBefore(16f);
+            signTable.setSpacingBefore(16f * scale);
 
             PdfPCell emptyC = new PdfPCell();
             emptyC.setBorder(Rectangle.NO_BORDER);
@@ -241,16 +259,14 @@ public class BusinessLetterPdfService {
             signCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             signCell.addElement(new Paragraph("Yours faithfully,", normalFont));
             signCell.addElement(new Paragraph("For " + senderDisplayName, boldFont));
-
-            // Space for physical signature
             signCell.addElement(new Paragraph("\n\n\n"));
 
-            String sigName = letter.getSignatoryName() != null && !letter.getSignatoryName().isEmpty()
+            String sigName = letter != null && letter.getSignatoryName() != null && !letter.getSignatoryName().isEmpty()
                     ? letter.getSignatoryName()
                     : "Authorized Signatory";
             signCell.addElement(new Paragraph(sigName, boldFont));
 
-            if (letter.getSignatoryDesignation() != null && !letter.getSignatoryDesignation().isEmpty()) {
+            if (letter != null && letter.getSignatoryDesignation() != null && !letter.getSignatoryDesignation().isEmpty()) {
                 signCell.addElement(new Paragraph(letter.getSignatoryDesignation(), smallFont));
             }
             signTable.addCell(signCell);

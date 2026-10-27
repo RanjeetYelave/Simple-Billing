@@ -85,13 +85,16 @@ public class SalesReturnController {
     @GetMapping("/returns/{id}/pdf")
     public ResponseEntity<byte[]> getReturnPdf(
             @PathVariable Long id,
-            @RequestParam(required = false, defaultValue = "A4") String size
+            @RequestParam(required = false, defaultValue = "A4") String size,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color
     ) {
         SalesReturn ret = invoiceService.getSalesReturnById(id);
         if (ret == null) return ResponseEntity.notFound().build();
 
         try {
-            byte[] pdfBytes = pdfService.generatePdf(ret, size);
+            byte[] pdfBytes = pdfService.generatePdf(ret, size, format, theme, color);
             String filename = "CreditNote-" + ret.getReturnNumber() + ".pdf";
 
             return ResponseEntity.ok()

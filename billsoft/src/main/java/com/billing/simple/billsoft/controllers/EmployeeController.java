@@ -657,7 +657,13 @@ public class EmployeeController {
     // ─── PDF Endpoints ───
 
     @GetMapping("/{id}/salaries/{salaryId}/payslip")
-    public ResponseEntity<byte[]> downloadPayslip(@PathVariable Long id, @PathVariable Long salaryId) {
+    public ResponseEntity<byte[]> downloadPayslip(
+            @PathVariable Long id,
+            @PathVariable Long salaryId,
+            @RequestParam(required = false) String size,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color) {
         Employee emp = getAuthorizedEmployee(id);
 
         Optional<SalaryRecord> salOpt = salaryRepo.findById(salaryId);
@@ -668,7 +674,7 @@ public class EmployeeController {
         try {
             FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
             List<SalaryRecord> allSalaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
-            byte[] pdf = pdfService.generatePayslip(emp, salOpt.get(), firm, allSalaries);
+            byte[] pdf = pdfService.generatePayslip(emp, salOpt.get(), firm, allSalaries, size, format, theme, color);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "payslip-" + id + "-" + salaryId + ".pdf");
@@ -682,7 +688,11 @@ public class EmployeeController {
     public ResponseEntity<byte[]> downloadStatement(
             @PathVariable Long id,
             @RequestParam(value = "from", required = false) String fromStr,
-            @RequestParam(value = "to", required = false) String toStr) {
+            @RequestParam(value = "to", required = false) String toStr,
+            @RequestParam(required = false) String size,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) String theme,
+            @RequestParam(required = false) String color) {
         Employee emp = getAuthorizedEmployee(id);
 
         LocalDate from = fromStr != null ? LocalDate.parse(fromStr) : null;
@@ -692,7 +702,7 @@ public class EmployeeController {
             List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
             List<EmployeeAdvance> advances = advanceRepo.findByEmployeeIdOrderByDateDesc(id);
             FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
-            byte[] pdf = pdfService.generateEmployeeStatement(emp, salaries, advances, from, to, firm);
+            byte[] pdf = pdfService.generateEmployeeStatement(emp, salaries, advances, from, to, firm, size, format, theme, color);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "employee-statement-" + id + ".pdf");

@@ -480,11 +480,17 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional(readOnly = true)
     public byte[] generatePoPdf(Long id, Long firmId) throws Exception {
+        return generatePoPdf(id, firmId, null, null, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generatePoPdf(Long id, Long firmId, String theme, String color, String format) throws Exception {
         PurchaseOrder po = (firmId != null
                 ? poRepository.findByIdAndFirmId(id, firmId)
                 : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
-        return pdfService.generatePdf(po);
+        return pdfService.generatePdf(po, null, format, theme, color);
     }
 
     private static final java.util.concurrent.ConcurrentHashMap<String, Long> PROCESSED_CLIENT_REQUESTS = new java.util.concurrent.ConcurrentHashMap<>();

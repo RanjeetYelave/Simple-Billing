@@ -18,7 +18,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     @org.springframework.data.jpa.repository.Query("SELECT po.party.id, SUM(COALESCE(po.totalAmount, 0)), COUNT(po.id) " +
             "FROM PurchaseOrder po " +
-            "WHERE po.firmId = :firmId AND po.party.id IN (:partyIds) AND po.status <> com.billing.simple.billsoft.entities.PurchaseOrderStatus.CANCELLED " +
+            "WHERE po.firmId = :firmId AND po.party.id IN (:partyIds) AND po.status IN (com.billing.simple.billsoft.entities.PurchaseOrderStatus.ISSUED, com.billing.simple.billsoft.entities.PurchaseOrderStatus.RECEIVED) " +
             "GROUP BY po.party.id")
     List<Object[]> sumTotalsByPartyIds(@org.springframework.data.repository.query.Param("firmId") Long firmId,
                                        @org.springframework.data.repository.query.Param("partyIds") List<Long> partyIds);

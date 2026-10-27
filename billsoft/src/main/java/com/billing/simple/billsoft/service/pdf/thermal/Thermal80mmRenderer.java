@@ -68,8 +68,13 @@ public class Thermal80mmRenderer {
 
     public static byte[] render(Invoice invoice, FirmDetails firm, InvoicePrintOptions options) throws Exception {
         // 80mm width = 226.77 pt
-        // Page height dynamically sized or standard POS roll height
-        Rectangle thermalSize = new Rectangle(226.77f, 842.0f);
+        // Page height dynamically sized based on actual document content to eliminate artificial A4 whitespace gaps
+        boolean isEst = invoice != null && invoice.getStatus() != null && invoice.getStatus().name().equalsIgnoreCase("ESTIMATE");
+        boolean hasUpi = !isEst && firm != null && firm.getUpiId() != null && !firm.getUpiId().trim().isBlank();
+        int itemCount = (invoice != null && invoice.getItems() != null) ? invoice.getItems().size() : 1;
+        float baseHeight = 310f + (hasUpi ? 115f : 0f);
+        float calculatedHeight = Math.max(280f, baseHeight + (itemCount * 26f));
+        Rectangle thermalSize = new Rectangle(226.77f, calculatedHeight);
         float margin = 6f;
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

@@ -6,6 +6,7 @@ import com.lowagie.text.Rectangle;
 public enum PrintFormat {
     A3("A3", PageSize.A3, 36f, 36f, 36f, 36f),
     A4("A4", PageSize.A4, 28f, 28f, 28f, 38f),
+    A4_LANDSCAPE("A4 Landscape", new Rectangle(842.0f, 595.0f), 28f, 28f, 28f, 38f),
     A5("A5", PageSize.A5, 20f, 20f, 20f, 30f),
     THERMAL_80MM("Thermal 80mm", new Rectangle(226.77f, 842.0f), 6f, 6f, 6f, 6f);
 
@@ -39,9 +40,10 @@ public enum PrintFormat {
     public float getMarginBottom() { return marginBottom; }
 
     public static PrintFormat fromString(String val) {
-        if (val == null || val.isBlank() || val.contains("object")) return A4;
+        if (val == null || val.isBlank()) return A4;
         String s = val.trim().toUpperCase().replace(" ", "_").replace("-", "_");
         if (s.equals("A3")) return A3;
+        if (s.contains("LANDSCAPE") || s.equals("A4_LANDSCAPE")) return A4_LANDSCAPE;
         if (s.equals("A5")) return A5;
         if (s.contains("THERMAL") || s.contains("80") || s.equals("POS")) return THERMAL_80MM;
         return A4;

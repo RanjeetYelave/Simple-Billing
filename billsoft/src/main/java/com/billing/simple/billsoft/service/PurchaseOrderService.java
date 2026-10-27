@@ -28,6 +28,8 @@ public interface PurchaseOrderService {
 
     byte[] generatePoPdf(Long id, Long firmId) throws Exception;
 
+    byte[] generatePoPdf(Long id, Long firmId, String theme, String color, String format) throws Exception;
+
     PurchaseOrder recordPoPayment(Long id, Long firmId, java.math.BigDecimal amount, java.time.LocalDate paymentDate, String paymentMode, String referenceNumber, String notes);
 
     List<PurchaseOrder> createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId);

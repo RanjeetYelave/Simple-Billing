@@ -223,9 +223,15 @@ public class BusinessLetterServiceImpl implements BusinessLetterService {
     @Override
     @Transactional(readOnly = true)
     public byte[] generateLetterPdf(Long id, Long firmId) throws Exception {
+        return generateLetterPdf(id, firmId, null, null, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateLetterPdf(Long id, Long firmId, String theme, String color, String format) throws Exception {
         Long target = resolveFirmId(firmId);
         BusinessLetter letter = letterRepository.findByIdAndFirmId(id, target)
                 .orElseThrow(() -> new IllegalArgumentException("Letter not found with id: " + id));
-        return pdfService.generatePdf(letter);
+        return pdfService.generatePdf(letter, null, format, theme, color);
     }
 }

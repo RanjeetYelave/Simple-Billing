@@ -37,6 +37,12 @@ import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.billing.simple.billsoft.dtos.InvoicePrintOptions;
+import com.billing.simple.billsoft.enums.InvoiceColorPalette;
+import com.billing.simple.billsoft.enums.InvoiceTheme;
+import com.billing.simple.billsoft.enums.PrintFormat;
+import com.billing.simple.billsoft.service.pdf.core.DocumentThemeHelper;
+import com.billing.simple.billsoft.service.pdf.core.UniversalPageNumberHelper;
 import org.springframework.stereotype.Service;
 
 import java.awt.Color;
@@ -271,6 +277,11 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to) throws Exception {
+        return generateCustomerStatementPdf(firmId, customerId, from, to, null, null, null);
+    }
+
+    @Override
+    public byte[] generateCustomerStatementPdf(Long firmId, Long customerId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception {
         final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
@@ -282,67 +293,115 @@ public class StatementServiceImpl implements StatementService {
         CustomerStatementResponse data = getCustomerStatement(targetFirmId, customerId, from, to);
         FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
-        Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(null, format, theme, color, firm);
+        InvoiceTheme themeEnum = options.getTheme();
+        InvoiceColorPalette palette = options.getColorPalette();
+        Color primaryColor = palette.getPrimaryColor();
+        Color lightTint = palette.getLightTintColor();
+
+        Rectangle pageSize = (options.getFormat() == PrintFormat.A5) ? PageSize.A5
+                : (options.getFormat() == PrintFormat.A4_LANDSCAPE) ? options.getFormat().getPageSize()
+                : PageSize.A4;
+        float scale = (options.getFormat() == PrintFormat.A5) ? 0.85f : 1.0f;
+
+        Document doc = new Document(pageSize, 28 * scale, 28 * scale, 32 * scale, 36 * scale);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PdfWriter.getInstance(doc, baos);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+        writer.setPageEvent(new UniversalPageNumberHelper(8f * scale));
         doc.open();
 
-        Font title = new Font(Font.HELVETICA, 16, Font.BOLD);
-        Font bold = new Font(Font.HELVETICA, 10, Font.BOLD);
-        Font normal = new Font(Font.HELVETICA, 10);
+        Font titleFont = new Font(Font.HELVETICA, 16 * scale, Font.BOLD, primaryColor);
+        Font bold = new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font normal = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
+        Font subText = new Font(Font.HELVETICA, 8f * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
 
-        // Title
-        Paragraph head = new Paragraph("Customer Statement", title);
-        head.setAlignment(Element.ALIGN_CENTER);
-        doc.add(head);
-        doc.add(new Paragraph("\n"));
+        if (themeEnum == InvoiceTheme.PROFESSIONAL) {
+            doc.add(DocumentThemeHelper.createProfessionalBanner("CUSTOMER STATEMENT OF ACCOUNT", primaryColor, scale));
+        }
 
-        // Firm details
+        PdfPTable headerTable = new PdfPTable(new float[]{60, 40});
+        headerTable.setWidthPercentage(100);
+
+        PdfPCell leftCell = new PdfPCell();
+        leftCell.setBorder(Rectangle.NO_BORDER);
+
+        if (firm != null && firm.getLogoBase64() != null && !firm.getLogoBase64().isBlank()) {
+            Image logo = DocumentThemeHelper.loadLogoImage(firm.getLogoBase64(), 90 * scale, 45 * scale);
+            if (logo != null) leftCell.addElement(logo);
+        }
+
+        String fName = (firm != null && firm.getFirmName() != null && !firm.getFirmName().isBlank()) ? firm.getFirmName() : "Enterprise Billing";
+        leftCell.addElement(new Paragraph(fName, new Font(Font.HELVETICA, 14 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK)));
         if (firm != null) {
-            doc.add(new Paragraph(firm.getFirmName(), bold));
-            if (firm.getAddressLine1() != null) doc.add(new Paragraph(firm.getAddressLine1(), normal));
-            if (firm.getCity() != null) doc.add(new Paragraph(firm.getCity(), normal));
-            doc.add(new Paragraph("\n"));
+            if (firm.getAddressLine1() != null) leftCell.addElement(new Paragraph(firm.getAddressLine1(), subText));
+            if (firm.getPhone() != null && !firm.getPhone().isBlank()) leftCell.addElement(new Paragraph("Phone: " + firm.getPhone(), subText));
+            if (firm.getGstin() != null && !firm.getGstin().isBlank()) leftCell.addElement(new Paragraph("GSTIN: " + firm.getGstin(), subText));
+        }
+        headerTable.addCell(leftCell);
+
+        PdfPCell rightCell = new PdfPCell();
+        rightCell.setBorder(Rectangle.NO_BORDER);
+        rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+        if (themeEnum != InvoiceTheme.PROFESSIONAL) {
+            Paragraph pTitle = new Paragraph("STATEMENT OF ACCOUNT", titleFont);
+            pTitle.setAlignment(Element.ALIGN_RIGHT);
+            rightCell.addElement(pTitle);
         }
 
-        doc.add(new Paragraph("Customer: " + data.getCustomerName(), bold));
-        doc.add(new Paragraph("Period: " + data.getFrom().format(DATE_FMT)
-                + " to " + data.getTo().format(DATE_FMT), normal));
-        doc.add(new Paragraph("\n"));
+        Paragraph pCust = new Paragraph("Customer: " + data.getCustomerName(), bold);
+        pCust.setAlignment(Element.ALIGN_RIGHT);
+        rightCell.addElement(pCust);
 
-        doc.add(new Paragraph("Opening Balance: " + fmt(data.getOpeningBalance()), bold));
-        doc.add(new Paragraph("\n"));
+        Paragraph pPeriod = new Paragraph("Period: " + data.getFrom().format(DATE_FMT) + " to " + data.getTo().format(DATE_FMT), normal);
+        pPeriod.setAlignment(Element.ALIGN_RIGHT);
+        rightCell.addElement(pPeriod);
 
-        // Table
-        float[] widths = {1.2f, 1.2f, 1.2f, 3f, 1.2f, 1.2f, 1.2f};
-        PdfPTable table = new PdfPTable(widths);
+        Paragraph pGen = new Paragraph("Generated: " + LocalDate.now().format(DATE_FMT), subText);
+        pGen.setAlignment(Element.ALIGN_RIGHT);
+        rightCell.addElement(pGen);
+
+        headerTable.addCell(rightCell);
+        doc.add(headerTable);
+        doc.add(new Paragraph(" "));
+
+        PdfPTable kpiTable = new PdfPTable(4);
+        kpiTable.setWidthPercentage(100);
+        kpiTable.setSpacingAfter(10 * scale);
+
+        Font kpiValFont = new Font(Font.HELVETICA, 11 * scale, Font.BOLD, primaryColor);
+        addKpiBox(kpiTable, "OPENING BALANCE", "₹ " + fmt(data.getOpeningBalance()), "Initial ledger state", lightTint, subText, kpiValFont, subText);
+        addKpiBox(kpiTable, "TOTAL BILLED", "₹ " + fmt(data.getTotalBilled()), "Invoices in period", new Color(240, 249, 255), subText, new Font(Font.HELVETICA, 11 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK), subText);
+        addKpiBox(kpiTable, "TOTAL PAID", "₹ " + fmt(data.getTotalPaid()), "Collections received", new Color(240, 253, 244), subText, new Font(Font.HELVETICA, 11 * scale, Font.BOLD, new Color(22, 101, 52)), subText);
+        addKpiBox(kpiTable, "CLOSING BALANCE", "₹ " + fmt(data.getClosingBalance()), "Net outstanding", new Color(254, 242, 242), subText, new Font(Font.HELVETICA, 11 * scale, Font.BOLD, new Color(185, 28, 28)), subText);
+        doc.add(kpiTable);
+
+        PdfPTable table = new PdfPTable(new float[]{12, 14, 14, 28, 11, 11, 12});
         table.setWidthPercentage(100);
+        table.setHeaderRows(1);
 
-        headerCell(table, "Date");
-        headerCell(table, "Type");
-        headerCell(table, "Ref");
-        headerCell(table, "Description");
-        headerCell(table, "Debit");
-        headerCell(table, "Credit");
-        headerCell(table, "Balance");
-
-        for (StatementEntry e : data.getEntries()) {
-            table.addCell(textCell(e.getDate().format(DATE_FMT)));
-            table.addCell(textCell(e.getType()));
-            table.addCell(textCell(e.getRef()));
-            table.addCell(textCell(e.getDescription()));
-            table.addCell(textCell(fmt(e.getDebit())));
-            table.addCell(textCell(fmt(e.getCredit())));
-            table.addCell(textCell(fmt(e.getBalance())));
+        Font thFont = new Font(Font.HELVETICA, 8f * scale, Font.BOLD, (themeEnum == InvoiceTheme.MINIMAL) ? primaryColor : Color.WHITE);
+        String[] headers = {"Date", "Type", "Ref", "Description", "Debit (₹)", "Credit (₹)", "Balance (₹)"};
+        for (String h : headers) {
+            int align = h.contains("Description") ? Element.ALIGN_LEFT : (h.contains("₹") ? Element.ALIGN_RIGHT : Element.ALIGN_CENTER);
+            table.addCell(DocumentThemeHelper.createHeaderCell(h, themeEnum, primaryColor, thFont, align, scale));
         }
 
+        List<StatementEntry> entries = data.getEntries();
+        if (entries != null) {
+            for (int i = 0; i < entries.size(); i++) {
+                StatementEntry e = entries.get(i);
+                boolean isEven = (i % 2 == 1);
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getDate() != null ? e.getDate().format(DATE_FMT) : "—", normal), themeEnum, isEven, Element.ALIGN_CENTER, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getType() != null ? e.getType() : "—", normal), themeEnum, isEven, Element.ALIGN_CENTER, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getRef() != null ? e.getRef() : "—", normal), themeEnum, isEven, Element.ALIGN_CENTER, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getDescription() != null ? e.getDescription() : "—", normal), themeEnum, isEven, Element.ALIGN_LEFT, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getDebit() != null && e.getDebit() > 0 ? fmt(e.getDebit()) : "—", normal), themeEnum, isEven, Element.ALIGN_RIGHT, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(e.getCredit() != null && e.getCredit() > 0 ? fmt(e.getCredit()) : "—", normal), themeEnum, isEven, Element.ALIGN_RIGHT, scale));
+                table.addCell(DocumentThemeHelper.createDataCell(new Phrase(fmt(e.getBalance()), bold), themeEnum, isEven, Element.ALIGN_RIGHT, scale));
+            }
+        }
         doc.add(table);
-        doc.add(new Paragraph("\n"));
-
-        // Totals
-        doc.add(new Paragraph("Total Billed: " + fmt(data.getTotalBilled()), bold));
-        doc.add(new Paragraph("Total Paid: " + fmt(data.getTotalPaid()), bold));
-        doc.add(new Paragraph("Closing Balance: " + fmt(data.getClosingBalance()), bold));
 
         doc.close();
         return baos.toByteArray();
@@ -492,7 +551,7 @@ public class StatementServiceImpl implements StatementService {
         }
         poList = poList.stream()
                 .filter(p -> p.getPoDate() != null)
-                .filter(p -> p.getStatus() != PurchaseOrderStatus.CANCELLED)
+                .filter(p -> p.getStatus() == PurchaseOrderStatus.ISSUED || p.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .collect(Collectors.toList());
 
         BigDecimal totalPurchases = poList.stream()
@@ -663,6 +722,11 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to) throws Exception {
+        return generateFirmStatementPdf(firmId, from, to, null, null, null);
+    }
+
+    @Override
+    public byte[] generateFirmStatementPdf(Long firmId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception {
         final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
@@ -672,20 +736,32 @@ public class StatementServiceImpl implements StatementService {
         FirmStatementResponse data = getFirmStatement(targetFirmId, from, to);
         FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
-        Document doc = new Document(PageSize.A4, 28, 28, 32, 32);
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(null, format, theme, color, firm);
+        InvoiceTheme themeEnum = options.getTheme();
+        InvoiceColorPalette palette = options.getColorPalette();
+        Color primaryColor = palette.getPrimaryColor();
+        Color lightTint = palette.getLightTintColor();
+
+        Rectangle pageSize = (options.getFormat() == PrintFormat.A5) ? PageSize.A5
+                : (options.getFormat() == PrintFormat.A4_LANDSCAPE) ? options.getFormat().getPageSize()
+                : PageSize.A4;
+        float scale = (options.getFormat() == PrintFormat.A5) ? 0.85f : 1.0f;
+
+        Document doc = new Document(pageSize, 28 * scale, 28 * scale, 32 * scale, 32 * scale);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PdfWriter.getInstance(doc, baos);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+        writer.setPageEvent(new UniversalPageNumberHelper(8f * scale));
 
         doc.open();
 
-        Font headerTitleFont = new Font(Font.HELVETICA, 16, Font.BOLD, new Color(30, 41, 59));
-        Font sectionTitleFont = new Font(Font.HELVETICA, 11, Font.BOLD, new Color(79, 70, 229));
-        Font kpiLabelFont = new Font(Font.HELVETICA, 8, Font.NORMAL, new Color(100, 116, 139));
-        Font kpiValFont = new Font(Font.HELVETICA, 11, Font.BOLD, new Color(15, 23, 42));
-        Font tableHeaderFont = new Font(Font.HELVETICA, 8, Font.BOLD, Color.WHITE);
-        Font bold = new Font(Font.HELVETICA, 8, Font.BOLD, new Color(30, 41, 59));
-        Font normal = new Font(Font.HELVETICA, 8, Font.NORMAL, new Color(51, 65, 85));
-        Font subText = new Font(Font.HELVETICA, 8, Font.NORMAL, new Color(100, 116, 139));
+        Font headerTitleFont = new Font(Font.HELVETICA, 16 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font sectionTitleFont = new Font(Font.HELVETICA, 11 * scale, Font.BOLD, primaryColor);
+        Font kpiLabelFont = new Font(Font.HELVETICA, 8 * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
+        Font kpiValFont = new Font(Font.HELVETICA, 11 * scale, Font.BOLD, primaryColor);
+        Font tableHeaderFont = new Font(Font.HELVETICA, 8 * scale, Font.BOLD, (themeEnum == InvoiceTheme.MINIMAL) ? primaryColor : Color.WHITE);
+        Font bold = new Font(Font.HELVETICA, 8 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font normal = new Font(Font.HELVETICA, 8 * scale, Font.NORMAL, DocumentThemeHelper.TEXT_DARK);
+        Font subText = new Font(Font.HELVETICA, 8 * scale, Font.NORMAL, DocumentThemeHelper.TEXT_MUTED);
 
         // ── Header Letterhead ──
         PdfPTable headerTable = new PdfPTable(new float[]{1.5f, 1f});
@@ -836,6 +912,7 @@ public class StatementServiceImpl implements StatementService {
 
         PdfPTable journalTable = new PdfPTable(new float[]{1.2f, 1.4f, 2.2f, 1.6f, 1.4f, 1.4f, 1.2f});
         journalTable.setWidthPercentage(100);
+        journalTable.setHeaderRows(1);
         journalTable.setSpacingBefore(4);
 
         addPdfHeader(journalTable, "Date", tableHeaderFont);
@@ -949,7 +1026,7 @@ public class StatementServiceImpl implements StatementService {
         // Purchases before fromDate
         List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(targetFirmId, partyId, fromDate);
         BigDecimal purchasesBefore = posBefore.stream()
-                .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
+                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .map(po -> nz(po.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -964,7 +1041,7 @@ public class StatementServiceImpl implements StatementService {
         // In range items
         List<PurchaseOrder> posInRange = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBetweenOrderByPoDateAscIdAsc(
                 targetFirmId, partyId, fromDate, toDate).stream()
-                .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
+                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .collect(Collectors.toList());
 
         List<PartyPayment> paymentsInRange = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
@@ -1037,6 +1114,11 @@ public class StatementServiceImpl implements StatementService {
     ============================================================================ */
     @Override
     public byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception {
+        return generatePartyStatementPdf(firmId, partyId, from, to, null, null, null);
+    }
+
+    @Override
+    public byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception {
         final Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
@@ -1045,14 +1127,26 @@ public class StatementServiceImpl implements StatementService {
         PartyStatementResponse data = getPartyStatement(targetFirmId, partyId, from, to);
         FirmDetails firm = firmRepo.findById(targetFirmId).orElse(null);
 
+        InvoicePrintOptions options = InvoicePrintOptions.resolve(null, format, theme, color, firm);
+        InvoiceTheme themeEnum = options.getTheme();
+        InvoiceColorPalette palette = options.getColorPalette();
+        Color primaryColor = palette.getPrimaryColor();
+        Color lightTint = palette.getLightTintColor();
+
+        Rectangle pageSize = (options.getFormat() == PrintFormat.A5) ? PageSize.A5
+                : (options.getFormat() == PrintFormat.A4_LANDSCAPE) ? options.getFormat().getPageSize()
+                : PageSize.A4;
+        float scale = (options.getFormat() == PrintFormat.A5) ? 0.85f : 1.0f;
+
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A4, 28, 28, 28, 28);
-        PdfWriter.getInstance(doc, baos);
+        Document doc = new Document(pageSize, 28 * scale, 28 * scale, 28 * scale, 28 * scale);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+        writer.setPageEvent(new UniversalPageNumberHelper(8f * scale));
         doc.open();
 
-        Font titleFont = new Font(Font.HELVETICA, 16, Font.BOLD, new Color(79, 70, 229));
-        Font firmFont = new Font(Font.HELVETICA, 13, Font.BOLD, Color.BLACK);
-        Font bold = new Font(Font.HELVETICA, 9, Font.BOLD, Color.BLACK);
+        Font titleFont = new Font(Font.HELVETICA, 16 * scale, Font.BOLD, primaryColor);
+        Font firmFont = new Font(Font.HELVETICA, 13 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
+        Font bold = new Font(Font.HELVETICA, 9 * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK);
         Font normal = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, Color.BLACK);
         Font tableHeaderFont = new Font(Font.HELVETICA, 8.5f, Font.BOLD, Color.WHITE);
 
@@ -1112,11 +1206,12 @@ public class StatementServiceImpl implements StatementService {
         // Ledger Entries Table
         PdfPTable entriesTable = new PdfPTable(new float[]{14, 20, 24, 14, 14, 14});
         entriesTable.setWidthPercentage(100);
+        entriesTable.setHeaderRows(1);
 
         String[] headers = {"Date", "Type", "Ref / Notes", "Debit (₹)", "Credit (₹)", "Balance (₹)"};
         for (String h : headers) {
             PdfPCell c = new PdfPCell(new Phrase(h, tableHeaderFont));
-            c.setBackgroundColor(new Color(79, 70, 229));
+            c.setBackgroundColor(primaryColor);
             c.setPadding(6);
             if (h.contains("₹")) c.setHorizontalAlignment(Element.ALIGN_RIGHT);
             entriesTable.addCell(c);

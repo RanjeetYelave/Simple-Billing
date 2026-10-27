@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -437,7 +438,10 @@ public class InvoiceService {
         if (estimates != null) {
             all.addAll(estimates);
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        LocalDate fyStart = (today.getMonthValue() >= 4)
+                ? LocalDate.of(today.getYear(), 4, 1)
+                : LocalDate.of(today.getYear() - 1, 4, 1);
 
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
@@ -530,7 +534,7 @@ public class InvoiceService {
                     weekBusiness = weekBusiness.add(effectiveAmt);
                 if (invDate.getMonth() == today.getMonth() && invDate.getYear() == today.getYear())
                     monthBusiness = monthBusiness.add(effectiveAmt);
-                if (invDate.getYear() == today.getYear())
+                if (!invDate.isBefore(fyStart) && !invDate.isAfter(today))
                     yearBusiness = yearBusiness.add(effectiveAmt);
             }
 
@@ -1661,7 +1665,10 @@ public class InvoiceService {
     public Map<String, Double> getFirmStats() {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         List<Invoice> all = (firmId != null) ? invoiceRepo.findByFirmId(firmId) : invoiceRepo.findAll();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        LocalDate fyStart = (today.getMonthValue() >= 4)
+                ? LocalDate.of(today.getYear(), 4, 1)
+                : LocalDate.of(today.getYear() - 1, 4, 1);
 
         BigDecimal totalBusiness = BigDecimal.ZERO.setScale(SCALE);
         BigDecimal totalPaid = BigDecimal.ZERO.setScale(SCALE);
@@ -1729,7 +1736,7 @@ public class InvoiceService {
                     weekBusiness = weekBusiness.add(effectiveAmt);
                 if (d.getMonth() == today.getMonth() && d.getYear() == today.getYear())
                     monthBusiness = monthBusiness.add(effectiveAmt);
-                if (d.getYear() == today.getYear())
+                if (!d.isBefore(fyStart) && !d.isAfter(today))
                     yearBusiness = yearBusiness.add(effectiveAmt);
             }
         }

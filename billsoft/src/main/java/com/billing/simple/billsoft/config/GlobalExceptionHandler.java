@@ -72,5 +72,15 @@ public class GlobalExceptionHandler {
         if (exc.getConflictKey() != null) response.put("conflictKey", exc.getConflictKey());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleMethodArgumentTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exc) {
+        Map<String, String> response = new HashMap<>();
+        String name = exc.getName();
+        Object value = exc.getValue();
+        response.put("error", "Invalid value '" + value + "' for parameter '" + name + "'");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
 }
 

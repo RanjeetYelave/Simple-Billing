@@ -4,6 +4,7 @@ public enum InvoiceTheme {
     CLASSIC("Classic"),
     MODERN("Modern"),
     PROFESSIONAL("Professional"),
+    @Deprecated
     MINIMAL("Minimal");
 
     private final String displayName;
@@ -18,8 +19,12 @@ public enum InvoiceTheme {
 
     public static InvoiceTheme fromString(String val) {
         if (val == null || val.isBlank()) return CLASSIC;
+        String s = val.trim();
+        if (s.equalsIgnoreCase("MINIMAL")) {
+            return MODERN; // Legacy identifier gracefully resolves to authoritative Modern theme
+        }
         for (InvoiceTheme t : values()) {
-            if (t.name().equalsIgnoreCase(val.trim()) || t.displayName.equalsIgnoreCase(val.trim())) {
+            if (t.name().equalsIgnoreCase(s) || t.displayName.equalsIgnoreCase(s)) {
                 return t;
             }
         }

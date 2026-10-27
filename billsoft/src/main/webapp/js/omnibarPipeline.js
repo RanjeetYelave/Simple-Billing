@@ -3109,6 +3109,17 @@
   // ─────────────────────────────────────────────────────────────────────────────
   // 6.5 AUTHORITATIVE QUICK HELP ADAPTER (Read-Only CRM Analytics & Entity Info)
   // ─────────────────────────────────────────────────────────────────────────────
+  const getBizDate = (offset = 0) => {
+    if (typeof window !== 'undefined' && typeof window.getBusinessDateString === 'function') {
+      return window.getBusinessDateString(new Date(), offset, 'Asia/Kolkata');
+    }
+    if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.getBusinessDateString === 'function') {
+      return BillsoftUtils.getBusinessDateString(new Date(), offset, 'Asia/Kolkata');
+    }
+    const d = (offset !== 0) ? new Date(Date.now() + offset * 86400000) : new Date();
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  };
+
   const QuickHelpAdapter = {
     evaluate(capabilityId, entities, normalized, ctx = {}) {
       const customers = Array.isArray(ctx.customers) ? ctx.customers : [];
@@ -3118,18 +3129,35 @@
       const staff = Array.isArray(ctx.staff) ? ctx.staff : [];
       const expenses = Array.isArray(ctx.expenses) ? ctx.expenses : [];
       const firm = ctx.firm || {};
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+
+      const todayStr = getBizDate(0);
+      const yesterdayStr = getBizDate(-1);
+      const sevenDaysAgo = getBizDate(-6);
       const curMonth = todayStr.slice(0, 7);
-      const nowD = new Date();
-      const lastMonthD = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1);
-      const lastMonthStr = `${lastMonthD.getFullYear()}-${String(lastMonthD.getMonth() + 1).padStart(2, '0')}`;
+      const [curYearNum, curMonthNum] = todayStr.split('-').map(Number);
+      const prevMonthYear = curMonthNum === 1 ? curYearNum - 1 : curYearNum;
+      const prevMonthVal = curMonthNum === 1 ? 12 : curMonthNum - 1;
+      const lastMonthStr = `${prevMonthYear}-${String(prevMonthVal).padStart(2, '0')}`;
+
+      // Indian Financial Year start (April 1)
+      const fyStartYear = curMonthNum >= 4 ? curYearNum : curYearNum - 1;
+      const fyStartStr = `${fyStartYear}-04-01`;
+
+      const activeStatuses = ['FINAL', 'UNPAID', 'PAID', 'OVERDUE', 'SENT'];
+      const getInvAmt = inv => {
+        const raw = parseFloat(inv.netTotal || inv.totalAmount) || 0;
+        const ret = parseFloat(inv.refundAmount || 0) || 0;
+        return Math.max(0, raw - ret);
+      };
+      const isActiveInvoice = inv => {
+        const st = (inv.status || 'FINAL').toUpperCase();
+        return activeStatuses.includes(st);
+      };
 
       switch (capabilityId) {
         // ─── 1. MACRO SUMMARY ───
         case 'QH_MACRO_SUMMARY': {
-          const totalSales = invoices.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          const totalSales = invoices.filter(isActiveInvoice).reduce((acc, inv) => acc + getInvAmt(inv), 0);
           const totalReceivables = customers.reduce((acc, c) => acc + (parseFloat(c.balance || c.openingBalance) || 0), 0);
           const totalPayables = parties.reduce((acc, p) => acc + (parseFloat(p.netBalance || p.openingBalance) || 0), 0);
           const monthExp = expenses.filter(e => (e.expenseDate || e.createdAt || '').slice(0, 7) === curMonth)
@@ -3164,121 +3192,161 @@
 
         // ─── 2. SALES ───
         case 'QH_SALES_YESTERDAY': {
-          let yestInvs = invoices.filter(inv => (inv.invoiceDate || inv.createdAt || '').slice(0, 10) === yesterdayStr);
-          const totalRev = yestInvs.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          let yestInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
+            const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 10);
+            return d === yesterdayStr;
+          });
+          const totalRev = yestInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_YESTERDAY',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'YESTERDAY' },
+            apiParams: { period: 'YESTERDAY', range: 'yesterday' },
             title: `📊 Yesterday's Sales: ₹${totalRev.toLocaleString('en-IN')}`,
             subtitle: `${yestInvs.length} invoice(s) generated yesterday (${yesterdayStr})`,
-            data: { totalRevenue: totalRev, invoiceCount: yestInvs.length, date: yesterdayStr, period: 'YESTERDAY' },
+            data: { totalRevenue: totalRev, invoiceCount: yestInvs.length, date: yesterdayStr, period: 'YESTERDAY', range: 'yesterday' },
             invoices: yestInvs
           };
         }
 
         case 'QH_SALES_TODAY': {
-          let todayInvs = invoices.filter(inv => (inv.invoiceDate || inv.createdAt || '').slice(0, 10) === todayStr);
-          const totalRev = todayInvs.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          let todayInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
+            const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 10);
+            return d === todayStr;
+          });
+          const totalRev = todayInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_TODAY',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'TODAY' },
+            apiParams: { period: 'TODAY', range: 'today' },
             title: `📊 Today's Sales: ₹${totalRev.toLocaleString('en-IN')}`,
             subtitle: `${todayInvs.length} invoice(s) generated today (${todayStr})`,
-            data: { totalRevenue: totalRev, invoiceCount: todayInvs.length, date: todayStr, period: 'TODAY' },
+            data: { totalRevenue: totalRev, invoiceCount: todayInvs.length, date: todayStr, period: 'TODAY', range: 'today' },
             invoices: todayInvs
           };
         }
 
         case 'QH_SALES_WEEK': {
           let weekInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
             const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 10);
             return d >= sevenDaysAgo && d <= todayStr;
           });
-          const totalRev = weekInvs.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          const totalRev = weekInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_WEEK',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'THIS_WEEK' },
+            apiParams: { period: 'THIS_WEEK', range: 'this_week' },
             title: `📊 Last 7 Days Sales: ₹${totalRev.toLocaleString('en-IN')}`,
             subtitle: `${weekInvs.length} invoice(s) generated in the last 7 days`,
-            data: { totalRevenue: totalRev, invoiceCount: weekInvs.length, period: 'THIS_WEEK' },
+            data: { totalRevenue: totalRev, invoiceCount: weekInvs.length, period: 'THIS_WEEK', range: 'this_week' },
             invoices: weekInvs
           };
         }
 
         case 'QH_SALES_LAST_MONTH': {
-          let lastMonthInvs = invoices.filter(inv => (inv.invoiceDate || inv.createdAt || '').slice(0, 7) === lastMonthStr);
-          const totalRev = lastMonthInvs.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          let lastMonthInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
+            const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 7);
+            return d === lastMonthStr;
+          });
+          const totalRev = lastMonthInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_LAST_MONTH',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'LAST_MONTH' },
+            apiParams: { period: 'LAST_MONTH', range: 'last_month' },
             title: `📊 Last Month's Sales: ₹${totalRev.toLocaleString('en-IN')}`,
             subtitle: `${lastMonthInvs.length} invoice(s) in month ${lastMonthStr}`,
-            data: { totalRevenue: totalRev, invoiceCount: lastMonthInvs.length, period: 'LAST_MONTH' },
+            data: { totalRevenue: totalRev, invoiceCount: lastMonthInvs.length, period: 'LAST_MONTH', range: 'last_month' },
             invoices: lastMonthInvs
           };
         }
 
         case 'QH_SALES_MONTH': {
-          let monthInvs = invoices.filter(inv => (inv.invoiceDate || inv.createdAt || '').slice(0, 7) === curMonth);
-          const totalRev = monthInvs.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          let monthInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
+            const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 7);
+            return d === curMonth;
+          });
+          const totalRev = monthInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_MONTH',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'THIS_MONTH' },
+            apiParams: { period: 'THIS_MONTH', range: 'this_month' },
             title: `📊 This Month's Sales: ₹${totalRev.toLocaleString('en-IN')}`,
             subtitle: `${monthInvs.length} invoice(s) in month ${curMonth}`,
-            data: { totalRevenue: totalRev, invoiceCount: monthInvs.length, period: 'THIS_MONTH' },
+            data: { totalRevenue: totalRev, invoiceCount: monthInvs.length, period: 'THIS_MONTH', range: 'this_month' },
             invoices: monthInvs
           };
         }
 
         case 'QH_SALES_QUARTER': {
-          const totalRev = invoices.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+          let allActiveInvs = invoices.filter(isActiveInvoice);
+          const totalRev = allActiveInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
             capabilityId: 'QH_SALES_QUARTER',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: 'THIS_QUARTER' },
+            apiParams: { period: 'THIS_QUARTER', range: 'this_month' },
             title: `📊 This Quarter's Sales: ₹${totalRev.toLocaleString('en-IN')}`,
-            subtitle: `Quarterly sales performance across ${invoices.length} invoices`,
-            data: { totalRevenue: totalRev, invoiceCount: invoices.length, period: 'THIS_QUARTER' }
+            subtitle: `Quarterly sales performance across ${allActiveInvs.length} invoices`,
+            data: { totalRevenue: totalRev, invoiceCount: allActiveInvs.length, period: 'THIS_QUARTER' }
           };
         }
 
-        case 'QH_SALES_YEAR':
-        case 'QH_SALES_TOTAL': {
-          const totalRev = invoices.reduce((acc, inv) => acc + (parseFloat(inv.netTotal || inv.totalAmount) || 0), 0);
+        case 'QH_SALES_YEAR': {
+          let yearInvs = invoices.filter(inv => {
+            if (!isActiveInvoice(inv)) return false;
+            const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 10);
+            return d >= fyStartStr && d <= todayStr;
+          });
+          const totalRev = yearInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
           return {
             status: 'ANSWER',
             category: 'QUICK_HELP',
-            capabilityId: capabilityId,
+            capabilityId: 'QH_SALES_YEAR',
             domain: 'SALES',
             apiEndpoint: '/api/omnisearch/sales',
-            apiParams: { period: capabilityId === 'QH_SALES_YEAR' ? 'THIS_YEAR' : 'TOTAL' },
+            apiParams: { period: 'THIS_YEAR', range: 'this_year' },
+            title: `📊 Financial Year Sales: ₹${totalRev.toLocaleString('en-IN')}`,
+            subtitle: `${yearInvs.length} invoice(s) in FY ${fyStartYear}-${fyStartYear + 1}`,
+            data: { totalRevenue: totalRev, invoiceCount: yearInvs.length, period: 'THIS_YEAR', range: 'this_year' },
+            invoices: yearInvs
+          };
+        }
+
+        case 'QH_SALES_TOTAL': {
+          let allActiveInvs = invoices.filter(isActiveInvoice);
+          const totalRev = allActiveInvs.reduce((acc, inv) => acc + getInvAmt(inv), 0);
+          return {
+            status: 'ANSWER',
+            category: 'QUICK_HELP',
+            capabilityId: 'QH_SALES_TOTAL',
+            domain: 'SALES',
+            apiEndpoint: '/api/omnisearch/sales',
+            apiParams: { period: 'TOTAL', range: 'all_time' },
             title: `📊 Total Sales: ₹${totalRev.toLocaleString('en-IN')}`,
-            subtitle: `All-time revenue across ${invoices.length} invoices`,
-            data: { totalRevenue: totalRev, invoiceCount: invoices.length, period: 'TOTAL' }
+            subtitle: `All-time revenue across ${allActiveInvs.length} invoices`,
+            data: { totalRevenue: totalRev, invoiceCount: allActiveInvs.length, period: 'TOTAL', range: 'all_time' },
+            invoices: allActiveInvs
           };
         }
 
@@ -4785,7 +4853,7 @@
                   title: cleanExpense,
                   amount: amt,
                   category: 'General',
-                  expenseDate: entities.dueDate || new Date().toISOString().slice(0, 10),
+                  expenseDate: entities.dueDate || getBizDate(),
                   paymentMode: 'Cash'
                 }
               }
@@ -4852,7 +4920,7 @@
                 initialValues: {
                   employeeName: entities.staffName || '',
                   status: entities.attendanceStatus || 'PRESENT',
-                  date: entities.dueDate || new Date().toISOString().slice(0, 10)
+                  date: entities.dueDate || getBizDate()
                 }
               }
             };
@@ -4874,7 +4942,7 @@
                 initialValues: {
                   employeeName: entities.staffName || '',
                   amount: entities.amount || 0,
-                  date: entities.dueDate || new Date().toISOString().slice(0, 10),
+                  date: entities.dueDate || getBizDate(),
                   reason: 'Salary Advance'
                 }
               }
@@ -5116,7 +5184,7 @@
 
         const category = this.inferExpenseCategory(textWithoutTags);
         const paymentMode = this.extractPaymentMode(textWithoutTags);
-        const expenseDate = (dt && dt.isoDate) ? dt.isoDate : (new Date().toISOString().slice(0, 10));
+        const expenseDate = (dt && dt.isoDate) ? dt.isoDate : getBizDate();
 
         const payload = {
           title: cleanTitle,

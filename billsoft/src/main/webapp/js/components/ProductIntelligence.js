@@ -1873,40 +1873,24 @@
       }
     };
 
-    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
       // ═══════════════════════════════════════════════════════════════════
-      // QUEUE HEADER & COMPACT PRIMARY ACTION
+      // LAYER C: QUEUE HEADER & COHESIVE WORKSPACE CONTROLS
       // ═══════════════════════════════════════════════════════════════════
-      React.createElement('div', {
-        className: 'card',
-        style: {
-          padding: '6px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 8,
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 8
-        }
-      },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          React.createElement('span', { style: { fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' } }, '⚡ Smart Reorder Queue'),
-          React.createElement('span', {
-            style: {
-              fontSize: '0.74rem',
-              color: 'var(--text-secondary)',
-              borderLeft: '1px solid var(--border)',
-              paddingLeft: 8
-            }
-          }, 'Replenishment advisory')
+      React.createElement('div', { className: 'rcrm-reorder-header' },
+        React.createElement('div', { className: 'rcrm-reorder-title-group' },
+          React.createElement('div', { className: 'rcrm-reorder-title' },
+            React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)', fontSize: '1.1rem' } }, '⚡'),
+            'Smart Reorder Queue'
+          ),
+          React.createElement('div', { className: 'rcrm-reorder-subtitle' },
+            'Replenishment advisory & automated vendor purchase order generation'
+          )
         ),
 
-        // Action Group: Urgency Filters & Single Primary Action [ Order Products ]
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-          React.createElement('div', { className: 'btn-group', style: { display: 'flex', gap: 4 } },
+        // Action Group: Urgency Filters & Primary Action [ Order Products ]
+        React.createElement('div', { className: 'rcrm-reorder-controls' },
+          React.createElement('div', { className: 'rcrm-reorder-filters', role: 'group', 'aria-label': 'Urgency filters' },
             [
               { id: 'ALL', label: 'All' },
               { id: 'OUT_OF_STOCK', label: 'Out of Stock' },
@@ -1916,8 +1900,8 @@
             ].map(f =>
               React.createElement('button', {
                 key: f.id,
-                className: `btn btn-xs ${urgencyFilter === f.id ? 'btn-primary' : 'btn-outline'}`,
-                style: { padding: '3px 9px', fontSize: '0.76rem' },
+                type: 'button',
+                className: `rcrm-reorder-filter-btn ${urgencyFilter === f.id ? 'active' : ''}`,
                 onClick: () => { setUrgencyFilter(f.id); setPage(0); }
               }, f.label)
             )
@@ -1928,69 +1912,67 @@
             id: 'btn-order-products',
             className: 'btn btn-primary',
             style: {
-              fontWeight: 700,
-              padding: '5px 14px',
-              fontSize: '0.82rem',
+              fontWeight: 600,
+              padding: '6px 14px',
+              fontSize: '0.8125rem',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              boxShadow: '0 1px 4px rgba(79, 70, 229, 0.2)'
+              gap: 6
             },
             onClick: () => handleOpenOrderWorkspace(null)
-          }, 'Order Products')
+          },
+            React.createElement('span', null, '📋'),
+            'Order Products'
+          )
         )
       ),
 
       // ═══════════════════════════════════════════════════════════════════
-      // RECOMMENDATIONS TABLE (6-Column Coalesced Responsive Layout)
+      // LAYER D: RECOMMENDATIONS TABLE & STRUCTURED ROWS
       // ═══════════════════════════════════════════════════════════════════
-      React.createElement('div', {
-        className: 'card firm-table-card',
-        style: {
-          padding: 0,
-          width: '100%',
-          boxSizing: 'border-box',
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          background: 'var(--bg-card)',
-          display: 'flex',
-          flexDirection: 'column'
-        }
-      },
-        React.createElement('div', {
-          className: 'table-container',
-          style: {
-            overflowX: 'auto',
-            width: '100%'
-          }
-        },
-          React.createElement('table', { className: 'data-table', style: { width: '100%', margin: 0, borderCollapse: 'collapse' } },
+      React.createElement('div', { className: 'rcrm-reorder-table-card' },
+        React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
+          React.createElement('table', { className: 'rcrm-reorder-table' },
             React.createElement('thead', null,
               React.createElement('tr', null,
-                React.createElement('th', { style: { padding: '8px 12px', width: '25%' } }, 'Product / Identity'),
+                React.createElement('th', { style: { padding: '8px 12px', width: '28%' } }, 'Product / Identity'),
                 React.createElement('th', { style: { textAlign: 'right', width: '13%' } }, 'Stock / Min'),
-                React.createElement('th', { style: { textAlign: 'right', width: '11%' } }, 'Incoming PO'),
-                React.createElement('th', { style: { textAlign: 'right', width: '20%' } }, 'Forecast / Threshold'),
+                React.createElement('th', { style: { textAlign: 'right', width: '10%' } }, 'Incoming PO'),
+                React.createElement('th', { style: { textAlign: 'right', width: '16%' } }, 'Forecast / Threshold'),
                 React.createElement('th', { style: { textAlign: 'right', width: '13%' } }, 'Final Rec'),
-                React.createElement('th', { style: { textAlign: 'center', width: '18%', paddingRight: 12 } }, 'Action / Status')
+                React.createElement('th', { style: { textAlign: 'center', width: '20%', paddingRight: 12 } }, 'Action / Status')
               )
             ),
             React.createElement('tbody', null,
               loading ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: '24px 0', color: 'var(--text-secondary)' } },
+                React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: '28px 0', color: 'var(--text-secondary)' } },
                   'Loading replenishment recommendations...'
                 )
               ) : displayedRecommendations.length === 0 ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: '24px 0', color: 'var(--text-secondary)' } },
+                React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: '28px 0', color: 'var(--text-secondary)' } },
                   'No products require replenishment under the selected filter.'
                 )
               ) : displayedRecommendations.map(r => {
                 const rId = r.productId || r.id;
                 const isRecentlyOrdered = !!recentlyOrderedMap[rId];
                 const actionable = isItemActionable(r);
-                const urgencyClass = `badge-urgency-${(r.urgencyStatus || 'HEALTHY').toLowerCase().replace(/_/g, '-')}`;
-                const reasonText = formatReasonLabel(r.recommendationReason);
-                const reasonStyle = getReasonBadgeStyle(r.recommendationReason);
+                const urgency = r.urgencyStatus || 'HEALTHY';
+                const urgencyClass = `badge-urgency-${urgency.toLowerCase().replace(/_/g, '-')}`;
+
+                // Formatted display label for Urgency
+                const urgencyLabel = {
+                  'OUT_OF_STOCK': 'Out of Stock',
+                  'CRITICAL': 'Critical',
+                  'REORDER_NEEDED': 'Reorder Needed',
+                  'HEALTHY': 'Healthy'
+                }[urgency] || urgency;
+
+                // Status Deduplication Logic per Section 5:
+                // Only show secondary reason tag if it communicates distinct business context
+                // When urgency is HEALTHY and reason is HEALTHY, do NOT show a duplicate second badge!
+                const isHealthyDuplicate = (urgency === 'HEALTHY' && (r.recommendationReason === 'HEALTHY' || !r.recommendationReason));
+                const showReason = !isHealthyDuplicate && r.recommendationReason;
+                const reasonLabel = formatReasonLabel(r.recommendationReason);
 
                 const currentPhysical = r.currentStock != null ? Number(r.currentStock) : 0;
                 const incomingPo = r.incomingStock != null ? Number(r.incomingStock) : 0;
@@ -2002,97 +1984,131 @@
                 return React.createElement('tr', {
                   key: r.id || r.productId,
                   style: {
-                    background: isRecentlyOrdered ? 'rgba(16, 185, 129, 0.04)' : 'transparent',
-                    opacity: !actionable && !isRecentlyOrdered ? 0.8 : 1
+                    background: isRecentlyOrdered ? 'rgba(35, 75, 48, 0.04)' : undefined,
+                    opacity: !actionable && !isRecentlyOrdered ? 0.85 : 1
                   }
                 },
-                  // Column 1: Product / Identity (Name + SKU/ID + PO ISSUED badge)
-                  React.createElement('td', { style: { padding: '5px 10px' } },
+                  // Column 1: Product / Identity
+                  React.createElement('td', { style: { padding: '6px 12px' } },
                     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
-                      React.createElement('span', { style: { fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', fontSize: '0.84rem', lineHeight: 1.2 } }, r.productName),
+                      React.createElement('span', {
+                        style: { fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.83rem', lineHeight: 1.2 }
+                      }, r.productName),
                       isRecentlyOrdered && React.createElement('span', {
-                        className: 'badge',
-                        style: { background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontSize: '0.65rem', fontWeight: 700, padding: '0 4px' }
+                        style: {
+                          background: 'rgba(35, 75, 48, 0.10)',
+                          color: 'var(--primary, #234B30)',
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          padding: '1px 5px',
+                          borderRadius: 3,
+                          letterSpacing: '0.02em',
+                          lineHeight: 1.2
+                        }
                       }, 'PO ISSUED')
                     ),
-                    React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 1 } },
+                    React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 1, lineHeight: 1.15 } },
                       r.sku ? `SKU: ${r.sku}` : `ID: #${r.productId}`
                     )
                   ),
+
                   // Column 2: Current Physical Stock & Min Stock
-                  React.createElement('td', { style: { textAlign: 'right', padding: '5px 8px' } },
-                    React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.84rem', lineHeight: 1.2 } },
-                      `${fmtNum(currentPhysical, 0)} ${r.unit || 'pcs'}`
-                    ),
-                    React.createElement('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 1 } },
+                  React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px' } },
+                    React.createElement('div', {
+                      style: {
+                        fontWeight: 700,
+                        fontSize: '0.84rem',
+                        lineHeight: 1.2,
+                        color: currentPhysical <= 0 ? '#B91C1C' : (currentPhysical < minStock ? '#B45309' : 'var(--text-primary)')
+                      }
+                    }, `${fmtNum(currentPhysical, 0)} ${r.unit || 'pcs'}`),
+                    React.createElement('div', { style: { fontSize: '0.69rem', color: 'var(--text-secondary)', marginTop: 1, lineHeight: 1.15 } },
                       `Min: ${fmtNum(minStock, 0)}`
                     )
                   ),
+
                   // Column 3: Incoming ISSUED PO Stock
-                  React.createElement('td', { style: { textAlign: 'right', padding: '5px 8px', fontWeight: 600, fontSize: '0.84rem', color: incomingPo > 0 ? '#6366f1' : 'var(--text-secondary)' } },
-                    fmtNum(incomingPo, 0)
+                  React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px' } },
+                    incomingPo > 0
+                      ? React.createElement('span', { style: { fontWeight: 600, fontSize: '0.82rem', color: 'var(--primary, #234B30)' } }, `+${fmtNum(incomingPo, 0)}`)
+                      : React.createElement('span', { style: { fontSize: '0.80rem', color: 'var(--text-tertiary, #9CA3AF)' } }, '—')
                   ),
-                  // Column 4: Forecast Recommended & Threshold Required with (i) controls
-                  React.createElement('td', { style: { textAlign: 'right', padding: '5px 8px' } },
+
+                  // Column 4: Forecast Recommended & Threshold Required with compact info controls
+                  React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px' } },
                     React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end' } },
-                      React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
-                        React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'FC:'),
-                        React.createElement('span', { style: { fontWeight: 600, fontSize: '0.78rem', color: '#4f46e5' } }, fmtNum(forecastRec, 0)),
+                      React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 3, lineHeight: 1.2 } },
+                        React.createElement('span', { style: { fontSize: '0.69rem', color: 'var(--text-secondary)' } }, 'FC:'),
+                        React.createElement('span', { style: { fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)' } }, fmtNum(forecastRec, 0)),
                         React.createElement('button', {
-                          className: 'btn-icon',
-                          style: { background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: '0.68rem', lineHeight: 1 },
-                          title: 'Forecast explanation',
+                          type: 'button',
+                          className: 'rcrm-reorder-info-btn',
+                          title: 'View Forecast Demand Explanation',
                           onClick: () => setInfoModal({ type: 'FORECAST', item: r })
                         }, 'ℹ️')
                       ),
-                      React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
-                        React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Min:'),
-                        React.createElement('span', { style: { fontWeight: 600, fontSize: '0.78rem', color: '#d97706' } }, fmtNum(threshReq, 0)),
+                      React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 3, lineHeight: 1.2 } },
+                        React.createElement('span', { style: { fontSize: '0.69rem', color: 'var(--text-secondary)' } }, 'Min:'),
+                        React.createElement('span', { style: { fontWeight: 600, fontSize: '0.78rem', color: threshReq > 0 ? '#B45309' : 'var(--text-secondary)' } }, fmtNum(threshReq, 0)),
                         React.createElement('button', {
-                          className: 'btn-icon',
-                          style: { background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: '0.68rem', lineHeight: 1 },
-                          title: 'Minimum stock explanation',
+                          type: 'button',
+                          className: 'rcrm-reorder-info-btn',
+                          title: 'View Minimum Stock Explanation',
                           onClick: () => setInfoModal({ type: 'MIN_STOCK', item: r })
                         }, 'ℹ️')
                       )
                     )
                   ),
+
                   // Column 5: Final Recommended
-                  React.createElement('td', { style: { textAlign: 'right', padding: '5px 8px', fontWeight: 800, color: '#4f46e5', fontSize: '0.86rem' } },
-                    `${fmtNum(finalRec, 0)} ${r.unit || 'pcs'}`
+                  React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px' } },
+                    React.createElement('div', {
+                      style: {
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        lineHeight: 1.2,
+                        color: finalRec > 0 ? 'var(--primary, #234B30)' : 'var(--text-secondary)'
+                      }
+                    }, finalRec > 0 ? `${fmtNum(finalRec, 0)} ${r.unit || 'pcs'}` : '0 pcs')
                   ),
-                  // Column 6: Action & Status (Urgency + Reason + Insights & + Order CTAs)
-                  React.createElement('td', { style: { textAlign: 'center', padding: '5px 10px' } },
-                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
-                      React.createElement('div', { style: { display: 'inline-flex', gap: 4 } },
+
+                  // Column 6: Action & Status (Urgency + Clean Secondary Reason + Order/Insights CTAs)
+                  React.createElement('td', { style: { textAlign: 'center', padding: '6px 12px' } },
+                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 } },
+                      // Actions row
+                      React.createElement('div', { style: { display: 'inline-flex', gap: 4, alignItems: 'center' } },
                         React.createElement('button', {
+                          type: 'button',
                           className: 'btn btn-outline btn-xs',
-                          style: { padding: '1px 7px', fontSize: '0.72rem', height: 22, minHeight: 22, lineHeight: '18px' },
+                          style: { padding: '0 8px', fontSize: '0.70rem', height: 22, minHeight: 22, lineHeight: '20px' },
                           onClick: () => {
                             if (onOpenInsights) onOpenInsights(r.productId);
                             else setDetailProductId(r.productId);
                           }
                         }, 'Insights'),
                         React.createElement('button', {
+                          type: 'button',
                           className: 'btn btn-primary btn-xs',
-                          style: { fontWeight: 700, padding: '1px 8px', fontSize: '0.72rem', height: 22, minHeight: 22, lineHeight: '18px' },
+                          style: { fontWeight: 600, padding: '0 8px', fontSize: '0.70rem', height: 22, minHeight: 22, lineHeight: '20px' },
                           disabled: isRecentlyOrdered || !actionable,
                           onClick: () => handleOpenOrderWorkspace(r)
                         }, isRecentlyOrdered ? 'Ordered' : '+ Order')
                       ),
-                      React.createElement('div', { style: { display: 'inline-flex', gap: 3, alignItems: 'center' } },
-                        React.createElement('span', { className: urgencyClass, style: { fontSize: '0.62rem', padding: '0 4px', lineHeight: '14px' } }, r.urgencyStatus || 'HEALTHY'),
-                        React.createElement('span', {
+                      // Status row (Deduplicated & consistent)
+                      React.createElement('div', { style: { display: 'inline-flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' } },
+                        React.createElement('span', { className: urgencyClass }, urgencyLabel),
+                        showReason && React.createElement('span', {
                           style: {
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
-                            padding: '0 4px',
+                            fontSize: '0.64rem',
+                            fontWeight: 500,
+                            padding: '1px 5px',
                             borderRadius: 3,
-                            whiteSpace: 'nowrap',
-                            lineHeight: '14px',
-                            ...reasonStyle
+                            background: 'var(--surface-sunken, #EAF0E9)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-light, #DFE5DE)',
+                            lineHeight: 1.2
                           }
-                        }, reasonText)
+                        }, reasonLabel)
                       )
                     )
                   )
@@ -2101,21 +2117,22 @@
             )
           )
         ),
+
         // Docked Pagination Footer for Smart Reorder Queue
-        React.createElement('div', { className: 'firm-docked-pagination' },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+        React.createElement('div', { className: 'rcrm-reorder-pagination' },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
             React.createElement('span', null,
               effectiveTotalCount > 0
                 ? `Showing ${pageStartIndex + 1}–${Math.min(pageEndIndex, effectiveTotalCount)} of ${effectiveTotalCount} recommendations (Page ${safePage + 1} of ${safeTotalPages})`
                 : 'No replenishment items'
             ),
-            React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76rem', color: 'var(--text-secondary)' } },
-              React.createElement('span', null, 'Per page:'),
+            React.createElement('div', { className: 'rcrm-reorder-size-pills' },
+              React.createElement('span', { style: { marginRight: 2 } }, 'Per page:'),
               [4, 8, 12, 24].map(sz =>
                 React.createElement('button', {
                   key: sz,
-                  className: `btn btn-xs ${pageSize === sz ? 'btn-primary' : 'btn-outline'}`,
-                  style: { padding: '1px 6px', fontSize: '0.72rem', height: 20, minHeight: 20, lineHeight: '18px' },
+                  type: 'button',
+                  className: `rcrm-reorder-size-btn ${pageSize === sz ? 'active' : ''}`,
                   onClick: () => { setPageSize(sz); setPage(0); }
                 }, sz)
               )
@@ -2123,12 +2140,14 @@
           ),
           React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
             React.createElement('button', {
+              type: 'button',
               className: 'btn btn-xs btn-outline',
               disabled: safePage <= 0,
               onClick: () => setPage(p => Math.max(0, p - 1))
             }, '◀ Prev'),
             React.createElement('span', { style: { fontWeight: 600, padding: '0 4px', fontSize: '0.8rem' } }, `${safePage + 1} / ${safeTotalPages}`),
             React.createElement('button', {
+              type: 'button',
               className: 'btn btn-xs btn-outline',
               disabled: safePage >= safeTotalPages - 1,
               onClick: () => setPage(p => p + 1)
@@ -2275,10 +2294,10 @@
 
           // Modal Scrollable Body
           React.createElement('div', { style: { padding: '20px 24px', overflowY: 'auto', flex: 1 } },
-            workspaceLoading ? React.createElement('div', { style: { textAlign: 'center', padding: '60px 0' } },
+            workspaceLoading ? (typeof RupeeCRMLoader !== 'undefined' ? React.createElement(RupeeCRMLoader, { message: 'Loading catalog and vendor profiles...', size: 56, style: { minHeight: 220 } }) : React.createElement('div', { style: { textAlign: 'center', padding: '60px 0' } },
               React.createElement('div', { className: 'spinner', style: { margin: '0 auto 12px' } }),
               React.createElement('div', { style: { color: 'var(--text-secondary)' } }, 'Loading catalog and vendor profiles...')
-            ) : (
+            )) : (
               workspaceStep === 1 ? React.createElement(React.Fragment, null,
                 // Top Search Bar + Create New Product Action
                 React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 18 } },

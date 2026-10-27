@@ -50,23 +50,43 @@ public class OmnisearchQuickHelpController {
         return ResponseEntity.ok(quickHelpService.getInvoiceQuickHelp(target));
     }
 
+    /**
+     * Resolves canonical period with documented precedence:
+     * 1. 'period' parameter (primary canonical client contract)
+     * 2. 'range' parameter (legacy backward compatibility)
+     * 3. Defaults to 'today' if neither is provided
+     */
+    private String resolveCanonicalPeriod(String period, String range) {
+        if (period != null && !period.isBlank()) {
+            return period.trim();
+        }
+        if (range != null && !range.isBlank()) {
+            return range.trim();
+        }
+        return "today";
+    }
+
     @GetMapping("/sales")
     public ResponseEntity<QuickHelpResponse<SalesSummaryDTO>> getSales(
-            @RequestParam(required = false, defaultValue = "today") String range,
+            @RequestParam(required = false) String range,
+            @RequestParam(required = false) String period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(quickHelpService.getSalesSummary(range, from, to));
+        String canonical = resolveCanonicalPeriod(period, range);
+        return ResponseEntity.ok(quickHelpService.getSalesSummary(canonical, from, to));
     }
 
     @GetMapping("/expenses")
     public ResponseEntity<QuickHelpResponse<ExpenseSummaryDTO>> getExpenses(
-            @RequestParam(required = false, defaultValue = "today") String range,
+            @RequestParam(required = false) String range,
+            @RequestParam(required = false) String period,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return ResponseEntity.ok(quickHelpService.getExpenseSummary(range, category, from, to));
+        String canonical = resolveCanonicalPeriod(period, range);
+        return ResponseEntity.ok(quickHelpService.getExpenseSummary(canonical, category, from, to));
     }
 
     @GetMapping("/aging")
@@ -118,28 +138,34 @@ public class OmnisearchQuickHelpController {
     @GetMapping("/returns")
     public ResponseEntity<QuickHelpResponse<SalesReturnQuickHelpDTO>> getReturns(
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) String period
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String range
     ) {
-        return ResponseEntity.ok(quickHelpService.getSalesReturnQuickHelp(query, period));
+        String canonical = resolveCanonicalPeriod(period, range);
+        return ResponseEntity.ok(quickHelpService.getSalesReturnQuickHelp(query, canonical));
     }
 
     @GetMapping("/collections")
     public ResponseEntity<QuickHelpResponse<CollectionReceiptQuickHelpDTO>> getCollections(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String period,
+            @RequestParam(required = false) String range,
             @RequestParam(required = false) String mode
     ) {
-        return ResponseEntity.ok(quickHelpService.getCollectionReceiptQuickHelp(query, period, mode));
+        String canonical = resolveCanonicalPeriod(period, range);
+        return ResponseEntity.ok(quickHelpService.getCollectionReceiptQuickHelp(query, canonical, mode));
     }
 
     @GetMapping("/vendor-payouts")
     public ResponseEntity<QuickHelpResponse<VendorPayoutQuickHelpDTO>> getVendorPayouts(
             @RequestParam(required = false) String vendor,
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) String period
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String range
     ) {
         String target = query != null ? query : vendor;
-        return ResponseEntity.ok(quickHelpService.getVendorPayoutQuickHelp(target, period));
+        String canonical = resolveCanonicalPeriod(period, range);
+        return ResponseEntity.ok(quickHelpService.getVendorPayoutQuickHelp(target, canonical));
     }
 
     @GetMapping("/purchase-orders")
@@ -175,6 +201,15 @@ public class OmnisearchQuickHelpController {
     ) {
         String target = query != null ? query : q;
         return ResponseEntity.ok(quickHelpService.searchAllEntities(target));
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(java.util.Map.of(
+                "error", ex.getMessage(),
+                "status", 400,
+                "timestamp", System.currentTimeMillis()
+        ));
     }
 }
 

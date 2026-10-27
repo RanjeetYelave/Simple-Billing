@@ -214,9 +214,13 @@ const API = {
       body: { firmId: API.firmId }
     })),
     delete: (id) => API._request(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
-    pdfUrl: (id) => API._qs(API.BASE_URL + `/api/purchase-orders/${id}/pdf`),
-    downloadPdf: async (id) => {
-      const res = await API._request(API._qs(`/api/purchase-orders/${id}/pdf`));
+    pdfUrl: (id, options = {}) => {
+      const q = typeof options === 'string' ? { format: options, size: options } : (options || {});
+      return API._qs(API.BASE_URL + `/api/purchase-orders/${id}/pdf`, q);
+    },
+    downloadPdf: async (id, options = {}) => {
+      const q = typeof options === 'string' ? { format: options, size: options } : (options || {});
+      const res = await API._request(API._qs(`/api/purchase-orders/${id}/pdf`, q));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
@@ -257,9 +261,13 @@ const API = {
       body: { status }
     })),
     delete: (id) => API._request(`/api/letters/${id}`, { method: 'DELETE' }),
-    pdfUrl: (id) => API._qs(API.BASE_URL + `/api/letters/${id}/pdf`),
-    downloadPdf: async (id) => {
-      const res = await API._request(API._qs(`/api/letters/${id}/pdf`));
+    pdfUrl: (id, options = {}) => {
+      const q = typeof options === 'string' ? { format: options, size: options } : (options || {});
+      return API._qs(API.BASE_URL + `/api/letters/${id}/pdf`, q);
+    },
+    downloadPdf: async (id, options = {}) => {
+      const q = typeof options === 'string' ? { format: options, size: options } : (options || {});
+      const res = await API._request(API._qs(`/api/letters/${id}/pdf`, q));
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     }
@@ -544,8 +552,24 @@ const API = {
     listByInvoice: (invoiceId) => API._json(`/api/invoices/${invoiceId}/returns`),
     list: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/returns'))),
     get: (id) => API._json(`/api/returns/${id}`),
-    downloadPdf: async (id, size = 'A4') => {
-      const res = await API._request(`/api/returns/${id}/pdf?size=${size}`);
+    downloadPdf: async (id, sizeOrOptions = 'A4') => {
+      let q = {};
+      if (typeof sizeOrOptions === 'string') {
+        const cleanSize = sizeOrOptions.trim();
+        q = { size: cleanSize || 'A4', format: cleanSize || 'A4' };
+      } else if (sizeOrOptions && typeof sizeOrOptions === 'object') {
+        if (sizeOrOptions.format) {
+          q.format = sizeOrOptions.format;
+          q.size = sizeOrOptions.format;
+        } else if (sizeOrOptions.size) {
+          q.size = sizeOrOptions.size;
+          q.format = sizeOrOptions.size;
+        }
+        if (sizeOrOptions.theme) q.theme = sizeOrOptions.theme;
+        if (sizeOrOptions.color) q.color = sizeOrOptions.color;
+      }
+      const qs = new URLSearchParams(q).toString();
+      const res = await API._request(`/api/returns/${id}/pdf${qs ? '?' + qs : ''}`);
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
@@ -643,6 +667,20 @@ const API = {
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
       return API._ensureFirmReady().then(() => API._json(API._qs('/api/expenses/categories'), { headers }));
     },
+    statementPdfUrl: (params = {}, firmIdOverride) => {
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const q = typeof params === 'object' && params !== null ? { ...params, firmId: fid } : { firmId: fid };
+      return API._qs('/api/expenses/statement/pdf', q);
+    },
+    downloadStatementPdf: async (params = {}, firmIdOverride) => {
+      await API._ensureFirmReady();
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const q = typeof params === 'object' && params !== null ? { ...params, firmId: fid } : { firmId: fid };
+      const res = await API._request(API._qs('/api/expenses/statement/pdf', q), { headers });
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
   },
 
   // ── Savings Tracker ──
@@ -680,6 +718,20 @@ const API = {
       const fid = firmIdOverride || API.firmId;
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
       return API._ensureFirmReady().then(() => API._json(API._qs('/api/savings/categories'), { headers }));
+    },
+    ledgerPdfUrl: (params = {}, firmIdOverride) => {
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const q = typeof params === 'object' && params !== null ? { ...params, firmId: fid } : { firmId: fid };
+      return API._qs('/api/savings/ledger/pdf', q);
+    },
+    downloadLedgerPdf: async (params = {}, firmIdOverride) => {
+      await API._ensureFirmReady();
+      const fid = firmIdOverride || (typeof params === 'object' && params && params.firmId) || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const q = typeof params === 'object' && params !== null ? { ...params, firmId: fid } : { firmId: fid };
+      const res = await API._request(API._qs('/api/savings/ledger/pdf', q), { headers });
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
     },
   },
 
@@ -773,36 +825,109 @@ const API = {
     customer: (id, from, to) => {
       return API._ensureFirmReady().then(() => API._json(API._qs(`/api/statements/customer/${id}`, { from, to })));
     },
-    customerPdfUrl: (id, from, to) => {
-      return API._qs(`/api/statements/customer/${id}/pdf`, { from, to });
+    customerPdfUrl: (id, from, to, options = {}) => {
+      return API._qs(`/api/statements/customer/${id}/pdf`, { from, to, ...options });
     },
-    customerPdf: async (id, from, to) => {
+    customerPdf: async (id, from, to, options = {}) => {
       await API._ensureFirmReady();
-      const res = await API._request(API._qs(`/api/statements/customer/${id}/pdf`, { from, to }));
+      const res = await API._request(API._qs(`/api/statements/customer/${id}/pdf`, { from, to, ...options }));
+      if (!res.ok) {
+        let errMsg = `Server returned HTTP ${res.status}`;
+        try {
+          const errText = await res.text();
+          if (errText) {
+            try {
+              const errJson = JSON.parse(errText);
+              errMsg = errJson.error || errJson.message || errText;
+            } catch (_) {
+              errMsg = errText;
+            }
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
     party: (id, from, to) => {
       return API._ensureFirmReady().then(() => API._json(API._qs(`/api/statements/party/${id}`, { from, to })));
     },
-    partyPdfUrl: (id, from, to) => {
-      return API._qs(`/api/statements/party/${id}/pdf`, { from, to });
+    partyPdfUrl: (id, from, to, options = {}) => {
+      return API._qs(`/api/statements/party/${id}/pdf`, { from, to, ...options });
     },
-    partyPdf: async (id, from, to) => {
+    partyPdf: async (id, from, to, options = {}) => {
       await API._ensureFirmReady();
-      const res = await API._request(API._qs(`/api/statements/party/${id}/pdf`, { from, to }));
+      const res = await API._request(API._qs(`/api/statements/party/${id}/pdf`, { from, to, ...options }));
+      if (!res.ok) {
+        let errMsg = `Server returned HTTP ${res.status}`;
+        try {
+          const errText = await res.text();
+          if (errText) {
+            try {
+              const errJson = JSON.parse(errText);
+              errMsg = errJson.error || errJson.message || errText;
+            } catch (_) {
+              errMsg = errText;
+            }
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
     firm: (from, to, firmId) => {
-      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/firm', { firmId: firmId || API.firmId, from, to })));
+      let fId = API.firmId;
+      if (typeof firmId === 'object' && firmId !== null) {
+        fId = firmId.firmId || API.firmId;
+      } else if (firmId !== undefined && firmId !== null) {
+        fId = firmId;
+      }
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/firm', { firmId: fId, from, to })));
     },
-    firmPdfUrl: (from, to, firmId) => {
-      return API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to });
+    firmPdfUrl: (from, to, firmIdOrOptions, options = {}) => {
+      let fId = API.firmId;
+      let opts = options;
+      if (typeof firmIdOrOptions === 'object' && firmIdOrOptions !== null) {
+        opts = { ...firmIdOrOptions };
+        if (opts.firmId !== undefined && typeof opts.firmId !== 'object') {
+          fId = opts.firmId;
+        }
+        delete opts.firmId;
+      } else if (firmIdOrOptions !== undefined && firmIdOrOptions !== null) {
+        fId = firmIdOrOptions;
+      }
+      return API._qs('/api/statements/firm/pdf', { firmId: fId, from, to, ...opts });
     },
-    firmPdf: async (from, to, firmId) => {
+    firmPdf: async (from, to, firmIdOrOptions, options = {}) => {
+      let fId = API.firmId;
+      let opts = options;
+      if (typeof firmIdOrOptions === 'object' && firmIdOrOptions !== null) {
+        opts = { ...firmIdOrOptions };
+        if (opts.firmId !== undefined && typeof opts.firmId !== 'object') {
+          fId = opts.firmId;
+        }
+        delete opts.firmId;
+      } else if (firmIdOrOptions !== undefined && firmIdOrOptions !== null) {
+        fId = firmIdOrOptions;
+      }
       await API._ensureFirmReady();
-      const res = await API._request(API._qs('/api/statements/firm/pdf', { firmId: firmId || API.firmId, from, to }));
+      const res = await API._request(API._qs('/api/statements/firm/pdf', { firmId: fId, from, to, ...opts }));
+      if (!res.ok) {
+        let errMsg = `Server returned HTTP ${res.status}`;
+        try {
+          const errText = await res.text();
+          if (errText) {
+            try {
+              const errJson = JSON.parse(errText);
+              errMsg = errJson.error || errJson.message || errText;
+            } catch (_) {
+              errMsg = errText;
+            }
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
@@ -866,7 +991,7 @@ const API = {
         firmIds.forEach(id => formData.append('firmIds', id));
       }
       formData.append('mode', mode || 'clone');
-      if (targetFirmId) formData.append('targetFirmId', targetFirmId);
+      if (mode === 'merge' && targetFirmId) formData.append('targetFirmId', targetFirmId);
       return API._json('/api/backup/import/selective', { method: 'POST', body: formData });
     },
     import: async (file, mode) => {
@@ -886,7 +1011,7 @@ const API = {
         firmIds.forEach(id => formData.append('firmIds', id));
       }
       formData.append('mode', mode || 'clone');
-      if (targetFirmId) formData.append('targetFirmId', targetFirmId);
+      if (mode === 'merge' && targetFirmId) formData.append('targetFirmId', targetFirmId);
       return API._json('/api/backup/auto/restore', { method: 'POST', body: formData });
     },
     factoryReset: (password) => API._json('/api/backup/factory-reset', {
@@ -926,16 +1051,40 @@ const API = {
     getYtd: (id) => API._json(`/api/employees/${id}/ytd`),
     applyPromotions: () => API._json(API._qs('/api/employees/apply-promotions'), { method: 'POST' }),
     // PDF downloads - returns blob
-    downloadPayslipPdf: async (id, salaryId) => {
-      const res = await API._request(`/api/employees/${id}/salaries/${salaryId}/payslip`);
-      return res.blob();
+    payslipPdfUrl: (id, salaryId, options = {}) => API._qs(`/api/employees/${id}/salaries/${salaryId}/payslip`, options),
+    downloadPayslipPdf: async (id, salaryId, options = {}) => {
+      const res = await API._request(API._qs(`/api/employees/${id}/salaries/${salaryId}/payslip`, options));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
     },
-    downloadStatementPdf: async (id, from, to) => {
-      const params = {};
+    statementPdfUrl: (id, from, to, options = {}) => {
+      const params = { ...options };
+      if (from) params.from = from;
+      if (to) params.to = to;
+      return API._qs(`/api/employees/${id}/statement`, params);
+    },
+    downloadStatementPdf: async (id, from, to, options = {}) => {
+      const params = { ...options };
       if (from) params.from = from;
       if (to) params.to = to;
       const res = await API._request(API._qs(`/api/employees/${id}/statement`, params));
-      return res.blob();
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
+    exportEmployeesCsv: async () => {
+      const res = await API._request(API._qs('/api/employees/export/csv'));
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'text/csv' });
+    },
+    exportSalariesCsv: async (id) => {
+      const res = await API._request(`/api/employees/${id}/salaries/export/csv`);
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'text/csv' });
+    },
+    exportAdvancesCsv: async (id) => {
+      const res = await API._request(`/api/employees/${id}/advances/export/csv`);
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'text/csv' });
     },
     // F10: Employee Analytics
     analytics: () => {
@@ -1035,15 +1184,15 @@ const API = {
     customer: (query, customerId) => API._json(API._qs('/api/omnisearch/customer', { query, customerId })),
     vendor: (query, vendorId) => API._json(API._qs('/api/omnisearch/vendor', { query, vendorId })),
     invoice: (query, invoiceId, estimateNumber) => API._json(API._qs('/api/omnisearch/invoice', { query, invoiceId, estimateNumber })),
-    sales: (period, startDate, endDate, groupBy) => API._json(API._qs('/api/omnisearch/sales', { period, startDate, endDate, groupBy })),
-    expenses: (period, startDate, endDate, category) => API._json(API._qs('/api/omnisearch/expenses', { period, startDate, endDate, category })),
+    sales: (period, startDate, endDate, groupBy) => API._json(API._qs('/api/omnisearch/sales', { period, range: period, from: startDate, to: endDate, startDate, endDate, groupBy })),
+    expenses: (period, startDate, endDate, category) => API._json(API._qs('/api/omnisearch/expenses', { period, range: period, from: startDate, to: endDate, startDate, endDate, category })),
     inventory: (query, filter) => API._json(API._qs('/api/omnisearch/inventory', { query, filter })),
     hr: (query, employeeId, date) => API._json(API._qs('/api/omnisearch/hr', { query, employeeId, date })),
-    salaries: (employeeName, period) => API._json(API._qs('/api/omnisearch/salaries', { employeeName, period })),
+    salaries: (employeeName, period) => API._json(API._qs('/api/omnisearch/salaries', { employeeName, period, range: period })),
     advances: (employeeName) => API._json(API._qs('/api/omnisearch/advances', { employeeName })),
-    returns: (query, period) => API._json(API._qs('/api/omnisearch/returns', { query, period })),
-    collections: (query, period, mode) => API._json(API._qs('/api/omnisearch/collections', { query, period, mode })),
-    vendorPayouts: (vendorName, period) => API._json(API._qs('/api/omnisearch/vendor-payouts', { vendorName, period })),
+    returns: (query, period) => API._json(API._qs('/api/omnisearch/returns', { query, period, range: period })),
+    collections: (query, period, mode) => API._json(API._qs('/api/omnisearch/collections', { query, period, range: period, mode })),
+    vendorPayouts: (vendorName, period) => API._json(API._qs('/api/omnisearch/vendor-payouts', { vendorName, period, range: period })),
     purchaseOrders: (query, status) => API._json(API._qs('/api/omnisearch/purchase-orders', { query, status })),
     stockMovements: (query, period) => API._json(API._qs('/api/omnisearch/stock-movements', { query, period })),
     ledger: (entityType, name, id) => API._json(API._qs('/api/omnisearch/ledger', { entityType, name, id })),

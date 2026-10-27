@@ -203,20 +203,7 @@
     }
 
     return React.createElement('div', {
-      className: 'take-a-break-hub-wrapper',
-      style: {
-        position: 'relative',
-        height: '100%',
-        maxHeight: '100%',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        overflow: 'hidden',
-        boxSizing: 'border-box',
-        padding: '2px 8px 4px 8px',
-        flex: 1
-      }
+      className: 'take-a-break-hub-wrapper'
     },
       // Layer 1: Ambient Regional Atmosphere Silhouette Backdrop
       AtmosphereComp && React.createElement(AtmosphereComp, {
@@ -224,33 +211,14 @@
         gameType: 'classic'
       }),
 
-      // Layer 2: Interactive Maharashtra Journey Route & World Map Modal
-      JourneyComp && React.createElement(JourneyComp, {
-        currentLevel: activeLevel,
-        gameType: 'classic'
-      }),
-
-      // Layer 3: Dynamic Full-Viewport Snake Game Container
+      // Layer 2: Dynamic Full-Viewport Snake Game & Surrounding Expedition Container
       React.createElement('div', {
-        className: 'take-a-break-game-container',
-        style: {
-          width: '100%',
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          boxSizing: 'border-box',
-          overflow: 'hidden',
-          zIndex: 1
-        }
+        className: 'take-a-break-game-container'
       },
         SnakeComp ? React.createElement(SnakeComp, { key: 'snake_classic_view' }) : React.createElement('div', null, 'Loading Snake...')
       ),
 
-      // Layer 4: Sandboxed Progression, Travel Transition & Reward Controller
+      // Layer 3: Sandboxed Progression, Travel Transition & Reward Controller
       ProgressionComp && ProgressionComp.ProgressionExperienceController && React.createElement(ProgressionComp.ProgressionExperienceController, {
         worldData,
         gameType: 'classic'

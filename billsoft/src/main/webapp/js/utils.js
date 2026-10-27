@@ -37,6 +37,16 @@ const BillsoftUtils = {
     return Array.from(str).length;
   },
 
+  getBusinessDateString(date = new Date(), offsetDays = 0, timeZone = 'Asia/Kolkata') {
+    const d = (offsetDays !== 0) ? new Date(date.getTime() + offsetDays * 86400000) : date;
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d);
+  },
+
   getDocTimestamp(doc) {
     if (!doc) return 0;
     // 1. Extract calendar day (YYYY-MM-DD)
@@ -221,12 +231,146 @@ const BillsoftUtils = {
     reader.readAsDataURL(new Blob([blob], { type: mimeType }));
   },
 
-  printBlob(blob) {
+  printBlob(blob, options = {}) {
+    if (!blob) return;
     if (blob.type !== 'application/pdf') {
       blob = new Blob([blob], { type: 'application/pdf' });
     }
-    // Create print modal with PDF.js
+
+    // Default to clean headless direct print to browser/native print dialog without legacy overlay
+    const isHeadless = options.headless !== false;
+    const mountId = isHeadless ? 'billsoft-headless-print-mount' : 'billsoft-interactive-print-overlay';
+    const styleId = isHeadless ? 'billsoft-headless-print-style' : 'billsoft-interactive-print-style';
+
+    // Purge any stale leftover print elements to prevent cross-document corruption
+    const oldStyle = document.getElementById(styleId);
+    if (oldStyle && oldStyle.parentNode) oldStyle.parentNode.removeChild(oldStyle);
+    const oldMount = document.getElementById(mountId);
+    if (oldMount && oldMount.parentNode) oldMount.parentNode.removeChild(oldMount);
+
+    // Scoped print style sheet
+    const printStyle = document.createElement('style');
+    printStyle.id = styleId;
+    printStyle.innerHTML = `
+      @page {
+        size: auto;
+        margin: 0mm;
+      }
+      @media print {
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+        }
+        body > *:not(#${mountId}) { display: none !important; }
+        #${mountId} { 
+          position: static !important; 
+          width: 100% !important; height: auto !important; 
+          background: transparent !important; display: block !important; 
+          overflow: visible !important;
+          left: auto !important; top: auto !important;
+          opacity: 1 !important; visibility: visible !important;
+        }
+        #${mountId} .print-header-bar { display: none !important; }
+        #${mountId} #pdf-render-container, #${mountId} .print-pages-container { 
+          padding: 0 !important; margin: 0 !important; 
+          overflow: visible !important; 
+          display: block !important; height: auto !important; 
+        }
+        #${mountId} img { 
+          max-width: 100% !important; width: 100% !important; 
+          display: block !important; 
+          page-break-after: always !important; 
+          break-after: page !important; 
+          margin: 0 !important; 
+          box-shadow: none !important; 
+        }
+      }
+    `;
+    document.head.appendChild(printStyle);
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      window.removeEventListener('afterprint', cleanup);
+      if (printStyle && printStyle.parentNode) {
+        printStyle.parentNode.removeChild(printStyle);
+      }
+      const mount = document.getElementById(mountId);
+      if (mount && mount.parentNode) {
+        mount.parentNode.removeChild(mount);
+      }
+      if (typeof options.onComplete === 'function') {
+        options.onComplete();
+      }
+    };
+
+    window.addEventListener('afterprint', cleanup);
+
+    if (isHeadless) {
+      // ── Headless Direct Print Flow (Stage 2 Bypassed) ──
+      const mount = document.createElement('div');
+      mount.id = mountId;
+      mount.style.position = 'fixed';
+      mount.style.top = '-9999px';
+      mount.style.left = '-9999px';
+      mount.style.width = '1px';
+      mount.style.height = '1px';
+      mount.style.opacity = '0';
+      mount.style.pointerEvents = 'none';
+
+      const pagesContainer = document.createElement('div');
+      pagesContainer.className = 'print-pages-container';
+      mount.appendChild(pagesContainer);
+      document.body.appendChild(mount);
+
+      if (typeof pdfjsLib === 'undefined') {
+        console.error('PDF engine not loaded for printing');
+        cleanup();
+        if (typeof showToast === 'function') showToast('PDF engine not loaded for printing', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async function () {
+        const typedarray = new Uint8Array(this.result);
+        try {
+          const pdf = await pdfjsLib.getDocument(typedarray).promise;
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 });
+            const canvas = document.createElement('canvas');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            const context = canvas.getContext('2d');
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+            pagesContainer.appendChild(img);
+          }
+
+          setTimeout(() => {
+            window.print();
+            setTimeout(() => {
+              if (!cleanedUp) cleanup();
+            }, 3000);
+          }, 80);
+        } catch (err) {
+          console.error('Headless print error:', err);
+          cleanup();
+          if (typeof showToast === 'function') showToast('Failed to prepare print document', 'error');
+        }
+      };
+      reader.onerror = () => { cleanup(); };
+      reader.readAsArrayBuffer(blob);
+      return;
+    }
+
+    // ── Interactive Print Overlay Flow (Legacy Fallback with Clean Lifecycles) ──
     const overlay = document.createElement('div');
+    overlay.id = mountId;
     overlay.className = 'print-modal-overlay';
     overlay.style.position = 'fixed';
     overlay.style.top = '0';
@@ -239,6 +383,7 @@ const BillsoftUtils = {
     overlay.style.flexDirection = 'column';
 
     const header = document.createElement('div');
+    header.className = 'print-header-bar';
     header.style.padding = '12px 20px';
     header.style.backgroundColor = '#1e293b';
     header.style.display = 'flex';
@@ -265,7 +410,7 @@ const BillsoftUtils = {
     actualPrintBtn.style.borderRadius = '4px';
     actualPrintBtn.style.backgroundColor = '#10b981';
     actualPrintBtn.style.color = 'white';
-    actualPrintBtn.style.display = 'none'; // hide until loaded
+    actualPrintBtn.style.display = 'none';
 
     const closeBtn = document.createElement('button');
     closeBtn.innerText = 'Close';
@@ -279,7 +424,6 @@ const BillsoftUtils = {
 
     actions.appendChild(actualPrintBtn);
     actions.appendChild(closeBtn);
-
     header.appendChild(title);
     header.appendChild(actions);
 
@@ -297,57 +441,14 @@ const BillsoftUtils = {
     overlay.appendChild(content);
     document.body.appendChild(overlay);
 
-    // Add print styles dynamically
-    let printStyle = document.getElementById('print-pdf-style');
-    if (!printStyle) {
-      printStyle = document.createElement('style');
-      printStyle.id = 'print-pdf-style';
-      printStyle.innerHTML = `
-        @page {
-          size: auto;
-          margin: 0mm;
-        }
-        @media print {
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-          }
-          body > *:not(.print-modal-overlay) { display: none !important; }
-          .print-modal-overlay { 
-            position: static !important; 
-            width: 100% !important; height: auto !important; 
-            background: transparent !important; display: block !important; 
-            overflow: visible !important;
-          }
-          .print-modal-overlay > div:first-child { display: none !important; }
-          #pdf-render-container { 
-            padding: 0 !important; margin: 0 !important;
-            overflow: visible !important; 
-            display: block !important; height: auto !important;
-          }
-          #pdf-render-container img { 
-            max-width: 100% !important; width: 100% !important;
-            display: block !important;
-            page-break-after: always !important;
-            break-after: page !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-          }
-        }
-      `;
-      document.head.appendChild(printStyle);
-    }
-
     closeBtn.onclick = () => {
-      document.body.removeChild(overlay);
+      cleanup();
     };
 
     actualPrintBtn.onclick = () => {
       window.print();
     };
 
-    // Use PDF.js to render
     if (typeof pdfjsLib === 'undefined') {
       title.innerText = 'Error: PDF engine not loaded.';
       return;
@@ -362,7 +463,7 @@ const BillsoftUtils = {
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 2.0 }); // higher scale for print quality
+          const viewport = page.getViewport({ scale: 2.0 });
 
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
@@ -371,11 +472,10 @@ const BillsoftUtils = {
 
           await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-          // Convert to image for better print layout
           const img = document.createElement('img');
           img.src = canvas.toDataURL('image/png');
           img.style.maxWidth = '100%';
-          img.style.width = '210mm'; // A4 width approx
+          img.style.width = '210mm';
           img.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
           img.style.backgroundColor = '#fff';
 
@@ -387,17 +487,55 @@ const BillsoftUtils = {
         console.error(err);
       }
     };
+    fileReader.onerror = () => { cleanup(); };
     fileReader.readAsArrayBuffer(blob);
   },
 
+  parseLocalDate(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const clean = dateStr.trim().split('T')[0].split(' ')[0];
+    const parts = clean.split('-');
+    if (parts.length !== 3) return null;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+    const dt = new Date(y, m, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m || dt.getDate() !== d) return null;
+    return dt;
+  },
+
+  formatLocalDate(dateObj) {
+    if (!dateObj || isNaN(dateObj.getTime())) return '';
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  },
+
   todayStr() {
-    return new Date().toISOString().split('T')[0];
+    return this.formatLocalDate(new Date());
   },
 
   futureDateStr(days) {
     const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    d.setDate(d.getDate() + (parseInt(days, 10) || 0));
+    return this.formatLocalDate(d);
+  },
+
+  addDaysToDateStr(dateStr, days) {
+    const dt = this.parseLocalDate(dateStr) || new Date();
+    dt.setDate(dt.getDate() + (parseInt(days, 10) || 0));
+    return this.formatLocalDate(dt);
+  },
+
+  getDaysBetween(dateStr1, dateStr2) {
+    const d1 = this.parseLocalDate(dateStr1);
+    const d2 = this.parseLocalDate(dateStr2);
+    if (!d1 || !d2) return NaN;
+    const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+    const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+    return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
   },
 
   // Decouples glued numbers and words/units: "30mm" -> "30 mm", "700upi" -> "700 upi", "18%gst" -> "18% gst"
@@ -3596,12 +3734,19 @@ const BillsoftSearchEngine = {
 
     // 1. Today's Sales Snapshot
     if (/\b(today(?:'s)?|aaj|aajka|aajchi)\b/i.test(q) && /\b(sales?|revenue|income|collection|billing|bikri|dhanda|hisab)\b/i.test(q)) {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = BillsoftUtils.getBusinessDateString(new Date(), 0, 'Asia/Kolkata');
+      const activeStatuses = ['FINAL', 'UNPAID', 'PAID', 'OVERDUE', 'SENT'];
       const todayInvoices = invoices.filter(inv => {
+        const st = (inv.status || 'FINAL').toUpperCase();
+        if (!activeStatuses.includes(st)) return false;
         const d = (inv.invoiceDate || inv.createdAt || '').slice(0, 10);
         return d === todayStr;
       });
-      const totalAmount = todayInvoices.reduce((sum, inv) => sum + (parseFloat(inv.netTotal || inv.totalAmount || 0)), 0);
+      const totalAmount = todayInvoices.reduce((sum, inv) => {
+        const raw = parseFloat(inv.netTotal || inv.totalAmount) || 0;
+        const ret = parseFloat(inv.refundAmount || 0) || 0;
+        return sum + Math.max(0, raw - ret);
+      }, 0);
       const paidAmount = todayInvoices.reduce((sum, inv) => sum + (parseFloat(inv.paidAmount || (inv.status === 'PAID' ? (inv.netTotal || inv.totalAmount || 0) : 0))), 0);
       const pendingAmount = Math.max(0, totalAmount - paidAmount);
 
@@ -4974,7 +5119,7 @@ const BillsoftSearchEngine = {
                   await API.expenses.create({
                     title: data.title || 'General Expense',
                     amount: parseFloat(data.amount) || 0,
-                    expenseDate: data.expenseDate || new Date().toISOString().slice(0, 10),
+                    expenseDate: data.expenseDate || BillsoftUtils.getBusinessDateString(),
                     category: data.category || 'General',
                     paymentMode: data.paymentMode || 'Cash'
                   });
@@ -5679,14 +5824,14 @@ const BillsoftSearchEngine = {
             title: inlineExpense.title,
             amount: inlineExpense.amount,
             category: 'General',
-            expenseDate: new Date().toISOString().slice(0, 10),
+            expenseDate: BillsoftUtils.getBusinessDateString(),
             paymentMode: 'Cash'
           }
         },
         action: async () => {
           try {
             if (API.expenses && API.expenses.create) {
-              const today = new Date().toISOString().slice(0, 10);
+              const today = BillsoftUtils.getBusinessDateString();
               await API.expenses.create({
                 title: inlineExpense.title,
                 amount: inlineExpense.amount,
@@ -5820,7 +5965,7 @@ const BillsoftSearchEngine = {
           initialValues: {
             employeeId: inlineAtt.employee ? inlineAtt.employee.id : '',
             employeeName: inlineAtt.name,
-            date: new Date().toISOString().slice(0, 10),
+            date: BillsoftUtils.getBusinessDateString(),
             status: 'PRESENT',
             remarks: ''
           }
@@ -5846,7 +5991,7 @@ const BillsoftSearchEngine = {
             employeeId: inlineAdv.employee ? inlineAdv.employee.id : '',
             employeeName: inlineAdv.name,
             amount: inlineAdv.amount,
-            date: new Date().toISOString().slice(0, 10),
+            date: BillsoftUtils.getBusinessDateString(),
             paymentMode: 'Cash',
             reason: 'Salary Advance'
           }
@@ -6340,8 +6485,9 @@ if (typeof window !== 'undefined') {
   window.EulaService = EulaService;
   window.BillsoftUtils.eulaService = EulaService;
   window.getInitials = BillsoftUtils.getInitials;
+  window.getBusinessDateString = BillsoftUtils.getBusinessDateString;
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { BillsoftUtils, BillsoftSearchEngine, EulaService, getInitials: BillsoftUtils.getInitials };
+  module.exports = { BillsoftUtils, BillsoftSearchEngine, EulaService, getInitials: BillsoftUtils.getInitials, getBusinessDateString: BillsoftUtils.getBusinessDateString };
 }
 

@@ -1787,11 +1787,95 @@
     const [showLevelGoalCard, setShowLevelGoalCard] = useState(true);
     const [deathState, setDeathState] = useState(null);
     const [isMuted, setIsMuted] = useState(() => (Audio ? Audio.isMuted() : false));
+    // Session-scoped UI state retention (retained during current page session, no persistent preferences)
+    const getSessionUIState = () => {
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          const raw = sessionStorage.getItem('rcrm_take_a_break_ui_state');
+          if (raw) return JSON.parse(raw);
+        }
+      } catch (e) {}
+      return null;
+    };
+
+    const updateSessionUIState = (patch) => {
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          const current = getSessionUIState() || {};
+          const next = { ...current, ...patch };
+          sessionStorage.setItem('rcrm_take_a_break_ui_state', JSON.stringify(next));
+        }
+      } catch (e) {}
+    };
+
+    const initialSessionUI = getSessionUIState();
+
     const [showStatsModal, setShowStatsModal] = useState(false);
     const [milestoneCelebration, setMilestoneCelebration] = useState(null);
     const [levelMilestoneCelebration, setLevelMilestoneCelebration] = useState(null);
     const [levelCelebration, setLevelCelebration] = useState(null);
     const [uiBoardHeader, setUiBoardHeader] = useState(null);
+
+    // Current chapter expanded by default on session start; retained if toggled by user
+    const [showChapterExplorer, setShowChapterExplorer] = useState(() => {
+      if (initialSessionUI && typeof initialSessionUI.showChapterExplorer === 'boolean') {
+        return initialSessionUI.showChapterExplorer;
+      }
+      return true;
+    });
+
+    const [openSectionJourney, setOpenSectionJourney] = useState(() => {
+      if (initialSessionUI && typeof initialSessionUI.openSectionJourney === 'boolean') {
+        return initialSessionUI.openSectionJourney;
+      }
+      return false;
+    });
+
+    const [openSectionStats, setOpenSectionStats] = useState(() => {
+      if (initialSessionUI && typeof initialSessionUI.openSectionStats === 'boolean') {
+        return initialSessionUI.openSectionStats;
+      }
+      return false;
+    });
+
+    const [openSectionControls, setOpenSectionControls] = useState(() => {
+      if (initialSessionUI && typeof initialSessionUI.openSectionControls === 'boolean') {
+        return initialSessionUI.openSectionControls;
+      }
+      return false;
+    });
+
+    const toggleChapterExplorer = useCallback(() => {
+      setShowChapterExplorer(prev => {
+        const next = !prev;
+        updateSessionUIState({ showChapterExplorer: next });
+        return next;
+      });
+    }, []);
+
+    const toggleSectionJourney = useCallback(() => {
+      setOpenSectionJourney(prev => {
+        const next = !prev;
+        updateSessionUIState({ openSectionJourney: next });
+        return next;
+      });
+    }, []);
+
+    const toggleSectionStats = useCallback(() => {
+      setOpenSectionStats(prev => {
+        const next = !prev;
+        updateSessionUIState({ openSectionStats: next });
+        return next;
+      });
+    }, []);
+
+    const toggleSectionControls = useCallback(() => {
+      setOpenSectionControls(prev => {
+        const next = !prev;
+        updateSessionUIState({ openSectionControls: next });
+        return next;
+      });
+    }, []);
 
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
@@ -2645,80 +2729,180 @@
     const bestStreak = progression ? (progression.bestStreak || 0) : 0;
     const milestoneCount = Math.floor(totalStars / 50);
 
+    const worldData = MWorld ? MWorld.getWorldForLevel('classic', currentLvl) : null;
+    const timelineObj = MWorld ? MWorld.getJourneyTimeline('classic', currentLvl, 15, 'all') : null;
+    const timeline = (timelineObj && Array.isArray(timelineObj.timeline)) ? timelineObj.timeline : (Array.isArray(timelineObj) ? timelineObj : []);
+    const mysteryNext = MWorld ? MWorld.getMysteryNextLocation('classic', currentLvl) : null;
+    const loc = (worldData && worldData.location) ? worldData.location : { name: 'Karad', district: 'Satara', subtitle: 'Preeti Sangam (Krishna–Koyna Confluence)', culturalNote: 'Sacred river confluence and fertile valley gateway to the southern Sahyadri ranges.', icon: '🌊', region: 'PASCHIM_MAHARASHTRA', archetypeId: 'ARCH_RIVER_VALLEY' };
+    const totalProgressPct = Math.min(100, Math.max(0, (currentLvl / 999) * 100));
+    const chapterNum = worldData ? (worldData.locationIndex + 1) : 1;
+    const journeyProgress = worldData ? worldData.progressInLocation : 1;
+    const journeyTotal = worldData ? worldData.levelsPerLocation : 15;
+    const journeyStart = worldData ? worldData.levelStart : 1;
+    const journeyEnd = worldData ? worldData.levelEnd : 15;
+
     return React.createElement('div', {
-      className: 'snake-classic-container',
-      style: {
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        overflow: 'hidden',
-        boxSizing: 'border-box'
-      }
+      className: 'snake-classic-container'
     }, [
-      // 1. CONSOLIDATED COMPACT STATUS HEADER (38px)
-      React.createElement('div', {
-        key: 'snake-header',
-        style: {
-          width: '100%',
-          maxWidth: '1280px',
-          height: '38px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
-          background: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(56, 189, 248, 0.2)',
-          borderRadius: '8px',
-          margin: '0 0 6px 0',
-          boxSizing: 'border-box',
-          fontSize: '13px',
-          color: '#f1f5f9',
-          flexShrink: 0
-        }
+      // ── 1. COMPACT HORIZONTAL EXPEDITION HEADER ──
+      React.createElement('header', {
+        key: 'rcrm-expedition-header',
+        className: 'rcrm-expedition-header',
+        role: 'region',
+        'aria-label': 'Take a Break Expedition Overview'
       }, [
-        React.createElement('div', { key: 'header-left', style: { display: 'flex', alignItems: 'center', gap: '12px' } }, [
-          React.createElement('span', { key: 'game-title', style: { fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em' } }, '🐍 TAKE A BREAK'),
-          React.createElement('span', { key: 'level-badge', style: { background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 } }, `Level ${currentLvl}`),
-          React.createElement('span', { key: 'stars-badge', style: { color: '#fbbf24', fontWeight: 600 } }, `⭐ ${totalStars} Stars`),
-          milestoneCount > 0 ? React.createElement('span', { key: 'milestone-badge', style: { color: '#00e5ff', fontWeight: 600 } }, `🏆 M${milestoneCount}`) : null
+        // Left: Identity & Destination
+        React.createElement('div', { key: 'exp-left', className: 'rcrm-expedition-identity' }, [
+          React.createElement('span', { key: 'exp-icon', className: 'rcrm-expedition-badge-icon', title: loc.name }, loc.icon || '🧭'),
+          React.createElement('div', { key: 'exp-meta', className: 'rcrm-expedition-meta' }, [
+            React.createElement('span', { key: 'exp-tag', className: 'rcrm-expedition-tagline' }, `RupeeCRM Expedition • Chapter ${chapterNum} of 67`),
+            React.createElement('div', { key: 'exp-title', className: 'rcrm-expedition-dest-title' }, [
+              loc.name,
+              React.createElement('span', { key: 'exp-dist', className: 'rcrm-expedition-dest-district' }, ` (${loc.district})`)
+            ])
+          ])
         ]),
-        React.createElement('div', { key: 'header-right', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
-          React.createElement('span', { key: 'streak-badge', style: { color: streak >= 3 ? '#f59e0b' : '#94a3b8', fontWeight: 600 } }, `🔥 Streak: ${streak} (Best: ${bestStreak})`),
-          React.createElement('button', {
-            key: 'stats-btn',
-            onClick: () => setShowStatsModal(true),
-            style: {
-              background: 'transparent',
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-              color: '#94a3b8',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }
-          }, '📊 Stats')
+
+        // Center: Current 15-level Journey Sequence & Overall Progress
+        React.createElement('div', { key: 'exp-progress', className: 'rcrm-expedition-progress-cluster' }, [
+          // Current 15-level Journey Sequence
+          React.createElement('div', { key: 'exp-journey-seq', className: 'rcrm-expedition-journey-seq' }, [
+            React.createElement('div', { key: 'seq-meta', className: 'rcrm-journey-seq-meta' }, [
+              React.createElement('span', { key: 'seq-label', className: 'rcrm-journey-seq-label' },
+                `Checkpoint ${journeyProgress} / ${journeyTotal}`
+              ),
+              React.createElement('span', { key: 'seq-range', className: 'rcrm-journey-seq-range' },
+                `Levels ${journeyStart}–${journeyEnd}`
+              )
+            ]),
+            React.createElement('div', { key: 'seq-pips', className: 'rcrm-journey-mini-pips', title: `Current 15-Level Journey: Checkpoint ${journeyProgress} of ${journeyTotal}` },
+              Array.from({ length: journeyTotal }, (_, i) => {
+                const p = i + 1;
+                const isPast = p < journeyProgress;
+                const isCurr = p === journeyProgress;
+                return React.createElement('span', {
+                  key: `hdr-pip-${p}`,
+                  className: `rcrm-mini-pip ${isPast ? 'is-done' : (isCurr ? 'is-curr' : 'is-upcoming')}`,
+                  title: `Level ${journeyStart + i} (${isPast ? 'Completed' : (isCurr ? 'Current Level' : 'Upcoming')})`
+                });
+              })
+            )
+          ]),
+
+          // Overall Expedition Level & Progress
+          React.createElement('div', { key: 'exp-lvl-box', className: 'rcrm-expedition-level-indicator' }, [
+            React.createElement('span', { key: 'exp-lvl', className: 'rcrm-expedition-level-label' }, `Level ${currentLvl} / 999`),
+            React.createElement('div', { key: 'exp-track', className: 'rcrm-expedition-progress-track', title: `Overall Journey Progress: ${totalProgressPct.toFixed(1)}%` }, [
+              React.createElement('div', { key: 'exp-fill', className: 'rcrm-expedition-progress-fill', style: { width: `${totalProgressPct}%` } })
+            ]),
+            React.createElement('span', { key: 'exp-pct', className: 'rcrm-expedition-progress-percent' }, `${totalProgressPct.toFixed(1)}% Completed`)
+          ])
+        ]),
+
+        // Right: Toggle Explorer Button
+        React.createElement('button', {
+          key: 'exp-toggle-btn',
+          type: 'button',
+          className: `rcrm-explorer-toggle-btn${showChapterExplorer ? ' is-expanded' : ''}`,
+          onClick: toggleChapterExplorer,
+          'aria-expanded': showChapterExplorer,
+          title: 'Expand or collapse the 67-chapter expedition roadmap'
+        }, [
+          React.createElement('span', { key: 'btn-icon', className: 'rcrm-explorer-toggle-icon' }, '🧭'),
+          React.createElement('span', { key: 'btn-text' }, showChapterExplorer ? 'Hide Explorer ▲' : 'Chapter Explorer ▾')
         ])
       ]),
 
-      // 2. DOMINANT RESPONSIVE CANVAS STAGE
+      // ── 2. INLINE EXPANDABLE CHAPTER EXPLORER (COLLAPSED BY DEFAULT) ──
+      showChapterExplorer && React.createElement('section', {
+        key: 'rcrm-chapter-explorer',
+        className: 'rcrm-chapter-explorer-panel',
+        'aria-label': 'Expedition Chapters Roadmap'
+      }, [
+        // Explorer Header Bar
+        React.createElement('div', { key: 'exp-top-bar', className: 'rcrm-explorer-top-bar' }, [
+          React.createElement('div', { key: 'exp-top-title', className: 'rcrm-explorer-headline' }, [
+            React.createElement('span', null, '🗺️'),
+            'Maharashtra 999-Level Expedition Chapters'
+          ]),
+          React.createElement('span', { key: 'exp-scope', className: 'rcrm-explorer-scope-pill' }, '67 Chapters • 15 Levels per Destination')
+        ]),
+
+        // Active Chapter Spotlight
+        React.createElement('div', { key: 'spotlight-card', className: 'rcrm-current-chapter-spotlight' }, [
+          React.createElement('div', { key: 'spot-title-row', className: 'rcrm-spotlight-title-row' }, [
+            React.createElement('div', { key: 'spot-name', className: 'rcrm-spotlight-name' }, [
+              React.createElement('span', null, loc.icon || '📍'),
+              `Active Chapter ${chapterNum}: ${loc.name} (${loc.district})`
+            ]),
+            React.createElement('span', { key: 'spot-checks', className: 'rcrm-spotlight-checkpoints' },
+              `Checkpoint ${worldData ? worldData.progressInLocation : 1} of ${worldData ? worldData.levelsPerLocation : 15} (Levels ${worldData ? worldData.levelStart : 1}–${worldData ? worldData.levelEnd : 15})`
+            )
+          ]),
+          React.createElement('div', { key: 'spot-lore', className: 'rcrm-spotlight-lore' },
+            loc.culturalNote ? `"${loc.culturalNote}"` : loc.subtitle
+          ),
+          // Checkpoints Visualization
+          React.createElement('div', { key: 'spot-pips-row', className: 'rcrm-checkpoints-pips-row' },
+            Array.from({ length: worldData ? worldData.levelsPerLocation : 15 }, (_, i) => {
+              const p = i + 1;
+              const currentP = worldData ? worldData.progressInLocation : 1;
+              const isPast = p < currentP;
+              const isActive = p === currentP;
+              return React.createElement('span', {
+                key: `pip-${p}`,
+                className: `rcrm-pip ${isPast ? 'is-past' : (isActive ? 'is-active' : 'is-future')}`,
+                title: `Level ${(worldData ? worldData.levelStart : 1) + i} (${isPast ? 'Mastered' : (isActive ? 'Current' : 'Upcoming')})`
+              }, isPast ? '✓' : (isActive ? String(currentLvl) : String(p)));
+            })
+          )
+        ]),
+
+        // 67-Chapter Grid
+        React.createElement('div', { key: 'roadmap-grid', className: 'rcrm-chapter-roadmap-grid' },
+          timeline.map((item, idx) => {
+            const isCompleted = item.isVisited;
+            const isCurrent = item.isCurrent;
+            const isLocked = item.isLocked;
+
+            return React.createElement('div', {
+              key: `chap-card-${idx}`,
+              className: `rcrm-chapter-card ${isCompleted ? 'is-completed' : (isCurrent ? 'is-current' : 'is-locked')}`
+            }, [
+              React.createElement('div', { key: 'card-head', className: 'rcrm-chapter-card-header' }, [
+                React.createElement('span', { key: 'chap-num', className: 'rcrm-chapter-num' }, `Ch. ${idx + 1}`),
+                React.createElement('span', { key: 'chap-badge', className: 'rcrm-chapter-status-badge' },
+                  isCompleted ? '✓ Completed' : (isCurrent ? '★ Active' : '🔒 Locked')
+                )
+              ]),
+              React.createElement('div', { key: 'card-name', className: 'rcrm-chapter-name', title: item.name },
+                `${item.icon || '📍'} ${item.name}`
+              ),
+              React.createElement('div', { key: 'card-levels', className: 'rcrm-chapter-levels-range' },
+                `Levels ${item.levelStart}–${item.levelEnd}`
+              )
+            ]);
+          })
+        )
+      ]),
+
+      // ── 3. DOMINANT RESPONSIVE CANVAS STAGE (ABSOLUTE BOUNDARY: 100% UNTOUCHED INTERNALLY) ──
       React.createElement('div', {
         key: 'snake-stage',
         ref: containerRef,
+        className: 'rcrm-snake-board-stage',
         style: {
           width: '100%',
-          flex: 1,
-          minHeight: 0,
+          flex: '0 0 auto',
+          minHeight: '340px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           position: 'relative',
           overflow: 'hidden',
-          borderRadius: '8px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+          borderRadius: '10px',
+          boxShadow: '0 6px 24px rgba(0,0,0,0.4)',
+          background: '#071322'
         }
       }, [
         React.createElement('canvas', {
@@ -2816,153 +3000,232 @@
           style: {
             position: 'absolute',
             top: '20px',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
-            border: '1px solid #34d399',
+            background: 'linear-gradient(135deg, rgba(35, 75, 48, 0.95), rgba(27, 60, 38, 0.95))',
+            border: '1px solid #D4AF37',
             borderRadius: '8px',
             padding: '12px 24px',
             color: '#fff',
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            boxShadow: '0 8px 32px rgba(16, 185, 129, 0.5)',
+            boxShadow: '0 8px 32px rgba(35, 75, 48, 0.5)',
             zIndex: 20
           }
         }, [
           React.createElement('span', { key: 'win-star', style: { fontSize: '24px' } }, '⭐'.repeat(levelCelebration.stars)),
           React.createElement('div', { key: 'win-text' }, [
-            React.createElement('div', { key: 'win-title', style: { fontWeight: 800, fontSize: '15px' } }, `LEVEL ${levelCelebration.level} MASTERED!`),
+            React.createElement('div', { key: 'win-title', style: { fontWeight: 800, fontSize: '15px', color: '#D4AF37' } }, `LEVEL ${levelCelebration.level} MASTERED!`),
             React.createElement('div', { key: 'win-sub', style: { fontSize: '12px', opacity: 0.9 } }, `+${levelCelebration.stars} Stars • Expanding Territory...`)
           ])
         ]) : null
       ]),
 
-      // 3. CONSOLIDATED BOTTOM CONTROL RAIL (34px)
+      // ── 4. COMPACT RESPONSIVE GAMEPLAY CONTROLS ROW ──
       React.createElement('div', {
-        key: 'snake-bottom-rail',
-        style: {
-          width: '100%',
-          maxWidth: '1280px',
-          height: '34px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
-          background: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(56, 189, 248, 0.2)',
-          borderRadius: '8px',
-          margin: '6px 0 0 0',
-          boxSizing: 'border-box',
-          fontSize: '12px',
-          color: '#94a3b8',
-          flexShrink: 0
-        }
+        key: 'rcrm-snake-controls-row',
+        className: 'rcrm-snake-controls-row',
+        role: 'toolbar',
+        'aria-label': 'Gameplay Controls'
       }, [
-        React.createElement('div', { key: 'rail-left', style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
+        // Left Actions
+        React.createElement('div', { key: 'ctrl-left', className: 'rcrm-controls-actions-group' }, [
           React.createElement('button', {
-            key: 'pause-btn',
+            key: 'ctrl-pause-btn',
+            type: 'button',
+            className: 'rcrm-snake-btn btn-play-primary',
             onClick: () => setIsPaused(prev => !prev),
             disabled: showLevelGoalCard || !!deathState,
-            style: {
-              background: isPaused ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              color: '#38bdf8',
-              padding: '2px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 600
-            }
+            title: isPaused ? 'Resume slithering' : 'Pause game (Spacebar)'
           }, isPaused ? '▶ Resume' : '⏸ Pause'),
           React.createElement('button', {
-            key: 'restart-btn',
+            key: 'ctrl-restart-btn',
+            type: 'button',
+            className: 'rcrm-snake-btn btn-secondary',
             onClick: handleRestartLevel,
-            style: {
-              background: 'transparent',
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-              color: '#94a3b8',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }
+            title: 'Restart current level from initial position'
           }, '🔄 Restart'),
           React.createElement('button', {
-            key: 'mute-btn',
+            key: 'ctrl-sound-btn',
+            type: 'button',
+            className: 'rcrm-snake-btn btn-secondary',
             onClick: handleToggleMute,
-            style: {
-              background: 'transparent',
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-              color: isMuted ? '#f87171' : '#94a3b8',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }
+            title: isMuted ? 'Unmute procedural audio' : 'Mute procedural audio'
           }, isMuted ? '🔇 Muted' : '🔊 Sound')
         ]),
 
-        React.createElement('div', { key: 'rail-center', style: { fontWeight: 600, color: '#f1f5f9' } },
+        // Center: Food Progress
+        React.createElement('div', { key: 'ctrl-food', className: 'rcrm-controls-food-badge' },
           `🍎 Food Progress: ${fruitsEaten} / ${targetFruits}`
         ),
 
-        React.createElement('div', { key: 'rail-right', style: { color: '#64748b' } },
-          'Arrows / WASD to move • Space to pause'
-        )
+        // Right: Stats Chips
+        React.createElement('div', { key: 'ctrl-stats', className: 'rcrm-controls-stats-cluster' }, [
+          React.createElement('span', { key: 'ctrl-stars', className: 'rcrm-stat-chip stars-chip' }, `⭐ ${totalStars} Stars`),
+          React.createElement('span', { key: 'ctrl-streak', className: 'rcrm-stat-chip streak-chip' }, `🔥 Streak: ${streak}`),
+          milestoneCount > 0 ? React.createElement('span', { key: 'ctrl-mstone', className: 'rcrm-stat-chip' }, `🏆 M${milestoneCount}`) : null
+        ])
       ]),
 
-      // Stats Modal Portal
-      showStatsModal && renderModalPortal(
+      // ── 5. THREE SEPARATE EXPANDABLE DETAIL SECTIONS ──
+      React.createElement('section', {
+        key: 'rcrm-details-accordion',
+        className: 'rcrm-snake-details-accordion',
+        'aria-label': 'Expedition Lore and Statistics'
+      }, [
+        // Card A: Journey Details
         React.createElement('div', {
-          key: 'stats-modal-overlay',
-          style: {
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }
+          key: 'acc-journey',
+          className: `rcrm-accordion-card${openSectionJourney ? ' is-open' : ''}`
         }, [
-          React.createElement('div', {
-            key: 'stats-modal-card',
-            style: {
-              background: '#0f172a',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              borderRadius: '12px',
-              padding: '24px',
-              width: '380px',
-              color: '#fff',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)'
-            }
+          React.createElement('button', {
+            key: 'acc-journey-head',
+            type: 'button',
+            className: 'rcrm-accordion-header',
+            onClick: toggleSectionJourney,
+            'aria-expanded': openSectionJourney
           }, [
-            React.createElement('div', { key: 'modal-title', style: { fontSize: '18px', fontWeight: 800, color: '#38bdf8', marginBottom: '16px' } }, '🐍 Snake Career Stats'),
-            React.createElement('div', { key: 'stats-grid', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px', color: '#cbd5e1' } }, [
-              React.createElement('div', { key: 'stat-lvl' }, `Current Level: ${currentLvl}`),
-              React.createElement('div', { key: 'stat-stars' }, `Total Stars: ⭐ ${totalStars}`),
-              React.createElement('div', { key: 'stat-completed' }, `Levels Solved: ${progression ? progression.completedCount : 0}`),
-              React.createElement('div', { key: 'stat-fruits' }, `Fruits Eaten: ${progression ? progression.totalFruitsEaten : 0}`),
-              React.createElement('div', { key: 'stat-len' }, `Longest Snake: ${progression ? progression.longestSnake : 3}`),
-              React.createElement('div', { key: 'stat-streak' }, `Best Streak: 🔥 ${bestStreak}`),
-              React.createElement('div', { key: 'stat-time', style: { gridColumn: 'span 2' } }, `Play Time: ⏱️ ${formatLifetimeTime(progression ? progression.totalPlayTimeSeconds : 0)}`)
+            React.createElement('div', { key: 'acc-j-left', className: 'rcrm-accordion-header-left' }, [
+              React.createElement('span', null, '🗺️'),
+              'Expedition Destination & Regional Lore'
             ]),
-            React.createElement('button', {
-              key: 'close-stats-btn',
-              onClick: () => setShowStatsModal(false),
-              style: {
-                marginTop: '20px',
-                width: '100%',
-                background: 'rgba(56, 189, 248, 0.15)',
-                border: '1px solid #38bdf8',
-                color: '#38bdf8',
-                padding: '8px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 700
-              }
-            }, 'Close')
+            React.createElement('span', { key: 'acc-j-chevron', className: 'rcrm-accordion-header-chevron' }, '▼')
+          ]),
+          openSectionJourney && React.createElement('div', { key: 'acc-journey-body', className: 'rcrm-accordion-body' }, [
+            React.createElement('div', { key: 'j-grid', className: 'rcrm-journey-details-grid' }, [
+              React.createElement('div', { key: 'j-dest', className: 'rcrm-detail-item' }, [
+                React.createElement('span', { className: 'rcrm-detail-label' }, 'Current Destination'),
+                React.createElement('span', { className: 'rcrm-detail-value' }, `${loc.name} (${loc.district})`)
+              ]),
+              React.createElement('div', { key: 'j-sub', className: 'rcrm-detail-item' }, [
+                React.createElement('span', { className: 'rcrm-detail-label' }, 'Landmark Lore'),
+                React.createElement('span', { className: 'rcrm-detail-value' }, loc.subtitle || 'Historic Sahyadri Gateway')
+              ]),
+              React.createElement('div', { key: 'j-region', className: 'rcrm-detail-item' }, [
+                React.createElement('span', { className: 'rcrm-detail-label' }, 'Geographic Region'),
+                React.createElement('span', { className: 'rcrm-detail-value' }, loc.region ? loc.region.replace(/_/g, ' ') : 'Paschim Maharashtra')
+              ]),
+              React.createElement('div', { key: 'j-checks', className: 'rcrm-detail-item' }, [
+                React.createElement('span', { className: 'rcrm-detail-label' }, 'Territory Checkpoints'),
+                React.createElement('span', { className: 'rcrm-detail-value' }, `${worldData ? worldData.progressInLocation : 1} of ${worldData ? worldData.levelsPerLocation : 15} Mastered`)
+              ])
+            ]),
+            loc.culturalNote && React.createElement('div', { key: 'j-quote', className: 'rcrm-cultural-quote-box' },
+              `"${loc.culturalNote}"`
+            ),
+            mysteryNext && React.createElement('div', { key: 'j-next', className: 'rcrm-mystery-next-box' }, [
+              React.createElement('span', null, `🔒 Next Destination: ${mysteryNext.displayName}`),
+              React.createElement('span', null, `Unlocks at Level ${mysteryNext.unlocksAtLevel}`)
+            ])
+          ])
+        ]),
+
+        // Card B: Statistics
+        React.createElement('div', {
+          key: 'acc-stats',
+          className: `rcrm-accordion-card${openSectionStats ? ' is-open' : ''}`
+        }, [
+          React.createElement('button', {
+            key: 'acc-stats-head',
+            type: 'button',
+            className: 'rcrm-accordion-header',
+            onClick: toggleSectionStats,
+            'aria-expanded': openSectionStats
+          }, [
+            React.createElement('div', { key: 'acc-s-left', className: 'rcrm-accordion-header-left' }, [
+              React.createElement('span', null, '📊'),
+              'Expedition Career Statistics'
+            ]),
+            React.createElement('span', { key: 'acc-s-chevron', className: 'rcrm-accordion-header-chevron' }, '▼')
+          ]),
+          openSectionStats && React.createElement('div', { key: 'acc-stats-body', className: 'rcrm-accordion-body' }, [
+            React.createElement('div', { key: 'stats-grid', className: 'rcrm-stats-metric-grid' }, [
+              React.createElement('div', { key: 'st-lvl', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Expedition Level'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `${currentLvl} / 999`)
+              ]),
+              React.createElement('div', { key: 'st-stars', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Total Stars'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `⭐ ${totalStars}`)
+              ]),
+              React.createElement('div', { key: 'st-solved', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Levels Solved'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, String(progression ? progression.completedCount : 0))
+              ]),
+              React.createElement('div', { key: 'st-fruits', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Fruits Eaten'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, String(progression ? progression.totalFruitsEaten : 0))
+              ]),
+              React.createElement('div', { key: 'st-len', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Longest Snake'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `${progression ? progression.longestSnake : 3} units`)
+              ]),
+              React.createElement('div', { key: 'st-curstreak', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Current Streak'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `🔥 ${streak}`)
+              ]),
+              React.createElement('div', { key: 'st-beststreak', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Best Streak'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `🏆 ${bestStreak}`)
+              ]),
+              React.createElement('div', { key: 'st-time', className: 'rcrm-stat-metric-card' }, [
+                React.createElement('span', { className: 'rcrm-stat-metric-title' }, 'Play Time'),
+                React.createElement('span', { className: 'rcrm-stat-metric-num' }, `⏱️ ${formatLifetimeTime(progression ? progression.totalPlayTimeSeconds : 0)}`)
+              ])
+            ])
+          ])
+        ]),
+
+        // Card C: Controls & Instructions
+        React.createElement('div', {
+          key: 'acc-controls',
+          className: `rcrm-accordion-card${openSectionControls ? ' is-open' : ''}`
+        }, [
+          React.createElement('button', {
+            key: 'acc-controls-head',
+            type: 'button',
+            className: 'rcrm-accordion-header',
+            onClick: toggleSectionControls,
+            'aria-expanded': openSectionControls
+          }, [
+            React.createElement('div', { key: 'acc-c-left', className: 'rcrm-accordion-header-left' }, [
+              React.createElement('span', null, '🎮'),
+              'Controls & Expedition Guide'
+            ]),
+            React.createElement('span', { key: 'acc-c-chevron', className: 'rcrm-accordion-header-chevron' }, '▼')
+          ]),
+          openSectionControls && React.createElement('div', { key: 'acc-controls-body', className: 'rcrm-accordion-body' }, [
+            React.createElement('div', { key: 'keys-grid', className: 'rcrm-controls-guide-grid' }, [
+              React.createElement('div', { key: 'k-up', className: 'rcrm-key-guide-card' }, [
+                React.createElement('span', { className: 'rcrm-key-chip' }, '↑ / W'),
+                React.createElement('span', { className: 'rcrm-key-desc' }, 'Slither Upward')
+              ]),
+              React.createElement('div', { key: 'k-down', className: 'rcrm-key-guide-card' }, [
+                React.createElement('span', { className: 'rcrm-key-chip' }, '↓ / S'),
+                React.createElement('span', { className: 'rcrm-key-desc' }, 'Slither Downward')
+              ]),
+              React.createElement('div', { key: 'k-left', className: 'rcrm-key-guide-card' }, [
+                React.createElement('span', { className: 'rcrm-key-chip' }, '← / A'),
+                React.createElement('span', { className: 'rcrm-key-desc' }, 'Slither Left')
+              ]),
+              React.createElement('div', { key: 'k-right', className: 'rcrm-key-guide-card' }, [
+                React.createElement('span', { className: 'rcrm-key-chip' }, '→ / D'),
+                React.createElement('span', { className: 'rcrm-key-desc' }, 'Slither Right')
+              ]),
+              React.createElement('div', { key: 'k-pause', className: 'rcrm-key-guide-card' }, [
+                React.createElement('span', { className: 'rcrm-key-chip' }, 'Spacebar'),
+                React.createElement('span', { className: 'rcrm-key-desc' }, 'Pause / Resume Game')
+              ])
+            ]),
+            React.createElement('ul', { key: 'rules-list', className: 'rcrm-rules-list' }, [
+              React.createElement('li', null, 'Collect the required number of regional fruits in each territory to master the level and advance.'),
+              React.createElement('li', null, 'Avoid collisions with outer stone boundary walls, inner fort bastions, and your own snake tail.'),
+              React.createElement('li', null, 'The 999-level expedition spans 67 chapters across Maharashtra. Destinations change every 15 levels.'),
+              React.createElement('li', null, 'Playable territory begins focused for beginners and dynamically expands to full canvas territory at higher levels.'),
+              React.createElement('li', null, 'Progression and high scores are automatically saved to your local workspace.')
+            ])
           ])
         ])
-      )
+      ])
     ]);
   }
 

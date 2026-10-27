@@ -12,9 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -25,6 +27,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class OmnisearchQuickHelpService {
+
+    public static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
 
     private final CustomerRepository customerRepo;
     private final InvoiceRepository invoiceRepo;
@@ -107,45 +111,74 @@ public class OmnisearchQuickHelpService {
     }
 
     public DateRangeWindow resolveDateRange(String dateRangeKey, LocalDate customFrom, LocalDate customTo) {
-        LocalDate today = LocalDate.now();
+        return resolveDateRange(dateRangeKey, customFrom, customTo, Clock.system(BUSINESS_ZONE));
+    }
+
+    public DateRangeWindow resolveDateRange(String dateRangeKey, LocalDate customFrom, LocalDate customTo, Clock clock) {
+        LocalDate today = LocalDate.now(clock != null ? clock.withZone(BUSINESS_ZONE) : Clock.system(BUSINESS_ZONE));
         if (customFrom != null && customTo != null) {
             return new DateRangeWindow(customFrom, customTo, "Custom (" + customFrom + " to " + customTo + ")");
         }
 
-        String key = (dateRangeKey != null) ? dateRangeKey.trim().toLowerCase() : "today";
+        if (dateRangeKey == null || dateRangeKey.trim().isEmpty()) {
+            return new DateRangeWindow(today, today, "Today");
+        }
+
+        String key = dateRangeKey.trim().toLowerCase().replaceAll("[\\s\\-]+", "_");
 
         switch (key) {
+            case "today":
+            case "aaj":
+            case "current_day":
+                return new DateRangeWindow(today, today, "Today");
+
             case "yesterday":
-            case "kal": {
+            case "kal":
+            case "prev_day":
+            case "previous_day": {
                 LocalDate y = today.minusDays(1);
                 return new DateRangeWindow(y, y, "Yesterday");
             }
+
             case "this_week":
             case "week":
+            case "current_week":
             case "hfte": {
                 LocalDate startOfWeek = today.minusDays(today.getDayOfWeek().getValue() - 1);
                 return new DateRangeWindow(startOfWeek, today, "This Week");
             }
-            case "last_week": {
+
+            case "last_week":
+            case "prev_week":
+            case "previous_week": {
                 LocalDate endOfLastWeek = today.minusDays(today.getDayOfWeek().getValue());
                 LocalDate startOfLastWeek = endOfLastWeek.minusDays(6);
                 return new DateRangeWindow(startOfLastWeek, endOfLastWeek, "Last Week");
             }
+
             case "this_month":
             case "month":
+            case "current_month":
             case "is_mahine":
             case "mahina": {
                 LocalDate startOfMonth = today.withDayOfMonth(1);
                 return new DateRangeWindow(startOfMonth, today, "This Month");
             }
-            case "last_month": {
+
+            case "last_month":
+            case "prev_month":
+            case "previous_month": {
                 LocalDate prevMonthDay = today.minusMonths(1);
                 LocalDate startOfLastMonth = prevMonthDay.withDayOfMonth(1);
                 LocalDate endOfLastMonth = prevMonthDay.withDayOfMonth(prevMonthDay.lengthOfMonth());
                 return new DateRangeWindow(startOfLastMonth, endOfLastMonth, "Last Month");
             }
+
             case "this_fy":
             case "financial_year":
+            case "this_financial_year":
+            case "this_year":
+            case "year":
             case "fy": {
                 int year = today.getYear();
                 LocalDate fyStart = (today.getMonthValue() >= 4)
@@ -154,7 +187,10 @@ public class OmnisearchQuickHelpService {
                 LocalDate fyEnd = fyStart.plusYears(1).minusDays(1);
                 return new DateRangeWindow(fyStart, (today.isBefore(fyEnd) ? today : fyEnd), "This Financial Year (FY " + fyStart.getYear() + "-" + (fyStart.getYear() + 1) + ")");
             }
-            case "last_fy": {
+
+            case "last_fy":
+            case "last_financial_year":
+            case "last_year": {
                 int year = today.getYear();
                 LocalDate currentFyStart = (today.getMonthValue() >= 4)
                         ? LocalDate.of(year, 4, 1)
@@ -163,19 +199,26 @@ public class OmnisearchQuickHelpService {
                 LocalDate lastFyEnd = currentFyStart.minusDays(1);
                 return new DateRangeWindow(lastFyStart, lastFyEnd, "Last Financial Year (FY " + lastFyStart.getYear() + "-" + (lastFyStart.getYear() + 1) + ")");
             }
+
             case "last_7_days":
+            case "7_days":
                 return new DateRangeWindow(today.minusDays(6), today, "Last 7 Days");
+
             case "last_30_days":
+            case "30_days":
                 return new DateRangeWindow(today.minusDays(29), today, "Last 30 Days");
+
             case "last_90_days":
+            case "90_days":
                 return new DateRangeWindow(today.minusDays(89), today, "Last 90 Days");
+
             case "all_time":
             case "total":
+            case "all":
                 return new DateRangeWindow(LocalDate.of(2000, 1, 1), today, "All Time");
-            case "today":
-            case "aaj":
+
             default:
-                return new DateRangeWindow(today, today, "Today");
+                throw new IllegalArgumentException("Unsupported period/range: '" + dateRangeKey + "'. Supported values include: today, yesterday, this_week, last_week, this_month, last_month, this_year (this_fy), last_fy, last_7_days, last_30_days, last_90_days, all_time.");
         }
     }
 
@@ -456,7 +499,7 @@ public class OmnisearchQuickHelpService {
 
         List<PurchaseOrder> poList = purchaseOrderRepo.findByFirmIdAndPartyIdOrderByPoDateDescIdDesc(firmId, party.getId());
         List<PurchaseOrder> validPOs = poList.stream()
-                .filter(po -> po.getStatus() != PurchaseOrderStatus.CANCELLED)
+                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .collect(Collectors.toList());
 
         BigDecimal totalPurchases = BigDecimal.ZERO;
@@ -663,8 +706,23 @@ public class OmnisearchQuickHelpService {
         BigDecimal totalTax = BigDecimal.ZERO;
         Map<String, BigDecimal> customerRevenueMap = new HashMap<>();
 
+        List<Object[]> returnAggs = salesReturnRepo.sumRefundTotalsByInvoiceForFirm(firmId);
+        Map<Long, BigDecimal> invoiceReturnMap = new HashMap<>();
+        if (returnAggs != null) {
+            for (Object[] row : returnAggs) {
+                if (row[0] != null && row[1] != null) {
+                    invoiceReturnMap.put(((Number) row[0]).longValue(), (BigDecimal) row[1]);
+                }
+            }
+        }
+
         for (Invoice inv : validInvoices) {
-            BigDecimal amt = inv.getTotalAmount() != null ? inv.getTotalAmount() : BigDecimal.ZERO;
+            BigDecimal rawAmt = inv.getTotalAmount() != null ? inv.getTotalAmount() : BigDecimal.ZERO;
+            BigDecimal returnedAmt = invoiceReturnMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            BigDecimal amt = rawAmt.subtract(returnedAmt);
+            if (amt.compareTo(BigDecimal.ZERO) < 0) {
+                amt = BigDecimal.ZERO;
+            }
             totalRevenue = totalRevenue.add(amt);
             if (inv.getTotalTax() != null) {
                 totalTax = totalTax.add(inv.getTotalTax());

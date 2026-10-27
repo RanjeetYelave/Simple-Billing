@@ -501,36 +501,40 @@ public class BackupService {
                     }
                 }
             } else {
-                if (targetFirmId != null && backupFirms.size() > 1) {
-                    boolean targetExistsInBackup = backupFirms.stream()
-                            .anyMatch(f -> Objects.equals(f.getId(), targetFirmId));
-                    if (targetExistsInBackup) {
-                        for (FirmDetails f : backupFirms) {
-                            if (Objects.equals(f.getId(), targetFirmId)) {
-                                targetFirmsToProcess.add(f);
-                                break;
-                            }
-                        }
-                    } else {
-                        throw new IllegalArgumentException("Multi-firm backup contains " + backupFirms.size()
-                                + " firms. Explicit source firm selection is required to import into target firm " + targetFirmId + ".");
-                    }
-                } else {
-                    targetFirmsToProcess.addAll(backupFirms);
+                if ("merge".equalsIgnoreCase(mode) && targetFirmId != null && backupFirms.size() > 1) {
+                    throw new IllegalArgumentException("AMBIGUOUS_MULTI_FIRM_BACKUP: Multi-firm backup contains " + backupFirms.size()
+                            + " firms. Explicit source firm selection is required to import into target firm " + targetFirmId + ".");
                 }
+                targetFirmsToProcess.addAll(backupFirms);
+            }
+
+            // Safe first-run initialization: Uninitialized database with zero firms adapts to non-destructive clone restore.
+            // Destructive clean wipe is otherwise strictly prohibited during restore operations.
+            String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
+            if ("clean_wipe".equals(normalizedMode) || "clean".equals(normalizedMode)) {
+                if (firmDetailsRepo.count() == 0) {
+                    normalizedMode = "clone";
+                } else {
+                    throw new IllegalArgumentException("Destructive clean_wipe mode is not permitted during restore operations. To reset the system, use the dedicated Factory Reset administrative procedure.");
+                }
+            }
+            if (!"clone".equals(normalizedMode) && !"merge".equals(normalizedMode)) {
+                throw new IllegalArgumentException("Unsupported restore mode: " + mode);
             }
 
             if (targetFirmId != null && targetFirmsToProcess.size() > 1) {
                 throw new IllegalArgumentException("Cannot restore multiple source firms into a single target firm " + targetFirmId + ".");
             }
 
-            // Safe first-run initialization: Uninitialized database with zero firms adapts to non-destructive clone restore.
-            // Destructive clean wipe is otherwise strictly prohibited during restore operations.
-            if ("clean_wipe".equalsIgnoreCase(mode) || "clean".equalsIgnoreCase(mode)) {
-                if (firmDetailsRepo.count() == 0) {
-                    mode = "clone";
-                } else {
-                    throw new IllegalArgumentException("Destructive clean_wipe mode is not permitted during restore operations. To reset the system, use the dedicated Factory Reset administrative procedure.");
+            if ("merge".equals(normalizedMode)) {
+                if (targetFirmId == null && selectedFirmIds != null && !selectedFirmIds.isEmpty()) {
+                    throw new IllegalArgumentException("Restore-into-existing-firm ('merge') requires an explicitly validated destination targetFirmId.");
+                }
+                if (targetFirmId != null && targetFirmsToProcess.size() == 1) {
+                    boolean firmExists = firmDetailsRepo.findById(targetFirmId).isPresent() || firmDetailsRepo.existsById(targetFirmId);
+                    if (!firmExists && firmDetailsRepo.count() > 0) {
+                        throw new IllegalArgumentException("Destination firm ID " + targetFirmId + " does not exist.");
+                    }
                 }
             }
 
@@ -543,7 +547,7 @@ public class BackupService {
             Long oldFirmId = f.getId() != null ? f.getId() : -1L;
             FirmDetails firmToUse = null;
 
-            if ("merge".equalsIgnoreCase(mode)) {
+            if ("merge".equals(normalizedMode)) {
                 if (targetFirmId != null && targetFirmsToProcess.size() == 1) {
                     firmToUse = firmDetailsRepo.findById(targetFirmId).orElse(null);
                 } else if (f.getGstin() != null && !f.getGstin().trim().isEmpty()) {
@@ -563,7 +567,7 @@ public class BackupService {
             if (firmToUse == null) {
                 FirmDetails newFirm = new FirmDetails();
                 String name = f.getFirmName() != null ? f.getFirmName() : "Restored Firm";
-                if ("clone".equalsIgnoreCase(mode)) {
+                if ("clone".equals(normalizedMode)) {
                     boolean exists = firmDetailsRepo.findAll().stream().anyMatch(ef -> name.equalsIgnoreCase(ef.getFirmName()));
                     newFirm.setFirmName(exists ? name + " (Restored)" : name);
                 } else {
@@ -586,7 +590,27 @@ public class BackupService {
                 firmToUse = firmDetailsRepo.save(newFirm);
             }
 
-            Long mappedId = (targetFirmId != null && targetFirmsToProcess.size() == 1) ? targetFirmId : ((firmToUse != null && firmToUse.getId() != null) ? firmToUse.getId() : (targetFirmId != null ? targetFirmId : (oldFirmId != -1L ? oldFirmId : 1L)));
+            Long mappedId;
+            if ("merge".equals(normalizedMode)) {
+                if (targetFirmId != null && targetFirmsToProcess.size() == 1) {
+                    mappedId = targetFirmId;
+                } else if (firmToUse != null && firmToUse.getId() != null) {
+                    mappedId = firmToUse.getId();
+                } else if (targetFirmId != null) {
+                    mappedId = targetFirmId;
+                } else {
+                    mappedId = (oldFirmId != -1L ? oldFirmId : 1L);
+                }
+            } else {
+                // In clone mode, mappedId is strictly the newly created firm's persisted ID.
+                // Never allow caller-supplied targetFirmId or active firm ID to override destination!
+                if (firmToUse != null && firmToUse.getId() != null) {
+                    mappedId = firmToUse.getId();
+                } else {
+                    mappedId = (oldFirmId != -1L ? oldFirmId : 1L);
+                }
+            }
+
             oldToNewFirmIdMap.put(oldFirmId, mappedId);
             if (firmToUse != null) {
                 restoredFirms.add(firmToUse);
@@ -603,7 +627,7 @@ public class BackupService {
             if (backup.getFirmDetails() != null && backup.getFirmDetails().getId() != null) {
                 oldToNewFirmIdMap.put(backup.getFirmDetails().getId(), singleMappedId);
             }
-            if (targetFirmId != null) {
+            if ("merge".equals(normalizedMode) && targetFirmId != null) {
                 oldToNewFirmIdMap.put(targetFirmId, singleMappedId);
             }
             // Auto-map all entity firm IDs in single-firm backup
@@ -629,7 +653,9 @@ public class BackupService {
             }
         }
 
-        Long defaultTargetFirmId = targetFirmId != null ? targetFirmId : (!restoredFirms.isEmpty() && restoredFirms.get(0).getId() != null ? restoredFirms.get(0).getId() : 1L);
+        Long defaultTargetFirmId = "merge".equals(normalizedMode) && targetFirmId != null
+                ? targetFirmId
+                : (!restoredFirms.isEmpty() && restoredFirms.get(0).getId() != null ? restoredFirms.get(0).getId() : null);
 
         String backupSourceId = "firm_" + (defaultTargetFirmId != null ? defaultTargetFirmId : "default");
         if (backup.getMetadata() != null) {

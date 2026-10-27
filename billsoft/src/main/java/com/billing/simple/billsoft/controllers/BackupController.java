@@ -203,11 +203,25 @@ public class BackupController {
             @RequestParam(value = "firmIds", required = false) java.util.List<Long> firmIds,
             @RequestParam(value = "mode", defaultValue = "clone") String mode,
             @RequestParam(value = "targetFirmId", required = false) Long targetFirmId) {
+        String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
         Long currentFirmId = TenantContext.getCurrentFirmId();
-        if (targetFirmId != null && currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("error", "Cross-firm restore prohibited");
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        if ("merge".equals(normalizedMode)) {
+            if (targetFirmId == null) {
+                targetFirmId = currentFirmId;
+            }
+            if (targetFirmId == null) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "Destination firm ID is required for merge mode");
+                return ResponseEntity.badRequest().body(response);
+            }
+            if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "Cross-firm restore prohibited");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        } else {
+            // In clone mode, destination is always a new firm. Target firm ID cannot override it.
+            targetFirmId = null;
         }
 
         if (firmIds != null && firmIds.size() > 1) {
@@ -285,11 +299,25 @@ public class BackupController {
             @RequestParam(value = "firmIds", required = false) java.util.List<Long> firmIds,
             @RequestParam(value = "mode", defaultValue = "clone") String mode,
             @RequestParam(value = "targetFirmId", required = false) Long targetFirmId) {
+        String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
         Long currentFirmId = TenantContext.getCurrentFirmId();
-        if (targetFirmId != null && currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("error", "Cross-firm selective restore prohibited");
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        if ("merge".equals(normalizedMode)) {
+            if (targetFirmId == null) {
+                targetFirmId = currentFirmId;
+            }
+            if (targetFirmId == null) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "Destination firm ID is required for merge mode");
+                return ResponseEntity.badRequest().body(response);
+            }
+            if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "Cross-firm selective restore prohibited");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        } else {
+            // In clone mode, destination is always a new firm. Target firm ID cannot override it.
+            targetFirmId = null;
         }
 
         if (firmIds != null && firmIds.size() > 1) {
@@ -341,11 +369,19 @@ public class BackupController {
             @RequestParam(value = "firmId", required = false) Long firmId,
             @RequestParam(value = "sourceFirmId", required = false) Long sourceFirmId,
             @RequestParam(value = "mode", defaultValue = "merge") String mode) {
+        String normalizedMode = mode != null ? mode.trim().toLowerCase() : "merge";
         Long currentFirmId = TenantContext.getCurrentFirmId();
-        if (firmId != null && currentFirmId != null && !currentFirmId.equals(firmId)) {
-            Map<String, String> response = new HashMap<>();
-            response.put("error", "Cross-firm backup import prohibited");
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        if ("merge".equals(normalizedMode)) {
+            if (firmId == null) {
+                firmId = currentFirmId;
+            }
+            if (firmId != null && currentFirmId != null && !currentFirmId.equals(firmId)) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Cross-firm backup import prohibited");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        } else {
+            firmId = null;
         }
 
         try {

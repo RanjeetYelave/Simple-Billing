@@ -38,6 +38,7 @@ public class HealthController {
     private final com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService;
     private final com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService;
     private final com.billing.simple.billsoft.service.NotificationService notificationService;
+    private final org.springframework.core.env.Environment environment;
 
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
@@ -45,7 +46,8 @@ public class HealthController {
                             DataSource dataSource,
                             com.billing.simple.billsoft.service.TenantDataIntegrityAuditService tenantDataIntegrityAuditService,
                             com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService,
-                            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.NotificationService notificationService) {
+                            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.NotificationService notificationService,
+                            @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
         this.systemMetricsService = systemMetricsService;
         this.autoBackupService = autoBackupService;
         this.apiDiagnosticsService = apiDiagnosticsService;
@@ -53,6 +55,7 @@ public class HealthController {
         this.tenantDataIntegrityAuditService = tenantDataIntegrityAuditService;
         this.networkReachabilityService = networkReachabilityService;
         this.notificationService = notificationService;
+        this.environment = environment;
     }
 
     @GetMapping("/api/health")
@@ -61,6 +64,39 @@ public class HealthController {
             "status", "UP",
             "timestamp", System.currentTimeMillis()
         ));
+    }
+
+    @GetMapping("/api/system/test-environment-status")
+    public ResponseEntity<Map<String, Object>> testEnvironmentStatus() {
+        boolean isTest = false;
+        String dbUrl = "";
+        try (java.sql.Connection c = dataSource.getConnection()) {
+            dbUrl = c.getMetaData().getURL();
+            if (dbUrl != null) {
+                String lower = dbUrl.toLowerCase();
+                if (lower.contains("database-test") || lower.contains("mem:") || lower.contains("/test") || lower.contains("e2e")) {
+                    isTest = true;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        String activeProfiles = System.getProperty("spring.profiles.active", "");
+        if (environment != null && environment.getActiveProfiles() != null && environment.getActiveProfiles().length > 0) {
+            activeProfiles = String.join(",", environment.getActiveProfiles());
+        }
+        String testModeEnv = System.getenv("RUPEECRM_TEST_MODE");
+        String testModeProp = System.getProperty("RUPEECRM_TEST_MODE");
+        if ("true".equalsIgnoreCase(testModeEnv) || "true".equalsIgnoreCase(testModeProp)
+                || activeProfiles.contains("test") || activeProfiles.contains("e2e")) {
+            isTest = true;
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("isTestDatabase", isTest);
+        resp.put("databaseUrl", dbUrl);
+        resp.put("activeProfiles", activeProfiles);
+        resp.put("status", "UP");
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping({"/api/system/network-status", "/api/network/status"})

@@ -127,7 +127,31 @@ public class UpdateService {
     }
 
     public String getCurrentVersion() {
-        // Read from durable state or default version
+        // 1. Check for .billsoft-version metadata override file
+        try {
+            java.io.File dataDirFile = DataDirectoryResolver.resolveDataDirectory();
+            if (dataDirFile != null) {
+                Path dataDir = dataDirFile.toPath();
+                Path[] candidateVersionFiles = new Path[] {
+                    dataDir.resolve(".billsoft-version"),
+                    dataDir.getParent() != null ? dataDir.getParent().resolve(".billsoft-version") : null,
+                    getStagingDirectory().resolve(".billsoft-version"),
+                    Path.of(".billsoft-version"),
+                    Path.of("..", ".billsoft-version")
+                };
+                for (Path verFile : candidateVersionFiles) {
+                    if (verFile != null && Files.exists(verFile)) {
+                        String ver = Files.readString(verFile).trim();
+                        if (!ver.isEmpty()) {
+                            return ver;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Read from durable update state file
         Path stateFile = getStateFilePath();
         if (Files.exists(stateFile)) {
             UpdateState state = UpdateState.load(stateFile);

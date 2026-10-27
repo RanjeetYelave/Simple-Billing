@@ -471,7 +471,7 @@ public class BackupService {
                     || (backup.getAllFirms() != null && !backup.getAllFirms().isEmpty());
 
             List<FirmDetails> backupFirms = new ArrayList<>();
-            if (isFullSystem && backup.getAllFirms() != null && !backup.getAllFirms().isEmpty()) {
+            if (isFullSystem && backup.getAllFirms() != null) {
                 backupFirms.addAll(backup.getAllFirms());
             } else if (backup.getFirmDetails() != null) {
                 backupFirms.add(backup.getFirmDetails());
@@ -527,13 +527,24 @@ public class BackupService {
             }
 
             if ("merge".equals(normalizedMode)) {
-                if (targetFirmId == null && selectedFirmIds != null && !selectedFirmIds.isEmpty()) {
-                    throw new IllegalArgumentException("Restore-into-existing-firm ('merge') requires an explicitly validated destination targetFirmId.");
-                }
                 if (targetFirmId != null && targetFirmsToProcess.size() == 1) {
                     boolean firmExists = firmDetailsRepo.findById(targetFirmId).isPresent() || firmDetailsRepo.existsById(targetFirmId);
                     if (!firmExists && firmDetailsRepo.count() > 0) {
                         throw new IllegalArgumentException("Destination firm ID " + targetFirmId + " does not exist.");
+                    }
+                } else if (targetFirmId == null && !targetFirmsToProcess.isEmpty() && firmDetailsRepo.count() > 0) {
+                    List<FirmDetails> existingFirms = firmDetailsRepo.findAll();
+                    for (FirmDetails candidate : targetFirmsToProcess) {
+                        boolean canMatch = false;
+                        if (candidate.getGstin() != null && !candidate.getGstin().trim().isEmpty()) {
+                            canMatch = existingFirms.stream().anyMatch(ef -> ef.getGstin() != null && ef.getGstin().equalsIgnoreCase(candidate.getGstin()));
+                        }
+                        if (!canMatch && candidate.getFirmName() != null && !candidate.getFirmName().trim().isEmpty()) {
+                            canMatch = existingFirms.stream().anyMatch(ef -> ef.getFirmName() != null && ef.getFirmName().equalsIgnoreCase(candidate.getFirmName()));
+                        }
+                        if (!canMatch) {
+                            throw new IllegalArgumentException("Restore-into-existing-firm ('merge') requires an explicitly validated destination targetFirmId.");
+                        }
                     }
                 }
             }

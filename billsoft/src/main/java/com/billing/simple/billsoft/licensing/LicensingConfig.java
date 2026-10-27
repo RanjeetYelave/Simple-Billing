@@ -16,6 +16,10 @@ public final class LicensingConfig {
     public static final String MASTER_PUBLIC_KEY_X509_BASE64 =
             "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
+    // Legacy Master Ed25519 Public Key for backward-compatible verification during key transition
+    public static final String LEGACY_MASTER_PUBLIC_KEY_X509_BASE64 =
+            "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
+
     // Default static GitHub registry raw URL base
     public static final String DEFAULT_REGISTRY_BASE_URL =
             "https://raw.githubusercontent.com/RanjeetYelave/license-registry/main";

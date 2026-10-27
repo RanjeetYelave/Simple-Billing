@@ -21,16 +21,27 @@ public class LicenseVerifier {
     private static final String LIFETIME_EXPIRY_STRING = "LIFETIME";
 
     private final PublicKey publicKey;
+    private final PublicKey fallbackPublicKey;
 
     public LicenseVerifier() {
-        this(LicensingConfig.MASTER_PUBLIC_KEY_X509_BASE64);
+        this(LicensingConfig.MASTER_PUBLIC_KEY_X509_BASE64, LicensingConfig.LEGACY_MASTER_PUBLIC_KEY_X509_BASE64);
     }
 
     public LicenseVerifier(String publicKeyX509Base64) {
+        this(publicKeyX509Base64, null);
+    }
+
+    public LicenseVerifier(String publicKeyX509Base64, String fallbackPublicKeyX509Base64) {
         try {
             byte[] keyBytes = Base64.getDecoder().decode(publicKeyX509Base64);
             KeyFactory kf = KeyFactory.getInstance("Ed25519");
             this.publicKey = kf.generatePublic(new X509EncodedKeySpec(keyBytes));
+            if (fallbackPublicKeyX509Base64 != null && !fallbackPublicKeyX509Base64.isBlank()) {
+                byte[] fallbackBytes = Base64.getDecoder().decode(fallbackPublicKeyX509Base64);
+                this.fallbackPublicKey = kf.generatePublic(new X509EncodedKeySpec(fallbackBytes));
+            } else {
+                this.fallbackPublicKey = null;
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize Ed25519 Public Key: " + e.getMessage(), e);
         }
@@ -38,6 +49,7 @@ public class LicenseVerifier {
 
     public LicenseVerifier(PublicKey publicKey) {
         this.publicKey = publicKey;
+        this.fallbackPublicKey = null;
     }
 
     public PublicKey getMasterPublicKey() {
@@ -170,7 +182,15 @@ public class LicenseVerifier {
             sig.initVerify(publicKey);
             sig.update(canonical.getBytes(StandardCharsets.UTF_8));
 
-            if (!sig.verify(signatureBytes)) {
+            boolean verified = sig.verify(signatureBytes);
+            if (!verified && fallbackPublicKey != null) {
+                Signature fallbackSig = Signature.getInstance("Ed25519");
+                fallbackSig.initVerify(fallbackPublicKey);
+                fallbackSig.update(canonical.getBytes(StandardCharsets.UTF_8));
+                verified = fallbackSig.verify(signatureBytes);
+            }
+
+            if (!verified) {
                 return ValidationResult.INVALID_SIGNATURE;
             }
         } catch (Exception e) {

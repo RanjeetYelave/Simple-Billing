@@ -170,14 +170,13 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String generateNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
         if (date == null) date = LocalDate.now();
         String configKey = buildConfigKey(type, safeFirmId, date);
 
-        Object lock = lockMap.computeIfAbsent(configKey, k -> new Object());
-        synchronized (lock) {
+        synchronized (configKey.intern()) {
             // 1. Pessimistic DB row lock on sequence record (with fallback if non-transactional)
             Optional<AppConfig> opt;
             try {
@@ -197,7 +196,18 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
                 cfg = new AppConfig();
                 cfg.setConfigKey(configKey);
                 cfg.setConfigValue(String.valueOf(lastSeq));
-                cfg = appConfigRepo.saveAndFlush(cfg);
+                try {
+                    cfg = appConfigRepo.saveAndFlush(cfg);
+                } catch (Exception ex) {
+                    // Fallback if concurrent transaction committed the initial row first
+                    opt = appConfigRepo.findById(configKey);
+                    if (opt.isPresent()) {
+                        cfg = opt.get();
+                        lastSeq = parseLongSafe(cfg.getConfigValue());
+                    } else {
+                        throw ex;
+                    }
+                }
             }
 
             // 2. Increment sequence atomically

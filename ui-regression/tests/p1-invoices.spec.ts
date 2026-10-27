@@ -149,4 +149,33 @@ test.describe('P1: Invoice Workflows, Calculations, Persistence & Payment Settle
 
     await errorGate.assertZeroErrors(page, 'Invoice Boundary Validation');
   });
+
+  test.afterAll(async ({ request }) => {
+    // Teardown: Clean up test customer and test invoice created during the test run
+    try {
+      const custRes = await request.get(`/api/customers?query=${encodeURIComponent(customerName)}`);
+      if (custRes.ok()) {
+        const custData = await custRes.json();
+        const customers = Array.isArray(custData) ? custData : (custData.content || []);
+        for (const c of customers) {
+          if (c.name === customerName) {
+            // Find invoices for this customer
+            const invRes = await request.get(`/api/invoices/final?size=50`, { headers: { 'X-Firm-Id': String(c.firmId || 97) } });
+            if (invRes.ok()) {
+              const invData = await invRes.json();
+              const invoices = invData.content || [];
+              for (const inv of invoices) {
+                if (inv.customer && inv.customer.id === c.id) {
+                  await request.delete(`/api/invoices/${inv.id}`, { headers: { 'X-Firm-Id': String(c.firmId || 97) } }).catch(() => {});
+                }
+              }
+            }
+            await request.delete(`/api/customers/${c.id}`, { headers: { 'X-Firm-Id': String(c.firmId || 97) } }).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Test cleanup error (non-fatal):', e);
+    }
+  });
 });

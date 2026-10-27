@@ -68,7 +68,8 @@ test.describe('P2: Real Inventory Product Lifecycle, Stock Adjustments & Persist
     const prodName2 = `Prod_${Date.now()}_B`;
 
     // 1. Create Product for editing test
-    const addBtn = page.locator('button:has-text("+ Add Product")').first();
+    const addBtn = page.locator('button:has-text("+ Add Product"), button:has-text("Add Product")').first();
+    await expect(addBtn).toBeVisible({ timeout: 10000 });
     await addBtn.click();
     await page.waitForTimeout(300);
 

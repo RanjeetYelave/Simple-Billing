@@ -197,6 +197,25 @@ export const test = base.extend<TestOptions & TestFixtures & { _autoSetup: void 
 
   // ── Automatic Preconditions Fixture (Runs for EVERY test) ───────────────────
   _autoSetup: [async ({ page, eulaMode }, use) => {
+    // 0. Safety Guard: Verify test environment isolation to prevent active database contamination
+    try {
+      const statusRes = await page.request.get('/api/system/test-environment-status');
+      if (statusRes.ok()) {
+        const statusJson = await statusRes.json();
+        if (statusJson.isTestDatabase === false && process.env.ALLOW_LIVE_DB_TESTS !== 'true') {
+          throw new Error(
+            `[SAFETY GUARD VIOLATION] Playwright is connected to an ACTIVE NON-TEST DATABASE (${statusJson.databaseUrl || 'default'}). ` +
+            `Automated tests must run against an isolated test environment (e.g. database-test.mv.db or test profile on port 28090). ` +
+            `To explicitly override during local development, run with ALLOW_LIVE_DB_TESTS=true.`
+          );
+        }
+      }
+    } catch (e: any) {
+      if (e.message && e.message.includes('[SAFETY GUARD VIOLATION]')) {
+        throw e;
+      }
+    }
+
     // 1. EULA deterministic pre-seeding
     if (eulaMode === 'accepted') {
       await page.addInitScript(

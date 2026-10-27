@@ -54,6 +54,7 @@ jobs:
             billsoft/target/surefire-reports/
             launcher/target/surefire-reports/
           if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload JaCoCo Coverage Report
         if: always()
@@ -62,3 +63,4 @@ jobs:
           name: jacoco-coverage-report
           path: billsoft/target/site/jacoco/
           if-no-files-found: ignore
+          retention-days: 3

@@ -15,10 +15,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
+import com.billing.simple.billsoft.security.DatabaseSafetyGuard;
 
 @Service
 public class BackupService {
 
+    private final DataSource dataSource;
     private final FirmDetailsRepository firmDetailsRepo;
     private final CustomerRepository customerRepo;
     private final ProductRepository productRepo;
@@ -111,7 +114,9 @@ public class BackupService {
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ItemDuplicateDismissalRepository itemDuplicateDismissalRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) InvoiceMigrationRecordRepository invoiceMigrationRecordRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator,
-                         @org.springframework.beans.factory.annotation.Autowired(required = false) ObjectMapper objectMapper) {
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) ObjectMapper objectMapper,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) DataSource dataSource) {
+        this.dataSource = dataSource;
         this.firmDetailsRepo = firmDetailsRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
@@ -2697,6 +2702,9 @@ public class BackupService {
 
     @Transactional
     public void factoryReset() {
+        if (dataSource != null) {
+            DatabaseSafetyGuard.validateFactoryResetSafety(dataSource);
+        }
         boolean locked = coordinator.tryLock();
         if (!locked) {
             throw new IllegalStateException("A backup, recovery, or restore operation is currently in progress. Please wait.");

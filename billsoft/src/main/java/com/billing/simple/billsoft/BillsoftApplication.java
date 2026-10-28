@@ -27,6 +27,7 @@ public class BillsoftApplication {
 	@Bean
 	public org.springframework.boot.CommandLineRunner databaseSchemaMigration(javax.sql.DataSource dataSource) {
 		return args -> {
+			com.billing.simple.billsoft.security.DatabaseSafetyGuard.assertSafeDataSource(dataSource);
 			try (java.sql.Connection conn = dataSource.getConnection();
 				 java.sql.Statement stmt = conn.createStatement()) {
 				try {

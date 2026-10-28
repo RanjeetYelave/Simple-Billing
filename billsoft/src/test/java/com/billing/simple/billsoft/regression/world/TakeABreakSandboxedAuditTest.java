@@ -131,7 +131,7 @@ public class TakeABreakSandboxedAuditTest {
         assertFalse(appConfigRepo.existsById("SNAKE_GAME_STATE"));
 
         // Restore backup
-        backupService.importData(backup, testFirm.getId(), true);
+        backupService.importSelectiveData(backup, java.util.Set.of(testFirm.getId()), "merge", testFirm.getId());
 
         // Verify that game progression was safely restored
         Optional<AppConfig> restoredSnake = appConfigRepo.findById("SNAKE_GAME_STATE");

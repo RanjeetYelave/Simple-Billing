@@ -66,6 +66,16 @@ public final class DataDirectoryResolver {
             return baseDir;
         }
 
+        // TEST ENVIRONMENT SANDBOX: If running under test and no custom directory specified,
+        // sandbox completely inside target/test-data/rupeecrm to prevent polluting user directories!
+        if (com.billing.simple.billsoft.security.DatabaseSafetyGuard.isTestEnvironment()) {
+            File testBaseDir = new File(System.getProperty("user.dir"), "target/test-data/rupeecrm");
+            if (!testBaseDir.exists()) {
+                testBaseDir.mkdirs();
+            }
+            return testBaseDir;
+        }
+
         String os = System.getProperty("os.name").toLowerCase();
         File baseDir;
 

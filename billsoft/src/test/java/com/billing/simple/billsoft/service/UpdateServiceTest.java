@@ -284,4 +284,15 @@ class UpdateServiceTest {
         assertEquals("1.0.0", complete.get("currentVersion"));
         assertTrue(((String) complete.get("errorMessage")).contains("does not match target"));
     }
+
+    @Test
+    void testBillsoftVersionMetadataOverride() throws Exception {
+        Path overrideFile = Path.of(".billsoft-version");
+        try {
+            Files.writeString(overrideFile, "v0.9.0");
+            assertEquals("v0.9.0", service.getCurrentVersion());
+        } finally {
+            Files.deleteIfExists(overrideFile);
+        }
+    }
 }

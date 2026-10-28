@@ -31,7 +31,7 @@ const path = require('path');
   });
 
   console.log('Navigating to RupeeCRM in WebKit...');
-  await page.goto('http://127.0.0.1:28080/index.html', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:28090/index.html', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
 
   // Dismiss announcement if open

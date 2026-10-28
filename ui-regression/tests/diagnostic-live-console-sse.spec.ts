@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Real-Time Live Console SSE Streaming', () => {
-  const BASE_URL = 'http://127.0.0.1:28080';
+  const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:28090';
 
   test.beforeEach(async ({ request }) => {
     // Enable persistent console mode with VERBOSE logging

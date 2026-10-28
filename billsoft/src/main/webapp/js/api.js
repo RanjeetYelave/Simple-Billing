@@ -1166,6 +1166,10 @@ const API = {
     applyUpdate: () => API._json('/api/system/apply-update', {
       method: 'POST'
     }),
+    cancelUpdate: () => API._json('/api/system/cancel-update', {
+      method: 'POST'
+    }),
+    checkUpdateComplete: () => API._json('/api/system/check-update-complete'),
     getDevLogs: () => API._json('/api/system/dev-logs'),
     setDevLogs: (enabled) => API._json('/api/system/dev-logs', {
       method: 'POST',

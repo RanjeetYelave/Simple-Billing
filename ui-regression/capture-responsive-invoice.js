@@ -14,7 +14,7 @@ const path = require('path');
       localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
       sessionStorage.setItem('employeePin', '0000');
     });
-    await page.goto('http://127.0.0.1:28080/index.html', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://127.0.0.1:28090/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 15000 });
     await page.waitForTimeout(500);
     await page.evaluate(() => {
@@ -40,7 +40,7 @@ const path = require('path');
       localStorage.setItem('rupeecrm_eula_accepted_at', new Date().toISOString());
       sessionStorage.setItem('employeePin', '0000');
     });
-    await page.goto('http://127.0.0.1:28080/index.html', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://127.0.0.1:28090/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 15000 });
     await page.waitForTimeout(500);
     await page.evaluate(() => {

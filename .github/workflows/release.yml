@@ -196,6 +196,7 @@ jobs:
                    --win-menu-group "RupeeCRM" `
                    --win-per-user-install `
                    --win-dir-chooser `
+                   --win-upgrade-uuid 4F9E58A2-3670-4A9A-9988-518D1B36C87E `
                    --java-options "-Djava.awt.headless=false"
 
           $msi = Get-ChildItem "msi-stage" -Filter "*.msi" -File | Select-Object -First 1

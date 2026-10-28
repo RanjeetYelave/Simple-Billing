@@ -2,6 +2,10 @@
 # Windows MSI Lifecycle & Data Integrity Forensic Validation Quality Gate
 # ==============================================================================
 
+param(
+    [string]$MsiPath = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 $executedPassed = [System.Collections.Generic.List[string]]::new()
@@ -12,7 +16,13 @@ Write-Host "=========================================================="
 Write-Host " [CI VALIDATION] Testing Windows Unified MSI Lifecycle"
 Write-Host "=========================================================="
 
-$msiPath = if (Test-Path "RupeeCRMSetup.msi") { (Resolve-Path "RupeeCRMSetup.msi").Path } else { $null }
+$msiPath = if ($MsiPath -and (Test-Path $MsiPath)) {
+    (Resolve-Path $MsiPath).Path
+} elseif (Test-Path "RupeeCRMSetup.msi") {
+    (Resolve-Path "RupeeCRMSetup.msi").Path
+} else {
+    $null
+}
 
 function Invoke-MsiCommand {
     param(
@@ -192,6 +202,31 @@ try {
         throw "CRITICAL SECURITY FAULT: Data directory was created inside INSTALLDIR ($installDir\data)! Customer data must be isolated."
     }
     $executedPassed.Add("5. Customer Data Decoupling from INSTALLDIR")
+
+    # Verify Desktop and Start Menu Shortcuts
+    Write-Host "`n==> Verifying Desktop and Start Menu shortcut presence..."
+    $desktopDirs = @([Environment]::GetFolderPath('Desktop'), "$env:USERPROFILE\Desktop") | Select-Object -Unique
+    $foundDesktopLnk = $false
+    foreach ($dd in $desktopDirs) {
+        if ($dd -and (Test-Path (Join-Path $dd "RupeeCRM.lnk"))) {
+            $foundDesktopLnk = $true
+            Write-Host "[OK] Desktop shortcut verified: $(Join-Path $dd 'RupeeCRM.lnk')"
+            break
+        }
+    }
+
+    $startMenuDirs = @([Environment]::GetFolderPath('Programs'), "$env:APPDATA\Microsoft\Windows\Start Menu\Programs") | Select-Object -Unique
+    $foundStartMenuLnk = $false
+    foreach ($smd in $startMenuDirs) {
+        if ($smd) {
+            if ((Test-Path (Join-Path $smd "RupeeCRM.lnk")) -or (Test-Path (Join-Path $smd "RupeeCRM\RupeeCRM.lnk"))) {
+                $foundStartMenuLnk = $true
+                Write-Host "[OK] Start Menu shortcut verified in: $smd"
+                break
+            }
+        }
+    }
+    $executedPassed.Add("5b. Desktop and Start Menu Shortcut Verification")
 
     # ------------------------------------------------------------------------------
     # 3. First-Run / Live Backend & Multi-Firm Setup Flow (with unrelated JAVA_HOME test)

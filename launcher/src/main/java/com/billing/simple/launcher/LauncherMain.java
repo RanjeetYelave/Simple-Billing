@@ -5,10 +5,16 @@ import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
@@ -89,6 +95,19 @@ public class LauncherMain {
     private JLabel statusDetailLabel;
     private JProgressBar progressBar;
 
+    // Edge Application Mode process tracking
+    static volatile Process edgeAppProcess = null;
+    static volatile long lastWindowLaunchTime = 0;
+
+    // Single-instance supervisor lock
+    static FileChannel supervisorLockChannel = null;
+    static FileLock supervisorLock = null;
+
+    // Supervisor IPC Activation Server for single-instance secondary launches
+    static ServerSocket activationServerSocket = null;
+    static String activationToken = null;
+    static Thread activationServerThread = null;
+
     public static void main(String[] args) {
         if (System.getProperty("java.awt.headless") == null) {
             boolean hasDisplay = System.getenv("DISPLAY") != null || System.getenv("WAYLAND_DISPLAY") != null || System.getProperty("os.name").toLowerCase().contains("win");
@@ -129,20 +148,44 @@ public class LauncherMain {
             return;
         }
 
-        // Single-instance detection: if server is already running, check for pending update handoff
-        Path handoffToken = getBaseDirectory().resolve("staging").resolve("update-tx").resolve("update.handoff");
-        if (isBackendHealthy(1200)) {
-            if (Files.exists(handoffToken)) {
-                System.out.println("Pending update handoff detected while backend is active. Proceeding with supervisor to apply update...");
-            } else {
-                System.out.println("RupeeCRM backend is already active.");
-                if (!background) {
-                    openBrowser(APP_URL);
+        // Single-instance detection & supervisor lock:
+        Path handoffToken = getStagingDirectory().resolve("update.handoff");
+        Path handoffTokenTx = getBaseDirectory().resolve("staging").resolve("update-tx").resolve("update.handoff");
+        boolean updateHandoff = Files.exists(handoffToken) || Files.exists(handoffTokenTx);
+
+        boolean healthy = isBackendHealthy(1200);
+
+        if (healthy && !updateHandoff) {
+            System.out.println("RupeeCRM backend is already active.");
+            if (!background) {
+                if (!notifyActiveSupervisorToActivate()) {
+                    openApplicationWindow(APP_URL);
                 }
-                System.exit(0);
-                return;
             }
+            System.exit(0);
+            return;
         }
+
+        // Try to acquire the supervisor file lock to ensure strictly one supervisor owns the tray and backend
+        if (!acquireSupervisorLock()) {
+            System.out.println("Another RupeeCRM supervisor instance is already running.");
+            if (!background) {
+                if (!notifyActiveSupervisorToActivate()) {
+                    if (healthy) {
+                        openApplicationWindow(APP_URL);
+                    } else {
+                        System.out.println("Waiting for RupeeCRM backend to become ready...");
+                        if (waitForBackendHealthy(15)) {
+                            openApplicationWindow(APP_URL);
+                        }
+                    }
+                }
+            }
+            System.exit(0);
+            return;
+        }
+
+        startActivationServer();
 
         LauncherMain app = new LauncherMain();
         app.isBackgroundMode = background;
@@ -155,22 +198,29 @@ public class LauncherMain {
         // Ensure persistent directories exist
         ensureDirectories();
 
+        // Start local loopback activation server for secondary launcher invocations
+        startActivationServer();
+
         // Ensure autostart registration is initialized on Windows
         if (System.getProperty("os.name").toLowerCase().contains("win") && !isAutostartEnabled()) {
             setAutostartEnabled(true);
         }
 
-        // Setup shutdown hook to cleanly terminate only RupeeCRM backend
-        Runtime.getRuntime().addShutdownHook(new Thread(this::stopBackend));
+        // Setup shutdown hook to cleanly terminate Edge app window, RupeeCRM backend, and supervisor lock
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            stopEdgeApp();
+            stopBackend();
+            releaseSupervisorLock();
+        }));
 
         // Setup System Tray
         setupSystemTray();
 
-        // If not in background mode, open browser once healthy
+        // If not in background mode, open application window once healthy
         if (!isBackgroundMode) {
             new Thread(() -> {
                 if (waitForBackend(25)) {
-                    openBrowser(APP_URL);
+                    openApplicationWindow(APP_URL);
                 }
             }).start();
         }
@@ -185,6 +235,7 @@ public class LauncherMain {
             Files.createDirectories(getBackupsDirectory());
             Files.createDirectories(getLogsDirectory());
             Files.createDirectories(getStagingDirectory());
+            Files.createDirectories(getBrowserProfileDirectory());
         } catch (IOException e) {
             System.err.println("Warning: could not create standard directories: " + e.getMessage());
         }
@@ -483,12 +534,123 @@ public class LauncherMain {
         return false;
     }
 
+    public static boolean waitForBackendHealthy(int maxSeconds) {
+        long start = System.currentTimeMillis();
+        long maxMs = maxSeconds * 1000L;
+        while (System.currentTimeMillis() - start < maxMs) {
+            if (isBackendHealthy(1000)) {
+                return true;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    public static synchronized Process getEdgeAppProcess() {
+        return edgeAppProcess;
+    }
+
+    public static synchronized void setEdgeAppProcess(Process p) {
+        edgeAppProcess = p;
+    }
+
+    /**
+     * Centralized method responsible for opening the RupeeCRM desktop application window.
+     * On Windows, launches Microsoft Edge in standalone App Mode with a dedicated profile.
+     * On other platforms (or when Edge is absent), delegates to the system default browser.
+     */
+    public static synchronized boolean openApplicationWindow(String urlStr) {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
+            long now = System.currentTimeMillis();
+            if (now - lastWindowLaunchTime < 1000) {
+                System.out.println("Ignoring rapid duplicate application window launch request.");
+                return true;
+            }
+            lastWindowLaunchTime = now;
+
+            File edgeExe = resolveEdgeExecutable();
+            if (edgeExe != null && edgeExe.exists()) {
+                try {
+                    Path profileDir = getBrowserProfileDirectory();
+                    Files.createDirectories(profileDir);
+
+                    List<String> command = buildEdgeAppArguments(edgeExe.getAbsolutePath(), urlStr, profileDir);
+                    ProcessBuilder pb = new ProcessBuilder(command);
+                    Path logsDir = getLogsDirectory();
+                    if (Files.exists(logsDir)) {
+                        pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logsDir.resolve("edge-stdout.log").toFile()));
+                        pb.redirectError(ProcessBuilder.Redirect.appendTo(logsDir.resolve("edge-stderr.log").toFile()));
+                    }
+
+                    System.out.println("Launching RupeeCRM standalone window via Microsoft Edge App Mode: " + edgeExe.getAbsolutePath());
+                    Process launched = pb.start();
+                    // Process handoff protection: If we already hold a live browser main process,
+                    // the newly launched process is a transient handoff client that signals the existing
+                    // window to focus and then terminates. Do NOT overwrite the live main process handle!
+                    if (edgeAppProcess == null || !edgeAppProcess.isAlive()) {
+                        edgeAppProcess = launched;
+                    }
+                    return true;
+                } catch (Exception e) {
+                    System.err.println("Error launching Microsoft Edge App Mode: " + e.getMessage());
+                    showEdgeLaunchErrorDialog("Microsoft Edge Launch Error",
+                            "Failed to launch Microsoft Edge in Application Mode: " + e.getMessage() + "\n\n" +
+                            "RupeeCRM will open in your default system browser instead.");
+                }
+            } else {
+                System.err.println("Microsoft Edge executable not found for application mode on Windows.");
+                showEdgeLaunchErrorDialog("Microsoft Edge Not Found",
+                        "Microsoft Edge was not detected on this system.\n\n" +
+                        "RupeeCRM runs as a standalone desktop window using Microsoft Edge App Mode.\n" +
+                        "RupeeCRM will open in your default system browser instead.\n\n" +
+                        "For the dedicated desktop window experience, please install Microsoft Edge.");
+            }
+
+            // Fallback for Windows when Edge is unavailable (e.g. specialized Windows Server / LTSC):
+            // Fall back to system default browser and inform the user so billing operations are never blocked.
+            System.out.println("Falling back to default system browser for RupeeCRM UI.");
+            openDefaultBrowser(urlStr);
+            return false;
+        } else {
+            openDefaultBrowser(urlStr);
+            return true;
+        }
+    }
+
+    public static void showEdgeLaunchErrorDialog(String title, String message) {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.err.println(title + ": " + message);
+            return;
+        }
+        EventQueue.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            JOptionPane.showMessageDialog(
+                    null,
+                    message,
+                    title,
+                    JOptionPane.WARNING_MESSAGE
+            );
+        });
+    }
+
     public static void openBrowser(String urlStr) {
+        openApplicationWindow(urlStr);
+    }
+
+    public static void openDefaultBrowser(String urlStr) {
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 Desktop.getDesktop().browse(new URI(urlStr));
             } else {
-                String os = System.getProperty("os.name").toLowerCase();
+                String os = System.getProperty("os.name", "").toLowerCase();
                 if (os.contains("win")) {
                     Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", urlStr});
                 } else if (os.contains("mac")) {
@@ -498,8 +660,310 @@ public class LauncherMain {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to open browser: " + e.getMessage());
+            System.err.println("Failed to open default browser: " + e.getMessage());
         }
+    }
+
+    public static synchronized void stopEdgeApp() {
+        if (edgeAppProcess != null) {
+            System.out.println("Stopping RupeeCRM Edge application window process...");
+            try {
+                if (edgeAppProcess.isAlive()) {
+                    // 1. Gracefully request window/process termination
+                    edgeAppProcess.destroy();
+                    // 2. Wait up to 2 seconds for clean exit
+                    if (!edgeAppProcess.waitFor(2, TimeUnit.SECONDS)) {
+                        // 3. Forcibly terminate tracked descendant processes, then root
+                        try {
+                            edgeAppProcess.descendants().forEach(ph -> {
+                                try { ph.destroyForcibly(); } catch (Exception ignored) {}
+                            });
+                        } catch (Exception ignored) {}
+                        edgeAppProcess.destroyForcibly();
+                    }
+                }
+            } catch (Exception ignored) {}
+            edgeAppProcess = null;
+        }
+    }
+
+    public static File resolveEdgeExecutable() {
+        String override = System.getProperty("rupeecrm.edge.path");
+        if (override == null || override.isBlank()) {
+            override = System.getenv("RUPEECRM_EDGE_PATH");
+        }
+        if (override != null && !override.isBlank()) {
+            File f = new File(override.trim());
+            if (f.exists() && f.isFile()) {
+                return f;
+            }
+        }
+
+        List<String> candidatePaths = new ArrayList<>();
+        String progFilesX86 = System.getenv("ProgramFiles(x86)");
+        if (progFilesX86 != null && !progFilesX86.isBlank()) {
+            candidatePaths.add(progFilesX86 + "\\Microsoft\\Edge\\Application\\msedge.exe");
+        }
+        String progFiles = System.getenv("ProgramFiles");
+        if (progFiles != null && !progFiles.isBlank()) {
+            candidatePaths.add(progFiles + "\\Microsoft\\Edge\\Application\\msedge.exe");
+        }
+        String localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData != null && !localAppData.isBlank()) {
+            candidatePaths.add(localAppData + "\\Microsoft\\Edge\\Application\\msedge.exe");
+        }
+
+        candidatePaths.add("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe");
+        candidatePaths.add("C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe");
+
+        for (String path : candidatePaths) {
+            File f = new File(path);
+            if (f.exists() && f.isFile()) {
+                return f;
+            }
+        }
+
+        File regEdge = queryRegistryForEdge();
+        if (regEdge != null && regEdge.exists()) {
+            return regEdge;
+        }
+
+        File pathEdge = queryPathForEdge();
+        if (pathEdge != null && pathEdge.exists()) {
+            return pathEdge;
+        }
+
+        return null;
+    }
+
+    public static File queryRegistryForEdge() {
+        String[] regCommands = {
+            "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe\" /ve",
+            "reg query \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe\" /ve"
+        };
+        for (String cmd : regCommands) {
+            try {
+                Process p = Runtime.getRuntime().exec(cmd);
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.contains("REG_SZ")) {
+                            String[] parts = line.split("REG_SZ", 2);
+                            if (parts.length > 1) {
+                                String resolved = parts[1].trim();
+                                if (!resolved.isBlank()) {
+                                    File f = new File(resolved);
+                                    if (f.exists() && f.isFile()) {
+                                        return f;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    public static File queryPathForEdge() {
+        try {
+            Process p = Runtime.getRuntime().exec("where msedge.exe");
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line = reader.readLine();
+                if (line != null && !line.isBlank()) {
+                    File f = new File(line.trim());
+                    if (f.exists() && f.isFile()) {
+                        return f;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    public static List<String> buildEdgeAppArguments(String edgeExecutablePath, String appUrl, Path profileDir) {
+        List<String> args = new ArrayList<>();
+        args.add(edgeExecutablePath);
+        args.add("--app=" + appUrl);
+        args.add("--user-data-dir=" + profileDir.toAbsolutePath().toString());
+        args.add("--no-first-run");
+        args.add("--no-default-browser-check");
+        args.add("--disable-features=Translate");
+        args.add("--disable-background-mode");
+        return args;
+    }
+
+    public static synchronized boolean acquireSupervisorLock() {
+        if (supervisorLock != null && supervisorLock.isValid()) {
+            return true;
+        }
+        try {
+            Path lockFile = getBaseDirectory().resolve(".supervisor.lock");
+            if (lockFile.getParent() != null) {
+                Files.createDirectories(lockFile.getParent());
+            }
+            supervisorLockChannel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            supervisorLock = supervisorLockChannel.tryLock();
+            if (supervisorLock == null) {
+                try { supervisorLockChannel.close(); } catch (Exception ignored) {}
+                supervisorLockChannel = null;
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            if (supervisorLockChannel != null) {
+                try { supervisorLockChannel.close(); } catch (Exception ignored) {}
+                supervisorLockChannel = null;
+            }
+            supervisorLock = null;
+            System.err.println("Note: Could not acquire supervisor lock: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public static synchronized void releaseSupervisorLock() {
+        stopActivationServer();
+        try {
+            if (supervisorLock != null && supervisorLock.isValid()) {
+                supervisorLock.release();
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (supervisorLockChannel != null && supervisorLockChannel.isOpen()) {
+                supervisorLockChannel.close();
+            }
+        } catch (Exception ignored) {}
+        supervisorLock = null;
+        supervisorLockChannel = null;
+    }
+
+    // ==========================================
+    // SUPERVISOR IPC ACTIVATION SERVER
+    // ==========================================
+
+    public static synchronized void startActivationServer() {
+        if (activationServerSocket != null && !activationServerSocket.isClosed()) {
+            return;
+        }
+        try {
+            activationServerSocket = new ServerSocket();
+            activationServerSocket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 10);
+            int port = activationServerSocket.getLocalPort();
+            activationToken = UUID.randomUUID().toString();
+
+            Path ipcFile = getBaseDirectory().resolve(".supervisor.ipc");
+            if (ipcFile.getParent() != null) {
+                Files.createDirectories(ipcFile.getParent());
+            }
+            String content = "port=" + port + "\ntoken=" + activationToken + "\npid=" + ProcessHandle.current().pid() + "\n";
+            Files.writeString(ipcFile, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            try {
+                Set<java.nio.file.attribute.PosixFilePermission> perms = EnumSet.of(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
+                );
+                Files.setPosixFilePermissions(ipcFile, perms);
+            } catch (UnsupportedOperationException | IOException ignored) {}
+
+            activationServerThread = new Thread(() -> {
+                while (activationServerSocket != null && !activationServerSocket.isClosed()) {
+                    try {
+                        Socket socket = activationServerSocket.accept();
+                        handleActivationConnection(socket);
+                    } catch (IOException e) {
+                        // Socket closed when supervisor stops
+                        break;
+                    }
+                }
+            }, "RupeeCRM-Activation-Server");
+            activationServerThread.setDaemon(true);
+            activationServerThread.start();
+            System.out.println("Supervisor activation server listening on 127.0.0.1:" + port);
+        } catch (Exception e) {
+            System.err.println("Warning: Failed to start supervisor activation server: " + e.getMessage());
+        }
+    }
+
+    private static void handleActivationConnection(Socket socket) {
+        try (socket) {
+            socket.setSoTimeout(2000);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            String line = reader.readLine();
+            if (line != null && activationToken != null) {
+                String expected = activationToken + " ACTIVATE";
+                if (expected.equals(line.trim())) {
+                    writer.write("OK\n");
+                    writer.flush();
+                    System.out.println("Received activation request from secondary launcher invocation. Reopening/focusing application window.");
+                    new Thread(() -> {
+                        if (waitForBackendHealthy(15)) {
+                            openApplicationWindow(APP_URL);
+                        }
+                    }, "RupeeCRM-Activate-Window").start();
+                    return;
+                }
+            }
+            writer.write("DENIED\n");
+            writer.flush();
+        } catch (Exception ignored) {}
+    }
+
+    public static synchronized void stopActivationServer() {
+        try {
+            if (activationServerSocket != null && !activationServerSocket.isClosed()) {
+                activationServerSocket.close();
+            }
+        } catch (Exception ignored) {}
+        activationServerSocket = null;
+        activationToken = null;
+        activationServerThread = null;
+        try {
+            Path ipcFile = getBaseDirectory().resolve(".supervisor.ipc");
+            Files.deleteIfExists(ipcFile);
+        } catch (Exception ignored) {}
+    }
+
+    public static boolean notifyActiveSupervisorToActivate() {
+        Path ipcFile = getBaseDirectory().resolve(".supervisor.ipc");
+        if (!Files.exists(ipcFile)) {
+            return false;
+        }
+        try {
+            List<String> lines = Files.readAllLines(ipcFile, StandardCharsets.UTF_8);
+            int port = -1;
+            String token = null;
+            for (String line : lines) {
+                if (line.startsWith("port=")) {
+                    port = Integer.parseInt(line.substring("port=".length()).trim());
+                } else if (line.startsWith("token=")) {
+                    token = line.substring("token=".length()).trim();
+                }
+            }
+            if (port <= 0 || token == null || token.isBlank()) {
+                return false;
+            }
+
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 1500);
+                socket.setSoTimeout(2500);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+
+                writer.write(token + " ACTIVATE\n");
+                writer.flush();
+
+                String response = reader.readLine();
+                if ("OK".equalsIgnoreCase(response != null ? response.trim() : "")) {
+                    System.out.println("Successfully notified running RupeeCRM supervisor to activate application window.");
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Could not notify running supervisor: " + e.getMessage());
+        }
+        return false;
     }
 
     // ==========================================
@@ -525,7 +989,7 @@ public class LauncherMain {
                     PopupMenu popup = new PopupMenu();
 
                     MenuItem openItem = new MenuItem("Open RupeeCRM");
-                    openItem.addActionListener(e -> openBrowser(APP_URL));
+                    openItem.addActionListener(e -> openApplicationWindow(APP_URL));
                     openItem.setFont(new Font("Segoe UI", Font.BOLD, 12));
                     popup.add(openItem);
 
@@ -534,6 +998,7 @@ public class LauncherMain {
                         restartRequested = true;
                         circuitBreakerTripped = false;
                         crashTimestamps.clear();
+                        stopEdgeApp();
                         stopBackend();
                     });
                     popup.add(restartItem);
@@ -585,14 +1050,16 @@ public class LauncherMain {
                     MenuItem exitItem = new MenuItem("Exit");
                     exitItem.addActionListener(e -> {
                         exitRequested = true;
+                        stopEdgeApp();
                         stopBackend();
+                        releaseSupervisorLock();
                         System.exit(0);
                     });
                     popup.add(exitItem);
 
                     trayIcon = new TrayIcon(image, "RupeeCRM", popup);
                     trayIcon.setImageAutoSize(true);
-                    trayIcon.addActionListener(e -> openBrowser(APP_URL));
+                    trayIcon.addActionListener(e -> openApplicationWindow(APP_URL));
 
                     tray.add(trayIcon);
                 } catch (Throwable t) {
@@ -864,6 +1331,7 @@ public class LauncherMain {
     public void performInteractiveRepair() {
         new Thread(() -> {
             showTrayNotification("Repairing RupeeCRM", "Verifying files and repairing shortcuts...", TrayIcon.MessageType.INFO);
+            stopEdgeApp();
             stopBackend();
 
             // Re-verify autostart & shortcuts
@@ -898,8 +1366,10 @@ public class LauncherMain {
             }
 
             try {
-                // 1. Stop running backend
+                // 1. Stop running UI and backend
+                stopEdgeApp();
                 stopBackend();
+                releaseSupervisorLock();
 
                 // 2. Remove Windows autostart
                 setAutostartEnabled(false);
@@ -1286,6 +1756,10 @@ public class LauncherMain {
 
     public static Path getStagingDirectory() {
         return getBaseDirectory().resolve("staging");
+    }
+
+    public static Path getBrowserProfileDirectory() {
+        return getBaseDirectory().resolve("browser-profile");
     }
 
     public static Path getBaseDirectory() {

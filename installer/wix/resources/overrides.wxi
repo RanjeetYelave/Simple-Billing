@@ -1,2 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Include/>
+<Include>
+  <?ifndef JpProductUpgradeCode ?>
+    <?define JpProductUpgradeCode="4F9E58A2-3670-4A9A-9988-518D1B36C87E" ?>
+  <?endif?>
+  <?ifndef JpAllowUpgrades ?>
+    <?define JpAllowUpgrades="yes" ?>
+  <?endif?>
+</Include>

@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -242,5 +243,186 @@ public class EmployeeControllerTest {
 
         reloadedEmp = employeeRepo.findById(emp.getId()).get();
         assertThat(reloadedEmp.getCurrentAdvanceBalance()).isEqualTo(3000.11);
+    }
+
+    @Test
+    void getEmployees_withoutPinHeader_isRejectedWith403() throws Exception {
+        // Fetch without X-Employee-Pin header — must be rejected with 403 Forbidden
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .param("firmId", "1"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Missing Employee Module PIN header (X-Employee-Pin)"));
+    }
+
+    @Test
+    void getEmployees_withWrongPinHeader_isRejectedWith403() throws Exception {
+        // Fetch with incorrect PIN header — must be rejected with 403 Forbidden
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "9999")
+                .param("firmId", "1"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Invalid Employee Module PIN"));
+    }
+
+    @Test
+    void getEmployees_withDefaultPinHeader_succeedsWhenFirmOnDefaultPin() throws Exception {
+        // Create an employee for firm 1
+        Employee emp = new Employee();
+        emp.setFirmId(1L);
+        emp.setName("Default Pin Staff");
+        emp.setMonthlyBaseSalary(30000.0);
+        emp.setDateOfJoining(LocalDate.now());
+        employeeRepo.save(emp);
+
+        // Fetch with verified default PIN header — must succeed with 200 OK
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "0000")
+                .param("firmId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[?(@.name == 'Default Pin Staff')]").exists());
+    }
+
+    @Test
+    void getEmployees_emptyList_returnsEmptyArray() throws Exception {
+        // Firm 999 has no staff
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "999")
+                .header("X-Employee-Pin", "0000")
+                .param("firmId", "999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void getEmployees_enforcesFirmDataIsolation() throws Exception {
+        Employee empFirm1 = new Employee();
+        empFirm1.setFirmId(1L);
+        empFirm1.setName("Firm 1 Exclusive Employee");
+        empFirm1.setMonthlyBaseSalary(32000.0);
+        empFirm1.setDateOfJoining(LocalDate.now());
+        employeeRepo.save(empFirm1);
+
+        Employee empFirm2 = new Employee();
+        empFirm2.setFirmId(2L);
+        empFirm2.setName("Firm 2 Exclusive Employee");
+        empFirm2.setMonthlyBaseSalary(42000.0);
+        empFirm2.setDateOfJoining(LocalDate.now());
+        employeeRepo.save(empFirm2);
+
+        // Fetching for Firm 1 must not contain Firm 2 employee
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "0000")
+                .param("firmId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.name == 'Firm 1 Exclusive Employee')]").exists())
+                .andExpect(jsonPath("$[?(@.name == 'Firm 2 Exclusive Employee')]").doesNotExist());
+    }
+
+    @Test
+    void accessEmployees_withCustomConfiguredPin_rejectsMissingOrWrongPin() throws Exception {
+        // Configure custom PIN for firm 2
+        AppConfig customPin = new AppConfig();
+        customPin.setConfigKey("EMPLOYEE_MODULE_PIN_2");
+        customPin.setConfigValue("7777");
+        appConfigRepo.save(customPin);
+
+        // 1. Missing PIN header fails with 403
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "2")
+                .param("firmId", "2"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Missing Employee Module PIN header (X-Employee-Pin)"));
+
+        // 2. Default PIN '0000' fails against custom PIN with 403
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "2")
+                .header("X-Employee-Pin", "0000")
+                .param("firmId", "2"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Invalid Employee Module PIN"));
+
+        // 3. Correct custom PIN succeeds
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "2")
+                .header("X-Employee-Pin", "7777")
+                .param("firmId", "2"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void changePin_updatesConfiguredPin_andRejectsOldPin() throws Exception {
+        // Change PIN for firm 1 from 0000 to 8888
+        mockMvc.perform(post("/api/employees/change-pin")
+                .header("X-Firm-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("oldPin", "0000", "newPin", "8888"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"));
+
+        // Old PIN '0000' must now be rejected
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "0000"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Invalid Employee Module PIN"));
+
+        // New PIN '8888' must succeed
+        mockMvc.perform(get("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "8888"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void createAndRetrieveEmployee_persistsExtendedAttributes() throws Exception {
+        EmployeeDTO dto = new EmployeeDTO();
+        dto.setFirmId(1L);
+        dto.setName("Full Attribute Staff");
+        dto.setPhone("9988776655");
+        dto.setRole("Senior Logistics Lead");
+        dto.setMonthlyBaseSalary(48000.0);
+        dto.setAllowedPaidLeavesPerMonth(2);
+        dto.setDateOfJoining(LocalDate.now());
+        dto.setDepartment("Operations & Logistics");
+        dto.setDesignation("Logistics Specialist");
+        dto.setEmail("logistics@rupeecrm.local");
+        dto.setAddress("42 Commercial Complex, Pune");
+        dto.setEmergencyContactName("Rahul Contact");
+        dto.setEmergencyContactPhone("9911223344");
+        dto.setBankAccountName("Full Attribute Staff");
+        dto.setBankAccountNumber("123456789012");
+        dto.setBankIfscCode("HDFC0001234");
+        dto.setBankName("HDFC Bank");
+
+        String json = objectMapper.writeValueAsString(dto);
+        MvcResult res = mockMvc.perform(post("/api/employees")
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "0000")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.department").value("Operations & Logistics"))
+                .andExpect(jsonPath("$.designation").value("Logistics Specialist"))
+                .andExpect(jsonPath("$.email").value("logistics@rupeecrm.local"))
+                .andExpect(jsonPath("$.bankName").value("HDFC Bank"))
+                .andReturn();
+
+        EmployeeDTO saved = objectMapper.readValue(res.getResponse().getContentAsString(), EmployeeDTO.class);
+
+        // Retrieve by ID
+        mockMvc.perform(get("/api/employees/" + saved.getId())
+                .header("X-Firm-Id", "1")
+                .header("X-Employee-Pin", "0000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.department").value("Operations & Logistics"))
+                .andExpect(jsonPath("$.designation").value("Logistics Specialist"))
+                .andExpect(jsonPath("$.email").value("logistics@rupeecrm.local"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"));
     }
 }

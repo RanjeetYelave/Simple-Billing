@@ -75,7 +75,7 @@ public class EmployeeSecurityInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 2. Validate X-Employee-Pin header
+        // 2. Validate X-Employee-Pin header (strictly required)
         String clientPin = request.getHeader("X-Employee-Pin");
         if (clientPin == null || clientPin.trim().isEmpty()) {
             sendErrorResponse(response, HttpStatus.FORBIDDEN, "Missing Employee Module PIN header (X-Employee-Pin)");

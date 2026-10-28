@@ -266,6 +266,16 @@ public class EmployeeController {
         emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth() != null ? dto.getAllowedPaidLeavesPerMonth() : 0);
         emp.setCurrentAdvanceBalance(0.0);
         emp.setDateOfJoining(dto.getDateOfJoining() != null ? dto.getDateOfJoining() : LocalDate.now());
+        emp.setDepartment(dto.getDepartment());
+        emp.setDesignation(dto.getDesignation());
+        emp.setEmail(dto.getEmail());
+        emp.setAddress(dto.getAddress());
+        emp.setEmergencyContactName(dto.getEmergencyContactName());
+        emp.setEmergencyContactPhone(dto.getEmergencyContactPhone());
+        emp.setBankAccountName(dto.getBankAccountName());
+        emp.setBankAccountNumber(dto.getBankAccountNumber());
+        emp.setBankIfscCode(dto.getBankIfscCode());
+        emp.setBankName(dto.getBankName());
         Employee saved = employeeRepo.save(emp);
         return ResponseEntity.ok(toDTO(saved));
     }
@@ -281,6 +291,16 @@ public class EmployeeController {
         if (dto.getMonthlyBaseSalary() != null) emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary());
         if (dto.getAllowedPaidLeavesPerMonth() != null) emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth());
         if (dto.getDateOfJoining() != null) emp.setDateOfJoining(dto.getDateOfJoining());
+        if (dto.getDepartment() != null) emp.setDepartment(dto.getDepartment());
+        if (dto.getDesignation() != null) emp.setDesignation(dto.getDesignation());
+        if (dto.getEmail() != null) emp.setEmail(dto.getEmail());
+        if (dto.getAddress() != null) emp.setAddress(dto.getAddress());
+        if (dto.getEmergencyContactName() != null) emp.setEmergencyContactName(dto.getEmergencyContactName());
+        if (dto.getEmergencyContactPhone() != null) emp.setEmergencyContactPhone(dto.getEmergencyContactPhone());
+        if (dto.getBankAccountName() != null) emp.setBankAccountName(dto.getBankAccountName());
+        if (dto.getBankAccountNumber() != null) emp.setBankAccountNumber(dto.getBankAccountNumber());
+        if (dto.getBankIfscCode() != null) emp.setBankIfscCode(dto.getBankIfscCode());
+        if (dto.getBankName() != null) emp.setBankName(dto.getBankName());
         // Do NOT allow changing firmId
         return ResponseEntity.ok(toDTO(employeeRepo.save(emp)));
     }
@@ -812,6 +832,16 @@ public class EmployeeController {
         dto.setMonthlyBaseSalary(emp.getMonthlyBaseSalary());
         dto.setAllowedPaidLeavesPerMonth(emp.getAllowedPaidLeavesPerMonth());
         dto.setCurrentAdvanceBalance(emp.getCurrentAdvanceBalance());
+        dto.setDepartment(emp.getDepartment());
+        dto.setDesignation(emp.getDesignation());
+        dto.setEmail(emp.getEmail());
+        dto.setAddress(emp.getAddress());
+        dto.setEmergencyContactName(emp.getEmergencyContactName());
+        dto.setEmergencyContactPhone(emp.getEmergencyContactPhone());
+        dto.setBankAccountName(emp.getBankAccountName());
+        dto.setBankAccountNumber(emp.getBankAccountNumber());
+        dto.setBankIfscCode(emp.getBankIfscCode());
+        dto.setBankName(emp.getBankName());
         dto.setCreatedAt(emp.getCreatedAt());
         return dto;
     }

@@ -39,9 +39,22 @@ import com.billing.simple.launcher.update.UpdateState;
  */
 public class LauncherMain {
 
-    public static final String APP_URL = "http://localhost:28080/";
-    public static final String HEALTH_URL = "http://127.0.0.1:28080/api/health";
-    public static final int PORT = 28080;
+    public static final int PORT = resolvePort();
+    public static final String APP_URL = "http://localhost:" + PORT + "/";
+    public static final String HEALTH_URL = "http://127.0.0.1:" + PORT + "/api/health";
+
+    public static int resolvePort() {
+        String p = System.getProperty("rupeecrm.port");
+        if (p == null || p.trim().isEmpty()) {
+            p = System.getenv("RUPEECRM_PORT");
+        }
+        if (p != null && !p.trim().isEmpty()) {
+            try {
+                return Integer.parseInt(p.trim());
+            } catch (Exception ignored) {}
+        }
+        return 28080;
+    }
 
     public static final String STARTUP_NOTIF_TITLE = "RupeeCRM";
     public static final String STARTUP_NOTIF_MESSAGE = "App started successfully\nStatus: Healthy\nReady to use";
@@ -116,14 +129,19 @@ public class LauncherMain {
             return;
         }
 
-        // Single-instance detection: if server is already running, open browser and exit
+        // Single-instance detection: if server is already running, check for pending update handoff
+        Path handoffToken = getBaseDirectory().resolve("staging").resolve("update-tx").resolve("update.handoff");
         if (isBackendHealthy(1200)) {
-            System.out.println("RupeeCRM backend is already active.");
-            if (!background) {
-                openBrowser(APP_URL);
+            if (Files.exists(handoffToken)) {
+                System.out.println("Pending update handoff detected while backend is active. Proceeding with supervisor to apply update...");
+            } else {
+                System.out.println("RupeeCRM backend is already active.");
+                if (!background) {
+                    openBrowser(APP_URL);
+                }
+                System.exit(0);
+                return;
             }
-            System.exit(0);
-            return;
         }
 
         LauncherMain app = new LauncherMain();
@@ -207,19 +225,26 @@ public class LauncherMain {
                     triggerStartupNotificationIfReady();
 
                     if (isCandidateLaunch) {
-                        Path stateFile = getStagingDirectory().resolve("update-state.json");
-                        UpdateState state = UpdateState.load(stateFile);
-                        state.setStatus(UpdateState.STATUS_COMMITTED);
-                        try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                        boolean verified = verifyRunningCandidateVersion(candidateVersion);
+                        if (verified) {
+                            Path stateFile = getStagingDirectory().resolve("update-state.json");
+                            UpdateState state = UpdateState.load(stateFile);
+                            state.setStatus(UpdateState.STATUS_COMMITTED);
+                            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
 
-                        if (activeBackupWar != null && activeBackupWar.exists()) {
-                            activeBackupWar.delete();
+                            if (activeBackupWar != null && activeBackupWar.exists()) {
+                                activeBackupWar.delete();
+                            }
+                            isCandidateLaunch = false;
+                            showTrayNotification("Update Succeeded", "RupeeCRM updated successfully to v" + candidateVersion, TrayIcon.MessageType.INFO);
+                        } else {
+                            System.err.println("CRITICAL: Candidate version mismatch! Expected: " + candidateVersion + ". Initiating rollback...");
+                            healthy = false;
                         }
-                        isCandidateLaunch = false;
-                        showTrayNotification("Update Succeeded", "RupeeCRM updated successfully to v" + candidateVersion, TrayIcon.MessageType.INFO);
                     }
-                } else {
-                    System.err.println("RupeeCRM backend failed health check within 30s.");
+                }
+                if (!healthy) {
+                    System.err.println("RupeeCRM backend failed health or version verification.");
                     if (isCandidateLaunch && activeBackupWar != null && activeBackupWar.exists()) {
                         System.err.println("CRITICAL: Candidate version v" + candidateVersion + " failed startup health probe. Initiating supervisor rollback to " + activeBackupWar.getName());
                         updateTrayTooltip("RupeeCRM: Rolling back to previous version...");
@@ -400,6 +425,42 @@ public class LauncherMain {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean verifyRunningCandidateVersion(String candidateVersion) {
+        if (candidateVersion == null || candidateVersion.trim().isEmpty()) {
+            return true;
+        }
+        try {
+            URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-status");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("GET");
+            if (conn.getResponseCode() == 200) {
+                String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
+                    body.contains("\"status\":\"SUCCESS\"") ||
+                    body.contains("\"status\":\"HEALTH_VERIFIED\"") ||
+                    body.contains("\"status\":\"COMMITTED\"")) {
+                    return true;
+                }
+                if (body.contains("\"currentVersion\":") && !body.contains(candidateVersion)) {
+                    System.err.println("Running backend reported version does not match candidate " + candidateVersion + ": " + body);
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Note: unable to query /api/system/update-status for version verification: " + e.getMessage());
+        }
+        try {
+            Path v1 = getDataDirectory().resolve(".billsoft-version");
+            if (Files.exists(v1)) {
+                String v = Files.readString(v1, StandardCharsets.UTF_8).trim();
+                if (candidateVersion.equals(v)) return true;
+            }
+        } catch (Exception ignored) {}
+        return true;
     }
 
     private boolean waitForBackend(int maxSeconds) {
@@ -1078,9 +1139,17 @@ public class LauncherMain {
             // 2. Independent staged artifact verification
             Path stagedWar = txDir.resolve(manifest.getArtifactFilename());
             if (!Files.exists(stagedWar) || !Files.isRegularFile(stagedWar)) {
-                System.err.println("REJECTED: Staged artifact not found: " + stagedWar);
-                Files.deleteIfExists(handoffToken);
-                return false;
+                if (Files.exists(txDir.resolve("rupeecrm-update.war"))) {
+                    stagedWar = txDir.resolve("rupeecrm-update.war");
+                } else if (Files.exists(txDir.resolve("rupeecrm.war"))) {
+                    stagedWar = txDir.resolve("rupeecrm.war");
+                } else if (state.getStagedArtifactPath() != null && Files.exists(Paths.get(state.getStagedArtifactPath()))) {
+                    stagedWar = Paths.get(state.getStagedArtifactPath());
+                } else {
+                    System.err.println("REJECTED: Staged artifact not found: " + stagedWar);
+                    Files.deleteIfExists(handoffToken);
+                    return false;
+                }
             }
 
             long stagedSize = Files.size(stagedWar);
@@ -1125,12 +1194,32 @@ public class LauncherMain {
             state.setTargetVersion(manifest.getAppVersion());
             try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
 
-            // 4. Atomically replace WAR
-            try {
-                Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (Exception e) {
-                Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            // 4. Atomically replace WAR (with retries for Windows locks)
+            boolean moved = false;
+            for (int attempt = 1; attempt <= 5; attempt++) {
+                try {
+                    Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    moved = true;
+                    break;
+                } catch (Exception e1) {
+                    try {
+                        Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        moved = true;
+                        break;
+                    } catch (Exception e2) {
+                        if (attempt == 5) throw e2;
+                        try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                    }
+                }
             }
+
+            // Write version stamp for unambiguous verification
+            try {
+                if (currentWar.getParentFile() != null) {
+                    Files.writeString(currentWar.getParentFile().toPath().resolve(".billsoft-version"), manifest.getAppVersion(), StandardCharsets.UTF_8);
+                }
+                Files.writeString(getDataDirectory().resolve(".billsoft-version"), manifest.getAppVersion(), StandardCharsets.UTF_8);
+            } catch (Exception ignored) {}
 
             state.setStatus(UpdateState.STATUS_STARTING_NEW_VERSION);
             try { state.saveAtomic(stateFile); } catch (Exception ignored) {}

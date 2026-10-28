@@ -75,6 +75,7 @@ class LauncherRealSubprocessRecoveryTest {
         command.add("-cp");
         command.add(classpath);
         command.add("-DRUPEECRM_BASE_DIR=" + baseDir.toAbsolutePath());
+        command.add("-Drupeecrm.port=28095");
         command.add("-Djava.awt.headless=true");
         command.add("com.billing.simple.launcher.LauncherMain");
         command.add("--background");

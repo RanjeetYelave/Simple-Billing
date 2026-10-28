@@ -101,4 +101,23 @@ class UpdateControllerTest {
         mockMvc.perform(get("/api/system/update-progress?ticket=invalid-or-forged-ticket-12345"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void testCancelUpdateSuccess() throws Exception {
+        when(service.cancelUpdate()).thenReturn(true);
+
+        mockMvc.perform(post("/api/system/cancel-update"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("cancelled"))
+                .andExpect(jsonPath("$.message").value("Update download cancelled successfully"));
+    }
+
+    @Test
+    void testCancelUpdateNoActiveUpdate() throws Exception {
+        when(service.cancelUpdate()).thenReturn(false);
+
+        mockMvc.perform(post("/api/system/cancel-update"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").exists());
+    }
 }

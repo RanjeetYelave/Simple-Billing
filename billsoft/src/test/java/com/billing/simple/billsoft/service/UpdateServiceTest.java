@@ -49,6 +49,11 @@ class UpdateServiceTest {
         ReflectionTestUtils.setField(service, "manifestUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.json");
         ReflectionTestUtils.setField(service, "signatureUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.sig");
         ReflectionTestUtils.setField(service, "publicKeyBase64", testPublicKeyBase64);
+
+        try {
+            Files.deleteIfExists(service.getStateFilePath());
+            Files.deleteIfExists(service.getHandoffFilePath());
+        } catch (Exception ignored) {}
     }
 
     private void mockManifestAndSignature(UpdateManifest manifest) throws Exception {
@@ -252,5 +257,31 @@ class UpdateServiceTest {
 
         assertFalse(Files.exists(partWar), "The .part temporary download file must be cleaned up on failure");
         assertFalse(Files.exists(destWar), "The target destination file must not exist if download failed");
+    }
+
+    @Test
+    void testCancelUpdateWhenNoUpdateRunning() {
+        assertFalse(service.cancelUpdate());
+    }
+
+    @Test
+    void testCheckForUpdateCompleteVersionMismatchReporting() throws Exception {
+        Path stateFile = service.getStateFilePath();
+        Files.createDirectories(stateFile.getParent());
+
+        UpdateState state = new UpdateState();
+        state.setStatus(UpdateState.STATUS_VERSION_MISMATCH);
+        state.setCurrentVersion("1.0.0");
+        state.setTargetVersion("1.1.0");
+        state.setErrorMessage("Running version 1.0.0 does not match target candidate version 1.1.0");
+        state.saveAtomic(stateFile);
+
+        Map<String, Object> complete = service.checkForUpdateComplete();
+        assertFalse((Boolean) complete.get("justUpdated"));
+        assertTrue((Boolean) complete.get("rolledBack"));
+        assertTrue((Boolean) complete.get("justRolledBack"));
+        assertEquals("1.1.0", complete.get("failedVersion"));
+        assertEquals("1.0.0", complete.get("currentVersion"));
+        assertTrue(((String) complete.get("errorMessage")).contains("does not match target"));
     }
 }

@@ -81,4 +81,19 @@ public class UpdateController {
             ));
         }
     }
+
+    @PostMapping("/cancel-update")
+    public ResponseEntity<Map<String, String>> cancelUpdate() {
+        boolean cancelled = updateService.cancelUpdate();
+        if (cancelled) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "cancelled",
+                    "message", "Update download cancelled successfully"
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Cannot cancel update: no active download in progress or installation already committing"
+            ));
+        }
+    }
 }

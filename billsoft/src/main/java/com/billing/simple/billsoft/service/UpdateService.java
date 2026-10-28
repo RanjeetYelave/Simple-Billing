@@ -72,6 +72,8 @@ public class UpdateService {
     private final AtomicReference<String> progressSpeed = new AtomicReference<>("");
     private final AtomicReference<String> progressSize = new AtomicReference<>("");
     private final AtomicBoolean updateInProgress = new AtomicBoolean(false);
+    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    private volatile HttpURLConnection activeDownloadConnection = null;
 
     private volatile SseEmitter progressEmitter;
 
@@ -127,41 +129,32 @@ public class UpdateService {
     }
 
     public String getCurrentVersion() {
-        // 1. Check for .billsoft-version metadata override file
-        try {
-            java.io.File dataDirFile = DataDirectoryResolver.resolveDataDirectory();
-            if (dataDirFile != null) {
-                Path dataDir = dataDirFile.toPath();
-                Path[] candidateVersionFiles = new Path[] {
-                    dataDir.resolve(".billsoft-version"),
-                    dataDir.getParent() != null ? dataDir.getParent().resolve(".billsoft-version") : null,
-                    getStagingDirectory().resolve(".billsoft-version"),
-                    Path.of(".billsoft-version"),
-                    Path.of("..", ".billsoft-version")
-                };
-                for (Path verFile : candidateVersionFiles) {
-                    if (verFile != null && Files.exists(verFile)) {
-                        String ver = Files.readString(verFile).trim();
-                        if (!ver.isEmpty()) {
-                            return ver;
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        // 2. Read from durable update state file
+        // 1. Read from durable update state file
         Path stateFile = getStateFilePath();
         if (Files.exists(stateFile)) {
             UpdateState state = UpdateState.load(stateFile);
-            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) && state.getTargetVersion() != null && !state.getTargetVersion().isEmpty()) {
-                return state.getTargetVersion();
-            }
-            if (state.getCurrentVersion() != null && !state.getCurrentVersion().trim().isEmpty()) {
-                return state.getCurrentVersion().trim();
+            if (state != null) {
+                String st = state.getStatus();
+                if (UpdateState.STATUS_COMMITTED.equals(st) ||
+                    UpdateState.STATUS_STARTING_NEW_VERSION.equals(st) ||
+                    UpdateState.STATUS_HEALTH_VERIFIED.equals(st) ||
+                    UpdateState.STATUS_SUCCESS.equals(st)) {
+                    if (state.getTargetVersion() != null && !state.getTargetVersion().trim().isEmpty()) {
+                        return state.getTargetVersion().trim();
+                    }
+                }
+                if (state.getCurrentVersion() != null && !state.getCurrentVersion().trim().isEmpty()) {
+                    return state.getCurrentVersion().trim();
+                }
             }
         }
+
+        // 2. Check Package implementation version from running JAR/WAR manifest
+        Package pkg = UpdateService.class.getPackage();
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
+            return pkg.getImplementationVersion().trim();
+        }
+
         return defaultVersion;
     }
 
@@ -233,6 +226,7 @@ public class UpdateService {
      * Returns true if started, false if an update is already running or no update was discovered.
      */
     public boolean startUpdateAsync() {
+        cancelRequested.set(false);
         UpdateManifest manifest = latestVerifiedManifest.get();
         if (manifest == null) {
             // Trigger checkUpdate to discover latest verified manifest
@@ -263,6 +257,40 @@ public class UpdateService {
         return startUpdateAsync();
     }
 
+    public boolean cancelUpdate() {
+        if (!updateInProgress.get()) {
+            return false;
+        }
+        String currentStatus = progressStatus.get();
+        if ("restarting".equalsIgnoreCase(currentStatus) || "installing".equalsIgnoreCase(currentStatus)) {
+            return false; // Safe boundary: cannot cancel once restart or installation handoff has committed
+        }
+
+        cancelRequested.set(true);
+        HttpURLConnection conn = activeDownloadConnection;
+        if (conn != null) {
+            try { conn.disconnect(); } catch (Exception ignored) {}
+        }
+
+        try {
+            Path txDir = getTxDirectory();
+            Files.deleteIfExists(txDir.resolve("rupeecrm-update.war.part"));
+            Files.deleteIfExists(txDir.resolve("rupeecrm-update.war"));
+            Files.deleteIfExists(getHandoffFilePath());
+            Path stateFile = getStateFilePath();
+            if (Files.exists(stateFile)) {
+                UpdateState state = UpdateState.load(stateFile);
+                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+                state.setErrorMessage("Update was cancelled by the user.");
+                state.saveAtomic(stateFile);
+            }
+        } catch (Exception ignored) {}
+
+        setProgress("cancelled", 0, "Update was cancelled by the user.");
+        updateInProgress.set(false);
+        return true;
+    }
+
     private void executeUpdatePipeline(UpdateManifest manifest) {
         if (!updateInProgress.compareAndSet(false, true)) {
             setProgress("error", 0, "An update transaction is already in progress.");
@@ -283,6 +311,9 @@ public class UpdateService {
             Path partFile = txDir.resolve("rupeecrm-update.war.part");
             Files.deleteIfExists(partFile);
 
+            Path manifestArtifact = txDir.resolve(manifest.getArtifactFilename());
+            Files.deleteIfExists(manifestArtifact);
+
             Path finalWar = txDir.resolve("rupeecrm-update.war");
             Files.deleteIfExists(finalWar);
 
@@ -299,6 +330,15 @@ public class UpdateService {
 
             // 1. Download artifact to .part file with progress monitoring
             downloadArtifactToPart(manifest.getArtifactUrl(), partFile, manifest.getArtifactSizeBytes(), manifest.getAppVersion());
+
+            if (cancelRequested.get()) {
+                Files.deleteIfExists(partFile);
+                setProgress("cancelled", 0, "Update was cancelled by the user.");
+                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+                state.setErrorMessage("Update was cancelled by the user.");
+                state.saveAtomic(getStateFilePath());
+                return;
+            }
 
             // 2. Validate artifact size
             long actualSize = Files.size(partFile);
@@ -322,11 +362,17 @@ public class UpdateService {
                 throw new IllegalStateException("Downloaded artifact is not a valid ZIP/WAR archive");
             }
 
-            // 5. Atomic promotion of .part to final staged war
+            // 5. Atomic promotion of .part to final staged war (guarantee BOTH manifest name and legacy name exist)
             try {
-                Files.move(partFile, finalWar, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (Exception e) {
-                Files.move(partFile, finalWar, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            if (!finalWar.equals(manifestArtifact)) {
+                try {
+                    Files.copy(manifestArtifact, finalWar, StandardCopyOption.REPLACE_EXISTING);
+                } catch (Exception ignored) {}
             }
 
             // Save verified manifest and signature into txDir for Launcher independent verification
@@ -349,8 +395,18 @@ public class UpdateService {
 
             // 7. Update durable journal to VERIFIED_STAGED
             state.setStatus(UpdateState.STATUS_VERIFIED_STAGED);
-            state.setStagedArtifactPath(finalWar.toAbsolutePath().toString());
+            state.setStagedArtifactPath(manifestArtifact.toAbsolutePath().toString());
             state.saveAtomic(getStateFilePath());
+
+            if (cancelRequested.get()) {
+                Files.deleteIfExists(manifestArtifact);
+                Files.deleteIfExists(finalWar);
+                setProgress("cancelled", 0, "Update was cancelled by the user.");
+                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+                state.setErrorMessage("Update was cancelled by the user.");
+                state.saveAtomic(getStateFilePath());
+                return;
+            }
 
             // 8. Create handoff token for supervisor
             Path handoff = getHandoffFilePath();
@@ -373,11 +429,20 @@ public class UpdateService {
                 } catch (Exception ignored) {}
             }, "ota-restart-exit-thread").start();
 
+        } catch (java.util.concurrent.CancellationException ce) {
+            log.info("Update pipeline cancelled: {}", ce.getMessage());
+            setProgress("cancelled", 0, "Update was cancelled by the user.");
+            UpdateState state = UpdateState.load(getStateFilePath());
+            state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+            state.setErrorMessage("Update was cancelled by the user.");
+            try {
+                state.saveAtomic(getStateFilePath());
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             log.error("Update pipeline failed: {}", e.getMessage(), e);
             setProgress("error", 0, "Update failed: " + e.getMessage());
             UpdateState state = UpdateState.load(getStateFilePath());
-            state.setStatus(UpdateState.STATUS_IDLE);
+            state.setStatus(UpdateState.STATUS_DOWNLOAD_FAILED);
             state.setErrorMessage(e.getMessage());
             try {
                 state.saveAtomic(getStateFilePath());
@@ -395,6 +460,9 @@ public class UpdateService {
 
         try {
             while (true) {
+                if (cancelRequested.get()) {
+                    throw new java.util.concurrent.CancellationException("Update download cancelled by user");
+                }
                 URI uri = new URI(currentUrl);
                 String scheme = uri.getScheme();
                 if (scheme == null || (!scheme.equalsIgnoreCase("https") && !scheme.equalsIgnoreCase("http"))) {
@@ -407,6 +475,7 @@ public class UpdateService {
 
                 URL url = uri.toURL();
                 conn = (HttpURLConnection) url.openConnection();
+                this.activeDownloadConnection = conn;
                 conn.setConnectTimeout(15_000);
                 conn.setReadTimeout(30_000);
                 conn.setRequestProperty("User-Agent", "RupeeCRM-Updater");
@@ -453,6 +522,9 @@ public class UpdateService {
                 byte[] buffer = new byte[32768];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
+                    if (cancelRequested.get()) {
+                        throw new java.util.concurrent.CancellationException("Update download cancelled by user");
+                    }
                     out.write(buffer, 0, read);
                     totalBytesRead += read;
 
@@ -475,10 +547,14 @@ public class UpdateService {
                 }
             }
             setProgress("downloading", 90, "Download complete", targetVersion);
+        } catch (java.util.concurrent.CancellationException ce) {
+            Files.deleteIfExists(partFile);
+            throw ce;
         } catch (Exception e) {
             Files.deleteIfExists(partFile);
             throw e;
         } finally {
+            this.activeDownloadConnection = null;
             if (conn != null) {
                 conn.disconnect();
             }
@@ -512,11 +588,15 @@ public class UpdateService {
         Path stateFile = getStateFilePath();
         if (Files.exists(stateFile)) {
             UpdateState state = UpdateState.load(stateFile);
-            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus())) {
+            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus())) {
                 String updatedVer = (state.getTargetVersion() != null && !state.getTargetVersion().isEmpty())
                         ? state.getTargetVersion() : state.getCurrentVersion();
+
                 result.put("justUpdated", true);
+                result.put("justRolledBack", false);
                 result.put("updatedVersion", updatedVer);
+                result.put("currentVersion", updatedVer);
+                result.put("status", "SUCCESS");
                 state.setCurrentVersion(updatedVer);
                 state.setTargetVersion("");
                 state.setStatus(UpdateState.STATUS_IDLE);
@@ -524,7 +604,7 @@ public class UpdateService {
                     state.saveAtomic(stateFile);
                 } catch (Exception ignored) {}
                 return result;
-            } else if (UpdateState.STATUS_ROLLED_BACK.equals(state.getStatus())) {
+            } else if (UpdateState.STATUS_ROLLED_BACK.equals(state.getStatus()) || UpdateState.STATUS_VERSION_MISMATCH.equals(state.getStatus())) {
                 result.put("justUpdated", false);
                 result.put("justRolledBack", true);
                 result.put("rolledBack", true);
@@ -532,6 +612,7 @@ public class UpdateService {
                 result.put("failedVersion", state.getTargetVersion());
                 result.put("errorMessage", state.getErrorMessage());
                 result.put("quarantineBackupPath", state.getQuarantineBackupPath());
+                result.put("status", "ROLLED_BACK");
                 state.setTargetVersion("");
                 state.setStatus(UpdateState.STATUS_IDLE);
                 try {
@@ -542,6 +623,8 @@ public class UpdateService {
         }
         result.put("justUpdated", false);
         result.put("justRolledBack", false);
+        result.put("currentVersion", getCurrentVersion());
+        result.put("status", "IDLE");
         return result;
     }
 

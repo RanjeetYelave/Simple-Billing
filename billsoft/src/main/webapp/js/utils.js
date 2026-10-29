@@ -2207,7 +2207,7 @@ const BillsoftSearchEngine = {
     {
       id: 'add_product',
       title: 'Add New Product / Inventory Item',
-      subtitle: 'Add item name, SKU, price, HSN code & opening stock',
+      subtitle: 'Add item name, HSN/SAC code, price & opening stock',
       category: 'actions',
       icon: '📦',
       badge: 'Catalog',

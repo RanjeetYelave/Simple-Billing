@@ -152,9 +152,11 @@ public class PlannerNotificationScheduler {
             int limit = Math.min(outOfStock.size(), 10);
             for (int i = 0; i < limit; i++) {
                 Product p = outOfStock.get(i);
-                String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "";
+                String codeStr = (p.getHsnCode() != null && !p.getHsnCode().isBlank())
+                        ? " [HSN: " + p.getHsnCode() + "]"
+                        : ((p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "");
                 String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
-                body.append("• ").append(p.getName()).append(skuStr)
+                body.append("• ").append(p.getName()).append(codeStr)
                         .append(" — 0 ").append(unitStr).append(" (Min Threshold: ")
                         .append(p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "0")
                         .append(" ").append(unitStr).append(")\n");
@@ -170,11 +172,13 @@ public class PlannerNotificationScheduler {
             int limit = Math.min(lowStock.size(), 10);
             for (int i = 0; i < limit; i++) {
                 Product p = lowStock.get(i);
-                String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "";
+                String codeStr = (p.getHsnCode() != null && !p.getHsnCode().isBlank())
+                        ? " [HSN: " + p.getHsnCode() + "]"
+                        : ((p.getSku() != null && !p.getSku().isBlank()) ? " [SKU: " + p.getSku() + "]" : "");
                 String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
                 String currentStock = p.getStockQuantity() != null ? p.getStockQuantity().stripTrailingZeros().toPlainString() : "0";
                 String minStock = p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "0";
-                body.append("• ").append(p.getName()).append(skuStr)
+                body.append("• ").append(p.getName()).append(codeStr)
                         .append(" — ").append(currentStock).append(" ").append(unitStr)
                         .append(" remaining (Min Threshold: ").append(minStock).append(" ").append(unitStr).append(")\n");
             }

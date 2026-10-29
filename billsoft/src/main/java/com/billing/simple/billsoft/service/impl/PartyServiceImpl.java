@@ -24,13 +24,16 @@ public class PartyServiceImpl implements PartyService {
     private final PartyRepository partyRepository;
     private final PartyPaymentRepository partyPaymentRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final com.billing.simple.billsoft.repositories.BusinessPartyLinkRepository linkRepo;
 
     public PartyServiceImpl(PartyRepository partyRepository,
                             PartyPaymentRepository partyPaymentRepository,
-                            PurchaseOrderRepository purchaseOrderRepository) {
+                            PurchaseOrderRepository purchaseOrderRepository,
+                            com.billing.simple.billsoft.repositories.BusinessPartyLinkRepository linkRepo) {
         this.partyRepository = partyRepository;
         this.partyPaymentRepository = partyPaymentRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
+        this.linkRepo = linkRepo;
     }
 
     @Override
@@ -98,6 +101,9 @@ public class PartyServiceImpl implements PartyService {
 
     @Override
     public void deleteParty(Long id, Long firmId) {
+        if (linkRepo != null && linkRepo.existsByPartyId(id)) {
+            throw new IllegalStateException("Cannot delete Supplier #" + id + " because it is linked to a Customer. Please unlink first.");
+        }
         Party party = partyRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + id));
 

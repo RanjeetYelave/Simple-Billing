@@ -73,6 +73,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(
+            org.springframework.dao.DataIntegrityViolationException exc) {
+        Map<String, String> response = new HashMap<>();
+        response.put("error", "Database constraint violation: duplicate record or conflicting counterparty link already exists");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
     @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, String>> handleMethodArgumentTypeMismatch(
             org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exc) {

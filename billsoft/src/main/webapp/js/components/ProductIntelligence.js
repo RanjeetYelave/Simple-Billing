@@ -428,7 +428,7 @@
                 }, insights.itemType || 'GOODS')
               ),
               React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                `SKU: ${insights && insights.sku ? insights.sku : 'N/A'} • Category: ${insights && insights.category ? insights.category : 'General'}`
+                `${insights && insights.hsnCode ? `HSN: ${insights.hsnCode} • ` : (insights && insights.sku ? `SKU: ${insights.sku} • ` : '')}Category: ${insights && insights.category ? insights.category : 'General'}`
               )
             )
           ),
@@ -853,8 +853,9 @@
         if (searchQuery) {
           const q = searchQuery.toLowerCase();
           const matchName = p.name && p.name.toLowerCase().includes(q);
+          const matchHsn = p.hsnCode && p.hsnCode.toLowerCase().includes(q);
           const matchSku = p.sku && p.sku.toLowerCase().includes(q);
-          if (!matchName && !matchSku) return false;
+          if (!matchName && !matchHsn && !matchSku) return false;
         }
         if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
         if (itemTypeFilter !== 'ALL' && (p.itemType || 'GOODS') !== itemTypeFilter) return false;
@@ -926,7 +927,7 @@
           // Search input
           React.createElement('input', {
             type: 'text',
-            placeholder: '🔍 Search product name or SKU...',
+            placeholder: '🔍 Search product name or HSN/SAC...',
             className: 'form-control',
             style: { maxWidth: 280 },
             value: searchQuery,
@@ -978,7 +979,7 @@
         React.createElement('table', { className: 'data-table', style: { width: '100%', margin: 0 } },
           React.createElement('thead', null,
             React.createElement('tr', null,
-              React.createElement('th', null, 'Product / SKU'),
+              React.createElement('th', null, 'Product / HSN/SAC'),
               React.createElement('th', null, 'Type'),
               React.createElement('th', { style: { textAlign: 'right' } }, 'Stock'),
               React.createElement('th', { style: { textAlign: 'right' } }, 'Listed Price'),
@@ -1007,7 +1008,7 @@
                 React.createElement('td', null,
                   React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, p.name),
                   React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                    p.sku ? `SKU: ${p.sku}` : 'No SKU'
+                    p.hsnCode ? `HSN: ${p.hsnCode}` : (p.sku ? `SKU: ${p.sku}` : 'No HSN/SAC')
                   )
                 ),
                 React.createElement('td', null,
@@ -1308,6 +1309,7 @@
             _key: 'item_' + pId + '_' + Date.now(),
             productId: pId,
             name: prefillRec.productName || matchedProd.name || `Product #${pId}`,
+            hsnCode: prefillRec.hsnCode || matchedProd.hsnCode || '',
             sku: prefillRec.sku || matchedProd.sku || '',
             unit: prefillRec.unit || matchedProd.unit || 'pcs',
             orderQty: orderQty,
@@ -1352,6 +1354,7 @@
         _key: 'item_' + pId + '_' + Date.now(),
         productId: pId,
         name: rec.productName || matchedProd.name || `Product #${pId}`,
+        hsnCode: rec.hsnCode || matchedProd.hsnCode || '',
         sku: rec.sku || matchedProd.sku || '',
         unit: rec.unit || matchedProd.unit || 'pcs',
         orderQty: orderQty,
@@ -1398,6 +1401,7 @@
         _key: 'item_' + pId + '_' + Date.now(),
         productId: pId,
         name: prod.name,
+        hsnCode: prod.hsnCode || '',
         sku: prod.sku || '',
         unit: prod.unit || 'pcs',
         orderQty: orderQty,
@@ -1548,7 +1552,7 @@
               productId: it.productId,
               productName: it.name,
               description: '',
-              hsnCode: it.sku || '',
+              hsnCode: it.hsnCode || it.sku || '',
               quantity: Number(it.orderQty) || 1,
               unit: it.unit || 'pcs',
               unitPrice: Number(it.unitCost) || 0,
@@ -2008,7 +2012,7 @@
                       }, 'PO ISSUED')
                     ),
                     React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 1, lineHeight: 1.15 } },
-                      r.sku ? `SKU: ${r.sku}` : `ID: #${r.productId}`
+                      r.hsnCode ? `HSN: ${r.hsnCode}` : (r.sku ? `SKU: ${r.sku}` : `ID: #${r.productId}`)
                     )
                   ),
 
@@ -2305,7 +2309,7 @@
                     React.createElement('input', {
                       className: 'input w-full',
                       style: { fontSize: '0.9rem', padding: '8px 12px' },
-                      placeholder: 'Search products, SKU or barcode...',
+                      placeholder: 'Search products, HSN/SAC or barcode...',
                       value: searchQuery,
                       onFocus: () => setShowSearchDropdown(true),
                       onChange: e => { setSearchQuery(e.target.value); setShowSearchDropdown(true); }
@@ -2351,7 +2355,7 @@
                             React.createElement('div', null,
                               React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, p.name),
                               React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                                `${p.sku ? `SKU: ${p.sku} • ` : ''}Category: ${p.category || 'General'} • Cost: ${fmtCurrency(p.costPrice || 0)}`
+                                `${p.hsnCode ? `HSN: ${p.hsnCode} • ` : (p.sku ? `SKU: ${p.sku} • ` : '')}Category: ${p.category || 'General'} • Cost: ${fmtCurrency(p.costPrice || 0)}`
                               )
                             ),
                             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -2434,7 +2438,7 @@
                             React.createElement('td', { style: { padding: '6px 12px' } },
                               React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, r.productName),
                               React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                                `${r.sku ? `SKU: ${r.sku} • ` : ''}${r.category || 'General'}`
+                                `${r.hsnCode ? `HSN: ${r.hsnCode} • ` : (r.sku ? `SKU: ${r.sku} • ` : '')}${r.category || 'General'}`
                               )
                             ),
                             React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px', color: 'var(--text-secondary)' } },
@@ -2506,7 +2510,7 @@
                             React.createElement('td', { style: { padding: '8px 14px' } },
                               React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, row.name),
                               React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                                `${row.sku ? `SKU: ${row.sku} • ` : ''}Source: ${formatReasonLabel(row.source)}`
+                                `${row.hsnCode ? `HSN: ${row.hsnCode} • ` : (row.sku ? `SKU: ${row.sku} • ` : '')}Source: ${formatReasonLabel(row.source)}`
                               )
                             ),
 
@@ -2678,7 +2682,7 @@
                             group.items.map(it => React.createElement('tr', { key: it._key },
                               React.createElement('td', { style: { padding: '6px 0' } },
                                 React.createElement('strong', null, it.name),
-                                it.sku && React.createElement('span', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', marginLeft: 6 } }, `(${it.sku})`)
+                                (it.hsnCode || it.sku) && React.createElement('span', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', marginLeft: 6 } }, `(${it.hsnCode || it.sku})`)
                               ),
                               React.createElement('td', { style: { textAlign: 'center' } }, `${it.orderQty} ${it.unit}`),
                               React.createElement('td', { style: { textAlign: 'right' } }, fmtCurrency(it.unitCost)),
@@ -2889,15 +2893,15 @@
               })
             ),
 
-            // SKU & Barcode
+            // HSN/SAC & Barcode
             React.createElement('div', { style: { display: 'flex', gap: 10 } },
               React.createElement('div', { style: { flex: 1 } },
-                React.createElement('label', { style: { fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'SKU'),
+                React.createElement('label', { style: { fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 } }, 'HSN / SAC Code'),
                 React.createElement('input', {
                   className: 'input w-full',
-                  placeholder: 'e.g. TV-4K-01',
-                  value: productForm.sku,
-                  onChange: e => setProductForm(f => ({ ...f, sku: e.target.value }))
+                  placeholder: 'e.g. 8528 or 9983',
+                  value: productForm.hsnCode || '',
+                  onChange: e => setProductForm(f => ({ ...f, hsnCode: e.target.value }))
                 })
               ),
               React.createElement('div', { style: { flex: 1 } },
@@ -3055,10 +3059,12 @@
   // ═══════════════════════════════════════════════════════════════════
   function BulkProductAddModal({ onClose, onSuccess, existingCategories = [] }) {
     const modalContainerRef = React.useRef(null);
+    const fileInputRef = React.useRef(null);
 
     const createEmptyRow = () => ({
       _id: Math.random().toString(36).substr(2, 9),
       name: '',
+      hsnCode: '',
       sku: '',
       barcode: '',
       category: '',
@@ -3074,6 +3080,7 @@
 
     const [rows, setRows] = useState([createEmptyRow(), createEmptyRow(), createEmptyRow()]);
     const [saving, setSaving] = useState(false);
+    const [importingFile, setImportingFile] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showPasteBox, setShowPasteBox] = useState(false);
     const [pasteText, setPasteText] = useState('');
@@ -3213,32 +3220,154 @@
       }
     };
 
+    const parseClipboardLines = (rawText) => {
+      const rows = [];
+      if (!rawText || !rawText.trim()) return rows;
+      const isTab = rawText.includes('\t');
+      if (isTab) {
+        const lines = rawText.split(/\r?\n/);
+        for (let line of lines) {
+          if (!line.trim()) continue;
+          rows.push(line.split('\t').map(c => c.trim().replace(/^["']|["']$/g, '')));
+        }
+        return rows;
+      }
+      let curLine = [];
+      let curVal = '';
+      let inQuotes = false;
+      const chars = rawText.split('');
+      for (let i = 0; i < chars.length; i++) {
+        const c = chars[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (i + 1 < chars.length && chars[i + 1] === '"') {
+              curVal += '"';
+              i++;
+            } else {
+              inQuotes = false;
+            }
+          } else {
+            curVal += c;
+          }
+        } else {
+          if (c === '"') {
+            inQuotes = true;
+          } else if (c === ',') {
+            curLine.push(curVal.trim());
+            curVal = '';
+          } else if (c === '\r') {
+            if (i + 1 < chars.length && chars[i + 1] === '\n') i++;
+            curLine.push(curVal.trim());
+            curVal = '';
+            if (curLine.length > 0 && curLine.some(x => x)) rows.push(curLine);
+            curLine = [];
+          } else if (c === '\n') {
+            curLine.push(curVal.trim());
+            curVal = '';
+            if (curLine.length > 0 && curLine.some(x => x)) rows.push(curLine);
+            curLine = [];
+          } else {
+            curVal += c;
+          }
+        }
+      }
+      if (curVal.length > 0 || curLine.length > 0) {
+        curLine.push(curVal.trim());
+        if (curLine.length > 0 && curLine.some(x => x)) rows.push(curLine);
+      }
+      return rows;
+    };
+
     const handlePasteProcess = () => {
       if (!pasteText || !pasteText.trim()) {
         setShowPasteBox(false);
         return;
       }
-      const lines = pasteText.trim().split(/\r?\n/);
+      const parsedLines = parseClipboardLines(pasteText.trim());
+      if (parsedLines.length === 0) return;
+
+      const firstRow = parsedLines[0];
+      const normHeaders = firstRow.map(h => (h || '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const isHeader = normHeaders.some(n =>
+        n === 'name' || n === 'productname' || n === 'itemname' || n === 'product' || n === 'item' ||
+        n === 'hsnsaccode' || n === 'hsnsac' || n === 'hsncode' || n === 'saccode' || n === 'hsn' || n === 'sac' || n === 'hsnsaccodes' || n === 'hsntaxcode' ||
+        n === 'sku' || n === 'skucode' || n === 'itemcode' || n === 'price' || n === 'sellingprice' || n === 'rate'
+      );
+
+      let colMap = { name: 0, hsn: 1, barcode: 2, category: 3, price: 4, costPrice: 5, gst: 6, stock: 7, minStock: 8, unit: 9, itemType: 10, desc: 11 };
+      let legacySkuDetected = false;
+      let startIdx = 0;
+      if (isHeader) {
+        startIdx = 1;
+        colMap = {};
+        normHeaders.forEach((norm, idx) => {
+          if (norm === 'name' || norm === 'productname' || norm === 'itemname' || norm === 'product' || norm === 'item' || norm === 'title') {
+            if (colMap.name === undefined) colMap.name = idx;
+          } else if (norm === 'hsnsaccode' || norm === 'hsnsac' || norm === 'hsncode' || norm === 'saccode' || norm === 'hsn' || norm === 'sac' || norm === 'hsnsaccodes' || norm === 'hsntaxcode') {
+            if (colMap.hsn === undefined) colMap.hsn = idx;
+          } else if (norm === 'sku' || norm === 'skucode' || norm === 'itemcode') {
+            if (colMap.sku === undefined) colMap.sku = idx;
+          } else if (norm === 'barcode' || norm === 'barcodenumber' || norm === 'upc' || norm === 'ean') {
+            if (colMap.barcode === undefined) colMap.barcode = idx;
+          } else if (norm === 'category' || norm === 'group' || norm === 'productcategory') {
+            if (colMap.category === undefined) colMap.category = idx;
+          } else if (norm === 'cost' || norm === 'costprice' || norm === 'purchaseprice' || norm === 'buyprice') {
+            if (colMap.costPrice === undefined) colMap.costPrice = idx;
+          } else if (norm === 'price' || norm === 'sellingprice' || norm === 'rate' || norm === 'baseprice' || norm === 'unitprice') {
+            if (colMap.price === undefined) colMap.price = idx;
+          } else if (norm === 'gst' || norm === 'gstpercent' || norm === 'gstpercentage' || norm === 'tax' || norm === 'taxrate') {
+            if (colMap.gst === undefined) colMap.gst = idx;
+          } else if (norm === 'min' || norm === 'minstock' || norm === 'minstocklevel' || norm === 'minimumstock' || norm === 'alertstock') {
+            if (colMap.minStock === undefined) colMap.minStock = idx;
+          } else if (norm === 'stock' || norm === 'initialstock' || norm === 'openingstock' || norm === 'stockquantity' || norm === 'qty' || norm === 'quantity') {
+            if (colMap.stock === undefined) colMap.stock = idx;
+          } else if (norm === 'unit' || norm === 'uom' || norm === 'unitofmeasure') {
+            if (colMap.unit === undefined) colMap.unit = idx;
+          } else if (norm === 'itemtype' || norm === 'type') {
+            if (colMap.itemType === undefined) colMap.itemType = idx;
+          } else if (norm === 'desc' || norm === 'description' || norm === 'notes') {
+            if (colMap.desc === undefined) colMap.desc = idx;
+          }
+        });
+        if (colMap.sku !== undefined && colMap.hsn === undefined) {
+          legacySkuDetected = true;
+        }
+      }
+
       const parsedRows = [];
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const parts = line.split('\t').length > 1 ? line.split('\t') : line.split(',');
-        const name = (parts[0] || '').trim();
-        if (!name) continue;
+      for (let i = startIdx; i < parsedLines.length; i++) {
+        const parts = parsedLines[i];
+        if (!parts || parts.length === 0) continue;
+        const name = (colMap.name !== undefined ? parts[colMap.name] : parts[0]) || '';
+        if (!name.trim()) continue;
+
+        let hsnVal = '';
+        if (colMap.hsn !== undefined && parts[colMap.hsn] !== undefined) {
+          hsnVal = String(parts[colMap.hsn]).trim();
+        } else if (!isHeader && parts[1] !== undefined) {
+          hsnVal = String(parts[1]).trim();
+        }
+
+        let skuVal = '';
+        if (colMap.sku !== undefined && parts[colMap.sku] !== undefined) {
+          skuVal = String(parts[colMap.sku]).trim();
+        }
+
         parsedRows.push({
           _id: Math.random().toString(36).substr(2, 9),
-          name: name,
-          sku: (parts[1] || '').trim(),
-          barcode: (parts[2] || '').trim(),
-          category: (parts[3] || '').trim(),
-          price: (parts[4] || '').trim(),
-          costPrice: (parts[5] || '').trim(),
-          gstPercentage: (parts[6] || '0').trim(),
-          initialStock: (parts[7] || '0').trim(),
-          minStockLevel: (parts[8] || '5').trim(),
-          unit: (parts[9] || 'pcs').trim(),
-          itemType: (parts[10] || 'GOODS').trim().toUpperCase() === 'SERVICE' ? 'SERVICE' : 'GOODS',
-          description: (parts[11] || '').trim()
+          name: name.trim(),
+          hsnCode: hsnVal,
+          sku: skuVal,
+          barcode: colMap.barcode !== undefined ? (parts[colMap.barcode] || '').trim() : (!isHeader && parts[2] !== undefined ? (parts[2] || '').trim() : ''),
+          category: colMap.category !== undefined ? (parts[colMap.category] || '').trim() : (!isHeader && parts[3] !== undefined ? (parts[3] || '').trim() : ''),
+          price: colMap.price !== undefined ? (parts[colMap.price] || '').trim() : (!isHeader && parts[4] !== undefined ? (parts[4] || '').trim() : ''),
+          costPrice: colMap.costPrice !== undefined ? (parts[colMap.costPrice] || '').trim() : (!isHeader && parts[5] !== undefined ? (parts[5] || '').trim() : ''),
+          gstPercentage: colMap.gst !== undefined ? (parts[colMap.gst] || '0').trim() : (!isHeader && parts[6] !== undefined ? (parts[6] || '0').trim() : '0'),
+          initialStock: colMap.stock !== undefined ? (parts[colMap.stock] || '0').trim() : (!isHeader && parts[7] !== undefined ? (parts[7] || '0').trim() : '0'),
+          minStockLevel: colMap.minStock !== undefined ? (parts[colMap.minStock] || '5').trim() : (!isHeader && parts[8] !== undefined ? (parts[8] || '5').trim() : '5'),
+          unit: colMap.unit !== undefined ? (parts[colMap.unit] || 'pcs').trim() : (!isHeader && parts[9] !== undefined ? (parts[9] || 'pcs').trim() : 'pcs'),
+          itemType: (colMap.itemType !== undefined ? (parts[colMap.itemType] || 'GOODS') : (!isHeader && parts[10] !== undefined ? (parts[10] || 'GOODS') : 'GOODS')).trim().toUpperCase() === 'SERVICE' ? 'SERVICE' : 'GOODS',
+          description: colMap.desc !== undefined ? (parts[colMap.desc] || '').trim() : (!isHeader && parts[11] !== undefined ? (parts[11] || '').trim() : '')
         });
       }
 
@@ -3251,8 +3380,33 @@
           showToast(`Imported ${parsedRows.length} rows from clipboard data`, 'success');
         }
       }
+      if (legacySkuDetected && typeof showToast === 'function') {
+        showToast('Preserved legacy SKU column values without automatic assignment as HSN/SAC code.', 'info');
+      }
       setPasteText('');
       setShowPasteBox(false);
+    };
+
+    const handleFileChange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      setImportingFile(true);
+      setErrorMsg(null);
+      try {
+        const text = await file.text();
+        const res = await API.products.importCsv(text);
+        if (typeof showToast === 'function') {
+          showToast(`Bulk CSV Import: ${res.importedCount || 0} products imported successfully!`, 'success');
+        }
+        if (onSuccess) onSuccess(res.products || []);
+        onClose();
+      } catch (err) {
+        console.error('CSV import error:', err);
+        setErrorMsg('CSV Import Failed: ' + (err.message || 'Check CSV format and try again.'));
+      } finally {
+        setImportingFile(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     };
 
     const handleSaveBatch = async () => {
@@ -3282,6 +3436,7 @@
 
       const payload = validRows.map(r => ({
         name: r.name.trim(),
+        hsnCode: r.hsnCode ? r.hsnCode.trim() : null,
         sku: r.sku ? r.sku.trim() : null,
         barcode: r.barcode ? r.barcode.trim() : null,
         category: r.category ? r.category.trim() : null,
@@ -3347,11 +3502,44 @@
             )
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('input', {
+              type: 'file',
+              ref: fileInputRef,
+              accept: '.csv',
+              style: { display: 'none' },
+              onChange: handleFileChange
+            }),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              onClick: async () => {
+                try {
+                  const tpl = await API.products.downloadTemplateCsv();
+                  const blob = new Blob([tpl], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'products_template.csv';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  if (typeof showToast === 'function') showToast('Failed to download template: ' + err.message, 'error');
+                }
+              },
+              style: { display: 'flex', alignItems: 'center', gap: 4 }
+            }, '📥 CSV Template'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              disabled: importingFile,
+              onClick: () => fileInputRef.current && fileInputRef.current.click(),
+              style: { display: 'flex', alignItems: 'center', gap: 4 }
+            }, importingFile ? '⏳ Importing...' : '📁 Upload CSV'),
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               onClick: () => setShowPasteBox(!showPasteBox),
               style: { display: 'flex', alignItems: 'center', gap: 6 }
-            }, '📋 Paste from Excel / CSV'),
+            }, '📋 Paste Rows'),
             React.createElement('button', {
               className: 'btn btn-ghost btn-sm',
               onClick: onClose,
@@ -3368,7 +3556,7 @@
           }
         },
           React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' } },
-            'Paste tab-separated (from Excel/Sheets) or comma-separated rows with columns: Name, SKU, Barcode, Category, Price, CostPrice, GST%, InitialStock, MinStock, Unit, ItemType'
+            'Paste tab-separated (from Excel/Sheets) or comma-separated rows with columns: Name, HSN/SAC Code, Barcode, Category, Price, CostPrice, GST%, InitialStock, MinStock, Unit, ItemType'
           ),
           React.createElement('textarea', {
             className: 'form-control',
@@ -3402,7 +3590,7 @@
               React.createElement('tr', null,
                 React.createElement('th', { style: { width: 40, textAlign: 'center' } }, '#'),
                 React.createElement('th', { style: { minWidth: 200 } }, 'Product Name *'),
-                React.createElement('th', { style: { width: 110 } }, 'SKU'),
+                React.createElement('th', { style: { width: 120 } }, 'HSN/SAC Code'),
                 React.createElement('th', { style: { width: 110 } }, 'Barcode'),
                 React.createElement('th', { style: { width: 130 } }, 'Category'),
                 React.createElement('th', { style: { width: 100 } }, 'Type'),
@@ -3432,14 +3620,14 @@
                     onKeyDown: (e) => handleCellKeyDown(e, idx, 0)
                   })
                 ),
-                // 1: SKU
+                // 1: HSN/SAC Code
                 React.createElement('td', null,
                   React.createElement('input', {
                     type: 'text',
-                    placeholder: 'SKU-001',
+                    placeholder: 'e.g. 1006 or 9983',
                     className: 'form-control form-control-sm',
-                    value: row.sku,
-                    onChange: (e) => updateRow(idx, 'sku', e.target.value),
+                    value: row.hsnCode || '',
+                    onChange: (e) => updateRow(idx, 'hsnCode', e.target.value),
                     onFocus: (e) => { if (e.target && e.target.select) e.target.select(); },
                     onKeyDown: (e) => handleCellKeyDown(e, idx, 1)
                   })
@@ -3681,6 +3869,7 @@
           if (r.categoryName && r.pricingProfileId) {
             const key = `${r.categoryName.trim()}__${r.pricingProfileId}`;
             map[key] = {
+              operator: r.operator || '+',
               adjustmentType: r.adjustmentType || 'PERCENT',
               adjustmentValue: r.adjustmentValue != null ? String(r.adjustmentValue) : '0'
             };
@@ -3790,7 +3979,15 @@
       // cells[0] is the category header TD, so profile cells start at cells[profIdx + 1]
       const targetCell = cells[profIdx + 1];
       if (!targetCell) return;
-      const target = controlType === 'select' ? targetCell.querySelector('select') : targetCell.querySelector('input');
+      const selects = targetCell.querySelectorAll('select');
+      let target;
+      if (controlType === 'operator') {
+        target = selects[0];
+      } else if (controlType === 'select') {
+        target = selects[1] || selects[0];
+      } else {
+        target = targetCell.querySelector('input');
+      }
       if (target) {
         target.focus();
         if (target.select) target.select();
@@ -3809,14 +4006,16 @@
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (controlType === 'select') {
+        if (controlType === 'operator') {
           focusMatrixControl(catIdx, profIdx, 'input');
+        } else if (controlType === 'input') {
+          focusMatrixControl(catIdx, profIdx, 'select');
         } else {
-          // From input: move to next profile or next row
+          // From select (adjustment type): move to next profile or next row
           if (profIdx < numProfs - 1) {
-            focusMatrixControl(catIdx, profIdx + 1, 'input');
+            focusMatrixControl(catIdx, profIdx + 1, 'operator');
           } else if (catIdx < numCats - 1) {
-            focusMatrixControl(catIdx + 1, 0, 'input');
+            focusMatrixControl(catIdx + 1, 0, 'operator');
           } else {
             handleSaveCategoryMatrix();
           }
@@ -3835,30 +4034,40 @@
         const isInput = controlType === 'input';
         const atEnd = !isInput || (e.target.selectionStart === e.target.value.length);
         if (atEnd) {
-          if (controlType === 'select') {
+          if (controlType === 'operator') {
             e.preventDefault();
             focusMatrixControl(catIdx, profIdx, 'input');
-          } else if (profIdx < numProfs - 1) {
+          } else if (controlType === 'input') {
             e.preventDefault();
-            focusMatrixControl(catIdx, profIdx + 1, 'input');
-          } else if (catIdx < numCats - 1) {
-            e.preventDefault();
-            focusMatrixControl(catIdx + 1, 0, 'input');
+            focusMatrixControl(catIdx, profIdx, 'select');
+          } else if (controlType === 'select') {
+            if (profIdx < numProfs - 1) {
+              e.preventDefault();
+              focusMatrixControl(catIdx, profIdx + 1, 'operator');
+            } else if (catIdx < numCats - 1) {
+              e.preventDefault();
+              focusMatrixControl(catIdx + 1, 0, 'operator');
+            }
           }
         }
       } else if (e.key === 'ArrowLeft') {
         const isInput = controlType === 'input';
         const atStart = !isInput || (e.target.selectionStart === 0);
         if (atStart) {
-          if (controlType === 'input') {
+          if (controlType === 'select') {
             e.preventDefault();
-            focusMatrixControl(catIdx, profIdx, 'select');
-          } else if (profIdx > 0) {
+            focusMatrixControl(catIdx, profIdx, 'input');
+          } else if (controlType === 'input') {
             e.preventDefault();
-            focusMatrixControl(catIdx, profIdx - 1, 'input');
-          } else if (catIdx > 0) {
-            e.preventDefault();
-            focusMatrixControl(catIdx - 1, numProfs - 1, 'input');
+            focusMatrixControl(catIdx, profIdx, 'operator');
+          } else if (controlType === 'operator') {
+            if (profIdx > 0) {
+              e.preventDefault();
+              focusMatrixControl(catIdx, profIdx - 1, 'select');
+            } else if (catIdx > 0) {
+              e.preventDefault();
+              focusMatrixControl(catIdx - 1, numProfs - 1, 'select');
+            }
           }
         }
       }
@@ -3867,7 +4076,7 @@
     const updateMatrixCell = (category, profileId, field, value) => {
       const key = `${category}__${profileId}`;
       setMatrixEdits(prev => {
-        const curr = prev[key] || { adjustmentType: 'PERCENT', adjustmentValue: '0' };
+        const curr = prev[key] || { operator: '+', adjustmentType: 'PERCENT', adjustmentValue: '0' };
         return {
           ...prev,
           [key]: { ...curr, [field]: value }
@@ -3885,10 +4094,11 @@
             const cell = matrixEdits[key];
             if (cell) {
               const valNum = parseFloat(cell.adjustmentValue) || 0;
-              // Save rule if non-zero or explicitly configured
+              // Save rule if configured
               rulesList.push({
                 categoryName: cat,
                 pricingProfileId: prof.id,
+                operator: cell.operator || '+',
                 adjustmentType: cell.adjustmentType || 'PERCENT',
                 adjustmentValue: valNum
               });
@@ -4036,7 +4246,7 @@
         style: { display: 'flex', flexDirection: 'column' }
       },
         React.createElement('div', { style: { padding: '8px 14px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', fontSize: '0.76rem', color: 'var(--text-secondary)' } },
-          '💡 Configure percentage markup (+%), discount (-%), or fixed rupee adjustments (₹). Press Enter or Arrow keys to move between cells. Ctrl+Enter to save.'
+          '💡 Configure category adjustments using +, -, ×, or ÷ with percentage (%) or fixed rupee (₹) amounts. Press Enter or Arrow keys to move between cells. Ctrl+Enter to save.'
         ),
         categories.length === 0 ? React.createElement('div', {
           style: { padding: 30, textAlign: 'center', color: 'var(--text-secondary)' }
@@ -4048,7 +4258,7 @@
                   React.createElement('th', { style: { minWidth: 160, background: 'var(--bg-secondary)', fontWeight: 700 } }, 'Category Name'),
                   profiles.map(p => React.createElement('th', {
                     key: p.id,
-                    style: { minWidth: 180, textAlign: 'center', background: p.isDefault ? 'rgba(99, 102, 241, 0.08)' : 'inherit' }
+                    style: { minWidth: 260, textAlign: 'center', background: p.isDefault ? 'rgba(99, 102, 241, 0.08)' : 'inherit' }
                   },
                     React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, p.name),
                     React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 } },
@@ -4064,9 +4274,10 @@
                   ),
                   profiles.map((prof, profIdx) => {
                     const key = `${cat}__${prof.id}`;
-                    const cell = matrixEdits[key] || { adjustmentType: 'PERCENT', adjustmentValue: '0' };
+                    const cell = matrixEdits[key] || { operator: '+', adjustmentType: 'PERCENT', adjustmentValue: '0' };
                     const isPct = (cell.adjustmentType || 'PERCENT') === 'PERCENT';
                     const numVal = parseFloat(cell.adjustmentValue) || 0;
+                    const op = cell.operator || '+';
                     return React.createElement('td', {
                       key: prof.id,
                       style: {
@@ -4074,35 +4285,86 @@
                         background: prof.isDefault ? 'rgba(99, 102, 241, 0.02)' : 'inherit'
                       }
                     },
-                      React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--bg-card)', padding: '2px 5px', borderRadius: 6, border: '1px solid var(--border)' } },
+                      React.createElement('div', {
+                        style: {
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          background: 'var(--bg-card)',
+                          padding: '3px 6px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)'
+                        }
+                      },
+                        // 1. Label: Base Price
+                        React.createElement('span', {
+                          style: {
+                            fontSize: '0.74rem',
+                            color: 'var(--text-secondary)',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            marginRight: 2
+                          }
+                        }, 'Base Price'),
+
+                        // 2. Operator Select: +, −, ×, ÷
                         React.createElement('select', {
                           className: 'form-control form-control-sm',
-                          style: { width: 50, padding: '2px 4px', height: 24, fontSize: '0.75rem', fontWeight: 600 },
-                          value: cell.adjustmentType || 'PERCENT',
-                          onChange: (e) => updateMatrixCell(cat, prof.id, 'adjustmentType', e.target.value),
-                          onKeyDown: (e) => handleMatrixKeyDown(e, catIdx, profIdx, 'select')
+                          title: 'Arithmetic Operator (+, −, ×, ÷)',
+                          style: {
+                            width: 'auto',
+                            minWidth: 46,
+                            padding: '2px 4px',
+                            height: 25,
+                            fontSize: '0.80rem',
+                            fontWeight: 700,
+                            textAlign: 'center',
+                            cursor: 'pointer',
+                            color: op === '+' ? '#10b981' : (op === '-' ? '#ef4444' : (op === '*' ? '#6366f1' : '#f59e0b'))
+                          },
+                          value: op,
+                          onChange: (e) => updateMatrixCell(cat, prof.id, 'operator', e.target.value),
+                          onKeyDown: (e) => handleMatrixKeyDown(e, catIdx, profIdx, 'operator')
                         },
-                          React.createElement('option', { value: 'PERCENT' }, '%'),
-                          React.createElement('option', { value: 'FIXED' }, '₹')
+                          React.createElement('option', { value: '+' }, '+ Addition'),
+                          React.createElement('option', { value: '-' }, '− Subtraction'),
+                          React.createElement('option', { value: '*' }, '× Multiplication'),
+                          React.createElement('option', { value: '/' }, '÷ Division')
                         ),
+
+                        // 3. Value Input
                         React.createElement('input', {
                           type: 'number',
                           step: 'any',
                           placeholder: '0',
                           className: 'form-control form-control-sm',
                           style: {
-                            width: 70, textAlign: 'right', padding: '2px 6px', height: 24, fontSize: '0.8rem',
+                            width: 58,
+                            textAlign: 'right',
+                            padding: '2px 4px',
+                            height: 25,
+                            fontSize: '0.80rem',
                             fontWeight: numVal !== 0 ? 700 : 400,
-                            color: numVal > 0 ? '#10b981' : (numVal < 0 ? '#ef4444' : 'inherit')
+                            color: op === '+' ? '#10b981' : (op === '-' ? '#ef4444' : (op === '*' ? '#6366f1' : '#f59e0b'))
                           },
                           value: cell.adjustmentValue != null ? cell.adjustmentValue : '',
                           onChange: (e) => updateMatrixCell(cat, prof.id, 'adjustmentValue', e.target.value),
                           onFocus: (e) => { if (e.target && e.target.select) e.target.select(); },
                           onKeyDown: (e) => handleMatrixKeyDown(e, catIdx, profIdx, 'input')
                         }),
-                        React.createElement('span', {
-                          style: { fontSize: '0.7rem', color: 'var(--text-secondary)', minWidth: 16, textAlign: 'left' }
-                        }, isPct ? '%' : '₹')
+
+                        // 4. Type Select: % or ₹
+                        React.createElement('select', {
+                          className: 'form-control form-control-sm',
+                          title: 'Adjustment Mode (% or ₹)',
+                          style: { width: 44, padding: '2px 3px', height: 25, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' },
+                          value: cell.adjustmentType || 'PERCENT',
+                          onChange: (e) => updateMatrixCell(cat, prof.id, 'adjustmentType', e.target.value),
+                          onKeyDown: (e) => handleMatrixKeyDown(e, catIdx, profIdx, 'select')
+                        },
+                          React.createElement('option', { value: 'PERCENT' }, '%'),
+                          React.createElement('option', { value: 'FIXED' }, '₹')
+                        )
                       )
                     );
                   })
@@ -4121,7 +4383,7 @@
             React.createElement('thead', null,
               React.createElement('tr', null,
                 React.createElement('th', null, 'Product Name'),
-                React.createElement('th', null, 'SKU'),
+                React.createElement('th', null, 'HSN/SAC Code'),
                 React.createElement('th', null, 'Category'),
                 React.createElement('th', { style: { textAlign: 'right' } }, 'Base Price (₹)'),
                 React.createElement('th', { style: { textAlign: 'center' } }, 'Applied Rule'),
@@ -4130,24 +4392,65 @@
             ),
             React.createElement('tbody', null,
               paginatedSimProducts.map(prod => {
-                const effective = effectivePriceMap[prod.id] != null ? effectivePriceMap[prod.id] : prod.price;
                 const base = Number(prod.price || 0);
-                const diff = Number(effective) - base;
+                const appliedRule = (rules || []).find(r => r.pricingProfileId === simProfileId && r.categoryName && prod.category && r.categoryName.trim().toLowerCase() === prod.category.trim().toLowerCase());
+                
+                // Calculate effective price: use map if present, or compute following exact calculation semantics
+                let effective;
+                if (effectivePriceMap[prod.id] != null) {
+                  effective = Number(effectivePriceMap[prod.id]);
+                } else if (appliedRule) {
+                  const adjVal = Number(appliedRule.adjustmentValue || 0);
+                  const isFixed = appliedRule.adjustmentType === 'FIXED';
+                  const op = appliedRule.operator || '+';
+                  if (isFixed) {
+                    if (op === '-') effective = base - adjVal;
+                    else if (op === '*') effective = base * adjVal;
+                    else if (op === '/') effective = adjVal !== 0 ? (base / adjVal) : base;
+                    else effective = base + adjVal;
+                  } else {
+                    if (op === '-') effective = base - (base * adjVal / 100);
+                    else if (op === '*') effective = base * (adjVal / 100);
+                    else if (op === '/') effective = adjVal !== 0 ? (base * 100 / adjVal) : base;
+                    else effective = base + (base * adjVal / 100);
+                  }
+                } else {
+                  effective = base;
+                }
+                const diff = effective - base;
+
                 return React.createElement('tr', { key: prod.id },
                   React.createElement('td', { style: { fontWeight: 600 } }, prod.name),
-                  React.createElement('td', { style: { color: 'var(--text-secondary)' } }, prod.sku || '—'),
+                  React.createElement('td', { style: { color: 'var(--text-secondary)' } }, prod.hsnCode || prod.sku || '—'),
                   React.createElement('td', null,
                     prod.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem' } }, prod.category) : '—'
                   ),
                   React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, fmtCurrency(prod.price)),
                   React.createElement('td', { style: { textAlign: 'center' } },
-                    diff === 0 ? React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.75rem' } }, 'Standard (0%)') :
-                      React.createElement('span', {
-                        style: {
-                          fontSize: '0.75rem', fontWeight: 700,
-                          color: diff > 0 ? '#10b981' : '#ef4444'
-                        }
-                      }, `${diff > 0 ? '+' : ''}${fmtCurrency(diff)} (${((diff / (base || 1)) * 100).toFixed(1)}%)`)
+                    (() => {
+                      if (!appliedRule || (Number(appliedRule.adjustmentValue || 0) === 0 && (appliedRule.operator || '+') === '+')) {
+                        return React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.75rem' } }, 'Standard (Base)');
+                      }
+                      const rawOp = appliedRule.operator || '+';
+                      const opSymbol = rawOp === '*' ? '×' : (rawOp === '/' ? '÷' : (rawOp === '-' ? '−' : '+'));
+                      const valStr = appliedRule.adjustmentValue != null ? appliedRule.adjustmentValue : '0';
+                      const typeSymbol = appliedRule.adjustmentType === 'FIXED' ? '₹' : '%';
+                      const ruleBadgeText = `Base Price ${opSymbol} ${valStr} ${typeSymbol}`;
+
+                      return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
+                        React.createElement('span', {
+                          className: 'badge',
+                          style: {
+                            fontSize: '0.72rem', fontWeight: 700,
+                            background: diff > 0 ? 'rgba(16, 185, 129, 0.1)' : (diff < 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(99, 102, 241, 0.1)'),
+                            color: diff > 0 ? '#10b981' : (diff < 0 ? '#ef4444' : '#6366f1')
+                          }
+                        }, ruleBadgeText),
+                        diff !== 0 && React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)' } },
+                          `${diff > 0 ? '+' : ''}${fmtCurrency(diff)} (${base > 0 ? ((diff / base) * 100).toFixed(1) : 0}%)`
+                        )
+                      );
+                    })()
                   ),
                   React.createElement('td', { style: { textAlign: 'right', fontWeight: 800, fontSize: '0.9rem', color: '#4f46e5' } },
                     fmtCurrency(effective)
@@ -4408,9 +4711,10 @@
         if (searchQuery) {
           const q = searchQuery.toLowerCase().trim();
           const matchName = p.name && p.name.toLowerCase().includes(q);
+          const matchHsn = p.hsnCode && p.hsnCode.toLowerCase().includes(q);
           const matchSku = p.sku && p.sku.toLowerCase().includes(q);
           const matchBarcode = p.barcode && p.barcode.toLowerCase().includes(q);
-          if (!matchName && !matchSku && !matchBarcode) return false;
+          if (!matchName && !matchHsn && !matchSku && !matchBarcode) return false;
         }
         if (selectedCategory === 'UNCATEGORIZED') {
           if (p.category && p.category.trim() !== '' && p.category.trim().toUpperCase() !== 'UNCATEGORIZED') {
@@ -4672,7 +4976,7 @@
         costPrice: 'Cost Price',
         minStockLevel: 'Min Stock Level',
         unit: 'Unit',
-        hsnCode: 'HSN Code',
+        hsnCode: 'HSN/SAC Code',
         gstPercentage: 'GST %',
         preferredPartyId: 'Preferred Vendor',
         description: 'Description',
@@ -4711,7 +5015,7 @@
           diffs.push({
             prodId,
             prodName: prod.name,
-            sku: prod.sku || 'No SKU',
+            sku: prod.hsnCode ? `HSN: ${prod.hsnCode}` : (prod.sku ? `SKU: ${prod.sku}` : 'No HSN/SAC'),
             field,
             label: FIELD_LABELS[field] || field,
             oldDisplay,
@@ -4777,6 +5081,28 @@
             onClick: () => setShowBulkAddModal(true),
             style: { display: 'flex', alignItems: 'center', gap: 6 }
           }, '➕ Bulk Add Products'),
+
+          React.createElement('button', {
+            className: 'btn btn-outline',
+            onClick: async () => {
+              try {
+                const csvData = await API.products.exportCsv();
+                const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `products_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                if (typeof showToast === 'function') showToast('Products exported to CSV successfully', 'success');
+              } catch (err) {
+                if (typeof showToast === 'function') showToast('Failed to export CSV: ' + err.message, 'error');
+              }
+            },
+            style: { display: 'flex', alignItems: 'center', gap: 6 }
+          }, '📥 Export CSV'),
 
           hubTab === 'INTELLIGENCE' && React.createElement('button', {
             className: 'btn btn-outline',
@@ -4892,7 +5218,7 @@
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 } },
             React.createElement('input', {
               type: 'text',
-              placeholder: '🔍 Search name, SKU, or barcode...',
+              placeholder: '🔍 Search name, HSN/SAC, or barcode...',
               className: 'form-control form-control-sm',
               style: { maxWidth: 220 },
               value: searchQuery,
@@ -4944,34 +5270,35 @@
             React.createElement('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-card, #1e293b)', zIndex: 10 } },
               (isBulkEditMode || editingRowId) ? React.createElement('tr', null,
                 React.createElement('th', { style: { minWidth: 200 } }, 'Product Name'),
-                React.createElement('th', { style: { minWidth: 110 } }, 'SKU'),
+                React.createElement('th', { style: { minWidth: 120 } }, 'HSN/SAC Code'),
                 React.createElement('th', { style: { minWidth: 110 } }, 'Barcode'),
                 React.createElement('th', { style: { minWidth: 140 } }, 'Category'),
                 React.createElement('th', { style: { textAlign: 'right', minWidth: 110 } }, 'Base Price (₹)'),
                 React.createElement('th', { style: { textAlign: 'right', minWidth: 110 } }, 'Cost Price (₹)'),
                 React.createElement('th', { style: { textAlign: 'right', minWidth: 95 } }, 'Min Stock'),
                 React.createElement('th', { style: { minWidth: 80 } }, 'Unit'),
-                React.createElement('th', { style: { minWidth: 90 } }, 'HSN'),
+                React.createElement('th', { style: { minWidth: 90 } }, 'SKU (Legacy)'),
                 React.createElement('th', { style: { minWidth: 85 } }, 'GST %'),
                 React.createElement('th', { style: { minWidth: 150 } }, 'Preferred Vendor'),
                 React.createElement('th', { style: { minWidth: 140 } }, isBulkEditMode ? 'Track Inventory' : 'Stock Status'),
                 React.createElement('th', { style: { textAlign: 'center', minWidth: isBulkEditMode ? 80 : 130 } }, 'Actions')
               ) : React.createElement('tr', null,
-                React.createElement('th', { style: { width: '26%' } }, 'Product Identity'),
-                React.createElement('th', { style: { width: '14%' } }, 'Category'),
-                React.createElement('th', { style: { width: '18%', textAlign: 'right' } }, 'Commercials'),
-                React.createElement('th', { style: { width: '14%' } }, 'Stock Status'),
-                React.createElement('th', { style: { width: '14%' } }, 'Tax & Vendor'),
-                React.createElement('th', { style: { width: '14%', textAlign: 'center' } }, 'Actions')
+                React.createElement('th', { style: { width: '24%' } }, 'Product Name'),
+                React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
+                React.createElement('th', { style: { width: '12%' } }, 'Category'),
+                React.createElement('th', { style: { width: '16%', textAlign: 'right' } }, 'Commercials'),
+                React.createElement('th', { style: { width: '13%' } }, 'Stock Status'),
+                React.createElement('th', { style: { width: '13%' } }, 'Tax & Vendor'),
+                React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
               )
             ),
             React.createElement('tbody', null,
               loading ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 6, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
                   'Loading product master records...'
                 )
               ) : filteredProducts.length === 0 ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 6, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
                   'No products match the selected criteria.'
                 )
               ) : paginatedMasterProducts.map((p, rowIdx) => {
@@ -5016,15 +5343,15 @@
                         onKeyDown: (e) => handleBulkKeyDown(e, rowIdx, 0)
                       })
                     ),
-                    // SKU Input
+                    // HSN/SAC Code Input
                     React.createElement('td', { style: { padding: '6px 8px' } },
                       React.createElement('input', {
                         type: 'text',
                         className: 'form-control form-control-sm',
-                        placeholder: 'SKU',
-                        value: valSku,
+                        placeholder: 'HSN/SAC',
+                        value: valHsn,
                         style: { width: '100%', fontFamily: 'monospace' },
-                        onChange: (e) => handleBulkCellChange(p.id, 'sku', e.target.value, p.sku),
+                        onChange: (e) => handleBulkCellChange(p.id, 'hsnCode', e.target.value, p.hsnCode),
                         onKeyDown: (e) => handleBulkKeyDown(e, rowIdx, 1)
                       })
                     ),
@@ -5103,14 +5430,15 @@
                         onKeyDown: (e) => handleBulkKeyDown(e, rowIdx, 7)
                       })
                     ),
-                    // HSN Code Input
+                    // SKU Input (Legacy)
                     React.createElement('td', { style: { padding: '6px 8px' } },
                       React.createElement('input', {
                         type: 'text',
                         className: 'form-control form-control-sm',
-                        value: valHsn,
-                        style: { width: '100%' },
-                        onChange: (e) => handleBulkCellChange(p.id, 'hsnCode', e.target.value, p.hsnCode),
+                        placeholder: 'SKU',
+                        value: valSku,
+                        style: { width: '100%', fontFamily: 'monospace' },
+                        onChange: (e) => handleBulkCellChange(p.id, 'sku', e.target.value, p.sku),
                         onKeyDown: (e) => handleBulkKeyDown(e, rowIdx, 8)
                       })
                     ),
@@ -5195,13 +5523,13 @@
                         onChange: (e) => setSingleEditForm({ ...singleEditForm, name: e.target.value })
                       })
                     ),
-                    // SKU
+                    // HSN/SAC Code
                     React.createElement('td', { style: { padding: '6px 8px' } },
                       React.createElement('input', {
                         type: 'text',
                         className: 'form-control form-control-sm',
-                        value: singleEditForm.sku,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, sku: e.target.value })
+                        value: singleEditForm.hsnCode,
+                        onChange: (e) => setSingleEditForm({ ...singleEditForm, hsnCode: e.target.value })
                       })
                     ),
                     // Barcode
@@ -5268,13 +5596,13 @@
                         onChange: (e) => setSingleEditForm({ ...singleEditForm, unit: e.target.value })
                       })
                     ),
-                    // HSN
+                    // SKU (Legacy)
                     React.createElement('td', { style: { padding: '6px 8px' } },
                       React.createElement('input', {
                         type: 'text',
                         className: 'form-control form-control-sm',
-                        value: singleEditForm.hsnCode,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, hsnCode: e.target.value })
+                        value: singleEditForm.sku,
+                        onChange: (e) => setSingleEditForm({ ...singleEditForm, sku: e.target.value })
                       })
                     ),
                     // GST
@@ -5356,21 +5684,22 @@
                   style: { cursor: 'pointer' },
                   onClick: () => setSelectedProductId(p.id)
                 },
-                  // 1. Product Identity
+                  // 1. Product Name
                   React.createElement('td', null,
                     React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 } }, p.name),
                     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' } },
-                      React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.75rem', color: p.sku ? 'var(--text-secondary)' : 'var(--text-muted, #94a3b8)' } },
-                        p.sku || 'No SKU'
-                      ),
                       p.barcode && React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                        `· ${p.barcode}`
+                        `🏷️ ${p.barcode}`
                       ),
                       isNeedsSetup(p) && React.createElement('span', {
                         className: 'badge',
                         style: { background: 'rgba(234,179,8,0.15)', color: '#ca8a04', fontSize: '0.65rem', padding: '1px 5px' }
                       }, 'Setup')
                     )
+                  ),
+                  // 2. HSN/SAC
+                  React.createElement('td', null,
+                    p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
                   ),
                   // 2. Category
                   React.createElement('td', null,

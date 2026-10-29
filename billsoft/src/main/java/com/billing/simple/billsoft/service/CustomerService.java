@@ -15,9 +15,11 @@ import com.billing.simple.billsoft.repo.CustomerRepository;
 public class CustomerService {
 
     private final CustomerRepository repo;
+    private final com.billing.simple.billsoft.repositories.BusinessPartyLinkRepository linkRepo;
 
-    public CustomerService(CustomerRepository repo) {
+    public CustomerService(CustomerRepository repo, com.billing.simple.billsoft.repositories.BusinessPartyLinkRepository linkRepo) {
         this.repo = repo;
+        this.linkRepo = linkRepo;
     }
 
     public Customer create(Customer customer) {
@@ -86,6 +88,9 @@ public class CustomerService {
 
     @Transactional
     public boolean delete(Long id) {
+        if (linkRepo != null && linkRepo.existsByCustomerId(id)) {
+            throw new IllegalStateException("Cannot delete Customer #" + id + " because it is linked to a Supplier. Please unlink first.");
+        }
         Long fid = TenantContext.getCurrentFirmId();
         if (fid != null) {
             if (!repo.existsByIdAndFirmId(id, fid))

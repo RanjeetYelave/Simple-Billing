@@ -180,6 +180,35 @@ const API = {
     deletePayment: (paymentId) => API._request(`/api/parties/payments/${paymentId}`, { method: 'DELETE' }),
   },
 
+  // ── Party Links (Shared Customer + Supplier Identity) ──
+  partyLinks: {
+    link: (data) => API._ensureFirmReady().then(() => API._json('/api/party-links', {
+      method: 'POST',
+      body: data
+    })),
+    unlink: (arg1, arg2) => API._ensureFirmReady().then(() => {
+      if (arg2 != null) {
+        return API._request(API._qs('/api/party-links', { customerId: arg1, partyId: arg2 }), { method: 'DELETE' });
+      }
+      if (typeof arg1 === 'object' && arg1 !== null) {
+        if (arg1.customerId && arg1.partyId) {
+          return API._request(API._qs('/api/party-links', { customerId: arg1.customerId, partyId: arg1.partyId }), { method: 'DELETE' });
+        }
+        return API._request(`/api/party-links/${arg1.id}`, { method: 'DELETE' });
+      }
+      return API._request(`/api/party-links/${arg1}`, { method: 'DELETE' });
+    }),
+    getByCustomer: (customerId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/customer/${customerId}`)),
+    getByParty: (partyId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/party/${partyId}`)),
+    candidates: (type, query) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/candidates', { type, query: query || '' }))),
+    map: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/map'))),
+    unifiedStatement: (customerId, partyId, from, to) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/unified-statement', {
+      customerId, partyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {})
+    }))),
+  },
+
   // ── Purchase Orders ──
   purchaseOrders: {
     list: (partyId, page, size) => API._ensureFirmReady().then(() => API._json(API._qs('/api/purchase-orders', {
@@ -327,6 +356,26 @@ const API = {
     adjustStock: (id, data) => API._json(`/api/products/${id}/adjust-stock`, { method: 'POST', body: data }),
     movements: (id, params = {}) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/movements`, params))),
     allMovements: (params = {}) => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/movements', params))),
+    exportCsvUrl: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      return API._qs('/api/products/export/csv', fid ? { firmId: fid } : {});
+    },
+    exportCsv: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._request(API._qs('/api/products/export/csv', fid ? { firmId: fid } : {}), { headers }).then(r => r.text()));
+    },
+    downloadTemplateCsvUrl: () => '/api/products/template/csv',
+    downloadTemplateCsv: () => API._request('/api/products/template/csv').then(r => r.text()),
+    importCsv: (csvContent, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/import/csv', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'text/plain' },
+        body: csvContent
+      }));
+    },
   },
 
   // ── Pricing Profiles & Category Rules ──

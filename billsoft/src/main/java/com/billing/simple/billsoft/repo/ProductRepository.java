@@ -77,9 +77,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsByFirmIdAndSku(Long firmId, String sku);
 
+    Optional<Product> findFirstByBarcode(String barcode);
+
     Optional<Product> findFirstByFirmIdAndBarcode(Long firmId, String barcode);
 
     boolean existsByFirmIdAndBarcode(Long firmId, String barcode);
+
+    List<Product> findByFirmIdAndHsnCode(Long firmId, String hsnCode);
+
+    Optional<Product> findFirstByFirmIdAndHsnCode(Long firmId, String hsnCode);
 
     List<Product> findByFirmIdAndNameIgnoreCase(Long firmId, String name);
 

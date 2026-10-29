@@ -20,6 +20,9 @@ import com.billing.simple.billsoft.repositories.PartyRepository;
 import com.billing.simple.billsoft.dtos.ProductBulkUpdateItemDto;
 import com.billing.simple.billsoft.dtos.ProductBulkUpdateResponseDto;
 import com.billing.simple.billsoft.entities.AppConfig;
+import java.nio.charset.StandardCharsets;
+import com.billing.simple.billsoft.dtos.ProductBulkRowDto;
+import com.billing.simple.billsoft.dtos.ProductImportResponseDto;
 import com.billing.simple.billsoft.exception.InsufficientStockException;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import org.springframework.data.domain.Page;
@@ -107,6 +110,9 @@ public class ProductService {
 		}
 		if (product.getUnit() == null || product.getUnit().trim().isEmpty()) {
 			product.setUnit("pcs");
+		}
+		if (product.getHsnCode() != null) {
+			product.setHsnCode(product.getHsnCode().trim().isEmpty() ? null : product.getHsnCode().trim());
 		}
 
 		Product saved = repo.save(product);
@@ -975,5 +981,302 @@ public class ProductService {
 		summary.put("averageGrossMarginPercent", avgGrossMargin);
 
 		return summary;
+	}
+
+	public byte[] exportProductsToCsv(Long clientFirmId) {
+		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
+		if (targetFirmId == null) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to export products");
+		}
+		List<Product> products = repo.findByFirmIdAndIsArchivedFalseOrderByNameAsc(targetFirmId);
+		StringBuilder csv = new StringBuilder();
+		csv.append("Product Name,HSN/SAC Code,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Stock Quantity,Min Stock Level,Unit,Description,Track in Inventory,SKU\n");
+		for (Product p : products) {
+			csv.append(escapeCsv(p.getName())).append(",");
+			csv.append(escapeCsv(p.getHsnCode() != null ? p.getHsnCode() : "")).append(",");
+			csv.append(escapeCsv(p.getBarcode() != null ? p.getBarcode() : "")).append(",");
+			csv.append(escapeCsv(p.getCategory() != null ? p.getCategory() : "")).append(",");
+			csv.append(escapeCsv(p.getItemType() != null ? p.getItemType() : "GOODS")).append(",");
+			csv.append(p.getPrice() != null ? p.getPrice().stripTrailingZeros().toPlainString() : "0").append(",");
+			csv.append(p.getCostPrice() != null ? p.getCostPrice().stripTrailingZeros().toPlainString() : "").append(",");
+			csv.append(p.getGstPercentage() != null ? p.getGstPercentage().stripTrailingZeros().toPlainString() : "0").append(",");
+			csv.append(p.getStockQuantity() != null ? p.getStockQuantity().stripTrailingZeros().toPlainString() : "0").append(",");
+			csv.append(p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "5").append(",");
+			csv.append(escapeCsv(p.getUnit() != null ? p.getUnit() : "pcs")).append(",");
+			csv.append(escapeCsv(p.getDescription() != null ? p.getDescription() : "")).append(",");
+			csv.append(Boolean.FALSE.equals(p.getInInventory()) ? "No" : "Yes").append(",");
+			csv.append(escapeCsv(p.getSku() != null ? p.getSku() : "")).append("\n");
+		}
+		return csv.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	public byte[] getProductCsvTemplate() {
+		String template = "Product Name,HSN/SAC Code,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Initial Stock,Min Stock,Unit,Description\n"
+				+ "Sample Product A,84713010,8901234567890,Electronics,GOODS,25000.00,20000.00,18,10,2,pcs,Sample Goods Item\n"
+				+ "Consulting Service,998311,,Services,SERVICE,5000.00,0.00,18,0,0,hours,Professional Services\n";
+		return template.getBytes(StandardCharsets.UTF_8);
+	}
+
+	@Transactional(rollbackFor = Exception.class)
+	public ProductImportResponseDto importProductsFromCsv(String csvContent, Long clientFirmId) {
+		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product import prohibited");
+		}
+		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
+		if (targetFirmId == null) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to import products");
+		}
+		if (csvContent == null || csvContent.trim().isEmpty()) {
+			throw new IllegalArgumentException("CSV content is empty");
+		}
+
+		List<List<String>> parsedLines = parseCsv(csvContent);
+		if (parsedLines.isEmpty()) {
+			throw new IllegalArgumentException("No data rows found in CSV");
+		}
+
+		List<String> firstRow = parsedLines.get(0);
+		boolean hasHeader = isHeaderRow(firstRow);
+		Map<String, Integer> colMap = hasHeader ? mapHeaders(firstRow) : getDefaultColMap();
+		int startIdx = hasHeader ? 1 : 0;
+
+		List<ProductBulkRowDto> bulkRows = new ArrayList<>();
+		List<String> warnings = new ArrayList<>();
+		boolean legacySkuWithoutHsn = hasHeader && colMap.containsKey("sku") && !colMap.containsKey("hsn");
+
+		for (int i = startIdx; i < parsedLines.size(); i++) {
+			List<String> cols = parsedLines.get(i);
+			int rowNum = i + 1;
+			String name = getColVal(cols, colMap, "name");
+			if (name == null || name.trim().isEmpty()) {
+				continue; // Skip blank rows
+			}
+
+			String hsn = getColVal(cols, colMap, "hsn");
+			String sku = getColVal(cols, colMap, "sku");
+
+			// Leading zeros and whitespace trimming:
+			hsn = (hsn != null && !hsn.trim().isEmpty()) ? hsn.trim() : null;
+			sku = (sku != null && !sku.trim().isEmpty()) ? sku.trim() : null;
+
+			if (legacySkuWithoutHsn && sku != null) {
+				warnings.add("Row " + rowNum + " ('" + name + "'): Preserved legacy SKU '" + sku + "' without automatic assignment as HSN/SAC code.");
+			}
+
+			String barcode = getColVal(cols, colMap, "barcode");
+			barcode = (barcode != null && !barcode.trim().isEmpty()) ? barcode.trim() : null;
+
+			String category = getColVal(cols, colMap, "category");
+			category = (category != null && !category.trim().isEmpty()) ? category.trim() : null;
+
+			String itemType = getColVal(cols, colMap, "itemtype");
+			itemType = (itemType != null && !itemType.trim().isEmpty()) ? itemType.trim().toUpperCase() : "GOODS";
+
+			String unit = getColVal(cols, colMap, "unit");
+			unit = (unit != null && !unit.trim().isEmpty()) ? unit.trim() : "pcs";
+
+			String desc = getColVal(cols, colMap, "description");
+			desc = (desc != null && !desc.trim().isEmpty()) ? desc.trim() : null;
+
+			BigDecimal price = parseDecimal(getColVal(cols, colMap, "price"), BigDecimal.ZERO);
+			BigDecimal costPrice = parseDecimal(getColVal(cols, colMap, "costprice"), null);
+			BigDecimal gst = parseDecimal(getColVal(cols, colMap, "gst"), BigDecimal.ZERO);
+			BigDecimal initStock = parseDecimal(getColVal(cols, colMap, "initialstock"), BigDecimal.ZERO);
+			BigDecimal minStock = parseDecimal(getColVal(cols, colMap, "minstock"), new BigDecimal("5.000"));
+
+			String trackInvStr = getColVal(cols, colMap, "trackininventory");
+			boolean inInventory = trackInvStr == null || !("no".equalsIgnoreCase(trackInvStr.trim()) || "false".equalsIgnoreCase(trackInvStr.trim()));
+
+			ProductBulkRowDto rowDto = ProductBulkRowDto.builder()
+					.name(name.trim())
+					.hsnCode(hsn)
+					.sku(sku)
+					.barcode(barcode)
+					.category(category)
+					.itemType(itemType)
+					.unit(unit)
+					.description(desc)
+					.price(price)
+					.costPrice(costPrice)
+					.gstPercentage(gst)
+					.initialStock(initStock)
+					.minStockLevel(minStock)
+					.inInventory(inInventory)
+					.build();
+
+			bulkRows.add(rowDto);
+		}
+
+		if (bulkRows.isEmpty()) {
+			throw new IllegalArgumentException("No valid product rows found to import");
+		}
+
+		List<Product> saved = createBulk(bulkRows, targetFirmId);
+		return ProductImportResponseDto.builder()
+				.totalRows(bulkRows.size())
+				.importedCount(saved.size())
+				.products(saved)
+				.warnings(warnings)
+				.build();
+	}
+
+	private boolean isHeaderRow(List<String> row) {
+		for (String c : row) {
+			String norm = normalizeHeader(c);
+			if (norm.equals("name") || norm.equals("productname") || norm.equals("itemname")
+					|| norm.equals("product") || norm.equals("item")
+					|| norm.equals("hsnsaccode") || norm.equals("hsncode") || norm.equals("hsn")
+					|| norm.equals("sac") || norm.equals("saccode")
+					|| norm.equals("sku") || norm.equals("price") || norm.equals("sellingprice") || norm.equals("rate")) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private String normalizeHeader(String h) {
+		if (h == null) return "";
+		return h.toLowerCase().replaceAll("[^a-z0-9]", "");
+	}
+
+	private Map<String, Integer> mapHeaders(List<String> headers) {
+		Map<String, Integer> map = new HashMap<>();
+		for (int i = 0; i < headers.size(); i++) {
+			String norm = normalizeHeader(headers.get(i));
+			if (norm.equals("name") || norm.equals("productname") || norm.equals("itemname") || norm.equals("product") || norm.equals("item") || norm.equals("title") || norm.equals("itemdescription") || norm.equals("descriptionandsku")) {
+				map.putIfAbsent("name", i);
+			} else if (norm.equals("hsnsaccode") || norm.equals("hsnsac") || norm.equals("hsncode") || norm.equals("saccode") || norm.equals("hsn") || norm.equals("sac") || norm.equals("hsnsaccodes") || norm.equals("hsntaxcode")) {
+				map.putIfAbsent("hsn", i);
+			} else if (norm.equals("sku") || norm.equals("skucode") || norm.equals("itemcode")) {
+				map.putIfAbsent("sku", i);
+			} else if (norm.equals("barcode") || norm.equals("barcodenumber") || norm.equals("upc") || norm.equals("ean")) {
+				map.putIfAbsent("barcode", i);
+			} else if (norm.equals("category") || norm.equals("group") || norm.equals("productcategory")) {
+				map.putIfAbsent("category", i);
+			} else if (norm.equals("itemtype") || norm.equals("type")) {
+				map.putIfAbsent("itemtype", i);
+			} else if (norm.equals("sellingprice") || norm.equals("price") || norm.equals("rate") || norm.equals("baseprice") || norm.equals("unitprice") || norm.equals("mrp")) {
+				map.putIfAbsent("price", i);
+			} else if (norm.equals("costprice") || norm.equals("purchaseprice") || norm.equals("cost") || norm.equals("buyprice")) {
+				map.putIfAbsent("costprice", i);
+			} else if (norm.equals("gst") || norm.equals("gstpercent") || norm.equals("gstpercentage") || norm.equals("tax") || norm.equals("taxpercent") || norm.equals("taxrate")) {
+				map.putIfAbsent("gst", i);
+			} else if (norm.equals("initialstock") || norm.equals("openingstock") || norm.equals("stockquantity") || norm.equals("stock") || norm.equals("quantity") || norm.equals("qty")) {
+				map.putIfAbsent("initialstock", i);
+			} else if (norm.equals("minstocklevel") || norm.equals("minstock") || norm.equals("minimumstock") || norm.equals("alertstock")) {
+				map.putIfAbsent("minstock", i);
+			} else if (norm.equals("unit") || norm.equals("uom") || norm.equals("unitofmeasure")) {
+				map.putIfAbsent("unit", i);
+			} else if (norm.equals("description") || norm.equals("desc") || norm.equals("notes")) {
+				map.putIfAbsent("description", i);
+			} else if (norm.equals("trackininventory") || norm.equals("ininventory") || norm.equals("trackstock")) {
+				map.putIfAbsent("trackininventory", i);
+			}
+		}
+		return map;
+	}
+
+	private Map<String, Integer> getDefaultColMap() {
+		Map<String, Integer> map = new HashMap<>();
+		map.put("name", 0);
+		map.put("hsn", 1);
+		map.put("barcode", 2);
+		map.put("category", 3);
+		map.put("price", 4);
+		map.put("costprice", 5);
+		map.put("gst", 6);
+		map.put("initialstock", 7);
+		map.put("minstock", 8);
+		map.put("unit", 9);
+		map.put("itemtype", 10);
+		map.put("description", 11);
+		return map;
+	}
+
+	private String getColVal(List<String> cols, Map<String, Integer> map, String key) {
+		Integer idx = map.get(key);
+		if (idx != null && idx < cols.size()) {
+			return cols.get(idx);
+		}
+		return null;
+	}
+
+	private BigDecimal parseDecimal(String str, BigDecimal defaultVal) {
+		if (str == null || str.trim().isEmpty()) return defaultVal;
+		try {
+			return new BigDecimal(str.trim().replaceAll("[^0-9.-]", ""));
+		} catch (Exception e) {
+			return defaultVal;
+		}
+	}
+
+	private String escapeCsv(String val) {
+		if (val == null) return "";
+		if (val.contains(",") || val.contains("\"") || val.contains("\n") || val.contains("\r")) {
+			return "\"" + val.replace("\"", "\"\"") + "\"";
+		}
+		return val;
+	}
+
+	public static List<List<String>> parseCsv(String text) {
+		List<List<String>> rows = new ArrayList<>();
+		if (text == null || text.trim().isEmpty()) {
+			return rows;
+		}
+		List<String> currentRow = new ArrayList<>();
+		StringBuilder curVal = new StringBuilder();
+		boolean inQuotes = false;
+
+		char[] chars = text.toCharArray();
+		for (int i = 0; i < chars.length; i++) {
+			char c = chars[i];
+			if (inQuotes) {
+				if (c == '"') {
+					if (i + 1 < chars.length && chars[i + 1] == '"') {
+						curVal.append('"');
+						i++;
+					} else {
+						inQuotes = false;
+					}
+				} else {
+					curVal.append(c);
+				}
+			} else {
+				if (c == '"') {
+					inQuotes = true;
+				} else if (c == ',' || c == '\t') {
+					currentRow.add(curVal.toString().trim());
+					curVal.setLength(0);
+				} else if (c == '\r') {
+					if (i + 1 < chars.length && chars[i + 1] == '\n') {
+						i++;
+					}
+					currentRow.add(curVal.toString().trim());
+					curVal.setLength(0);
+					if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
+						rows.add(currentRow);
+					}
+					currentRow = new ArrayList<>();
+				} else if (c == '\n') {
+					currentRow.add(curVal.toString().trim());
+					curVal.setLength(0);
+					if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
+						rows.add(currentRow);
+					}
+					currentRow = new ArrayList<>();
+				} else {
+					curVal.append(c);
+				}
+			}
+		}
+		if (curVal.length() > 0 || !currentRow.isEmpty()) {
+			currentRow.add(curVal.toString().trim());
+			if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
+				rows.add(currentRow);
+			}
+		}
+		return rows;
 	}
 }

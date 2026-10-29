@@ -27,6 +27,58 @@ public class ProductController {
 		return ResponseEntity.ok(service.create(product));
 	}
 
+	@GetMapping(value = "/export/csv", produces = "text/csv")
+	public ResponseEntity<byte[]> exportCsv(@RequestParam(required = false) Long firmId) {
+		byte[] csv = service.exportProductsToCsv(firmId);
+		return ResponseEntity.ok()
+				.header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"products.csv\"")
+				.body(csv);
+	}
+
+	@GetMapping(value = "/template/csv", produces = "text/csv")
+	public ResponseEntity<byte[]> downloadTemplateCsv() {
+		byte[] csv = service.getProductCsvTemplate();
+		return ResponseEntity.ok()
+				.header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"products_template.csv\"")
+				.body(csv);
+	}
+
+	@PostMapping("/import/csv")
+	public ResponseEntity<com.billing.simple.billsoft.dtos.ProductImportResponseDto> importCsv(
+			@RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
+			@RequestBody(required = false) String rawBody,
+			@RequestParam(required = false) Long firmId) {
+		String csvContent = "";
+		if (file != null && !file.isEmpty()) {
+			try {
+				csvContent = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
+			} catch (java.io.IOException e) {
+				throw new IllegalArgumentException("Failed to read uploaded CSV file: " + e.getMessage());
+			}
+		} else if (rawBody != null && !rawBody.trim().isEmpty()) {
+			String trimmed = rawBody.trim();
+			if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+				try {
+					com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(trimmed);
+					if (node.has("csv")) {
+						csvContent = node.get("csv").asText();
+					} else if (node.has("content")) {
+						csvContent = node.get("content").asText();
+					} else {
+						csvContent = trimmed;
+					}
+				} catch (Exception e) {
+					csvContent = trimmed;
+				}
+			} else {
+				csvContent = rawBody;
+			}
+		} else {
+			throw new IllegalArgumentException("CSV content or file is required for product import");
+		}
+		return ResponseEntity.ok(service.importProductsFromCsv(csvContent, firmId));
+	}
+
 	@PostMapping("/bulk")
 	public ResponseEntity<List<Product>> createBulk(
 			@RequestBody List<com.billing.simple.billsoft.dtos.ProductBulkRowDto> rows,

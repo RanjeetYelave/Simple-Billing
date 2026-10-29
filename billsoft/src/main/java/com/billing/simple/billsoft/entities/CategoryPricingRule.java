@@ -43,6 +43,13 @@ public class CategoryPricingRule {
     private String adjustmentType = "PERCENT";
 
     /**
+     * Arithmetic operator: +, -, *, / (defaults to +)
+     */
+    @Builder.Default
+    @Column(name = "operator", length = 10, columnDefinition = "varchar(10) default '+'")
+    private String operator = "+";
+
+    /**
      * Adjustment value (e.g. 5.00 for +5%, -10.00 for -10%, 500.00 for +₹500, -250.00 for -₹250)
      */
     @Builder.Default
@@ -52,6 +59,13 @@ public class CategoryPricingRule {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    public String getOperator() {
+        if (operator == null || operator.trim().isEmpty()) {
+            return "+";
+        }
+        return operator.trim();
+    }
+
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
@@ -60,6 +74,11 @@ public class CategoryPricingRule {
         updatedAt = LocalDateTime.now();
         if (adjustmentType == null) adjustmentType = "PERCENT";
         adjustmentType = adjustmentType.trim().toUpperCase();
+        if (operator == null || operator.trim().isEmpty()) {
+            operator = "+";
+        } else {
+            operator = operator.trim();
+        }
         if (adjustmentValue == null) adjustmentValue = BigDecimal.ZERO;
         if (categoryName != null) categoryName = categoryName.trim();
     }
@@ -68,6 +87,11 @@ public class CategoryPricingRule {
     public void preUpdate() {
         updatedAt = LocalDateTime.now();
         if (adjustmentType != null) adjustmentType = adjustmentType.trim().toUpperCase();
+        if (operator == null || operator.trim().isEmpty()) {
+            operator = "+";
+        } else {
+            operator = operator.trim();
+        }
         if (categoryName != null) categoryName = categoryName.trim();
     }
 }

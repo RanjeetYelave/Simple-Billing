@@ -10,6 +10,9 @@ import com.billing.simple.billsoft.repo.PricingProfileRepository;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.security.TenantSecurityException;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,9 @@ public class ProductPricingService {
     private final CategoryPricingRuleRepository categoryRuleRepo;
     private final ProductRepository productRepo;
 
+    @Autowired(required = false)
+    private JdbcTemplate jdbcTemplate;
+
     public ProductPricingService(
             PricingProfileRepository profileRepo,
             CategoryPricingRuleRepository categoryRuleRepo,
@@ -37,6 +43,21 @@ public class ProductPricingService {
         this.profileRepo = profileRepo;
         this.categoryRuleRepo = categoryRuleRepo;
         this.productRepo = productRepo;
+    }
+
+    @PostConstruct
+    public void ensureSchema() {
+        if (jdbcTemplate != null) {
+            try {
+                jdbcTemplate.execute("ALTER TABLE category_pricing_rules ADD COLUMN IF NOT EXISTS operator VARCHAR(10) DEFAULT '+';");
+                jdbcTemplate.execute("UPDATE category_pricing_rules SET operator = '+' WHERE operator IS NULL;");
+            } catch (Exception e) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE category_pricing_rules ADD COLUMN operator VARCHAR(10) DEFAULT '+';");
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private Long resolveAuthoritativeFirmId(Long clientFirmId) {
@@ -60,6 +81,45 @@ public class ProductPricingService {
                 .filter(p -> Boolean.TRUE.equals(p.getIsActive()))
                 .map(PricingProfile::getId)
                 .orElse(null);
+    }
+
+    /**
+     * Normalizes arithmetic operator string to one of: +, -, *, /
+     * Defaults to '+' for null, empty, or unrecognized values.
+     */
+    public static String normalizeOperator(String op) {
+        if (op == null || op.trim().isEmpty()) {
+            return "+";
+        }
+        String trimmed = op.trim().toUpperCase();
+        switch (trimmed) {
+            case "+":
+            case "ADD":
+            case "ADDITION":
+            case "PLUS":
+                return "+";
+            case "-":
+            case "SUB":
+            case "SUBTRACT":
+            case "SUBTRACTION":
+            case "MINUS":
+                return "-";
+            case "*":
+            case "x":
+            case "X":
+            case "MUL":
+            case "MULTIPLY":
+            case "MULTIPLICATION":
+            case "TIMES":
+                return "*";
+            case "/":
+            case "DIV":
+            case "DIVIDE":
+            case "DIVISION":
+                return "/";
+            default:
+                return "+";
+        }
     }
 
     /**
@@ -110,15 +170,71 @@ public class ProductPricingService {
 
         CategoryPricingRule rule = ruleOpt.get();
         BigDecimal adjVal = rule.getAdjustmentValue() != null ? rule.getAdjustmentValue() : BigDecimal.ZERO;
+        String op = normalizeOperator(rule.getOperator());
+        String adjType = rule.getAdjustmentType() != null ? rule.getAdjustmentType().trim().toUpperCase() : "PERCENT";
+        boolean isFixed = "FIXED".equalsIgnoreCase(adjType);
+
         BigDecimal effectivePrice;
 
-        if ("FIXED".equalsIgnoreCase(rule.getAdjustmentType())) {
-            effectivePrice = basePrice.add(adjVal);
+        if (isFixed) {
+            // FIXED RUPEE AMOUNT ADJUSTMENTS
+            switch (op) {
+                case "-":
+                    effectivePrice = basePrice.subtract(adjVal);
+                    break;
+                case "*":
+                    effectivePrice = basePrice.multiply(adjVal);
+                    break;
+                case "/":
+                    if (adjVal.compareTo(BigDecimal.ZERO) == 0) {
+                        // Division by zero safe guard: fallback safely to base price
+                        effectivePrice = basePrice;
+                    } else {
+                        effectivePrice = basePrice.divide(adjVal, 4, RoundingMode.HALF_UP);
+                    }
+                    break;
+                case "+":
+                default:
+                    effectivePrice = basePrice.add(adjVal);
+                    break;
+            }
         } else {
-            // PERCENT: effective = base + (base * adjVal / 100)
-            BigDecimal pctAdjustment = basePrice.multiply(adjVal)
-                    .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            effectivePrice = basePrice.add(pctAdjustment);
+            // PERCENTAGE ADJUSTMENTS
+            // Configured value is a percentage V (e.g. 20 for 20%)
+            switch (op) {
+                case "-": {
+                    // base - (base * V / 100)
+                    BigDecimal pctAdjustment = basePrice.multiply(adjVal)
+                            .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                    effectivePrice = basePrice.subtract(pctAdjustment);
+                    break;
+                }
+                case "*": {
+                    // base * (V / 100) (e.g. 150% -> base * 1.50; 80% -> base * 0.80)
+                    effectivePrice = basePrice.multiply(adjVal)
+                            .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                    break;
+                }
+                case "/": {
+                    // base / (V / 100) = (base * 100) / V
+                    if (adjVal.compareTo(BigDecimal.ZERO) == 0) {
+                        // Division by zero safe guard: fallback safely to base price
+                        effectivePrice = basePrice;
+                    } else {
+                        effectivePrice = basePrice.multiply(BigDecimal.valueOf(100))
+                                .divide(adjVal, 4, RoundingMode.HALF_UP);
+                    }
+                    break;
+                }
+                case "+":
+                default: {
+                    // base + (base * V / 100)
+                    BigDecimal pctAdjustment = basePrice.multiply(adjVal)
+                            .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                    effectivePrice = basePrice.add(pctAdjustment);
+                    break;
+                }
+            }
         }
 
         if (effectivePrice.compareTo(BigDecimal.ZERO) < 0) {
@@ -317,6 +433,7 @@ public class ProductPricingService {
                     .pricingProfileId(r.getPricingProfileId())
                     .pricingProfileCode(p != null ? p.getCode() : null)
                     .pricingProfileName(p != null ? p.getName() : null)
+                    .operator(r.getOperator() != null ? r.getOperator() : "+")
                     .adjustmentType(r.getAdjustmentType())
                     .adjustmentValue(r.getAdjustmentValue())
                     .build();
@@ -346,6 +463,7 @@ public class ProductPricingService {
                     firmId, cat, profileId
             );
 
+            String op = normalizeOperator(dto.getOperator());
             BigDecimal adjVal = dto.getAdjustmentValue() != null ? dto.getAdjustmentValue() : BigDecimal.ZERO;
             String adjType = dto.getAdjustmentType() != null ? dto.getAdjustmentType().trim().toUpperCase() : "PERCENT";
 
@@ -353,8 +471,10 @@ public class ProductPricingService {
                     .firmId(firmId)
                     .categoryName(cat)
                     .pricingProfileId(profileId)
+                    .operator(op)
                     .build());
 
+            rule.setOperator(op);
             rule.setAdjustmentType(adjType);
             rule.setAdjustmentValue(adjVal);
             toSave.add(rule);

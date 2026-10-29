@@ -66,6 +66,7 @@ public class BackupService {
     private final ItemMergeAuditRepository itemMergeAuditRepo;
     private final ItemDuplicateDismissalRepository itemDuplicateDismissalRepo;
     private final InvoiceMigrationRecordRepository invoiceMigrationRecordRepo;
+    private final BusinessPartyLinkRepository linkRepo;
     private final BackupRecoveryCoordinator coordinator;
     private final ObjectMapper objectMapper;
 
@@ -113,11 +114,13 @@ public class BackupService {
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ItemMergeAuditRepository itemMergeAuditRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ItemDuplicateDismissalRepository itemDuplicateDismissalRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) InvoiceMigrationRecordRepository invoiceMigrationRecordRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) BusinessPartyLinkRepository linkRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ObjectMapper objectMapper,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) DataSource dataSource) {
         this.dataSource = dataSource;
         this.firmDetailsRepo = firmDetailsRepo;
+        this.linkRepo = linkRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.stockMovementRepo = stockMovementRepo;
@@ -245,6 +248,9 @@ public class BackupService {
         }
         if (forecastProductRepo != null) {
             backup.setForecastProducts(forecastProductRepo.findByFirmId(firmId));
+        }
+        if (linkRepo != null) {
+            backup.setBusinessPartyLinks(linkRepo.findByFirmId(firmId));
         }
 
         // Decision B1: Strict isolation - cross-firm migration history and source-firm snapshots are excluded from single-firm tenant exports
@@ -748,6 +754,7 @@ public class BackupService {
                         CategoryPricingRule cand = categoryPricingRuleRepo.findByFirmIdAndCategoryNameIgnoreCaseAndPricingProfileId(
                                 mappedFirmId, rule.getCategoryName().trim(), mappedProfileId).orElse(null);
                         if (cand != null) {
+                            cand.setOperator(rule.getOperator() != null ? rule.getOperator() : "+");
                             cand.setAdjustmentType(rule.getAdjustmentType() != null ? rule.getAdjustmentType() : "PERCENT");
                             cand.setAdjustmentValue(rule.getAdjustmentValue() != null ? rule.getAdjustmentValue() : java.math.BigDecimal.ZERO);
                             categoryPricingRuleRepo.save(cand);
@@ -756,6 +763,7 @@ public class BackupService {
                                     .firmId(mappedFirmId)
                                     .categoryName(rule.getCategoryName().trim())
                                     .pricingProfileId(mappedProfileId)
+                                    .operator(rule.getOperator() != null ? rule.getOperator() : "+")
                                     .adjustmentType(rule.getAdjustmentType() != null ? rule.getAdjustmentType() : "PERCENT")
                                     .adjustmentValue(rule.getAdjustmentValue() != null ? rule.getAdjustmentValue() : java.math.BigDecimal.ZERO)
                                     .build();
@@ -849,7 +857,7 @@ public class BackupService {
                             productToUse = cand;
                         }
                     }
-                    if (productToUse == null && (p.getSku() == null || p.getSku().trim().isEmpty()) && p.getName() != null && !p.getName().trim().isEmpty()) {
+                    if (productToUse == null && p.getName() != null && !p.getName().trim().isEmpty()) {
                         Product cand = productRepo.findFirstByFirmIdAndNameIgnoreCase(mappedFirmId, p.getName().trim()).orElse(null);
                         if (cand != null && isTargetEntityAvailable(claimedTargetEntitiesByType, "PRODUCT", cand.getId())) {
                             productToUse = cand;
@@ -859,7 +867,7 @@ public class BackupService {
                     if (productToUse != null) {
                         if (p.getPrice() != null && productToUse.getPrice() == null) productToUse.setPrice(p.getPrice());
                         if (p.getCostPrice() != null && productToUse.getCostPrice() == null) productToUse.setCostPrice(p.getCostPrice());
-                        if (p.getHsnCode() != null && productToUse.getHsnCode() == null) productToUse.setHsnCode(p.getHsnCode());
+                        if (p.getHsnCode() != null && (productToUse.getHsnCode() == null || productToUse.getHsnCode().trim().isEmpty())) productToUse.setHsnCode(p.getHsnCode());
                         if (p.getGstPercentage() != null && productToUse.getGstPercentage() == null) productToUse.setGstPercentage(p.getGstPercentage());
                         if (p.getInInventory() != null) productToUse.setInInventory(p.getInInventory());
                         if (p.getIsArchived() != null) productToUse.setIsArchived(p.getIsArchived());
@@ -1067,6 +1075,8 @@ public class BackupService {
                             for (InvoiceItem item : inv.getItems()) {
                                 InvoiceItem newItem = new InvoiceItem();
                                 newItem.setInvoice(newInv);
+                                newItem.setProductName(item.getProductName());
+                                newItem.setHsnCode(item.getHsnCode());
                                 newItem.setQty(item.getQty());
                                 newItem.setUnit(item.getUnit());
                                 newItem.setPricePerUnit(item.getPricePerUnit());
@@ -2671,6 +2681,32 @@ public class BackupService {
             }
         }
 
+        // Restore BusinessPartyLinks with remapped customer and party identities
+        if (backup.getBusinessPartyLinks() != null && linkRepo != null) {
+            for (BusinessPartyLink link : backup.getBusinessPartyLinks()) {
+                Long oldFid = link.getFirmId();
+                if (oldToNewFirmIdMap.containsKey(oldFid)) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Customer newCust = oldToNewCustomerMap.get(link.getCustomerId());
+                    Party newParty = oldToNewPartyMap.get(link.getPartyId());
+                    if (newCust != null && newParty != null) {
+                        if (!linkRepo.existsByFirmIdAndCustomerId(mappedFirmId, newCust.getId()) &&
+                            !linkRepo.existsByFirmIdAndPartyId(mappedFirmId, newParty.getId())) {
+                            BusinessPartyLink newLink = BusinessPartyLink.builder()
+                                    .firmId(mappedFirmId)
+                                    .customerId(newCust.getId())
+                                    .partyId(newParty.getId())
+                                    .linkedAt(link.getLinkedAt() != null ? link.getLinkedAt() : LocalDateTime.now())
+                                    .linkedBy(link.getLinkedBy())
+                                    .notes(link.getNotes())
+                                    .build();
+                            linkRepo.save(newLink);
+                        }
+                    }
+                }
+            }
+        }
+
         // Post-Restore Integrity Verification
         for (FirmDetails rf : restoredFirms) {
             if (rf.getId() != null) {
@@ -2738,6 +2774,9 @@ public class BackupService {
             partyPaymentRepo.deleteAllInBatch();
             purchaseOrderItemRepo.deleteAllInBatch();
             purchaseOrderRepo.deleteAllInBatch();
+            if (linkRepo != null) {
+                linkRepo.deleteAllInBatch();
+            }
             partyRepo.deleteAllInBatch();
 
             // Stage 5: Business Letters, HR/Employees, Operations

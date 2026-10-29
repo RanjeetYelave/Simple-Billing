@@ -43,6 +43,7 @@ public class BackupDTO {
     private List<SavedItem> savedItems;
     private List<ForecastProduct> forecastProducts;
     private List<InvoiceMigrationRecord> invoiceMigrationRecords;
+    private List<BusinessPartyLink> businessPartyLinks;
 
     public Long getSourceFirmId() {
         if (metadata != null && metadata.get("sourceFirmId") != null) {
@@ -335,5 +336,13 @@ public class BackupDTO {
 
     public void setInvoiceMigrationRecords(List<InvoiceMigrationRecord> invoiceMigrationRecords) {
         this.invoiceMigrationRecords = invoiceMigrationRecords;
+    }
+
+    public List<BusinessPartyLink> getBusinessPartyLinks() {
+        return businessPartyLinks;
+    }
+
+    public void setBusinessPartyLinks(List<BusinessPartyLink> businessPartyLinks) {
+        this.businessPartyLinks = businessPartyLinks;
     }
 }

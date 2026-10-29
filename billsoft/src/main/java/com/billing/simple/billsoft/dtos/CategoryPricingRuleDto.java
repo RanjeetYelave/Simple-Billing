@@ -16,6 +16,8 @@ public class CategoryPricingRuleDto {
     private Long pricingProfileId;
     private String pricingProfileCode;
     private String pricingProfileName;
+    @Builder.Default
+    private String operator = "+"; // +, -, *, / (defaults to +)
     private String adjustmentType; // PERCENT or FIXED
     private BigDecimal adjustmentValue; // e.g. 5.00 (+5%), -10.00 (-10%), 500.00 (+₹500), -250.00 (-₹250)
 }

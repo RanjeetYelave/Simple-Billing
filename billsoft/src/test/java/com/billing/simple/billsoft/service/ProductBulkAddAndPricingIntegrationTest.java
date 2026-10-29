@@ -308,25 +308,75 @@ public class ProductBulkAddAndPricingIntegrationTest {
                 FIRM_A
         );
 
-        // Rule 1: Electronics +20%
+        // Rule 1: Electronics +20% (Default operator +)
         categoryPricingRuleRepo.save(
                 CategoryPricingRule.builder()
                         .firmId(FIRM_A)
                         .pricingProfileId(vipProfile.getId())
                         .categoryName("Electronics")
+                        .operator("+")
                         .adjustmentType("PERCENT")
                         .adjustmentValue(new BigDecimal("20.00"))
                         .build()
         );
 
-        // Rule 2: Clearance -100.00 Fixed
+        // Rule 2: Clearance -100.00 Fixed (Legacy negative value with +)
         categoryPricingRuleRepo.save(
                 CategoryPricingRule.builder()
                         .firmId(FIRM_A)
                         .pricingProfileId(vipProfile.getId())
                         .categoryName("Clearance")
+                        .operator("+")
                         .adjustmentType("FIXED")
                         .adjustmentValue(new BigDecimal("-100.00"))
+                        .build()
+        );
+
+        // Rule 3: Furniture with explicit Subtraction (-) operator: 15% discount
+        categoryPricingRuleRepo.save(
+                CategoryPricingRule.builder()
+                        .firmId(FIRM_A)
+                        .pricingProfileId(vipProfile.getId())
+                        .categoryName("Furniture")
+                        .operator("-")
+                        .adjustmentType("PERCENT")
+                        .adjustmentValue(new BigDecimal("15.00"))
+                        .build()
+        );
+
+        // Rule 4: Machinery with Multiplication (*) operator: 1.5x fixed factor
+        categoryPricingRuleRepo.save(
+                CategoryPricingRule.builder()
+                        .firmId(FIRM_A)
+                        .pricingProfileId(vipProfile.getId())
+                        .categoryName("Machinery")
+                        .operator("*")
+                        .adjustmentType("FIXED")
+                        .adjustmentValue(new BigDecimal("1.50"))
+                        .build()
+        );
+
+        // Rule 5: WholesaleBulk with Division (/) operator: divide by 2.00
+        categoryPricingRuleRepo.save(
+                CategoryPricingRule.builder()
+                        .firmId(FIRM_A)
+                        .pricingProfileId(vipProfile.getId())
+                        .categoryName("WholesaleBulk")
+                        .operator("/")
+                        .adjustmentType("FIXED")
+                        .adjustmentValue(new BigDecimal("2.00"))
+                        .build()
+        );
+
+        // Rule 6: DivZeroCategory with Division (/) operator by 0 -> safe fallback to base price
+        categoryPricingRuleRepo.save(
+                CategoryPricingRule.builder()
+                        .firmId(FIRM_A)
+                        .pricingProfileId(vipProfile.getId())
+                        .categoryName("DivZeroCategory")
+                        .operator("/")
+                        .adjustmentType("FIXED")
+                        .adjustmentValue(BigDecimal.ZERO)
                         .build()
         );
 
@@ -342,18 +392,58 @@ public class ProductBulkAddAndPricingIntegrationTest {
         pCheap.setPrice(new BigDecimal("30.00"));
         pCheap.setFirmId(FIRM_A);
 
+        Product pFurn = new Product();
+        pFurn.setName("Ergonomic Chair");
+        pFurn.setCategory("Furniture");
+        pFurn.setPrice(new BigDecimal("2000.00"));
+        pFurn.setFirmId(FIRM_A);
+
+        Product pMach = new Product();
+        pMach.setName("Drill Press");
+        pMach.setCategory("Machinery");
+        pMach.setPrice(new BigDecimal("500.00"));
+        pMach.setFirmId(FIRM_A);
+
+        Product pBulk = new Product();
+        pBulk.setName("Steel Wire Spool");
+        pBulk.setCategory("WholesaleBulk");
+        pBulk.setPrice(new BigDecimal("800.00"));
+        pBulk.setFirmId(FIRM_A);
+
+        Product pZeroDiv = new Product();
+        pZeroDiv.setName("Safety Mask Box");
+        pZeroDiv.setCategory("DivZeroCategory");
+        pZeroDiv.setPrice(new BigDecimal("150.00"));
+        pZeroDiv.setFirmId(FIRM_A);
+
         Product pUncat = new Product();
         pUncat.setName("Uncategorized Box");
         pUncat.setPrice(new BigDecimal("50.00"));
         pUncat.setFirmId(FIRM_A);
 
-        // Electronics: 1000 + 20% = 1200.00
+        // Electronics (+ 20%): 1000 + 20% = 1200.00
         BigDecimal effElec = productPricingService.calculateEffectivePrice(pElec, vipProfile.getId(), FIRM_A);
         assertEquals(new BigDecimal("1200.00").stripTrailingZeros(), effElec.stripTrailingZeros());
 
-        // Cheap Cable: 30 - 100 = -70 -> Clamped to 0.00
+        // Cheap Cable (+ -100): 30 - 100 = -70 -> Clamped to 0.00
         BigDecimal effCheap = productPricingService.calculateEffectivePrice(pCheap, vipProfile.getId(), FIRM_A);
         assertEquals(new BigDecimal("0.00").stripTrailingZeros(), effCheap.stripTrailingZeros());
+
+        // Furniture (- 15%): 2000 - 15% = 1700.00
+        BigDecimal effFurn = productPricingService.calculateEffectivePrice(pFurn, vipProfile.getId(), FIRM_A);
+        assertEquals(new BigDecimal("1700.00").stripTrailingZeros(), effFurn.stripTrailingZeros());
+
+        // Machinery (* 1.50): 500 * 1.50 = 750.00
+        BigDecimal effMach = productPricingService.calculateEffectivePrice(pMach, vipProfile.getId(), FIRM_A);
+        assertEquals(new BigDecimal("750.00").stripTrailingZeros(), effMach.stripTrailingZeros());
+
+        // WholesaleBulk (/ 2.00): 800 / 2 = 400.00
+        BigDecimal effBulk = productPricingService.calculateEffectivePrice(pBulk, vipProfile.getId(), FIRM_A);
+        assertEquals(new BigDecimal("400.00").stripTrailingZeros(), effBulk.stripTrailingZeros());
+
+        // DivZeroCategory (/ 0.00): safe fallback to base price 150.00
+        BigDecimal effZeroDiv = productPricingService.calculateEffectivePrice(pZeroDiv, vipProfile.getId(), FIRM_A);
+        assertEquals(new BigDecimal("150.00").stripTrailingZeros(), effZeroDiv.stripTrailingZeros());
 
         // Uncategorized: falls back to base price 50.00
         BigDecimal effUncat = productPricingService.calculateEffectivePrice(pUncat, vipProfile.getId(), FIRM_A);

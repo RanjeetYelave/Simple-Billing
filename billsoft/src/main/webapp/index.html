@@ -28,7 +28,7 @@
   <script src="js/components/SnakeClassic.js?v=20261024_take_a_break_redesign_v1"></script>
   <script src="js/components/ProgressionExperience.js?v=20261002_v26_smooth_transition_fix"></script>
   <script src="js/components/TakeABreakHub.js?v=20261024_take_a_break_redesign_v1"></script>
-  <script src="js/components/ProductIntelligence.js?v=20261025_smart_reorder_v2"></script>
+  <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/featureLock.js"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
@@ -3113,7 +3113,7 @@
           (res.products || []).forEach(p => list.push({
             id: p.id,
             title: p.name || 'Product',
-            subtitle: `SKU: ${p.sku || 'N/A'} • Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
+            subtitle: `${p.hsnCode ? `HSN: ${p.hsnCode} • ` : (p.sku ? `SKU: ${p.sku} • ` : '')}Price: ${BillsoftUtils.formatCurrency(p.unitPrice || p.price || 0)} • Stock: ${p.stock || p.openingStock || 0} ${p.unit || 'pcs'}`,
             icon: '📦',
             raw: p,
             itemType: 'product',
@@ -12594,7 +12594,7 @@
         {
           label: 'Inventory Asset',
           value: BillsoftUtils.formatCurrency(data.totalInventoryCostValue != null ? data.totalInventoryCostValue : businessStats.totalInventoryValue),
-          sub: (data.lowStockCount != null ? data.lowStockCount : businessStats.lowStockCount) > 0 ? `⚠️ ${data.lowStockCount != null ? data.lowStockCount : businessStats.lowStockCount} low stock alerts` : `${data.totalProducts != null ? data.totalProducts : businessStats.totalProducts} active SKUs`,
+          sub: (data.lowStockCount != null ? data.lowStockCount : businessStats.lowStockCount) > 0 ? `⚠️ ${data.lowStockCount != null ? data.lowStockCount : businessStats.lowStockCount} low stock alerts` : `${data.totalProducts != null ? data.totalProducts : businessStats.totalProducts} active products`,
           cls: 'kpi-teal',
           icon: '🏷️'
         },
@@ -13978,6 +13978,7 @@
         const q = text.toLowerCase().trim();
         return (products || []).filter(p =>
           (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.hsnCode && p.hsnCode.toLowerCase().includes(q)) ||
           (p.sku && p.sku.toLowerCase().includes(q)) ||
           (p.category && p.category.toLowerCase().includes(q))
         );
@@ -14141,7 +14142,9 @@
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
                 React.createElement('div', { style: { fontWeight: 600 } },
                   p.name,
-                  p.sku ? React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6, fontWeight: 400 } }, `[${p.sku}]`) : null
+                  p.hsnCode
+                    ? React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6, fontWeight: 400 } }, `[HSN: ${p.hsnCode}]`)
+                    : (p.sku ? React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6, fontWeight: 400 } }, `[SKU: ${p.sku}]`) : null)
                 ),
                 React.createElement('span', {
                   className: 'badge',
@@ -14357,6 +14360,7 @@
       const [migrationHistory, setMigrationHistory] = useState([]);
       const [selectedCustomerCandidate, setSelectedCustomerCandidate] = useState(null);
       const [productSelections, setProductSelections] = useState({});
+      const [linkedSupplierChip, setLinkedSupplierChip] = useState(null);
 
       const isEstimate = isQuotationMode;
       const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', productName: '', hsnCode: '', qty: '1', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
@@ -15218,6 +15222,18 @@
       }, [loading, currentEditId, convertedFromQuotationId, cloneFromInvoiceId]);
 
       useEffect(() => {
+        if (!form.customerId) {
+          setLinkedSupplierChip(null);
+          return;
+        }
+        let isCurrent = true;
+        API.partyLinks.getByCustomer(form.customerId)
+          .then(res => { if (isCurrent) setLinkedSupplierChip(res); })
+          .catch(() => { if (isCurrent) setLinkedSupplierChip(null); });
+        return () => { isCurrent = false; };
+      }, [form.customerId]);
+
+      useEffect(() => {
         if (!showCompletionPopup) return;
         const handleModalKey = (e) => {
           if (e.key === 'Escape') {
@@ -15551,8 +15567,25 @@
                 onSelectExisting: handleCustomerAutofill,
                 onKeyDownNext: (e) => handleKeyDown(e, refPhone)
               }),
-              React.createElement('div', { style: { marginTop: 6, display: 'flex', alignItems: 'center', minHeight: 24, fontSize: '0.74rem', color: 'var(--text-secondary)' } },
-                form.customerId ? '✓ Linked customer profile' : (form.customerName ? 'Quick-entry customer' : 'Customer selection')
+              React.createElement('div', { style: { marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, minHeight: 24, fontSize: '0.74rem', color: 'var(--text-secondary)', flexWrap: 'wrap' } },
+                form.customerId ? React.createElement(React.Fragment, null,
+                  React.createElement('span', null, '✓ Linked customer profile'),
+                  linkedSupplierChip && React.createElement('span', {
+                    style: {
+                      background: 'rgba(79, 70, 229, 0.1)',
+                      color: '#4f46e5',
+                      border: '1px solid rgba(79, 70, 229, 0.25)',
+                      padding: '1px 6px',
+                      borderRadius: 10,
+                      fontWeight: 600,
+                      fontSize: '0.70rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    },
+                    title: `Also registered as Supplier: ${linkedSupplierChip.partyName}`
+                  }, `🤝 Supplier: ${linkedSupplierChip.partyName}`)
+                ) : (form.customerName ? 'Quick-entry customer' : 'Customer selection')
               )
             ),
 
@@ -15662,7 +15695,7 @@
             React.createElement('thead', null,
               React.createElement('tr', null,
                 React.createElement('th', { style: { width: 40, textAlign: 'center' } }, '#'),
-                React.createElement('th', null, 'ITEM DESCRIPTION & SKU'),
+                React.createElement('th', null, 'ITEM DESCRIPTION'),
                 React.createElement('th', { style: { width: 100 } }, 'HSN/SAC'),
                 React.createElement('th', { className: 'num', style: { width: 80 } }, 'QTY'),
                 React.createElement('th', { className: 'num', style: { width: 120 } }, 'UNIT RATE'),
@@ -16261,6 +16294,7 @@
 
       // Penalty & Tax Exclusion States
       const [excludeTax, setExcludeTax] = useState(false);
+      const [includeOriginalDiscounts, setIncludeOriginalDiscounts] = useState(true);
       const [penaltyType, setPenaltyType] = useState('NONE');
       const [penaltyMode, setPenaltyMode] = useState('FIXED'); // 'FIXED' | 'PERCENT'
       const [penaltyValue, setPenaltyValue] = useState('');
@@ -16299,6 +16333,17 @@
             const parsedGst = parseFloat(rawGst) || 0;
             const parsedPrice = parseFloat(it.pricePerUnit) || (it.taxableAmount && it.qty ? parseFloat(it.taxableAmount) / it.qty : 0) || 0;
 
+            const origAmountWithoutTax = (it.amountWithoutTax !== undefined && it.amountWithoutTax !== null)
+              ? parseFloat(it.amountWithoutTax)
+              : (parsedPrice * (it.qty || 0));
+            const origDiscountValue = (it.discountValue !== undefined && it.discountValue !== null)
+              ? parseFloat(it.discountValue)
+              : 0;
+            const origTaxable = (it.taxableAmount !== undefined && it.taxableAmount !== null)
+              ? parseFloat(it.taxableAmount)
+              : Math.max(0, origAmountWithoutTax - origDiscountValue);
+            const origInvoiceDiscountShare = Math.max(0, (origAmountWithoutTax - origDiscountValue) - origTaxable);
+
             return {
               invoiceItemId: it.id,
               productId: it.product ? it.product.id : (it.productId || null),
@@ -16309,7 +16354,11 @@
               maxReturnableQty: maxQty,
               returnQty: 0,
               unitPrice: parsedPrice,
-              gstPercent: parsedGst
+              gstPercent: parsedGst,
+              amountWithoutTax: origAmountWithoutTax,
+              discountValue: origDiscountValue,
+              taxableAmount: origTaxable,
+              invoiceDiscountShare: origInvoiceDiscountShare
             };
           });
           setItems(returnableItems);
@@ -16377,18 +16426,34 @@
       };
 
       const totals = useMemo(() => {
-        let taxable = 0, gst = 0, count = 0, totalExcludedGst = 0;
+        let gross = 0, prodDisc = 0, invDisc = 0, taxable = 0, gst = 0, count = 0, totalExcludedGst = 0;
         items.forEach(it => {
           const qty = parseInt(it.returnQty, 10) || 0;
           if (qty > 0) {
             count += qty;
-            const sub = qty * (parseFloat(it.unitPrice) || 0);
-            taxable += sub;
-            const itemGstAmt = sub * (parseFloat(it.gstPercent) || 0) / 100;
+            const itemGross = qty * (parseFloat(it.unitPrice) || 0);
+            gross += itemGross;
+
+            let itemProdDisc = 0;
+            let itemInvDisc = 0;
+            let itemSub = itemGross;
+
+            if (includeOriginalDiscounts && it.originalQty > 0) {
+              itemProdDisc = (it.discountValue || 0) * (qty / it.originalQty);
+              itemInvDisc = (it.invoiceDiscountShare || 0) * (qty / it.originalQty);
+              itemSub = Math.max(0, itemGross - itemProdDisc - itemInvDisc);
+            }
+
+            prodDisc += itemProdDisc;
+            invDisc += itemInvDisc;
+            taxable += itemSub;
+
+            const effectiveGstPct = excludeTax ? 0 : (parseFloat(it.gstPercent) || 0);
+            const itemGstAmt = itemSub * effectiveGstPct / 100;
             if (!excludeTax) {
               gst += itemGstAmt;
             } else {
-              totalExcludedGst += itemGstAmt;
+              totalExcludedGst += (itemSub * (parseFloat(it.gstPercent) || 0) / 100);
             }
           }
         });
@@ -16410,6 +16475,9 @@
         const netRefund = Math.max(0, grossRefund - pAmt);
 
         return {
+          gross,
+          productDiscount: prodDisc,
+          invoiceDiscount: invDisc,
           taxable,
           gst,
           totalExcludedGst,
@@ -16419,7 +16487,7 @@
           totalRefund: netRefund,
           totalItemsCount: count
         };
-      }, [items, excludeTax, penaltyType, penaltyMode, penaltyValue, penaltyCustomReason]);
+      }, [items, includeOriginalDiscounts, excludeTax, penaltyType, penaltyMode, penaltyValue, penaltyCustomReason]);
 
       const handleSubmit = async (andPrint = false) => {
         const activeItems = items.filter(it => (parseInt(it.returnQty, 10) || 0) > 0);
@@ -16436,6 +16504,7 @@
             refundMode,
             notes,
             excludeTax,
+            includeOriginalDiscounts: !!includeOriginalDiscounts,
             penaltyAmount: totals.penaltyAmount > 0 ? parseFloat(totals.penaltyAmount.toFixed(2)) : 0,
             penaltyReason: totals.penaltyAmount > 0 ? totals.penaltyReason : null,
             items: activeItems.map(it => ({
@@ -16697,6 +16766,43 @@
                     )
                   )
                 ),
+                // Discount Deduction Option
+                React.createElement('div', {
+                  style: {
+                    background: includeOriginalDiscounts ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-card)',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: includeOriginalDiscounts ? '1px solid var(--primary)' : '1px solid var(--border)',
+                    transition: 'all 0.2s ease'
+                  }
+                },
+                  React.createElement('label', {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      margin: 0
+                    }
+                  },
+                    React.createElement('input', {
+                      type: 'checkbox',
+                      checked: includeOriginalDiscounts,
+                      onChange: e => setIncludeOriginalDiscounts(e.target.checked),
+                      style: { width: 18, height: 18, marginTop: 2, cursor: 'pointer', accentColor: 'var(--primary)' }
+                    }),
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.85rem', color: includeOriginalDiscounts ? 'var(--primary)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 } },
+                        '🏷️ Include original discounts in return calculation',
+                        includeOriginalDiscounts && React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.68rem', padding: '1px 5px' } }, 'Active')
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        'Deduct attributable product-level and invoice-level discounts from the return value, preserving original invoice pricing.'
+                      )
+                    )
+                  )
+                ),
 
                 // Penalty / Deduction Controls
                 React.createElement('div', {
@@ -16831,10 +16937,22 @@
                   React.createElement('tbody', null,
                     items.map((it, idx) => {
                       const qty = parseInt(it.returnQty, 10) || 0;
-                      const itemTaxable = qty * (parseFloat(it.unitPrice) || 0);
+                      const itemGross = qty * (parseFloat(it.unitPrice) || 0);
+
+                      let itemProdDisc = 0;
+                      let itemInvDisc = 0;
+                      let itemTaxable = itemGross;
+
+                      if (includeOriginalDiscounts && it.originalQty > 0) {
+                        itemProdDisc = (it.discountValue || 0) * (qty / it.originalQty);
+                        itemInvDisc = (it.invoiceDiscountShare || 0) * (qty / it.originalQty);
+                        itemTaxable = Math.max(0, itemGross - itemProdDisc - itemInvDisc);
+                      }
+
                       const effectiveGstPct = excludeTax ? 0 : (parseFloat(it.gstPercent) || 0);
                       const itemGst = itemTaxable * effectiveGstPct / 100;
                       const itemTotalRefund = itemTaxable + itemGst;
+                      const itemTotalDiscount = itemProdDisc + itemInvDisc;
                       const isSelected = qty > 0;
                       const originalItemGstPct = parseFloat(it.gstPercent) || 0;
 
@@ -16937,7 +17055,10 @@
                           }) : (excludeTax ? React.createElement('span', { style: { color: 'var(--danger)', fontWeight: 600, fontSize: '0.75rem' }, title: `Original GST was ${originalItemGstPct}%` }, `0% (${originalItemGstPct}%)`) : `${it.gstPercent}%`)
                         ),
                         React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: isSelected ? 'var(--danger)' : 'inherit', padding: '8px 12px' } },
-                          BillsoftUtils.formatCurrency(itemTotalRefund)
+                          BillsoftUtils.formatCurrency(itemTotalRefund),
+                          includeOriginalDiscounts && itemTotalDiscount > 0 && isSelected && React.createElement('div', {
+                            style: { fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500 }
+                          }, `(-₹${itemTotalDiscount.toFixed(2)} disc)`)
                         ),
                         React.createElement('td', { style: { textAlign: 'center', padding: '8px 4px' } },
                           it.isCustom ? React.createElement('button', {
@@ -17604,8 +17725,25 @@
 
           // Summary calculation
           React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 10 } },
-            React.createElement('div', { style: { minWidth: 260, padding: 14, background: 'var(--bg-secondary)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' } },
+            React.createElement('div', { style: { minWidth: 280, padding: 14, background: 'var(--bg-secondary)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 } },
+              returnData.includeDiscounts && (returnData.grossAmount > 0 || returnData.productDiscountAmount > 0 || returnData.invoiceDiscountAmount > 0) ? React.createElement(React.Fragment, null,
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Gross Returned Value:'),
+                  React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(returnData.grossAmount || returnData.subtotal || 0))
+                ),
+                (returnData.productDiscountAmount > 0) && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--danger)' } },
+                  React.createElement('span', null, 'Less Product Discount:'),
+                  React.createElement('span', { style: { fontWeight: 600 } }, `- ${BillsoftUtils.formatCurrency(returnData.productDiscountAmount)}`)
+                ),
+                (returnData.invoiceDiscountAmount > 0) && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--danger)' } },
+                  React.createElement('span', null, 'Less Invoice Discount:'),
+                  React.createElement('span', { style: { fontWeight: 600 } }, `- ${BillsoftUtils.formatCurrency(returnData.invoiceDiscountAmount)}`)
+                ),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: '1px dashed var(--border)', paddingTop: 4 } },
+                  React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Net Taxable Value:'),
+                  React.createElement('span', { style: { fontWeight: 700 } }, BillsoftUtils.formatCurrency(returnData.subtotal || 0))
+                )
+              ) : React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' } },
                 React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Taxable Subtotal:'),
                 React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(returnData.subtotal || 0))
               ),
@@ -17613,8 +17751,12 @@
                 React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Tax (GST):'),
                 React.createElement('span', { style: { fontWeight: 600 } }, BillsoftUtils.formatCurrency(returnData.taxAmount || 0))
               ),
+              (returnData.penaltyAmount > 0) && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--danger)' } },
+                React.createElement('span', null, `Less Deduction (${returnData.penaltyReason || 'Penalty'}):`),
+                React.createElement('span', { style: { fontWeight: 600 } }, `- ${BillsoftUtils.formatCurrency(returnData.penaltyAmount)}`)
+              ),
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 4 } },
-                React.createElement('span', { style: { fontWeight: 700, fontSize: '1rem', color: 'var(--danger)' } }, 'Total Refund:'),
+                React.createElement('span', { style: { fontWeight: 700, fontSize: '1rem', color: 'var(--danger)' } }, 'Total Refund / Credit:'),
                 React.createElement('span', { style: { fontWeight: 800, fontSize: '1.1rem', color: 'var(--danger)' } }, BillsoftUtils.formatCurrency(returnData.totalRefundAmount || 0))
               )
             )
@@ -20033,9 +20175,9 @@
 
           // KPI Summary Ribbon (Refined High-Density Warm-Neutral Ribbon)
           summary && React.createElement('div', { className: 'firm-kpi-ribbon' },
-            // Capsule 1: Total SKUs
+            // Capsule 1: Total Products
             React.createElement('div', { className: 'firm-kpi-ribbon-item' },
-              React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Total SKUs:'),
+              React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Total Products:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { fontVariantNumeric: 'tabular-nums', fontWeight: 700 } }, summary.totalProducts || 0),
               React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
                 `(${summary.totalStockUnits != null ? summary.totalStockUnits : 0} units)`
@@ -20104,7 +20246,7 @@
                 React.createElement('input', {
                   className: 'input w-full',
                   style: { paddingLeft: 32 },
-                  placeholder: 'Search name, SKU, barcode, HSN...',
+                  placeholder: 'Search name, HSN/SAC, barcode...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 }),
@@ -20170,17 +20312,18 @@
             React.createElement('div', { className: 'table-container' },
               React.createElement('table', { style: { width: '100%', margin: 0 } },
                 React.createElement('thead', null, React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '26%' } }, 'Product / SKU'),
+                  React.createElement('th', { style: { width: '22%' } }, 'Product Name'),
+                  React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
                   React.createElement('th', { style: { width: '12%' } }, 'Category'),
                   React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, 'Cost Price'),
-                  React.createElement('th', { style: { width: '13%', textAlign: 'right' } }, 'Selling Price'),
-                  React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Margin %'),
-                  React.createElement('th', { style: { width: '16%', textAlign: 'center' } }, 'Stock on Hand'),
-                  React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Actions')
+                  React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Selling Price'),
+                  React.createElement('th', { style: { width: '9%', textAlign: 'center' } }, 'Margin %'),
+                  React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Stock on Hand'),
+                  React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredProducts.length === 0 ? React.createElement('tr', null,
-                    React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' } },
+                    React.createElement('td', { colSpan: 8, style: { textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' } },
                       React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
                       React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' } }, 'No products match your criteria'),
                       React.createElement('div', { style: { fontSize: '0.85rem', marginTop: 4 } }, 'Try resetting filters or click "+ Add Product" to create one.')
@@ -20209,22 +20352,23 @@
                       }
 
                       return React.createElement('tr', { key: p.id },
-                        // Column 1: Product & SKU
+                        // Column 1: Product Name & Barcode
                         React.createElement('td', null,
                           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                             React.createElement('span', { style: { fontSize: '1.1rem' } }, isService ? '🛠️' : '📦'),
                             React.createElement('div', null,
                               React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, p.name),
-                              React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center', marginTop: 2, fontSize: '0.75rem', color: 'var(--text-secondary)' } },
-                                p.sku && React.createElement('span', { className: 'badge', style: { fontSize: '0.7rem', padding: '1px 5px', background: 'var(--bg-secondary)' } }, `SKU: ${p.sku}`),
-                                p.barcode && React.createElement('span', null, `🏷️ ${p.barcode}`),
-                                p.hsnCode && React.createElement('span', null, `HSN: ${p.hsnCode}`)
-                              )
+                              p.barcode && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } }, `🏷️ ${p.barcode}`)
                             )
                           )
                         ),
 
-                        // Column 2: Category
+                        // Column 2: HSN/SAC
+                        React.createElement('td', null,
+                          p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                        ),
+
+                        // Column 3: Category
                         React.createElement('td', null,
                           p.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem', padding: '2px 8px' } }, p.category) : '—'
                         ),
@@ -20451,16 +20595,16 @@
                   )
                 ),
 
-                // Section 2: SKU, Barcode, Category
+                // Section 2: HSN/SAC, Barcode, Category
                 React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
                   React.createElement('div', null,
-                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'SKU / Item Code'),
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'HSN / SAC Code'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.sku,
-                      onChange: e => setForm(f => ({ ...f, sku: e.target.value })),
+                      value: form.hsnCode,
+                      onChange: e => setForm(f => ({ ...f, hsnCode: e.target.value })),
                       onFocus: e => { if (e.target && e.target.select) e.target.select(); },
-                      placeholder: 'e.g. SKU-MON-27'
+                      placeholder: 'e.g. 8471, 9983'
                     })
                   ),
                   React.createElement('div', null,
@@ -20540,13 +20684,13 @@
                     })
                   ),
                   React.createElement('div', null,
-                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'HSN / SAC Code'),
+                    React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'SKU (Legacy Reference)'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.hsnCode,
-                      onChange: e => setForm(f => ({ ...f, hsnCode: e.target.value })),
+                      value: form.sku,
+                      onChange: e => setForm(f => ({ ...f, sku: e.target.value })),
                       onFocus: e => { if (e.target && e.target.select) e.target.select(); },
-                      placeholder: 'e.g. 8471, 9983'
+                      placeholder: 'e.g. SKU-MON-27'
                     })
                   )
                 ),
@@ -21103,19 +21247,625 @@
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     };
 
+    // ─── COUNTERPARTY LINK MODAL (EXPLICIT 1:1 CUSTOMER <-> SUPPLIER LINK) ───
+    function PartyLinkModal({ customer, party, sourceType, sourceEntity, onClose, onLinked, onSuccess }) {
+      const activeCustomer = customer || (sourceType === 'CUSTOMER' ? sourceEntity : null);
+      const activeParty = party || (sourceType === 'PARTY' ? sourceEntity : null);
+      const isCustomerContext = !!activeCustomer;
+      const [step, setStep] = useState('SEARCH'); // 'SEARCH' | 'CONFIRM'
+      const [query, setQuery] = useState('');
+      const [candidates, setCandidates] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [selectedCandidate, setSelectedCandidate] = useState(null);
+      const [notes, setNotes] = useState('');
+      const [submitting, setSubmitting] = useState(false);
+
+      const targetType = isCustomerContext ? 'PARTY' : 'CUSTOMER';
+
+      const searchCandidates = useCallback(async (q) => {
+        setLoading(true);
+        try {
+          const list = await API.partyLinks.candidates(targetType, q);
+          setCandidates(Array.isArray(list) ? list : []);
+        } catch (err) {
+          showToast('Failed to load eligible candidates: ' + (err.message || 'Error'), 'error');
+        } finally {
+          setLoading(false);
+        }
+      }, [targetType]);
+
+      useEffect(() => {
+        searchCandidates('');
+      }, [searchCandidates]);
+
+      const handleConfirm = async () => {
+        if (!selectedCandidate) return;
+        const customerId = isCustomerContext ? activeCustomer?.id : selectedCandidate?.id;
+        const partyId = isCustomerContext ? selectedCandidate?.id : activeParty?.id;
+        if (!customerId || !partyId) {
+          showToast('Invalid customer or supplier selection', 'error');
+          return;
+        }
+        setSubmitting(true);
+        try {
+          const res = await API.partyLinks.link({
+            customerId,
+            partyId,
+            notes: notes ? notes.trim() : null
+          });
+          showToast('Successfully linked Customer and Supplier!', 'success');
+          if (onLinked) onLinked(res);
+          if (onSuccess) onSuccess(res);
+          onClose();
+        } catch (err) {
+          showToast(err.message || 'Failed to establish link', 'error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      const title = isCustomerContext
+        ? `🔗 Link Supplier to "${activeCustomer?.name || 'Customer'}"`
+        : `🔗 Link Customer to "${activeParty?.name || 'Supplier'}"`;
+
+      return React.createElement('div', {
+        className: 'modal-overlay',
+        style: { zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
+      },
+        React.createElement('div', {
+          className: 'modal-card',
+          style: { width: 720, maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-card, #ffffff)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }
+        },
+          // Header
+          React.createElement('div', {
+            style: { padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)' }
+          },
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text)' } }, title),
+              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                isCustomerContext
+                  ? 'Select an existing supplier record to link with this customer as the same business.'
+                  : 'Select an existing customer record to link with this supplier as the same business.'
+              )
+            ),
+            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: onClose }, '✕')
+          ),
+
+          // Content
+          React.createElement('div', { style: { padding: 20, overflowY: 'auto', flex: 1 } },
+            step === 'SEARCH' ? (
+              React.createElement('div', null,
+                // Search Input
+                React.createElement('div', { style: { marginBottom: 16 } },
+                  React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' } },
+                    `Search eligible unlinked ${isCustomerContext ? 'Suppliers' : 'Customers'}`
+                  ),
+                  React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                    React.createElement('input', {
+                      type: 'text',
+                      className: 'form-control',
+                      style: { flex: 1 },
+                      placeholder: 'Search by Name, Phone, or GSTIN...',
+                      value: query,
+                      onChange: (e) => {
+                        setQuery(e.target.value);
+                        searchCandidates(e.target.value);
+                      }
+                    }),
+                    React.createElement('button', {
+                      className: 'btn btn-outline btn-sm',
+                      onClick: () => searchCandidates(query)
+                    }, '🔍 Search')
+                  )
+                ),
+
+                // Notice
+                React.createElement('div', {
+                  style: { background: 'rgba(79, 70, 229, 0.08)', border: '1px solid rgba(79, 70, 229, 0.2)', padding: '10px 14px', borderRadius: 8, fontSize: '0.78rem', color: 'var(--text)', marginBottom: 14 }
+                },
+                  'ℹ️ Linking pairs the accounts explicitly so you can view combined statements and counterparty badges. Records are NOT merged or deleted.'
+                ),
+
+                // Candidates List
+                loading ? React.createElement(RupeeCRMLoader, { message: 'Searching records...', size: 40, style: { padding: 30 } }) :
+                  candidates.length === 0 ? React.createElement('div', {
+                    style: { textAlign: 'center', padding: '30px 10px', color: 'var(--text-secondary)', fontSize: '0.88rem' }
+                  },
+                    query ? 'No matching unlinked records found. Verify the name or create the counterpart first.' : 'No eligible unlinked counterpart records available in this firm.'
+                  ) :
+                  React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' } },
+                    candidates.map(c => React.createElement('div', {
+                      key: c.id,
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg-card)'
+                      }
+                    },
+                      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          React.createElement('strong', { style: { fontSize: '0.92rem', color: 'var(--text)' } }, c.name),
+                          React.createElement('span', { style: { fontSize: '0.72rem', background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 10, color: 'var(--text-secondary)' } }, `#${c.id}`)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' } },
+                          c.phone && React.createElement('span', null, `📞 ${c.phone}`),
+                          c.gstin && React.createElement('span', null, `🏢 ${c.gstin}`),
+                          c.city && React.createElement('span', null, `📍 ${c.city}${c.state ? ', ' + c.state : ''}`)
+                        )
+                      ),
+                      React.createElement('div', { style: { textAlign: 'right', marginLeft: 16 } },
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, isCustomerContext ? 'Payable Balance' : 'Receivable Balance'),
+                        React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem', color: (c.balance || 0) > 0 ? (isCustomerContext ? '#dc2626' : '#059669') : 'var(--text)' } },
+                          BillsoftUtils.formatCurrency(c.balance || 0)
+                        ),
+                        React.createElement('button', {
+                          className: 'btn btn-primary btn-xs',
+                          style: { marginTop: 4 },
+                          onClick: () => {
+                            setSelectedCandidate(c);
+                            setStep('CONFIRM');
+                          }
+                        }, 'Select →')
+                      )
+                    ))
+                  )
+              )
+            ) : (
+              // Step 2: Confirmation Screen
+              React.createElement('div', null,
+                React.createElement('div', { style: { textAlign: 'center', marginBottom: 18 } },
+                  React.createElement('div', { style: { fontSize: '1rem', fontWeight: 700, color: 'var(--text)' } }, 'Review & Confirm Counterparty Link'),
+                  React.createElement('div', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                    'Please confirm that both profiles represent the same real-world business entity.'
+                  )
+                ),
+
+                // Comparison Cards
+                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 } },
+                  // Customer Card (Left)
+                  React.createElement('div', {
+                    style: { border: '2px solid rgba(79, 70, 229, 0.3)', borderRadius: 10, padding: 14, background: 'rgba(79, 70, 229, 0.03)' }
+                  },
+                    React.createElement('div', { style: { fontSize: '0.72rem', fontWeight: 700, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: 0.5 } }, '🛒 Customer Profile'),
+                    React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, isCustomerContext ? activeCustomer?.name : selectedCandidate?.name),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Record ID: #${isCustomerContext ? activeCustomer?.id : selectedCandidate?.id}`),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Phone: ${(isCustomerContext ? activeCustomer?.phone : selectedCandidate?.phone) || 'N/A'}`),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } }, `GSTIN: ${(isCustomerContext ? (activeCustomer?.gstin || activeCustomer?.gstNumber) : selectedCandidate?.gstin) || 'N/A'}`),
+                    React.createElement('div', { style: { borderTop: '1px solid rgba(79, 70, 229, 0.15)', marginTop: 10, paddingTop: 6, fontSize: '0.80rem' } },
+                      React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Current Receivable: '),
+                      React.createElement('strong', { style: { color: '#059669' } },
+                        BillsoftUtils.formatCurrency(isCustomerContext ? (activeCustomer?.netBalance || activeCustomer?.outstandingBalance || activeCustomer?.closingBalance || 0) : (selectedCandidate?.balance || 0))
+                      )
+                    )
+                  ),
+
+                  // Supplier Card (Right)
+                  React.createElement('div', {
+                    style: { border: '2px solid rgba(5, 150, 105, 0.3)', borderRadius: 10, padding: 14, background: 'rgba(5, 150, 105, 0.03)' }
+                  },
+                    React.createElement('div', { style: { fontSize: '0.72rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: 0.5 } }, '📦 Supplier / Vendor Profile'),
+                    React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, marginTop: 4, color: 'var(--text)' } }, isCustomerContext ? selectedCandidate?.name : activeParty?.name),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 } }, `Record ID: #${isCustomerContext ? selectedCandidate?.id : activeParty?.id}`),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Phone: ${(isCustomerContext ? selectedCandidate?.phone : activeParty?.phone) || 'N/A'}`),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } }, `GSTIN: ${(isCustomerContext ? selectedCandidate?.gstin : activeParty?.gstin) || 'N/A'}`),
+                    React.createElement('div', { style: { borderTop: '1px solid rgba(5, 150, 105, 0.15)', marginTop: 10, paddingTop: 6, fontSize: '0.80rem' } },
+                      React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Current Payable: '),
+                      React.createElement('strong', { style: { color: '#dc2626' } },
+                        BillsoftUtils.formatCurrency(isCustomerContext ? (selectedCandidate?.balance || 0) : (activeParty?.currentBalance || activeParty?.netBalance || activeParty?.openingBalance || 0))
+                      )
+                    )
+                  )
+                ),
+
+                // Optional Notes
+                React.createElement('div', { style: { marginBottom: 16 } },
+                  React.createElement('label', { style: { display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 4, color: 'var(--text-secondary)' } }, 'Optional Link Notes / Context'),
+                  React.createElement('input', {
+                    type: 'text',
+                    className: 'form-control',
+                    placeholder: 'e.g., Same owner, handles both raw material supply and product purchases',
+                    value: notes,
+                    onChange: (e) => setNotes(e.target.value)
+                  })
+                ),
+
+                // Invariant Safety Callout
+                React.createElement('div', {
+                  style: { background: 'var(--bg-hover)', borderLeft: '4px solid #059669', padding: '10px 14px', borderRadius: 4, fontSize: '0.76rem', color: 'var(--text-secondary)' }
+                },
+                  '🔒 Safety Guarantee: Existing invoices, purchase orders, customer payments, and vendor vouchers will NOT be modified, merged, or deleted. You can safely unlink at any time.'
+                )
+              )
+            )
+          ),
+
+          // Footer
+          React.createElement('div', {
+            style: { padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)' }
+          },
+            step === 'CONFIRM' ? React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              onClick: () => setStep('SEARCH'),
+              disabled: submitting
+            }, '← Back to Search') : React.createElement('div', null),
+
+            React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: onClose,
+                disabled: submitting
+              }, 'Cancel'),
+              step === 'CONFIRM' && React.createElement('button', {
+                className: 'btn btn-primary btn-sm',
+                style: { background: '#059669', borderColor: '#059669', color: '#fff', fontWeight: 700 },
+                onClick: handleConfirm,
+                disabled: submitting
+              }, submitting ? 'Linking...' : '✓ Confirm & Establish Link')
+            )
+          )
+        )
+      );
+    }
+
+    // ─── UNIFIED COUNTERPARTY STATEMENT MODAL (READ-ONLY) ───
+    function UnifiedCounterpartyStatementModal({ customerId, partyId, customerName, partyName, linkInfo, linkId, onClose }) {
+      const activeCustId = customerId || linkInfo?.customerId;
+      const activePartyId = partyId || linkInfo?.partyId;
+      const activeCustName = customerName || linkInfo?.customerName;
+      const activePartyName = partyName || linkInfo?.partyName;
+
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [viewTab, setViewTab] = useState('TIMELINE'); // 'TIMELINE' | 'RECEIVABLES' | 'PAYABLES'
+      const [dateFrom, setDateFrom] = useState('');
+      const [dateTo, setDateTo] = useState('');
+
+      const load = useCallback(async () => {
+        if (!activeCustId || !activePartyId) return;
+        setLoading(true);
+        try {
+          const res = await API.partyLinks.unifiedStatement(activeCustId, activePartyId, dateFrom || undefined, dateTo || undefined);
+          setData(res);
+        } catch (err) {
+          showToast('Failed to load Unified Statement: ' + (err.message || 'Error'), 'error');
+        } finally {
+          setLoading(false);
+        }
+      }, [activeCustId, activePartyId, dateFrom, dateTo]);
+
+      useEffect(() => {
+        load();
+      }, [load]);
+
+      return React.createElement('div', {
+        className: 'modal-overlay',
+        style: { zIndex: 10002, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
+      },
+        React.createElement('div', {
+          className: 'modal-card',
+          style: { width: 950, maxWidth: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-card, #ffffff)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }
+        },
+          // Header
+          React.createElement('div', {
+            style: { padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)' }
+          },
+            React.createElement('div', null,
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' } }, '📜 Unified Counterparty Statement'),
+                React.createElement('span', {
+                  style: { background: 'linear-gradient(135deg, #4f46e5, #059669)', color: '#fff', fontSize: '0.70rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12 }
+                }, 'Customer + Supplier')
+              ),
+              React.createElement('div', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)', marginTop: 3 } },
+                `Combined Dual-Ledger: ${data?.customerName || activeCustName || ('Customer #' + activeCustId)} (Customer #${activeCustId}) ↔ ${data?.partyName || activePartyName || ('Supplier #' + activePartyId)} (Supplier #${activePartyId})`
+              )
+            ),
+            React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: onClose }, '✕')
+          ),
+
+          // Date Filter Bar & Disclaimer
+          React.createElement('div', { style: { padding: '10px 20px', background: 'rgba(245, 158, 11, 0.08)', borderBottom: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+            React.createElement('div', { style: { fontSize: '0.76rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: 6 } },
+              '⚠️ ',
+              React.createElement('span', { style: { fontWeight: 600 } }, data?.disclaimer || 'READ-ONLY COMBINED COUNTERPARTY VIEW (NOT A LEGAL SETTLEMENT OR ACCOUNTING VOUCHER)')
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('span', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, 'From:'),
+              React.createElement('input', {
+                type: 'date',
+                className: 'form-control form-control-sm',
+                style: { width: 130, height: 28, fontSize: '0.76rem' },
+                value: dateFrom,
+                onChange: (e) => setDateFrom(e.target.value)
+              }),
+              React.createElement('span', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, 'To:'),
+              React.createElement('input', {
+                type: 'date',
+                className: 'form-control form-control-sm',
+                style: { width: 130, height: 28, fontSize: '0.76rem' },
+                value: dateTo,
+                onChange: (e) => setDateTo(e.target.value)
+              }),
+              React.createElement('button', {
+                className: 'btn btn-outline btn-xs',
+                style: { height: 28 },
+                onClick: load
+              }, 'Filter')
+            )
+          ),
+
+          // Body
+          React.createElement('div', { style: { padding: 20, overflowY: 'auto', flex: 1 } },
+            loading ? React.createElement(RupeeCRMLoader, { message: 'Loading Unified Ledger...', size: 50, style: { padding: 40 } }) :
+            !data ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } }, 'No statement data available.') :
+            React.createElement('div', null,
+              // Summary KPI Grid
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 18 } },
+                // Card 1: Receivables
+                React.createElement('div', {
+                  style: { padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-card)', borderLeft: '4px solid #4f46e5' }
+                },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🛒 Customer Receivables (They owe us)'),
+                  React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, color: '#4f46e5', marginTop: 4 } },
+                    BillsoftUtils.formatCurrency(data.totalReceivables || 0)
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                    `Billed: ${BillsoftUtils.formatCurrency(data.customerStatement?.totalBilled || 0)} | Paid: ${BillsoftUtils.formatCurrency(data.customerStatement?.totalPaid || 0)}`
+                  )
+                ),
+
+                // Card 2: Payables
+                React.createElement('div', {
+                  style: { padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-card)', borderLeft: '4px solid #dc2626' }
+                },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '📦 Supplier Payables (We owe them)'),
+                  React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', marginTop: 4 } },
+                    BillsoftUtils.formatCurrency(data.totalPayables || 0)
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                    `Purchases: ${BillsoftUtils.formatCurrency(data.supplierStatement?.totalPurchases || 0)} | Paid: ${BillsoftUtils.formatCurrency(data.supplierStatement?.totalPaid || 0)}`
+                  )
+                ),
+
+                // Card 3: Net Counterparty Position
+                React.createElement('div', {
+                  style: {
+                    padding: '12px 16px',
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    background: (data.netPosition || 0) > 0 ? 'rgba(5, 150, 105, 0.05)' : (data.netPosition || 0) < 0 ? 'rgba(220, 38, 38, 0.05)' : 'var(--bg-card)',
+                    borderLeft: `4px solid ${(data.netPosition || 0) > 0 ? '#059669' : (data.netPosition || 0) < 0 ? '#d97706' : '#6b7280'}`
+                  }
+                },
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⚖️ Net Position (Receivables - Payables)'),
+                  React.createElement('div', {
+                    style: { fontSize: '1.25rem', fontWeight: 800, marginTop: 4, color: (data.netPosition || 0) > 0 ? '#059669' : (data.netPosition || 0) < 0 ? '#d97706' : '#6b7280' }
+                  },
+                    (data.netPosition || 0) > 0 ? `+${BillsoftUtils.formatCurrency(data.netPosition)}` :
+                    (data.netPosition || 0) < 0 ? `-${BillsoftUtils.formatCurrency(Math.abs(data.netPosition))}` :
+                    '₹ 0.00 (Balanced)'
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.72rem', fontWeight: 700, color: (data.netPosition || 0) > 0 ? '#059669' : (data.netPosition || 0) < 0 ? '#d97706' : '#6b7280', marginTop: 2 } },
+                    (data.netPosition || 0) > 0 ? '✓ Net Receivable (Business owes us)' :
+                    (data.netPosition || 0) < 0 ? '⚠️ Net Payable (We owe business)' :
+                    '✓ Mutually Balanced'
+                  )
+                )
+              ),
+
+              // View Tab Buttons
+              React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--border)', paddingBottom: 10 } },
+                React.createElement('button', {
+                  className: `btn btn-sm ${viewTab === 'TIMELINE' ? 'btn-primary' : 'btn-ghost'}`,
+                  onClick: () => setViewTab('TIMELINE')
+                }, `📅 Combined Timeline (${data.entries?.length || 0})`),
+                React.createElement('button', {
+                  className: `btn btn-sm ${viewTab === 'RECEIVABLES' ? 'btn-primary' : 'btn-ghost'}`,
+                  onClick: () => setViewTab('RECEIVABLES')
+                }, `🛒 Customer Receivables (${data.customerStatement?.entries?.length || 0})`),
+                React.createElement('button', {
+                  className: `btn btn-sm ${viewTab === 'PAYABLES' ? 'btn-primary' : 'btn-ghost'}`,
+                  onClick: () => setViewTab('PAYABLES')
+                }, `📦 Supplier Payables (${data.supplierStatement?.entries?.length || 0})`)
+              ),
+
+              // Opening Balance Indicator Banner (when prior balances exist)
+              ((data.customerStatement?.openingBalance && Math.abs(data.customerStatement.openingBalance) > 0.001) || (data.supplierStatement?.openingBalance && Math.abs(data.supplierStatement.openingBalance) > 0.001)) && React.createElement('div', {
+                style: { padding: '8px 14px', borderRadius: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', fontSize: '0.76rem', color: 'var(--text-secondary)', marginBottom: 12, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }
+              },
+                React.createElement('strong', { style: { color: 'var(--text)' } }, '🏁 Period Opening Balances:'),
+                React.createElement('span', null, 'Customer Receivables: ', React.createElement('strong', { style: { color: '#4f46e5' } }, BillsoftUtils.formatCurrency(data.customerStatement?.openingBalance || 0))),
+                React.createElement('span', null, 'Supplier Payables: ', React.createElement('strong', { style: { color: '#dc2626' } }, BillsoftUtils.formatCurrency(data.supplierStatement?.openingBalance || 0))),
+                React.createElement('span', null, 'Net Opening: ', React.createElement('strong', null, BillsoftUtils.formatCurrency((data.customerStatement?.openingBalance || 0) - (data.supplierStatement?.openingBalance || 0))))
+              ),
+
+              // Ledger Table
+              viewTab === 'TIMELINE' ? (
+                React.createElement('div', { className: 'table-responsive' },
+                  React.createElement('table', { className: 'table table-hover table-striped', style: { width: '100%', fontSize: '0.80rem' } },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { width: 95 } }, 'Date'),
+                        React.createElement('th', { style: { width: 140 } }, 'Account Side'),
+                        React.createElement('th', { style: { width: 120 } }, 'Reference'),
+                        React.createElement('th', null, 'Description'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 110, color: '#4f46e5' } }, 'Cust Billed'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 110, color: '#059669' } }, 'Cust Paid'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 110, color: '#dc2626' } }, 'Supp Bill'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 110, color: '#059669' } }, 'Supp Paid')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      (!data.entries || data.entries.length === 0) ? (
+                        React.createElement('tr', null,
+                          React.createElement('td', { colSpan: 8, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No entries found in this period.')
+                        )
+                      ) : (
+                        data.entries.map((e, idx) => {
+                          const isCust = e.side === 'CUSTOMER_RECEIVABLE';
+                          return React.createElement('tr', { key: idx },
+                            React.createElement('td', { style: { whiteSpace: 'nowrap' } }, e.date ? BillsoftUtils.formatDate(e.date) : '-'),
+                            React.createElement('td', null,
+                              React.createElement('span', {
+                                style: {
+                                  display: 'inline-block',
+                                  padding: '1px 6px',
+                                  borderRadius: 8,
+                                  fontSize: '0.70rem',
+                                  fontWeight: 600,
+                                  background: isCust ? 'rgba(79, 70, 229, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+                                  color: isCust ? '#4f46e5' : '#dc2626'
+                                }
+                              }, isCust ? '🛒 Sales' : '📦 Purchase')
+                            ),
+                            React.createElement('td', { style: { fontWeight: 600 } }, e.ref || '-'),
+                            React.createElement('td', null, e.description || '-'),
+                            React.createElement('td', { style: { textAlign: 'right', color: '#4f46e5', fontWeight: e.receivableDebit > 0 ? 600 : 400 } },
+                            e.receivableDebit > 0 ? BillsoftUtils.formatCurrency(e.receivableDebit) : '-'
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right', color: '#059669', fontWeight: e.receivableCredit > 0 ? 600 : 400 } },
+                              e.receivableCredit > 0 ? BillsoftUtils.formatCurrency(e.receivableCredit) : '-'
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right', color: '#dc2626', fontWeight: e.payableDebit > 0 ? 600 : 400 } },
+                              e.payableDebit > 0 ? BillsoftUtils.formatCurrency(e.payableDebit) : '-'
+                            ),
+                            React.createElement('td', { style: { textAlign: 'right', color: '#059669', fontWeight: e.payableCredit > 0 ? 600 : 400 } },
+                              e.payableCredit > 0 ? BillsoftUtils.formatCurrency(e.payableCredit) : '-'
+                            )
+                          );
+                        })
+                      )
+                    )
+                  )
+                )
+              ) : viewTab === 'RECEIVABLES' ? (
+                React.createElement('div', { className: 'table-responsive' },
+                  React.createElement('table', { className: 'table table-hover', style: { width: '100%', fontSize: '0.80rem' } },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { width: 100 } }, 'Date'),
+                        React.createElement('th', { style: { width: 120 } }, 'Type'),
+                        React.createElement('th', { style: { width: 140 } }, 'Invoice / Ref'),
+                        React.createElement('th', null, 'Description'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Billed (Debit)'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Paid (Credit)'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Balance')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      (data.customerStatement?.openingBalance != null && Math.abs(data.customerStatement.openingBalance) > 0.001) &&
+                        React.createElement('tr', { key: 'cust-opening-row', style: { background: 'rgba(79, 70, 229, 0.04)', fontWeight: 600 } },
+                          React.createElement('td', null, data.from ? BillsoftUtils.formatDate(data.from) : '-'),
+                          React.createElement('td', null, React.createElement('span', { style: { display: 'inline-block', padding: '1px 6px', borderRadius: 8, fontSize: '0.70rem', fontWeight: 700, background: 'rgba(79, 70, 229, 0.15)', color: '#4f46e5' } }, 'OPENING')),
+                          React.createElement('td', null, '-'),
+                          React.createElement('td', { style: { fontStyle: 'italic', color: 'var(--text-secondary)' } }, `Opening Balance (Prior to ${data.from ? BillsoftUtils.formatDate(data.from) : 'period'})`),
+                          React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } }, '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } }, '-'),
+                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: '#4f46e5' } }, BillsoftUtils.formatCurrency(data.customerStatement.openingBalance))
+                        ),
+                      (!data.customerStatement?.entries || data.customerStatement.entries.length === 0) ? (
+                        (data.customerStatement?.openingBalance != null && Math.abs(data.customerStatement.openingBalance) > 0.001) ? null :
+                        React.createElement('tr', null,
+                          React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No customer ledger entries.')
+                        )
+                      ) : (
+                        data.customerStatement.entries.map((e, idx) => React.createElement('tr', { key: idx },
+                          React.createElement('td', null, e.date ? BillsoftUtils.formatDate(e.date) : '-'),
+                          React.createElement('td', null, e.type || '-'),
+                          React.createElement('td', { style: { fontWeight: 600 } }, e.ref || '-'),
+                          React.createElement('td', null, e.description || '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: '#4f46e5' } }, e.debit > 0 ? BillsoftUtils.formatCurrency(e.debit) : '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: '#059669' } }, e.credit > 0 ? BillsoftUtils.formatCurrency(e.credit) : '-'),
+                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(e.balance || 0))
+                        ))
+                      )
+                    )
+                  )
+                )
+              ) : (
+                React.createElement('div', { className: 'table-responsive' },
+                  React.createElement('table', { className: 'table table-hover', style: { width: '100%', fontSize: '0.80rem' } },
+                    React.createElement('thead', null,
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { width: 100 } }, 'Date'),
+                        React.createElement('th', { style: { width: 120 } }, 'Type'),
+                        React.createElement('th', { style: { width: 140 } }, 'PO / Voucher Ref'),
+                        React.createElement('th', null, 'Description'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Purchased (Debit)'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Paid (Credit)'),
+                        React.createElement('th', { style: { textAlign: 'right', width: 120 } }, 'Liability Balance')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      (data.supplierStatement?.openingBalance != null && Math.abs(data.supplierStatement.openingBalance) > 0.001) &&
+                        React.createElement('tr', { key: 'supp-opening-row', style: { background: 'rgba(220, 38, 38, 0.04)', fontWeight: 600 } },
+                          React.createElement('td', null, data.from ? BillsoftUtils.formatDate(data.from) : '-'),
+                          React.createElement('td', null, React.createElement('span', { style: { display: 'inline-block', padding: '1px 6px', borderRadius: 8, fontSize: '0.70rem', fontWeight: 700, background: 'rgba(220, 38, 38, 0.15)', color: '#dc2626' } }, 'OPENING')),
+                          React.createElement('td', null, '-'),
+                          React.createElement('td', { style: { fontStyle: 'italic', color: 'var(--text-secondary)' } }, `Opening Balance (Prior to ${data.from ? BillsoftUtils.formatDate(data.from) : 'period'})`),
+                          React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } }, '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } }, '-'),
+                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: '#dc2626' } }, BillsoftUtils.formatCurrency(data.supplierStatement.openingBalance))
+                        ),
+                      (!data.supplierStatement?.entries || data.supplierStatement.entries.length === 0) ? (
+                        (data.supplierStatement?.openingBalance != null && Math.abs(data.supplierStatement.openingBalance) > 0.001) ? null :
+                        React.createElement('tr', null,
+                          React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 20, color: 'var(--text-secondary)' } }, 'No supplier ledger entries.')
+                        )
+                      ) : (
+                        data.supplierStatement.entries.map((e, idx) => React.createElement('tr', { key: idx },
+                          React.createElement('td', null, e.date ? BillsoftUtils.formatDate(e.date) : '-'),
+                          React.createElement('td', null, e.type || '-'),
+                          React.createElement('td', { style: { fontWeight: 600 } }, e.ref || '-'),
+                          React.createElement('td', null, e.description || '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: '#dc2626' } }, e.debit > 0 ? BillsoftUtils.formatCurrency(e.debit) : '-'),
+                          React.createElement('td', { style: { textAlign: 'right', color: '#059669' } }, e.credit > 0 ? BillsoftUtils.formatCurrency(e.credit) : '-'),
+                          React.createElement('td', { style: { textAlign: 'right', fontWeight: 600 } }, BillsoftUtils.formatCurrency(e.balance || 0))
+                        ))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
+          // Footer
+          React.createElement('div', {
+            style: { padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: 'var(--bg-hover)' }
+          },
+            React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: onClose }, 'Close Statement')
+          )
+        )
+      );
+    }
+
     // ─── CUSTOMER 360 QUICK VIEW MODAL / DRAWER ───
     function Customer360Modal({ customer, initialTab = 'outstanding', onClose, onBill, onSettle, onStatement, onRemind, onOpenInvoice }) {
       const [activeTab, setActiveTab] = useState(initialTab);
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [selectedInvoices, setSelectedInvoices] = useState({});
+      const [linkInfo, setLinkInfo] = useState(null);
+      const [showLinkModal, setShowLinkModal] = useState(false);
+      const [showUnifiedStatement, setShowUnifiedStatement] = useState(false);
 
       const load = useCallback(async () => {
         if (!customer || !customer.id) return;
         setLoading(true);
         try {
-          const res = await API.customers.get360(customer.id);
+          const [res, linkRes] = await Promise.all([
+            API.customers.get360(customer.id),
+            API.partyLinks.getByCustomer(customer.id).catch(() => null)
+          ]);
           setData(res);
+          setLinkInfo(linkRes);
         } catch (err) {
           showToast('Failed to load Customer 360 overview', 'error');
         } finally {
@@ -21188,7 +21938,21 @@
               React.createElement('div', null,
                 React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 } },
                   customer.name,
-                  React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 500, padding: '2px 8px', background: 'var(--bg-hover)', borderRadius: 12, color: 'var(--text-secondary)' } }, `ID: #${customer.id}`)
+                  React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: 500, padding: '2px 8px', background: 'var(--bg-hover)', borderRadius: 12, color: 'var(--text-secondary)' } }, `ID: #${customer.id}`),
+                  linkInfo && React.createElement('span', {
+                    style: {
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      background: 'rgba(79, 70, 229, 0.12)',
+                      color: '#4f46e5',
+                      borderRadius: 12,
+                      border: '1px solid rgba(79, 70, 229, 0.25)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }
+                  }, '🤝 Customer + Supplier')
                 ),
                 React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 } },
                   customer.phone && React.createElement('span', null, `📞 ${customer.phone}`),
@@ -21204,6 +21968,59 @@
           // Loading State
           loading ? React.createElement(RupeeCRMLoader, { message: 'Loading Customer 360 intelligence...', size: 52, style: { minHeight: 180, padding: 30 } }) :
             React.createElement('div', null,
+              // Counterparty Intelligence Banner (When linked to supplier)
+              linkInfo && React.createElement('div', {
+                style: {
+                  background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(99, 102, 241, 0.03) 100%)',
+                  border: '1px solid rgba(79, 70, 229, 0.25)',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  marginBottom: 16,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  React.createElement('span', { style: { fontSize: '1.4rem' } }, '🤝'),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' } },
+                      `Linked Supplier: ${linkInfo.partyName}`,
+                      React.createElement('span', { style: { fontSize: '0.74rem', fontWeight: 500, marginLeft: 8, color: 'var(--text-secondary)' } }, `(Supplier #${linkInfo.partyId})`)
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                      linkInfo.partyPhone ? `📞 ${linkInfo.partyPhone}` : '',
+                      linkInfo.partyGstin ? ` • GSTIN: ${linkInfo.partyGstin}` : '',
+                      ` • Payables: ₹${BillsoftUtils.formatCurrency(linkInfo.partyOutstandingBalance || 0)}`
+                    )
+                  )
+                ),
+                React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                  React.createElement('button', {
+                    className: 'btn btn-primary btn-sm',
+                    style: { fontSize: '0.78rem', padding: '4px 10px', fontWeight: 600 },
+                    onClick: () => setShowUnifiedStatement(true)
+                  }, '📜 Unified Statement'),
+                  React.createElement('button', {
+                    className: 'btn btn-ghost btn-sm',
+                    style: { fontSize: '0.78rem', padding: '4px 8px', color: 'var(--danger)' },
+                    onClick: async () => {
+                      if (!confirm(`Are you sure you want to unlink customer ${customer.name} from supplier ${linkInfo.partyName}?\n\nBoth records and all past transactions will remain intact.`)) return;
+                      try {
+                        await API.partyLinks.unlink(linkInfo.id);
+                        showToast('Unlinked counterparty successfully', 'success');
+                        load();
+                        window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                      } catch (err) {
+                        showToast(err.message || 'Failed to unlink counterparty', 'error');
+                      }
+                    }
+                  }, '🔗✕ Unlink')
+                )
+              ),
+
               // Financial KPI Cards
               React.createElement('div', { className: 'c360-kpi-grid' },
                 React.createElement('div', { className: `c360-kpi-card ${(data?.netBalance || 0) > 0 ? 'highlight-due' : (data?.netBalance || 0) < 0 ? 'highlight-credit' : ''}` },
@@ -21255,6 +22072,16 @@
                   className: 'btn btn-outline btn-sm',
                   onClick: () => { if (onStatement) onStatement(customer); }
                 }, '📜 Full Statement'),
+                linkInfo ? React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  style: { color: '#4f46e5', borderColor: '#4f46e5', fontWeight: 600 },
+                  onClick: () => setShowUnifiedStatement(true)
+                }, '📜 Unified Statement') :
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  onClick: () => setShowLinkModal(true),
+                  title: 'Link this customer to an existing supplier profile'
+                }, '🔗 Link Supplier'),
                 (data?.netBalance || 0) > 0 && React.createElement('button', {
                   className: 'btn btn-whatsapp-outline btn-sm',
                   onClick: () => { if (onRemind) onRemind(customer); }
@@ -21482,7 +22309,23 @@
           // Modal Footer
           React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 18 } },
             React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: onClose }, 'Close')
-          )
+          ),
+
+          // Render Party Link Modal & Unified Statement Modal
+          showLinkModal && React.createElement(PartyLinkModal, {
+            sourceType: 'CUSTOMER',
+            sourceEntity: customer,
+            onClose: () => setShowLinkModal(false),
+            onSuccess: () => { setShowLinkModal(false); load(); window.dispatchEvent(new CustomEvent('billsoft:app-refresh')); }
+          }),
+          showUnifiedStatement && linkInfo && React.createElement(UnifiedCounterpartyStatementModal, {
+            customerId: customer.id,
+            partyId: linkInfo.partyId,
+            customerName: customer.name,
+            partyName: linkInfo.partyName,
+            linkInfo: linkInfo,
+            onClose: () => setShowUnifiedStatement(false)
+          })
         )
       );
     }
@@ -21915,16 +22758,19 @@
       const [customerPage, setCustomerPage] = useState(1);
       const [customerPageSize, setCustomerPageSize] = useState(8);
       const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+      const [partyLinksMap, setPartyLinksMap] = useState({ customerToParty: {}, partyToCustomer: {} });
 
       const load = useCallback(async () => {
         setLoading(true);
         try {
-          const [custList, kpiList] = await Promise.all([
+          const [custList, kpiList, linkMap] = await Promise.all([
             API.customers.list().catch(() => []),
-            API.kpis.customers().catch(() => [])
+            API.kpis.customers().catch(() => []),
+            API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
           ]);
           setCustomers(custList || []);
           setCustomerKpis(Array.isArray(kpiList) ? kpiList : []);
+          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
         } catch (e) {
           showToast('Failed to load customers', 'error');
         } finally {
@@ -22417,8 +23263,23 @@
                               }, getInitials(c.name)),
                               React.createElement('div', { style: { minWidth: 0, overflow: 'hidden' } },
                                 React.createElement('div', {
-                                  style: { fontWeight: 600, fontSize: '0.85rem', color: isSelected ? 'var(--primary)' : 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }
-                                }, c.name),
+                                  style: { fontWeight: 600, fontSize: '0.85rem', color: isSelected ? 'var(--primary)' : 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 6 }
+                                },
+                                  c.name,
+                                  partyLinksMap?.customerToParty?.[c.id] && React.createElement('span', {
+                                    style: {
+                                      fontSize: '0.65rem',
+                                      fontWeight: 600,
+                                      padding: '1px 5px',
+                                      background: 'rgba(79, 70, 229, 0.12)',
+                                      color: '#4f46e5',
+                                      borderRadius: 8,
+                                      border: '1px solid rgba(79, 70, 229, 0.25)',
+                                      whiteSpace: 'nowrap'
+                                    },
+                                    title: `Linked Supplier: ${partyLinksMap.customerToParty[c.id].partyName}`
+                                  }, '🤝 Cust + Supp')
+                                ),
                                 c.address && React.createElement('div', {
                                   style: { fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }
                                 }, c.address)
@@ -22874,6 +23735,9 @@
       const [partyPage, setPartyPage] = useState(1);
       const [partyPageSize, setPartyPageSize] = useState(8);
       const [exportModalPartyStatement, setExportModalPartyStatement] = useState(null);
+      const [partyLinksMap, setPartyLinksMap] = useState({ customerToParty: {}, partyToCustomer: {} });
+      const [linkModalParty, setLinkModalParty] = useState(null);
+      const [statementPartyLinkId, setStatementPartyLinkId] = useState(null);
 
       // Payment modal state
       const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -22918,10 +23782,12 @@
         setLoading(true);
         Promise.all([
           API.parties.list(),
-          API.parties.listSummaries()
-        ]).then(([pList, sList]) => {
+          API.parties.listSummaries(),
+          API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
+        ]).then(([pList, sList, linkMap]) => {
           setParties(pList ? (Array.isArray(pList) ? pList : pList.content || []) : []);
           setSummaries(sList ? (Array.isArray(sList) ? sList : sList.content || []) : []);
+          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
           setLoading(false);
         }).catch(() => {
           showToast('Failed to load parties', 'error');
@@ -22929,7 +23795,11 @@
         });
       };
 
-      useEffect(() => { load(); }, []);
+      useEffect(() => {
+        load();
+        window.addEventListener('billsoft:app-refresh', load);
+        return () => window.removeEventListener('billsoft:app-refresh', load);
+      }, []);
 
       const openCreate = () => {
         setEditItem(null);
@@ -23397,7 +24267,22 @@
                       return React.createElement('tr', { key: p.id },
                         // Col 1: Party Identity
                         React.createElement('td', { style: { padding: '6px 10px' } },
-                          React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem' } }, p.name),
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+                            React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem' } }, p.name),
+                            partyLinksMap?.partyToCustomer?.[p.id] && React.createElement('span', {
+                              style: {
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                padding: '1px 6px',
+                                background: 'rgba(79, 70, 229, 0.1)',
+                                color: '#4f46e5',
+                                borderRadius: 10,
+                                border: '1px solid rgba(79, 70, 229, 0.25)',
+                                whiteSpace: 'nowrap'
+                              },
+                              title: `Linked Customer: ${partyLinksMap.partyToCustomer[p.id].customerName}`
+                            }, '🤝 Cust + Supp')
+                          ),
                           p.contactPerson && React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } }, `👤 ${p.contactPerson}`),
                           p.city && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-muted)' } }, `📍 ${p.city}${p.state ? ', ' + p.state : ''}`)
                         ),
@@ -23446,6 +24331,22 @@
                               onClick: () => openLedger(p),
                               title: 'View Ledger & Transactions'
                             }, 'Ledger'),
+                            partyLinksMap?.partyToCustomer?.[p.id] ? React.createElement('button', {
+                              className: 'btn btn-outline btn-xs',
+                              style: { padding: '2px 4px', fontSize: '0.74rem', color: '#4f46e5', borderColor: '#4f46e5' },
+                              onClick: () => setStatementPartyLinkId({
+                                partyId: p.id,
+                                customerId: partyLinksMap.partyToCustomer[p.id].customerId,
+                                partyName: p.name,
+                                customerName: partyLinksMap.partyToCustomer[p.id].customerName
+                              }),
+                              title: `Unified Statement with linked Customer (${partyLinksMap.partyToCustomer[p.id].customerName})`
+                            }, '🤝') : React.createElement('button', {
+                              className: 'btn btn-ghost btn-xs',
+                              style: { padding: '2px 4px', fontSize: '0.74rem', color: 'var(--text-secondary)' },
+                              onClick: () => setLinkModalParty(p),
+                              title: 'Link to an existing customer'
+                            }, '🔗'),
                             React.createElement('button', {
                               className: 'btn btn-whatsapp-outline btn-xs',
                               style: { padding: '2px 4px', fontSize: '0.74rem' },
@@ -23741,6 +24642,87 @@
 
             ledgerLoading ? React.createElement(RupeeCRMLoader, { message: 'Loading vendor financial ledger...', size: 52, style: { minHeight: 200 } }) :
               React.createElement(Fragment, null,
+                // Linked Counterparty Banner (Customer + Supplier)
+                (() => {
+                  const linkedCustInfo = partyLinksMap?.partyToCustomer?.[ledgerParty.id];
+                  if (linkedCustInfo) {
+                    return React.createElement('div', {
+                      style: {
+                        background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(99, 102, 241, 0.03) 100%)',
+                        border: '1px solid rgba(79, 70, 229, 0.25)',
+                        borderRadius: 8,
+                        padding: '10px 14px',
+                        marginBottom: 14,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10
+                      }
+                    },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                        React.createElement('span', { style: { fontSize: '1.25rem' } }, '🤝'),
+                        React.createElement('div', null,
+                          React.createElement('div', { style: { fontWeight: 700, fontSize: '0.88rem', color: 'var(--text)' } },
+                            `Linked Customer: ${linkedCustInfo.customerName}`,
+                            React.createElement('span', { style: { fontSize: '0.74rem', fontWeight: 500, marginLeft: 8, color: 'var(--text-secondary)' } }, `(Customer #${linkedCustInfo.customerId})`)
+                          ),
+                          React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                            linkedCustInfo.customerPhone ? `📞 ${linkedCustInfo.customerPhone}` : 'No phone'
+                          )
+                        )
+                      ),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                        React.createElement('button', {
+                          className: 'btn btn-primary btn-xs',
+                          style: { fontSize: '0.75rem', fontWeight: 600 },
+                          onClick: () => setStatementPartyLinkId({
+                            partyId: ledgerParty.id,
+                            customerId: linkedCustInfo.customerId,
+                            partyName: ledgerParty.name,
+                            customerName: linkedCustInfo.customerName
+                          })
+                        }, '📜 Unified Statement'),
+                        React.createElement('button', {
+                          className: 'btn btn-ghost btn-xs',
+                          style: { fontSize: '0.75rem', color: 'var(--danger)' },
+                          onClick: async () => {
+                            if (!confirm(`Are you sure you want to unlink supplier ${ledgerParty.name} from customer ${linkedCustInfo.customerName}?\n\nBoth records and all past transactions will remain intact.`)) return;
+                            try {
+                              await API.partyLinks.unlink(linkedCustInfo.linkId);
+                              showToast('Unlinked counterparty successfully', 'success');
+                              load();
+                              window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+                            } catch (err) {
+                              showToast(err.message || 'Failed to unlink counterparty', 'error');
+                            }
+                          }
+                        }, '🔗✕ Unlink')
+                      )
+                    );
+                  } else {
+                    return React.createElement('div', {
+                      style: {
+                        background: 'var(--bg-hover)',
+                        border: '1px dashed var(--border)',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        marginBottom: 14,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }
+                    },
+                      React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                        'This supplier is not linked to any customer account.'
+                      ),
+                      React.createElement('button', {
+                        className: 'btn btn-outline btn-xs',
+                        onClick: () => setLinkModalParty(ledgerParty)
+                      }, '🔗 Link Existing Customer')
+                    );
+                  }
+                })(),
                 // Metric cards
                 ledgerData && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 } },
                   React.createElement('div', { className: 'card', style: { padding: 10, textAlign: 'center' } },
@@ -23929,6 +24911,27 @@
         exportModalPartyStatement && React.createElement(DocumentExportModal, {
           ...exportModalPartyStatement,
           onClose: () => setExportModalPartyStatement(null)
+        }),
+
+        // Counterparty Link Modal
+        linkModalParty && React.createElement(PartyLinkModal, {
+          sourceType: 'PARTY',
+          sourceEntity: linkModalParty,
+          onClose: () => setLinkModalParty(null),
+          onSuccess: () => {
+            setLinkModalParty(null);
+            load();
+            window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+          }
+        }),
+
+        // Unified Counterparty Statement Modal
+        statementPartyLinkId && React.createElement(UnifiedCounterpartyStatementModal, {
+          customerId: statementPartyLinkId.customerId,
+          partyId: statementPartyLinkId.partyId,
+          customerName: statementPartyLinkId.customerName,
+          partyName: statementPartyLinkId.partyName,
+          onClose: () => setStatementPartyLinkId(null)
         })
       );
     }
@@ -24739,6 +25742,20 @@
         return parties.find(p => p.id == form.partyId) || null;
       }, [form.partyId, parties]);
 
+      const [linkedCustomerChip, setLinkedCustomerChip] = useState(null);
+
+      useEffect(() => {
+        if (!form.partyId) {
+          setLinkedCustomerChip(null);
+          return;
+        }
+        let isCurrent = true;
+        API.partyLinks.getByParty(form.partyId)
+          .then(res => { if (isCurrent) setLinkedCustomerChip(res); })
+          .catch(() => { if (isCurrent) setLinkedCustomerChip(null); });
+        return () => { isCurrent = false; };
+      }, [form.partyId]);
+
       const openCreate = async () => {
         setEditingPoId(null);
         let nextNo = 'PO-' + new Date().getFullYear() + '-0001';
@@ -25535,7 +26552,24 @@
                 // Selected Vendor Banner
                 selectedParty && React.createElement('div', { style: { marginTop: 12, background: 'var(--bg-card-header, #f8fafc)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
                   React.createElement('div', null,
-                    React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary)' } }, selectedParty.name),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+                      React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary)' } }, selectedParty.name),
+                      linkedCustomerChip && React.createElement('span', {
+                        style: {
+                          background: 'rgba(79, 70, 229, 0.1)',
+                          color: '#4f46e5',
+                          border: '1px solid rgba(79, 70, 229, 0.25)',
+                          padding: '1px 6px',
+                          borderRadius: 10,
+                          fontWeight: 600,
+                          fontSize: '0.70rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        },
+                        title: `Also registered as Customer: ${linkedCustomerChip.customerName}`
+                      }, `🤝 Customer: ${linkedCustomerChip.customerName}`)
+                    ),
                     React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 } },
                       [selectedParty.contactPerson ? 'Attn: ' + selectedParty.contactPerson : null, selectedParty.phone, selectedParty.email].filter(Boolean).join(' • ')
                     ),

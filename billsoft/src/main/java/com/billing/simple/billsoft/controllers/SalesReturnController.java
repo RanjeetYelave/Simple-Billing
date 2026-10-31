@@ -102,6 +102,7 @@ public class SalesReturnController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdfBytes);
         } catch (Exception e) {
+            log.error("Failed to generate PDF for sales return {}: {}", id, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }

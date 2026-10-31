@@ -111,17 +111,18 @@ public class InvoicePdfService {
                 (invoice.getFirmEmailSnapshot() != null && !invoice.getFirmEmailSnapshot().isBlank())
         );
 
-        if (effectiveFirmId == null && !hasSnapshot) {
-            throw new com.billing.simple.billsoft.security.TenantSecurityException(
-                    "Active firm context is required for invoice PDF generation");
-        }
-
         FirmDetails liveFirm = null;
         if (effectiveFirmId != null) {
             try {
                 liveFirm = firmService.get(effectiveFirmId);
             } catch (Exception e) {
-                // fall back to snapshot check below
+                // fall back to getFirst below
+            }
+        }
+        if (liveFirm == null) {
+            try {
+                liveFirm = firmService.getFirst();
+            } catch (Exception ignored) {
             }
         }
 
@@ -154,7 +155,13 @@ public class InvoicePdfService {
             return snapshottedFirm;
         }
 
-        return liveFirm;
+        if (liveFirm != null) {
+            return liveFirm;
+        }
+
+        FirmDetails fallback = new FirmDetails();
+        fallback.setFirmName("RUPEECRM STORE");
+        return fallback;
     }
 
     private byte[] renderClassic(Invoice invoice, FirmDetails firm, InvoicePrintOptions options) throws Exception {

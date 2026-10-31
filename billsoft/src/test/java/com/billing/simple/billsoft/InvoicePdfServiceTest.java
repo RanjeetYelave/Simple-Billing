@@ -384,4 +384,91 @@ public class InvoicePdfServiceTest {
             assertThat(text).contains(expectedWords);
         }
     }
+
+    @Test
+    void pdfGenerationWhenFirmIdAndTenantContextAreNullAndNoSnapshot() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setFirmId(null);
+        inv.setFirmNameSnapshot(null);
+        inv.setFirmGstinSnapshot(null);
+        inv.setFirmAddressSnapshot(null);
+        inv.setFirmPhoneSnapshot(null);
+        inv.setFirmEmailSnapshot(null);
+        com.billing.simple.billsoft.security.TenantContext.clear();
+
+        // Must succeed using firmService.getFirst() rather than throwing TenantSecurityException
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).containsIgnoringCase("Test Firm");
+    }
+
+    @Test
+    void pdfGenerationWhenNoFirmExistsInDatabaseAtAll() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setFirmId(null);
+        inv.setFirmNameSnapshot(null);
+        inv.setFirmGstinSnapshot(null);
+        inv.setFirmAddressSnapshot(null);
+        inv.setFirmPhoneSnapshot(null);
+        inv.setFirmEmailSnapshot(null);
+        com.billing.simple.billsoft.security.TenantContext.clear();
+
+        when(firmService.getFirst()).thenReturn(null);
+        when(firmService.get(any())).thenReturn(null);
+
+        // Must succeed and fall back gracefully to RUPEECRM STORE
+        byte[] pdf = pdfService.generatePdf(inv, "A4");
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).contains("RUPEECRM STORE");
+    }
+
+    @Test
+    void pdfGenerationThermal80mmWithNullFirmContext() throws Exception {
+        Invoice inv = sampleInvoice();
+        inv.setFirmId(null);
+        inv.setFirmNameSnapshot(null);
+        com.billing.simple.billsoft.security.TenantContext.clear();
+
+        com.billing.simple.billsoft.dtos.InvoicePrintOptions opts =
+                new com.billing.simple.billsoft.dtos.InvoicePrintOptions(
+                        com.billing.simple.billsoft.enums.InvoiceTheme.CLASSIC,
+                        com.billing.simple.billsoft.enums.PrintFormat.THERMAL_80MM,
+                        com.billing.simple.billsoft.enums.InvoiceColorPalette.CLASSIC_BLUE);
+
+        byte[] pdf = pdfService.generatePdf(inv, opts);
+        assertValidPdf(pdf);
+
+        String text = extractPdfText(pdf);
+        assertThat(text).containsIgnoringCase("Test Firm");
+    }
+
+    @Test
+    void pdfGenerationAllThemesWithNullFirmContext() throws Exception {
+        com.billing.simple.billsoft.enums.InvoiceTheme[] themes = {
+                com.billing.simple.billsoft.enums.InvoiceTheme.CLASSIC,
+                com.billing.simple.billsoft.enums.InvoiceTheme.MODERN,
+                com.billing.simple.billsoft.enums.InvoiceTheme.PROFESSIONAL,
+                com.billing.simple.billsoft.enums.InvoiceTheme.MINIMAL
+        };
+
+        for (com.billing.simple.billsoft.enums.InvoiceTheme theme : themes) {
+            Invoice inv = sampleInvoice();
+            inv.setFirmId(null);
+            inv.setFirmNameSnapshot(null);
+            com.billing.simple.billsoft.security.TenantContext.clear();
+
+            com.billing.simple.billsoft.dtos.InvoicePrintOptions opts =
+                    new com.billing.simple.billsoft.dtos.InvoicePrintOptions(
+                            theme,
+                            com.billing.simple.billsoft.enums.PrintFormat.A4,
+                            com.billing.simple.billsoft.enums.InvoiceColorPalette.CLASSIC_BLUE);
+
+            byte[] pdf = pdfService.generatePdf(inv, opts);
+            assertValidPdf(pdf);
+        }
+    }
 }

@@ -24,6 +24,8 @@ import com.billing.simple.billsoft.service.InvoiceService;
 @CrossOrigin
 public class InvoiceController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(InvoiceController.class);
+
     private final InvoiceService service;
     private final InvoicePdfService pdfService;
 
@@ -201,7 +203,7 @@ public class InvoiceController {
                     .body(pdf);
 
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("Failed to generate PDF for invoice {}: {}", id, ex.getMessage(), ex);
             return ResponseEntity.internalServerError().build();
         }
     }

@@ -405,6 +405,7 @@ public class LauncherMain {
         command.add("-XX:+TieredCompilation");
         command.add("-XX:TieredStopAtLevel=1");
         command.add("-Dfile.encoding=UTF-8");
+        command.add("-Djava.awt.headless=true");
         command.add("-DRUPEECRM_DATA_DIR=" + getDataDirectory().toAbsolutePath());
         command.add("-jar");
         command.add(warFile.getAbsolutePath());

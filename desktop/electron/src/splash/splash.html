@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RupeeCRM Starting</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 32px;
+    }
+    .logo-container {
+      position: relative;
+      margin-bottom: 24px;
+    }
+    .logo-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+      background: linear-gradient(to right, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 32px;
+      font-weight: 500;
+    }
+    .progress-bar-container {
+      width: 280px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .progress-bar-indeterminate {
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      border-radius: 3px;
+      position: absolute;
+      animation: indeterminate 1.6s infinite ease-in-out;
+    }
+    @keyframes indeterminate {
+      0% { left: -40%; }
+      50% { left: 40%; width: 50%; }
+      100% { left: 100%; width: 30%; }
+    }
+    .status-text {
+      font-size: 12px;
+      color: #64748b;
+      min-height: 18px;
+      text-align: center;
+      transition: color 0.2s ease;
+    }
+    .status-text.error {
+      color: #ef4444;
+      font-weight: 600;
+    }
+    .error-actions {
+      display: none;
+      margin-top: 16px;
+      gap: 10px;
+    }
+    .btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <img src="../../assets/icon.png" alt="RupeeCRM" class="logo-icon" onerror="this.style.display='none'">
+  </div>
+  <h1 class="title">RupeeCRM</h1>
+  <p class="subtitle">Enterprise Desktop Edition</p>
+
+  <div class="progress-bar-container" id="progressContainer">
+    <div class="progress-bar-indeterminate"></div>
+  </div>
+
+  <p class="status-text" id="statusMessage">Starting RupeeCRM service...</p>
+
+  <div class="error-actions" id="errorActions">
+    <button class="btn" onclick="retryStartup()">Retry</button>
+    <button class="btn" onclick="openLogs()">View Logs</button>
+  </div>
+
+  <script>
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data) return;
+      if (data.type === 'status') {
+        const msgEl = document.getElementById('statusMessage');
+        msgEl.innerText = data.text;
+        if (data.isError) {
+          msgEl.classList.add('error');
+          document.getElementById('progressContainer').style.display = 'none';
+          document.getElementById('errorActions').style.display = 'flex';
+        }
+      }
+    });
+
+    function retryStartup() {
+      if (window.rupeeDesktop && window.rupeeDesktop.restartBackend) {
+        window.rupeeDesktop.restartBackend();
+      }
+      location.reload();
+    }
+
+    function openLogs() {
+      if (window.rupeeDesktop && window.rupeeDesktop.openLogsFolder) {
+        window.rupeeDesktop.openLogsFolder();
+      }
+    }
+  </script>
+</body>
+</html>

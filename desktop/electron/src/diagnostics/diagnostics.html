@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RupeeCRM - System Diagnostics</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 24px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge.healthy {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .badge.unhealthy {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .badge.checking {
+      background: rgba(234, 179, 8, 0.15);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.3);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .card.full-width {
+      grid-column: span 2;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-bottom: 10px;
+    }
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .prop-row:last-child {
+      border-bottom: none;
+    }
+    .prop-name {
+      color: #94a3b8;
+    }
+    .prop-val {
+      font-weight: 500;
+      color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #1e293b;
+      justify-content: flex-end;
+    }
+    .btn {
+      background: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #475569;
+    }
+    .btn.primary {
+      background: #2563eb;
+      border-color: #3b82f6;
+    }
+    .btn.primary:hover {
+      background: #1d4ed8;
+    }
+    .log-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+      height: 110px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      RupeeCRM Diagnostics
+      <span class="badge checking" id="statusBadge">Checking...</span>
+    </h1>
+    <button class="btn" onclick="refreshDiagnostics()">Refresh</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Runtime & Supervisor</div>
+      <div class="prop-row">
+        <span class="prop-name">App Version:</span>
+        <span class="prop-val" id="appVersion">Loading...</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Java Runtime:</span>
+        <span class="prop-val" id="javaStatus">Loading...</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Supervisor PID:</span>
+        <span class="prop-val" id="supervisorPid">Loading...</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Supervisor Mode:</span>
+        <span class="prop-val" id="supervisorMode">Background</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Backend Connectivity</div>
+      <div class="prop-row">
+        <span class="prop-name">Port:</span>
+        <span class="prop-val" id="backendPort">28080</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Health Status:</span>
+        <span class="prop-val" id="backendHealth">Checking...</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Response Latency:</span>
+        <span class="prop-val" id="backendLatency">-</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Backend Version:</span>
+        <span class="prop-val" id="backendVersion">-</span>
+      </div>
+    </div>
+
+    <div class="card full-width">
+      <div class="card-title">Customer Storage & Integrity</div>
+      <div class="prop-row">
+        <span class="prop-name">Data Directory:</span>
+        <span class="prop-val" id="dataDirLocation">-</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Database File Status:</span>
+        <span class="prop-val" id="dbFileStatus">-</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-name">Log Directory:</span>
+        <span class="prop-val" id="logsDirLocation">-</span>
+      </div>
+    </div>
+
+    <div class="card full-width">
+      <div class="card-title">Recent Activity & Diagnostic Log</div>
+      <div class="log-box" id="recentLogBox">Loading diagnostic log messages...</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" onclick="openDataFolder()">Open Data Folder</button>
+    <button class="btn" onclick="openLogsFolder()">Open Logs Folder</button>
+    <button class="btn primary" onclick="restartBackend()">Restart Backend</button>
+  </div>
+
+  <script>
+    async function refreshDiagnostics() {
+      if (!window.rupeeDesktop) return;
+      try {
+        const diag = await window.rupeeDesktop.getDiagnostics();
+        if (!diag) return;
+
+        document.getElementById('appVersion').textContent = diag.appVersion || 'v1.0.278';
+        document.getElementById('javaStatus').textContent = diag.javaRuntime || 'Bundled OpenJDK 21';
+        document.getElementById('supervisorPid').textContent = diag.supervisorPid || 'N/A';
+        document.getElementById('supervisorMode').textContent = diag.supervisorMode || 'Managed';
+        document.getElementById('backendPort').textContent = diag.backendPort || '28080';
+        document.getElementById('backendHealth').textContent = diag.backendHealthy ? 'HEALTHY (200 OK)' : 'OFFLINE / UNREACHABLE';
+        document.getElementById('backendLatency').textContent = diag.latencyMs ? `${diag.latencyMs} ms` : 'N/A';
+        document.getElementById('backendVersion').textContent = diag.backendVersion || 'v1.0.278';
+        document.getElementById('dataDirLocation').textContent = diag.dataDir || '%LOCALAPPDATA%\\RupeeCRM\\data';
+        document.getElementById('dbFileStatus').textContent = diag.dbExists ? 'Present (rupeecrm.mv.db)' : 'Initialized on first start';
+        document.getElementById('logsDirLocation').textContent = diag.logsDir || '%LOCALAPPDATA%\\RupeeCRM\\logs';
+
+        const badge = document.getElementById('statusBadge');
+        if (diag.backendHealthy) {
+          badge.className = 'badge healthy';
+          badge.textContent = 'Healthy';
+        } else {
+          badge.className = 'badge unhealthy';
+          badge.textContent = 'Degraded / Offline';
+        }
+
+        if (diag.recentLogs && diag.recentLogs.length > 0) {
+          document.getElementById('recentLogBox').textContent = diag.recentLogs.join('\n');
+        } else {
+          document.getElementById('recentLogBox').textContent = `[INFO] Supervisor operational\n[INFO] Backend monitoring active on port ${diag.backendPort || 28080}\n[INFO] Data preserved at ${diag.dataDir || '%LOCALAPPDATA%\\RupeeCRM\\data'}`;
+        }
+      } catch (err) {
+        console.error('Failed to load diagnostics:', err);
+      }
+    }
+
+    function openDataFolder() {
+      if (window.rupeeDesktop) window.rupeeDesktop.openDataFolder();
+    }
+
+    function openLogsFolder() {
+      if (window.rupeeDesktop) window.rupeeDesktop.openLogsFolder();
+    }
+
+    function restartBackend() {
+      if (window.rupeeDesktop) {
+        window.rupeeDesktop.restartBackend();
+        setTimeout(refreshDiagnostics, 2000);
+      }
+    }
+
+    // Refresh immediately and poll every 5 seconds
+    refreshDiagnostics();
+    setInterval(refreshDiagnostics, 5000);
+  </script>
+</body>
+</html>

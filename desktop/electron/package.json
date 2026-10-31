@@ -1,0 +1,22 @@
+{
+  "name": "rupeecrm-desktop",
+  "version": "1.0.278",
+  "description": "RupeeCRM Desktop Application for Windows",
+  "main": "src/main.js",
+  "author": "RupeeCRM Team",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "start:hidden": "electron . --hidden",
+    "prepare:resources": "node scripts/prepare-resources.js",
+    "prepare:jre": "node scripts/download-windows-jre.js",
+    "pack": "npm run prepare:resources && electron-builder --dir",
+    "build:win": "npm run prepare:resources && npm run prepare:jre && electron-builder --win --x64",
+    "test": "node test/verify-electron-config.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

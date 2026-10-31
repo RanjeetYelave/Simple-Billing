@@ -1,0 +1,47 @@
+appId: com.rupeecrm.desktop
+productName: RupeeCRM
+copyright: Copyright © 2026 RupeeCRM
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+
+extraResources:
+  - from: resources/jre
+    to: jre
+    filter:
+      - "**/*"
+  - from: resources/launcher.jar
+    to: launcher.jar
+  - from: resources/rupeecrm.war
+    to: rupeecrm.war
+
+win:
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
+  legalTrademarks: "RupeeCRM"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: "RupeeCRM"
+  uninstallDisplayName: "RupeeCRM"
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true

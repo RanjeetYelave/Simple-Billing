@@ -65,6 +65,8 @@ node_modules/
 # Build output
 dist/
 build/
+desktop/electron/resources/
+desktop/electron/dist/
 
 # Cache
 npm-debug.log*

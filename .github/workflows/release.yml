@@ -78,7 +78,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  build-windows-msi:
+  build-windows-installer:
+    name: Build Electron Windows Installer
     runs-on: windows-latest
     needs: [build-app]
 
@@ -93,6 +94,11 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Download Application Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -103,150 +109,77 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Inspecting app-binaries directory ==="
-          if (Test-Path app-binaries) {
-            Get-ChildItem -Recurse app-binaries | Select-Object FullName, Length | Format-Table -AutoSize
-          } else {
-            Write-Error "CRITICAL: app-binaries directory does not exist!"
+          if (-not (Test-Path "app-binaries/rupeecrm.war") -or -not (Test-Path "app-binaries/launcher-0.0.1-SNAPSHOT.jar")) {
+            Write-Error "CRITICAL: Required build artifacts missing from app-binaries!"
             exit 1
           }
+          Write-Host "✓ Verified rupeecrm.war ($((Get-Item app-binaries/rupeecrm.war).Length) bytes)"
+          Write-Host "✓ Verified launcher jar ($((Get-Item app-binaries/launcher-0.0.1-SNAPSHOT.jar).Length) bytes)"
 
-          $requiredFiles = @(
-            "app-binaries/rupeecrm.war",
-            "app-binaries/launcher-0.0.1-SNAPSHOT.jar"
-          )
-
-          foreach ($file in $requiredFiles) {
-            if (-not (Test-Path $file)) {
-              Write-Error "CRITICAL: Required build artifact '$file' is missing!"
-              exit 1
-            } else {
-              $size = (Get-Item $file).Length
-              if ($size -le 1024) {
-                Write-Error "CRITICAL: Artifact '$file' is empty or corrupted (size: $size bytes)!"
-                exit 1
-              }
-              Write-Host "✓ Verified artifact: $file ($size bytes)"
-            }
-          }
-
-      - name: Prepare Application Packaging Layout
+      - name: Stage Electron Resources and Bundled JRE
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist/RupeeCRM/app
+          New-Item -ItemType Directory -Force -Path desktop/electron/resources
+          Copy-Item app-binaries/rupeecrm.war desktop/electron/resources/rupeecrm.war
+          Copy-Item app-binaries/launcher-0.0.1-SNAPSHOT.jar desktop/electron/resources/launcher.jar
 
-          # Copy backend WAR
-          Copy-Item app-binaries/rupeecrm.war dist/RupeeCRM/app/rupeecrm.war
+          # Stage runner's authoritative OpenJDK 21 into resources/jre
+          Write-Host "Staging Java 21 JRE from $env:JAVA_HOME into desktop/electron/resources/jre..."
+          Copy-Item -Recurse "$env:JAVA_HOME" desktop/electron/resources/jre
 
-          # Copy Launcher/Supervisor JAR
-          Copy-Item app-binaries/launcher-0.0.1-SNAPSHOT.jar dist/RupeeCRM/launcher.jar
+          if (-not (Test-Path "desktop/electron/resources/jre/bin/javaw.exe")) {
+            throw "Staged JRE is missing bin/javaw.exe!"
+          }
+          Write-Host "✓ Staged bundled OpenJDK 21 runtime successfully."
 
-          # Create version.json
-          $versionJson = @{
-            version = "1.0.${{ github.run_number }}"
-            buildDate = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-            channel = "production"
-          } | ConvertTo-Json
-          $versionJson | Out-File -Encoding UTF8 dist/RupeeCRM/version.json
+      - name: Install Electron Dependencies and Run Tests
+        working-directory: ./desktop/electron
+        run: |
+          npm ci
+          npm test
 
-          # Package internal application payload
-          Compress-Archive -Path dist/RupeeCRM/* -DestinationPath rupeecrm-app-windows-x64.zip -Force
+      - name: Build Electron Windows x64 NSIS Installer
+        working-directory: ./desktop/electron
+        run: |
+          npx electron-builder --win --x64
 
-      - name: Build Unified RupeeCRMSetup.msi
+      - name: Verify and Stage Distribution Artifacts
         shell: pwsh
         run: |
-          # Validate input files before invoking jpackage
-          if (-not (Test-Path "dist/RupeeCRM/launcher.jar")) {
-              throw "launcher.jar is missing from dist/RupeeCRM"
+          $installer = Get-ChildItem "desktop/electron/dist" -Filter "*.exe" | Where-Object { $_.Name -like "*-Setup-*" } | Select-Object -First 1
+          if (-not $installer) {
+            throw "CRITICAL: electron-builder did not produce a Setup .exe installer in desktop/electron/dist!"
           }
 
-          if (-not (Test-Path "dist/RupeeCRM/app/rupeecrm.war")) {
-              throw "rupeecrm.war is missing from dist/RupeeCRM/app"
+          if ($installer.Length -lt 50MB) {
+            throw "CRITICAL: Installer size is unexpectedly small: $($installer.Length) bytes!"
           }
 
-          if (-not (Test-Path "dist/RupeeCRM/version.json")) {
-              throw "version.json is missing from dist/RupeeCRM"
-          }
+          Write-Host "✓ Verified Windows Setup Installer: $($installer.FullName) ($([math]::Round($installer.Length / 1MB, 2)) MB)"
 
-          # Verify authoritative runner JDK runtime before packaging
-          if (-not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
-              throw "Host JDK java.exe is missing from $env:JAVA_HOME\bin"
-          }
-          if (-not (Test-Path "$env:JAVA_HOME\bin\javaw.exe")) {
-              throw "Host JDK javaw.exe is missing from $env:JAVA_HOME\bin"
-          }
+          New-Item -ItemType Directory -Force -Path release-dist
+          Copy-Item $installer.FullName "release-dist/RupeeCRM-Setup.exe" -Force
+          Copy-Item $installer.FullName "release-dist/$($installer.Name)" -Force
 
-          Write-Host "=== Verifying Bundled Runtime Execution ==="
-          & "$env:JAVA_HOME\bin\java.exe" -version
+          # Direct WAR & checksum assets for existing in-app update pipeline
+          Copy-Item app-binaries/rupeecrm.war release-dist/rupeecrm.war
+          Copy-Item app-binaries/rupeecrm.war release-dist/billsoft.war
+          (Get-FileHash -Algorithm SHA256 release-dist/rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII release-dist/rupeecrm.war.sha256
+          (Get-FileHash -Algorithm SHA256 release-dist/billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII release-dist/billsoft.war.sha256
 
-          # Package Native Application and build standalone MSI Installer with full bundled Temurin runtime
-          jpackage --name RupeeCRM `
-                   --input dist/RupeeCRM `
-                   --main-jar launcher.jar `
-                   --main-class com.billing.simple.launcher.LauncherMain `
-                   --type msi `
-                   --runtime-image "$env:JAVA_HOME" `
-                   --icon tools/assets/RupeeCRM.ico `
-                   --dest msi-stage `
-                   --resource-dir installer/wix/resources `
-                   --verbose `
-                   --app-version 1.0.${{ github.run_number }} `
-                   --vendor "RupeeCRM" `
-                   --win-shortcut `
-                   --win-menu `
-                   --win-menu-group "RupeeCRM" `
-                   --win-per-user-install `
-                   --win-dir-chooser `
-                   --win-upgrade-uuid 4F9E58A2-3670-4A9A-9988-518D1B36C87E `
-                   --java-options "-Djava.awt.headless=false"
-
-          $msi = Get-ChildItem "msi-stage" -Filter "*.msi" -File | Select-Object -First 1
-          if (-not $msi) {
-              throw "jpackage did not produce an MSI in msi-stage"
-          }
-
-          Copy-Item $msi.FullName "RupeeCRMSetup.msi" -Force
-
-          if (-not (Test-Path "RupeeCRMSetup.msi")) {
-              throw "Final RupeeCRMSetup.msi was not created"
-          }
-
-          Write-Host "Created MSI: $((Get-Item RupeeCRMSetup.msi).FullName)"
-          Write-Host "Size: $((Get-Item RupeeCRMSetup.msi).Length) bytes"
-
-          # Prepare direct WAR & checksum assets for in-app update pipeline
-          Copy-Item app-binaries/rupeecrm.war rupeecrm.war
-          Copy-Item app-binaries/rupeecrm.war billsoft.war
-          (Get-FileHash -Algorithm SHA256 rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII rupeecrm.war.sha256
-          (Get-FileHash -Algorithm SHA256 billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII billsoft.war.sha256
-
-      - name: Validate Windows MSI Lifecycle
-        shell: pwsh
-        run: |
-          .\tools\validate-windows-lifecycle.ps1
-
-      - name: Validate Forensic Purge Utility
-        shell: pwsh
-        run: |
-          .\tools\test-purge-script.ps1
-
-      - name: Upload Unsigned CI MSI Artifact
+      - name: Upload Windows Installer and Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rupeecrm-msi-unsigned-ci
-          path: |
-            RupeeCRMSetup.msi
-            rupeecrm-app-windows-x64.zip
-            rupeecrm.war
-            rupeecrm.war.sha256
-            billsoft.war
-            billsoft.war.sha256
+          name: rupeecrm-windows-installer
+          path: release-dist/
           if-no-files-found: error
           retention-days: 3
 
   publish-release:
+    name: Publish Production GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-app, build-windows-msi]
-    if: needs.build-app.outputs.has_signing_key == 'true'
+    needs: [build-app, build-windows-installer]
+    if: needs.build-app.outputs.has_signing_key == 'true' && startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout Code
@@ -264,10 +197,10 @@ jobs:
           name: app-binaries
           path: app-binaries
 
-      - name: Download Windows MSI Artifact
+      - name: Download Windows Installer Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: rupeecrm-msi-unsigned-ci
+          name: rupeecrm-windows-installer
           path: release-dist
 
       - name: Generate and Verify Signed Release Manifest
@@ -312,8 +245,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release-dist/RupeeCRMSetup.msi
-            release-dist/rupeecrm-app-windows-x64.zip
+            release-dist/*.exe
             release-dist/rupeecrm.war
             release-dist/rupeecrm.war.sha256
             release-dist/billsoft.war
@@ -324,24 +256,22 @@ jobs:
             ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
             
             ### Installation Instructions
-            1. Download **`RupeeCRMSetup.msi`**.
-            2. Double-click the installer and follow the normal Windows installation prompts.
-            3. RupeeCRM starts automatically in the Windows System Tray.
-            4. A notification appears when RupeeCRM is healthy and ready to use.
+            1. Download **`RupeeCRM-Setup.exe`**.
+            2. Run the installer wizard and complete installation (per-user installation, no admin privileges required).
+            3. RupeeCRM launches and docks cleanly into the Windows System Tray.
             
             ### Distribution Assets & Checksums
-            - **Unified Installer:** `RupeeCRMSetup.msi`
+            - **Unified Electron Installer:** `RupeeCRM-Setup.exe`
             - **Direct Update Package:** `rupeecrm.war` (SHA-256: `rupeecrm.war.sha256`)
             - **Legacy Compatible Asset:** `billsoft.war` (SHA-256: `billsoft.war.sha256`)
             - **Release Manifest:** `manifest.json`
             - **Manifest Signature (Ed25519):** `manifest.sig`
-            - **Application Payload:** `rupeecrm-app-windows-x64.zip`
 
   cleanup-old-runs:
     name: Auto-Cleanup Older Workflow Runs
     runs-on: ubuntu-latest
-    needs: [build-app, build-windows-msi, publish-release]
-    if: always() && needs.build-app.result == 'success' && needs.build-windows-msi.result == 'success' && (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
+    needs: [build-app, build-windows-installer, publish-release]
+    if: always() && needs.build-app.result == 'success' && needs.build-windows-installer.result == 'success' && (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
 
     steps:
       - name: Purge Older Workflow Runs & Artifacts

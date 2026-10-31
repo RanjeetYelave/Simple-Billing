@@ -57,6 +57,15 @@ public class SalesReturnItem {
     private BigDecimal unitPrice;
 
     @Column(precision = 15, scale = 2)
+    private BigDecimal grossAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal productDiscount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal invoiceDiscount;
+
+    @Column(precision = 15, scale = 2)
     private BigDecimal discountValue;
 
     @Column(precision = 15, scale = 2)
@@ -105,6 +114,15 @@ public class SalesReturnItem {
     public BigDecimal getUnitPrice() { return unitPrice; }
     public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
 
+    public BigDecimal getGrossAmount() { return grossAmount; }
+    public void setGrossAmount(BigDecimal grossAmount) { this.grossAmount = grossAmount; }
+
+    public BigDecimal getProductDiscount() { return productDiscount; }
+    public void setProductDiscount(BigDecimal productDiscount) { this.productDiscount = productDiscount; }
+
+    public BigDecimal getInvoiceDiscount() { return invoiceDiscount; }
+    public void setInvoiceDiscount(BigDecimal invoiceDiscount) { this.invoiceDiscount = invoiceDiscount; }
+
     public BigDecimal getDiscountValue() { return discountValue; }
     public void setDiscountValue(BigDecimal discountValue) { this.discountValue = discountValue; }
 
@@ -140,6 +158,9 @@ public class SalesReturnItem {
         private String unit;
         private Integer returnQty;
         private BigDecimal unitPrice;
+        private BigDecimal grossAmount;
+        private BigDecimal productDiscount;
+        private BigDecimal invoiceDiscount;
         private BigDecimal discountValue;
         private BigDecimal gstPercent;
         private BigDecimal gstAmount;
@@ -157,6 +178,9 @@ public class SalesReturnItem {
         public SalesReturnItemBuilder unit(String unit) { this.unit = unit; return this; }
         public SalesReturnItemBuilder returnQty(Integer returnQty) { this.returnQty = returnQty; return this; }
         public SalesReturnItemBuilder unitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; return this; }
+        public SalesReturnItemBuilder grossAmount(BigDecimal grossAmount) { this.grossAmount = grossAmount; return this; }
+        public SalesReturnItemBuilder productDiscount(BigDecimal productDiscount) { this.productDiscount = productDiscount; return this; }
+        public SalesReturnItemBuilder invoiceDiscount(BigDecimal invoiceDiscount) { this.invoiceDiscount = invoiceDiscount; return this; }
         public SalesReturnItemBuilder discountValue(BigDecimal discountValue) { this.discountValue = discountValue; return this; }
         public SalesReturnItemBuilder gstPercent(BigDecimal gstPercent) { this.gstPercent = gstPercent; return this; }
         public SalesReturnItemBuilder gstAmount(BigDecimal gstAmount) { this.gstAmount = gstAmount; return this; }
@@ -176,6 +200,9 @@ public class SalesReturnItem {
             item.unit = this.unit;
             item.returnQty = this.returnQty;
             item.unitPrice = this.unitPrice;
+            item.grossAmount = this.grossAmount;
+            item.productDiscount = this.productDiscount;
+            item.invoiceDiscount = this.invoiceDiscount;
             item.discountValue = this.discountValue;
             item.gstPercent = this.gstPercent;
             item.gstAmount = this.gstAmount;

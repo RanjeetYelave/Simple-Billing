@@ -36,6 +36,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT i FROM Invoice i WHERE i.id = :id AND i.firmId = :firmId")
     Optional<Invoice> findByIdAndFirmIdForUpdate(@Param("id") Long id, @Param("firmId") Long firmId);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Invoice i WHERE i.id = :id AND i.firmId = :firmId")
+    Optional<Invoice> findWithLockByIdAndFirmId(@Param("id") Long id, @Param("firmId") Long firmId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Invoice i WHERE i.id = :id")
+    Optional<Invoice> findWithLockById(@Param("id") Long id);
+
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);

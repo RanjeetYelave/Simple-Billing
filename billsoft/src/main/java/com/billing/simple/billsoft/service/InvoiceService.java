@@ -2043,8 +2043,8 @@ public class InvoiceService {
     public SalesReturn createSalesReturn(Long invoiceId, SalesReturnRequest request) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         Invoice invoice = (currentFirmId != null
-                ? invoiceRepo.findByIdAndFirmId(invoiceId, currentFirmId)
-                : invoiceRepo.findById(invoiceId))
+                ? invoiceRepo.findWithLockByIdAndFirmId(invoiceId, currentFirmId)
+                : invoiceRepo.findWithLockById(invoiceId))
                 .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
                         "Invoice not found in firm: " + invoiceId));
 
@@ -2126,6 +2126,31 @@ public class InvoiceService {
         Map<Long, Integer> batchReturnedByItemId = new HashMap<>();
         Map<Long, Integer> batchReturnedByProductId = new HashMap<>();
 
+        boolean isDiscountAware = Boolean.TRUE.equals(request.getIncludeOriginalDiscounts());
+        BigDecimal returnGrossTotal = BigDecimal.ZERO;
+        BigDecimal returnProdDiscTotal = BigDecimal.ZERO;
+        BigDecimal returnInvDiscTotal = BigDecimal.ZERO;
+
+        Map<Long, BigDecimal> priorGrossByItemId = new HashMap<>();
+        Map<Long, BigDecimal> priorProdDiscByItemId = new HashMap<>();
+        Map<Long, BigDecimal> priorInvDiscByItemId = new HashMap<>();
+        Map<Long, BigDecimal> priorGstByItemId = new HashMap<>();
+
+        if (isDiscountAware) {
+            List<Object[]> allocatedAggs = salesReturnItemRepo.sumAllocatedAmountsByInvoiceItemIdForInvoice(invoiceId);
+            if (allocatedAggs != null) {
+                for (Object[] row : allocatedAggs) {
+                    if (row[0] != null) {
+                        Long itemId = ((Number) row[0]).longValue();
+                        priorGrossByItemId.put(itemId, row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO);
+                        priorProdDiscByItemId.put(itemId, row[2] != null ? (BigDecimal) row[2] : BigDecimal.ZERO);
+                        priorInvDiscByItemId.put(itemId, row[3] != null ? (BigDecimal) row[3] : BigDecimal.ZERO);
+                        priorGstByItemId.put(itemId, row[4] != null ? (BigDecimal) row[4] : BigDecimal.ZERO);
+                    }
+                }
+            }
+        }
+
         for (SalesReturnRequest.SalesReturnItemRequest reqItem : request.getItems()) {
             int retQty = reqItem.getReturnQty() != null ? reqItem.getReturnQty() : 0;
             if (retQty <= 0)
@@ -2150,8 +2175,9 @@ public class InvoiceService {
             }
 
             // Enforce returned quantity <= sold quantity - previously returned quantity
+            int alreadyReturned = 0;
             if (invItem != null && invItem.getId() != null) {
-                int alreadyReturned = previouslyReturnedByItemId.getOrDefault(invItem.getId(), 0)
+                alreadyReturned = previouslyReturnedByItemId.getOrDefault(invItem.getId(), 0)
                         + batchReturnedByItemId.getOrDefault(invItem.getId(), 0);
                 int soldQty = invItem.getQty() != null ? invItem.getQty() : 0;
                 int maxAllowed = Math.max(0, soldQty - alreadyReturned);
@@ -2163,10 +2189,10 @@ public class InvoiceService {
             }
 
             if (prod != null && prod.getId() != null) {
-                int alreadyReturned = previouslyReturnedByProductId.getOrDefault(prod.getId(), 0)
+                int prodAlreadyReturned = previouslyReturnedByProductId.getOrDefault(prod.getId(), 0)
                         + batchReturnedByProductId.getOrDefault(prod.getId(), 0);
                 int totalSold = totalSoldByProductId.getOrDefault(prod.getId(), 0);
-                int maxAllowed = Math.max(0, totalSold - alreadyReturned);
+                int maxAllowed = Math.max(0, totalSold - prodAlreadyReturned);
                 if (retQty > maxAllowed) {
                     throw new IllegalArgumentException("Cannot return " + retQty + " units of product ID "
                             + prod.getId() + ". Return quantity exceeds remaining returnable quantity (" + maxAllowed + ")");
@@ -2183,32 +2209,144 @@ public class InvoiceService {
 
             BigDecimal gstPct = excludeTax ? BigDecimal.ZERO : originalGstPct;
 
-            // AUDIT-030: Calculate returns using the net effective billed price, accounting for discounts
-            BigDecimal effectiveUnitPrice;
-            BigDecimal effectiveUnitDiscount = BigDecimal.ZERO;
-            if (invItem != null && invItem.getQty() != null && invItem.getQty() > 0 && invItem.getTaxableAmount() != null) {
-                effectiveUnitPrice = invItem.getTaxableAmount().divide(BigDecimal.valueOf(invItem.getQty()), 4, RoundingMode.HALF_UP);
-                BigDecimal listPrice = invItem.getPricePerUnit() != null ? invItem.getPricePerUnit() : unitPrice;
-                if (listPrice.compareTo(effectiveUnitPrice) > 0) {
-                    effectiveUnitDiscount = listPrice.subtract(effectiveUnitPrice);
-                }
-            } else {
-                effectiveUnitPrice = unitPrice;
-            }
-
+            BigDecimal itemGross = null;
+            BigDecimal itemProductDiscount = null;
+            BigDecimal itemInvoiceDiscount = null;
             BigDecimal itemLineSubtotal;
             BigDecimal itemTax;
             BigDecimal itemDiscount;
 
-            if (invItem != null && invItem.getQty() != null && retQty == invItem.getQty() && invItem.getTaxableAmount() != null) {
-                // Exact full line item return: use exact stored figures to prevent cumulative rounding drift
-                itemLineSubtotal = invItem.getTaxableAmount();
-                itemTax = excludeTax ? BigDecimal.ZERO : (invItem.getGstAmount() != null ? invItem.getGstAmount() : BigDecimal.ZERO);
-                itemDiscount = invItem.getDiscountValue() != null ? invItem.getDiscountValue() : BigDecimal.ZERO;
+            if (isDiscountAware && invItem != null && invItem.getQty() != null && invItem.getQty() > 0) {
+                int Q = invItem.getQty();
+                BigDecimal P = invItem.getPricePerUnit() != null ? invItem.getPricePerUnit() : unitPrice;
+                BigDecimal G_total = invItem.getAmountWithoutTax() != null ? invItem.getAmountWithoutTax()
+                        : P.multiply(BigDecimal.valueOf(Q)).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal D_prod_total = invItem.getDiscountValue() != null ? invItem.getDiscountValue() : BigDecimal.ZERO;
+                if (D_prod_total.compareTo(G_total) > 0) {
+                    D_prod_total = G_total;
+                }
+                if (D_prod_total.compareTo(BigDecimal.ZERO) < 0) {
+                    D_prod_total = BigDecimal.ZERO;
+                }
+
+                BigDecimal T_total = invItem.getTaxableAmount() != null ? invItem.getTaxableAmount()
+                        : G_total.subtract(D_prod_total);
+                if (T_total.compareTo(BigDecimal.ZERO) < 0) {
+                    T_total = BigDecimal.ZERO;
+                }
+
+                BigDecimal D_inv_total = G_total.subtract(D_prod_total).subtract(T_total);
+                if (D_inv_total.compareTo(BigDecimal.ZERO) < 0) {
+                    D_inv_total = BigDecimal.ZERO;
+                }
+
+                BigDecimal GST_total = invItem.getGstAmount() != null ? invItem.getGstAmount()
+                        : T_total.multiply(originalGstPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                int R = alreadyReturned;
+                int R_prime = R + retQty;
+
+                // Cumulative at R_prime:
+                BigDecimal cumG;
+                BigDecimal cumD_prod;
+                BigDecimal cumD_inv;
+                BigDecimal cumT;
+                BigDecimal cumGST;
+
+                if (R_prime == Q) {
+                    cumG = G_total;
+                    cumD_prod = D_prod_total;
+                    cumD_inv = D_inv_total;
+                    cumT = T_total;
+                    cumGST = excludeTax ? BigDecimal.ZERO : GST_total;
+                } else {
+                    cumG = P.multiply(BigDecimal.valueOf(R_prime)).setScale(2, RoundingMode.HALF_UP);
+                    cumD_prod = D_prod_total.multiply(BigDecimal.valueOf(R_prime))
+                            .divide(BigDecimal.valueOf(Q), 2, RoundingMode.HALF_UP);
+                    cumD_inv = D_inv_total.multiply(BigDecimal.valueOf(R_prime))
+                            .divide(BigDecimal.valueOf(Q), 2, RoundingMode.HALF_UP);
+                    cumT = cumG.subtract(cumD_prod).subtract(cumD_inv);
+                    if (cumT.compareTo(BigDecimal.ZERO) < 0) {
+                        cumT = BigDecimal.ZERO;
+                    }
+                    cumGST = excludeTax ? BigDecimal.ZERO
+                            : cumT.multiply(gstPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                }
+
+                // Prior amounts at R:
+                BigDecimal priorG;
+                BigDecimal priorD_prod;
+                BigDecimal priorD_inv;
+                BigDecimal priorT;
+                BigDecimal priorGST;
+
+                BigDecimal recordedPriorGross = priorGrossByItemId.get(invItem.getId());
+                if (recordedPriorGross != null && recordedPriorGross.compareTo(BigDecimal.ZERO) > 0) {
+                    priorG = recordedPriorGross;
+                    priorD_prod = priorProdDiscByItemId.getOrDefault(invItem.getId(), BigDecimal.ZERO);
+                    priorD_inv = priorInvDiscByItemId.getOrDefault(invItem.getId(), BigDecimal.ZERO);
+                    priorT = priorG.subtract(priorD_prod).subtract(priorD_inv);
+                    priorGST = priorGstByItemId.getOrDefault(invItem.getId(), BigDecimal.ZERO);
+                } else if (R > 0) {
+                    priorG = P.multiply(BigDecimal.valueOf(R)).setScale(2, RoundingMode.HALF_UP);
+                    priorD_prod = D_prod_total.multiply(BigDecimal.valueOf(R))
+                            .divide(BigDecimal.valueOf(Q), 2, RoundingMode.HALF_UP);
+                    priorD_inv = D_inv_total.multiply(BigDecimal.valueOf(R))
+                            .divide(BigDecimal.valueOf(Q), 2, RoundingMode.HALF_UP);
+                    priorT = priorG.subtract(priorD_prod).subtract(priorD_inv);
+                    if (priorT.compareTo(BigDecimal.ZERO) < 0) {
+                        priorT = BigDecimal.ZERO;
+                    }
+                    priorGST = excludeTax ? BigDecimal.ZERO
+                            : priorT.multiply(gstPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                } else {
+                    priorG = BigDecimal.ZERO;
+                    priorD_prod = BigDecimal.ZERO;
+                    priorD_inv = BigDecimal.ZERO;
+                    priorT = BigDecimal.ZERO;
+                    priorGST = BigDecimal.ZERO;
+                }
+
+                itemGross = cumG.subtract(priorG);
+                itemProductDiscount = cumD_prod.subtract(priorD_prod);
+                itemInvoiceDiscount = cumD_inv.subtract(priorD_inv);
+                itemLineSubtotal = cumT.subtract(priorT);
+                itemTax = cumGST.subtract(priorGST);
+                itemDiscount = itemProductDiscount.add(itemInvoiceDiscount);
+
+                // Update running tracking for subsequent items in the same batch
+                priorGrossByItemId.put(invItem.getId(), cumG);
+                priorProdDiscByItemId.put(invItem.getId(), cumD_prod);
+                priorInvDiscByItemId.put(invItem.getId(), cumD_inv);
+                priorGstByItemId.put(invItem.getId(), cumGST);
+
+                returnGrossTotal = returnGrossTotal.add(itemGross);
+                returnProdDiscTotal = returnProdDiscTotal.add(itemProductDiscount);
+                returnInvDiscTotal = returnInvDiscTotal.add(itemInvoiceDiscount);
             } else {
-                itemLineSubtotal = effectiveUnitPrice.multiply(BigDecimal.valueOf(retQty)).setScale(2, RoundingMode.HALF_UP);
-                itemTax = itemLineSubtotal.multiply(gstPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                itemDiscount = effectiveUnitDiscount.multiply(BigDecimal.valueOf(retQty)).setScale(2, RoundingMode.HALF_UP);
+                // Preserved legacy return calculation when checkbox is unchecked or not discount-aware
+                BigDecimal effectiveUnitPrice;
+                BigDecimal effectiveUnitDiscount = BigDecimal.ZERO;
+                if (invItem != null && invItem.getQty() != null && invItem.getQty() > 0 && invItem.getTaxableAmount() != null) {
+                    effectiveUnitPrice = invItem.getTaxableAmount().divide(BigDecimal.valueOf(invItem.getQty()), 4, RoundingMode.HALF_UP);
+                    BigDecimal listPrice = invItem.getPricePerUnit() != null ? invItem.getPricePerUnit() : unitPrice;
+                    if (listPrice.compareTo(effectiveUnitPrice) > 0) {
+                        effectiveUnitDiscount = listPrice.subtract(effectiveUnitPrice);
+                    }
+                } else {
+                    effectiveUnitPrice = unitPrice;
+                }
+
+                if (invItem != null && invItem.getQty() != null && retQty == invItem.getQty() && invItem.getTaxableAmount() != null) {
+                    // Exact full line item return: use exact stored figures to prevent cumulative rounding drift
+                    itemLineSubtotal = invItem.getTaxableAmount();
+                    itemTax = excludeTax ? BigDecimal.ZERO : (invItem.getGstAmount() != null ? invItem.getGstAmount() : BigDecimal.ZERO);
+                    itemDiscount = invItem.getDiscountValue() != null ? invItem.getDiscountValue() : BigDecimal.ZERO;
+                } else {
+                    itemLineSubtotal = effectiveUnitPrice.multiply(BigDecimal.valueOf(retQty)).setScale(2, RoundingMode.HALF_UP);
+                    itemTax = itemLineSubtotal.multiply(gstPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    itemDiscount = effectiveUnitDiscount.multiply(BigDecimal.valueOf(retQty)).setScale(2, RoundingMode.HALF_UP);
+                }
             }
 
             BigDecimal itemTotal = itemLineSubtotal.add(itemTax);
@@ -2255,7 +2393,10 @@ public class InvoiceService {
                     .hsnCode(invItem != null ? invItem.getHsnCode() : null)
                     .unit(invItem != null ? invItem.getUnit() : "pcs")
                     .returnQty(retQty)
-                    .unitPrice(invItem != null && invItem.getPricePerUnit() != null ? invItem.getPricePerUnit() : effectiveUnitPrice)
+                    .unitPrice(invItem != null && invItem.getPricePerUnit() != null ? invItem.getPricePerUnit() : unitPrice)
+                    .grossAmount(itemGross)
+                    .productDiscount(itemProductDiscount)
+                    .invoiceDiscount(itemInvoiceDiscount)
                     .discountValue(itemDiscount)
                     .gstPercent(originalGstPct)
                     .gstAmount(itemTax)
@@ -2289,6 +2430,18 @@ public class InvoiceService {
         BigDecimal netRefund = grandTotal.subtract(penaltyAmount);
         if (netRefund.compareTo(BigDecimal.ZERO) < 0) {
             netRefund = BigDecimal.ZERO;
+        }
+
+        if (isDiscountAware) {
+            salesReturn.setIncludeDiscounts(true);
+            salesReturn.setGrossAmount(returnGrossTotal);
+            salesReturn.setProductDiscountAmount(returnProdDiscTotal);
+            salesReturn.setInvoiceDiscountAmount(returnInvDiscTotal);
+        } else {
+            salesReturn.setIncludeDiscounts(false);
+            salesReturn.setGrossAmount(BigDecimal.ZERO);
+            salesReturn.setProductDiscountAmount(BigDecimal.ZERO);
+            salesReturn.setInvoiceDiscountAmount(BigDecimal.ZERO);
         }
 
         salesReturn.setSubtotal(subtotal);

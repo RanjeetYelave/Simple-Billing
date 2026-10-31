@@ -237,7 +237,7 @@ public class SalesReturnPdfService {
 
         // 5. Summary Table
         PdfPTable summaryTable = new PdfPTable(2);
-        summaryTable.setWidthPercentage(48);
+        summaryTable.setWidthPercentage(60);
         summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
         summaryTable.setKeepTogether(true);
         summaryTable.setSpacingBefore(10 * scale);
@@ -246,14 +246,52 @@ public class SalesReturnPdfService {
         Font sumDeduct = new Font(Font.HELVETICA, 8.5f * scale, Font.NORMAL, new Color(220, 38, 38));
         Font sumBold = new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, primaryColor);
 
-        if (salesReturn.getExcludedTaxAmount() != null && salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal grossValue = salesReturn.getSubtotal().add(salesReturn.getExcludedTaxAmount());
-            addSummaryRow(summaryTable, "Gross Return (Incl. GST):", grossValue, sumLabel, false);
-            addSummaryRow(summaryTable, "Less GST / Tax Deduction:", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
+        boolean isDiscountAware = Boolean.TRUE.equals(salesReturn.getIncludeDiscounts());
+        if (isDiscountAware) {
+            BigDecimal grossVal = salesReturn.getGrossAmount() != null ? salesReturn.getGrossAmount() : salesReturn.getSubtotal();
+            addSummaryRow(summaryTable, "Gross Value of Returned Items:", grossVal, sumLabel, false);
+
+            if (salesReturn.getProductDiscountAmount() != null && salesReturn.getProductDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(summaryTable, "Less: Product-Level Discount:", salesReturn.getProductDiscountAmount(), sumDeduct, true);
+            }
+
+            if (salesReturn.getInvoiceDiscountAmount() != null && salesReturn.getInvoiceDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(summaryTable, "Less: Invoice-Level Discount:", salesReturn.getInvoiceDiscountAmount(), sumDeduct, true);
+            }
+
+            addSummaryRow(summaryTable, "Net Taxable Return Value:", salesReturn.getSubtotal(), sumLabel, false);
+
+            if (salesReturn.getExcludedTaxAmount() != null && salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addSummaryRow(summaryTable, "Less GST / Tax Deduction (0% GST):", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
+            } else {
+                boolean hasIgst = salesReturn.getIgstAmount() != null && salesReturn.getIgstAmount().compareTo(BigDecimal.ZERO) > 0;
+                boolean hasCgst = salesReturn.getCgstAmount() != null && salesReturn.getCgstAmount().compareTo(BigDecimal.ZERO) > 0;
+                boolean hasSgst = salesReturn.getSgstAmount() != null && salesReturn.getSgstAmount().compareTo(BigDecimal.ZERO) > 0;
+
+                if (hasIgst) {
+                    addSummaryRow(summaryTable, "IGST Reversal:", salesReturn.getIgstAmount(), sumLabel, false);
+                } else if (hasCgst || hasSgst) {
+                    if (hasCgst) {
+                        addSummaryRow(summaryTable, "CGST Reversal:", salesReturn.getCgstAmount(), sumLabel, false);
+                    }
+                    if (hasSgst) {
+                        addSummaryRow(summaryTable, "SGST Reversal:", salesReturn.getSgstAmount(), sumLabel, false);
+                    }
+                } else if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    addSummaryRow(summaryTable, "GST Reversal Total:", salesReturn.getTaxAmount(), sumLabel, false);
+                }
+            }
         } else {
-            addSummaryRow(summaryTable, "Taxable Return Amount:", salesReturn.getSubtotal(), sumLabel, false);
-            if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
-                addSummaryRow(summaryTable, "GST Refund Total:", salesReturn.getTaxAmount(), sumLabel, false);
+            // Preserved existing legacy summary layout
+            if (salesReturn.getExcludedTaxAmount() != null && salesReturn.getExcludedTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal grossValue = salesReturn.getSubtotal().add(salesReturn.getExcludedTaxAmount());
+                addSummaryRow(summaryTable, "Gross Return (Incl. GST):", grossValue, sumLabel, false);
+                addSummaryRow(summaryTable, "Less GST / Tax Deduction:", salesReturn.getExcludedTaxAmount(), sumDeduct, true);
+            } else {
+                addSummaryRow(summaryTable, "Taxable Return Amount:", salesReturn.getSubtotal(), sumLabel, false);
+                if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    addSummaryRow(summaryTable, "GST Refund Total:", salesReturn.getTaxAmount(), sumLabel, false);
+                }
             }
         }
 
@@ -397,9 +435,25 @@ public class SalesReturnPdfService {
         sumTable.setWidthPercentage(100);
         sumTable.setWidths(new float[]{60, 40});
 
-        addThermalRow(sumTable, "Taxable Return:", salesReturn.getSubtotal(), subFont);
-        if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
-            addThermalRow(sumTable, "GST Refund:", salesReturn.getTaxAmount(), subFont);
+        boolean isThermalDiscountAware = Boolean.TRUE.equals(salesReturn.getIncludeDiscounts());
+        if (isThermalDiscountAware) {
+            BigDecimal grossVal = salesReturn.getGrossAmount() != null ? salesReturn.getGrossAmount() : salesReturn.getSubtotal();
+            addThermalRow(sumTable, "Gross Returned:", grossVal, subFont);
+            if (salesReturn.getProductDiscountAmount() != null && salesReturn.getProductDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addThermalRow(sumTable, "Less Product Disc:", salesReturn.getProductDiscountAmount().negate(), subFont);
+            }
+            if (salesReturn.getInvoiceDiscountAmount() != null && salesReturn.getInvoiceDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addThermalRow(sumTable, "Less Inv Disc:", salesReturn.getInvoiceDiscountAmount().negate(), subFont);
+            }
+            addThermalRow(sumTable, "Net Taxable:", salesReturn.getSubtotal(), subFont);
+            if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addThermalRow(sumTable, "GST Reversal:", salesReturn.getTaxAmount(), subFont);
+            }
+        } else {
+            addThermalRow(sumTable, "Taxable Return:", salesReturn.getSubtotal(), subFont);
+            if (salesReturn.getTaxAmount() != null && salesReturn.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
+                addThermalRow(sumTable, "GST Refund:", salesReturn.getTaxAmount(), subFont);
+            }
         }
         if (salesReturn.getPenaltyAmount() != null && salesReturn.getPenaltyAmount().compareTo(BigDecimal.ZERO) > 0) {
             addThermalRow(sumTable, "Less Deduction:", salesReturn.getPenaltyAmount().negate(), subFont);

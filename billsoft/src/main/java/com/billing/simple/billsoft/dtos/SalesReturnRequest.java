@@ -23,6 +23,7 @@ public class SalesReturnRequest {
     private String refundMode; // "CASH", "BANK_TRANSFER", "UPI", "CUSTOMER_CREDIT"
     private String notes;
     private Boolean excludeTax;
+    private Boolean includeOriginalDiscounts;
     private BigDecimal penaltyAmount;
     private String penaltyReason;
     private List<SalesReturnItemRequest> items;
@@ -50,6 +51,9 @@ public class SalesReturnRequest {
 
     public Boolean getExcludeTax() { return excludeTax; }
     public void setExcludeTax(Boolean excludeTax) { this.excludeTax = excludeTax; }
+
+    public Boolean getIncludeOriginalDiscounts() { return includeOriginalDiscounts; }
+    public void setIncludeOriginalDiscounts(Boolean includeOriginalDiscounts) { this.includeOriginalDiscounts = includeOriginalDiscounts; }
 
     public BigDecimal getPenaltyAmount() { return penaltyAmount; }
     public void setPenaltyAmount(BigDecimal penaltyAmount) { this.penaltyAmount = penaltyAmount; }

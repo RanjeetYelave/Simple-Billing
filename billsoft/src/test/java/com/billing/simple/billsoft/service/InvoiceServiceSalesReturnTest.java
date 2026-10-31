@@ -48,6 +48,8 @@ class InvoiceServiceSalesReturnTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         TenantContext.setCurrentFirmId(1L);
+        when(invoiceRepo.findWithLockById(any())).thenAnswer(inv -> invoiceRepo.findById((Long) inv.getArgument(0)));
+        when(invoiceRepo.findWithLockByIdAndFirmId(any(), any())).thenAnswer(inv -> invoiceRepo.findByIdAndFirmId((Long) inv.getArgument(0), (Long) inv.getArgument(1)));
     }
 
     @AfterEach

@@ -58,6 +58,18 @@ public class SalesReturn {
     @Column(length = 50)
     private String refundMode; // "CASH", "BANK_TRANSFER", "UPI", "CUSTOMER_CREDIT"
 
+    @Column(name = "include_discounts")
+    private Boolean includeDiscounts;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal grossAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal productDiscountAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal invoiceDiscountAmount;
+
     @Column(precision = 15, scale = 2)
     private BigDecimal subtotal;
 
@@ -104,6 +116,10 @@ public class SalesReturn {
         if (this.returnDate == null) {
             this.returnDate = LocalDate.now();
         }
+        if (this.includeDiscounts == null) this.includeDiscounts = false;
+        if (this.grossAmount == null) this.grossAmount = BigDecimal.ZERO;
+        if (this.productDiscountAmount == null) this.productDiscountAmount = BigDecimal.ZERO;
+        if (this.invoiceDiscountAmount == null) this.invoiceDiscountAmount = BigDecimal.ZERO;
         if (this.subtotal == null) this.subtotal = BigDecimal.ZERO;
         if (this.taxAmount == null) this.taxAmount = BigDecimal.ZERO;
         if (this.excludedTaxAmount == null) this.excludedTaxAmount = BigDecimal.ZERO;
@@ -139,6 +155,18 @@ public class SalesReturn {
 
     public String getRefundMode() { return refundMode; }
     public void setRefundMode(String refundMode) { this.refundMode = refundMode; }
+
+    public Boolean getIncludeDiscounts() { return includeDiscounts; }
+    public void setIncludeDiscounts(Boolean includeDiscounts) { this.includeDiscounts = includeDiscounts; }
+
+    public BigDecimal getGrossAmount() { return grossAmount; }
+    public void setGrossAmount(BigDecimal grossAmount) { this.grossAmount = grossAmount; }
+
+    public BigDecimal getProductDiscountAmount() { return productDiscountAmount; }
+    public void setProductDiscountAmount(BigDecimal productDiscountAmount) { this.productDiscountAmount = productDiscountAmount; }
+
+    public BigDecimal getInvoiceDiscountAmount() { return invoiceDiscountAmount; }
+    public void setInvoiceDiscountAmount(BigDecimal invoiceDiscountAmount) { this.invoiceDiscountAmount = invoiceDiscountAmount; }
 
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
@@ -192,6 +220,10 @@ public class SalesReturn {
         private Customer customer;
         private String reason;
         private String refundMode;
+        private Boolean includeDiscounts;
+        private BigDecimal grossAmount;
+        private BigDecimal productDiscountAmount;
+        private BigDecimal invoiceDiscountAmount;
         private BigDecimal subtotal;
         private BigDecimal taxAmount;
         private BigDecimal excludedTaxAmount;
@@ -214,6 +246,10 @@ public class SalesReturn {
         public SalesReturnBuilder customer(Customer customer) { this.customer = customer; return this; }
         public SalesReturnBuilder reason(String reason) { this.reason = reason; return this; }
         public SalesReturnBuilder refundMode(String refundMode) { this.refundMode = refundMode; return this; }
+        public SalesReturnBuilder includeDiscounts(Boolean includeDiscounts) { this.includeDiscounts = includeDiscounts; return this; }
+        public SalesReturnBuilder grossAmount(BigDecimal grossAmount) { this.grossAmount = grossAmount; return this; }
+        public SalesReturnBuilder productDiscountAmount(BigDecimal productDiscountAmount) { this.productDiscountAmount = productDiscountAmount; return this; }
+        public SalesReturnBuilder invoiceDiscountAmount(BigDecimal invoiceDiscountAmount) { this.invoiceDiscountAmount = invoiceDiscountAmount; return this; }
         public SalesReturnBuilder subtotal(BigDecimal subtotal) { this.subtotal = subtotal; return this; }
         public SalesReturnBuilder taxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; return this; }
         public SalesReturnBuilder excludedTaxAmount(BigDecimal excludedTaxAmount) { this.excludedTaxAmount = excludedTaxAmount; return this; }
@@ -238,6 +274,10 @@ public class SalesReturn {
             sr.customer = this.customer;
             sr.reason = this.reason;
             sr.refundMode = this.refundMode;
+            sr.includeDiscounts = this.includeDiscounts;
+            sr.grossAmount = this.grossAmount;
+            sr.productDiscountAmount = this.productDiscountAmount;
+            sr.invoiceDiscountAmount = this.invoiceDiscountAmount;
             sr.subtotal = this.subtotal;
             sr.taxAmount = this.taxAmount;
             sr.excludedTaxAmount = this.excludedTaxAmount;

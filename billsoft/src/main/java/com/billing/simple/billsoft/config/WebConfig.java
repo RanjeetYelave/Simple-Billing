@@ -40,7 +40,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "classpath:/public/",
                         "file:src/main/webapp/",
                         "file:billsoft/src/main/webapp/"
-                );
+                )
+                .setCacheControl(org.springframework.http.CacheControl.noCache().mustRevalidate());
     }
 
     @Override

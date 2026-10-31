@@ -41,9 +41,9 @@ console.log('  -> package.json valid.');
 
 // 3. Verify electron-builder.yml configuration
 console.log('[3/7] Verifying electron-builder.yml...');
-const builderYaml = fs.readFileSync(builderConfigPath, 'utf8');
+const builderYaml = fs.readFileSync(builderConfigPath, 'utf8').replace(/\r\n/g, '\n');
 assert(builderYaml.includes('appId: com.rupeecrm.desktop'), 'App ID must be com.rupeecrm.desktop');
-assert(builderYaml.includes('target:\n    - target: nsis'), 'NSIS must be target');
+assert(/target:\s*\n\s*-\s*target:\s*nsis/.test(builderYaml) || builderYaml.includes('target:\n    - target: nsis'), 'NSIS must be target');
 assert(builderYaml.includes('deleteAppDataOnUninstall: false'), 'Must preserve customer data on uninstall');
 assert(builderYaml.includes('oneClick: false'), 'Must use conventional setup wizard');
 assert(builderYaml.includes('perMachine: false'), 'Must install per-user');

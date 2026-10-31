@@ -10,8 +10,8 @@
     "start:hidden": "electron . --hidden",
     "prepare:resources": "node scripts/prepare-resources.js",
     "prepare:jre": "node scripts/download-windows-jre.js",
-    "pack": "npm run prepare:resources && electron-builder --dir",
-    "build:win": "npm run prepare:resources && npm run prepare:jre && electron-builder --win --x64",
+    "pack": "npm run prepare:resources && electron-builder --dir -c.win.signAndEditExecutable=false",
+    "build:win": "npm run prepare:resources && npm run prepare:jre && electron-builder --win --x64 -c.win.signAndEditExecutable=false",
     "test": "node test/verify-electron-config.js"
   },
   "dependencies": {},

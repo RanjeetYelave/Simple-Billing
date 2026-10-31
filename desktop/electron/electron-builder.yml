@@ -22,7 +22,6 @@ extraResources:
     to: rupeecrm.war
 
 win:
-  signAndEditExecutable: false
   target:
     - target: nsis
       arch:

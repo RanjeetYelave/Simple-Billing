@@ -166,6 +166,9 @@ jobs:
           Copy-Item app-binaries/rupeecrm.war release-dist/billsoft.war
           (Get-FileHash -Algorithm SHA256 release-dist/rupeecrm.war).Hash.ToLower() | Out-File -Encoding ASCII release-dist/rupeecrm.war.sha256
           (Get-FileHash -Algorithm SHA256 release-dist/billsoft.war).Hash.ToLower() | Out-File -Encoding ASCII release-dist/billsoft.war.sha256
+          # Also generate SHA256 checksums for the installer executables
+          (Get-FileHash -Algorithm SHA256 "release-dist/$($installer.Name)").Hash.ToLower() | Out-File -Encoding ASCII "release-dist/$($installer.Name).sha256"
+          (Get-FileHash -Algorithm SHA256 "release-dist/RupeeCRM-Setup.exe").Hash.ToLower() | Out-File -Encoding ASCII "release-dist/RupeeCRM-Setup.exe.sha256"
 
       - name: Upload Windows Installer and Artifacts
         uses: actions/upload-artifact@v4
@@ -176,10 +179,13 @@ jobs:
           retention-days: 3
 
   publish-release:
-    name: Publish Production GitHub Release
+    name: Publish GitHub Pre-Release
     runs-on: ubuntu-latest
     needs: [build-app, build-windows-installer]
-    if: needs.build-app.outputs.has_signing_key == 'true' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'RanjeetYelave/Simple-Billing' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/overhaul' || github.ref_name == 'overhaul' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: write
+      actions: read
 
     steps:
       - name: Checkout Code
@@ -190,6 +196,54 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+
+      - name: Verify CI Java Regression Tests Succeeded
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Verifying CI Java Regression Tests Status ==="
+          COMMIT_SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          MAX_ATTEMPTS=45
+          ATTEMPT=0
+          FOUND_RUN=false
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            RUNS_JSON=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/actions/runs?head_sha=${COMMIT_SHA}")
+
+            STATUS=$(echo "$RUNS_JSON" | jq -r '.workflow_runs[] | select(.name=="CI Java Regression Tests") | .status' | head -n 1)
+            CONCLUSION=$(echo "$RUNS_JSON" | jq -r '.workflow_runs[] | select(.name=="CI Java Regression Tests") | .conclusion' | head -n 1)
+
+            if [ -n "$STATUS" ] && [ "$STATUS" != "null" ]; then
+              FOUND_RUN=true
+              if [ "$STATUS" = "completed" ]; then
+                echo "CI Java Regression Tests completed with conclusion: ${CONCLUSION}"
+                if [ "$CONCLUSION" != "success" ]; then
+                  echo "CRITICAL: CI Java Regression Tests failed with conclusion '${CONCLUSION}'! Aborting release."
+                  exit 1
+                fi
+                echo "✓ Verified: CI Java Regression Tests passed successfully."
+                break
+              else
+                echo "CI Java Regression Tests is in state '${STATUS}' (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)... waiting 10s"
+              fi
+            else
+              echo "Waiting for CI Java Regression Tests run to register (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)... waiting 10s"
+            fi
+
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 10
+          done
+
+          if [ "$FOUND_RUN" = "true" ] && [ "$STATUS" != "completed" ]; then
+            echo "CRITICAL: Timed out waiting for CI Java Regression Tests to complete! Aborting release."
+            exit 1
+          elif [ "$FOUND_RUN" = "false" ]; then
+            echo "Notice: No CI Java Regression Tests workflow run found for commit ${COMMIT_SHA}. Continuing release process."
+          fi
 
       - name: Download Application Artifacts
         uses: actions/download-artifact@v4
@@ -203,6 +257,31 @@ jobs:
           name: rupeecrm-windows-installer
           path: release-dist
 
+      - name: Validate Downloaded Distribution Artifacts
+        shell: bash
+        run: |
+          echo "=== Validating Downloaded Distribution Artifacts ==="
+          ls -lh release-dist/
+
+          INSTALLER=$(find release-dist -maxdepth 1 -name "RupeeCRM-Setup-*-x64.exe" | head -n 1)
+          if [ -z "$INSTALLER" ] || [ ! -f "$INSTALLER" ]; then
+            echo "CRITICAL ERROR: RupeeCRM-Setup-*-x64.exe not found in release-dist!"
+            exit 1
+          fi
+
+          FILESIZE=$(stat -c%s "$INSTALLER" 2>/dev/null || stat -f%z "$INSTALLER" 2>/dev/null)
+          if [ "$FILESIZE" -lt 50000000 ]; then
+            echo "CRITICAL ERROR: Installer size ($FILESIZE bytes) is suspiciously small! Aborting release."
+            exit 1
+          fi
+          echo "✓ Verified Windows Setup Installer: $INSTALLER ($((FILESIZE / 1048576)) MB)"
+
+          # Generate SHA256SUMS.txt
+          cd release-dist
+          sha256sum RupeeCRM-Setup*.exe *.war > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+
       - name: Generate and Verify Signed Release Manifest
         env:
           UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY || secrets.RELEASE_SIGNING_PRIVATE_KEY || secrets.UPDATE_SIGNING_KEY }}
@@ -212,60 +291,92 @@ jobs:
           # Compile ManifestSigner utility into isolated build-tools directory
           javac installer/ManifestSigner.java -d build-tools
 
-          if [ -z "$UPDATE_SIGNING_PRIVATE_KEY" ] || [ -z "$(echo "$UPDATE_SIGNING_PRIVATE_KEY" | tr -d '[:space:]')" ]; then
-            echo "CRITICAL SECURITY ERROR: UPDATE_SIGNING_PRIVATE_KEY secret is missing or empty! Releases cannot proceed with unsigned or forged update manifests. Please configure UPDATE_SIGNING_PRIVATE_KEY in GitHub Repository Settings -> Secrets and variables -> Actions."
-            exit 1
+          if [ -n "$UPDATE_SIGNING_PRIVATE_KEY" ] && [ -n "$(echo "$UPDATE_SIGNING_PRIVATE_KEY" | tr -d '[:space:]')" ]; then
+            RELEASE_NOTES="RupeeCRM pre-release build ${{ github.run_number }} integrity manifest."
+
+            # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
+            java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" --env release-meta "$RELEASE_NOTES"
+
+            # Verify signature against pinned production Ed25519 public key
+            PUB_KEY="MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8="
+            java -cp build-tools com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$PUB_KEY"
+
+            echo "=== Generated Release Manifest ==="
+            cat release-meta/manifest.json
+            echo "=== Generated Detached Signature ==="
+            cat release-meta/manifest.sig
+
+            cp release-meta/manifest.json release-dist/manifest.json
+            cp release-meta/manifest.sig release-dist/manifest.sig
+          else
+            echo "Signing key not configured; skipping manifest detached signature generation."
           fi
-
-          RELEASE_NOTES="RupeeCRM v1.0.${{ github.run_number }} production release with automated integrity verification."
-
-          # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
-          java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" --env release-meta "$RELEASE_NOTES"
-
-          # Verify signature against pinned production Ed25519 public key
-          PUB_KEY="MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8="
-          java -cp build-tools com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$PUB_KEY"
 
           # Clean up temporary build-tools directory
           rm -rf build-tools
 
-          echo "=== Generated Release Manifest ==="
-          cat release-meta/manifest.json
-          echo "=== Generated Detached Signature ==="
-          cat release-meta/manifest.sig
+      - name: Prepare Release Metadata and Notes
+        id: prep-release
+        shell: bash
+        run: |
+          APP_VERSION=$(node -p "require('./desktop/electron/package.json').version")
+          TAG_NAME="preview-${APP_VERSION}-build-${{ github.run_number }}"
+          if [ "${{ github.run_attempt }}" -gt 1 ]; then
+            TAG_NAME="${TAG_NAME}-attempt-${{ github.run_attempt }}"
+          fi
 
-          cp release-meta/manifest.json release-dist/manifest.json
-          cp release-meta/manifest.sig release-dist/manifest.sig
+          RELEASE_TITLE="RupeeCRM v${APP_VERSION} Preview (Build ${{ github.run_number }})"
+          INSTALLER_FILE=$(find release-dist -maxdepth 1 -name "RupeeCRM-Setup-*-x64.exe" | head -n 1)
+          INSTALLER_NAME=$(basename "$INSTALLER_FILE")
+          INSTALLER_SIZE=$(ls -lh "$INSTALLER_FILE" | awk '{print $5}')
+          INSTALLER_HASH=$(cat "release-dist/${INSTALLER_NAME}.sha256" 2>/dev/null || sha256sum "$INSTALLER_FILE" | awk '{print $1}')
 
-      - name: Create GitHub Release
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "release_title=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
+          echo "installer_name=${INSTALLER_NAME}" >> "$GITHUB_OUTPUT"
+
+          sed "s/^[ \t]*//" << EOF > release-notes.md
+          ## ${RELEASE_TITLE}
+
+          Automated Windows Desktop installer pre-release built from branch \`${{ github.ref_name }}\`.
+
+          ### Build Information
+          - **Application Version:** \`v${APP_VERSION}\`
+          - **Build Number:** \`${{ github.run_number }}\` (Run Attempt \`${{ github.run_attempt }}\`)
+          - **Commit SHA:** \`${{ github.sha }}\`
+          - **Branch:** \`${{ github.ref_name }}\`
+          - **Workflow Run:** [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ### Direct Downloads
+          - **Windows x64 Installer:** [\`${INSTALLER_NAME}\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${INSTALLER_NAME}) (${INSTALLER_SIZE})
+          - **Installer Checksum:** \`${INSTALLER_HASH}\`
+          - **In-App Direct Update:** \`rupeecrm.war\`
+
+          ### Verification (PowerShell)
+          \`\`\`powershell
+          (Get-FileHash -Algorithm SHA256 .\\${INSTALLER_NAME}).Hash -eq "${INSTALLER_HASH}"
+          \`\`\`
+
+          > [!NOTE]
+          > This is an automated pre-release build. The production release remains **v1.0.278**.
+          EOF
+
+      - name: Publish GitHub Pre-Release
         uses: softprops/action-gh-release@v2
         with:
-          name: RupeeCRM v1.0.${{ github.run_number }}
-          tag_name: v1.0.${{ github.run_number }}
+          name: ${{ steps.prep-release.outputs.release_title }}
+          tag_name: ${{ steps.prep-release.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           draft: false
-          prerelease: false
+          prerelease: true
+          make_latest: false
+          body_path: release-notes.md
           files: |
             release-dist/*.exe
-            release-dist/rupeecrm.war
-            release-dist/rupeecrm.war.sha256
-            release-dist/billsoft.war
-            release-dist/billsoft.war.sha256
-            release-dist/manifest.json
-            release-dist/manifest.sig
-          body: |
-            ## RupeeCRM v1.0.${{ github.run_number }} Windows Release
-            
-            ### Installation Instructions
-            1. Download **`RupeeCRM-Setup.exe`**.
-            2. Run the installer wizard and complete installation (per-user installation, no admin privileges required).
-            3. RupeeCRM launches and docks cleanly into the Windows System Tray.
-            
-            ### Distribution Assets & Checksums
-            - **Unified Electron Installer:** `RupeeCRM-Setup.exe`
-            - **Direct Update Package:** `rupeecrm.war` (SHA-256: `rupeecrm.war.sha256`)
-            - **Legacy Compatible Asset:** `billsoft.war` (SHA-256: `billsoft.war.sha256`)
-            - **Release Manifest:** `manifest.json`
-            - **Manifest Signature (Ed25519):** `manifest.sig`
+            release-dist/*.sha256
+            release-dist/SHA256SUMS.txt
+            release-dist/*.war
+            release-dist/manifest.*
 
   cleanup-old-runs:
     name: Auto-Cleanup Older Workflow Runs

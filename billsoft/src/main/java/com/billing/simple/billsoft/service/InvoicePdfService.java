@@ -111,6 +111,11 @@ public class InvoicePdfService {
                 (invoice.getFirmEmailSnapshot() != null && !invoice.getFirmEmailSnapshot().isBlank())
         );
 
+        if (effectiveFirmId == null && !hasSnapshot) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                    "Active firm context is required for invoice PDF generation");
+        }
+
         FirmDetails liveFirm = null;
         if (effectiveFirmId != null) {
             try {

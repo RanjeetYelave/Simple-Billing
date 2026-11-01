@@ -386,7 +386,7 @@ public class InvoicePdfServiceTest {
     }
 
     @Test
-    void pdfGenerationWhenFirmIdAndTenantContextAreNullAndNoSnapshot() throws Exception {
+    void pdfGenerationWhenFirmIdAndTenantContextAreNullAndNoSnapshot() {
         Invoice inv = sampleInvoice();
         inv.setFirmId(null);
         inv.setFirmNameSnapshot(null);
@@ -396,18 +396,16 @@ public class InvoicePdfServiceTest {
         inv.setFirmEmailSnapshot(null);
         com.billing.simple.billsoft.security.TenantContext.clear();
 
-        // Must succeed using firmService.getFirst() rather than throwing TenantSecurityException
-        byte[] pdf = pdfService.generatePdf(inv, "A4");
-        assertValidPdf(pdf);
-
-        String text = extractPdfText(pdf);
-        assertThat(text).containsIgnoringCase("Test Firm");
+        // Must throw TenantSecurityException per AUDIT-022
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.billing.simple.billsoft.security.TenantSecurityException.class,
+                () -> pdfService.generatePdf(inv, "A4"));
     }
 
     @Test
     void pdfGenerationWhenNoFirmExistsInDatabaseAtAll() throws Exception {
         Invoice inv = sampleInvoice();
-        inv.setFirmId(null);
+        inv.setFirmId(1L);
         inv.setFirmNameSnapshot(null);
         inv.setFirmGstinSnapshot(null);
         inv.setFirmAddressSnapshot(null);
@@ -427,9 +425,9 @@ public class InvoicePdfServiceTest {
     }
 
     @Test
-    void pdfGenerationThermal80mmWithNullFirmContext() throws Exception {
+    void pdfGenerationThermal80mmWithValidFirmContext() throws Exception {
         Invoice inv = sampleInvoice();
-        inv.setFirmId(null);
+        inv.setFirmId(1L);
         inv.setFirmNameSnapshot(null);
         com.billing.simple.billsoft.security.TenantContext.clear();
 
@@ -447,7 +445,7 @@ public class InvoicePdfServiceTest {
     }
 
     @Test
-    void pdfGenerationAllThemesWithNullFirmContext() throws Exception {
+    void pdfGenerationAllThemesWithValidFirmContext() throws Exception {
         com.billing.simple.billsoft.enums.InvoiceTheme[] themes = {
                 com.billing.simple.billsoft.enums.InvoiceTheme.CLASSIC,
                 com.billing.simple.billsoft.enums.InvoiceTheme.MODERN,
@@ -457,7 +455,7 @@ public class InvoicePdfServiceTest {
 
         for (com.billing.simple.billsoft.enums.InvoiceTheme theme : themes) {
             Invoice inv = sampleInvoice();
-            inv.setFirmId(null);
+            inv.setFirmId(1L);
             inv.setFirmNameSnapshot(null);
             com.billing.simple.billsoft.security.TenantContext.clear();
 

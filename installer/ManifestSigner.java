@@ -39,8 +39,10 @@ public class ManifestSigner {
             }
             Path outputDir = Paths.get(args[4]);
             String releaseNotes = args.length > 5 ? args[5] : "Release notes are not available for this version.";
+            String releaseTag = args.length > 6 ? args[6] : null;
+            String downloadUrl = args.length > 7 ? args[7] : null;
 
-            generateAndSignManifest(warPath, version, privateKeyBase64, outputDir, releaseNotes);
+            generateAndSignManifest(warPath, version, privateKeyBase64, outputDir, releaseNotes, releaseTag, downloadUrl);
         } else if ("verify".equalsIgnoreCase(command)) {
             if (args.length < 4) {
                 System.err.println("Error: verify requires <manifestJsonPath> <signaturePath> <publicKeyBase64>");
@@ -57,6 +59,10 @@ public class ManifestSigner {
     }
 
     public static void generateAndSignManifest(Path warPath, String version, String privateKeyBase64, Path outputDir, String releaseNotes) throws Exception {
+        generateAndSignManifest(warPath, version, privateKeyBase64, outputDir, releaseNotes, null, null);
+    }
+
+    public static void generateAndSignManifest(Path warPath, String version, String privateKeyBase64, Path outputDir, String releaseNotes, String releaseTag, String downloadUrl) throws Exception {
         byte[] warBytes = Files.readAllBytes(warPath);
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] hash = sha256.digest(warBytes);
@@ -68,7 +74,14 @@ public class ManifestSigner {
         String filename = warPath.getFileName().toString();
         long sizeBytes = Files.size(warPath);
         String isoTime = Instant.now().toString();
-        String downloadUrl = "https://github.com/RanjeetYelave/Simple-Billing/releases/download/v" + version + "/" + filename;
+
+        String tag = (releaseTag != null && !releaseTag.trim().isEmpty())
+                ? releaseTag.trim()
+                : "v" + version;
+
+        String url = (downloadUrl != null && !downloadUrl.trim().isEmpty())
+                ? downloadUrl.trim()
+                : "https://github.com/RanjeetYelave/Simple-Billing/releases/download/" + tag + "/" + filename;
 
         String safeNotes = releaseNotes != null && !releaseNotes.trim().isEmpty()
                 ? releaseNotes.trim().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
@@ -77,12 +90,12 @@ public class ManifestSigner {
         String manifestJson = "{\n" +
                 "  \"schemaVersion\": 1,\n" +
                 "  \"appVersion\": \"" + version + "\",\n" +
-                "  \"releaseTag\": \"v" + version + "\",\n" +
+                "  \"releaseTag\": \"" + tag + "\",\n" +
                 "  \"publishedAt\": \"" + isoTime + "\",\n" +
                 "  \"minLauncherVersion\": \"1.0.0\",\n" +
                 "  \"artifact\": {\n" +
                 "    \"filename\": \"" + filename + "\",\n" +
-                "    \"url\": \"" + downloadUrl + "\",\n" +
+                "    \"url\": \"" + url + "\",\n" +
                 "    \"sha256\": \"" + hashHex + "\",\n" +
                 "    \"sizeBytes\": " + sizeBytes + "\n" +
                 "  },\n" +

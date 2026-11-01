@@ -282,39 +282,6 @@ jobs:
           cat SHA256SUMS.txt
           cd ..
 
-      - name: Generate and Verify Signed Release Manifest
-        env:
-          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY || secrets.RELEASE_SIGNING_PRIVATE_KEY || secrets.UPDATE_SIGNING_KEY }}
-        run: |
-          mkdir -p release-meta build-tools
-
-          # Compile ManifestSigner utility into isolated build-tools directory
-          javac installer/ManifestSigner.java -d build-tools
-
-          if [ -n "$UPDATE_SIGNING_PRIVATE_KEY" ] && [ -n "$(echo "$UPDATE_SIGNING_PRIVATE_KEY" | tr -d '[:space:]')" ]; then
-            RELEASE_NOTES="RupeeCRM pre-release build ${{ github.run_number }} integrity manifest."
-
-            # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
-            java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "1.0.${{ github.run_number }}" --env release-meta "$RELEASE_NOTES"
-
-            # Verify signature against pinned production Ed25519 public key
-            PUB_KEY="MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8="
-            java -cp build-tools com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$PUB_KEY"
-
-            echo "=== Generated Release Manifest ==="
-            cat release-meta/manifest.json
-            echo "=== Generated Detached Signature ==="
-            cat release-meta/manifest.sig
-
-            cp release-meta/manifest.json release-dist/manifest.json
-            cp release-meta/manifest.sig release-dist/manifest.sig
-          else
-            echo "Signing key not configured; skipping manifest detached signature generation."
-          fi
-
-          # Clean up temporary build-tools directory
-          rm -rf build-tools
-
       - name: Prepare Release Metadata and Notes
         id: prep-release
         shell: bash
@@ -334,6 +301,7 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "release_title=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
           echo "installer_name=${INSTALLER_NAME}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
           sed "s/^[ \t]*//" << EOF > release-notes.md
           ## ${RELEASE_TITLE}
@@ -360,6 +328,48 @@ jobs:
           > [!NOTE]
           > This is an automated pre-release build. The production release remains **v1.0.278**.
           EOF
+
+      - name: Generate and Verify Signed Release Manifest
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY || secrets.RELEASE_SIGNING_PRIVATE_KEY || secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          mkdir -p release-meta build-tools
+
+          # Compile ManifestSigner utility into isolated build-tools directory
+          javac installer/ManifestSigner.java -d build-tools
+
+          if [ -n "$UPDATE_SIGNING_PRIVATE_KEY" ] && [ -n "$(echo "$UPDATE_SIGNING_PRIVATE_KEY" | tr -d '[:space:]')" ]; then
+            RELEASE_NOTES="RupeeCRM pre-release build ${{ github.run_number }} integrity manifest."
+            RELEASE_TAG="${{ steps.prep-release.outputs.tag_name }}"
+            DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/rupeecrm.war"
+            APP_VER="${{ steps.prep-release.outputs.app_version }}.${{ github.run_number }}"
+
+            # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
+            java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "$APP_VER" --env release-meta "$RELEASE_NOTES" "$RELEASE_TAG" "$DOWNLOAD_URL"
+
+            # Verify signature against pinned production Ed25519 public key
+            PUB_KEY="MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8="
+            java -cp build-tools com.billing.simple.installer.ManifestSigner verify release-meta/manifest.json release-meta/manifest.sig "$PUB_KEY"
+
+            echo "=== Generated Release Manifest ==="
+            cat release-meta/manifest.json
+            echo "=== Generated Detached Signature ==="
+            cat release-meta/manifest.sig
+
+            cp release-meta/manifest.json release-dist/manifest.json
+            cp release-meta/manifest.sig release-dist/manifest.sig
+
+            # Update SHA256SUMS.txt with manifest checksums
+            cd release-dist
+            sha256sum RupeeCRM-Setup*.exe *.war manifest.* > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+            cd ..
+          else
+            echo "Signing key not configured; skipping manifest detached signature generation."
+          fi
+
+          # Clean up temporary build-tools directory
+          rm -rf build-tools
 
       - name: Publish GitHub Pre-Release
         uses: softprops/action-gh-release@v2

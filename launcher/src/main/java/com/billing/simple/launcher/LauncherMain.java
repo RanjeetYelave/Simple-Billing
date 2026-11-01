@@ -1904,13 +1904,26 @@ public class LauncherMain {
         if (war.exists() && war.length() > 0) return war;
 
         File appDir = getAppDirectory();
+        if (appDir != null) {
+            // Electron packaged layout: resources/rupeecrm.war beside launcher.jar
+            war = new File(appDir, "rupeecrm.war");
+            if (war.exists() && war.length() > 0) return war;
 
-        // 2. Standard Production Installation Path: app/rupeecrm.war
-        war = new File(appDir, "app" + File.separator + "rupeecrm.war");
-        if (war.exists() && war.length() > 0) return war;
+            war = new File(appDir, "resources" + File.separator + "rupeecrm.war");
+            if (war.exists() && war.length() > 0) return war;
 
-        war = new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war");
-        if (war.exists() && war.length() > 0) return war;
+            // 2. Standard Production Installation Path: app/rupeecrm.war
+            war = new File(appDir, "app" + File.separator + "rupeecrm.war");
+            if (war.exists() && war.length() > 0) return war;
+
+            if (appDir.getParentFile() != null) {
+                war = new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war");
+                if (war.exists() && war.length() > 0) return war;
+
+                war = new File(appDir.getParentFile(), "resources" + File.separator + "rupeecrm.war");
+                if (war.exists() && war.length() > 0) return war;
+            }
+        }
 
         // 2. Local Development target paths
         war = new File(appDir, "runtime" + File.separator + "rupeecrm.war");

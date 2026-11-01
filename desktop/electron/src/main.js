@@ -462,8 +462,8 @@ function createMainWindow() {
           </style>
           <script>
             function pollHealth() {
-              fetch('/api/health').then(r => {
-                if (r.ok) location.href = '/';
+              fetch('${HEALTH_URL}').then(r => {
+                if (r.ok) location.href = '${APP_URL}';
                 else setTimeout(pollHealth, 1000);
               }).catch(() => setTimeout(pollHealth, 1000));
             }

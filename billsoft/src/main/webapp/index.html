@@ -36694,7 +36694,7 @@
           }, 'Software Update'),
           React.createElement('div', {
             style: { fontSize: '0.86rem', color: 'var(--text-secondary)' }
-          }, info ? `Current Version: ${info.currentVersion || 'v1.0.0'}` : 'Checking version...')
+          }, info ? React.createElement(React.Fragment, null, `Current Version: ${info.currentVersion || 'v1.0.0'}`, React.createElement('span', { style: { marginLeft: 8, fontSize: '0.75rem', verticalAlign: 'middle', background: '#10b981', color: '#fff', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 } }, 'Unified OTA Ready')) : 'Checking version...')
         ),
 
         // Body State

@@ -96,4 +96,14 @@ public class UpdateController {
             ));
         }
     }
+
+    @GetMapping("/version-info")
+    public ResponseEntity<Map<String, Object>> getVersionInfo() {
+        return ResponseEntity.ok(Map.of(
+                "version", updateService.getCurrentVersion(),
+                "engine", "Unified-OTA-v2",
+                "updaterReady", true,
+                "timestamp", java.time.Instant.now().toString()
+        ));
+    }
 }

@@ -212,6 +212,55 @@ public class UpdateService {
         return checkUpdate(false);
     }
 
+    private String[] resolveReleaseManifestUrls() {
+        String mUrl = this.manifestUrl;
+        String sUrl = this.signatureUrl;
+
+        // If manifestUrl points to GitHub releases, query GitHub Releases API
+        // to discover the latest published release (including pre-releases on overhaul branch)
+        if (mUrl != null && mUrl.contains("github.com/RanjeetYelave/Simple-Billing/releases")) {
+            try {
+                String apiUrl = "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases?per_page=5";
+                org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                headers.set("User-Agent", "RupeeCRM-Updater");
+                headers.set("Accept", "application/vnd.github.v3+json");
+                org.springframework.http.HttpEntity<Void> entity = new org.springframework.http.HttpEntity<>(headers);
+
+                org.springframework.http.ResponseEntity<List> resp = restTemplate.exchange(
+                        apiUrl, org.springframework.http.HttpMethod.GET, entity, List.class);
+
+                if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+                    for (Object item : resp.getBody()) {
+                        if (item instanceof Map<?, ?> rel) {
+                            Object assetsObj = rel.get("assets");
+                            if (assetsObj instanceof List<?> assets) {
+                                String foundM = null;
+                                String foundS = null;
+                                for (Object a : assets) {
+                                    if (a instanceof Map<?, ?> asset) {
+                                        Object name = asset.get("name");
+                                        Object downloadUrl = asset.get("browser_download_url");
+                                        if ("manifest.json".equals(name) && downloadUrl != null) {
+                                            foundM = downloadUrl.toString();
+                                        } else if ("manifest.sig".equals(name) && downloadUrl != null) {
+                                            foundS = downloadUrl.toString();
+                                        }
+                                    }
+                                }
+                                if (foundM != null && foundS != null) {
+                                    return new String[]{foundM, foundS};
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("GitHub Releases API discovery unavailable ({}), using direct manifest URL", e.getMessage());
+            }
+        }
+        return new String[]{mUrl, sUrl};
+    }
+
     public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
         long now = System.currentTimeMillis();
         if (!forceRefresh && cachedResponse != null && (now - lastCheckTime) < CACHE_DURATION_MS) {
@@ -230,16 +279,20 @@ public class UpdateService {
         }
 
         try {
+            String[] urls = resolveReleaseManifestUrls();
+            String effectiveManifestUrl = urls[0];
+            String effectiveSignatureUrl = urls[1];
+
             // 1. Fetch manifest.json via restTemplate
-            byte[] manifestBytes = restTemplate.getForObject(manifestUrl, byte[].class);
+            byte[] manifestBytes = restTemplate.getForObject(effectiveManifestUrl, byte[].class);
             if (manifestBytes == null || manifestBytes.length == 0) {
-                throw new IllegalStateException("Empty manifest received from " + manifestUrl);
+                throw new IllegalStateException("Empty manifest received from " + effectiveManifestUrl);
             }
 
             // 2. Fetch manifest.sig via restTemplate
-            String sigBase64 = restTemplate.getForObject(signatureUrl, String.class);
+            String sigBase64 = restTemplate.getForObject(effectiveSignatureUrl, String.class);
             if (sigBase64 == null || sigBase64.trim().isEmpty()) {
-                throw new IllegalStateException("Empty signature received from " + signatureUrl);
+                throw new IllegalStateException("Empty signature received from " + effectiveSignatureUrl);
             }
 
             // 3. Cryptographically verify manifest before parsing or trusting

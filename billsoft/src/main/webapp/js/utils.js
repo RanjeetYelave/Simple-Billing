@@ -204,6 +204,24 @@ const BillsoftUtils = {
       ? 'application/pdf'
       : (blob.type || 'application/octet-stream');
 
+    // Modern Browser & Electron: Direct reliable Object URL download
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const safeBlob = (blob instanceof Blob) ? blob : new Blob([blob], { type: mimeType });
+      const blobUrl = URL.createObjectURL(safeBlob);
+      const a = document.createElement('a');
+      a.style.cssText = 'display:none;position:fixed;top:-100px;left:-100px';
+      a.href = blobUrl;
+      a.download = filename;
+      a.setAttribute('download', filename);
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) a.parentNode.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 10000);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = function () {
       if (!reader.result) return;

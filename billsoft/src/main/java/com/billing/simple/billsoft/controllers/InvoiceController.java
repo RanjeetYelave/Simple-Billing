@@ -28,10 +28,12 @@ public class InvoiceController {
 
     private final InvoiceService service;
     private final InvoicePdfService pdfService;
+    private final com.billing.simple.billsoft.service.FirmDetailsService firmService;
 
-    public InvoiceController(InvoiceService service, InvoicePdfService pdfService) {
+    public InvoiceController(InvoiceService service, InvoicePdfService pdfService, com.billing.simple.billsoft.service.FirmDetailsService firmService) {
         this.service = service;
         this.pdfService = pdfService;
+        this.firmService = firmService;
     }
 
     // ---------------- NUMBER GENERATORS ----------------
@@ -186,6 +188,14 @@ public class InvoiceController {
             Invoice inv = service.getById(id);
             if (inv == null) return ResponseEntity.notFound().build();
 
+            // If invoice has no firmId and no active tenant context, ensure a fallback firm is bound for rendering
+            if (inv.getFirmId() == null && com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() == null) {
+                com.billing.simple.billsoft.entities.FirmDetails defaultFirm = firmService.getFirst();
+                if (defaultFirm != null) {
+                    inv.setFirmId(defaultFirm.getId());
+                }
+            }
+
             byte[] pdf;
             if (format == null && theme == null && color == null) {
                 pdf = pdfService.generatePdf(inv, size != null ? size : "A4");
@@ -193,9 +203,11 @@ public class InvoiceController {
                 pdf = pdfService.generatePdf(inv, size, format, theme, color);
             }
 
-            String filename = (inv.getStatus() == InvoiceStatus.ESTIMATE)
-                    ? "estimate-" + inv.getEstimateNumber() + ".pdf"
-                    : "invoice-" + inv.getInvoiceNumber() + ".pdf";
+            String num = (inv.getStatus() == InvoiceStatus.ESTIMATE)
+                    ? (inv.getEstimateNumber() != null && !inv.getEstimateNumber().isBlank() ? inv.getEstimateNumber().trim() : String.valueOf(inv.getId()))
+                    : (inv.getInvoiceNumber() != null && !inv.getInvoiceNumber().isBlank() ? inv.getInvoiceNumber().trim() : String.valueOf(inv.getId()));
+            String prefix = (inv.getStatus() == InvoiceStatus.ESTIMATE) ? "estimate-" : "invoice-";
+            String filename = prefix + num + ".pdf";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)

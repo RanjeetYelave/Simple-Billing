@@ -95,10 +95,13 @@ public class SalesReturnController {
 
         try {
             byte[] pdfBytes = pdfService.generatePdf(ret, size, format, theme, color);
-            String filename = "CreditNote-" + ret.getReturnNumber() + ".pdf";
+            String retNum = ret.getReturnNumber() != null && !ret.getReturnNumber().isBlank()
+                    ? ret.getReturnNumber().trim()
+                    : String.valueOf(ret.getId());
+            String filename = "CreditNote-" + retNum + ".pdf";
 
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdfBytes);
         } catch (Exception e) {

@@ -41,6 +41,9 @@ public class SalesReturnPdfService {
         FirmDetails firm = null;
         try {
             Long firmId = salesReturn != null ? salesReturn.getFirmId() : null;
+            if (firmId == null) {
+                firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+            }
             firm = firmId != null ? firmService.get(firmId) : firmService.getFirst();
         } catch (Exception ignored) {
             firm = null;

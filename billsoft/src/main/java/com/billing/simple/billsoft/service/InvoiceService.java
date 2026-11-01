@@ -935,6 +935,12 @@ public class InvoiceService {
         Invoice inv = (currentFirmId != null
                 ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
                 : invoiceRepo.findById(id)).orElse(null);
+        if (inv == null && currentFirmId != null) {
+            Invoice unassigned = invoiceRepo.findById(id).orElse(null);
+            if (unassigned != null && unassigned.getFirmId() == null) {
+                inv = unassigned;
+            }
+        }
         if (inv == null)
             return null;
         normalizeStatus(inv);

@@ -37,6 +37,9 @@ class InvoiceControllerTest {
     @MockBean
     private InvoicePdfService pdfService;
 
+    @MockBean
+    private com.billing.simple.billsoft.service.FirmDetailsService firmService;
+
     @Autowired
     private ObjectMapper objectMapper;
 

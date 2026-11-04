@@ -38,7 +38,8 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/backup",
             "/api/dataprotection",
             "/api/dev",
-            "/api/app-config"
+            "/api/app-config",
+            "/api/bounce"
     );
 
     public TenantInterceptor(FirmDetailsRepository firmDetailsRepo) {

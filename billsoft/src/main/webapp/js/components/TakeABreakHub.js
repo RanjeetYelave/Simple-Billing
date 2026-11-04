@@ -1,29 +1,29 @@
 /**
  * TakeABreakHub.js
  * Billsoft Take a Break Hub Component.
- * Hosts the Snake Classic gameplay experience enclosed within a sandboxed React ErrorBoundary.
+ * Hosts the Nokia Bounce gameplay experience enclosed within a sandboxed React ErrorBoundary.
  * Ensures 100% crash isolation from billing, invoicing, and accounting workflows.
  */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['react', './SnakeClassic'], factory);
+    define(['react', './BounceGame'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('react'),
-      require('./SnakeClassic')
+      require('./BounceGame')
     );
   } else {
     root.TakeABreakHub = factory(
       root.React,
-      root.SnakeClassic
+      root.BounceGame
     );
   }
-}(typeof self !== 'undefined' ? self : this, function (React, SnakeClassic) {
+}(typeof self !== 'undefined' ? self : this, function (React, BounceGame) {
   'use strict';
 
   const { Component, useState, useEffect } = React;
-  const SnakeComp = SnakeClassic || (typeof window !== 'undefined' ? window.SnakeClassic : null);
+  const BounceComp = BounceGame || (typeof window !== 'undefined' ? window.BounceGame : null);
 
   /**
    * React ErrorBoundary isolating Take a Break mini-game from the core billing application
@@ -70,17 +70,17 @@
             boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
           }
         },
-          React.createElement('div', { style: { fontSize: '2.8rem' } }, '🐍'),
+          React.createElement('div', { style: { fontSize: '2.8rem' } }, '🔴'),
           React.createElement('h3', { style: { margin: 0, fontWeight: 800, color: 'var(--text)' } }, 'Take a Break is Temporarily Unavailable'),
           React.createElement('p', { style: { margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary)' } },
-            'A non-critical issue occurred while loading Snake. Your invoices, customer records, and core billing functions remain 100% operational.'
+            'A non-critical issue occurred while loading Bounce. Your invoices, customer records, and core billing functions remain 100% operational.'
           ),
           React.createElement('button', {
             type: 'button',
             className: 'btn btn-primary',
             onClick: this.handleRetry,
             style: { marginTop: 8, padding: '8px 24px', fontWeight: 700, borderRadius: 8 }
-          }, 'Reload Snake')
+          }, 'Reload Bounce')
         );
       }
       return this.props.children;
@@ -88,10 +88,11 @@
   }
 
   function TakeABreakHubInner() {
-    const [isSnakeEnabled, setIsSnakeEnabled] = useState(() => {
+    const [isEnabled, setIsEnabled] = useState(() => {
       try {
         if (typeof localStorage === 'undefined') return true;
-        return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false';
+        return localStorage.getItem('CONFIG_BOUNCE_ENABLED') !== 'false' &&
+               localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false';
       } catch (e) {
         return true;
       }
@@ -101,23 +102,25 @@
       const handleToggle = (e) => {
         try {
           if (e && e.detail && typeof e.detail.enabled === 'boolean') {
-            setIsSnakeEnabled(e.detail.enabled);
+            setIsEnabled(e.detail.enabled);
           } else if (typeof localStorage !== 'undefined') {
-            setIsSnakeEnabled(localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false');
+            setIsEnabled(localStorage.getItem('CONFIG_BOUNCE_ENABLED') !== 'false');
           }
         } catch (err) {}
       };
 
+      window.addEventListener('billsoft:bounce-toggle', handleToggle);
       window.addEventListener('billsoft:snake-toggle', handleToggle);
       window.addEventListener('billsoft:circuit-toggle', handleToggle);
 
       return () => {
+        window.removeEventListener('billsoft:bounce-toggle', handleToggle);
         window.removeEventListener('billsoft:snake-toggle', handleToggle);
         window.removeEventListener('billsoft:circuit-toggle', handleToggle);
       };
     }, []);
 
-    if (!isSnakeEnabled) {
+    if (!isEnabled) {
       return React.createElement('div', {
         className: 'card',
         style: {
@@ -135,21 +138,40 @@
           boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
         }
       },
-        React.createElement('div', { style: { fontSize: '2.8rem' } }, '🐍'),
-        React.createElement('h3', { style: { margin: 0, fontWeight: 800, color: 'var(--text)' } }, 'Snake Classic is Disabled'),
+        React.createElement('div', { style: { fontSize: '2.8rem' } }, '🔴'),
+        React.createElement('h3', { style: { margin: 0, fontWeight: 800, color: 'var(--text)' } }, 'Take a Break is Disabled'),
         React.createElement('p', { style: { margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-          'Snake Classic is currently turned off. You can re-enable it anytime from Settings.'
+          'Take a Break (Nokia Bounce) is currently turned off. You can re-enable it anytime from Settings.'
         )
       );
     }
 
     return React.createElement('div', {
-      className: 'take-a-break-hub-wrapper'
+      className: 'take-a-break-hub-wrapper',
+      style: {
+        width: '100%',
+        height: '100%',
+        minHeight: '520px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '12px 16px',
+        boxSizing: 'border-box'
+      }
     },
       React.createElement('div', {
-        className: 'take-a-break-game-container'
+        className: 'take-a-break-game-container',
+        style: {
+          width: '100%',
+          maxWidth: '960px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }
       },
-        SnakeComp ? React.createElement(SnakeComp, { key: 'snake_classic_view' }) : React.createElement('div', null, 'Loading Snake...')
+        BounceComp ? React.createElement(BounceComp, { key: 'bounce_game_view' }) : React.createElement('div', null, 'Loading Bounce...')
       )
     );
   }

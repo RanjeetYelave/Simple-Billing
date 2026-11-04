@@ -16,16 +16,13 @@
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
-  <script src="js/maharashtraWorld.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/MaharashtraJourney.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeAudio.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeSpriteRenderers.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeEngine.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeGenerator.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakePersistence.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/SnakeClassic.js?v=20261024_take_a_break_redesign_v1"></script>
-  <script src="js/components/ProgressionExperience.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/TakeABreakHub.js?v=20261024_take_a_break_redesign_v1"></script>
+  <script src="js/bounce/bounceEngine.js?v=20261104_bounce_v1"></script>
+  <script src="js/bounce/bounceLevelGenerator.js?v=20261104_bounce_v1"></script>
+  <script src="js/bounce/bounceRenderer.js?v=20261104_bounce_v1"></script>
+  <script src="js/bounce/bounceAudio.js?v=20261104_bounce_v1"></script>
+  <script src="js/bounce/bouncePersistence.js?v=20261104_bounce_v1"></script>
+  <script src="js/components/BounceGame.js?v=20261104_bounce_v1"></script>
+  <script src="js/components/TakeABreakHub.js?v=20261104_bounce_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/featureLock.js"></script>
 
@@ -33915,9 +33912,10 @@
           )
         ),
         (() => {
-          const [snakeEnabled, setSnakeEnabled] = useState(() => {
+          const [bounceEnabled, setBounceEnabled] = useState(() => {
             try {
-              return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false';
+              return localStorage.getItem('CONFIG_BOUNCE_ENABLED') !== 'false' &&
+                     localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false';
             } catch (e) {
               return true;
             }
@@ -33925,38 +33923,33 @@
           const [showResetConfirm, setShowResetConfirm] = useState(false);
           const [isResetting, setIsResetting] = useState(false);
 
-          const handleSnakeToggle = (e) => {
+          const handleBounceToggle = (e) => {
             const checked = e.target.checked;
-            setSnakeEnabled(checked);
+            setBounceEnabled(checked);
             try {
+              localStorage.setItem('CONFIG_BOUNCE_ENABLED', checked ? 'true' : 'false');
               localStorage.setItem('CONFIG_SNAKE_CLASSIC_ENABLED', checked ? 'true' : 'false');
-              localStorage.setItem('CONFIG_CIRCUIT_CONNECT_ENABLED', checked ? 'true' : 'false');
             } catch (err) {}
+            window.dispatchEvent(new CustomEvent('billsoft:bounce-toggle', { detail: { enabled: checked } }));
             window.dispatchEvent(new CustomEvent('billsoft:snake-toggle', { detail: { enabled: checked } }));
-            window.dispatchEvent(new CustomEvent('billsoft:circuit-toggle', { detail: { enabled: checked } }));
-            if (window.showToast) window.showToast(checked ? 'Snake Classic enabled in Navigation' : 'Snake Classic disabled', 'success');
+            if (window.showToast) window.showToast(checked ? 'Take a Break (Bounce) enabled' : 'Take a Break disabled', 'success');
           };
 
           const handlePerformReset = async () => {
             setIsResetting(true);
             try {
-              const persistence = window.SnakePersistence || (typeof SnakePersistence !== 'undefined' ? SnakePersistence : null);
-              if (!persistence || typeof persistence.resetGameProgress !== 'function') {
-                throw new Error('SnakePersistence reset engine unavailable');
+              const persistence = window.BouncePersistence || (typeof BouncePersistence !== 'undefined' ? BouncePersistence : null);
+              if (persistence && typeof persistence.resetCampaign === 'function') {
+                await persistence.resetCampaign();
               }
-              const res = await persistence.resetGameProgress();
-              if (res && res.success) {
-                setShowResetConfirm(false);
-                if (window.showToast) {
-                  window.showToast('Progress reset successfully. Your Maharashtra expedition starts again from Level 1.', 'success');
-                }
-              } else {
-                throw (res && res.error) || new Error('Reset operation failed');
+              setShowResetConfirm(false);
+              if (window.showToast) {
+                window.showToast('Bounce campaign progress reset to Level 1. Records preserved.', 'success');
               }
             } catch (err) {
-              console.error('[SnakeSettings] Reset progress error:', err);
+              console.error('[BounceSettings] Reset progress error:', err);
               if (window.showToast) {
-                window.showToast('Progress could not be reset. Your existing progress has been preserved.', 'error');
+                window.showToast('Progress could not be reset. Existing data preserved.', 'error');
               }
             } finally {
               setIsResetting(false);
@@ -33968,15 +33961,15 @@
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
                 React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('span', null, '🐍 Snake Classic')
+                  React.createElement('span', null, '🔴 Nokia Bounce')
                 ),
                 React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
-                  'Enable Game: Take a short break with Snake Classic — Maharashtra Expedition inside RupeeCRM.'
+                  'Take a short break with the classic Nokia Bounce arcade platformer inside RupeeCRM.'
                 )
               ),
               React.createElement('div', null,
-                React.createElement('label', { className: 'switch', 'aria-label': 'Enable Snake Classic Game' },
-                  React.createElement('input', { type: 'checkbox', checked: snakeEnabled, onChange: handleSnakeToggle }),
+                React.createElement('label', { className: 'switch', 'aria-label': 'Enable Take a Break Game' },
+                  React.createElement('input', { type: 'checkbox', checked: bounceEnabled, onChange: handleBounceToggle }),
                   React.createElement('span', { className: 'slider' })
                 )
               )
@@ -33996,10 +33989,10 @@
             },
               React.createElement('div', { style: { flex: 1, minWidth: 240 } },
                 React.createElement('div', { style: { fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' } },
-                  'Reset Game Progress'
+                  'Reset Campaign Progress'
                 ),
                 React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                  'Start the Maharashtra expedition again from Level 1.'
+                  'Reset active campaign back to Level 1 while preserving Hall of Records.'
                 )
               ),
               React.createElement('button', {
@@ -34051,10 +34044,10 @@
                 },
                   React.createElement('div', null,
                     React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' } },
-                      'Reset Game Progress?'
+                      'Reset Campaign Progress?'
                     ),
                     React.createElement('p', { style: { margin: '8px 0 0 0', fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-                      'This will reset your Snake Classic progress and start the Maharashtra expedition again from Level 1.'
+                      'This will reset your active Bounce campaign to Level 1. Best completion times and scores in the Hall of Records will be preserved.'
                     )
                   ),
                   React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 } },

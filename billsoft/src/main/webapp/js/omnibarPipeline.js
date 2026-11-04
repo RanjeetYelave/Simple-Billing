@@ -2865,8 +2865,7 @@
       if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:purchase\s*orders?|po\s*desk|all\s*pos?|pos?|purchases)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'orders' } };
       if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:statements?|ledgers?|khata|khatavani)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'statements' } };
       if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:letters?|letter\s*pad|letterpad)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'letters' } };
-      if (/\b(open|go\s*to|view|show)\s*(?:the\s*)?(?:smart\s*reorder|reorder\s*queue|product\s*intelligence|forecast|replenishment)\b/i.test(lower)) return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'firm', tab: 'products' } };
-      if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:snake\s*classic|snakes?|classic\s*snake|classic\s*game|classic|arcade|circuit\s*connect|circuit|game\s*zone|games\s*hub|mini\s*games|minigames|take\s*a\s*break|take\s*break|break|games?|play)\b/i.test(lower) || /^\s*(?:snake|snakes|snake\s*classic|classic|arcade|circuit|circuit\s*connect|take\s*a\s*break|take\s*break|break|game\s*zone|games\s*hub|mini\s*games|minigames|game|games|play)\s*$/i.test(lower)) {
+      if (/\b(open|play|launch|start|go\s*to)\s*(?:the\s*)?(?:bounce|nokia\s*bounce|classic\s*bounce|classic\s*game|classic|arcade|circuit\s*connect|circuit|game\s*zone|games\s*hub|mini\s*games|minigames|take\s*a\s*break|take\s*break|break|games?|play)\b/i.test(lower) || /^\s*(?:bounce|nokia\s*bounce|classic|arcade|circuit|circuit\s*connect|take\s*a\s*break|take\s*break|break|game\s*zone|games\s*hub|mini\s*games|minigames|game|games|play)\s*$/i.test(lower)) {
         return { category: 'ACTION', capabilityId: 'ACT_NAV_PAGE', target: { page: 'circuit_connect' } };
       }
 
@@ -4747,8 +4746,8 @@
           let title = `⚡ Open ${pageId.toUpperCase()}`;
           let subtitle = `Navigate directly to ${pageId}`;
           if (pageId === 'circuit_connect') {
-            title = '🐍 Take a Break (Snake)';
-            subtitle = 'Take a short break with full-viewport Snake';
+            title = '🔴 Take a Break (Bounce)';
+            subtitle = 'Take a short break with classic Nokia Bounce';
           }
           return {
             status: 'NAVIGATE',

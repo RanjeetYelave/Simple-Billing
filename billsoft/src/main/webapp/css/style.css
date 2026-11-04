@@ -12087,14 +12087,6 @@ body.dark-mode .wa-target-btn.active {
 }
 
 /* Dark Mode Overrides */
-body.dark .rcrm-snake-hud,
-[data-theme="dark"] .rcrm-snake-hud,
-body.dark .rcrm-snake-controls-row,
-[data-theme="dark"] .rcrm-snake-controls-row {
-  background: #1e293b;
-  border-color: #334155;
-}
-
 body.dark .rcrm-hud-main-title,
 [data-theme="dark"] .rcrm-hud-main-title {
   color: #f8fafc;
@@ -12112,18 +12104,6 @@ body.dark .rcrm-stat-chip,
 body.dark .rcrm-metric-val,
 [data-theme="dark"] .rcrm-metric-val {
   color: #f8fafc;
-}
-
-body.dark .rcrm-snake-btn.btn-secondary,
-[data-theme="dark"] .rcrm-snake-btn.btn-secondary {
-  background: #334155;
-  border-color: #475569;
-  color: #f1f5f9;
-}
-
-body.dark .rcrm-snake-btn.btn-secondary:hover:not(:disabled),
-[data-theme="dark"] .rcrm-snake-btn.btn-secondary:hover:not(:disabled) {
-  background: #475569;
 }
 
 body.dark .rcrm-overflow-dropdown,
@@ -15932,4 +15912,27 @@ body.no-liquid-glass {
     transform: none !important;
     animation: none !important;
   }
+}
+
+/* ==========================================================================
+   NOKIA BOUNCE ARCADE STYLES
+   ========================================================================== */
+.bounce-container {
+  width: 100%;
+  height: 100%;
+  min-height: 540px;
+  background: #090d16;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+
+.take-a-break-hub-wrapper {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justifyContent: center;
 }

@@ -238,7 +238,7 @@
         norm === 'savings' || norm === 'expenses' || norm === 'trackers') return 'planner';
     if (norm === 'paperwork' || norm === 'statements' || norm === 'orders' || norm === 'purchases' ||
         norm === 'inventory' || norm === 'products' || norm === 'customers' || norm === 'parties' || norm === 'profile') return 'firm';
-    if (norm === 'break' || norm === 'snake' || norm === 'game') return 'circuit_connect';
+    if (norm === 'break' || norm === 'bounce' || norm === 'game') return 'circuit_connect';
     if (norm === 'new-invoice' || norm === 'new-quotation' || norm === 'quotations' || norm === 'returns' || norm === 'pos' || norm === 'estimates') return 'invoices';
     return '';
   }

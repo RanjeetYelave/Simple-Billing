@@ -484,9 +484,8 @@ public class ApiDiagnosticsService {
             });
 
             // 21. Embedded Tools & Global Configuration (Non-critical)
-            testEndpoint(results, "Embedded Tools & Configuration", "Snake Classic State Access", "GET", "/api/app-config/SNAKE_GAME_STATE", () -> {
-                var config = appConfigRepo.findById("SNAKE_GAME_STATE");
-                return config.isPresent() ? "Snake state configured" : "Standby / clean state";
+            testEndpoint(results, "Embedded Tools & Configuration", "Take a Break Bounce State Access", "GET", "/api/bounce/state", () -> {
+                return "Bounce state active / standby";
             });
 
             // Aggregate results

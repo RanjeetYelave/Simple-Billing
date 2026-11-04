@@ -258,14 +258,16 @@
           }
         }
 
-        // Camera Tracking
+        // Camera Tracking (240x180 logical canvas)
         const p = stateRef.current.player;
         const lvl = stateRef.current.level;
         if (p && lvl && canvasRef.current) {
-          const cw = canvasRef.current.width || 800;
-          const targetCamX = p.x - cw * 0.4;
-          const maxCamX = Math.max(0, (lvl.width || 1600) - cw);
-          stateRef.current.camera.x += (Math.max(0, Math.min(maxCamX, targetCamX)) - stateRef.current.camera.x) * 0.1;
+          const cw = 240;
+          // When player is in Chamber 1 (x <= 120), keep camera.x = 0 to frame the reference screenshot perfectly
+          const targetCamX = Math.max(0, p.x - 120);
+          const maxCamX = Math.max(0, (lvl.width || 960) - cw);
+          stateRef.current.camera.x += (Math.max(0, Math.min(maxCamX, targetCamX)) - stateRef.current.camera.x) * 0.15;
+          stateRef.current.camera.y = 0;
         }
 
         // Render Frame
@@ -467,21 +469,22 @@
         boxSizing: 'border-box'
       }
     }, [
-      // 1. Interactive Canvas Stage
+      // 1. Interactive Canvas Stage (Fixed 240 x 180 Native Nokia Resolution)
       React.createElement('canvas', {
         key: 'bounce-canvas',
         ref: canvasRef,
-        width: 800,
-        height: 480,
+        width: 240,
+        height: 180,
         style: {
           display: 'block',
           width: '100%',
-          maxWidth: '960px',
+          maxWidth: '640px',
           height: 'auto',
-          aspectRatio: '800 / 480',
-          background: '#0284c7',
-          borderRadius: 8,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          aspectRatio: '240 / 180',
+          background: '#98cbdf',
+          borderRadius: 4,
+          boxShadow: '0 12px 36px rgba(0,0,0,0.7)',
+          border: '3px solid #07448c',
           imageRendering: 'pixelated'
         }
       }),

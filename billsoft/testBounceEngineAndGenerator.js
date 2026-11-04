@@ -17,9 +17,9 @@ assert.strictEqual(p.x, 64);
 assert.strictEqual(p.y, 400);
 assert.strictEqual(p.lives, 3);
 assert.strictEqual(p.state, 'NORMAL');
-assert(Engine.BALL_CONFIGS.NORMAL.radius === 14);
-assert(Engine.BALL_CONFIGS.BIG.radius === 22);
-assert(Engine.BALL_CONFIGS.SMALL.radius === 9);
+assert(Engine.BALL_CONFIGS.NORMAL.radius === 7);
+assert(Engine.BALL_CONFIGS.BIG.radius === 11);
+assert(Engine.BALL_CONFIGS.SMALL.radius === 4.5);
 console.log('✓ Player creation & configs verified.');
 
 // 2. Test Movement, Gravity, and Jumping
@@ -49,7 +49,7 @@ Engine.tick(testLevel, p, { right: true }, 1 / 60);
 assert(p.vx > 0, 'Right key should apply positive horizontal velocity');
 
 // Land on platform
-p.y = 430;
+p.y = 442;
 p.vy = 200;
 Engine.tick(testLevel, p, {}, 1 / 60);
 assert(p.y <= 450 - Engine.BALL_CONFIGS.NORMAL.radius, 'Player should rest atop platform');

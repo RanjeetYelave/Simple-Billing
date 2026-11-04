@@ -18,47 +18,47 @@
 
   // Fixed simulation step: 60Hz (approx 16.666ms)
   const FIXED_DT = 1 / 60;
-  const GRAVITY = 820; // px/s^2
+  const GRAVITY = 520; // px/s^2 for 16px tile grid
 
-  // Ball transformation configurations
+  // Ball transformation configurations (calibrated for 16px grid: NORMAL diameter is 14px)
   const BALL_CONFIGS = {
     NORMAL: {
-      radius: 14,
+      radius: 7, // 14px diameter (matches reference screenshot)
       mass: 1.0,
-      jumpImpulse: -370,
-      maxSpeed: 230,
-      groundAccel: 950,
-      airAccel: 550,
+      jumpImpulse: -215, // reaches ~44.4px (~2.8 tiles high)
+      maxSpeed: 110,
+      groundAccel: 520,
+      airAccel: 320,
       groundFriction: 0.86,
       airFriction: 0.96,
-      bounceRestitution: 0.65,
-      waterBuoyancy: 0.95, // gentle float
+      bounceRestitution: 0.58,
+      waterBuoyancy: 0.95,
       waterDrag: 0.72
     },
     BIG: {
-      radius: 22,
+      radius: 11, // 22px diameter
       mass: 1.7,
-      jumpImpulse: -440,
-      maxSpeed: 195,
-      groundAccel: 800,
-      airAccel: 450,
+      jumpImpulse: -260,
+      maxSpeed: 95,
+      groundAccel: 420,
+      airAccel: 250,
       groundFriction: 0.88,
       airFriction: 0.94,
-      bounceRestitution: 0.78,
-      waterBuoyancy: 1.65, // pops high out of water
+      bounceRestitution: 0.72,
+      waterBuoyancy: 1.65,
       waterDrag: 0.65
     },
     SMALL: {
-      radius: 9,
+      radius: 4.5, // 9px diameter
       mass: 0.6,
-      jumpImpulse: -330,
-      maxSpeed: 270,
-      groundAccel: 1100,
-      airAccel: 650,
+      jumpImpulse: -190,
+      maxSpeed: 135,
+      groundAccel: 620,
+      airAccel: 380,
       groundFriction: 0.84,
       airFriction: 0.97,
-      bounceRestitution: 0.55,
-      waterBuoyancy: 0.55, // sinks slowly
+      bounceRestitution: 0.48,
+      waterBuoyancy: 0.55,
       waterDrag: 0.82
     }
   };

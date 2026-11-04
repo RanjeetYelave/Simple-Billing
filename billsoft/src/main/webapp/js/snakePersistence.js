@@ -1,8 +1,8 @@
 /**
  * snakePersistence.js
- * Lightweight two-tier persistence (localStorage + AppConfig DB) and crash recovery engine
- * for Snake (Take a Break -> Classic).
- * Persists strictly logical progression without physical canvas or viewport dimensions.
+ * Lightweight, robust localStorage-only persistence engine for Snake (Take a Break).
+ * Persists strictly logical progression, high score, active board, and statistics.
+ * 100% self-contained, zero backend REST dependency during active gameplay.
  */
 
 (function (root, factory) {
@@ -17,8 +17,9 @@
   'use strict';
 
   const STORAGE_KEY = 'SNAKE_GAME_STATE';
+  const BACKUP_V1_KEY = 'SNAKE_GAME_STATE_V1_BACKUP';
   const CONFIG_API_URL = '/api/app-config/SNAKE_GAME_STATE';
-  const CURRENT_SCHEMA_VERSION = 1;
+  const CURRENT_SCHEMA_VERSION = 2;
 
   let debounceTimer = null;
   let pendingState = null;
@@ -31,15 +32,18 @@
       schemaVersion: CURRENT_SCHEMA_VERSION,
       stateRevision: 1,
       currentLevel: 1,
+      score: 0,
+      highScore: 0,
+      totalPlayTimeSeconds: 0,
+      currentBoard: null,
+      // Backward-compatible fields
       completedCount: 0,
       totalStars: 0,
       highestStarMilestone: 0,
       totalFruitsEaten: 0,
       longestSnake: 3,
-      totalPlayTimeSeconds: 0,
       bestStreak: 0,
       currentStreak: 0,
-      currentBoard: null,
       updatedAt: Date.now()
     };
   }
@@ -70,23 +74,27 @@
   function validateState(state) {
     if (!state || typeof state !== 'object') return false;
     if (typeof state.currentLevel !== 'number' || state.currentLevel < 1) return false;
-    if (typeof state.totalStars !== 'number' || state.totalStars < 0) return false;
-    if (typeof state.completedCount !== 'number' || state.completedCount < 0) return false;
     return true;
   }
 
   /**
-   * Sanitize and fill defaults for any missing optional fields while protecting lifetime statistics.
-   * Strips any viewport/pixel dimensions to maintain pure logical persistence.
+   * Sanitize and migrate state.
+   * Strips viewport/pixel dimensions to maintain pure logical persistence.
    */
   function sanitizeState(state) {
     if (!state) return createDefaultState();
-    let rawMilestone = Math.max(0, Math.floor(state.highestStarMilestone || 0));
-    if (rawMilestone >= 50 && rawMilestone % 50 === 0) {
-      rawMilestone = Math.floor(rawMilestone / 50);
-    }
 
     const currentLevel = Math.max(1, Math.floor(state.currentLevel || 1));
+    const completedCount = Math.max(0, Math.floor(state.completedCount || 0));
+    const totalStars = Math.max(0, Math.floor(state.totalStars || 0));
+    const totalFruitsEaten = Math.max(0, Math.floor(state.totalFruitsEaten || 0));
+
+    // Migrate or derive high score
+    const legacyDerivedScore = Math.max(totalFruitsEaten * 10, totalStars * 10);
+    const highScore = Math.max(0, Math.floor(state.highScore || legacyDerivedScore || 0));
+    const score = Math.max(0, Math.floor(state.score || 0));
+    const totalPlayTimeSeconds = Math.max(0, Math.floor(state.totalPlayTimeSeconds || 0));
+
     let sanitizedBoard = null;
 
     if (state.currentBoard && validateBoard(state.currentBoard, currentLevel)) {
@@ -97,24 +105,24 @@
         bounds: cb.bounds ? {
           minX: Math.floor(cb.bounds.minX || 0),
           minY: Math.floor(cb.bounds.minY || 0),
-          maxX: Math.floor(cb.bounds.maxX || 15),
-          maxY: Math.floor(cb.bounds.maxY || 11),
-          spanX: Math.max(1, Math.floor(cb.bounds.spanX || 16)),
-          spanY: Math.max(1, Math.floor(cb.bounds.spanY || 12)),
+          maxX: Math.floor(cb.bounds.maxX || 19),
+          maxY: Math.floor(cb.bounds.maxY || 19),
+          spanX: Math.max(1, Math.floor(cb.bounds.spanX || 20)),
+          spanY: Math.max(1, Math.floor(cb.bounds.spanY || 20)),
           totalCols: Math.floor(cb.bounds.totalCols || cb.totalCols || 24),
-          totalRows: Math.floor(cb.bounds.totalRows || cb.totalRows || 16)
+          totalRows: Math.floor(cb.bounds.totalRows || cb.totalRows || 24)
         } : null,
-        width: Math.max(1, Math.floor(cb.width || 16)),
-        height: Math.max(1, Math.floor(cb.height || 12)),
+        width: Math.max(1, Math.floor(cb.width || 20)),
+        height: Math.max(1, Math.floor(cb.height || 20)),
         totalCols: Math.floor(cb.totalCols || 24),
-        totalRows: Math.floor(cb.totalRows || 16),
+        totalRows: Math.floor(cb.totalRows || 24),
         targetFruits: Math.max(1, Math.floor(cb.targetFruits || 5)),
-        baseTickMs: Math.max(115, Math.floor(cb.baseTickMs || 150)),
+        baseTickMs: Math.max(75, Math.floor(cb.baseTickMs || 200)),
         layoutType: cb.layoutType || 'CLEAN',
         isMilestone: !!cb.isMilestone,
         isOasis: !!cb.isOasis,
         snake: cb.snake.map(seg => [Math.floor(seg[0]), Math.floor(seg[1])]),
-        direction: cb.direction || 'RIGHT',
+        direction: cb.direction || 'UP',
         obstacles: Array.isArray(cb.obstacles) ? cb.obstacles.map(o => typeof o === 'string' ? o : (typeof o === 'number' ? Math.floor(o) : (o && o.x !== undefined ? `${o.x},${o.y}` : o))) : [],
         gateways: Array.isArray(cb.gateways) ? cb.gateways.map(g => ({ x: Math.floor(g.x), y: Math.floor(g.y), color: g.color || '#00e5ff' })) : [],
         fruitsEatenInLevel: Math.max(0, Math.floor(cb.fruitsEatenInLevel || 0)),
@@ -127,6 +135,19 @@
           spawnTime: cb.food.spawnTime || Date.now(),
           lifetimeMs: cb.food.lifetimeMs || null
         } : null,
+        foods: Array.isArray(cb.foods) ? cb.foods.map(f => ({
+          x: Math.floor(f.x),
+          y: Math.floor(f.y),
+          type: f.type || 'APPLE',
+          spawnTime: f.spawnTime || Date.now(),
+          lifetimeMs: f.lifetimeMs || null
+        })) : (cb.food ? [{
+          x: Math.floor(cb.food.x),
+          y: Math.floor(cb.food.y),
+          type: cb.food.type || 'APPLE',
+          spawnTime: cb.food.spawnTime || Date.now(),
+          lifetimeMs: cb.food.lifetimeMs || null
+        }] : []),
         chillTimer: Math.max(0, Math.floor(cb.chillTimer || 0)),
         boostTimer: Math.max(0, Math.floor(cb.boostTimer || 0)),
         magnetTimer: Math.max(0, Math.floor(cb.magnetTimer || 0)),
@@ -134,29 +155,34 @@
         consecutiveSpecials: Math.max(0, Math.floor(cb.consecutiveSpecials || 0)),
         noveltyCooldown: Math.max(0, Math.floor(cb.noveltyCooldown || 0)),
         speedModifier: typeof cb.speedModifier === 'number' ? cb.speedModifier : 1.0,
-        longestSnakeInLevel: Math.max(3, Math.floor(cb.longestSnakeInLevel || (cb.snake ? cb.snake.length : 3)))
+        longestSnakeInLevel: Math.max(3, Math.floor(cb.longestSnakeInLevel || (cb.snake ? cb.snake.length : 3))),
+        isGameOver: !!cb.isGameOver,
+        isPaused: true // Always restore in paused state
       };
     }
 
     return {
-      schemaVersion: state.schemaVersion || CURRENT_SCHEMA_VERSION,
-      stateRevision: Math.max(1, state.stateRevision || 1),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      stateRevision: Math.max(1, (state.stateRevision || 1)),
       currentLevel,
-      completedCount: Math.max(0, Math.floor(state.completedCount || 0)),
-      totalStars: Math.max(0, Math.floor(state.totalStars || 0)),
-      highestStarMilestone: rawMilestone,
-      totalFruitsEaten: Math.max(0, Math.floor(state.totalFruitsEaten || 0)),
+      score,
+      highScore,
+      totalPlayTimeSeconds,
+      currentBoard: sanitizedBoard,
+      // Backward compatibility fields
+      completedCount,
+      totalStars,
+      highestStarMilestone: Math.max(0, Math.floor(state.highestStarMilestone || 0)),
+      totalFruitsEaten,
       longestSnake: Math.max(3, Math.floor(state.longestSnake || 3)),
-      totalPlayTimeSeconds: Math.max(0, Math.floor(state.totalPlayTimeSeconds || 0)),
       bestStreak: Math.max(0, Math.floor(state.bestStreak || 0)),
       currentStreak: Math.max(0, Math.floor(state.currentStreak || 0)),
-      currentBoard: sanitizedBoard,
       updatedAt: state.updatedAt || Date.now()
     };
   }
 
   /**
-   * Load state synchronously from localStorage.
+   * Load state synchronously from localStorage with versioned schema migration.
    */
   function loadFromLocalStorage() {
     try {
@@ -164,7 +190,16 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return validateState(parsed) ? sanitizeState(parsed) : null;
+      if (!validateState(parsed)) return null;
+
+      // Schema migration: backup v1 before upgrading
+      if (!parsed.schemaVersion || parsed.schemaVersion < CURRENT_SCHEMA_VERSION) {
+        try {
+          localStorage.setItem(BACKUP_V1_KEY, raw);
+        } catch (e) {}
+      }
+
+      return sanitizeState(parsed);
     } catch (e) {
       console.warn('[SnakePersistence] Failed to read localStorage:', e);
       return null;
@@ -177,18 +212,64 @@
   function saveToLocalStorage(state) {
     try {
       if (typeof localStorage === 'undefined') return;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const sanitized = sanitizeState(state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
     } catch (e) {
       console.warn('[SnakePersistence] Failed to write localStorage:', e);
     }
   }
 
   /**
-   * Load durable state from backend AppConfig endpoint asynchronously.
+   * Save working state directly to localStorage (pure client-side).
+   */
+  function saveWorkingState(state) {
+    if (!state) return;
+    state.stateRevision = (state.stateRevision || 0) + 1;
+    state.updatedAt = Date.now();
+    pendingState = state;
+    saveToLocalStorage(state);
+  }
+
+  /**
+   * Save progression immediately to localStorage.
+   */
+  function saveProgressionImmediate(state) {
+    if (!state) return;
+    state.stateRevision = (state.stateRevision || 0) + 1;
+    state.updatedAt = Date.now();
+    pendingState = null;
+    saveToLocalStorage(state);
+  }
+
+  /**
+   * Flush pending state immediately.
+   */
+  function flushPending() {
+    if (pendingState) {
+      saveToLocalStorage(pendingState);
+      pendingState = null;
+    }
+  }
+
+  /**
+   * Asynchronous load and recover progression state from localStorage.
+   */
+  async function loadAndRecoverState() {
+    const local = loadFromLocalStorage();
+    const resolved = local || createDefaultState();
+    saveToLocalStorage(resolved);
+    return resolved;
+  }
+
+  /**
+   * Backend AppConfig helper methods (for tests and diagnostic compatibility).
    */
   async function loadFromBackend() {
+    if (typeof fetch !== 'function') return null;
     try {
-      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
+      const authHeaders = (typeof API !== 'undefined' && API && API.token)
+        ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token }
+        : {};
       const res = await fetch(CONFIG_API_URL, {
         headers: { 'Accept': 'application/json', ...authHeaders }
       });
@@ -198,177 +279,51 @@
       const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
       return validateState(parsed) ? sanitizeState(parsed) : null;
     } catch (e) {
-      console.warn('[SnakePersistence] Failed to fetch AppConfig from backend:', e);
       return null;
     }
   }
 
-  /**
-   * Flush state directly to backend AppConfig without debounce.
-   */
   async function flushToBackend(state) {
-    if (!state) return;
+    if (!state || typeof fetch !== 'function') return;
     try {
-      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
+      const authHeaders = (typeof API !== 'undefined' && API && API.token)
+        ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token }
+        : {};
       await fetch(CONFIG_API_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ value: JSON.stringify(state) })
       });
-    } catch (e) {
-      console.warn('[SnakePersistence] Failed to save AppConfig to backend:', e);
-    }
+    } catch (e) {}
   }
 
   /**
-   * Save working state: Instant localStorage write + 500ms debounced backend sync.
-   */
-  function saveWorkingState(state) {
-    if (!state) return;
-    state.stateRevision = (state.stateRevision || 0) + 1;
-    state.updatedAt = Date.now();
-    pendingState = state;
-
-    // Tier 1: Instant local write
-    saveToLocalStorage(state);
-
-    // Tier 2: Debounced backend sync
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (pendingState) {
-        flushToBackend(pendingState);
-        pendingState = null;
-      }
-    }, 500);
-  }
-
-  /**
-   * Save progression immediately (on Level Solve or Milestone) bypassing debounce.
-   */
-  function saveProgressionImmediate(state) {
-    if (!state) return;
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
-    state.stateRevision = (state.stateRevision || 0) + 1;
-    state.updatedAt = Date.now();
-    pendingState = null;
-
-    saveToLocalStorage(state);
-    flushToBackend(state);
-  }
-
-  /**
-   * Flush any pending state immediately (e.g. on component unmount or window beforeunload).
-   */
-  function flushPending() {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
-    if (pendingState) {
-      saveToLocalStorage(pendingState);
-      flushToBackend(pendingState);
-      pendingState = null;
-    }
-  }
-
-  const EPOCH_API_URL = '/api/app-config/FACTORY_RESET_EPOCH';
-  const RESET_EPOCH_STORAGE_KEY = 'SNAKE_RESET_EPOCH';
-
-  /**
-   * Check if backend was reset via factory reset and invalidate stale localStorage if so.
-   */
-  async function checkAndEnforceResetEpoch() {
-    try {
-      const authHeaders = (typeof API !== 'undefined' && API.token) ? { 'X-Auth-Token': API.token, 'Authorization': 'Bearer ' + API.token } : {};
-      const res = await fetch(EPOCH_API_URL, {
-        headers: { 'Accept': 'application/json', ...authHeaders }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.exists && data.value) {
-          const serverEpoch = Number(data.value);
-          const localEpoch = Number(localStorage.getItem(RESET_EPOCH_STORAGE_KEY) || '0');
-          if (serverEpoch > localEpoch) {
-            localStorage.removeItem(STORAGE_KEY);
-            localStorage.setItem(RESET_EPOCH_STORAGE_KEY, String(serverEpoch));
-            return true;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[SnakePersistence] Failed to verify reset epoch:', e);
-    }
-    return false;
-  }
-
-  /**
-   * Load and recover progression state using the recovery hierarchy:
-   * 1. Check localStorage and AppConfig.
-   * 2. Reconcile by stateRevision.
-   * 3. Fallback to valid copy or clean default state.
-   */
-  async function loadAndRecoverState() {
-    await checkAndEnforceResetEpoch();
-    const local = loadFromLocalStorage();
-    let remote = null;
-
-    try {
-      remote = await loadFromBackend();
-    } catch (e) {
-      // Backend unavailable; proceed with local
-    }
-
-    let resolvedState = null;
-
-    if (local && remote) {
-      resolvedState = (local.stateRevision >= remote.stateRevision) ? local : remote;
-    } else if (local) {
-      resolvedState = local;
-    } else if (remote) {
-      resolvedState = remote;
-    } else {
-      resolvedState = createDefaultState();
-    }
-
-    // Keep storage in sync
-    saveToLocalStorage(resolvedState);
-    return resolvedState;
-  }
-
-  /**
-   * Authoritative, isolated reset of Snake Classic game progress.
-   * Resets Tier 1 (localStorage) and Tier 2 (AppConfig backend) to canonical Level 1 clean state.
-   * Clears acknowledged location unlocks and dispatches 'billsoft:snake-progress-reset'.
+   * Authoritative, isolated reset of Snake game progress in localStorage.
    */
   async function resetGameProgress() {
     try {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
       pendingState = null;
-
       const cleanState = createDefaultState();
       cleanState.stateRevision = 1;
       cleanState.updatedAt = Date.now();
 
-      // 1. Tier 1: LocalStorage
+      // Reset in LocalStorage
       saveToLocalStorage(cleanState);
+
       if (typeof localStorage !== 'undefined') {
         try {
-          localStorage.setItem(RESET_EPOCH_STORAGE_KEY, String(Date.now()));
           localStorage.removeItem('TAKE_A_BREAK_SHOWN_LOCATION_UNLOCKS');
           localStorage.removeItem('TAKE_A_BREAK_LAST_PRESENTED_LOC');
+          localStorage.removeItem('rcrm_take_a_break_ui_state');
         } catch (e) {}
       }
 
-      // 2. Tier 2: Backend AppConfig
-      await flushToBackend(cleanState);
+      // Best-effort optional backend sync if fetch is available
+      if (typeof fetch === 'function') {
+        await flushToBackend(cleanState);
+      }
 
-      // 3. Dispatch system event for real-time reactivity
+      // Dispatch event for UI reactivity
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
         window.dispatchEvent(new CustomEvent('billsoft:snake-progress-reset', {
           detail: { state: cleanState }

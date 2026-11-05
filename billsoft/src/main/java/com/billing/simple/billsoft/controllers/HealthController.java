@@ -60,9 +60,11 @@ public class HealthController {
 
     @GetMapping("/api/health")
     public ResponseEntity<Map<String, Object>> health() {
+        String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
         return ResponseEntity.ok(Map.of(
             "status", "UP",
-            "timestamp", System.currentTimeMillis()
+            "timestamp", System.currentTimeMillis(),
+            "version", ver
         ));
     }
 

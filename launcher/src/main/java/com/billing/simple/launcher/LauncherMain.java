@@ -1915,42 +1915,140 @@ public class LauncherMain {
         }
     }
 
+    public static String getWarVersion(File warFile) {
+        if (warFile == null || !warFile.isFile() || !warFile.canRead()) {
+            return null;
+        }
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(warFile)) {
+            java.util.zip.ZipEntry entry = zip.getEntry("WEB-INF/classes/application.properties");
+            if (entry != null) {
+                try (InputStream is = zip.getInputStream(entry)) {
+                    Properties props = new Properties();
+                    props.load(is);
+                    String ver = props.getProperty("app.version");
+                    if (ver != null && !ver.isBlank()) {
+                        return ver.trim();
+                    }
+                }
+            }
+            java.util.zip.ZipEntry pomEntry = zip.getEntry("META-INF/maven/com.billing.simple/billsoft/pom.properties");
+            if (pomEntry != null) {
+                try (InputStream is = zip.getInputStream(pomEntry)) {
+                    Properties props = new Properties();
+                    props.load(is);
+                    String ver = props.getProperty("version");
+                    if (ver != null && !ver.isBlank()) {
+                        return ver.trim();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    public static int compareVersions(String v1, String v2) {
+        if (v1 == null && v2 == null) return 0;
+        if (v1 == null) return -1;
+        if (v2 == null) return 1;
+
+        String norm1 = v1.replaceAll("^[vV]", "").trim();
+        String norm2 = v2.replaceAll("^[vV]", "").trim();
+
+        String[] split1 = norm1.split("[-+]", 2);
+        String[] split2 = norm2.split("[-+]", 2);
+
+        String[] parts1 = split1[0].split("\\.");
+        String[] parts2 = split2[0].split("\\.");
+
+        int maxLen = Math.max(parts1.length, parts2.length);
+        for (int i = 0; i < maxLen; i++) {
+            long num1 = 0;
+            long num2 = 0;
+            if (i < parts1.length && !parts1[i].trim().isEmpty()) {
+                try { num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
+            }
+            if (i < parts2.length && !parts2[i].trim().isEmpty()) {
+                try { num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
+            }
+            if (num1 != num2) {
+                return Long.compare(num1, num2);
+            }
+        }
+        return 0;
+    }
+
     private File findCurrentWar() {
-        // 1. Base Directory path (production / test environment)
-        Path base = getBaseDirectory();
-        File war = base.resolve("app").resolve("rupeecrm.war").toFile();
-        if (war.exists() && war.length() > 0) return war;
-
-        war = base.resolve("rupeecrm.war").toFile();
-        if (war.exists() && war.length() > 0) return war;
-
+        // 1. Packaged installation directory path (beside launcher.jar or resources)
         File appDir = getAppDirectory();
+        File packagedWar = null;
         if (appDir != null) {
-            // Electron packaged layout: resources/rupeecrm.war beside launcher.jar
-            war = new File(appDir, "rupeecrm.war");
-            if (war.exists() && war.length() > 0) return war;
-
-            war = new File(appDir, "resources" + File.separator + "rupeecrm.war");
-            if (war.exists() && war.length() > 0) return war;
-
-            // 2. Standard Production Installation Path: app/rupeecrm.war
-            war = new File(appDir, "app" + File.separator + "rupeecrm.war");
-            if (war.exists() && war.length() > 0) return war;
-
-            if (appDir.getParentFile() != null) {
-                war = new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war");
-                if (war.exists() && war.length() > 0) return war;
-
-                war = new File(appDir.getParentFile(), "resources" + File.separator + "rupeecrm.war");
-                if (war.exists() && war.length() > 0) return war;
+            File[] candidates = new File[] {
+                new File(appDir, "rupeecrm.war"),
+                new File(appDir, "resources" + File.separator + "rupeecrm.war"),
+                new File(appDir, "app" + File.separator + "rupeecrm.war"),
+                appDir.getParentFile() != null ? new File(appDir.getParentFile(), "app" + File.separator + "rupeecrm.war") : null,
+                appDir.getParentFile() != null ? new File(appDir.getParentFile(), "resources" + File.separator + "rupeecrm.war") : null
+            };
+            for (File c : candidates) {
+                if (c != null && c.exists() && c.length() > 0) {
+                    packagedWar = c;
+                    break;
+                }
             }
         }
 
-        // 2. Local Development target paths
-        war = new File(appDir, "runtime" + File.separator + "rupeecrm.war");
-        if (war.exists() && war.length() > 0) return war;
+        // 2. Base directory path (where previous updates or local runtime reside)
+        Path base = getBaseDirectory();
+        File baseWar = null;
+        File[] baseCandidates = new File[] {
+            base.resolve("app").resolve("rupeecrm.war").toFile(),
+            base.resolve("rupeecrm.war").toFile()
+        };
+        for (File c : baseCandidates) {
+            if (c != null && c.exists() && c.length() > 0) {
+                baseWar = c;
+                break;
+            }
+        }
 
-        war = new File("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
+        // 3. Reconcile versions between packaged distribution and AppData/base directory
+        if (packagedWar != null && baseWar != null) {
+            try {
+                if (packagedWar.getCanonicalFile().equals(baseWar.getCanonicalFile())) {
+                    return packagedWar;
+                }
+            } catch (Exception ignored) {}
+
+            String packagedVer = getWarVersion(packagedWar);
+            String baseVer = getWarVersion(baseWar);
+            int cmp = compareVersions(packagedVer, baseVer);
+            if (cmp >= 0) {
+                // Packaged installer is equal or newer than stale AppData copy.
+                // Run packaged WAR and remove obsolete AppData copy so it never hijacks future runs.
+                System.out.println("Using packaged WAR (version " + packagedVer + " >= base " + baseVer + "): " + packagedWar.getAbsolutePath());
+                try {
+                    baseWar.delete();
+                    File bak = new File(baseWar.getAbsolutePath() + ".bak");
+                    if (bak.exists()) bak.delete();
+                } catch (Exception ignored) {}
+                return packagedWar;
+            } else {
+                // baseWar is strictly newer (e.g. an active OTA update applied after installation)
+                System.out.println("Using newer OTA updated WAR (version " + baseVer + " > packaged " + packagedVer + "): " + baseWar.getAbsolutePath());
+                return baseWar;
+            }
+        }
+
+        if (packagedWar != null) return packagedWar;
+        if (baseWar != null) return baseWar;
+
+        // 4. Local Development target paths
+        if (appDir != null) {
+            File war = new File(appDir, "runtime" + File.separator + "rupeecrm.war");
+            if (war.exists() && war.length() > 0) return war;
+        }
+
+        File war = new File("billsoft/target/billsoft-0.0.1-SNAPSHOT.war");
         if (war.exists() && war.length() > 0) return war;
 
         war = new File("../billsoft/target/billsoft-0.0.1-SNAPSHOT.war");

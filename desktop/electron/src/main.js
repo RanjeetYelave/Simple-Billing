@@ -179,13 +179,60 @@ async function waitForBackend(maxSeconds = 60, onProgress = null) {
   return false;
 }
 
+function getRunningBackendVersion(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http.get(HEALTH_URL, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode !== 200) return resolve(null);
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(json.version || null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+function compareAppVersions(v1, v2) {
+  if (!v1 && !v2) return 0;
+  if (!v1) return -1;
+  if (!v2) return 1;
+  const p1 = v1.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
+  const p2 = v2.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
+  const max = Math.max(p1.length, p2.length);
+  for (let i = 0; i < max; i++) {
+    const n1 = parseInt((p1[i] || '0').replace(/\D/g, ''), 10) || 0;
+    const n2 = parseInt((p2[i] || '0').replace(/\D/g, ''), 10) || 0;
+    if (n1 !== n2) return n1 > n2 ? 1 : -1;
+  }
+  return 0;
+}
+
 async function startJavaSupervisor() {
   // First verify if backend is ALREADY active (e.g. running from service or prior launch)
   const alreadyRunning = await checkBackendHealth(1200);
   if (alreadyRunning) {
-    logMessage('RupeeCRM backend is already running and healthy on port ' + PORT);
-    backendHealthy = true;
-    return;
+    const runningVer = await getRunningBackendVersion(1500);
+    const packagedVer = app.getVersion();
+    logMessage(`RupeeCRM backend already active. Running version: ${runningVer || 'unknown'}, Packaged version: ${packagedVer}`);
+
+    if (runningVer && packagedVer && compareAppVersions(packagedVer, runningVer) > 0) {
+      logMessage(`Active backend version (${runningVer}) is older than packaged version (${packagedVer}). Restarting backend...`);
+      await triggerGracefulBackendShutdown();
+      await new Promise((r) => setTimeout(r, 2000));
+    } else {
+      backendHealthy = true;
+      return;
+    }
   }
 
   const javaBin = resolveJavaRuntime();
@@ -430,8 +477,10 @@ function createMainWindow() {
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
 
-  // Load backend UI
-  mainWindow.loadURL(APP_URL);
+  // Load backend UI with cache-busting version parameter
+  const appVer = app.getVersion();
+  const targetUrl = `${APP_URL}?v=${encodeURIComponent(appVer)}`;
+  mainWindow.loadURL(targetUrl);
 
   mainWindow.once('ready-to-show', () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
@@ -859,6 +908,16 @@ app.whenReady().then(async () => {
   logMessage('RupeeCRM Desktop Shell starting up...');
   registerIpcHandlers();
   setupSystemTray();
+
+  // Clear HTTP/storage cache on startup to prevent stale frontend resources from lingering
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      storages: ['serviceworkers', 'cachestorage']
+    });
+  } catch (err) {
+    logMessage(`Notice: Error clearing session cache: ${err.message}`);
+  }
 
   // Handle native file downloads cleanly
   session.defaultSession.on('will-download', (event, item, webContents) => {

@@ -132,6 +132,15 @@ jobs:
           }
           Write-Host "✓ Staged bundled OpenJDK 21 runtime successfully."
 
+      - name: Synchronize Electron Package Version
+        shell: pwsh
+        run: |
+          $pkgPath = "desktop/electron/package.json"
+          $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
+          $pkg.version = "1.0.${{ github.run_number }}"
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding UTF8
+          Write-Host "✓ Synchronized Electron package.json version to $($pkg.version)"
+
       - name: Install Electron Dependencies and Run Tests
         working-directory: ./desktop/electron
         run: |

@@ -101,4 +101,14 @@ public class LauncherConfigTest {
             }
         }
     }
+
+    @Test
+    void testCompareVersions() {
+        assertEquals(0, LauncherMain.compareVersions("1.0.294", "1.0.294"));
+        assertEquals(0, LauncherMain.compareVersions("v1.0.294", "1.0.294"));
+        assertTrue(LauncherMain.compareVersions("1.0.295", "1.0.294") > 0);
+        assertTrue(LauncherMain.compareVersions("1.0.294", "1.0.295") < 0);
+        assertTrue(LauncherMain.compareVersions("v1.0.295-SNAPSHOT", "v1.0.278") > 0);
+        assertTrue(LauncherMain.compareVersions("1.1.0", "1.0.299") > 0);
+    }
 }

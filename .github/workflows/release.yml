@@ -295,13 +295,13 @@ jobs:
         id: prep-release
         shell: bash
         run: |
-          APP_VERSION=$(node -p "require('./desktop/electron/package.json').version")
-          TAG_NAME="preview-${APP_VERSION}-build-${{ github.run_number }}"
+          APP_VERSION="1.0.${{ github.run_number }}"
+          TAG_NAME="v1.0.${{ github.run_number }}"
           if [ "${{ github.run_attempt }}" -gt 1 ]; then
             TAG_NAME="${TAG_NAME}-attempt-${{ github.run_attempt }}"
           fi
 
-          RELEASE_TITLE="RupeeCRM v${APP_VERSION} Preview (Build ${{ github.run_number }})"
+          RELEASE_TITLE="RupeeCRM v${APP_VERSION} (Build ${{ github.run_number }})"
           INSTALLER_FILE=$(find release-dist -maxdepth 1 -name "RupeeCRM-Setup-*-x64.exe" | head -n 1)
           INSTALLER_NAME=$(basename "$INSTALLER_FILE")
           INSTALLER_SIZE=$(ls -lh "$INSTALLER_FILE" | awk '{print $5}')
@@ -315,7 +315,7 @@ jobs:
           sed "s/^[ \t]*//" << EOF > release-notes.md
           ## ${RELEASE_TITLE}
 
-          Automated Windows Desktop installer pre-release built from branch \`${{ github.ref_name }}\`.
+          Automated Windows Desktop installer release built from branch \`${{ github.ref_name }}\`.
 
           ### Build Information
           - **Application Version:** \`v${APP_VERSION}\`
@@ -335,7 +335,7 @@ jobs:
           \`\`\`
 
           > [!NOTE]
-          > This is an automated pre-release build. The production release remains **v1.0.278**.
+          > Production release v${APP_VERSION}.
           EOF
 
       - name: Generate and Verify Signed Release Manifest
@@ -348,10 +348,10 @@ jobs:
           javac installer/ManifestSigner.java -d build-tools
 
           if [ -n "$UPDATE_SIGNING_PRIVATE_KEY" ] && [ -n "$(echo "$UPDATE_SIGNING_PRIVATE_KEY" | tr -d '[:space:]')" ]; then
-            RELEASE_NOTES="RupeeCRM pre-release build ${{ github.run_number }} integrity manifest."
+            RELEASE_NOTES="RupeeCRM release build ${{ github.run_number }} integrity manifest."
             RELEASE_TAG="${{ steps.prep-release.outputs.tag_name }}"
             DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/rupeecrm.war"
-            APP_VER="${{ steps.prep-release.outputs.app_version }}.${{ github.run_number }}"
+            APP_VER="${{ steps.prep-release.outputs.app_version }}"
 
             # Invoke ManifestSigner using --env to avoid exposing private key on process command-line
             java -cp build-tools com.billing.simple.installer.ManifestSigner sign app-binaries/rupeecrm.war "$APP_VER" --env release-meta "$RELEASE_NOTES" "$RELEASE_TAG" "$DOWNLOAD_URL"
@@ -380,15 +380,15 @@ jobs:
           # Clean up temporary build-tools directory
           rm -rf build-tools
 
-      - name: Publish GitHub Pre-Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.prep-release.outputs.release_title }}
           tag_name: ${{ steps.prep-release.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           draft: false
-          prerelease: true
-          make_latest: false
+          prerelease: false
+          make_latest: true
           body_path: release-notes.md
           files: |
             release-dist/*.exe

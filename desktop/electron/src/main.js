@@ -513,7 +513,7 @@ function createMainWindow() {
           <script>
             function pollHealth() {
               fetch('${HEALTH_URL}').then(r => {
-                if (r.ok) location.href = '${APP_URL}';
+                if (r.ok) location.href = '${APP_URL}?v=${encodeURIComponent(appVer)}&t=' + Date.now();
                 else setTimeout(pollHealth, 1000);
               }).catch(() => setTimeout(pollHealth, 1000));
             }
@@ -741,7 +741,7 @@ function registerIpcHandlers() {
       backendPort: PORT,
       backendHealthy,
       latencyMs,
-      backendVersion: 'v1.0.278',
+      backendVersion: 'v' + app.getVersion(),
       dataDir: dirs.dataDir,
       dbExists,
       logsDir: dirs.logsDir,

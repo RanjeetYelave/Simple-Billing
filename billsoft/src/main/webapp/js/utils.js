@@ -204,7 +204,26 @@ const BillsoftUtils = {
       ? 'application/pdf'
       : (blob.type || 'application/octet-stream');
 
-    // Modern Browser & Electron: Direct reliable Object URL download
+    // 1. Electron Desktop Integration: Native Save Dialog
+    if (typeof window !== 'undefined' && window.rupeeDesktop && typeof window.rupeeDesktop.savePdf === 'function') {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const parts = String(reader.result).split(',');
+          const base64 = parts.length > 1 ? parts[1] : parts[0];
+          const res = await window.rupeeDesktop.savePdf(base64, filename);
+          if (res && res.success && typeof showToast === 'function') {
+            showToast('PDF saved successfully', 'success');
+          }
+        } catch (err) {
+          console.error('Electron native save error:', err);
+        }
+      };
+      reader.readAsDataURL(blob instanceof Blob ? blob : new Blob([blob], { type: mimeType }));
+      return;
+    }
+
+    // 2. Modern Browser: Direct reliable Object URL download
     if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
       const safeBlob = (blob instanceof Blob) ? blob : new Blob([blob], { type: mimeType });
       const blobUrl = URL.createObjectURL(safeBlob);
@@ -253,6 +272,23 @@ const BillsoftUtils = {
     if (!blob) return;
     if (blob.type !== 'application/pdf') {
       blob = new Blob([blob], { type: 'application/pdf' });
+    }
+
+    // 1. Electron Desktop Integration: Native Print Bridge
+    if (typeof window !== 'undefined' && window.rupeeDesktop && typeof window.rupeeDesktop.printPdf === 'function') {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const parts = String(reader.result).split(',');
+          const base64 = parts.length > 1 ? parts[1] : parts[0];
+          await window.rupeeDesktop.printPdf(base64, options);
+          if (typeof options.onComplete === 'function') options.onComplete();
+        } catch (err) {
+          console.error('Electron native print error:', err);
+        }
+      };
+      reader.readAsDataURL(blob);
+      return;
     }
 
     // Default to clean headless direct print to browser/native print dialog without legacy overlay

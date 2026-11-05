@@ -54,7 +54,7 @@ public class AppConfigController {
         if (upper.contains("CREDENTIAL")) return true;
         if (upper.contains("PIN")) return true;
         if (upper.contains("HASH")) return true;
-        return upper.contains("TOKEN") && !upper.equals("SNAKE_GAME_STATE");
+        return upper.contains("TOKEN");
     }
 
     private boolean isSequenceCounter(String key) {

@@ -483,11 +483,6 @@ public class ApiDiagnosticsService {
                 return "Returned " + (list != null ? list.size() : 0) + " quick notes";
             });
 
-            // 21. Embedded Tools & Global Configuration (Non-critical)
-            testEndpoint(results, "Embedded Tools & Configuration", "Snake Classic State Access", "GET", "/api/app-config/SNAKE_GAME_STATE", () -> {
-                var config = appConfigRepo.findById("SNAKE_GAME_STATE");
-                return config.isPresent() ? "Snake state configured" : "Standby / clean state";
-            });
 
             // Aggregate results
             int total = results.size();

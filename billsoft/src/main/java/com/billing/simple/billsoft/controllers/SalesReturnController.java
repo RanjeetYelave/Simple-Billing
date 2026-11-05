@@ -82,28 +82,55 @@ public class SalesReturnController {
         return ResponseEntity.ok(ret);
     }
 
-    @GetMapping("/returns/{id}/pdf")
+    @GetMapping({"/returns/{id}/pdf", "/invoices/returns/{id}/pdf"})
     public ResponseEntity<byte[]> getReturnPdf(
             @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(required = false, defaultValue = "A4") String size,
             @RequestParam(required = false) String format,
             @RequestParam(required = false) String theme,
             @RequestParam(required = false) String color
     ) {
-        SalesReturn ret = invoiceService.getSalesReturnById(id);
+        Long contextFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long effectiveFirmId = contextFirmId != null ? contextFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+
+        SalesReturn ret;
+        if (effectiveFirmId != null) {
+            try {
+                com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(effectiveFirmId);
+                ret = invoiceService.getSalesReturnById(id);
+            } finally {
+                if (contextFirmId == null) {
+                    com.billing.simple.billsoft.security.TenantContext.clear();
+                } else {
+                    com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(contextFirmId);
+                }
+            }
+        } else {
+            ret = invoiceService.getSalesReturnById(id);
+        }
+
         if (ret == null) return ResponseEntity.notFound().build();
+        if (effectiveFirmId != null && ret.getFirmId() != null && !effectiveFirmId.equals(ret.getFirmId())) {
+            return ResponseEntity.notFound().build();
+        }
 
         try {
             byte[] pdfBytes = pdfService.generatePdf(ret, size, format, theme, color);
             String retNum = ret.getReturnNumber() != null && !ret.getReturnNumber().isBlank()
                     ? ret.getReturnNumber().trim()
                     : String.valueOf(ret.getId());
-            String filename = "CreditNote-" + retNum + ".pdf";
+            String sanitizedRetNum = retNum.replaceAll("[^a-zA-Z0-9._-]", "_");
+            String filename = "CreditNote-" + sanitizedRetNum + ".pdf";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdfBytes);
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException e) {
+            log.warn("Access denied during PDF generation for sales return {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (Exception e) {
             log.error("Failed to generate PDF for sales return {}: {}", id, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();

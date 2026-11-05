@@ -10,10 +10,11 @@
  * - Seamless integration with existing Spring Boot backend & in-app updater
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const child_process = require('child_process');
 
 // =========================================================================
@@ -302,7 +303,7 @@ function createSplashWindow() {
     transparent: true,
     alwaysOnTop: true,
     show: false,
-    icon: resolveAssetPath('icon.ico'),
+    icon: resolveAssetPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -337,7 +338,7 @@ function createMainWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'RupeeCRM',
-    icon: resolveAssetPath('icon.ico'),
+    icon: resolveAssetPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     show: false,
     backgroundColor: '#f8fafc',
     webPreferences: {
@@ -557,21 +558,26 @@ function showDiagnosticsWindow() {
 // 5. System Tray & Context Menu
 // =========================================================================
 function setupSystemTray() {
-  const iconPath = resolveAssetPath('icon.ico');
-  tray = new Tray(iconPath);
-  tray.setToolTip('RupeeCRM [Starting...]');
+  try {
+    const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+    const iconPath = resolveAssetPath(iconName);
+    tray = new Tray(iconPath);
+    tray.setToolTip('RupeeCRM [Starting...]');
 
-  updateTrayMenu();
+    updateTrayMenu();
 
-  tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.focus();
-      } else {
-        mainWindow.show();
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.focus();
+        } else {
+          mainWindow.show();
+        }
       }
-    }
-  });
+    });
+  } catch (err) {
+    logMessage('Tray initialization warning: ' + err.message);
+  }
 }
 
 function updateTrayMenu() {
@@ -728,6 +734,85 @@ function registerIpcHandlers() {
   ipcMain.on('window:close', () => {
     if (mainWindow) mainWindow.hide();
   });
+
+  // Native PDF Document Actions (Print & Save)
+  ipcMain.handle('pdf:save', async (event, { base64Data, defaultFilename }) => {
+    try {
+      if (!base64Data) throw new Error('No PDF content provided for saving');
+      const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: 'Save PDF Document',
+        defaultPath: defaultFilename || 'document.pdf',
+        filters: [
+          { name: 'PDF Documents', extensions: ['pdf'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+      if (canceled || !filePath) {
+        return { canceled: true };
+      }
+      const buffer = Buffer.from(base64Data, 'base64');
+      await fs.promises.writeFile(filePath, buffer);
+      logMessage(`PDF saved successfully to: ${filePath}`);
+      return { success: true, filePath };
+    } catch (err) {
+      logMessage(`PDF save failed: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('pdf:print', async (event, { base64Data, options }) => {
+    let tempPath = null;
+    let printWin = null;
+    try {
+      if (!base64Data) throw new Error('No PDF content provided for printing');
+      const tempDir = app.getPath('temp');
+      tempPath = path.join(tempDir, `rupeecrm_print_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
+      await fs.promises.writeFile(tempPath, Buffer.from(base64Data, 'base64'));
+
+      printWin = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true
+        }
+      });
+
+      await printWin.loadURL(pathToFileURL(tempPath).href);
+
+      return new Promise((resolve) => {
+        printWin.webContents.print(
+          {
+            silent: false,
+            printBackground: true,
+            ...(options || {})
+          },
+          (success, failureReason) => {
+            if (!success) {
+              logMessage(`Native print dismissed/failed: ${failureReason}`);
+            } else {
+              logMessage('Native print job sent successfully');
+            }
+            if (printWin && !printWin.isDestroyed()) {
+              printWin.close();
+            }
+            if (tempPath && fs.existsSync(tempPath)) {
+              try { fs.unlinkSync(tempPath); } catch (e) {}
+            }
+            resolve({ success, failureReason });
+          }
+        );
+      });
+    } catch (err) {
+      if (printWin && !printWin.isDestroyed()) printWin.close();
+      if (tempPath && fs.existsSync(tempPath)) {
+        try { fs.unlinkSync(tempPath); } catch (e) {}
+      }
+      logMessage(`Native print error: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 // =========================================================================
@@ -774,6 +859,25 @@ app.whenReady().then(async () => {
   logMessage('RupeeCRM Desktop Shell starting up...');
   registerIpcHandlers();
   setupSystemTray();
+
+  // Handle native file downloads cleanly
+  session.defaultSession.on('will-download', (event, item, webContents) => {
+    const defaultFilename = item.getFilename();
+    const win = BrowserWindow.fromWebContents(webContents) || mainWindow;
+    const savePath = dialog.showSaveDialogSync(win, {
+      title: 'Save File',
+      defaultPath: defaultFilename,
+      filters: [
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (savePath) {
+      item.setSavePath(savePath);
+    } else {
+      event.preventDefault();
+    }
+  });
 
   if (!startHidden) {
     createSplashWindow();

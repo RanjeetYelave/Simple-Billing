@@ -8,17 +8,19 @@ const API = {
   // browser client work on any configured local port without a desktop shell.
   BASE_URL: window.location.origin,
 
-  // current firm ID strictly tab-isolated via sessionStorage
+  // current firm ID strictly isolated with localStorage persistence fallback for desktop
   get firmId() {
-    const id = sessionStorage.getItem('currentFirmId');
+    const id = sessionStorage.getItem('currentFirmId') || localStorage.getItem('currentFirmId');
     return id ? parseInt(id, 10) : null;
   },
 
   set firmId(id) {
     if (id) {
       sessionStorage.setItem('currentFirmId', String(id));
+      localStorage.setItem('currentFirmId', String(id));
     } else {
       sessionStorage.removeItem('currentFirmId');
+      localStorage.removeItem('currentFirmId');
     }
   },
 
@@ -97,6 +99,10 @@ const API = {
         window.dispatchEvent(new CustomEvent('billsoft:unauthorized'));
       }
       throw err;
+    }
+    const respToken = response.headers && typeof response.headers.get === 'function' ? response.headers.get('X-Auth-Token') : null;
+    if (respToken && respToken.trim()) {
+      this.token = respToken.trim();
     }
     return response;
   },
@@ -523,6 +529,7 @@ const API = {
     nextNumber: (firmIdOverride) => API.invoices.nextInvoiceNumber(firmIdOverride),
     downloadPdf: async (id, optionsOrSize = 'A4') => {
       let url = `/api/invoices/${id}/pdf`;
+      let fid = null;
       if (typeof optionsOrSize === 'string') {
         const cleanSize = optionsOrSize.trim();
         if (cleanSize && cleanSize !== '[object Object]') {
@@ -548,10 +555,14 @@ const API = {
           : null;
         if (col) params.append('color', col);
 
+        fid = optionsOrSize.firmId || optionsOrSize.targetFirmId;
+        if (fid) params.append('firmId', String(fid));
+
         const qs = params.toString();
         if (qs) url += `?${qs}`;
       }
-      const res = await API._request(url);
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const res = await API._request(url, { headers });
       if (!res.ok) {
         throw new Error(`PDF download failed with HTTP status ${res.status}`);
       }
@@ -603,6 +614,7 @@ const API = {
     get: (id) => API._json(`/api/returns/${id}`),
     downloadPdf: async (id, sizeOrOptions = 'A4') => {
       let q = {};
+      let fid = null;
       if (typeof sizeOrOptions === 'string') {
         const cleanSize = sizeOrOptions.trim();
         q = { size: cleanSize || 'A4', format: cleanSize || 'A4' };
@@ -616,9 +628,12 @@ const API = {
         }
         if (sizeOrOptions.theme) q.theme = sizeOrOptions.theme;
         if (sizeOrOptions.color) q.color = sizeOrOptions.color;
+        fid = sizeOrOptions.firmId || sizeOrOptions.targetFirmId;
+        if (fid) q.firmId = fid;
       }
       const qs = new URLSearchParams(q).toString();
-      const res = await API._request(`/api/returns/${id}/pdf${qs ? '?' + qs : ''}`);
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const res = await API._request(`/api/returns/${id}/pdf${qs ? '?' + qs : ''}`, { headers });
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
@@ -1026,8 +1041,8 @@ const API = {
 
   // ─── Backup & Restore ───
   backup: {
-    exportUrl: () => `${API.BASE_URL}/api/backup/export?firmId=${API.firmId}`,
-    exportAllUrl: () => `${API.BASE_URL}/api/backup/export/all`,
+    exportUrl: () => `${API.BASE_URL}/api/backup/export?firmId=${API.firmId}${API.token ? '&token=' + encodeURIComponent(API.token) : ''}`,
+    exportAllUrl: () => `${API.BASE_URL}/api/backup/export/all${API.token ? '?token=' + encodeURIComponent(API.token) : ''}`,
     inspect: async (file) => {
       const formData = new FormData();
       formData.append('file', file);

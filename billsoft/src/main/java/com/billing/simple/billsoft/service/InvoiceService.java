@@ -2542,7 +2542,9 @@ public class InvoiceService {
 
     public SalesReturn getSalesReturnById(Long id) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) return null;
+        if (currentFirmId == null) {
+            return salesReturnRepo.findById(id).orElse(null);
+        }
         return salesReturnRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
     }
 }

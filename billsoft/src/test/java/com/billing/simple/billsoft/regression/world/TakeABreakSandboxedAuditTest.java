@@ -124,7 +124,7 @@ public class TakeABreakSandboxedAuditTest {
         assertNotNull(backup.getAppConfigs());
 
         boolean hasSnake = backup.getAppConfigs().stream().anyMatch(ac -> "SNAKE_GAME_STATE".equals(ac.getConfigKey()));
-        assertTrue(hasSnake, "Backup must include SNAKE_GAME_STATE");
+        assertFalse(hasSnake, "Backup must exclude SNAKE_GAME_STATE");
 
         // Clear AppConfig state to simulate clean new environment
         appConfigRepo.deleteById("SNAKE_GAME_STATE");
@@ -133,11 +133,9 @@ public class TakeABreakSandboxedAuditTest {
         // Restore backup
         backupService.importSelectiveData(backup, java.util.Set.of(testFirm.getId()), "merge", testFirm.getId());
 
-        // Verify that game progression was safely restored
+        // Verify that game state is ignored and not restored
         Optional<AppConfig> restoredSnake = appConfigRepo.findById("SNAKE_GAME_STATE");
-
-        assertTrue(restoredSnake.isPresent(), "SNAKE_GAME_STATE must be restored");
-        assertTrue(restoredSnake.get().getConfigValue().contains("\"currentLevel\":8"));
+        assertFalse(restoredSnake.isPresent(), "SNAKE_GAME_STATE must be ignored on restore");
     }
 
     // --- 4. Corrupted / Malformed Backup Payload Resilience ---
@@ -167,19 +165,14 @@ public class TakeABreakSandboxedAuditTest {
 
     // --- 5. Non-Critical Diagnostics Isolation ---
     @Test
-    @DisplayName("5. Diagnostics: Embedded game state endpoints are non-critical and pass health check")
+    @DisplayName("5. Diagnostics: Diagnostics run successfully without embedded games")
     public void testDiagnosticsNonCriticalIntegration() {
         var diagnosticsReport = apiDiagnosticsService.runFullApiSuite(null);
         assertNotNull(diagnosticsReport);
 
-        // Verify that embedded tools endpoints exist in results
         var endpointResults = diagnosticsReport.getResults();
         assertNotNull(endpointResults);
-
-        boolean snakeCheckFound = endpointResults.stream()
-                .anyMatch(e -> "Snake Classic State Access".equals(e.getName()));
-
-        assertTrue(snakeCheckFound, "Snake Classic state access must be covered in diagnostics");
+        assertFalse(endpointResults.isEmpty());
     }
 
     // --- 6. Sanitization & Extreme Values Recovery ---

@@ -73,7 +73,7 @@ public class SnakePersistenceAndBackupTest {
     }
 
     @Test
-    @DisplayName("2. Manual Backup export & restore preserves Snake Classic progression")
+    @DisplayName("2. Manual Backup export & restore excludes and ignores Snake Classic")
     public void testManualBackupAndRestoreRecoversSnakeProgression() {
         String testState = "{\"schemaVersion\":1,\"stateRevision\":25,\"currentLevel\":30,\"completedCount\":29,\"totalStars\":85,\"highestStarMilestone\":1,\"totalFruitsEaten\":250,\"longestSnake\":24,\"totalPlayTimeSeconds\":7200,\"bestStreak\":12,\"currentStreak\":12}";
         appConfigRepo.save(new AppConfig("SNAKE_GAME_STATE", testState));
@@ -85,26 +85,27 @@ public class SnakePersistenceAndBackupTest {
         assertNotNull(backup.getAppConfigs(), "Backup appConfigs must not be null");
 
         boolean foundInExport = backup.getAppConfigs().stream()
-                .anyMatch(cfg -> "SNAKE_GAME_STATE".equals(cfg.getConfigKey()) && testState.equals(cfg.getConfigValue()));
-        assertTrue(foundInExport, "SNAKE_GAME_STATE must be in exported backup");
+                .anyMatch(cfg -> "SNAKE_GAME_STATE".equals(cfg.getConfigKey()));
+        assertFalse(foundInExport, "SNAKE_GAME_STATE must NOT be in exported backup");
 
         // 2. Clear state
         appConfigRepo.deleteById("SNAKE_GAME_STATE");
         entityManager.flush();
         assertFalse(appConfigRepo.findById("SNAKE_GAME_STATE").isPresent());
 
-        // 3. Restore Manual Backup (Merge mode)
+        // 3. Inject game state into backup to verify restore ignores it
+        backup.setInvoices(null);
+        backup.getAppConfigs().add(new AppConfig("SNAKE_GAME_STATE", testState));
         backupService.importSelectiveData(backup, null, "merge", null);
         entityManager.flush();
         entityManager.clear();
 
         AppConfig restored = appConfigRepo.findById("SNAKE_GAME_STATE").orElse(null);
-        assertNotNull(restored, "SNAKE_GAME_STATE must be restored from manual backup");
-        assertEquals(testState, restored.getConfigValue(), "Restored progression data must match original");
+        assertNull(restored, "SNAKE_GAME_STATE must be ignored on restore");
     }
 
     @Test
-    @DisplayName("3. Auto / Scheduled Backup generates autobackup_latest.json containing Snake Classic")
+    @DisplayName("3. Auto / Scheduled Backup generates autobackup_latest.json excluding Snake Classic")
     public void testAutoBackupIncludesSnake() throws Exception {
         String testState = "{\"schemaVersion\":1,\"currentLevel\":50,\"totalStars\":140,\"highestStarMilestone\":2}";
         appConfigRepo.save(new AppConfig("SNAKE_GAME_STATE", testState));
@@ -125,13 +126,13 @@ public class SnakePersistenceAndBackupTest {
         assertNotNull(fileBackup.getAppConfigs());
 
         boolean foundInDiskFile = fileBackup.getAppConfigs().stream()
-                .anyMatch(cfg -> "SNAKE_GAME_STATE".equals(cfg.getConfigKey()) && testState.equals(cfg.getConfigValue()));
+                .anyMatch(cfg -> "SNAKE_GAME_STATE".equals(cfg.getConfigKey()));
 
-        assertTrue(foundInDiskFile, "Actual on-disk auto-backup file MUST contain SNAKE_GAME_STATE");
+        assertFalse(foundInDiskFile, "Actual on-disk auto-backup file MUST NOT contain SNAKE_GAME_STATE");
     }
 
     @Test
-    @DisplayName("4. Cloud Data Protection encryption & restore restores Snake Classic")
+    @DisplayName("4. Cloud Data Protection restore ignores Snake Classic")
     public void testCloudDataProtectionRestoresSnake() throws Exception {
         String testState = "{\"schemaVersion\":1,\"currentLevel\":88,\"totalStars\":250,\"highestStarMilestone\":5}";
         appConfigRepo.save(new AppConfig("SNAKE_GAME_STATE", testState));
@@ -142,11 +143,14 @@ public class SnakePersistenceAndBackupTest {
         File latestBackupFile = new File(autoBackupService.getBackupDirectory(), "autobackup_latest.json");
         assertTrue(latestBackupFile.exists());
 
-        // 2. Simulate DataProtection encryption & decryption
+        // 2. Simulate DataProtection encryption & decryption with a backup containing snake state
+        BackupDTO rawBackup = objectMapper.readValue(latestBackupFile, BackupDTO.class);
+        rawBackup.getAppConfigs().add(new AppConfig("SNAKE_GAME_STATE", testState));
+        byte[] rawBytes = objectMapper.writeValueAsBytes(rawBackup);
+
         DataProtectionCrypto crypto = new DataProtectionCrypto();
         javax.crypto.SecretKey testKey = crypto.deriveKeyFromLicenseId("LIC-TEST-12345");
 
-        byte[] rawBytes = java.nio.file.Files.readAllBytes(latestBackupFile.toPath());
         byte[] encrypted = crypto.encryptBackup(rawBytes, testKey);
         byte[] decrypted = crypto.decryptBackup(encrypted, testKey);
 
@@ -157,13 +161,13 @@ public class SnakePersistenceAndBackupTest {
         appConfigRepo.deleteById("SNAKE_GAME_STATE");
         entityManager.flush();
 
+        cloudRestoredBackup.setInvoices(null);
         backupService.importSelectiveData(cloudRestoredBackup, null, "merge", null);
         entityManager.flush();
         entityManager.clear();
 
         AppConfig restored = appConfigRepo.findById("SNAKE_GAME_STATE").orElse(null);
-        assertNotNull(restored, "Cloud restored backup must restore SNAKE_GAME_STATE");
-        assertEquals(testState, restored.getConfigValue());
+        assertNull(restored, "Cloud restored backup must ignore SNAKE_GAME_STATE");
     }
 
     @Test
@@ -195,7 +199,7 @@ public class SnakePersistenceAndBackupTest {
     }
 
     @Test
-    @DisplayName("6. Diagnostics suite includes Snake Classic and reports HEALTHY overall")
+    @DisplayName("6. Diagnostics suite excludes Snake Classic and reports HEALTHY overall")
     public void testDiagnosticsIncludesSnake() {
         ApiDiagnosticsResponse response = diagnosticsService.runFullApiSuite(null);
         assertNotNull(response);
@@ -203,6 +207,6 @@ public class SnakePersistenceAndBackupTest {
 
         boolean hasSnakeCheck = response.getResults().stream()
                 .anyMatch(ep -> ep.getName().contains("Snake Classic") || (ep.getEndpoint() != null && ep.getEndpoint().contains("SNAKE_GAME_STATE")));
-        assertTrue(hasSnakeCheck, "Diagnostics suite must include Snake Classic check");
+        assertFalse(hasSnakeCheck, "Diagnostics suite must NOT include Snake Classic check");
     }
 }

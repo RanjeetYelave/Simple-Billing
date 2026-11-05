@@ -269,7 +269,8 @@ public class LauncherMain {
                 backendProcess = launchBackendProcess(warFile);
                 backendPid = backendProcess.pid();
 
-                boolean healthy = waitForBackend(30);
+                int startupTimeout = isCandidateLaunch ? 90 : 45;
+                boolean healthy = waitForBackend(startupTimeout);
                 if (healthy) {
                     System.out.println("RupeeCRM backend is healthy (PID: " + backendPid + ")");
                     updateTrayTooltip("RupeeCRM [● Running on port " + PORT + "]");
@@ -483,47 +484,67 @@ public class LauncherMain {
         if (candidateVersion == null || candidateVersion.trim().isEmpty()) {
             return true;
         }
-        try {
-            URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-status");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
-            conn.setRequestMethod("GET");
-            if (conn.getResponseCode() == 200) {
-                String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
-                    body.contains("\"status\":\"SUCCESS\"") ||
-                    body.contains("\"status\":\"HEALTH_VERIFIED\"") ||
-                    body.contains("\"status\":\"COMMITTED\"")) {
-                    return true;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-status");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(2000);
+                conn.setReadTimeout(2000);
+                conn.setRequestMethod("GET");
+                if (conn.getResponseCode() == 200) {
+                    String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
+                        body.contains("\"status\":\"SUCCESS\"") ||
+                        body.contains("\"status\":\"HEALTH_VERIFIED\"") ||
+                        body.contains("\"status\":\"COMMITTED\"") ||
+                        body.contains("\"status\":\"COMPLETED\"")) {
+                        return true;
+                    }
+                    if (body.contains("\"currentVersion\":") && !body.contains(candidateVersion) && attempt >= 5) {
+                        System.err.println("Running backend reported version does not match candidate " + candidateVersion + ": " + body);
+                        return false;
+                    }
                 }
-                if (body.contains("\"currentVersion\":") && !body.contains(candidateVersion)) {
-                    System.err.println("Running backend reported version does not match candidate " + candidateVersion + ": " + body);
-                    return false;
-                }
+            } catch (Exception e) {
+                // Backend still initializing
             }
-        } catch (Exception e) {
-            System.err.println("Note: unable to query /api/system/update-status for version verification: " + e.getMessage());
+            try {
+                Path v1 = getDataDirectory().resolve(".billsoft-version");
+                if (Files.exists(v1)) {
+                    String v = Files.readString(v1, StandardCharsets.UTF_8).trim();
+                    if (candidateVersion.equals(v)) return true;
+                }
+            } catch (Exception ignored) {}
+            try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
         }
-        try {
-            Path v1 = getDataDirectory().resolve(".billsoft-version");
-            if (Files.exists(v1)) {
-                String v = Files.readString(v1, StandardCharsets.UTF_8).trim();
-                if (candidateVersion.equals(v)) return true;
-            }
-        } catch (Exception ignored) {}
         return true;
     }
 
     private boolean waitForBackend(int maxSeconds) {
         long start = System.currentTimeMillis();
         long maxMs = maxSeconds * 1000L;
+        long lastProgressLog = start;
         while (System.currentTimeMillis() - start < maxMs) {
             if (backendProcess != null && !backendProcess.isAlive()) {
+                System.err.println("Backend process terminated unexpectedly (exit code: " + backendProcess.exitValue() + ")");
                 return false;
             }
             if (isBackendHealthy(1000)) {
                 return true;
+            }
+            long now = System.currentTimeMillis();
+            if (now - lastProgressLog >= 5000) {
+                lastProgressLog = now;
+                long elapsed = (now - start) / 1000;
+                System.out.println("Waiting for backend startup... (" + elapsed + "s elapsed, process PID " + backendPid + " is alive)");
+                if (isCandidateLaunch) {
+                    try {
+                        Path stateFile = getStagingDirectory().resolve("update-state.json");
+                        UpdateState state = UpdateState.load(stateFile);
+                        state.setStatus(UpdateState.STATUS_HEALTH_CHECK);
+                        state.saveAtomic(stateFile);
+                    } catch (Exception ignored) {}
+                }
             }
             try {
                 Thread.sleep(500);

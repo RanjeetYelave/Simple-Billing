@@ -49,6 +49,11 @@ public class SalesReturnPdfService {
             firm = null;
         }
 
+        if (firm == null) {
+            firm = new FirmDetails();
+            firm.setFirmName("RUPEECRM STORE");
+        }
+
         InvoicePrintOptions options = InvoicePrintOptions.resolve(size, formatStr, themeStr, colorStr, firm);
 
         if (options.getFormat() == PrintFormat.THERMAL_80MM) {

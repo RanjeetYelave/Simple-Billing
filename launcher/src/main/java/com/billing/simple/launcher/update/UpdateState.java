@@ -26,6 +26,8 @@ public final class UpdateState {
     public static final String STATUS_VERIFYING = "VERIFYING";
     public static final String STATUS_VERIFICATION_FAILED = "VERIFICATION_FAILED";
     public static final String STATUS_READY_TO_INSTALL = "READY_TO_INSTALL";
+    public static final String STATUS_EXTRACTING = "EXTRACTING";
+    public static final String STATUS_MIGRATING = "MIGRATING";
     public static final String STATUS_VERIFIED_STAGED = "VERIFIED_STAGED";
     public static final String STATUS_HANDOFF_REQUESTED = "HANDOFF_REQUESTED";
     public static final String STATUS_ACTIVATION_STARTED = "ACTIVATION_STARTED";
@@ -34,11 +36,14 @@ public final class UpdateState {
     public static final String STATUS_STARTING_NEW_VERSION = "STARTING_NEW_VERSION";
     public static final String STATUS_RESTARTING = "RESTARTING";
     public static final String STATUS_RESTART_FAILED = "RESTART_FAILED";
+    public static final String STATUS_HEALTH_CHECK = "HEALTH_CHECK";
     public static final String STATUS_HEALTH_VERIFIED = "HEALTH_VERIFIED";
     public static final String STATUS_VERIFYING_INSTALLED_VERSION = "VERIFYING_INSTALLED_VERSION";
     public static final String STATUS_VERSION_MISMATCH = "VERSION_MISMATCH";
     public static final String STATUS_SUCCESS = "SUCCESS";
     public static final String STATUS_COMMITTED = "COMMITTED";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+    public static final String STATUS_FAILED = "FAILED";
     public static final String STATUS_ROLLBACK_IN_PROGRESS = "ROLLBACK_IN_PROGRESS";
     public static final String STATUS_ROLLED_BACK = "ROLLED_BACK";
     public static final String STATUS_RECOVERY_REQUIRED = "RECOVERY_REQUIRED";

@@ -93,7 +93,6 @@ public class BackupController {
         if (masterPassword == null || masterPassword.isBlank()) {
             masterPassword = request.getParameter("masterPassword");
         }
-
         if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
             Map<String, String> response = new HashMap<>();
             response.put("error", "Exporting full system backup requires master password authorization");
@@ -224,18 +223,6 @@ public class BackupController {
             targetFirmId = null;
         }
 
-        if (firmIds != null && firmIds.size() > 1) {
-            String masterPassword = request.getHeader("X-Master-Password");
-            if (masterPassword == null || masterPassword.isBlank()) {
-                masterPassword = request.getParameter("masterPassword");
-            }
-            if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Multi-firm auto-restore requires master password authorization");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
-            }
-        }
-
         try {
             java.io.File file = new java.io.File(autoBackupService.getBackupDirectory(), "autobackup_latest.json");
             if (!file.exists() || !file.isFile() || file.length() == 0) {
@@ -248,11 +235,15 @@ public class BackupController {
             java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms =
                     backupService.importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
 
+            String sessionToken = authController.createSessionTokenForBootstrap();
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");
             response.put("message", "Successfully restored " + restoredFirms.size() + " firm(s) from auto-backup.");
             response.put("restoredFirms", restoredFirms);
-            return ResponseEntity.ok(response);
+            response.put("token", sessionToken);
+            return ResponseEntity.ok()
+                    .header("X-Auth-Token", sessionToken)
+                    .body(response);
         } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, Object> response = new HashMap<>();
@@ -320,29 +311,21 @@ public class BackupController {
             targetFirmId = null;
         }
 
-        if (firmIds != null && firmIds.size() > 1) {
-            String masterPassword = request.getHeader("X-Master-Password");
-            if (masterPassword == null || masterPassword.isBlank()) {
-                masterPassword = request.getParameter("masterPassword");
-            }
-            if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Multi-firm selective restore requires master password authorization");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
-            }
-        }
-
         try {
             BackupDTO backup = objectMapper.readValue(file.getInputStream(), BackupDTO.class);
             java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty()) ? new java.util.HashSet<>(firmIds) : null;
             java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms =
                     backupService.importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
 
+            String sessionToken = authController.createSessionTokenForBootstrap();
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");
             response.put("message", "Successfully restored " + restoredFirms.size() + " firm(s).");
             response.put("restoredFirms", restoredFirms);
-            return ResponseEntity.ok(response);
+            response.put("token", sessionToken);
+            return ResponseEntity.ok()
+                    .header("X-Auth-Token", sessionToken)
+                    .body(response);
         } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, Object> response = new HashMap<>();

@@ -38,7 +38,7 @@ public class SnakeLifecycleCrossFlowIntegrationTest {
     private FirmDetailsRepository firmDetailsRepo;
 
     @Test
-    @DisplayName("SNAKE_GAME_STATE remains global and merge restore honors stateRevision to protect progression")
+    @DisplayName("SNAKE_GAME_STATE is ignored during backup restore")
     void testSnakeGameStateRevisionMerge() {
         FirmDetails f = new FirmDetails();
         f.setFirmName("Snake Firm");
@@ -49,7 +49,7 @@ public class SnakeLifecycleCrossFlowIntegrationTest {
         String dbState = "{\"schemaVersion\":1,\"stateRevision\":20,\"currentLevel\":10,\"totalStars\":25}";
         appConfigRepo.save(new AppConfig("SNAKE_GAME_STATE", dbState));
 
-        // 2. Backup with older revision 5 must NOT overwrite DB
+        // 2. Backup with state must NOT overwrite DB
         String olderBackupState = "{\"schemaVersion\":1,\"stateRevision\":5,\"currentLevel\":3,\"totalStars\":6}";
         BackupDTO olderBackup = new BackupDTO();
         olderBackup.setMetadata(Map.of("version", "2.0", "type", "SINGLE_FIRM", "sourceFirmId", firm.getId()));
@@ -61,7 +61,7 @@ public class SnakeLifecycleCrossFlowIntegrationTest {
         AppConfig stateAfterOlder = appConfigRepo.findById("SNAKE_GAME_STATE").orElseThrow();
         assertThat(stateAfterOlder.getConfigValue()).isEqualTo(dbState);
 
-        // 3. Backup with newer revision 35 MUST update DB
+        // 3. Backup with newer revision 35 must ALSO be ignored on restore
         String newerBackupState = "{\"schemaVersion\":1,\"stateRevision\":35,\"currentLevel\":18,\"totalStars\":50}";
         BackupDTO newerBackup = new BackupDTO();
         newerBackup.setMetadata(Map.of("version", "2.0", "type", "SINGLE_FIRM", "sourceFirmId", firm.getId()));
@@ -71,7 +71,7 @@ public class SnakeLifecycleCrossFlowIntegrationTest {
         backupService.importSelectiveData(newerBackup, Set.of(firm.getId()), "merge", firm.getId());
 
         AppConfig stateAfterNewer = appConfigRepo.findById("SNAKE_GAME_STATE").orElseThrow();
-        assertThat(stateAfterNewer.getConfigValue()).isEqualTo(newerBackupState);
+        assertThat(stateAfterNewer.getConfigValue()).isEqualTo(dbState);
 
         // 4. Verify SNAKE_GAME_STATE was not scoped to firm (no firm prefix)
         assertThat(appConfigRepo.findById("SNAKE_GAME_STATE_" + firm.getId())).isEmpty();

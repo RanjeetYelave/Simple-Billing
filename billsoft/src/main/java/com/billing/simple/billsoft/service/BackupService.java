@@ -235,7 +235,12 @@ public class BackupService {
         backup.setBusinessLetters(businessLetterRepo.findByFirmIdOrderByLetterDateDescIdDesc(firmId));
         backup.setNotifications(notificationRepo.findByFirmId(firmId));
         notificationPreferenceRepo.findByFirmId(firmId).ifPresent(pref -> backup.setNotificationPreferences(Collections.singletonList(pref)));
-        backup.setAppConfigs(appConfigRepo.findAll());
+        List<AppConfig> filteredConfigs = appConfigRepo.findAll().stream()
+                .filter(c -> c.getConfigKey() != null
+                        && !isSensitiveConfigKey(c.getConfigKey())
+                        && !isGameConfigKey(c.getConfigKey()))
+                .collect(Collectors.toList());
+        backup.setAppConfigs(filteredConfigs);
         backup.setSalesReturns(salesReturnRepo.findAllByFirmIdWithItems(firmId));
         if (pricingProfileRepo != null) {
             backup.setPricingProfiles(pricingProfileRepo.findByFirmIdOrderByIdAsc(firmId));
@@ -303,7 +308,12 @@ public class BackupService {
         backup.setBusinessLetters(businessLetterRepo.findAll());
         backup.setNotifications(notificationRepo.findAll());
         backup.setNotificationPreferences(notificationPreferenceRepo.findAll());
-        backup.setAppConfigs(appConfigRepo.findAll());
+        List<AppConfig> filteredConfigs = appConfigRepo.findAll().stream()
+                .filter(c -> c.getConfigKey() != null
+                        && !isSensitiveConfigKey(c.getConfigKey())
+                        && !isGameConfigKey(c.getConfigKey()))
+                .collect(Collectors.toList());
+        backup.setAppConfigs(filteredConfigs);
         backup.setSalesReturns(salesReturnRepo.findAllWithItems());
         if (pricingProfileRepo != null) {
             backup.setPricingProfiles(pricingProfileRepo.findAll());
@@ -2485,8 +2495,8 @@ public class BackupService {
                 if (ac.getConfigKey() == null) continue;
                 String rawKey = ac.getConfigKey().trim();
 
-                // AUDIT-035: Never restore sensitive keys or factory reset epoch from backup
-                if (isSensitiveConfigKey(rawKey) || "FACTORY_RESET_EPOCH".equalsIgnoreCase(rawKey)) {
+                // Never restore sensitive keys, game keys, or factory reset epoch from backup
+                if (isSensitiveConfigKey(rawKey) || isGameConfigKey(rawKey) || "FACTORY_RESET_EPOCH".equalsIgnoreCase(rawKey)) {
                     continue;
                 }
 
@@ -2512,10 +2522,7 @@ public class BackupService {
                     }
                 }
 
-                if ("SNAKE_GAME_STATE".equals(targetKey)) {
-                    // Revision-aware Snake restore: older backup must not overwrite newer progression
-                    mergeSnakeGameState(ac.getConfigValue());
-                } else if (isSequenceCounterKey(targetKey)) {
+                if (isSequenceCounterKey(targetKey)) {
                     // Sequence counter: mergedValue = max(existingValue, backupValue)
                     Optional<AppConfig> existingOpt = appConfigRepo.findById(targetKey);
                     if (existingOpt.isPresent()) {
@@ -2821,11 +2828,12 @@ public class BackupService {
         if (key == null) return false;
         String upper = key.trim().toUpperCase();
         if (upper.startsWith("EMPLOYEE_MODULE_PIN_")) {
-            return false;
+            return true;
         }
         if (upper.equals("GLOBAL_PASSWORD") || upper.equals("BACKUP_CLOUD_CREDENTIALS")
                 || upper.equals("BACKUP_CLOUD_SECRET") || upper.equals("BACKUP_CLOUD_ACCESS_KEY")
-                || upper.equals("LICENSE_KEY") || upper.equals("FACTORY_RESET_EPOCH")) {
+                || upper.equals("LICENSE_KEY") || upper.equals("FACTORY_RESET_EPOCH")
+                || upper.equals("AUTH_ENABLED")) {
             return true;
         }
         if (key.trim().toLowerCase().startsWith("session_")) return true;
@@ -2834,7 +2842,13 @@ public class BackupService {
         if (upper.contains("CREDENTIAL")) return true;
         if (upper.contains("PIN")) return true;
         if (upper.contains("HASH")) return true;
-        return upper.contains("TOKEN") && !upper.equals("SNAKE_GAME_STATE");
+        return upper.contains("TOKEN");
+    }
+
+    private boolean isGameConfigKey(String key) {
+        if (key == null) return false;
+        String upper = key.trim().toUpperCase();
+        return upper.equals("SNAKE_GAME_STATE") || upper.contains("SNAKE") || upper.contains("CIRCUIT_CONNECT") || upper.contains("TAKE_A_BREAK");
     }
 
     private boolean isSequenceCounterKey(String key) {
@@ -2872,41 +2886,6 @@ public class BackupService {
         }
     }
 
-    private void mergeSnakeGameState(String backupJson) {
-        if (backupJson == null || backupJson.trim().isEmpty()) return;
-        Optional<AppConfig> existingOpt = appConfigRepo.findById("SNAKE_GAME_STATE");
-        if (!existingOpt.isPresent() || existingOpt.get().getConfigValue() == null || existingOpt.get().getConfigValue().trim().isEmpty()) {
-            AppConfig sc = new AppConfig();
-            sc.setConfigKey("SNAKE_GAME_STATE");
-            sc.setConfigValue(backupJson);
-            appConfigRepo.save(sc);
-            return;
-        }
-
-        try {
-            long backupRev = extractSnakeRevision(backupJson);
-            long existingRev = extractSnakeRevision(existingOpt.get().getConfigValue());
-            if (backupRev > existingRev) {
-                AppConfig sc = existingOpt.get();
-                sc.setConfigValue(backupJson);
-                appConfigRepo.save(sc);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private long extractSnakeRevision(String json) {
-        if (json == null || json.trim().isEmpty()) return 0L;
-        try {
-            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(json);
-            if (root.has("stateRevision")) {
-                return root.get("stateRevision").asLong(0L);
-            }
-            if (root.has("updatedAt")) {
-                return root.get("updatedAt").asLong(0L);
-            }
-        } catch (Exception ignored) {}
-        return 0L;
-    }
 
     private static class PendingProductFk {
         final Long newProductId;

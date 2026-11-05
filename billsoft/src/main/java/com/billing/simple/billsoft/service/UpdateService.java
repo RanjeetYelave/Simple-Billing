@@ -186,7 +186,9 @@ public class UpdateService {
             if (state != null) {
                 String st = state.getStatus();
                 if (UpdateState.STATUS_COMMITTED.equals(st) ||
+                    UpdateState.STATUS_COMPLETED.equals(st) ||
                     UpdateState.STATUS_STARTING_NEW_VERSION.equals(st) ||
+                    UpdateState.STATUS_HEALTH_CHECK.equals(st) ||
                     UpdateState.STATUS_HEALTH_VERIFIED.equals(st) ||
                     UpdateState.STATUS_SUCCESS.equals(st)) {
                     if (state.getTargetVersion() != null && !state.getTargetVersion().trim().isEmpty()) {
@@ -691,7 +693,7 @@ public class UpdateService {
         Path stateFile = getStateFilePath();
         if (Files.exists(stateFile)) {
             UpdateState state = UpdateState.load(stateFile);
-            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus())) {
+            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()) || UpdateState.STATUS_COMPLETED.equals(state.getStatus())) {
                 String updatedVer = (state.getTargetVersion() != null && !state.getTargetVersion().isEmpty())
                         ? state.getTargetVersion() : state.getCurrentVersion();
 

@@ -64,10 +64,14 @@ public class ApiAuthFilter implements Filter {
             }
         }
 
-        // Narrow first-run bootstrap exemption: allow firm setup ONLY when database contains zero firms
-        if ((uri.equals("/api/firm") || uri.startsWith("/api/firm/")) && firmDetailsRepo.count() == 0) {
-            chain.doFilter(req, res);
-            return;
+        // First-run bootstrap exemption: allow firm setup, backup restore/inspect, and licensing when zero firms exist
+        if (firmDetailsRepo.count() == 0) {
+            if (uri.equals("/api/firm") || uri.startsWith("/api/firm/")
+                    || uri.startsWith("/api/backup/")
+                    || uri.startsWith("/api/licensing/")) {
+                chain.doFilter(req, res);
+                return;
+            }
         }
 
         if (authController.isAuthEnabled()) {

@@ -16,18 +16,6 @@
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
-  <script src="js/maharashtraWorld.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/MaharashtraAtmosphere.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/MaharashtraJourney.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/TrophyProgressBar.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeAudio.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeSpriteRenderers.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeEngine.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakeGenerator.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/snakePersistence.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/SnakeClassic.js?v=20261024_take_a_break_redesign_v1"></script>
-  <script src="js/components/ProgressionExperience.js?v=20261002_v26_smooth_transition_fix"></script>
-  <script src="js/components/TakeABreakHub.js?v=20261024_take_a_break_redesign_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/featureLock.js"></script>
 
@@ -1558,7 +1546,7 @@
         firmId: targetFirmId,
         defaultFilename: defaultFilename,
         fetchPdfBlob: async ({ theme, color, format }) => {
-          return await API.invoices.downloadPdf(doc.id, { theme, color, format });
+          return await API.invoices.downloadPdf(doc.id, { theme, color, format, firmId: targetFirmId });
         },
         onSaveFirmDefault: async ({ theme, color, format, firmId: fId }) => {
           const effFid = fId || targetFirmId;
@@ -5223,34 +5211,6 @@
 
     // ─── SIDEBAR ───
     function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [] }) {
-      const [circuitEnabled, setCircuitEnabled] = useState(() => {
-        try {
-          return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false';
-        } catch (e) {
-          return true;
-        }
-      });
-
-      useEffect(() => {
-        const handler = (e) => {
-          if (e && e.detail && typeof e.detail.enabled === 'boolean') {
-            setCircuitEnabled(e.detail.enabled);
-          } else {
-            try {
-              setCircuitEnabled(localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false');
-            } catch (err) {
-              setCircuitEnabled(true);
-            }
-          }
-        };
-        window.addEventListener('billsoft:snake-toggle', handler);
-        window.addEventListener('billsoft:circuit-toggle', handler);
-        return () => {
-          window.removeEventListener('billsoft:snake-toggle', handler);
-          window.removeEventListener('billsoft:circuit-toggle', handler);
-        };
-      }, []);
-
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
         { id: 'invoices', label: 'Invoices & Quotes', icon: Icons.invoice },
@@ -5258,7 +5218,6 @@
         { id: 'planner', label: 'Planner', icon: Icons.planner },
         { id: 'inbox', label: 'Inbox', icon: Icons.inbox },
         { id: 'hr', label: 'HR', icon: Icons.users },
-        ...(circuitEnabled ? [{ id: 'circuit_connect', label: 'Take a Break', icon: Icons.circuit }] : []),
         { id: 'settings', label: 'Settings', icon: Icons.settings },
       ];
       const handleNav = (id) => { onNavigate(id); if (setMobileOpen) setMobileOpen(false); };
@@ -33433,6 +33392,9 @@
                   ? await API.backup.restoreAuto(selectedIdsArr, 'clone')
                   : await API.backup.importSelective(backupFile, selectedIdsArr, 'clone');
                 if (importRes.error) throw new Error(importRes.error);
+                if (importRes && importRes.token) {
+                  API.token = importRes.token;
+                }
                 const list = await API.firm.list();
                 if (list && list.length) {
                   API.firmId = list[0].id;
@@ -33915,178 +33877,7 @@
               )
             )
           )
-        ),
-        (() => {
-          const [snakeEnabled, setSnakeEnabled] = useState(() => {
-            try {
-              return localStorage.getItem('CONFIG_SNAKE_CLASSIC_ENABLED') !== 'false' && localStorage.getItem('CONFIG_CIRCUIT_CONNECT_ENABLED') !== 'false';
-            } catch (e) {
-              return true;
-            }
-          });
-          const [showResetConfirm, setShowResetConfirm] = useState(false);
-          const [isResetting, setIsResetting] = useState(false);
-
-          const handleSnakeToggle = (e) => {
-            const checked = e.target.checked;
-            setSnakeEnabled(checked);
-            try {
-              localStorage.setItem('CONFIG_SNAKE_CLASSIC_ENABLED', checked ? 'true' : 'false');
-              localStorage.setItem('CONFIG_CIRCUIT_CONNECT_ENABLED', checked ? 'true' : 'false');
-            } catch (err) {}
-            window.dispatchEvent(new CustomEvent('billsoft:snake-toggle', { detail: { enabled: checked } }));
-            window.dispatchEvent(new CustomEvent('billsoft:circuit-toggle', { detail: { enabled: checked } }));
-            if (window.showToast) window.showToast(checked ? 'Snake Classic enabled in Navigation' : 'Snake Classic disabled', 'success');
-          };
-
-          const handlePerformReset = async () => {
-            setIsResetting(true);
-            try {
-              const persistence = window.SnakePersistence || (typeof SnakePersistence !== 'undefined' ? SnakePersistence : null);
-              if (!persistence || typeof persistence.resetGameProgress !== 'function') {
-                throw new Error('SnakePersistence reset engine unavailable');
-              }
-              const res = await persistence.resetGameProgress();
-              if (res && res.success) {
-                setShowResetConfirm(false);
-                if (window.showToast) {
-                  window.showToast('Progress reset successfully. Your Maharashtra expedition starts again from Level 1.', 'success');
-                }
-              } else {
-                throw (res && res.error) || new Error('Reset operation failed');
-              }
-            } catch (err) {
-              console.error('[SnakeSettings] Reset progress error:', err);
-              if (window.showToast) {
-                window.showToast('Progress could not be reset. Your existing progress has been preserved.', 'error');
-              }
-            } finally {
-              setIsResetting(false);
-            }
-          };
-
-          return React.createElement('div', { className: 'card', style: { padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 } },
-            // 1. Enable / Disable Toggle Section
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
-                  React.createElement('span', null, '🐍 Snake Classic')
-                ),
-                React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
-                  'Enable Game: Take a short break with Snake Classic — Maharashtra Expedition inside RupeeCRM.'
-                )
-              ),
-              React.createElement('div', null,
-                React.createElement('label', { className: 'switch', 'aria-label': 'Enable Snake Classic Game' },
-                  React.createElement('input', { type: 'checkbox', checked: snakeEnabled, onChange: handleSnakeToggle }),
-                  React.createElement('span', { className: 'slider' })
-                )
-              )
-            ),
-
-            // 2. Reset Game Progress Section
-            React.createElement('div', {
-              style: {
-                borderTop: '1px solid var(--border)',
-                paddingTop: 18,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 12
-              }
-            },
-              React.createElement('div', { style: { flex: 1, minWidth: 240 } },
-                React.createElement('div', { style: { fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' } },
-                  'Reset Game Progress'
-                ),
-                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                  'Start the Maharashtra expedition again from Level 1.'
-                )
-              ),
-              React.createElement('button', {
-                type: 'button',
-                className: 'btn btn-outline-danger',
-                onClick: () => setShowResetConfirm(true),
-                style: {
-                  padding: '8px 16px',
-                  fontSize: '0.84rem',
-                  fontWeight: 600,
-                  borderColor: 'var(--danger, #ef4444)',
-                  color: 'var(--danger, #ef4444)',
-                  borderRadius: 6,
-                  cursor: 'pointer'
-                }
-              }, 'Reset Progress'),
-
-              // Destructive Confirmation Dialog
-              showResetConfirm && React.createElement('div', {
-                className: 'modal-overlay',
-                style: {
-                  position: 'fixed',
-                  inset: 0,
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  backdropFilter: 'blur(6px)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 99999,
-                  padding: 16
-                },
-                onClick: () => !isResetting && setShowResetConfirm(false)
-              },
-                React.createElement('div', {
-                  className: 'modal-card',
-                  style: {
-                    background: 'var(--bg-card, #ffffff)',
-                    border: '1px solid var(--border, #e2e8f0)',
-                    borderRadius: 12,
-                    padding: 24,
-                    maxWidth: 440,
-                    width: '92%',
-                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 16
-                  },
-                  onClick: e => e.stopPropagation()
-                },
-                  React.createElement('div', null,
-                    React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' } },
-                      'Reset Game Progress?'
-                    ),
-                    React.createElement('p', { style: { margin: '8px 0 0 0', fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-                      'This will reset your Snake Classic progress and start the Maharashtra expedition again from Level 1.'
-                    )
-                  ),
-                  React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 } },
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'btn btn-secondary',
-                      disabled: isResetting,
-                      onClick: () => setShowResetConfirm(false),
-                      style: { padding: '8px 18px', fontWeight: 600 }
-                    }, 'Cancel'),
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'btn btn-danger',
-                      disabled: isResetting,
-                      onClick: handlePerformReset,
-                      style: {
-                        padding: '8px 18px',
-                        fontWeight: 700,
-                        background: 'var(--danger, #ef4444)',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: 6
-                      }
-                    }, isResetting ? 'Resetting...' : 'Reset Progress')
-                  )
-                )
-              )
-            )
-          );
-        })()
+        )
       );
     }
 
@@ -41803,7 +41594,7 @@
       const startRestartPolling = (latestVer) => {
         if (restartPollingRef.current) return;
         let attempts = 0;
-        const maxAttempts = 120; // 120 * 1.5s = 180s (3 minutes)
+        const maxAttempts = 200; // 200 * 1.5s = 300s (5 minutes)
         const startTime = Date.now();
 
         // Prevent accidental page reloads that cause ERR_CONNECTION_REFUSED
@@ -41833,7 +41624,7 @@
                 });
                 return;
               }
-              if (compData.complete === true || (compData.currentVersion && latestVer && compData.currentVersion === latestVer)) {
+              if (compData.complete === true || compData.justUpdated === true || compData.status === 'SUCCESS' || compData.status === 'COMPLETED' || (compData.currentVersion && latestVer && compData.currentVersion === latestVer)) {
                 clearInterval(restartPollingRef.current);
                 restartPollingRef.current = null;
                 window.onbeforeunload = null;
@@ -41841,7 +41632,7 @@
                   status: 'complete',
                   percent: 100,
                   elapsedSeconds: elapsedSec,
-                  message: `RupeeCRM service updated successfully to v${compData.currentVersion || latestVer}!`,
+                  message: `RupeeCRM service updated successfully to v${compData.currentVersion || compData.updatedVersion || latestVer}!`,
                   latestVersion: latestVer || ''
                 });
                 setTimeout(() => {
@@ -41869,7 +41660,7 @@
                 return;
               }
               const isMatch = (statusData.currentVersion && latestVer && statusData.currentVersion === latestVer) ||
-                              statusData.status === 'SUCCESS' || statusData.status === 'COMMITTED';
+                              statusData.status === 'SUCCESS' || statusData.status === 'COMMITTED' || statusData.status === 'COMPLETED';
               if (isMatch) {
                 clearInterval(restartPollingRef.current);
                 restartPollingRef.current = null;
@@ -41886,10 +41677,24 @@
                 }, 1500);
                 return;
               }
-              // If backend is up and not restarting, but running old version:
-              if (statusData.currentVersion && latestVer && statusData.currentVersion !== latestVer &&
-                  statusData.status !== 'STARTING_NEW_VERSION' && statusData.status !== 'RESTARTING' &&
-                  statusData.status !== 'ACTIVATION_STARTED') {
+
+              const isActiveProgress = ['STARTING_NEW_VERSION', 'RESTARTING', 'ACTIVATION_STARTED', 'HEALTH_CHECK', 'MIGRATING', 'EXTRACTING', 'INSTALLING', 'HANDOFF_REQUESTED'].includes(statusData.status);
+              if (isActiveProgress) {
+                // Heartbeat / progress watchdog extension: reset counter if actively progressing
+                if (attempts > 50) attempts = 20;
+                setUpdateProgress(prev => ({
+                  ...(prev || {}),
+                  status: 'restarting',
+                  percent: 100,
+                  elapsedSeconds: elapsedSec,
+                  message: statusData.status === 'MIGRATING'
+                    ? `Running database schema migrations... (${elapsedSec}s elapsed)`
+                    : statusData.status === 'HEALTH_CHECK'
+                    ? `Verifying backend health and version... (${elapsedSec}s elapsed)`
+                    : `Applying update and restarting service... (${elapsedSec}s elapsed)`,
+                  latestVersion: latestVer || (prev ? prev.latestVersion : '')
+                }));
+              } else if (statusData.currentVersion && latestVer && statusData.currentVersion !== latestVer) {
                 clearInterval(restartPollingRef.current);
                 restartPollingRef.current = null;
                 window.onbeforeunload = null;
@@ -42288,7 +42093,6 @@
         employees: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         paperwork: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
         statements: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
-        circuit_connect: { title: 'Take a Break', comp: React.createElement(typeof TakeABreakHub !== 'undefined' ? TakeABreakHub : 'div', { key: 'take_a_break_page' }) },
         settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
       };
       const current = pageComponents[page] || pageComponents.dashboard;

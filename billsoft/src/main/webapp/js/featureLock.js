@@ -16,11 +16,10 @@
     { id: 'planner', label: 'Planner & Personal View', icon: '📅', desc: 'Kanban tasks, reminders, personal notes, expenses & goals' },
     { id: 'inbox', label: 'Firm Inbox', icon: '📥', desc: 'System alerts, business notices & firm messages' },
     { id: 'invoices', label: 'Invoices & Quotations', icon: '📄', desc: 'Customer billing records, estimates & sales returns' },
-    { id: 'firm', label: 'Firm Profile & Inventory', icon: '🏢', desc: 'Stock movements, price books, purchase orders & statements' },
-    { id: 'circuit_connect', label: 'Take a Break', icon: '🎮', desc: 'In-app recreation and progression experience' }
+    { id: 'firm', label: 'Firm Profile & Inventory', icon: '🏢', desc: 'Stock movements, price books, purchase orders & statements' }
   ];
 
-  const VALID_FEATURE_IDS = ['hr', 'planner', 'inbox', 'invoices', 'firm', 'circuit_connect'];
+  const VALID_FEATURE_IDS = ['hr', 'planner', 'inbox', 'invoices', 'firm'];
 
   // Runtime-only in-memory state (NEVER persisted)
   let inMemoryUnlocked = {}; // { [normFeatureId]: timestamp }
@@ -238,7 +237,6 @@
         norm === 'savings' || norm === 'expenses' || norm === 'trackers') return 'planner';
     if (norm === 'paperwork' || norm === 'statements' || norm === 'orders' || norm === 'purchases' ||
         norm === 'inventory' || norm === 'products' || norm === 'customers' || norm === 'parties' || norm === 'profile') return 'firm';
-    if (norm === 'break' || norm === 'snake' || norm === 'game') return 'circuit_connect';
     if (norm === 'new-invoice' || norm === 'new-quotation' || norm === 'quotations' || norm === 'returns' || norm === 'pos' || norm === 'estimates') return 'invoices';
     return '';
   }

@@ -34,19 +34,15 @@ public class FirmDetailsController {
 
     @PostMapping
     public ResponseEntity<FirmDetails> create(@RequestBody(required = false) FirmDetails details) {
-        // First-run bootstrap exception: zero firms exist in database
-        if (service.count() == 0) {
-            if (details != null) {
-                return ResponseEntity.ok(service.create(details));
-            }
-            return ResponseEntity.ok(service.create());
+        boolean isBootstrap = service.count() == 0;
+        FirmDetails created = (details != null) ? service.create(details) : service.create();
+        if (isBootstrap) {
+            String token = authController.createSessionTokenForBootstrap();
+            return ResponseEntity.ok()
+                    .header("X-Auth-Token", token)
+                    .body(created);
         }
-
-        // Once firms exist, creating subsequent firms is supported for authenticated sessions
-        if (details != null) {
-            return ResponseEntity.ok(service.create(details));
-        }
-        return ResponseEntity.ok(service.create());
+        return ResponseEntity.ok(created);
     }
 
     @GetMapping("/{id}")

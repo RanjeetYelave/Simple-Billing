@@ -111,11 +111,20 @@ public class AuthController {
         } catch (Exception ignored) {}
     }
 
+    public String createSessionTokenForBootstrap() {
+        return createSessionToken();
+    }
+
     public boolean isAuthEnabled() {
-        return appConfigRepo.findById("auth_enabled")
+        boolean enabled = appConfigRepo.findById("auth_enabled")
                 .map(AppConfig::getConfigValue)
                 .map(Boolean::parseBoolean)
                 .orElse(false);
+        if (!enabled) {
+            return false;
+        }
+        String pw = getGlobalPassword();
+        return pw != null && !pw.isBlank();
     }
 
     private String getGlobalPassword() {

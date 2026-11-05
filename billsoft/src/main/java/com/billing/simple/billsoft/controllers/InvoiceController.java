@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -179,20 +180,57 @@ public class InvoiceController {
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadPdf(
             @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(required = false) String size,
             @RequestParam(required = false) String format,
             @RequestParam(required = false) String theme,
             @RequestParam(required = false) String color) {
 
-        try {
-            Invoice inv = service.getById(id);
-            if (inv == null) return ResponseEntity.notFound().build();
+        Long contextFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long effectiveFirmId = contextFirmId != null ? contextFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
 
-            // If invoice has no firmId and no active tenant context, ensure a fallback firm is bound for rendering
-            if (inv.getFirmId() == null && com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId() == null) {
-                com.billing.simple.billsoft.entities.FirmDetails defaultFirm = firmService.getFirst();
-                if (defaultFirm != null) {
-                    inv.setFirmId(defaultFirm.getId());
+        try {
+            Invoice inv = null;
+            if (effectiveFirmId != null) {
+                try {
+                    com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(effectiveFirmId);
+                    inv = service.getById(id);
+                } finally {
+                    if (contextFirmId == null) {
+                        com.billing.simple.billsoft.security.TenantContext.clear();
+                    } else {
+                        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(contextFirmId);
+                    }
+                }
+            } else {
+                inv = service.getById(id);
+            }
+
+            if (inv == null) {
+                // If not found with firm context, check if invoice exists in repo
+                Invoice candidate = service.getById(id);
+                if (candidate == null) {
+                    return ResponseEntity.notFound().build();
+                }
+                // Enforce tenant isolation: if caller specified a different firm from the invoice's firm
+                if (effectiveFirmId != null && candidate.getFirmId() != null && !effectiveFirmId.equals(candidate.getFirmId())) {
+                    return ResponseEntity.notFound().build();
+                }
+                inv = candidate;
+            }
+
+            // Ensure invoice has a firmId bound for rendering
+            if (inv.getFirmId() == null) {
+                Long boundFirmId = effectiveFirmId;
+                if (boundFirmId == null) {
+                    com.billing.simple.billsoft.entities.FirmDetails defaultFirm = firmService.getFirst();
+                    if (defaultFirm != null) {
+                        boundFirmId = defaultFirm.getId();
+                    }
+                }
+                if (boundFirmId != null) {
+                    inv.setFirmId(boundFirmId);
                 }
             }
 
@@ -207,13 +245,17 @@ public class InvoiceController {
                     ? (inv.getEstimateNumber() != null && !inv.getEstimateNumber().isBlank() ? inv.getEstimateNumber().trim() : String.valueOf(inv.getId()))
                     : (inv.getInvoiceNumber() != null && !inv.getInvoiceNumber().isBlank() ? inv.getInvoiceNumber().trim() : String.valueOf(inv.getId()));
             String prefix = (inv.getStatus() == InvoiceStatus.ESTIMATE) ? "estimate-" : "invoice-";
-            String filename = prefix + num + ".pdf";
+            String sanitizedNum = num.replaceAll("[^a-zA-Z0-9._-]", "_");
+            String filename = prefix + sanitizedNum + ".pdf";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdf);
 
+        } catch (com.billing.simple.billsoft.security.TenantSecurityException ex) {
+            log.warn("Access denied during PDF generation for invoice {}: {}", id, ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (Exception ex) {
             log.error("Failed to generate PDF for invoice {}: {}", id, ex.getMessage(), ex);
             return ResponseEntity.internalServerError().build();

@@ -358,19 +358,20 @@ public class MultiTenantEndToEndLifecycleIntegrationTest {
                 .totalAmount(new BigDecimal("150000.00"))
                 .build());
 
-        // 11. Expenses
+        // 11. Expenses (aligned with OmnisearchQuickHelpService BUSINESS_ZONE)
+        LocalDate businessToday = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         expA = expenseRepo.save(Expense.builder()
                 .firmId(firmAId)
                 .title("Alpha Factory Power")
                 .amount(new BigDecimal("1500.00"))
-                .expenseDate(LocalDate.now())
+                .expenseDate(businessToday)
                 .build());
 
         expB = expenseRepo.save(Expense.builder()
                 .firmId(firmBId)
                 .title("Beta Logistics Freight")
                 .amount(new BigDecimal("75000.00"))
-                .expenseDate(LocalDate.now())
+                .expenseDate(businessToday)
                 .build());
 
         // 12. Employees

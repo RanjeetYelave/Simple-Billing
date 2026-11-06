@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
   <defs>
     <linearGradient id="maskBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1E293B"/>
-      <stop offset="50%" stop-color="#0F172A"/>
-      <stop offset="100%" stop-color="#0B132B"/>
+      <stop offset="0%" stop-color="#0F281B"/>
+      <stop offset="50%" stop-color="#0A1C14"/>
+      <stop offset="100%" stop-color="#07150E"/>
     </linearGradient>
     <linearGradient id="growthGradMask" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#16845B"/>
@@ -13,17 +13,23 @@
 
   <rect width="512" height="512" fill="url(#maskBg)"/>
 
-  <g transform="translate(68, 64) scale(0.74)">
-    <!-- Stylized Indian Rupee ₹ Symbol -->
-    <path d="M 82 150 H 210 M 82 210 H 188 M 82 150 V 336 M 82 220 C 146 220 180 246 180 284 C 180 320 144 344 82 344 M 138 284 L 234 406" 
-          stroke="#FFFFFF" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(94, 130) scale(0.78)">
+    <!-- Slanted Indian Rupee (₹) Symbol in Crisp White -->
+    <g stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 18 40 H 142" stroke-width="25"/>
+      <path d="M 18 82 H 128" stroke-width="25"/>
+      <path d="M 38 40 V 144" stroke-width="25"/>
+      <path d="M 38 82 C 102 82 118 96 118 116 C 118 144 88 144 38 144" stroke-width="25"/>
+      <path d="M 58 142 L 112 235" stroke-width="27"/>
+    </g>
 
-    <!-- 3 Ascending Growth Chevrons / Arrows -->
-    <path d="M 235 320 L 295 260 M 295 260 H 250 M 295 260 V 305" 
-          stroke="url(#growthGradMask)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M 295 250 L 370 175 M 370 175 H 320 M 370 175 V 225" 
-          stroke="url(#growthGradMask)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M 365 170 L 445 90 M 445 90 H 390 M 445 90 V 145" 
-          stroke="url(#growthGradMask)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Three Ascending Rounded Bars (Option C) -->
+    <rect x="152" y="165" width="34" height="70" rx="17" fill="url(#growthGradMask)"/>
+    <rect x="200" y="120" width="34" height="115" rx="17" fill="url(#growthGradMask)"/>
+    <rect x="248" y="75" width="34" height="160" rx="17" fill="url(#growthGradMask)"/>
+
+    <!-- Integrated Upward-Trending Arrow (Option C) -->
+    <path d="M 144 205 L 275 78" stroke="url(#growthGradMask)" stroke-width="26" stroke-linecap="round"/>
+    <polygon points="320,32 250,48 278,76 304,104" fill="url(#growthGradMask)" stroke="url(#growthGradMask)" stroke-width="4" stroke-linejoin="round"/>
   </g>
 </svg>

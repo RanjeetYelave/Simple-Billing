@@ -177,6 +177,63 @@
       };
     }
 
+    // ─── Approved Retro (Windows 98) Pixelated Icon Component ───
+    function RupeeCRMRetroIcon({ size = 28, className = '', style = {} }) {
+      const isDark = typeof document !== 'undefined' &&
+        (document.documentElement.classList.contains('classic-dark') || document.documentElement.getAttribute('data-theme') === 'dark');
+      const rupeeCol = isDark ? '#FFFFFF' : '#000000';
+      const arrowCol = '#00A859';
+
+      return React.createElement('div', {
+        className: `rcrm-retro-icon ${className}`.trim(),
+        style: {
+          width: size,
+          height: Math.round(size * 0.85),
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          verticalAlign: 'middle',
+          flexShrink: 0,
+          userSelect: 'none',
+          ...style
+        }
+      },
+        React.createElement('svg', {
+          width: size,
+          height: Math.round(size * 0.85),
+          viewBox: '0 0 105 82',
+          fill: 'none',
+          style: { imageRendering: 'pixelated' }
+        },
+          // Stepped Pixelated ₹ Symbol
+          React.createElement('path', {
+            d: 'M 8 18 H 40 M 8 30 H 36 M 14 18 V 48 M 14 30 C 32 30 36 34 36 40 C 36 48 28 48 14 48 M 20 47 L 36 74',
+            stroke: rupeeCol,
+            strokeWidth: '6.5',
+            strokeLinecap: 'square'
+          }),
+          // Stepped Pixelated 3 Ascending Bars
+          React.createElement('rect', { x: 46, y: 53, width: 10, height: 21, fill: arrowCol }),
+          React.createElement('rect', { x: 60, y: 39, width: 10, height: 35, fill: arrowCol }),
+          React.createElement('rect', { x: 74, y: 25, width: 10, height: 49, fill: arrowCol }),
+          // Stepped Pixelated Upward Arrow
+          React.createElement('path', {
+            d: 'M 43 63 L 83 25',
+            stroke: arrowCol,
+            strokeWidth: '7.5',
+            strokeLinecap: 'square'
+          }),
+          React.createElement('polygon', {
+            points: '96,11 76,16 84,24 91,32',
+            fill: arrowCol,
+            stroke: arrowCol,
+            strokeWidth: '1'
+          })
+        )
+      );
+    }
+
+    // ─── Approved RupeeCRM Modern Brand Symbol (Option C — Refined & Premium) ───
     function RupeeCRMIcon({ size = 36, className = '', style = {}, spinning = false }) {
       const [celebrating, setCelebrating] = useState(false);
       const [theme, setTheme] = useState(() => (window.getAppTheme ? window.getAppTheme() : 'light-1'));
@@ -203,68 +260,11 @@
                         (typeof document !== 'undefined' && (document.documentElement.classList.contains('classic') || document.documentElement.classList.contains('classic-dark')));
 
       if (isClassic) {
-        const isDark = theme === 'classic-dark';
-        const btnBg = isDark ? '#343940' : '#C0C0C0';
-        const borderL = isDark ? '#5A606A' : '#FFFFFF';
-        const borderD = isDark ? '#16181B' : '#000000';
-        const rupeeCol = isDark ? '#38BDF8' : '#000080';
-        const arrowCol = '#00A859';
-
-        return React.createElement('div', {
-          className: `rcrm-retro-icon ${spinning ? 'rcrm-coin-spin' : ''} ${celebrating ? 'rcrm-coin-celebrate' : ''} ${className}`.trim(),
-          style: {
-            width: size,
-            height: size,
-            backgroundColor: btnBg,
-            border: `2px solid ${borderL}`,
-            borderRightColor: borderD,
-            borderBottomColor: borderD,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxSizing: 'border-box',
-            verticalAlign: 'middle',
-            flexShrink: 0,
-            userSelect: 'none',
-            ...style
-          }
-        },
-          React.createElement('svg', {
-            width: Math.max(12, Math.round(size * 0.72)),
-            height: Math.max(12, Math.round(size * 0.72)),
-            viewBox: '0 0 24 24',
-            fill: 'none'
-          },
-            React.createElement('path', {
-              d: 'M4 6h9M4 10h7M4 6v9m0-6c3 0 5 1.5 5 3.5S7 16 4 16l6 6',
-              stroke: rupeeCol,
-              strokeWidth: '2.4',
-              strokeLinecap: 'square'
-            }),
-            React.createElement('path', {
-              d: 'M11 15l3.5-3.5m0 0h-2.5m2.5 0v2.5',
-              stroke: arrowCol,
-              strokeWidth: '2.0',
-              strokeLinecap: 'square'
-            }),
-            React.createElement('path', {
-              d: 'M14 12l4-4m0 0h-3m3 0v3',
-              stroke: arrowCol,
-              strokeWidth: '2.2',
-              strokeLinecap: 'square'
-            }),
-            React.createElement('path', {
-              d: 'M17 9l4-4m0 0h-3m3 0v3',
-              stroke: arrowCol,
-              strokeWidth: '2.4',
-              strokeLinecap: 'square'
-            })
-          )
-        );
+        return React.createElement(RupeeCRMRetroIcon, { size, className, style });
       }
 
       const isDark = theme === 'dark-1' || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
-      const rupeeColor = isDark ? '#FFFFFF' : '#1E293B';
+      const rupeeColor = isDark ? '#FFFFFF' : '#0F172A';
 
       return React.createElement('div', {
         className: `rcrm-coin ${spinning ? 'rcrm-coin-spin' : ''} ${celebrating ? 'rcrm-coin-celebrate' : ''} ${className}`.trim(),
@@ -273,7 +273,7 @@
           alignItems: 'center',
           justifyContent: 'center',
           width: size,
-          height: size,
+          height: Math.round(size * 0.85),
           verticalAlign: 'middle',
           flexShrink: 0,
           userSelect: 'none',
@@ -282,38 +282,87 @@
       },
         React.createElement('svg', {
           width: size,
-          height: size,
-          viewBox: '0 0 50 48',
+          height: Math.round(size * 0.85),
+          viewBox: '0 0 105 82',
           fill: 'none',
           xmlns: 'http://www.w3.org/2000/svg',
           style: { display: 'block', width: '100%', height: '100%', overflow: 'visible' }
         },
-          React.createElement('path', {
-            d: 'M8 14h16M8 20h12M8 14v17m0-11c5 0 8.5 2.2 8.5 5.5s-3.5 5.5-8.5 5.5l10 11',
-            stroke: rupeeColor,
-            strokeWidth: '4.2',
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
+          // Slanted Indian Rupee (₹) Symbol in Neutral Foreground
+          React.createElement('g', { transform: 'translate(2, 0)' },
+            React.createElement('path', {
+              d: 'M 8 18 H 40',
+              stroke: rupeeColor,
+              strokeWidth: '6.5',
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            }),
+            React.createElement('path', {
+              d: 'M 8 30 H 36',
+              stroke: rupeeColor,
+              strokeWidth: '6.5',
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            }),
+            React.createElement('path', {
+              d: 'M 14 18 V 48',
+              stroke: rupeeColor,
+              strokeWidth: '6.5',
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            }),
+            React.createElement('path', {
+              d: 'M 14 30 C 32 30 36 34 36 40 C 36 48 28 48 14 48',
+              stroke: rupeeColor,
+              strokeWidth: '6.5',
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            }),
+            React.createElement('path', {
+              d: 'M 20 47 L 36 74',
+              stroke: rupeeColor,
+              strokeWidth: '7',
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            })
+          ),
+          // Three Ascending Rounded Bars (Active Theme Primary)
+          React.createElement('rect', {
+            x: 46,
+            y: 53,
+            width: 10,
+            height: 21,
+            rx: 5,
+            fill: 'var(--brand-accent)'
           }),
-          React.createElement('path', {
-            d: 'M23 30l6-6m0 0h-4.5m4.5 0v4.5',
-            stroke: 'var(--brand-accent)',
-            strokeWidth: '3.4',
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
+          React.createElement('rect', {
+            x: 60,
+            y: 39,
+            width: 10,
+            height: 35,
+            rx: 5,
+            fill: 'var(--brand-accent)'
           }),
-          React.createElement('path', {
-            d: 'M30 23l7-7m0 0h-5m5 0v5',
-            stroke: 'var(--brand-accent)',
-            strokeWidth: '3.8',
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
+          React.createElement('rect', {
+            x: 74,
+            y: 25,
+            width: 10,
+            height: 49,
+            rx: 5,
+            fill: 'var(--brand-accent)'
           }),
+          // Integrated Upward-Trending Arrow (Active Theme Primary)
           React.createElement('path', {
-            d: 'M37 16l8-8m0 0h-5.5m5.5 0v5.5',
+            d: 'M 43 63 L 83 25',
             stroke: 'var(--brand-accent)',
-            strokeWidth: '4.2',
-            strokeLinecap: 'round',
+            strokeWidth: '7.5',
+            strokeLinecap: 'round'
+          }),
+          React.createElement('polygon', {
+            points: '96,11 76,16 84,24 91,32',
+            fill: 'var(--brand-accent)',
+            stroke: 'var(--brand-accent)',
+            strokeWidth: '1.5',
             strokeLinejoin: 'round'
           })
         )
@@ -410,133 +459,85 @@
     window.RupeeCRMNavTabs = RupeeCRMNavTabs;
     window.RupeeCRMSubTabs = RupeeCRMSubTabs;
 
-    // Retro 3D Brandmark Logo Component (Active during Classic / Classic-Dark Theme)
+    // Retro Windows 98 Brandmark Logo Component (Active during Classic / Classic-Dark Theme)
     function RupeeCRMRetroLogo({ size = 38, showWordmark = true, showTagline = false, isDark = false, className = '', style = {} }) {
       if (!showWordmark) {
-        return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
+        return React.createElement(RupeeCRMRetroIcon, { size: size, className: className, style: style });
       }
 
-      const boxBg = isDark ? '#2B3037' : '#C0C0C0';
-      const borderL = isDark ? '#5A606A' : '#FFFFFF';
-      const borderD = isDark ? '#16181B' : '#000000';
-      const wordmarkRupee = isDark ? '#FFFFFF' : '#000080';
-      const wordmarkCrm = isDark ? '#34D399' : '#00A859';
-      const taglineColor = isDark ? '#A0AEC0' : '#2D3748';
+      const wordmarkRupee = isDark ? '#FFFFFF' : '#000000';
+      const wordmarkCrm = '#00A859';
       const scale = size / 38;
 
       return React.createElement('div', {
-        className: `rupeecrm-retro-window-box ${className}`,
+        className: `rupeecrm-retro-logo-wrapper ${className}`,
         style: {
           display: 'inline-flex',
           flexDirection: 'column',
-          backgroundColor: boxBg,
-          border: `2px solid ${borderL}`,
-          borderRightColor: borderD,
-          borderBottomColor: borderD,
-          boxShadow: '1px 1px 0px #000000',
+          alignItems: 'flex-start',
           userSelect: 'none',
           boxSizing: 'border-box',
           ...style
         }
       },
-        // Title Bar
+        // Top Row: Pixelated Icon + Divider + Wordmark
         React.createElement('div', {
           style: {
-            background: 'linear-gradient(90deg, #000080, #1084d0)',
-            height: Math.max(16, Math.round(size * 0.42)),
-            padding: '1px 4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 6
-          }
-        },
-          React.createElement('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: '#FFFFFF',
-              fontSize: `${Math.max(9, Math.round(size * 0.26))}px`,
-              fontWeight: 700,
-              fontFamily: "'MS Sans Serif', Tahoma, sans-serif"
-            }
-          },
-            React.createElement('span', { style: { fontSize: '8px' } }, '⚡'),
-            React.createElement('span', null, 'RupeeCRM')
-          ),
-          React.createElement('div', { style: { display: 'flex', gap: 2 } },
-            ['_', '□', '✕'].map((btn, idx) => React.createElement('div', {
-              key: idx,
-              style: {
-                width: Math.max(10, Math.round(size * 0.28)),
-                height: Math.max(10, Math.round(size * 0.28)),
-                backgroundColor: '#C0C0C0',
-                border: '1px solid #FFFFFF',
-                borderRightColor: '#000000',
-                borderBottomColor: '#000000',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '8px',
-                lineHeight: 1,
-                color: '#000000',
-                fontWeight: 900
-              }
-            }, btn))
-          )
-        ),
-        // Window Client Area
-        React.createElement('div', {
-          style: {
-            padding: `${Math.max(3, Math.round(scale * 4))}px ${Math.max(6, Math.round(scale * 8))}px`,
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
             gap: Math.max(6, Math.round(scale * 8))
           }
         },
-          React.createElement(RupeeCRMIcon, { size: Math.max(22, Math.round(size * 0.65)) }),
+          React.createElement(RupeeCRMRetroIcon, { size: size }),
           React.createElement('div', {
             style: {
-              width: 1,
-              height: Math.max(18, Math.round(size * 0.58)),
-              backgroundColor: isDark ? '#5A606A' : '#808080'
+              width: 1.5,
+              height: Math.max(18, Math.round(size * 0.72)),
+              backgroundColor: isDark ? '#5A606A' : '#000000',
+              flexShrink: 0
             }
           }),
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1 } },
-            React.createElement('div', {
-              style: {
-                display: 'flex',
-                alignItems: 'baseline',
-                fontSize: `${Math.round(size * 0.58)}px`,
-                fontWeight: 900,
-                fontFamily: "'Segoe UI', Tahoma, 'MS Sans Serif', sans-serif"
-              }
-            },
-              React.createElement('span', { style: { color: wordmarkRupee } }, 'Rupee'),
-              React.createElement('span', { style: { color: wordmarkCrm, marginLeft: 1 } }, 'CRM')
-            ),
-            showTagline && React.createElement('div', {
-              style: {
-                fontSize: `${Math.max(8, Math.round(size * 0.2))}px`,
-                color: taglineColor,
-                marginTop: 3,
-                fontFamily: "'MS Sans Serif', Tahoma, sans-serif",
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
-              }
-            },
-              React.createElement('span', null, 'Billing'),
-              React.createElement('span', { style: { fontSize: '6px' } }, '▪'),
-              React.createElement('span', null, 'Inventory'),
-              React.createElement('span', { style: { fontSize: '6px' } }, '▪'),
-              React.createElement('span', null, 'Sales'),
-              React.createElement('span', { style: { fontSize: '6px' } }, '▪'),
-              React.createElement('span', null, 'CRM')
-            )
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'baseline',
+              fontSize: `${Math.round(size * 0.68)}px`,
+              fontWeight: 900,
+              letterSpacing: '-0.02em',
+              fontFamily: "'Courier New', 'MS Sans Serif', monospace, sans-serif"
+            }
+          },
+            React.createElement('span', { style: { color: wordmarkRupee } }, 'Rupee'),
+            React.createElement('span', { style: { color: wordmarkCrm, marginLeft: 1 } }, 'CRM')
           )
+        ),
+        // Bottom Row: Windows 98 3D Beveled Navy Status Plaque (Tagline)
+        showTagline && React.createElement('div', {
+          style: {
+            backgroundColor: '#000080',
+            border: '2px solid',
+            borderColor: '#DFDFDF #808080 #808080 #DFDFDF',
+            boxShadow: 'inset 1px 1px 0px #000000, 1px 1px 0px #FFFFFF',
+            padding: `${Math.max(2, Math.round(scale * 3))}px ${Math.max(8, Math.round(scale * 12))}px`,
+            marginTop: Math.max(3, Math.round(scale * 5)),
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: Math.max(4, Math.round(scale * 6)),
+            color: '#FFFFFF',
+            fontFamily: "'MS Sans Serif', Tahoma, 'Courier New', monospace, sans-serif",
+            fontSize: `${Math.max(8, Math.round(size * 0.22))}px`,
+            fontWeight: 700,
+            letterSpacing: '0.04em'
+          }
+        },
+          React.createElement('span', null, 'Billing'),
+          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
+          React.createElement('span', null, 'Inventory'),
+          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
+          React.createElement('span', null, 'Sales'),
+          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
+          React.createElement('span', null, 'CRM')
         )
       );
     }
@@ -562,8 +563,8 @@
         return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
       }
 
-      const isDark = (isDarkBg === true) || (isDarkBg !== false && (theme === 'dark-1' || theme === 'classic-dark'));
-      const textColor = isDark ? '#FFFFFF' : '#1E293B';
+      const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark'));
+      const textColor = isDark ? '#FFFFFF' : '#0F172A';
       const taglineColor = isDark ? '#94A3B8' : '#64748B';
       const scale = size / 38;
 
@@ -576,20 +577,20 @@
           style: {
             width: 1.5,
             height: Math.round(size * 0.72),
-            background: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(15, 23, 42, 0.16)',
+            background: isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(15, 23, 42, 0.2)',
             borderRadius: 1,
             flexShrink: 0
           }
         }),
-        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1 } },
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1, justifyContent: 'center' } },
           React.createElement('div', {
             style: {
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'baseline',
               fontSize: `${Math.round(size * 0.68)}px`,
               fontWeight: 800,
               letterSpacing: '-0.025em',
-              fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
             }
           },
             React.createElement('span', { style: { color: textColor, fontStyle: 'italic', fontWeight: 800 } }, 'Rupee'),

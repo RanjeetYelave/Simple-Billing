@@ -200,12 +200,16 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   RUPEECRM MODERN THEME ACCENT COLOR PRESETS (6 CURATED OPTIONS)
-   Strictly isolated from Windows 98 Retro themes (:not(.classic):not(.classic-dark))
+   RUPEECRM MODERN THEME DESIGN SYSTEMS (6 CURATED THEMES)
+   Every theme defines dedicated Light and Dark variants across
+   brand tokens, application surfaces, typography and gold highlights.
+   Strictly isolated from Windows 98 Retro themes (:not(.classic):not(.classic-dark)).
    ════════════════════════════════════════════════════════════ */
 
-/* 1. Rich Green (Default Brand) */
-:root:not(.classic):not(.classic-dark)[data-accent="emerald"] {
+/* ─── 1. Forest Green (Original Canonical RupeeCRM Identity & Default) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="forest"],
+:root:not(.classic):not(.classic-dark)[data-accent="emerald"],
+:root:not(.classic):not(.classic-dark)[data-accent="green"] {
   --brand-accent:            #16845B;
   --brand-accent-hover:      #126C4A;
   --brand-accent-active:     #0E553A;
@@ -213,9 +217,37 @@
   --brand-accent-border:     rgba(22, 132, 91, 0.35);
   --brand-accent-foreground: #FFFFFF;
   --brand-accent-focus:      rgba(22, 132, 91, 0.40);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F4F6F2;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #FAFCF9;
+  --bg-card-header:          #FAFCF9;
+  --bg-subtle:               #ECF1EB;
+  --surface-sunken:          #E5EBE4;
+  --bg-hover:                #EFF4EE;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #47564E;
+  --border:                  #DFE5DE;
+  --border-light:            #EAF0E9;
+  --border-hover:            #C2CFC0;
+  --text:                    #17201B;
+  --text-secondary:          #47564E;
+  --text-muted:              #76867D;
 }
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="forest"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="forest"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="forest"],
 :root.dark-1:not(.classic):not(.classic-dark)[data-accent="emerald"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="emerald"] {
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="emerald"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="green"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="green"] {
   --brand-accent:            #39B987;
   --brand-accent-hover:      #4FD49F;
   --brand-accent-active:     #2DA374;
@@ -223,111 +255,387 @@
   --brand-accent-border:     rgba(57, 185, 135, 0.35);
   --brand-accent-foreground: #0B1E16;
   --brand-accent-focus:      rgba(57, 185, 135, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #0B0F0D;
+  --bg-card:                 #131A16;
+  --bg-secondary:            #17201C;
+  --bg-card-header:          #17201C;
+  --bg-subtle:               #0F1512;
+  --surface-sunken:          #080C0A;
+  --bg-hover:                #1D2722;
+  --sidebar-bg:              #0F1512;
+  --sidebar-text:            #97A69E;
+  --border:                  #232F28;
+  --border-light:            #1A241F;
+  --border-hover:            #34433A;
+  --text:                    #F2F6F3;
+  --text-secondary:          #97A69E;
+  --text-muted:              #65746C;
 }
 
-/* 2. Ocean Blue */
-:root:not(.classic):not(.classic-dark)[data-accent="blue"] {
-  --brand-accent:            #2869B2;
-  --brand-accent-hover:      #20548F;
-  --brand-accent-active:     #194271;
-  --brand-accent-light:      rgba(40, 105, 178, 0.12);
-  --brand-accent-border:     rgba(40, 105, 178, 0.35);
-  --brand-accent-foreground: #FFFFFF;
-  --brand-accent-focus:      rgba(40, 105, 178, 0.40);
-}
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="blue"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="blue"] {
-  --brand-accent:            #69A8F2;
-  --brand-accent-hover:      #85BCFA;
-  --brand-accent-active:     #5092E0;
-  --brand-accent-light:      rgba(105, 168, 242, 0.16);
-  --brand-accent-border:     rgba(105, 168, 242, 0.35);
-  --brand-accent-foreground: #0A1B30;
-  --brand-accent-focus:      rgba(105, 168, 242, 0.45);
-}
-
-/* 3. Deep Teal */
-:root:not(.classic):not(.classic-dark)[data-accent="teal"] {
-  --brand-accent:            #167C80;
-  --brand-accent-hover:      #116467;
-  --brand-accent-active:     #0D4E50;
-  --brand-accent-light:      rgba(22, 124, 128, 0.12);
-  --brand-accent-border:     rgba(22, 124, 128, 0.35);
-  --brand-accent-foreground: #FFFFFF;
-  --brand-accent-focus:      rgba(22, 124, 128, 0.40);
-}
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="teal"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="teal"] {
-  --brand-accent:            #4CC0C0;
-  --brand-accent-hover:      #69D4D4;
-  --brand-accent-active:     #38ABAB;
-  --brand-accent-light:      rgba(76, 192, 192, 0.16);
-  --brand-accent-border:     rgba(76, 192, 192, 0.35);
-  --brand-accent-foreground: #061F20;
-  --brand-accent-focus:      rgba(76, 192, 192, 0.45);
-}
-
-/* 4. Muted Violet */
-:root:not(.classic):not(.classic-dark)[data-accent="violet"] {
-  --brand-accent:            #7050A3;
-  --brand-accent-hover:      #5B4184;
-  --brand-accent-active:     #473367;
-  --brand-accent-light:      rgba(112, 80, 163, 0.12);
-  --brand-accent-border:     rgba(112, 80, 163, 0.35);
-  --brand-accent-foreground: #FFFFFF;
-  --brand-accent-focus:      rgba(112, 80, 163, 0.40);
-}
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="violet"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="violet"] {
-  --brand-accent:            #B49AE8;
-  --brand-accent-hover:      #C7B2F0;
-  --brand-accent-active:     #9F83D9;
-  --brand-accent-light:      rgba(180, 154, 232, 0.16);
-  --brand-accent-border:     rgba(180, 154, 232, 0.35);
-  --brand-accent-foreground: #1D142C;
-  --brand-accent-focus:      rgba(180, 154, 232, 0.45);
-}
-
-/* 5. Burnt Orange */
-:root:not(.classic):not(.classic-dark)[data-accent="orange"] {
-  --brand-accent:            #B85E2E;
-  --brand-accent-hover:      #964C24;
-  --brand-accent-active:     #773B1B;
-  --brand-accent-light:      rgba(184, 94, 46, 0.12);
-  --brand-accent-border:     rgba(184, 94, 46, 0.35);
-  --brand-accent-foreground: #FFFFFF;
-  --brand-accent-focus:      rgba(184, 94, 46, 0.40);
-}
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="orange"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="orange"] {
-  --brand-accent:            #F0A06F;
-  --brand-accent-hover:      #F5B68F;
-  --brand-accent-active:     #DE8B57;
-  --brand-accent-light:      rgba(240, 160, 111, 0.16);
-  --brand-accent-border:     rgba(240, 160, 111, 0.35);
-  --brand-accent-foreground: #2A1308;
-  --brand-accent-focus:      rgba(240, 160, 111, 0.45);
-}
-
-/* 6. Steel Blue */
+/* ─── 2. Royal Navy (Deep Confident Blue) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="navy"],
+:root:not(.classic):not(.classic-dark)[data-accent="blue"],
 :root:not(.classic):not(.classic-dark)[data-accent="steel"] {
-  --brand-accent:            #536B82;
-  --brand-accent-hover:      #425669;
-  --brand-accent-active:     #334352;
-  --brand-accent-light:      rgba(83, 107, 130, 0.12);
-  --brand-accent-border:     rgba(83, 107, 130, 0.35);
+  --brand-accent:            #1D4ED8;
+  --brand-accent-hover:      #1E40AF;
+  --brand-accent-active:     #1E3A8A;
+  --brand-accent-light:      rgba(29, 78, 216, 0.10);
+  --brand-accent-border:     rgba(29, 78, 216, 0.30);
   --brand-accent-foreground: #FFFFFF;
-  --brand-accent-focus:      rgba(83, 107, 130, 0.40);
+  --brand-accent-focus:      rgba(29, 78, 216, 0.35);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F1F5F9;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #F8FAFC;
+  --bg-card-header:          #F8FAFC;
+  --bg-subtle:               #E2E8F0;
+  --surface-sunken:          #CBD5E1;
+  --bg-hover:                #E9EEF4;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #334155;
+  --border:                  #CBD5E1;
+  --border-light:            #E2E8F0;
+  --border-hover:            #94A3B8;
+  --text:                    #0F172A;
+  --text-secondary:          #475569;
+  --text-muted:              #64748B;
 }
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="navy"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="navy"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="navy"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="blue"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="blue"],
 :root.dark-1:not(.classic):not(.classic-dark)[data-accent="steel"],
 :root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="steel"] {
-  --brand-accent:            #91A9BF;
-  --brand-accent-hover:      #A7BDD1;
-  --brand-accent-active:     #7A94AC;
-  --brand-accent-light:      rgba(145, 169, 191, 0.16);
-  --brand-accent-border:     rgba(145, 169, 191, 0.35);
-  --brand-accent-foreground: #101B24;
-  --brand-accent-focus:      rgba(145, 169, 191, 0.45);
+  --brand-accent:            #60A5FA;
+  --brand-accent-hover:      #93C5FD;
+  --brand-accent-active:     #3B82F6;
+  --brand-accent-light:      rgba(96, 165, 250, 0.15);
+  --brand-accent-border:     rgba(96, 165, 250, 0.35);
+  --brand-accent-foreground: #0A111E;
+  --brand-accent-focus:      rgba(96, 165, 250, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #0A111E;
+  --bg-card:                 #111C2E;
+  --bg-secondary:            #16233B;
+  --bg-card-header:          #16233B;
+  --bg-subtle:               #0E1726;
+  --surface-sunken:          #070D18;
+  --bg-hover:                #1D2D49;
+  --sidebar-bg:              #070D18;
+  --sidebar-text:            #94A3B8;
+  --border:                  #1E314D;
+  --border-light:            #16233B;
+  --border-hover:            #2C466D;
+  --text:                    #F1F5F9;
+  --text-secondary:          #94A3B8;
+  --text-muted:              #64748B;
+}
+
+/* ─── 3. Petrol Teal (Rich Blue-Green) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="teal"] {
+  --brand-accent:            #0F766E;
+  --brand-accent-hover:      #115E59;
+  --brand-accent-active:     #134E4A;
+  --brand-accent-light:      rgba(15, 118, 110, 0.10);
+  --brand-accent-border:     rgba(15, 118, 110, 0.30);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(15, 118, 110, 0.35);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F0F6F5;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #F5FAF9;
+  --bg-card-header:          #F5FAF9;
+  --bg-subtle:               #E0EBE8;
+  --surface-sunken:          #D1E1DD;
+  --bg-hover:                #E6F0EE;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #2D4543;
+  --border:                  #CCDEDB;
+  --border-light:            #E2ECE9;
+  --border-hover:            #A5C4BF;
+  --text:                    #102220;
+  --text-secondary:          #3D5452;
+  --text-muted:              #68807D;
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="teal"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="teal"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="teal"] {
+  --brand-accent:            #2DD4BF;
+  --brand-accent-hover:      #5EEAD4;
+  --brand-accent-active:     #14B8A6;
+  --brand-accent-light:      rgba(45, 212, 191, 0.15);
+  --brand-accent-border:     rgba(45, 212, 191, 0.35);
+  --brand-accent-foreground: #041D1A;
+  --brand-accent-focus:      rgba(45, 212, 191, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #081514;
+  --bg-card:                 #0F2220;
+  --bg-secondary:            #142C2A;
+  --bg-card-header:          #142C2A;
+  --bg-subtle:               #0A1B19;
+  --surface-sunken:          #050F0E;
+  --bg-hover:                #1A3734;
+  --sidebar-bg:              #050F0E;
+  --sidebar-text:            #8CA5A2;
+  --border:                  #1B3B38;
+  --border-light:            #142C2A;
+  --border-hover:            #28534F;
+  --text:                    #F0FDFB;
+  --text-secondary:          #8CA5A2;
+  --text-muted:              #5D7572;
+}
+
+/* ─── 4. Royal Plum (Deep Sophisticated Purple) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="plum"],
+:root:not(.classic):not(.classic-dark)[data-accent="violet"],
+:root:not(.classic):not(.classic-dark)[data-accent="purple"] {
+  --brand-accent:            #6B21A8;
+  --brand-accent-hover:      #581C87;
+  --brand-accent-active:     #3B0764;
+  --brand-accent-light:      rgba(107, 33, 168, 0.10);
+  --brand-accent-border:     rgba(107, 33, 168, 0.30);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(107, 33, 168, 0.35);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F5F3F7;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #FAF8FC;
+  --bg-card-header:          #FAF8FC;
+  --bg-subtle:               #ECE8F1;
+  --surface-sunken:          #DFD8E7;
+  --bg-hover:                #EFEBF3;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #3E344A;
+  --border:                  #DED8E6;
+  --border-light:            #ECE7F2;
+  --border-hover:            #BDAFCD;
+  --text:                    #1D1429;
+  --text-secondary:          #4D405D;
+  --text-muted:              #786B88;
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="plum"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="plum"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="plum"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="violet"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="violet"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="purple"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="purple"] {
+  --brand-accent:            #C084FC;
+  --brand-accent-hover:      #D8B4FE;
+  --brand-accent-active:     #A855F7;
+  --brand-accent-light:      rgba(192, 132, 252, 0.15);
+  --brand-accent-border:     rgba(192, 132, 252, 0.35);
+  --brand-accent-foreground: #150524;
+  --brand-accent-focus:      rgba(192, 132, 252, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #120B1A;
+  --bg-card:                 #1C1226;
+  --bg-secondary:            #241833;
+  --bg-card-header:          #241833;
+  --bg-subtle:               #160E21;
+  --surface-sunken:          #0C0712;
+  --bg-hover:                #2E1E40;
+  --sidebar-bg:              #0C0712;
+  --sidebar-text:            #A494B8;
+  --border:                  #36244A;
+  --border-light:            #241833;
+  --border-hover:            #4C3468;
+  --text:                    #FAF5FF;
+  --text-secondary:          #A494B8;
+  --text-muted:              #746587;
+}
+
+/* ─── 5. Burgundy (Rich Wine Red) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="burgundy"],
+:root:not(.classic):not(.classic-dark)[data-accent="red"] {
+  --brand-accent:            #881337;
+  --brand-accent-hover:      #700F2E;
+  --brand-accent-active:     #4C051E;
+  --brand-accent-light:      rgba(136, 19, 55, 0.10);
+  --brand-accent-border:     rgba(136, 19, 55, 0.30);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(136, 19, 55, 0.35);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F7F2F3;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #FCF8F9;
+  --bg-card-header:          #FCF8F9;
+  --bg-subtle:               #EFE5E7;
+  --surface-sunken:          #E4D4D7;
+  --bg-hover:                #F2E8EA;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #4A3136;
+  --border:                  #E5D3D6;
+  --border-light:            #EFE5E7;
+  --border-hover:            #CFAEB4;
+  --text:                    #231015;
+  --text-secondary:          #5C3B43;
+  --text-muted:              #84616A;
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="burgundy"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="burgundy"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="burgundy"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="red"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="red"] {
+  --brand-accent:            #FB7185;
+  --brand-accent-hover:      #FDA4AF;
+  --brand-accent-active:     #F43F5E;
+  --brand-accent-light:      rgba(251, 113, 133, 0.15);
+  --brand-accent-border:     rgba(251, 113, 133, 0.35);
+  --brand-accent-foreground: #24040B;
+  --brand-accent-focus:      rgba(251, 113, 133, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #190B0F;
+  --bg-card:                 #241117;
+  --bg-secondary:            #30161F;
+  --bg-card-header:          #30161F;
+  --bg-subtle:               #1D0D12;
+  --surface-sunken:          #12070A;
+  --bg-hover:                #3D1C28;
+  --sidebar-bg:              #12070A;
+  --sidebar-text:            #B38F98;
+  --border:                  #48222E;
+  --border-light:            #30161F;
+  --border-hover:            #633040;
+  --text:                    #FFF1F2;
+  --text-secondary:          #B38F98;
+  --text-muted:              #826068;
+}
+
+/* ─── 6. Burnished Amber (Deep Warm Amber & Bronze) ─── */
+:root:not(.classic):not(.classic-dark)[data-accent="amber"],
+:root:not(.classic):not(.classic-dark)[data-accent="orange"] {
+  --brand-accent:            #B45309;
+  --brand-accent-hover:      #92400E;
+  --brand-accent-active:     #78350F;
+  --brand-accent-light:      rgba(180, 83, 9, 0.10);
+  --brand-accent-border:     rgba(180, 83, 9, 0.30);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(180, 83, 9, 0.35);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #D4AF37;
+  --accent-gold-bg:          rgba(212, 175, 55, 0.12);
+  --accent-gold-border:      rgba(212, 175, 55, 0.35);
+  --bg:                      #F7F4F0;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #FCFAF7;
+  --bg-card-header:          #FCFAF7;
+  --bg-subtle:               #EFEAE2;
+  --surface-sunken:          #E5DCD0;
+  --bg-hover:                #F2EDE4;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #453A2D;
+  --border:                  #E3DACD;
+  --border-light:            #EFECE5;
+  --border-hover:            #CABCB0;
+  --text:                    #221B12;
+  --text-secondary:          #544634;
+  --text-muted:              #7E6E5A;
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="amber"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="amber"],
+:root.dark:not(.classic):not(.classic-dark)[data-accent="amber"],
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="orange"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="orange"] {
+  --brand-accent:            #FBBF24;
+  --brand-accent-hover:      #FCD34D;
+  --brand-accent-active:     #F59E0B;
+  --brand-accent-light:      rgba(251, 191, 36, 0.15);
+  --brand-accent-border:     rgba(251, 191, 36, 0.35);
+  --brand-accent-foreground: #261A02;
+  --brand-accent-focus:      rgba(251, 191, 36, 0.45);
+  --primary:                 var(--brand-accent);
+  --primary-hover:           var(--brand-accent-hover);
+  --primary-dark:            var(--brand-accent-active);
+  --primary-light:           var(--brand-accent-light);
+  --primary-50:              var(--brand-accent-light);
+  --accent-gold:             #F5D061;
+  --accent-gold-bg:          rgba(245, 208, 97, 0.16);
+  --accent-gold-border:      rgba(245, 208, 97, 0.35);
+  --bg:                      #171109;
+  --bg-card:                 #241A0E;
+  --bg-secondary:            #2E2213;
+  --bg-card-header:          #2E2213;
+  --bg-subtle:               #1A130A;
+  --surface-sunken:          #110C06;
+  --bg-hover:                #3A2B18;
+  --sidebar-bg:              #110C06;
+  --sidebar-text:            #B09F89;
+  --border:                  #45331C;
+  --border-light:            #2E2213;
+  --border-hover:            #5F4727;
+  --text:                    #FFFBEB;
+  --text-secondary:          #B09F89;
+  --text-muted:              #7F6F5A;
 }
 
 /* ---------- RupeeCRM Modern Light Theme Tokens ---------- */

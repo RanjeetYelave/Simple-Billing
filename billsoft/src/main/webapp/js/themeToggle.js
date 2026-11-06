@@ -1,7 +1,25 @@
 (() => {
   const ALL_THEME_CLASSES = ['light-1', 'dark-1', 'classic', 'classic-dark'];
-  const VALID_ACCENTS = ['emerald', 'blue', 'teal', 'violet', 'orange', 'steel'];
-  const DEFAULT_ACCENT = 'emerald';
+  const VALID_ACCENTS = ['forest', 'navy', 'teal', 'plum', 'burgundy', 'amber'];
+  const DEFAULT_ACCENT = 'forest';
+  const ACCENT_ALIASES = {
+    emerald: 'forest',
+    green: 'forest',
+    blue: 'navy',
+    violet: 'plum',
+    purple: 'plum',
+    red: 'burgundy',
+    orange: 'amber',
+    steel: 'navy'
+  };
+
+  function normalizeAccent(accent) {
+    if (!accent || typeof accent !== 'string') return DEFAULT_ACCENT;
+    const lower = accent.trim().toLowerCase();
+    if (VALID_ACCENTS.includes(lower)) return lower;
+    if (ACCENT_ALIASES[lower]) return ACCENT_ALIASES[lower];
+    return DEFAULT_ACCENT;
+  }
 
   function parseTime(str) {
     if (!str || typeof str !== 'string') return 0;
@@ -52,9 +70,7 @@
       family = 'modern';
     }
 
-    if (!accent || !VALID_ACCENTS.includes(accent)) {
-      accent = DEFAULT_ACCENT;
-    }
+    accent = normalizeAccent(accent);
 
     // Default theme scheduling for new/default installations is 'sunset' (Sunset → Sunrise)
     // If the user has explicitly customized or set a schedule, preserve that exact preference.
@@ -175,12 +191,10 @@
   };
 
   window.setThemeAccent = function(accent) {
-    if (!VALID_ACCENTS.includes(accent)) {
-      accent = DEFAULT_ACCENT;
-    }
-    localStorage.setItem('themeAccentColor', accent);
+    const resolved = normalizeAccent(accent);
+    localStorage.setItem('themeAccentColor', resolved);
     applyThemeState(true);
-    window.dispatchEvent(new CustomEvent('themeAccentChanged', { detail: { accent } }));
+    window.dispatchEvent(new CustomEvent('themeAccentChanged', { detail: { accent: resolved } }));
   };
 
   window.setThemeFamily = function(family) {

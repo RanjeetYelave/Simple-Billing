@@ -33857,20 +33857,65 @@
         ? (themeState.activeIsDark ? '💾 Classic Noir (\'98 Dark)' : '💾 Classic Retro (\'98 Light)')
         : (themeState.activeIsDark ? '🌙 Midnight Navy (Dark)' : '☀️ Modern Slate (Light)');
 
-      const ACCENT_PRESETS = [
-        { id: 'emerald', label: 'Rich Green', color: '#16845B', darkColor: '#39B987' },
-        { id: 'blue', label: 'Ocean Blue', color: '#2869B2', darkColor: '#69A8F2' },
-        { id: 'teal', label: 'Deep Teal', color: '#167C80', darkColor: '#4CC0C0' },
-        { id: 'violet', label: 'Muted Violet', color: '#7050A3', darkColor: '#B49AE8' },
-        { id: 'orange', label: 'Burnt Orange', color: '#B85E2E', darkColor: '#F0A06F' },
-        { id: 'steel', label: 'Steel Blue', color: '#536B82', darkColor: '#91A9BF' }
+      const MODERN_THEMES = [
+        {
+          id: 'forest',
+          aliases: ['emerald', 'green'],
+          label: 'Forest Green',
+          subtitle: 'Original Brand Identity (Default)',
+          light: { bg: '#F4F6F2', card: '#FFFFFF', primary: '#16845B', gold: '#D4AF37', border: '#DFE5DE' },
+          dark: { bg: '#0B0F0D', card: '#131A16', primary: '#39B987', gold: '#F5D061', border: '#232F28' }
+        },
+        {
+          id: 'navy',
+          aliases: ['blue', 'steel'],
+          label: 'Royal Navy',
+          subtitle: 'Deep Confident Blue',
+          light: { bg: '#F1F5F9', card: '#FFFFFF', primary: '#1D4ED8', gold: '#D4AF37', border: '#CBD5E1' },
+          dark: { bg: '#0A111E', card: '#111C2E', primary: '#60A5FA', gold: '#F5D061', border: '#1E314D' }
+        },
+        {
+          id: 'teal',
+          aliases: [],
+          label: 'Petrol Teal',
+          subtitle: 'Rich Blue-Green',
+          light: { bg: '#F0F6F5', card: '#FFFFFF', primary: '#0F766E', gold: '#D4AF37', border: '#CCDEDB' },
+          dark: { bg: '#081514', card: '#0F2220', primary: '#2DD4BF', gold: '#F5D061', border: '#1B3B38' }
+        },
+        {
+          id: 'plum',
+          aliases: ['violet', 'purple'],
+          label: 'Royal Plum',
+          subtitle: 'Deep Sophisticated Purple',
+          light: { bg: '#F5F3F7', card: '#FFFFFF', primary: '#6B21A8', gold: '#D4AF37', border: '#DED8E6' },
+          dark: { bg: '#120B1A', card: '#1C1226', primary: '#C084FC', gold: '#F5D061', border: '#36244A' }
+        },
+        {
+          id: 'burgundy',
+          aliases: ['red'],
+          label: 'Burgundy',
+          subtitle: 'Rich Wine Red',
+          light: { bg: '#F7F2F3', card: '#FFFFFF', primary: '#881337', gold: '#D4AF37', border: '#E5D3D6' },
+          dark: { bg: '#190B0F', card: '#241117', primary: '#FB7185', gold: '#F5D061', border: '#48222E' }
+        },
+        {
+          id: 'amber',
+          aliases: ['orange'],
+          label: 'Burnished Amber',
+          subtitle: 'Deep Warm Amber & Bronze',
+          light: { bg: '#F7F4F0', card: '#FFFFFF', primary: '#B45309', gold: '#D4AF37', border: '#E3DACD' },
+          dark: { bg: '#171109', card: '#241A0E', primary: '#FBBF24', gold: '#F5D061', border: '#45331C' }
+        }
       ];
+
+      const currentAccentKey = themeState.accent || 'forest';
+      const activeThemeObj = MODERN_THEMES.find(t => t.id === currentAccentKey || (t.aliases && t.aliases.includes(currentAccentKey))) || MODERN_THEMES[0];
 
       const selectAccent = (accentId, label) => {
         if (window.setThemeAccent) {
           window.setThemeAccent(accentId);
           setThemeState(window.getThemeState());
-          if (window.showToast) window.showToast(`Accent colour set to ${label}`, 'success');
+          if (window.showToast) window.showToast(`Modern theme set to ${label}`, 'success');
         }
       };
 
@@ -33996,20 +34041,20 @@
           // Divider
           React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '20px 0' } }),
 
-          // Accent Colour Section (Modern Theme)
+          // Accent Colour Section (Modern Theme - 6 Curated Themes with Split Previews)
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 } },
               React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem' } }, 'Accent Colour'),
-                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } }, 'Choose your brand colour')
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem' } }, 'Modern Theme Palette'),
+                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } }, 'Select from six curated themes with dedicated Light and Dark variants')
               ),
               themeState.family === 'modern' ? React.createElement('span', {
                 style: {
                   fontSize: '0.82rem',
                   fontWeight: 600,
-                  color: 'var(--text-secondary)'
+                  color: 'var(--primary)'
                 }
-              }, (ACCENT_PRESETS.find(a => a.id === (themeState.accent || 'emerald')) || {}).label || 'Rich Green') : null
+              }, `Active: ${activeThemeObj.label}`) : null
             ),
             themeState.family === 'classic'
               ? React.createElement('div', {
@@ -34022,57 +34067,207 @@
                     color: 'var(--text-secondary)'
                   }
                 },
-                'Accent colour customisation is available only in the Modern theme.'
+                'Modern theme customization is active when using Modern System. Classic Retro (\'98) maintains its independent nostalgic aesthetic.'
               )
               : React.createElement('div', {
                   style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 16,
-                    flexWrap: 'wrap',
-                    padding: '4px 0'
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: 12,
+                    marginTop: 4
                   }
                 },
-                ACCENT_PRESETS.map(opt => {
-                  const isActive = (themeState.accent || 'emerald') === opt.id;
-                  const swatchColor = themeState.activeIsDark ? opt.darkColor : opt.color;
-                  return React.createElement('button', {
-                    key: opt.id,
-                    type: 'button',
-                    onClick: () => selectAccent(opt.id, opt.label),
-                    title: opt.label,
-                    'aria-label': opt.label,
+                MODERN_THEMES.map(themeItem => {
+                  const isSelected = activeThemeObj.id === themeItem.id;
+                  return React.createElement('div', {
+                    key: themeItem.id,
+                    role: 'button',
+                    tabIndex: 0,
+                    'aria-pressed': isSelected,
+                    'aria-label': `${themeItem.label} theme`,
+                    onClick: () => selectAccent(themeItem.id, themeItem.label),
+                    onKeyDown: (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectAccent(themeItem.id, themeItem.label);
+                      }
+                    },
                     style: {
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      backgroundColor: swatchColor,
-                      border: 'none',
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      background: 'var(--bg-card)',
+                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                      boxShadow: isSelected ? '0 0 0 1px var(--primary), 0 2px 8px rgba(0,0,0,0.06)' : '0 1px 3px rgba(0,0,0,0.03)',
                       cursor: 'pointer',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 10,
                       position: 'relative',
-                      boxShadow: isActive
-                        ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${swatchColor}`
-                        : '0 1px 3px rgba(0,0,0,0.18)',
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                      outline: 'none',
-                      padding: 0
+                      transition: 'all 0.15s ease',
+                      outline: 'none'
                     }
                   },
-                    isActive ? React.createElement('svg', {
-                      width: 16,
-                      height: 16,
-                      viewBox: '0 0 24 24',
-                      fill: 'none',
-                      stroke: '#FFFFFF',
-                      strokeWidth: 3,
-                      strokeLinecap: 'round',
-                      strokeLinejoin: 'round'
+                    // Top Row: Theme Name + Subtle Selected Check Indicator
+                    React.createElement('div', {
+                      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 20 }
                     },
-                      React.createElement('polyline', { points: '20 6 9 17 4 12' })
-                    ) : null
+                      React.createElement('span', {
+                        style: {
+                          fontWeight: isSelected ? 700 : 600,
+                          fontSize: '0.88rem',
+                          color: 'var(--text)'
+                        }
+                      }, themeItem.label),
+                      isSelected
+                        ? React.createElement('span', {
+                            style: {
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 18,
+                              height: 18,
+                              borderRadius: '50%',
+                              background: 'var(--primary)',
+                              color: '#FFFFFF',
+                              fontSize: '11px',
+                              fontWeight: 900
+                            }
+                          }, '✓')
+                        : React.createElement('span', {
+                            style: {
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              border: '1px solid var(--border)'
+                            }
+                          })
+                    ),
+                    // Miniature Split Preview: Light & Dark Appearances Side-by-Side
+                    React.createElement('div', {
+                      style: {
+                        height: 52,
+                        borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        overflow: 'hidden'
+                      }
+                    },
+                      // Left side: Light Mode Miniature Preview
+                      React.createElement('div', {
+                        style: {
+                          flex: 1,
+                          background: themeItem.light.bg,
+                          padding: '6px 8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          borderRight: '1px solid var(--border)',
+                          position: 'relative'
+                        }
+                      },
+                        React.createElement('div', {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }
+                        },
+                          React.createElement('div', {
+                            style: {
+                              width: 22,
+                              height: 7,
+                              borderRadius: 3,
+                              background: themeItem.light.primary
+                            }
+                          }),
+                          React.createElement('div', {
+                            title: 'Gold Detail',
+                            style: {
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              background: themeItem.light.gold
+                            }
+                          })
+                        ),
+                        React.createElement('div', {
+                          style: {
+                            height: 18,
+                            borderRadius: 4,
+                            background: themeItem.light.card,
+                            border: `1px solid ${themeItem.light.border}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '0 4px',
+                            gap: 3
+                          }
+                        },
+                          React.createElement('div', { style: { width: 4, height: 4, borderRadius: 1, background: themeItem.light.primary } }),
+                          React.createElement('div', { style: { width: 18, height: 3, borderRadius: 1.5, background: 'rgba(0,0,0,0.18)' } })
+                        )
+                      ),
+                      // Right side: Dark Mode Miniature Preview
+                      React.createElement('div', {
+                        style: {
+                          flex: 1,
+                          background: themeItem.dark.bg,
+                          padding: '6px 8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          position: 'relative'
+                        }
+                      },
+                        React.createElement('div', {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }
+                        },
+                          React.createElement('div', {
+                            style: {
+                              width: 22,
+                              height: 7,
+                              borderRadius: 3,
+                              background: themeItem.dark.primary
+                            }
+                          }),
+                          React.createElement('div', {
+                            title: 'Gold Detail',
+                            style: {
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              background: themeItem.dark.gold
+                            }
+                          })
+                        ),
+                        React.createElement('div', {
+                          style: {
+                            height: 18,
+                            borderRadius: 4,
+                            background: themeItem.dark.card,
+                            border: `1px solid ${themeItem.dark.border}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '0 4px',
+                            gap: 3
+                          }
+                        },
+                          React.createElement('div', { style: { width: 4, height: 4, borderRadius: 1, background: themeItem.dark.primary } }),
+                          React.createElement('div', { style: { width: 18, height: 3, borderRadius: 1.5, background: 'rgba(255,255,255,0.22)' } })
+                        )
+                      )
+                    ),
+                    // Subtitle / Family Tone
+                    React.createElement('div', {
+                      style: {
+                        fontSize: '0.74rem',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.3
+                      }
+                    }, themeItem.subtitle)
                   );
                 })
               )

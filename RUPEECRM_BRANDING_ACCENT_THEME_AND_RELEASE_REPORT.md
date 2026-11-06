@@ -2,9 +2,9 @@
 
 **Project:** RupeeCRM (`Simple-Billing`)  
 **Branch:** `overhaul`  
-**Commit:** `df3912f`  
+**Commit:** `710f0b8`  
 **Execution Date:** November 6, 2026  
-**Status:** IMPLEMENTED, TESTED, PACKAGED & MONITORED  
+**Status:** IMPLEMENTED, TESTED, PACKAGED & PUBLISHED (STABLE RELEASE v1.0.302)  
 
 ---
 
@@ -175,40 +175,42 @@ All semantic business indicators maintain strictly independent color variables t
 
 ## 8. GitHub Actions Production Release & Distribution Packages
 
-- **Git Commit:** `df3912f`
+- **Git Commits:**
+  - `df3912f`: Implementation of 6 curated modern themes, token systems, and card-based preview picker.
+  - `710f0b8`: Finalization of documentation and release reports.
 - **Branch:** `overhaul` (tracked and pushed to `origin/overhaul`)
 - **GitHub Actions Workflow Runs:**
-  - **Run #301 (`Build and Release`)**: [https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42196456095](https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42196456095) — **COMPLETED (SUCCESS)**
+  - **Run #302 (`Build and Release`)**: [https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42197431932](https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42197431932) — **COMPLETED (SUCCESS)**
     - `build-app`: **SUCCESS** (built WAR & JAR)
     - `Build Electron Windows Installer`: **SUCCESS** (built NSIS Windows installer on Windows runner)
     - `Publish GitHub Release`: **SUCCESS** (signed Ed25519 manifest, uploaded all release assets)
     - `Auto-Cleanup Older Workflow Runs`: **SUCCESS**
-  - **Run #222 (`CI Java Regression Tests`)**: [https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42196455737](https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42196455737) — **COMPLETED (SUCCESS)**
+  - **Run #223 (`CI Java Regression Tests`)**: [https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42197432054](https://github.com/RanjeetYelave/Simple-Billing/actions/runs/42197432054) — **COMPLETED (SUCCESS)**
 
 ### 8.1 Published Stable GitHub Release
-- **Release Name:** `RupeeCRM v1.0.301 (Build 301)`
-- **Tag:** `v1.0.301`
-- **Release URL:** [https://github.com/RanjeetYelave/Simple-Billing/releases/tag/v1.0.301](https://github.com/RanjeetYelave/Simple-Billing/releases/tag/v1.0.301)
+- **Release Name:** `RupeeCRM v1.0.302 (Build 302)`
+- **Tag:** `v1.0.302`
+- **Release URL:** [https://github.com/RanjeetYelave/Simple-Billing/releases/tag/v1.0.302](https://github.com/RanjeetYelave/Simple-Billing/releases/tag/v1.0.302)
 - **Status:** **STABLE RELEASE** (`prerelease: false`, `draft: false`)
 
 ### 8.2 Attached Distribution Packages & Verification
 
 | Asset Name | Size | SHA256 / Verification Status | Download URL |
 | :--- | :--- | :--- | :--- |
-| **`RupeeCRM-Setup.exe`** | 334,680,586 B (~319 MB) | Verified Windows NSIS Installer | [Download RupeeCRM-Setup.exe](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/RupeeCRM-Setup.exe) |
-| **`RupeeCRM-Setup-1.0.301-x64.exe`** | 334,680,586 B (~319 MB) | Versioned Windows NSIS Installer | [Download RupeeCRM-Setup-1.0.301-x64.exe](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/RupeeCRM-Setup-1.0.301-x64.exe) |
-| **`rupeecrm.war`** | 82,981,788 B (~79 MB) | Production Spring Boot / Tomcat Webapp | [Download rupeecrm.war](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/rupeecrm.war) |
-| **`billsoft.war`** | 82,981,788 B (~79 MB) | Legacy In-App Update Compatibility Binary | [Download billsoft.war](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/billsoft.war) |
-| **`manifest.json`** | 495 B | Verified Ed25519 In-App Update Manifest | [Download manifest.json](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/manifest.json) |
-| **`manifest.sig`** | 88 B | Cryptographic Ed25519 Signature | [Download manifest.sig](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/manifest.sig) |
-| **`SHA256SUMS.txt`** | 499 B | Full SHA256 Checksums for all Binaries | [Download SHA256SUMS.txt](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.301/SHA256SUMS.txt) |
+| **`RupeeCRM-Setup.exe`** | 334,680,626 B (~319 MB) | Verified Windows NSIS Installer | [Download RupeeCRM-Setup.exe](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/RupeeCRM-Setup.exe) |
+| **`RupeeCRM-Setup-1.0.302-x64.exe`** | 334,680,626 B (~319 MB) | Versioned Windows NSIS Installer | [Download RupeeCRM-Setup-1.0.302-x64.exe](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/RupeeCRM-Setup-1.0.302-x64.exe) |
+| **`rupeecrm.war`** | 82,981,788 B (~79 MB) | Production Spring Boot / Tomcat Webapp | [Download rupeecrm.war](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/rupeecrm.war) |
+| **`billsoft.war`** | 82,981,788 B (~79 MB) | Legacy In-App Update Compatibility Binary | [Download billsoft.war](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/billsoft.war) |
+| **`manifest.json`** | 495 B | Verified Ed25519 In-App Update Manifest | [Download manifest.json](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/manifest.json) |
+| **`manifest.sig`** | 88 B | Cryptographic Ed25519 Signature | [Download manifest.sig](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/manifest.sig) |
+| **`SHA256SUMS.txt`** | 499 B | Full SHA256 Checksums for all Binaries | [Download SHA256SUMS.txt](https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.302/SHA256SUMS.txt) |
 
 ---
 
 ## 9. In-App Updater Compatibility Verification
 
-The launcher updater and in-app update mechanisms were verified against release `v1.0.301`:
-1. `manifest.json` references version `1.0.301` with valid binary hashes matching `rupeecrm.war` and `billsoft.war`.
+The launcher updater and in-app update mechanisms were verified against release `v1.0.302`:
+1. `manifest.json` references version `1.0.302` with valid binary hashes matching `rupeecrm.war` and `billsoft.war`.
 2. `manifest.sig` contains a valid Ed25519 signature verified by the client update supervisor (`UpdateCryptoTest` / `UpdateManifestTest`).
 3. Assets follow standard, unencoded HTTPS asset URLs compatible with the Electron auto-updater and launcher supervisor.
 
@@ -227,4 +229,4 @@ The launcher updater and in-app update mechanisms were verified against release 
 - [x] **Semantic status colors independent:** Statuses (`paid`, `unpaid`, `overdue`, `pending`, `failed`, `success`, `warning`, `error`, `low-stock`) retain fixed colors across all themes.
 - [x] **Merchant PDF invoices preserved:** Invoices continue using merchant logos via `firm.getLogoBase64()`.
 - [x] **Automated tests passed:** 62/62 Java launcher tests, 7/7 Electron configuration checks, inline JS syntax validated.
-- [x] **Production build, stable GitHub Release & downloadable assets verified:** Release `v1.0.301` published on GitHub with verified `.exe` installers, `.war` binaries, manifests, and checksums.
+- [x] **Production build, stable GitHub Release & downloadable assets verified:** Release `v1.0.302` published on GitHub with verified `.exe` installers, `.war` binaries, manifests, and checksums.

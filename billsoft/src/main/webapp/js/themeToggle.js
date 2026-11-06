@@ -1,5 +1,7 @@
 (() => {
   const ALL_THEME_CLASSES = ['light-1', 'dark-1', 'classic', 'classic-dark'];
+  const VALID_ACCENTS = ['emerald', 'blue', 'teal', 'violet', 'orange', 'steel'];
+  const DEFAULT_ACCENT = 'emerald';
 
   function parseTime(str) {
     if (!str || typeof str !== 'string') return 0;
@@ -30,6 +32,7 @@
     let isCustomized = localStorage.getItem('themeDarkScheduleCustomized') === 'true';
     let customStart = localStorage.getItem('themeCustomStart') || '19:00';
     let customEnd = localStorage.getItem('themeCustomEnd') || '07:00';
+    let accent = localStorage.getItem('themeAccentColor');
 
     // Backward compatibility migration from legacy 'themeBase'
     const legacyBase = localStorage.getItem('themeBase');
@@ -49,6 +52,10 @@
       family = 'modern';
     }
 
+    if (!accent || !VALID_ACCENTS.includes(accent)) {
+      accent = DEFAULT_ACCENT;
+    }
+
     // Default theme scheduling for new/default installations is 'sunset' (Sunset → Sunrise)
     // If the user has explicitly customized or set a schedule, preserve that exact preference.
     const validSchedules = ['sunset', 'manual', 'system', 'custom'];
@@ -56,7 +63,7 @@
       schedule = 'sunset';
     }
 
-    return { family, isDark, schedule, isCustomized, customStart, customEnd };
+    return { family, isDark, schedule, isCustomized, customStart, customEnd, accent };
   }
 
   function computeIsDark(state) {
@@ -87,6 +94,8 @@
     const root = document.documentElement;
     ALL_THEME_CLASSES.forEach(c => root.classList.remove(c));
     root.classList.add(activeClass);
+    root.setAttribute('data-accent', state.accent);
+
     if (activeIsDark) {
       root.setAttribute('data-theme', 'dark');
       root.classList.add('dark', 'dark-mode');
@@ -107,7 +116,8 @@
         schedule: state.schedule,
         isCustomized: state.isCustomized,
         customStart: state.customStart,
-        customEnd: state.customEnd
+        customEnd: state.customEnd,
+        accent: state.accent
       };
       window.dispatchEvent(new CustomEvent('themeChanged', { detail }));
     }
@@ -157,6 +167,20 @@
       activeIsDark,
       activeClass: computeThemeClass(state.family, activeIsDark)
     };
+  };
+
+  window.getThemeAccent = function() {
+    const state = getStoredState();
+    return state.accent || DEFAULT_ACCENT;
+  };
+
+  window.setThemeAccent = function(accent) {
+    if (!VALID_ACCENTS.includes(accent)) {
+      accent = DEFAULT_ACCENT;
+    }
+    localStorage.setItem('themeAccentColor', accent);
+    applyThemeState(true);
+    window.dispatchEvent(new CustomEvent('themeAccentChanged', { detail: { accent } }));
   };
 
   window.setThemeFamily = function(family) {

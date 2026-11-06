@@ -1,29 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 447 447" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
   <defs>
-    <linearGradient id="chevGradTop" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="35%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
+    <linearGradient id="appBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#0B132B"/>
     </linearGradient>
-    <linearGradient id="chevGradMid" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa"/>
-      <stop offset="45%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#1e40af"/>
+    <linearGradient id="growthGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#16845B"/>
+      <stop offset="100%" stop-color="#39B987"/>
     </linearGradient>
-    <linearGradient id="chevGradBot" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="60%" stop-color="#1d4ed8"/>
-      <stop offset="100%" stop-color="#1e40af"/>
-    </linearGradient>
+    <filter id="softGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
   </defs>
 
-  <g transform="translate(216, 56)">
-    <path d="M 0 0 H 156 A 18 18 0 0 1 174 18 V 174 C 134.3 174 102 141.7 102 102 V 72 H 72 C 32.3 72 0 39.7 0 0 Z" fill="url(#chevGradTop)"/>
-  </g>
-  <g transform="translate(136, 136)">
-    <path d="M 0 0 H 156 A 18 18 0 0 1 174 18 V 174 C 134.3 174 102 141.7 102 102 V 72 H 72 C 32.3 72 0 39.7 0 0 Z" fill="url(#chevGradMid)"/>
-  </g>
-  <g transform="translate(56, 216)">
-    <path d="M 0 0 H 156 A 18 18 0 0 1 174 18 V 174 C 134.3 174 102 141.7 102 102 V 72 H 72 C 32.3 72 0 39.7 0 0 Z" fill="url(#chevGradBot)"/>
+  <!-- Squircle Rounded Base with subtle border -->
+  <rect width="512" height="512" rx="116" fill="url(#appBgGrad)"/>
+  <rect width="506" height="506" x="3" y="3" rx="113" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"/>
+
+  <!-- Combined Symbol: ₹ + 3 Ascending Geometric Arrows -->
+  <g filter="url(#softGlow)" transform="translate(14, 12)">
+    <!-- Stylized Indian Rupee ₹ Symbol -->
+    <path d="M 82 150 H 210 M 82 210 H 188 M 82 150 V 336 M 82 220 C 146 220 180 246 180 284 C 180 320 144 344 82 344 M 138 284 L 234 406" 
+          stroke="#FFFFFF" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- 3 Ascending Growth Chevrons / Arrows -->
+    <!-- Lower Arrow 1 -->
+    <path d="M 235 320 L 295 260 M 295 260 H 250 M 295 260 V 305" 
+          stroke="url(#growthGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Mid Arrow 2 -->
+    <path d="M 295 250 L 370 175 M 370 175 H 320 M 370 175 V 225" 
+          stroke="url(#growthGrad)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Upper Arrow 3 -->
+    <path d="M 365 170 L 445 90 M 445 90 H 390 M 445 90 V 145" 
+          stroke="url(#growthGrad)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

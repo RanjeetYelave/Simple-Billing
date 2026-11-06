@@ -20,12 +20,22 @@
   --gold-800: #745615;
   --gold-900: #584013;
 
-  /* Primary Brand Action (Deep Moss Green) */
-  --primary:                #234B30;
-  --primary-hover:          #1B3C26;
-  --primary-dark:           #1B3C26;
-  --primary-light:          #EBF3EC;
-  --primary-50:             #F4F8F4;
+  /* Centralized Modern Theme Accent Design Tokens (6 Curated Options)
+     Default: Emerald (Rich Green - Canonical RupeeCRM Identity) */
+  --brand-accent:            #16845B;
+  --brand-accent-hover:      #126C4A;
+  --brand-accent-active:     #0E553A;
+  --brand-accent-light:      rgba(22, 132, 91, 0.12);
+  --brand-accent-border:     rgba(22, 132, 91, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(22, 132, 91, 0.40);
+
+  /* Primary Brand Action (Mapped to Modern Brand Accent) */
+  --primary:                var(--brand-accent);
+  --primary-hover:          var(--brand-accent-hover);
+  --primary-dark:           var(--brand-accent-active);
+  --primary-light:          var(--brand-accent-light);
+  --primary-50:             var(--brand-accent-light);
 
   /* Accent Gold (Specular Highlights & Coin Glow) */
   --accent-gold:            #D4AF37;
@@ -146,14 +156,14 @@
   --glass-overlay-shadow:       0 18px 44px -4px rgba(23, 32, 27, 0.16), 0 4px 12px -2px rgba(35, 75, 48, 0.08);
 
   /* ─── Action Button Glass Tokens (Light Mode) ─── */
-  /* Primary Action Glass: Emerald Jewel Glass */
-  --glass-btn-primary-bg:           linear-gradient(180deg, rgba(35, 75, 48, 0.92) 0%, rgba(27, 60, 38, 0.98) 100%);
-  --glass-btn-primary-border:       rgba(23, 48, 30, 0.40);
+  /* Primary Action Glass: Dynamic Brand Accent Jewel Glass */
+  --glass-btn-primary-bg:           linear-gradient(180deg, var(--brand-accent) 0%, var(--brand-accent-hover) 100%);
+  --glass-btn-primary-border:       var(--brand-accent-border);
   --glass-btn-primary-highlight:    inset 0 1.25px 0.5px 0 rgba(255, 255, 255, 0.40), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-  --glass-btn-primary-shadow:       0 4px 14px -2px rgba(23, 48, 30, 0.28), 0 2px 4px -1px rgba(0, 0, 0, 0.08);
-  --glass-btn-primary-hover-bg:     linear-gradient(180deg, rgba(42, 90, 58, 0.96) 0%, rgba(30, 68, 43, 1) 100%);
-  --glass-btn-primary-hover-border: rgba(35, 75, 48, 0.60);
-  --glass-btn-primary-hover-shadow: 0 6px 20px -2px rgba(23, 48, 30, 0.38), 0 3px 6px -1px rgba(0, 0, 0, 0.12), inset 0 1.5px 0.5px 0 rgba(255, 255, 255, 0.55);
+  --glass-btn-primary-shadow:       0 4px 14px -2px var(--brand-accent-border), 0 2px 4px -1px rgba(0, 0, 0, 0.08);
+  --glass-btn-primary-hover-bg:     linear-gradient(180deg, var(--brand-accent-hover) 0%, var(--brand-accent-active) 100%);
+  --glass-btn-primary-hover-border: var(--brand-accent-border);
+  --glass-btn-primary-hover-shadow: 0 6px 20px -2px var(--brand-accent-focus), 0 3px 6px -1px rgba(0, 0, 0, 0.12), inset 0 1.5px 0.5px 0 rgba(255, 255, 255, 0.55);
 
   /* Secondary / Outline Action Glass: Clear Translucent Crystal */
   --glass-btn-secondary-bg:           linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(244, 250, 246, 0.35) 100%);
@@ -189,6 +199,137 @@
   --glass-btn-icon-shadow:       0 2px 6px rgba(23, 32, 27, 0.06);
 }
 
+/* ════════════════════════════════════════════════════════════
+   RUPEECRM MODERN THEME ACCENT COLOR PRESETS (6 CURATED OPTIONS)
+   Strictly isolated from Windows 98 Retro themes (:not(.classic):not(.classic-dark))
+   ════════════════════════════════════════════════════════════ */
+
+/* 1. Rich Green (Default Brand) */
+:root:not(.classic):not(.classic-dark)[data-accent="emerald"] {
+  --brand-accent:            #16845B;
+  --brand-accent-hover:      #126C4A;
+  --brand-accent-active:     #0E553A;
+  --brand-accent-light:      rgba(22, 132, 91, 0.12);
+  --brand-accent-border:     rgba(22, 132, 91, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(22, 132, 91, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="emerald"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="emerald"] {
+  --brand-accent:            #39B987;
+  --brand-accent-hover:      #4FD49F;
+  --brand-accent-active:     #2DA374;
+  --brand-accent-light:      rgba(57, 185, 135, 0.16);
+  --brand-accent-border:     rgba(57, 185, 135, 0.35);
+  --brand-accent-foreground: #0B1E16;
+  --brand-accent-focus:      rgba(57, 185, 135, 0.45);
+}
+
+/* 2. Ocean Blue */
+:root:not(.classic):not(.classic-dark)[data-accent="blue"] {
+  --brand-accent:            #2869B2;
+  --brand-accent-hover:      #20548F;
+  --brand-accent-active:     #194271;
+  --brand-accent-light:      rgba(40, 105, 178, 0.12);
+  --brand-accent-border:     rgba(40, 105, 178, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(40, 105, 178, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="blue"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="blue"] {
+  --brand-accent:            #69A8F2;
+  --brand-accent-hover:      #85BCFA;
+  --brand-accent-active:     #5092E0;
+  --brand-accent-light:      rgba(105, 168, 242, 0.16);
+  --brand-accent-border:     rgba(105, 168, 242, 0.35);
+  --brand-accent-foreground: #0A1B30;
+  --brand-accent-focus:      rgba(105, 168, 242, 0.45);
+}
+
+/* 3. Deep Teal */
+:root:not(.classic):not(.classic-dark)[data-accent="teal"] {
+  --brand-accent:            #167C80;
+  --brand-accent-hover:      #116467;
+  --brand-accent-active:     #0D4E50;
+  --brand-accent-light:      rgba(22, 124, 128, 0.12);
+  --brand-accent-border:     rgba(22, 124, 128, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(22, 124, 128, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="teal"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="teal"] {
+  --brand-accent:            #4CC0C0;
+  --brand-accent-hover:      #69D4D4;
+  --brand-accent-active:     #38ABAB;
+  --brand-accent-light:      rgba(76, 192, 192, 0.16);
+  --brand-accent-border:     rgba(76, 192, 192, 0.35);
+  --brand-accent-foreground: #061F20;
+  --brand-accent-focus:      rgba(76, 192, 192, 0.45);
+}
+
+/* 4. Muted Violet */
+:root:not(.classic):not(.classic-dark)[data-accent="violet"] {
+  --brand-accent:            #7050A3;
+  --brand-accent-hover:      #5B4184;
+  --brand-accent-active:     #473367;
+  --brand-accent-light:      rgba(112, 80, 163, 0.12);
+  --brand-accent-border:     rgba(112, 80, 163, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(112, 80, 163, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="violet"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="violet"] {
+  --brand-accent:            #B49AE8;
+  --brand-accent-hover:      #C7B2F0;
+  --brand-accent-active:     #9F83D9;
+  --brand-accent-light:      rgba(180, 154, 232, 0.16);
+  --brand-accent-border:     rgba(180, 154, 232, 0.35);
+  --brand-accent-foreground: #1D142C;
+  --brand-accent-focus:      rgba(180, 154, 232, 0.45);
+}
+
+/* 5. Burnt Orange */
+:root:not(.classic):not(.classic-dark)[data-accent="orange"] {
+  --brand-accent:            #B85E2E;
+  --brand-accent-hover:      #964C24;
+  --brand-accent-active:     #773B1B;
+  --brand-accent-light:      rgba(184, 94, 46, 0.12);
+  --brand-accent-border:     rgba(184, 94, 46, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(184, 94, 46, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="orange"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="orange"] {
+  --brand-accent:            #F0A06F;
+  --brand-accent-hover:      #F5B68F;
+  --brand-accent-active:     #DE8B57;
+  --brand-accent-light:      rgba(240, 160, 111, 0.16);
+  --brand-accent-border:     rgba(240, 160, 111, 0.35);
+  --brand-accent-foreground: #2A1308;
+  --brand-accent-focus:      rgba(240, 160, 111, 0.45);
+}
+
+/* 6. Steel Blue */
+:root:not(.classic):not(.classic-dark)[data-accent="steel"] {
+  --brand-accent:            #536B82;
+  --brand-accent-hover:      #425669;
+  --brand-accent-active:     #334352;
+  --brand-accent-light:      rgba(83, 107, 130, 0.12);
+  --brand-accent-border:     rgba(83, 107, 130, 0.35);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(83, 107, 130, 0.40);
+}
+:root.dark-1:not(.classic):not(.classic-dark)[data-accent="steel"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="steel"] {
+  --brand-accent:            #91A9BF;
+  --brand-accent-hover:      #A7BDD1;
+  --brand-accent-active:     #7A94AC;
+  --brand-accent-light:      rgba(145, 169, 191, 0.16);
+  --brand-accent-border:     rgba(145, 169, 191, 0.35);
+  --brand-accent-foreground: #101B24;
+  --brand-accent-focus:      rgba(145, 169, 191, 0.45);
+}
+
 /* ---------- RupeeCRM Modern Light Theme Tokens ---------- */
 :root.light-1,
 :root[data-theme='light']:not(.classic) {
@@ -202,10 +343,11 @@
   --text:            #17201B;
   --text-secondary:  #47564E;
   --text-muted:      #76867D;
-  --primary:         #234B30;
-  --primary-dark:    #1A3924;
-  --primary-light:   #EBF3EC;
-  --primary-50:      #F4F8F4;
+  --primary:         var(--brand-accent);
+  --primary-hover:   var(--brand-accent-hover);
+  --primary-dark:    var(--brand-accent-active);
+  --primary-light:   var(--brand-accent-light);
+  --primary-50:      var(--brand-accent-light);
   --accent-gold:     #D4AF37;
   --accent-gold-bg:  rgba(212, 175, 55, 0.12);
   --border:          #DFE5DE;
@@ -922,11 +1064,11 @@
 :root.dark:not(.classic):not(.classic-dark),
 :root.dark-mode:not(.classic):not(.classic-dark),
 body.dark-mode:not(.classic):not(.classic-dark) {
-  --primary:                #D4AF37;
-  --primary-hover:          #E5C358;
-  --primary-dark:           #B89223;
-  --primary-light:          rgba(212, 175, 55, 0.15);
-  --primary-50:             rgba(212, 175, 55, 0.08);
+  --primary:                var(--brand-accent);
+  --primary-hover:          var(--brand-accent-hover);
+  --primary-dark:           var(--brand-accent-active);
+  --primary-light:          var(--brand-accent-light);
+  --primary-50:             var(--brand-accent-light);
   --accent-gold:            #F5D061;
   --accent-gold-bg:         rgba(245, 208, 97, 0.16);
   --accent-gold-border:     rgba(245, 208, 97, 0.35);
@@ -14984,15 +15126,15 @@ body.no-liquid-glass {
   }
   :root.dark-1:not(.classic):not(.classic-dark) .btn-primary,
   :root[data-theme='dark']:not(.classic):not(.classic-dark) .btn-primary {
-    background: #234B30 !important;
-    color: #FFFFFF !important;
-    border-color: #2E633F !important;
+    background: var(--brand-accent, var(--primary, #234B30)) !important;
+    color: var(--brand-accent-foreground, #FFFFFF) !important;
+    border-color: var(--brand-accent-border, #2E633F) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45) !important;
   }
   :root.dark-1:not(.classic):not(.classic-dark) .btn-primary:hover:not(:disabled),
   :root[data-theme='dark']:not(.classic):not(.classic-dark) .btn-primary:hover:not(:disabled) {
-    background: #1B3C26 !important;
-    border-color: #387B4E !important;
+    background: var(--brand-accent-hover, var(--primary-hover, #1B3C26)) !important;
+    border-color: var(--brand-accent-focus, #387B4E) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.60) !important;
     transform: translateY(-1px);
   }

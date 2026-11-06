@@ -61,6 +61,14 @@ public class GitHubStorageProvider implements BackupStorageProvider {
         return DEFAULT_REPO;
     }
 
+    private static String resolveBranch() {
+        String prop = System.getProperty("rupeecrm.dataprotection.branch");
+        if (prop != null && !prop.isBlank()) return prop.trim();
+        String env = System.getenv("RUPEECRM_DATA_PROTECTION_BRANCH");
+        if (env != null && !env.isBlank()) return env.trim();
+        return "PROD";
+    }
+
     private String getAuthToken() {
         if (explicitAuthToken != null && !explicitAuthToken.isBlank()) {
             return explicitAuthToken.trim();
@@ -113,7 +121,7 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             return null;
         }
         String path = "backups/" + machineId.trim() + ".enc";
-        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path + "?ref=" + resolveBranch();
 
         HttpURLConnection conn = null;
         try {
@@ -149,7 +157,7 @@ public class GitHubStorageProvider implements BackupStorageProvider {
         if (token == null || token.isBlank()) {
             return null;
         }
-        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path + "?ref=" + resolveBranch();
         HttpURLConnection conn = null;
         try {
             URL url = URI.create(urlStr).toURL();
@@ -184,7 +192,7 @@ public class GitHubStorageProvider implements BackupStorageProvider {
         if (token == null || token.isBlank()) {
             return UploadResult.error("Missing Data Protection credentials", 401, DataProtectionErrorCode.DP_002);
         }
-        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path;
+        String urlStr = API_BASE + "/repos/" + repo + "/contents/" + path + "?ref=" + resolveBranch();
         HttpURLConnection conn = null;
         try {
             URL url = URI.create(urlStr).toURL();
@@ -202,6 +210,7 @@ public class GitHubStorageProvider implements BackupStorageProvider {
             Map<String, Object> reqBody = new HashMap<>();
             reqBody.put("message", "Auto Data Protection backup for machine: " + machineId);
             reqBody.put("content", Base64.getEncoder().encodeToString(data));
+            reqBody.put("branch", resolveBranch());
             if (sha != null && !sha.isBlank()) {
                 reqBody.put("sha", sha);
             }

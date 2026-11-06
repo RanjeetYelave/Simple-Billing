@@ -177,66 +177,59 @@
       };
     }
 
-    // ─── Approved Retro (Windows 98) Pixelated Icon Component ───
-    function RupeeCRMRetroIcon({ size = 28, className = '', style = {} }) {
-      const isDark = typeof document !== 'undefined' &&
-        (document.documentElement.classList.contains('classic-dark') || document.documentElement.getAttribute('data-theme') === 'dark');
-      const rupeeCol = isDark ? '#FFFFFF' : '#000000';
-      const arrowCol = '#00A859';
+    // ─── Centralized Approved Brand Asset Mapping ───
+    const RUPEECRM_BRAND_ASSETS = {
+      appIcon: 'assets/branding/rupeecrm-app-icon.png',
+      retro: 'assets/branding/rupeecrm-retro-logo.png',
+      forest: {
+        light: 'assets/branding/rupeecrm-logo-forest-green-light.png',
+        dark: 'assets/branding/rupeecrm-logo-forest-green-dark.png'
+      },
+      navy: {
+        light: 'assets/branding/rupeecrm-logo-royal-navy.png',
+        dark: 'assets/branding/rupeecrm-logo-royal-navy.png'
+      },
+      teal: {
+        light: 'assets/branding/rupeecrm-logo-petrol-teal.png',
+        dark: 'assets/branding/rupeecrm-logo-petrol-teal.png'
+      },
+      plum: {
+        light: 'assets/branding/rupeecrm-logo-royal-plum.png',
+        dark: 'assets/branding/rupeecrm-logo-royal-plum.png'
+      },
+      burgundy: {
+        light: 'assets/branding/rupeecrm-logo-burgundy.png',
+        dark: 'assets/branding/rupeecrm-logo-burgundy.png'
+      },
+      amber: {
+        light: 'assets/branding/rupeecrm-logo-burnished-amber.png',
+        dark: 'assets/branding/rupeecrm-logo-burnished-amber.png'
+      }
+    };
+    window.RUPEECRM_BRAND_ASSETS = RUPEECRM_BRAND_ASSETS;
 
-      return React.createElement('div', {
+    // ─── Approved Retro (Windows 98) Application Icon Component ───
+    function RupeeCRMRetroIcon({ size = 28, className = '', style = {} }) {
+      return React.createElement('img', {
+        src: RUPEECRM_BRAND_ASSETS.appIcon,
+        alt: 'RupeeCRM Icon',
         className: `rcrm-retro-icon ${className}`.trim(),
         style: {
           width: size,
-          height: Math.round(size * 0.85),
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          height: size,
+          objectFit: 'contain',
+          display: 'inline-block',
           verticalAlign: 'middle',
-          flexShrink: 0,
           userSelect: 'none',
+          flexShrink: 0,
           ...style
         }
-      },
-        React.createElement('svg', {
-          width: size,
-          height: Math.round(size * 0.85),
-          viewBox: '0 0 105 82',
-          fill: 'none',
-          style: { imageRendering: 'pixelated' }
-        },
-          // Stepped Pixelated ₹ Symbol
-          React.createElement('path', {
-            d: 'M 8 18 H 40 M 8 30 H 36 M 14 18 V 48 M 14 30 C 32 30 36 34 36 40 C 36 48 28 48 14 48 M 20 47 L 36 74',
-            stroke: rupeeCol,
-            strokeWidth: '6.5',
-            strokeLinecap: 'square'
-          }),
-          // Stepped Pixelated 3 Ascending Bars
-          React.createElement('rect', { x: 46, y: 53, width: 10, height: 21, fill: arrowCol }),
-          React.createElement('rect', { x: 60, y: 39, width: 10, height: 35, fill: arrowCol }),
-          React.createElement('rect', { x: 74, y: 25, width: 10, height: 49, fill: arrowCol }),
-          // Stepped Pixelated Upward Arrow
-          React.createElement('path', {
-            d: 'M 43 63 L 83 25',
-            stroke: arrowCol,
-            strokeWidth: '7.5',
-            strokeLinecap: 'square'
-          }),
-          React.createElement('polygon', {
-            points: '96,11 76,16 84,24 91,32',
-            fill: arrowCol,
-            stroke: arrowCol,
-            strokeWidth: '1'
-          })
-        )
-      );
+      });
     }
 
-    // ─── Approved RupeeCRM Modern Brand Symbol (Option C — Refined & Premium) ───
+    // ─── Approved RupeeCRM Fixed Application Icon (Forest Green Squircle) ───
     function RupeeCRMIcon({ size = 36, className = '', style = {}, spinning = false }) {
       const [celebrating, setCelebrating] = useState(false);
-      const [theme, setTheme] = useState(() => (window.getAppTheme ? window.getAppTheme() : 'light-1'));
 
       useEffect(() => {
         const onCelebrate = () => {
@@ -245,128 +238,25 @@
           return () => clearTimeout(t);
         };
         window.addEventListener('billsoft:coin-celebrate', onCelebrate);
-        const onTheme = (e) => {
-          const t = (e && e.detail && e.detail.theme) || (window.getAppTheme ? window.getAppTheme() : 'light-1');
-          setTheme(t);
-        };
-        window.addEventListener('themeChanged', onTheme);
-        return () => {
-          window.removeEventListener('billsoft:coin-celebrate', onCelebrate);
-          window.removeEventListener('themeChanged', onTheme);
-        };
+        return () => window.removeEventListener('billsoft:coin-celebrate', onCelebrate);
       }, []);
 
-      const isClassic = theme === 'classic' || theme === 'classic-dark' ||
-                        (typeof document !== 'undefined' && (document.documentElement.classList.contains('classic') || document.documentElement.classList.contains('classic-dark')));
-
-      if (isClassic) {
-        return React.createElement(RupeeCRMRetroIcon, { size, className, style });
-      }
-
-      const isDark = theme === 'dark-1' || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
-      const rupeeColor = isDark ? '#FFFFFF' : '#0F172A';
-
-      return React.createElement('div', {
-        className: `rcrm-coin ${spinning ? 'rcrm-coin-spin' : ''} ${celebrating ? 'rcrm-coin-celebrate' : ''} ${className}`.trim(),
+      return React.createElement('img', {
+        src: RUPEECRM_BRAND_ASSETS.appIcon,
+        alt: 'RupeeCRM Icon',
+        className: `rcrm-app-icon ${spinning ? 'rcrm-coin-spin' : ''} ${celebrating ? 'rcrm-coin-celebrate' : ''} ${className}`.trim(),
         style: {
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           width: size,
-          height: Math.round(size * 0.85),
+          height: size,
+          objectFit: 'contain',
+          display: 'inline-block',
           verticalAlign: 'middle',
-          flexShrink: 0,
           userSelect: 'none',
+          borderRadius: Math.round(size * 0.22),
+          flexShrink: 0,
           ...style
         }
-      },
-        React.createElement('svg', {
-          width: size,
-          height: Math.round(size * 0.85),
-          viewBox: '0 0 105 82',
-          fill: 'none',
-          xmlns: 'http://www.w3.org/2000/svg',
-          style: { display: 'block', width: '100%', height: '100%', overflow: 'visible' }
-        },
-          // Slanted Indian Rupee (₹) Symbol in Neutral Foreground
-          React.createElement('g', { transform: 'translate(2, 0)' },
-            React.createElement('path', {
-              d: 'M 8 18 H 40',
-              stroke: rupeeColor,
-              strokeWidth: '6.5',
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
-            }),
-            React.createElement('path', {
-              d: 'M 8 30 H 36',
-              stroke: rupeeColor,
-              strokeWidth: '6.5',
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
-            }),
-            React.createElement('path', {
-              d: 'M 14 18 V 48',
-              stroke: rupeeColor,
-              strokeWidth: '6.5',
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
-            }),
-            React.createElement('path', {
-              d: 'M 14 30 C 32 30 36 34 36 40 C 36 48 28 48 14 48',
-              stroke: rupeeColor,
-              strokeWidth: '6.5',
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
-            }),
-            React.createElement('path', {
-              d: 'M 20 47 L 36 74',
-              stroke: rupeeColor,
-              strokeWidth: '7',
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
-            })
-          ),
-          // Three Ascending Rounded Bars (Active Theme Primary)
-          React.createElement('rect', {
-            x: 46,
-            y: 53,
-            width: 10,
-            height: 21,
-            rx: 5,
-            fill: 'var(--brand-accent)'
-          }),
-          React.createElement('rect', {
-            x: 60,
-            y: 39,
-            width: 10,
-            height: 35,
-            rx: 5,
-            fill: 'var(--brand-accent)'
-          }),
-          React.createElement('rect', {
-            x: 74,
-            y: 25,
-            width: 10,
-            height: 49,
-            rx: 5,
-            fill: 'var(--brand-accent)'
-          }),
-          // Integrated Upward-Trending Arrow (Active Theme Primary)
-          React.createElement('path', {
-            d: 'M 43 63 L 83 25',
-            stroke: 'var(--brand-accent)',
-            strokeWidth: '7.5',
-            strokeLinecap: 'round'
-          }),
-          React.createElement('polygon', {
-            points: '96,11 76,16 84,24 91,32',
-            fill: 'var(--brand-accent)',
-            stroke: 'var(--brand-accent)',
-            strokeWidth: '1.5',
-            strokeLinejoin: 'round'
-          })
-        )
-      );
+      });
     }
 
     // ─── Branded RupeeCRM Gold Coin Loader Component ───
@@ -459,165 +349,91 @@
     window.RupeeCRMNavTabs = RupeeCRMNavTabs;
     window.RupeeCRMSubTabs = RupeeCRMSubTabs;
 
-    // Retro Windows 98 Brandmark Logo Component (Active during Classic / Classic-Dark Theme)
+    // ─── Retro Windows 98 Brandmark Logo Component (Extracted Artwork) ───
     function RupeeCRMRetroLogo({ size = 38, showWordmark = true, showTagline = false, isDark = false, className = '', style = {} }) {
       if (!showWordmark) {
-        return React.createElement(RupeeCRMRetroIcon, { size: size, className: className, style: style });
+        return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
       }
 
-      const wordmarkRupee = isDark ? '#FFFFFF' : '#000000';
-      const wordmarkCrm = '#00A859';
-      const scale = size / 38;
-
-      return React.createElement('div', {
-        className: `rupeecrm-retro-logo-wrapper ${className}`,
+      return React.createElement('img', {
+        src: RUPEECRM_BRAND_ASSETS.retro,
+        alt: 'RupeeCRM Retro Logo',
+        className: `rupeecrm-retro-logo ${className}`.trim(),
         style: {
-          display: 'inline-flex',
-          flexDirection: 'column',
-          alignItems: 'flex-start',
+          height: size,
+          width: 'auto',
+          maxHeight: size,
+          objectFit: 'contain',
+          display: 'inline-block',
+          verticalAlign: 'middle',
           userSelect: 'none',
-          boxSizing: 'border-box',
+          borderRadius: 2,
           ...style
         }
-      },
-        // Top Row: Pixelated Icon + Divider + Wordmark
-        React.createElement('div', {
-          style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: Math.max(6, Math.round(scale * 8))
-          }
-        },
-          React.createElement(RupeeCRMRetroIcon, { size: size }),
-          React.createElement('div', {
-            style: {
-              width: 1.5,
-              height: Math.max(18, Math.round(size * 0.72)),
-              backgroundColor: isDark ? '#5A606A' : '#000000',
-              flexShrink: 0
-            }
-          }),
-          React.createElement('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'baseline',
-              fontSize: `${Math.round(size * 0.68)}px`,
-              fontWeight: 900,
-              letterSpacing: '-0.02em',
-              fontFamily: "'Courier New', 'MS Sans Serif', monospace, sans-serif"
-            }
-          },
-            React.createElement('span', { style: { color: wordmarkRupee } }, 'Rupee'),
-            React.createElement('span', { style: { color: wordmarkCrm, marginLeft: 1 } }, 'CRM')
-          )
-        ),
-        // Bottom Row: Windows 98 3D Beveled Navy Status Plaque (Tagline)
-        showTagline && React.createElement('div', {
-          style: {
-            backgroundColor: '#000080',
-            border: '2px solid',
-            borderColor: '#DFDFDF #808080 #808080 #DFDFDF',
-            boxShadow: 'inset 1px 1px 0px #000000, 1px 1px 0px #FFFFFF',
-            padding: `${Math.max(2, Math.round(scale * 3))}px ${Math.max(8, Math.round(scale * 12))}px`,
-            marginTop: Math.max(3, Math.round(scale * 5)),
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: Math.max(4, Math.round(scale * 6)),
-            color: '#FFFFFF',
-            fontFamily: "'MS Sans Serif', Tahoma, 'Courier New', monospace, sans-serif",
-            fontSize: `${Math.max(8, Math.round(size * 0.22))}px`,
-            fontWeight: 700,
-            letterSpacing: '0.04em'
-          }
-        },
-          React.createElement('span', null, 'Billing'),
-          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
-          React.createElement('span', null, 'Inventory'),
-          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
-          React.createElement('span', null, 'Sales'),
-          React.createElement('span', { style: { color: '#FFFFFF', opacity: 0.8 } }, '·'),
-          React.createElement('span', null, 'CRM')
-        )
-      );
+      });
     }
 
-    // Full Brandmark Logo Component (Icon + RupeeCRM Text + Optional Tagline)
+    // ─── Full Brandmark Logo Component (Centralized Approved Asset Mapping) ───
     function RupeeCRMLogo({ size = 38, showWordmark = true, showTagline = false, isDarkBg = undefined, className = '', style = {} }) {
-      const [theme, setTheme] = useState(() => (window.getAppTheme ? window.getAppTheme() : 'light-1'));
+      const [themeState, setThemeState] = useState(() => {
+        const theme = window.getAppTheme ? window.getAppTheme() : 'light-1';
+        const accent = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-accent')) || 'forest';
+        return { theme, accent };
+      });
 
       useEffect(() => {
         const handler = (e) => {
-          const t = (e && e.detail && e.detail.theme) || (window.getAppTheme ? window.getAppTheme() : 'light-1');
-          setTheme(t);
+          const detail = (e && e.detail) || {};
+          const theme = detail.theme || (window.getAppTheme ? window.getAppTheme() : 'light-1');
+          const accent = detail.accent || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-accent')) || 'forest';
+          setThemeState({ theme, accent });
         };
         window.addEventListener('themeChanged', handler);
         return () => window.removeEventListener('themeChanged', handler);
       }, []);
 
+      const { theme, accent } = themeState;
+
+      // Retro / Classic theme
       if (theme === 'classic' || theme === 'classic-dark') {
         return React.createElement(RupeeCRMRetroLogo, { size, showWordmark, showTagline, isDark: theme === 'classic-dark', className, style });
       }
 
+      // Standalone symbol requested (no wordmark)
       if (!showWordmark) {
         return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
       }
 
+      // Determine light vs dark
       const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark'));
-      const textColor = isDark ? '#FFFFFF' : '#0F172A';
-      const taglineColor = isDark ? '#94A3B8' : '#64748B';
-      const scale = size / 38;
 
-      return React.createElement('div', {
-        className: `rupeecrm-logo-wrapper ${className}`,
-        style: { display: 'inline-flex', alignItems: 'center', gap: Math.round(size * 0.22), textDecoration: 'none', userSelect: 'none', ...style }
-      },
-        React.createElement(RupeeCRMIcon, { size: size, className: 'rcrm-brand-glint' }),
-        React.createElement('div', {
-          style: {
-            width: 1.5,
-            height: Math.round(size * 0.72),
-            background: isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(15, 23, 42, 0.2)',
-            borderRadius: 1,
-            flexShrink: 0
-          }
-        }),
-        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1, justifyContent: 'center' } },
-          React.createElement('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'baseline',
-              fontSize: `${Math.round(size * 0.68)}px`,
-              fontWeight: 800,
-              letterSpacing: '-0.025em',
-              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-            }
-          },
-            React.createElement('span', { style: { color: textColor, fontStyle: 'italic', fontWeight: 800 } }, 'Rupee'),
-            React.createElement('span', { style: { color: 'var(--brand-accent)', marginLeft: 1, fontWeight: 900 } }, 'CRM')
-          ),
-          showTagline && React.createElement('div', {
-            style: {
-              fontSize: `${Math.max(9, Math.round(size * 0.22))}px`,
-              color: taglineColor,
-              marginTop: Math.max(2, Math.round(scale * 3)),
-              fontWeight: 500,
-              letterSpacing: '0.02em',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }
-          },
-            React.createElement('span', null, 'Billing'),
-            React.createElement('span', { style: { opacity: 0.6 } }, '·'),
-            React.createElement('span', null, 'Inventory'),
-            React.createElement('span', { style: { opacity: 0.6 } }, '·'),
-            React.createElement('span', null, 'Sales'),
-            React.createElement('span', { style: { opacity: 0.6 } }, '·'),
-            React.createElement('span', null, 'CRM')
-          )
-        )
-      );
+      // Resolve theme accent key (normalize aliases)
+      const accentKey = (accent === 'emerald' || accent === 'green') ? 'forest'
+                      : (accent === 'blue' || accent === 'steel') ? 'navy'
+                      : (accent === 'violet' || accent === 'purple') ? 'plum'
+                      : (accent === 'red') ? 'burgundy'
+                      : (accent === 'orange') ? 'amber'
+                      : (RUPEECRM_BRAND_ASSETS[accent] ? accent : 'forest');
+
+      const themeAssets = RUPEECRM_BRAND_ASSETS[accentKey] || RUPEECRM_BRAND_ASSETS.forest;
+      const logoSrc = isDark ? themeAssets.dark : themeAssets.light;
+
+      return React.createElement('img', {
+        src: logoSrc,
+        alt: 'RupeeCRM',
+        className: `rupeecrm-brand-logo ${className}`.trim(),
+        style: {
+          height: size,
+          width: 'auto',
+          maxHeight: size,
+          objectFit: 'contain',
+          display: 'inline-block',
+          verticalAlign: 'middle',
+          userSelect: 'none',
+          borderRadius: Math.round(size * 0.12),
+          ...style
+        }
+      });
     }
 
     // ─── Modern Sonner-Style 3D Floating Toast Dock ───

@@ -171,9 +171,9 @@ public class AnnouncementServiceTest {
 
     @Test
     public void testDefaultRepositoryUrlsTargetDedicatedAnnouncementsRepo() {
-        assertEquals("https://raw.githubusercontent.com/RanjeetYelave/announcements/main/announcements.txt",
+        assertEquals("https://raw.githubusercontent.com/RanjeetYelave/announcements/PROD/announcements.txt",
                 AnnouncementService.DEFAULT_RAW_URL);
-        assertEquals("https://api.github.com/repos/RanjeetYelave/announcements/contents/announcements.txt",
+        assertEquals("https://api.github.com/repos/RanjeetYelave/announcements/contents/announcements.txt?ref=PROD",
                 AnnouncementService.DEFAULT_API_URL);
         assertFalse(AnnouncementService.DEFAULT_RAW_URL.contains("license-registry"), "Must not point to license-registry repo");
         assertFalse(AnnouncementService.DEFAULT_API_URL.contains("license-registry"), "Must not point to license-registry repo");

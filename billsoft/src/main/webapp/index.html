@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/style.css?v=20261025_smart_reorder_v2" />
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
+  <script src="js/vendor/qrcode.min.js"></script>
 
   <script src="js/api.js?v=20260914_licensing_v2"></script>
   <script src="js/utils.js?v=20261025_payment_terms_v2"></script>
@@ -186,24 +187,24 @@
         dark: 'assets/branding/rupeecrm-logo-forest-green-dark.png'
       },
       navy: {
-        light: 'assets/branding/rupeecrm-logo-royal-navy.png',
-        dark: 'assets/branding/rupeecrm-logo-royal-navy.png'
+        light: 'assets/branding/rupeecrm-logo-royal-navy-light.png',
+        dark: 'assets/branding/rupeecrm-logo-royal-navy-dark.png'
       },
       teal: {
-        light: 'assets/branding/rupeecrm-logo-petrol-teal.png',
-        dark: 'assets/branding/rupeecrm-logo-petrol-teal.png'
+        light: 'assets/branding/rupeecrm-logo-petrol-teal-light.png',
+        dark: 'assets/branding/rupeecrm-logo-petrol-teal-dark.png'
       },
       plum: {
-        light: 'assets/branding/rupeecrm-logo-royal-plum.png',
-        dark: 'assets/branding/rupeecrm-logo-royal-plum.png'
+        light: 'assets/branding/rupeecrm-logo-royal-plum-light.png',
+        dark: 'assets/branding/rupeecrm-logo-royal-plum-dark.png'
       },
       burgundy: {
-        light: 'assets/branding/rupeecrm-logo-burgundy.png',
-        dark: 'assets/branding/rupeecrm-logo-burgundy.png'
+        light: 'assets/branding/rupeecrm-logo-burgundy-light.png',
+        dark: 'assets/branding/rupeecrm-logo-burgundy-dark.png'
       },
       amber: {
-        light: 'assets/branding/rupeecrm-logo-burnished-amber.png',
-        dark: 'assets/branding/rupeecrm-logo-burnished-amber.png'
+        light: 'assets/branding/rupeecrm-logo-burnished-amber-light.png',
+        dark: 'assets/branding/rupeecrm-logo-burnished-amber-dark.png'
       }
     };
     window.RUPEECRM_BRAND_ASSETS = RUPEECRM_BRAND_ASSETS;
@@ -408,12 +409,14 @@
       const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark'));
 
       // Resolve theme accent key (normalize aliases)
-      const accentKey = (accent === 'emerald' || accent === 'green') ? 'forest'
-                      : (accent === 'blue' || accent === 'steel') ? 'navy'
-                      : (accent === 'violet' || accent === 'purple') ? 'plum'
-                      : (accent === 'red') ? 'burgundy'
-                      : (accent === 'orange') ? 'amber'
-                      : (RUPEECRM_BRAND_ASSETS[accent] ? accent : 'forest');
+      const normAccent = (accent || '').toLowerCase().trim();
+      const accentKey = (normAccent === 'emerald' || normAccent === 'green' || normAccent === 'forest-green') ? 'forest'
+                      : (normAccent === 'blue' || normAccent === 'steel' || normAccent === 'royal-navy') ? 'navy'
+                      : (normAccent === 'petrol-teal') ? 'teal'
+                      : (normAccent === 'violet' || normAccent === 'purple' || normAccent === 'royal-plum') ? 'plum'
+                      : (normAccent === 'red') ? 'burgundy'
+                      : (normAccent === 'orange' || normAccent === 'burnished-amber') ? 'amber'
+                      : (RUPEECRM_BRAND_ASSETS[normAccent] ? normAccent : 'forest');
 
       const themeAssets = RUPEECRM_BRAND_ASSETS[accentKey] || RUPEECRM_BRAND_ASSETS.forest;
       const logoSrc = isDark ? themeAssets.dark : themeAssets.light;
@@ -430,11 +433,110 @@
           display: 'inline-block',
           verticalAlign: 'middle',
           userSelect: 'none',
-          borderRadius: Math.round(size * 0.12),
           ...style
         }
       });
     }
+
+    // ─── High-Reliability Offline-Capable License & Activation QR Component ───
+    function RupeeCRMLicenseQR({ machineId, qrData, size = 90, className = '', style = {} }) {
+      const qrSvgString = useMemo(() => {
+        let textToEncode = '';
+        if (qrData) {
+          textToEncode = typeof qrData === 'string' ? qrData : JSON.stringify(qrData);
+        } else if (machineId) {
+          textToEncode = JSON.stringify({ app: 'RupeeCRM', ver: 1, mid: String(machineId).trim() });
+        }
+        if (!textToEncode) return null;
+
+        try {
+          if (typeof qrcode !== 'undefined') {
+            const qr = qrcode(0, 'M');
+            qr.addData(textToEncode);
+            qr.make();
+            return qr.createSvgTag({ cellSize: 3, margin: 3 });
+          }
+        } catch (e) {
+          console.warn('Client QR generation warning:', e);
+        }
+        return null;
+      }, [machineId, qrData]);
+
+      // Fallback network image URL if client-side SVG couldn't build
+      const fallbackUrl = useMemo(() => {
+        const payload = qrData ? (typeof qrData === 'string' ? qrData : JSON.stringify(qrData))
+                               : (machineId ? JSON.stringify({ app: 'RupeeCRM', ver: 1, mid: String(machineId).trim() }) : '');
+        if (!payload) return '';
+        const base = (window.API && window.API.BASE_URL) || '';
+        return `${base}/api/omnisearch/qr?size=${encodeURIComponent(size * 2)}&data=${encodeURIComponent(payload)}`;
+      }, [machineId, qrData, size]);
+
+      if (qrSvgString) {
+        return React.createElement('div', {
+          className: `rcrm-license-qr ${className}`.trim(),
+          style: {
+            width: size,
+            height: size,
+            borderRadius: 8,
+            background: '#ffffff',
+            padding: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+            flexShrink: 0,
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            ...style
+          },
+          dangerouslySetInnerHTML: {
+            __html: qrSvgString.replace(/width="[^"]*"/, 'width="100%"').replace(/height="[^"]*"/, 'height="100%"')
+          }
+        });
+      }
+
+      if (fallbackUrl) {
+        return React.createElement('img', {
+          src: fallbackUrl,
+          alt: 'License Activation QR',
+          className: `rcrm-license-qr ${className}`.trim(),
+          style: {
+            width: size,
+            height: size,
+            borderRadius: 8,
+            background: '#ffffff',
+            padding: 4,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+            flexShrink: 0,
+            objectFit: 'contain',
+            boxSizing: 'border-box',
+            ...style
+          },
+          onError: (e) => {
+            e.currentTarget.style.display = 'none';
+          }
+        });
+      }
+
+      return React.createElement('div', {
+        className: `rcrm-license-qr-placeholder ${className}`.trim(),
+        style: {
+          width: size,
+          height: size,
+          borderRadius: 8,
+          background: 'rgba(255,255,255,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-secondary, #64748b)',
+          fontSize: '0.72rem',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          ...style
+        }
+      }, '⏳ QR');
+    }
+    window.RupeeCRMLicenseQR = RupeeCRMLicenseQR;
 
     // ─── Modern Sonner-Style 3D Floating Toast Dock ───
     function Toast({ toasts, removeToast }) {
@@ -32518,6 +32620,9 @@
             setQrDataStr(JSON.stringify(res));
           }
         }).catch(() => { });
+        API.license.status().then(lic => {
+          if (lic && lic.machineId) setMachineId(prev => prev || lic.machineId);
+        }).catch(() => { });
       }, []);
 
       const handleLogoUpload = (e) => {
@@ -33154,11 +33259,11 @@
                 border: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 14, alignItems: 'center'
               }
             },
-              qrDataStr ? React.createElement('img', {
-                src: `/api/omnisearch/qr?size=140&data=${encodeURIComponent(qrDataStr)}`,
-                alt: 'License Activation QR',
-                style: { width: 80, height: 80, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
-              }) : React.createElement('div', { style: { width: 80, height: 80, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' } }, OnboardingIcons.clock),
+              React.createElement(RupeeCRMLicenseQR, {
+                machineId: machineId,
+                qrData: qrDataStr,
+                size: 80
+              }),
               React.createElement('div', { style: { flex: 1, minWidth: 0 } },
                 React.createElement('div', { style: { fontSize: '0.68rem', color: '#D4AF37', fontWeight: 700, letterSpacing: '0.05em' } }, 'WORKSPACE MACHINE IDENTITY'),
                 React.createElement('div', {
@@ -33462,7 +33567,7 @@
         API.license.status().then(lic => {
           if (lic) {
             setLicenseInfo(lic);
-            if (lic.machineId && !machineId) setMachineId(lic.machineId);
+            if (lic.machineId) setMachineId(prev => prev || lic.machineId);
           }
         }).catch(() => { });
       }, []);
@@ -33573,10 +33678,10 @@
               border: '1px solid var(--border)', marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center', textAlign: 'left'
             }
           },
-            qrDataStr && React.createElement('img', {
-              src: `/api/omnisearch/qr?size=140&data=${encodeURIComponent(qrDataStr)}`,
-              alt: 'License Activation QR',
-              style: { width: 100, height: 100, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
+            React.createElement(RupeeCRMLicenseQR, {
+              machineId: machineId || (licenseInfo && licenseInfo.machineId),
+              qrData: qrDataStr,
+              size: 100
             }),
             React.createElement('div', { style: { flex: 1, minWidth: 0 } },
               React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'YOUR MACHINE ID'),
@@ -34214,7 +34319,12 @@
       const [checkingOnline, setCheckingOnline] = useState(false);
 
       const loadLicense = () => {
-        API.license.status().then(setLicenseInfo).catch(() => { });
+        API.license.status().then(lic => {
+          setLicenseInfo(lic);
+          if (lic && lic.machineId) {
+            setQrDataStr(prev => prev || JSON.stringify({ app: 'RupeeCRM', ver: 1, mid: lic.machineId }));
+          }
+        }).catch(() => { });
         API.license.qr().then(res => {
           if (res && res.mid) setQrDataStr(JSON.stringify(res));
         }).catch(() => { });
@@ -34518,11 +34628,11 @@
                   border: '1px solid var(--border)', marginBottom: 16, display: 'flex', gap: 14, alignItems: 'center'
                 }
               },
-                qrDataStr && React.createElement('img', {
-                  src: `/api/omnisearch/qr?size=130&data=${encodeURIComponent(qrDataStr)}`,
-                  alt: 'License Activation QR',
-                  style: { width: 90, height: 90, borderRadius: 8, background: '#fff', padding: 4, flexShrink: 0 }
-                }),
+              React.createElement(RupeeCRMLicenseQR, {
+                machineId: (licenseInfo && licenseInfo.machineId),
+                qrData: qrDataStr,
+                size: 90
+              }),
                 React.createElement('div', { style: { flex: 1, minWidth: 0 } },
                   React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 2 } }, 'YOUR MACHINE ID'),
                   React.createElement('div', { style: { fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.06em', marginBottom: 6, wordBreak: 'break-all' } },

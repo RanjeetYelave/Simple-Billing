@@ -42,7 +42,7 @@ public final class LicensingConfig {
     }
 
     public static String getBranch() {
-        return System.getProperty("rupeecrm.licensing.branch", System.getenv().getOrDefault("RUPEECRM_LICENSING_BRANCH", "preprod"));
+        return System.getProperty("rupeecrm.licensing.branch", System.getenv().getOrDefault("RUPEECRM_LICENSING_BRANCH", "PROD"));
     }
 
     public static String getRegistryBaseUrl() {

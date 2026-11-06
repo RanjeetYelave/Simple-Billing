@@ -232,22 +232,10 @@ public class UpdateService {
                         apiUrl, org.springframework.http.HttpMethod.GET, entity, List.class);
 
                 if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                    // Pass 1: Prefer latest published STABLE release (prerelease=false, draft=false)
+                    // Strictly discover published STABLE releases only (prerelease=false, draft=false)
                     for (Object item : resp.getBody()) {
                         if (item instanceof Map<?, ?> rel) {
                             if (Boolean.TRUE.equals(rel.get("draft")) || Boolean.TRUE.equals(rel.get("prerelease"))) {
-                                continue;
-                            }
-                            String[] found = extractManifestUrls(rel);
-                            if (found != null) {
-                                return found;
-                            }
-                        }
-                    }
-                    // Pass 2: Fallback to any published non-draft release for backward compatibility
-                    for (Object item : resp.getBody()) {
-                        if (item instanceof Map<?, ?> rel) {
-                            if (Boolean.TRUE.equals(rel.get("draft"))) {
                                 continue;
                             }
                             String[] found = extractManifestUrls(rel);

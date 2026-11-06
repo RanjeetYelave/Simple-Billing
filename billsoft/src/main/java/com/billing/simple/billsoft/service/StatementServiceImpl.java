@@ -447,6 +447,13 @@ public class StatementServiceImpl implements StatementService {
         int unpaidCount = 0;
         BigDecimal totalCollections = BigDecimal.ZERO;
 
+        // Period-wise Profit Metrics (Gross Profit)
+        BigDecimal periodTotalSalesExGst = BigDecimal.ZERO;
+        BigDecimal periodCostedSalesExGst = BigDecimal.ZERO;
+        BigDecimal periodUncostedSalesExGst = BigDecimal.ZERO;
+        BigDecimal periodCogs = BigDecimal.ZERO;
+        int uncostedLineItemsCount = 0;
+
         Map<BigDecimal, GstSummaryItem> gstMap = new LinkedHashMap<>();
         Map<String, FirmStatementResponse.PaymentModeSummary> modeMap = new LinkedHashMap<>();
         Map<Long, FirmStatementResponse.FirmAccountSummary> customerMap = new LinkedHashMap<>();
@@ -507,12 +514,23 @@ public class StatementServiceImpl implements StatementService {
                 cas.setBalanceDue(round2(cas.getBalanceDue() + invTotal.doubleValue()));
             }
 
-            // GST aggregation from line items
+            // GST & Profit aggregation from line items
             if (inv.getItems() != null) {
                 for (InvoiceItem it : inv.getItems()) {
                     BigDecimal gstPct = nz(it.getGstPercent());
                     BigDecimal taxable = nz(it.getTaxableAmount());
                     BigDecimal gstAmt = nz(it.getGstAmount());
+
+                    periodTotalSalesExGst = periodTotalSalesExGst.add(taxable);
+                    if (it.getUnitCostPrice() != null) {
+                        periodCostedSalesExGst = periodCostedSalesExGst.add(taxable);
+                        BigDecimal qty = BigDecimal.valueOf(it.getQty() != null ? it.getQty() : 0);
+                        BigDecimal lineCogs = it.getUnitCostPrice().multiply(qty).setScale(2, RoundingMode.HALF_UP);
+                        periodCogs = periodCogs.add(lineCogs);
+                    } else {
+                        periodUncostedSalesExGst = periodUncostedSalesExGst.add(taxable);
+                        uncostedLineItemsCount++;
+                    }
 
                     GstSummaryItem gs = gstMap.computeIfAbsent(gstPct, k -> {
                         GstSummaryItem item = new GstSummaryItem();
@@ -637,10 +655,18 @@ public class StatementServiceImpl implements StatementService {
 
         // 4. Sales Returns / Credit Notes
         List<SalesReturn> firmReturns = new ArrayList<>();
-        if (firmId != null) {
-            firmReturns = salesReturnRepo.findByFirmIdAndReturnDateBetween(firmId, fromDate, toDate);
+        if (targetFirmId != null) {
+            firmReturns = salesReturnRepo.findByFirmIdAndReturnDateBetween(targetFirmId, fromDate, toDate);
         }
+
+        BigDecimal periodSalesReturnsExGst = BigDecimal.ZERO;
+        BigDecimal periodCostedSalesReturnsExGst = BigDecimal.ZERO;
+        BigDecimal periodUncostedSalesReturnsExGst = BigDecimal.ZERO;
+        BigDecimal periodCostReversedOnReturns = BigDecimal.ZERO;
+
         for (SalesReturn sr : firmReturns) {
+            boolean isInvoiceCancelled = (sr.getInvoice() != null && sr.getInvoice().getStatus() == InvoiceStatus.CANCELLED);
+
             BigDecimal refAmt = nz(sr.getTotalRefundAmount());
             String cName = (sr.getCustomer() != null && sr.getCustomer().getName() != null)
                     ? sr.getCustomer().getName() : "Customer";
@@ -657,7 +683,64 @@ public class StatementServiceImpl implements StatementService {
                     .notes(sr.getReason() != null ? sr.getReason() : "Sales Return")
                     .build()
             );
+
+            if (!isInvoiceCancelled) {
+                if (sr.getItems() != null && !sr.getItems().isEmpty()) {
+                    for (SalesReturnItem sri : sr.getItems()) {
+                        BigDecimal itemReturnedRev;
+                        if (sri.getGrossAmount() != null && sri.getDiscountValue() != null) {
+                            itemReturnedRev = sri.getGrossAmount().subtract(sri.getDiscountValue());
+                        } else if (sri.getRefundTotal() != null) {
+                            itemReturnedRev = sri.getRefundTotal().subtract(nz(sri.getGstAmount()));
+                        } else {
+                            itemReturnedRev = BigDecimal.ZERO;
+                        }
+                        if (itemReturnedRev.compareTo(BigDecimal.ZERO) < 0) {
+                            itemReturnedRev = BigDecimal.ZERO;
+                        }
+                        itemReturnedRev = itemReturnedRev.setScale(2, RoundingMode.HALF_UP);
+                        periodSalesReturnsExGst = periodSalesReturnsExGst.add(itemReturnedRev);
+
+                        BigDecimal unitCost = null;
+                        if (sri.getInvoiceItem() != null && sri.getInvoiceItem().getUnitCostPrice() != null) {
+                            unitCost = sri.getInvoiceItem().getUnitCostPrice();
+                        }
+                        if (unitCost != null) {
+                            periodCostedSalesReturnsExGst = periodCostedSalesReturnsExGst.add(itemReturnedRev);
+                            BigDecimal retQty = BigDecimal.valueOf(sri.getReturnQty() != null ? sri.getReturnQty() : 0);
+                            BigDecimal reversedCogs = unitCost.multiply(retQty).setScale(2, RoundingMode.HALF_UP);
+                            periodCostReversedOnReturns = periodCostReversedOnReturns.add(reversedCogs);
+                        } else {
+                            periodUncostedSalesReturnsExGst = periodUncostedSalesReturnsExGst.add(itemReturnedRev);
+                            uncostedLineItemsCount++;
+                        }
+                    }
+                } else if (sr.getSubtotal() != null) {
+                    BigDecimal sub = sr.getSubtotal().setScale(2, RoundingMode.HALF_UP);
+                    periodSalesReturnsExGst = periodSalesReturnsExGst.add(sub);
+                    periodUncostedSalesReturnsExGst = periodUncostedSalesReturnsExGst.add(sub);
+                    uncostedLineItemsCount++;
+                }
+            }
         }
+
+        periodTotalSalesExGst = periodTotalSalesExGst.setScale(2, RoundingMode.HALF_UP);
+        periodCostedSalesExGst = periodCostedSalesExGst.setScale(2, RoundingMode.HALF_UP);
+        periodUncostedSalesExGst = periodUncostedSalesExGst.setScale(2, RoundingMode.HALF_UP);
+        periodCogs = periodCogs.setScale(2, RoundingMode.HALF_UP);
+        periodSalesReturnsExGst = periodSalesReturnsExGst.setScale(2, RoundingMode.HALF_UP);
+        periodCostedSalesReturnsExGst = periodCostedSalesReturnsExGst.setScale(2, RoundingMode.HALF_UP);
+        periodUncostedSalesReturnsExGst = periodUncostedSalesReturnsExGst.setScale(2, RoundingMode.HALF_UP);
+        periodCostReversedOnReturns = periodCostReversedOnReturns.setScale(2, RoundingMode.HALF_UP);
+
+        boolean isProfitComplete = (uncostedLineItemsCount == 0);
+
+        // When uncosted legacy lines exist, missing historical costs MUST NEVER silently become 0 cost.
+        // Therefore, verified net profit is strictly calculated on costed lines:
+        // (Costed Sales - Costed Returns) - (COGS - Cost Reversed on Returns).
+        BigDecimal netCostedSales = periodCostedSalesExGst.subtract(periodCostedSalesReturnsExGst);
+        BigDecimal netCogs = periodCogs.subtract(periodCostReversedOnReturns);
+        BigDecimal periodNetProfit = netCostedSales.subtract(netCogs).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal totalPaidToVendors = totalPaidToVendorsFromPO.add(directPayments);
         BigDecimal outstandingPayables = totalPurchases.subtract(totalPaidToVendorsFromPO);
@@ -707,6 +790,15 @@ public class StatementServiceImpl implements StatementService {
                 .purchaseOrderCount(poList.size())
                 .totalPaidToVendors(round2(totalPaidToVendors))
                 .outstandingPayables(round2(outstandingPayables))
+                .periodTotalSalesExGst(round2(periodTotalSalesExGst))
+                .periodCostedSalesExGst(round2(periodCostedSalesExGst))
+                .periodUncostedSalesExGst(round2(periodUncostedSalesExGst))
+                .periodCogs(round2(periodCogs))
+                .periodSalesReturnsExGst(round2(periodSalesReturnsExGst))
+                .periodCostReversedOnReturns(round2(periodCostReversedOnReturns))
+                .periodNetProfit(round2(periodNetProfit))
+                .uncostedLineItemsCount(uncostedLineItemsCount)
+                .isProfitComplete(isProfitComplete)
                 .netCashflow(round2(netCashflow))
                 .netBusinessVolume(round2(netBusinessVolume))
                 .gstSummary(new ArrayList<>(gstMap.values()))
@@ -815,6 +907,58 @@ public class StatementServiceImpl implements StatementService {
         addKpiBox(kpiTable, "NET OPERATING CASHFLOW", "₹ " + CURRENCY_FMT.format(data.getNetCashflow() != null ? data.getNetCashflow() : 0), "Inflow minus Outflow", new Color(238, 242, 255), kpiLabelFont, new Font(Font.HELVETICA, 11, Font.BOLD, new Color(79, 70, 229)), subText);
 
         doc.add(kpiTable);
+
+        // ── 1b. Gross Profit Summary (Period-Wise) ──
+        PdfPTable profitTable = new PdfPTable(new float[]{3f, 2f});
+        profitTable.setWidthPercentage(100);
+        profitTable.setSpacingBefore(4);
+        profitTable.setSpacingAfter(10);
+
+        PdfPCell profitTitleCell = new PdfPCell(new Phrase("PERIOD GROSS PROFIT SUMMARY", tableHeaderFont));
+        profitTitleCell.setColspan(2);
+        profitTitleCell.setBackgroundColor(primaryColor);
+        profitTitleCell.setPadding(6);
+        profitTable.addCell(profitTitleCell);
+
+        addPdfTextCell(profitTable, "Total Sales (excluding GST)", normal, Element.ALIGN_LEFT);
+        addPdfTextCell(profitTable, "₹ " + CURRENCY_FMT.format(data.getPeriodTotalSalesExGst() != null ? data.getPeriodTotalSalesExGst() : 0), bold, Element.ALIGN_RIGHT);
+
+        addPdfTextCell(profitTable, "Cost of Goods Sold (COGS)", normal, Element.ALIGN_LEFT);
+        addPdfTextCell(profitTable, "₹ " + CURRENCY_FMT.format(data.getPeriodCogs() != null ? data.getPeriodCogs() : 0), bold, Element.ALIGN_RIGHT);
+
+        addPdfTextCell(profitTable, "Total Sales Returns (excluding GST)", normal, Element.ALIGN_LEFT);
+        addPdfTextCell(profitTable, "₹ " + CURRENCY_FMT.format(data.getPeriodSalesReturnsExGst() != null ? data.getPeriodSalesReturnsExGst() : 0), bold, Element.ALIGN_RIGHT);
+
+        addPdfTextCell(profitTable, "Cost Reversed on Returns", normal, Element.ALIGN_LEFT);
+        addPdfTextCell(profitTable, "₹ " + CURRENCY_FMT.format(data.getPeriodCostReversedOnReturns() != null ? data.getPeriodCostReversedOnReturns() : 0), bold, Element.ALIGN_RIGHT);
+
+        String netProfitTitle = Boolean.FALSE.equals(data.getIsProfitComplete())
+                ? "VERIFIED NET PROFIT ON COSTED ITEMS (INCOMPLETE)"
+                : "NET PROFIT FOR SELECTED PERIOD";
+        PdfPCell netProfitLabel = new PdfPCell(new Phrase(netProfitTitle, new Font(Font.HELVETICA, 9 * scale, Font.BOLD, primaryColor)));
+        netProfitLabel.setPadding(6);
+        netProfitLabel.setBackgroundColor(new Color(240, 253, 244));
+        profitTable.addCell(netProfitLabel);
+
+        double netProfitVal = data.getPeriodNetProfit() != null ? data.getPeriodNetProfit() : 0.0;
+        PdfPCell netProfitValCell = new PdfPCell(new Phrase("₹ " + CURRENCY_FMT.format(netProfitVal), new Font(Font.HELVETICA, 10 * scale, Font.BOLD, netProfitVal >= 0 ? new Color(22, 101, 52) : new Color(185, 28, 28))));
+        netProfitValCell.setPadding(6);
+        netProfitValCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        netProfitValCell.setBackgroundColor(new Color(240, 253, 244));
+        profitTable.addCell(netProfitValCell);
+
+        if (Boolean.FALSE.equals(data.getIsProfitComplete()) && data.getUncostedLineItemsCount() != null && data.getUncostedLineItemsCount() > 0) {
+            String noticeText = "* Notice: " + data.getUncostedLineItemsCount() + " legacy line item(s) (Total Sales: ₹ "
+                    + CURRENCY_FMT.format(data.getPeriodUncostedSalesExGst() != null ? data.getPeriodUncostedSalesExGst() : 0)
+                    + ") lack historical cost snapshots and are excluded from profit to prevent treating missing cost as zero cost.";
+            PdfPCell uncostedNotice = new PdfPCell(new Phrase(noticeText, subText));
+            uncostedNotice.setColspan(2);
+            uncostedNotice.setPadding(4);
+            uncostedNotice.setBorder(Rectangle.NO_BORDER);
+            profitTable.addCell(uncostedNotice);
+        }
+
+        doc.add(profitTable);
 
         // ── 2. Side-by-Side: GST Breakdown & Payment Modes ──
         PdfPTable splitTable = new PdfPTable(new float[]{1.4f, 1f});

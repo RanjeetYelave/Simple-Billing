@@ -29556,6 +29556,134 @@
                     )
                   ),
 
+                  // ── PERIOD GROSS PROFIT SUMMARY CARD ──
+                  React.createElement('div', {
+                    className: 'card',
+                    style: {
+                      padding: '18px 20px',
+                      marginBottom: 20,
+                      background: 'var(--bg-card)',
+                      borderRadius: 'var(--radius)',
+                      border: '1px solid var(--border)',
+                      boxShadow: 'var(--shadow)'
+                    }
+                  },
+                    React.createElement('div', {
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                        borderBottom: '1px solid var(--border)',
+                        paddingBottom: 12,
+                        marginBottom: 14
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 } },
+                          '📈 Period Gross Profit Summary'
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          `Accounting Period: ${statementData.from ? BillsoftUtils.formatDate(statementData.from) : 'Beginning'} to ${statementData.to ? BillsoftUtils.formatDate(statementData.to) : 'Today'} (Historical Transaction Basis)`
+                        )
+                      ),
+                      (!statementData.isProfitComplete && statementData.uncostedLineItemsCount > 0) && React.createElement('span', {
+                        className: 'badge badge-warning',
+                        style: { fontSize: '0.74rem', padding: '4px 8px', borderRadius: 6 }
+                      }, `⚠️ Incomplete Cost Data (${statementData.uncostedLineItemsCount} legacy item(s) uncosted)`)
+                    ),
+
+                    // Profit Metrics Grid / Breakdown
+                    React.createElement('div', {
+                      style: {
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: 12,
+                        marginBottom: 14
+                      }
+                    },
+                      // 1. Total Sales (excl GST)
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Total Sales (excl. GST)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--text)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodTotalSalesExGst || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Gross selling minus discounts')
+                      ),
+
+                      // 2. Cost of Goods Sold
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Cost of Goods Sold (COGS)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: '#b45309' } },
+                          BillsoftUtils.formatCurrency(statementData.periodCogs || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Historical unit cost × sold qty')
+                      ),
+
+                      // 3. Sales Returns (excl GST)
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Sales Returns (excl. GST)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--danger)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodSalesReturnsExGst || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Net returned sales revenue')
+                      ),
+
+                      // 4. Cost Reversed on Returns
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Cost Reversed on Returns'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--success)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodCostReversedOnReturns || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Inventory cost reversed')
+                      )
+                    ),
+
+                    // Net Profit Row
+                    React.createElement('div', {
+                      style: {
+                        padding: '12px 16px',
+                        borderRadius: 'var(--radius)',
+                        background: (statementData.periodNetProfit || 0) >= 0 ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                        border: `1px solid ${(statementData.periodNetProfit || 0) >= 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: (statementData.periodNetProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)' } },
+                          'Net Profit for Selected Period'
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          'Formula: (Total Sales − Sales Returns) − (COGS − Cost Reversed on Returns)'
+                        )
+                      ),
+                      React.createElement('div', {
+                        style: {
+                          fontSize: '1.6rem',
+                          fontWeight: 800,
+                          color: (statementData.periodNetProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)'
+                        }
+                      },
+                        BillsoftUtils.formatCurrency(statementData.periodNetProfit || 0)
+                      )
+                    ),
+
+                    // Legacy item note if uncosted items present
+                    (!statementData.isProfitComplete && statementData.uncostedLineItemsCount > 0) && React.createElement('div', {
+                      style: {
+                        marginTop: 10,
+                        fontSize: '0.74rem',
+                        color: 'var(--text-secondary)',
+                        fontStyle: 'italic'
+                      }
+                    }, `* Notice: ${statementData.uncostedLineItemsCount} legacy line item(s) lack historical cost snapshots and are excluded from COGS to avoid misrepresenting estimates as verified profit.`)
+                  ),
+
                   // 6 Executive Financial KPI Cards
                   React.createElement('div', {
                     style: {

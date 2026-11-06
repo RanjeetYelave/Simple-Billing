@@ -49,6 +49,17 @@ public class FirmStatementResponse {
     private Double totalPaidToVendors;
     private Double outstandingPayables; // Debt owed to vendors
 
+    // Period-wise Profit Breakdown (Gross Profit)
+    private Double periodTotalSalesExGst;          // 1. Total Sales (excluding GST)
+    private Double periodCostedSalesExGst;         // Sales of items with verified cost snapshots
+    private Double periodUncostedSalesExGst;       // Sales of legacy/uncosted items
+    private Double periodCogs;                     // 2. Total Cost of Goods Sold
+    private Double periodSalesReturnsExGst;        // 3. Total Sales Returns (excluding GST)
+    private Double periodCostReversedOnReturns;    // 4. Cost Reversed on Returns
+    private Double periodNetProfit;                // 5. Net Profit for Selected Period
+    private Integer uncostedLineItemsCount;        // Count of line items lacking historical cost snapshot
+    private Boolean isProfitComplete;              // True if all items had cost snapshots, false if incomplete/legacy
+
     // Net Financial Position
     private Double netCashflow; // Total Collections In - Total Paid to Vendors Out
     private Double netBusinessVolume; // Total Billed - Total Purchases
@@ -125,6 +136,33 @@ public class FirmStatementResponse {
     public Double getOutstandingPayables() { return outstandingPayables; }
     public void setOutstandingPayables(Double outstandingPayables) { this.outstandingPayables = outstandingPayables; }
 
+    public Double getPeriodTotalSalesExGst() { return periodTotalSalesExGst; }
+    public void setPeriodTotalSalesExGst(Double periodTotalSalesExGst) { this.periodTotalSalesExGst = periodTotalSalesExGst; }
+
+    public Double getPeriodCostedSalesExGst() { return periodCostedSalesExGst; }
+    public void setPeriodCostedSalesExGst(Double periodCostedSalesExGst) { this.periodCostedSalesExGst = periodCostedSalesExGst; }
+
+    public Double getPeriodUncostedSalesExGst() { return periodUncostedSalesExGst; }
+    public void setPeriodUncostedSalesExGst(Double periodUncostedSalesExGst) { this.periodUncostedSalesExGst = periodUncostedSalesExGst; }
+
+    public Double getPeriodCogs() { return periodCogs; }
+    public void setPeriodCogs(Double periodCogs) { this.periodCogs = periodCogs; }
+
+    public Double getPeriodSalesReturnsExGst() { return periodSalesReturnsExGst; }
+    public void setPeriodSalesReturnsExGst(Double periodSalesReturnsExGst) { this.periodSalesReturnsExGst = periodSalesReturnsExGst; }
+
+    public Double getPeriodCostReversedOnReturns() { return periodCostReversedOnReturns; }
+    public void setPeriodCostReversedOnReturns(Double periodCostReversedOnReturns) { this.periodCostReversedOnReturns = periodCostReversedOnReturns; }
+
+    public Double getPeriodNetProfit() { return periodNetProfit; }
+    public void setPeriodNetProfit(Double periodNetProfit) { this.periodNetProfit = periodNetProfit; }
+
+    public Integer getUncostedLineItemsCount() { return uncostedLineItemsCount; }
+    public void setUncostedLineItemsCount(Integer uncostedLineItemsCount) { this.uncostedLineItemsCount = uncostedLineItemsCount; }
+
+    public Boolean getIsProfitComplete() { return isProfitComplete; }
+    public void setIsProfitComplete(Boolean isProfitComplete) { this.isProfitComplete = isProfitComplete; }
+
     public Double getNetCashflow() { return netCashflow; }
     public void setNetCashflow(Double netCashflow) { this.netCashflow = netCashflow; }
 
@@ -172,6 +210,15 @@ public class FirmStatementResponse {
         private Integer purchaseOrderCount;
         private Double totalPaidToVendors;
         private Double outstandingPayables;
+        private Double periodTotalSalesExGst;
+        private Double periodCostedSalesExGst;
+        private Double periodUncostedSalesExGst;
+        private Double periodCogs;
+        private Double periodSalesReturnsExGst;
+        private Double periodCostReversedOnReturns;
+        private Double periodNetProfit;
+        private Integer uncostedLineItemsCount;
+        private Boolean isProfitComplete;
         private Double netCashflow;
         private Double netBusinessVolume;
         private List<GstSummaryItem> gstSummary;
@@ -201,6 +248,15 @@ public class FirmStatementResponse {
         public FirmStatementResponseBuilder purchaseOrderCount(Integer purchaseOrderCount) { this.purchaseOrderCount = purchaseOrderCount; return this; }
         public FirmStatementResponseBuilder totalPaidToVendors(Double totalPaidToVendors) { this.totalPaidToVendors = totalPaidToVendors; return this; }
         public FirmStatementResponseBuilder outstandingPayables(Double outstandingPayables) { this.outstandingPayables = outstandingPayables; return this; }
+        public FirmStatementResponseBuilder periodTotalSalesExGst(Double periodTotalSalesExGst) { this.periodTotalSalesExGst = periodTotalSalesExGst; return this; }
+        public FirmStatementResponseBuilder periodCostedSalesExGst(Double periodCostedSalesExGst) { this.periodCostedSalesExGst = periodCostedSalesExGst; return this; }
+        public FirmStatementResponseBuilder periodUncostedSalesExGst(Double periodUncostedSalesExGst) { this.periodUncostedSalesExGst = periodUncostedSalesExGst; return this; }
+        public FirmStatementResponseBuilder periodCogs(Double periodCogs) { this.periodCogs = periodCogs; return this; }
+        public FirmStatementResponseBuilder periodSalesReturnsExGst(Double periodSalesReturnsExGst) { this.periodSalesReturnsExGst = periodSalesReturnsExGst; return this; }
+        public FirmStatementResponseBuilder periodCostReversedOnReturns(Double periodCostReversedOnReturns) { this.periodCostReversedOnReturns = periodCostReversedOnReturns; return this; }
+        public FirmStatementResponseBuilder periodNetProfit(Double periodNetProfit) { this.periodNetProfit = periodNetProfit; return this; }
+        public FirmStatementResponseBuilder uncostedLineItemsCount(Integer uncostedLineItemsCount) { this.uncostedLineItemsCount = uncostedLineItemsCount; return this; }
+        public FirmStatementResponseBuilder isProfitComplete(Boolean isProfitComplete) { this.isProfitComplete = isProfitComplete; return this; }
         public FirmStatementResponseBuilder netCashflow(Double netCashflow) { this.netCashflow = netCashflow; return this; }
         public FirmStatementResponseBuilder netBusinessVolume(Double netBusinessVolume) { this.netBusinessVolume = netBusinessVolume; return this; }
         public FirmStatementResponseBuilder gstSummary(List<GstSummaryItem> gstSummary) { this.gstSummary = gstSummary; return this; }
@@ -232,6 +288,15 @@ public class FirmStatementResponse {
             r.purchaseOrderCount = this.purchaseOrderCount;
             r.totalPaidToVendors = this.totalPaidToVendors;
             r.outstandingPayables = this.outstandingPayables;
+            r.periodTotalSalesExGst = this.periodTotalSalesExGst;
+            r.periodCostedSalesExGst = this.periodCostedSalesExGst;
+            r.periodUncostedSalesExGst = this.periodUncostedSalesExGst;
+            r.periodCogs = this.periodCogs;
+            r.periodSalesReturnsExGst = this.periodSalesReturnsExGst;
+            r.periodCostReversedOnReturns = this.periodCostReversedOnReturns;
+            r.periodNetProfit = this.periodNetProfit;
+            r.uncostedLineItemsCount = this.uncostedLineItemsCount;
+            r.isProfitComplete = this.isProfitComplete;
             r.netCashflow = this.netCashflow;
             r.netBusinessVolume = this.netBusinessVolume;
             r.gstSummary = this.gstSummary;

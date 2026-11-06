@@ -1255,12 +1255,14 @@ public class InvoiceService {
         if (existing.getItems() != null) {
             List<InvoiceRequestItem> items = existing.getItems().stream().map(it -> {
                 InvoiceRequestItem ri = new InvoiceRequestItem();
+                ri.setId(it.getId());
                 ri.setProductId(it.getProduct() != null ? it.getProduct().getId() : null);
                 ri.setProductName(it.getProductName());
                 ri.setHsnCode(it.getHsnCode());
                 ri.setQty(it.getQty());
                 ri.setUnit(it.getUnit());
                 ri.setPricePerUnit(it.getPricePerUnit());
+                ri.setUnitCostPrice(it.getUnitCostPrice());
                 // Item-level discount is VALUE only
                 ri.setDiscountValue(it.getDiscountValue());
                 ri.setGstPercent(it.getGstPercent());
@@ -1493,6 +1495,7 @@ public class InvoiceService {
                 ni.setUnit(it.getUnit());
                 ni.setHsnCode(it.getHsnCode());
                 ni.setPricePerUnit(it.getPricePerUnit());
+                ni.setUnitCostPrice(it.getUnitCostPrice());
                 ni.setAmountWithoutTax(it.getAmountWithoutTax());
                 ni.setDiscountType(it.getDiscountType());
                 ni.setDiscountPercent(it.getDiscountPercent());

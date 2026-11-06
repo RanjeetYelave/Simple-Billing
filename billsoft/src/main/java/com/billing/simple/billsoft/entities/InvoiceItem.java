@@ -47,6 +47,9 @@ public class InvoiceItem {
     @Column(precision = 15, scale = 2)
     private BigDecimal pricePerUnit;
 
+    @Column(name = "unit_cost_price", precision = 15, scale = 2)
+    private BigDecimal unitCostPrice;
+
     @Column(precision = 15, scale = 2)
     private BigDecimal amountWithoutTax;
 
@@ -92,6 +95,9 @@ public class InvoiceItem {
 
         if (pricePerUnit != null)
             pricePerUnit = pricePerUnit.setScale(2, RoundingMode.HALF_UP);
+
+        if (unitCostPrice != null)
+            unitCostPrice = unitCostPrice.setScale(2, RoundingMode.HALF_UP);
 
         if (amountWithoutTax != null)
             amountWithoutTax = amountWithoutTax.setScale(2, RoundingMode.HALF_UP);
@@ -147,6 +153,9 @@ public class InvoiceItem {
 
     public BigDecimal getPricePerUnit() { return pricePerUnit; }
     public void setPricePerUnit(BigDecimal pricePerUnit) { this.pricePerUnit = pricePerUnit; }
+
+    public BigDecimal getUnitCostPrice() { return unitCostPrice; }
+    public void setUnitCostPrice(BigDecimal unitCostPrice) { this.unitCostPrice = unitCostPrice; }
 
     public BigDecimal getAmountWithoutTax() { return amountWithoutTax; }
     public void setAmountWithoutTax(BigDecimal amountWithoutTax) { this.amountWithoutTax = amountWithoutTax; }

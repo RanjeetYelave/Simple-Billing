@@ -219,7 +219,7 @@ public class UpdateService {
         String sUrl = this.signatureUrl;
 
         // If manifestUrl points to GitHub releases, query GitHub Releases API
-        // to discover the latest published release (including pre-releases on overhaul branch)
+        // to discover the latest published release (preferring stable releases)
         if (mUrl != null && mUrl.contains("github.com/RanjeetYelave/Simple-Billing/releases")) {
             try {
                 String apiUrl = "https://api.github.com/repos/RanjeetYelave/Simple-Billing/releases?per_page=5";
@@ -232,26 +232,27 @@ public class UpdateService {
                         apiUrl, org.springframework.http.HttpMethod.GET, entity, List.class);
 
                 if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+                    // Pass 1: Prefer latest published STABLE release (prerelease=false, draft=false)
                     for (Object item : resp.getBody()) {
                         if (item instanceof Map<?, ?> rel) {
-                            Object assetsObj = rel.get("assets");
-                            if (assetsObj instanceof List<?> assets) {
-                                String foundM = null;
-                                String foundS = null;
-                                for (Object a : assets) {
-                                    if (a instanceof Map<?, ?> asset) {
-                                        Object name = asset.get("name");
-                                        Object downloadUrl = asset.get("browser_download_url");
-                                        if ("manifest.json".equals(name) && downloadUrl != null) {
-                                            foundM = downloadUrl.toString();
-                                        } else if ("manifest.sig".equals(name) && downloadUrl != null) {
-                                            foundS = downloadUrl.toString();
-                                        }
-                                    }
-                                }
-                                if (foundM != null && foundS != null) {
-                                    return new String[]{foundM, foundS};
-                                }
+                            if (Boolean.TRUE.equals(rel.get("draft")) || Boolean.TRUE.equals(rel.get("prerelease"))) {
+                                continue;
+                            }
+                            String[] found = extractManifestUrls(rel);
+                            if (found != null) {
+                                return found;
+                            }
+                        }
+                    }
+                    // Pass 2: Fallback to any published non-draft release for backward compatibility
+                    for (Object item : resp.getBody()) {
+                        if (item instanceof Map<?, ?> rel) {
+                            if (Boolean.TRUE.equals(rel.get("draft"))) {
+                                continue;
+                            }
+                            String[] found = extractManifestUrls(rel);
+                            if (found != null) {
+                                return found;
                             }
                         }
                     }
@@ -261,6 +262,29 @@ public class UpdateService {
             }
         }
         return new String[]{mUrl, sUrl};
+    }
+
+    private String[] extractManifestUrls(Map<?, ?> rel) {
+        Object assetsObj = rel.get("assets");
+        if (assetsObj instanceof List<?> assets) {
+            String foundM = null;
+            String foundS = null;
+            for (Object a : assets) {
+                if (a instanceof Map<?, ?> asset) {
+                    Object name = asset.get("name");
+                    Object downloadUrl = asset.get("browser_download_url");
+                    if ("manifest.json".equals(name) && downloadUrl != null) {
+                        foundM = downloadUrl.toString();
+                    } else if ("manifest.sig".equals(name) && downloadUrl != null) {
+                        foundS = downloadUrl.toString();
+                    }
+                }
+            }
+            if (foundM != null && foundS != null) {
+                return new String[]{foundM, foundS};
+            }
+        }
+        return null;
     }
 
     public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {

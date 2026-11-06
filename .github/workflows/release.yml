@@ -188,10 +188,10 @@ jobs:
           retention-days: 3
 
   publish-release:
-    name: Publish GitHub Pre-Release
+    name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: [build-app, build-windows-installer]
-    if: github.repository == 'RanjeetYelave/Simple-Billing' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/overhaul' || github.ref_name == 'overhaul' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
+    if: github.repository == 'RanjeetYelave/Simple-Billing' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref_name == 'main' || github.ref == 'refs/heads/overhaul' || github.ref_name == 'overhaul' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
       actions: read
@@ -297,15 +297,14 @@ jobs:
         run: |
           APP_VERSION="1.0.${{ github.run_number }}"
           TAG_NAME="v1.0.${{ github.run_number }}"
-          if [ "${{ github.run_attempt }}" -gt 1 ]; then
-            TAG_NAME="${TAG_NAME}-attempt-${{ github.run_attempt }}"
-          fi
 
           RELEASE_TITLE="RupeeCRM v${APP_VERSION} (Build ${{ github.run_number }})"
           INSTALLER_FILE=$(find release-dist -maxdepth 1 -name "RupeeCRM-Setup-*-x64.exe" | head -n 1)
           INSTALLER_NAME=$(basename "$INSTALLER_FILE")
           INSTALLER_SIZE=$(ls -lh "$INSTALLER_FILE" | awk '{print $5}')
           INSTALLER_HASH=$(cat "release-dist/${INSTALLER_NAME}.sha256" 2>/dev/null || sha256sum "$INSTALLER_FILE" | awk '{print $1}')
+          CANONICAL_SIZE=$(ls -lh "release-dist/RupeeCRM-Setup.exe" | awk '{print $5}')
+          CANONICAL_HASH=$(cat "release-dist/RupeeCRM-Setup.exe.sha256" 2>/dev/null || sha256sum "release-dist/RupeeCRM-Setup.exe" | awk '{print $1}')
 
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "release_title=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
@@ -315,19 +314,24 @@ jobs:
           sed "s/^[ \t]*//" << EOF > release-notes.md
           ## ${RELEASE_TITLE}
 
-          Automated Windows Desktop installer release built from branch \`${{ github.ref_name }}\`.
+          Official production release built from branch \`${{ github.ref_name }}\`.
 
           ### Build Information
           - **Application Version:** \`v${APP_VERSION}\`
-          - **Build Number:** \`${{ github.run_number }}\` (Run Attempt \`${{ github.run_attempt }}\`)
+          - **Release Tag:** \`${TAG_NAME}\`
+          - **Build Number:** \`${{ github.run_number }}\`
           - **Commit SHA:** \`${{ github.sha }}\`
           - **Branch:** \`${{ github.ref_name }}\`
           - **Workflow Run:** [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-          ### Direct Downloads
-          - **Windows x64 Installer:** [\`${INSTALLER_NAME}\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${INSTALLER_NAME}) (${INSTALLER_SIZE})
-          - **Installer Checksum:** \`${INSTALLER_HASH}\`
-          - **In-App Direct Update:** \`rupeecrm.war\`
+          ### Downloadable Distribution Packages
+          | Package Type | File | Size | SHA256 Checksum |
+          |---|---|---|---|
+          | **Windows x64 Installer (Versioned)** | [\`${INSTALLER_NAME}\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${INSTALLER_NAME}) | \`${INSTALLER_SIZE}\` | \`${INSTALLER_HASH}\` |
+          | **Windows x64 Installer (Latest)** | [\`RupeeCRM-Setup.exe\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/RupeeCRM-Setup.exe) | \`${CANONICAL_SIZE}\` | \`${CANONICAL_HASH}\` |
+          | **In-App OTA Application Package** | [\`rupeecrm.war\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/rupeecrm.war) | \`~82 MB\` | See \`SHA256SUMS.txt\` |
+          | **Legacy OTA Package** | [\`billsoft.war\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/billsoft.war) | \`~82 MB\` | See \`SHA256SUMS.txt\` |
+          | **Integrity Checksums** | [\`SHA256SUMS.txt\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/SHA256SUMS.txt) | \`<1 KB\` | Checksum Manifest |
 
           ### Verification (PowerShell)
           \`\`\`powershell
@@ -335,7 +339,7 @@ jobs:
           \`\`\`
 
           > [!NOTE]
-          > Production release v${APP_VERSION}.
+          > Official stable production release v${APP_VERSION}. All distributable packages are published and downloadable.
           EOF
 
       - name: Generate and Verify Signed Release Manifest
@@ -389,6 +393,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+          fail_on_unmatched_files: true
           body_path: release-notes.md
           files: |
             release-dist/*.exe
@@ -396,6 +401,109 @@ jobs:
             release-dist/SHA256SUMS.txt
             release-dist/*.war
             release-dist/manifest.*
+
+      - name: Verify Published Stable Release and Attached Assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_KEY: ${{ needs.build-app.outputs.has_signing_key }}
+        run: |
+          echo "=== Verifying Published Stable GitHub Release ==="
+          TAG="${{ steps.prep-release.outputs.tag_name }}"
+          APP_VER="${{ steps.prep-release.outputs.app_version }}"
+          INSTALLER="${{ steps.prep-release.outputs.installer_name }}"
+          REPO="${{ github.repository }}"
+
+          echo "Polling GitHub Release API for tag: ${TAG}"
+          sleep 5
+
+          RELEASE_DATA=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")
+
+          if [ -z "$RELEASE_DATA" ]; then
+            echo "CRITICAL: Could not fetch release data for tag ${TAG}!"
+            exit 1
+          fi
+
+          IS_DRAFT=$(echo "$RELEASE_DATA" | jq -r '.draft')
+          IS_PRERELEASE=$(echo "$RELEASE_DATA" | jq -r '.prerelease')
+          RELEASE_URL=$(echo "$RELEASE_DATA" | jq -r '.html_url')
+
+          echo "Release Page: $RELEASE_URL"
+          echo "Draft: $IS_DRAFT"
+          echo "Prerelease: $IS_PRERELEASE"
+
+          if [ "$IS_DRAFT" != "false" ]; then
+            echo "CRITICAL: Release is marked as draft!"
+            exit 1
+          fi
+
+          if [ "$IS_PRERELEASE" != "false" ]; then
+            echo "CRITICAL: Release is marked as prerelease!"
+            exit 1
+          fi
+
+          echo "=== Verifying Required Attached Distributable Packages ==="
+          EXPECTED_ASSETS=(
+            "$INSTALLER"
+            "RupeeCRM-Setup.exe"
+            "rupeecrm.war"
+            "billsoft.war"
+            "SHA256SUMS.txt"
+          )
+
+          if [ "$HAS_KEY" = "true" ]; then
+            EXPECTED_ASSETS+=("manifest.json" "manifest.sig")
+          fi
+
+          for asset in "${EXPECTED_ASSETS[@]}"; do
+            ASSET_INFO=$(echo "$RELEASE_DATA" | jq -r --arg name "$asset" '.assets[] | select(.name==$name)')
+            if [ -z "$ASSET_INFO" ]; then
+              echo "CRITICAL: Required asset '$asset' is NOT attached to release ${TAG}!"
+              exit 1
+            fi
+            ASSET_SIZE=$(echo "$ASSET_INFO" | jq -r '.size')
+            DL_URL=$(echo "$ASSET_INFO" | jq -r '.browser_download_url')
+            if [ "$ASSET_SIZE" -le 0 ]; then
+              echo "CRITICAL: Asset '$asset' has invalid size: ${ASSET_SIZE} bytes!"
+              exit 1
+            fi
+            echo "✓ Verified Asset: $asset (${ASSET_SIZE} bytes) -> $DL_URL"
+          done
+
+          echo "=== Verifying Latest Stable Release Status ==="
+          LATEST_DATA=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/releases/latest")
+          LATEST_TAG=$(echo "$LATEST_DATA" | jq -r '.tag_name')
+
+          if [ "$LATEST_TAG" != "$TAG" ]; then
+            echo "Notice: /releases/latest returned '$LATEST_TAG' (waiting 10s for GitHub cache update)..."
+            sleep 10
+            LATEST_DATA=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/releases/latest")
+            LATEST_TAG=$(echo "$LATEST_DATA" | jq -r '.tag_name')
+          fi
+
+          if [ "$LATEST_TAG" != "$TAG" ]; then
+            echo "CRITICAL: Release ${TAG} is NOT marked as latest stable release! Got: ${LATEST_TAG}"
+            exit 1
+          fi
+          echo "✓ Confirmed: Tag ${TAG} is published as the latest stable release."
+
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "=== Verifying In-App Updater Direct Endpoint ==="
+            MANIFEST_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -L "https://github.com/${REPO}/releases/latest/download/manifest.json")
+            if [ "$MANIFEST_HTTP" != "200" ]; then
+              echo "CRITICAL: In-app updater manifest URL returned HTTP ${MANIFEST_HTTP}!"
+              exit 1
+            fi
+            echo "✓ Confirmed: In-app updater endpoint is fully operational (HTTP 200)."
+          fi
+
+          echo "=== All Release Publishing Validation Checks Passed Successfully ==="
 
   cleanup-old-runs:
     name: Auto-Cleanup Older Workflow Runs

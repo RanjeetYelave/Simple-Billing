@@ -40,8 +40,9 @@ public class AnnouncementService {
     public static final int MAX_FILE_SIZE_BYTES = 32 * 1024; // 32 KB limit
     public static final int MAX_ANNOUNCEMENTS = 10;
     public static final int MAX_ANNOUNCEMENT_LENGTH = 1000;
-    public static final long DEFAULT_TTL_HOURS = 48; // Exactly 48 hours cache TTL
-    public static final long DEFAULT_RETRY_COOLDOWN_MINUTES = 30; // 30 minutes cooldown on network failure
+    public static final long DEFAULT_TTL_HOURS = 1; // 1 hour cache TTL for responsive announcement updates
+    public static final long DEFAULT_RETRY_COOLDOWN_MINUTES = 5; // 5 minutes cooldown on network failure (reduced from 30m)
+    public static final long DEFAULT_OFFLINE_CACHE_MAX_AGE_HOURS = 24; // 24 hours max age for offline disk cache fallback
 
     private static final String CACHE_FILE_NAME = "announcements_cache.json";
 
@@ -104,15 +105,24 @@ public class AnnouncementService {
     }
 
     /**
-     * Parses plain text content separated by @@@ into a cleaned list of announcements.
-     * Safely ignores empty entries, trims whitespace, enforces max count and explicit truncation indicator.
+     * Parses plain text content separated by @@@ (or bracket format like [INFO] Title: Body) into a cleaned list of announcements.
+     * Safely ignores empty entries, trims whitespace, preserves multiline bodies, enforces max count and explicit truncation indicator.
      */
     public List<String> parseAnnouncements(String rawContent) {
         if (rawContent == null || rawContent.isBlank()) {
             return Collections.emptyList();
         }
 
-        String[] parts = rawContent.split(SEPARATOR);
+        String[] parts;
+        if (rawContent.contains(SEPARATOR)) {
+            parts = rawContent.split(SEPARATOR);
+        } else if (rawContent.contains("\n[") || rawContent.trim().startsWith("[")) {
+            // Split on newline preceding a bracket tag like [INFO], [WARN], etc.
+            parts = rawContent.split("(?m)^(?=\\[[A-Za-z]+\\])");
+        } else {
+            parts = new String[] { rawContent };
+        }
+
         List<String> result = new ArrayList<>();
 
         for (String part : parts) {
@@ -139,9 +149,10 @@ public class AnnouncementService {
         if (memoryCache.get() == null || lastFetchTime == null) {
             return false;
         }
-        long ttlHours = Long.getLong("rupeecrm.announcements.ttl.hours", DEFAULT_TTL_HOURS);
+        long ttlMinutes = Long.getLong("rupeecrm.announcements.ttl.minutes",
+                Long.getLong("rupeecrm.announcements.ttl.hours", DEFAULT_TTL_HOURS) * 60);
         Duration age = Duration.between(lastFetchTime, Instant.now());
-        return age.toHours() < ttlHours && !age.isNegative();
+        return age.toMinutes() < ttlMinutes && !age.isNegative();
     }
 
     public boolean isFailureCooldownActive() {
@@ -162,14 +173,14 @@ public class AnnouncementService {
         // Strategy 1: Raw URL (Primary)
         String rawUrl = System.getProperty("rupeecrm.announcements.url", DEFAULT_RAW_URL);
         String body = fetchHttpText(rawUrl);
-        if (body != null && !body.isBlank()) {
+        if (body != null) {
             return extractContentText(body);
         }
 
         // Strategy 2: GitHub API fallback
         String apiUrl = System.getProperty("rupeecrm.announcements.api.url", DEFAULT_API_URL);
         String apiBody = fetchHttpText(apiUrl);
-        if (apiBody != null && !apiBody.isBlank()) {
+        if (apiBody != null) {
             return extractContentText(apiBody);
         }
 
@@ -177,7 +188,7 @@ public class AnnouncementService {
     }
 
     private String extractContentText(String rawResponse) {
-        if (rawResponse == null || rawResponse.isBlank()) {
+        if (rawResponse == null) {
             return null;
         }
         String trimmed = rawResponse.trim();

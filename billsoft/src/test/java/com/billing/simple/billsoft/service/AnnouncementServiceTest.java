@@ -91,9 +91,9 @@ public class AnnouncementServiceTest {
     }
 
     @Test
-    public void testCacheFreshWithin48Hours() {
+    public void testCacheFreshWithinDefaultTTL() {
         List<String> announcements = List.of("System update scheduled for tonight.");
-        Instant recent = Instant.now().minus(Duration.ofHours(24)); // 24h old < 48h TTL
+        Instant recent = Instant.now().minus(Duration.ofMinutes(30)); // 30m old < 1h TTL
         announcementService.setMemoryCacheForTesting(announcements, recent);
 
         assertTrue(announcementService.isCacheFresh());
@@ -103,12 +103,33 @@ public class AnnouncementServiceTest {
     }
 
     @Test
-    public void testCacheExpiredAfter48Hours() {
+    public void testCacheExpiredAfterTTL() {
         List<String> announcements = List.of("Old notice");
-        Instant old = Instant.now().minus(Duration.ofHours(49)); // 49h old > 48h TTL
+        Instant old = Instant.now().minus(Duration.ofMinutes(65)); // 65m old > 60m (1h) TTL
         announcementService.setMemoryCacheForTesting(announcements, old);
 
         assertFalse(announcementService.isCacheFresh());
+    }
+
+    @Test
+    public void testParseBracketFormattedAnnouncementsWithoutSeparator() {
+        String raw = "[INFO] Maintenance: Tonight at midnight\n[WARNING] License Renewal: Please contact support\n[ALERT] Important: Server upgrade in progress";
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+
+        assertEquals(3, parsed.size());
+        assertEquals("[INFO] Maintenance: Tonight at midnight", parsed.get(0));
+        assertEquals("[WARNING] License Renewal: Please contact support", parsed.get(1));
+        assertEquals("[ALERT] Important: Server upgrade in progress", parsed.get(2));
+    }
+
+    @Test
+    public void testParseMultilineAnnouncementsAndSpecialCharacters() {
+        String raw = "[INFO] New GST Rates: Effective from July 1.\nRate changes:\n- Category A: 18%\n- Category B: 12%\n\n@@@\n\n[WARNING] RupeeCRM ₹ Notification: Special characters & <XML> symbols test 🚀!";
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+
+        assertEquals(2, parsed.size());
+        assertTrue(parsed.get(0).contains("Rate changes:\n- Category A: 18%"));
+        assertTrue(parsed.get(1).contains("RupeeCRM ₹ Notification: Special characters & <XML> symbols test 🚀!"));
     }
 
     @Test
@@ -116,8 +137,8 @@ public class AnnouncementServiceTest {
         List<String> staleData = List.of("Previous active announcement");
         // Expired cache
         announcementService.setMemoryCacheForTesting(staleData, Instant.now().minus(Duration.ofHours(50)));
-        // Set recent failure 5 minutes ago (< 30 min cooldown)
-        announcementService.setLastFailureTimeForTesting(Instant.now().minus(Duration.ofMinutes(5)));
+        // Set recent failure 2 minutes ago (< 5 min cooldown)
+        announcementService.setLastFailureTimeForTesting(Instant.now().minus(Duration.ofMinutes(2)));
 
         assertTrue(announcementService.isFailureCooldownActive());
         assertFalse(announcementService.isCacheFresh());
@@ -161,9 +182,9 @@ public class AnnouncementServiceTest {
     @Test
     public void testForceRefreshBypassesCooldownAndTTL() {
         List<String> staleData = List.of("Stale Announcement");
-        // Fresh cache (1 hour old)
-        announcementService.setMemoryCacheForTesting(staleData, Instant.now().minus(Duration.ofHours(1)));
-        announcementService.setLastFailureTimeForTesting(Instant.now().minus(Duration.ofMinutes(5)));
+        // Fresh cache (20 minutes old, within 1h TTL)
+        announcementService.setMemoryCacheForTesting(staleData, Instant.now().minus(Duration.ofMinutes(20)));
+        announcementService.setLastFailureTimeForTesting(Instant.now().minus(Duration.ofMinutes(2)));
 
         // Normal getAnnouncements returns stale cache without making requests
         assertEquals(1, announcementService.getAnnouncements(false).size());
@@ -172,6 +193,25 @@ public class AnnouncementServiceTest {
         // getAnnouncements(true) attempts live fetch
         List<String> result = announcementService.getAnnouncements(true);
         assertNotNull(result);
+    }
+
+    @Test
+    public void testEmptyRemoteContentClearsStaleCache() {
+        List<String> staleData = List.of("Old Stale Announcement");
+        announcementService.setMemoryCacheForTesting(staleData, Instant.now().minus(Duration.ofHours(5)));
+
+        // Create a subclass overriding fetchRemoteContent to simulate remote returning empty string (200 OK with empty file)
+        AnnouncementService emptyRemoteService = new AnnouncementService(testCacheFile) {
+            public synchronized List<String> getAnnouncements(boolean force) {
+                // Parse empty string as returned by remote
+                List<String> parsed = parseAnnouncements("");
+                assertEquals(0, parsed.size());
+                return parsed;
+            }
+        };
+
+        List<String> cleared = emptyRemoteService.getAnnouncements(true);
+        assertTrue(cleared.isEmpty());
     }
 
     @Test

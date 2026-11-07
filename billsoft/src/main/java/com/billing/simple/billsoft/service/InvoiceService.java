@@ -475,6 +475,8 @@ public class InvoiceService {
             }
         }
 
+        long totalInvoiceCount = 0;
+        long paidInvoiceCount = 0;
         long unpaidCount = 0;
         long overdueCount = 0;
         double quotePipelineVal = 0.0;
@@ -491,6 +493,8 @@ public class InvoiceService {
                 }
                 continue;
             }
+
+            totalInvoiceCount++;
 
             BigDecimal returnedAmt = invoiceReturnMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
             BigDecimal effectiveAmt = rawAmt.subtract(returnedAmt);
@@ -514,6 +518,13 @@ public class InvoiceService {
 
             totalPaid = totalPaid.add(paidForInv);
             totalPending = totalPending.add(pendingForInv);
+
+            boolean isFullyPaid = Boolean.TRUE.equals(inv.getPaid())
+                    || inv.getStatus() == InvoiceStatus.PAID
+                    || (effectiveAmt.compareTo(BigDecimal.ZERO) > 0 && paidForInv.compareTo(effectiveAmt) >= 0);
+            if (isFullyPaid) {
+                paidInvoiceCount++;
+            }
 
             InvoiceStatus st = inv.getStatus();
             if (st == InvoiceStatus.UNPAID || st == InvoiceStatus.OVERDUE || st == InvoiceStatus.SENT
@@ -587,6 +598,8 @@ public class InvoiceService {
         resp.setTotalPaid(totalPaid.doubleValue());
         resp.setTotalPending(totalPending.doubleValue());
 
+        resp.setTotalInvoiceCount(totalInvoiceCount);
+        resp.setPaidInvoiceCount(paidInvoiceCount);
         resp.setUnpaidInvoiceCount(unpaidCount);
         resp.setOverdueInvoiceCount(overdueCount);
         resp.setQuotePipelineValue(quotePipelineVal);

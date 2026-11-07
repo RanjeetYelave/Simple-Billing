@@ -13,6 +13,8 @@ public class FirmAnalyticsResponse {
     private Double totalPending;
 
     // Counts & Pipelines
+    private Long totalInvoiceCount;
+    private Long paidInvoiceCount;
     private Long unpaidInvoiceCount;
     private Long overdueInvoiceCount;
     private Double quotePipelineValue;
@@ -36,6 +38,12 @@ public class FirmAnalyticsResponse {
 
     public Double getTotalPending() { return totalPending; }
     public void setTotalPending(Double totalPending) { this.totalPending = totalPending; }
+
+    public Long getTotalInvoiceCount() { return totalInvoiceCount; }
+    public void setTotalInvoiceCount(Long totalInvoiceCount) { this.totalInvoiceCount = totalInvoiceCount; }
+
+    public Long getPaidInvoiceCount() { return paidInvoiceCount; }
+    public void setPaidInvoiceCount(Long paidInvoiceCount) { this.paidInvoiceCount = paidInvoiceCount; }
 
     public Long getUnpaidInvoiceCount() { return unpaidInvoiceCount; }
     public void setUnpaidInvoiceCount(Long unpaidInvoiceCount) { this.unpaidInvoiceCount = unpaidInvoiceCount; }

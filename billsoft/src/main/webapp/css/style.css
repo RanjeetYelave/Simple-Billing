@@ -3,8 +3,88 @@
    Design System & Styles
    ============================================================ */
 
-/* --- Google Fonts --- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* ════════════════════════════════════════════════════════════════
+   LOCAL OFFLINE BUNDLED FONTS (@font-face)
+   ════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/inter-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/plus-jakarta-sans-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/plus-jakarta-sans-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/plus-jakarta-sans-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/plus-jakarta-sans-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/roboto-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/roboto-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/roboto-700.woff2') format('woff2');
+}
 
 /* --- CSS Variables (Design Tokens) --- */
 :root {
@@ -203,13 +283,13 @@
    RUPEECRM MODERN THEME DESIGN SYSTEMS (6 CURATED THEMES)
    Every theme defines dedicated Light and Dark variants across
    brand tokens, application surfaces, typography and gold highlights.
-   Strictly isolated from Windows 98 Retro themes (:not(.classic):not(.classic-dark)).
+   Strictly isolated from Windows 98 Retro themes (:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)).
    ════════════════════════════════════════════════════════════ */
 
 /* ─── 1. Forest Green (Original Canonical RupeeCRM Identity & Default) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="forest"],
-:root:not(.classic):not(.classic-dark)[data-accent="emerald"],
-:root:not(.classic):not(.classic-dark)[data-accent="green"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="forest"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="emerald"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="green"] {
   --brand-accent:            #16845B;
   --brand-accent-hover:      #126C4A;
   --brand-accent-active:     #0E553A;
@@ -241,13 +321,13 @@
   --text-secondary:          #47564E;
   --text-muted:              #76867D;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="forest"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="forest"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="forest"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="emerald"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="emerald"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="green"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="green"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="forest"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="forest"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="forest"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="emerald"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="emerald"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="green"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="green"] {
   --brand-accent:            #39B987;
   --brand-accent-hover:      #4FD49F;
   --brand-accent-active:     #2DA374;
@@ -281,9 +361,9 @@
 }
 
 /* ─── 2. Royal Navy (Deep Confident Blue) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="navy"],
-:root:not(.classic):not(.classic-dark)[data-accent="blue"],
-:root:not(.classic):not(.classic-dark)[data-accent="steel"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="navy"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="blue"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="steel"] {
   --brand-accent:            #1D4ED8;
   --brand-accent-hover:      #1E40AF;
   --brand-accent-active:     #1E3A8A;
@@ -315,13 +395,13 @@
   --text-secondary:          #475569;
   --text-muted:              #64748B;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="navy"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="navy"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="navy"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="blue"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="blue"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="steel"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="steel"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="navy"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="navy"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="navy"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="blue"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="blue"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="steel"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="steel"] {
   --brand-accent:            #60A5FA;
   --brand-accent-hover:      #93C5FD;
   --brand-accent-active:     #3B82F6;
@@ -355,7 +435,7 @@
 }
 
 /* ─── 3. Petrol Teal (Rich Blue-Green) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="teal"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="teal"] {
   --brand-accent:            #0F766E;
   --brand-accent-hover:      #115E59;
   --brand-accent-active:     #134E4A;
@@ -387,9 +467,9 @@
   --text-secondary:          #3D5452;
   --text-muted:              #68807D;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="teal"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="teal"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="teal"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="teal"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="teal"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="teal"] {
   --brand-accent:            #2DD4BF;
   --brand-accent-hover:      #5EEAD4;
   --brand-accent-active:     #14B8A6;
@@ -423,9 +503,9 @@
 }
 
 /* ─── 4. Royal Plum (Deep Sophisticated Purple) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="plum"],
-:root:not(.classic):not(.classic-dark)[data-accent="violet"],
-:root:not(.classic):not(.classic-dark)[data-accent="purple"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="plum"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="violet"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="purple"] {
   --brand-accent:            #6B21A8;
   --brand-accent-hover:      #581C87;
   --brand-accent-active:     #3B0764;
@@ -457,13 +537,13 @@
   --text-secondary:          #4D405D;
   --text-muted:              #786B88;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="plum"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="plum"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="plum"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="violet"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="violet"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="purple"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="purple"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="plum"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="plum"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="plum"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="violet"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="violet"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="purple"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="purple"] {
   --brand-accent:            #C084FC;
   --brand-accent-hover:      #D8B4FE;
   --brand-accent-active:     #A855F7;
@@ -497,8 +577,8 @@
 }
 
 /* ─── 5. Burgundy (Rich Wine Red) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="burgundy"],
-:root:not(.classic):not(.classic-dark)[data-accent="red"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="burgundy"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="red"] {
   --brand-accent:            #881337;
   --brand-accent-hover:      #700F2E;
   --brand-accent-active:     #4C051E;
@@ -530,11 +610,11 @@
   --text-secondary:          #5C3B43;
   --text-muted:              #84616A;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="burgundy"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="burgundy"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="burgundy"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="red"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="red"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="burgundy"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="burgundy"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="burgundy"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="red"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="red"] {
   --brand-accent:            #FB7185;
   --brand-accent-hover:      #FDA4AF;
   --brand-accent-active:     #F43F5E;
@@ -568,8 +648,8 @@
 }
 
 /* ─── 6. Burnished Amber (Deep Warm Amber & Bronze) ─── */
-:root:not(.classic):not(.classic-dark)[data-accent="amber"],
-:root:not(.classic):not(.classic-dark)[data-accent="orange"] {
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="amber"],
+:root:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="orange"] {
   --brand-accent:            #B45309;
   --brand-accent-hover:      #92400E;
   --brand-accent-active:     #78350F;
@@ -601,11 +681,11 @@
   --text-secondary:          #544634;
   --text-muted:              #7E6E5A;
 }
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="amber"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="amber"],
-:root.dark:not(.classic):not(.classic-dark)[data-accent="amber"],
-:root.dark-1:not(.classic):not(.classic-dark)[data-accent="orange"],
-:root[data-theme='dark']:not(.classic):not(.classic-dark)[data-accent="orange"] {
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="amber"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="amber"],
+:root.dark:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="amber"],
+:root.dark-1:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="orange"],
+:root[data-theme='dark']:not(.classic):not(.classic-dark):not(.minimal):not(.minimal-light):not(.minimal-dark)[data-accent="orange"] {
   --brand-accent:            #FBBF24;
   --brand-accent-hover:      #FCD34D;
   --brand-accent-active:     #F59E0B;
@@ -663,6 +743,1521 @@
   --sidebar-bg:      #FFFFFF;
   --sidebar-text:    #47564E;
 }
+
+
+/* ════════════════════════════════════════════════════════════
+   RUPEECRM MINIMAL SAAS THEME (COMMERLY AESTHETIC SYSTEM)
+   Deeply implemented design-system transformation based on
+   Commerly & RupeeCRM Minimal concept references:
+   - Minimal Light (#F6F6F4 Canvas, #FFFFFF 24px Cards, #168B45 Emerald Green)
+   - Minimal Dark (#0F1111 Canvas, #181B1B 24px Cards, #22C55E Spring Green)
+   - Pill Controls & Badges (border-radius: 9999px)
+   - Tabular Numerals & High Contrast Typography (Inter)
+   - Soft Ambient Elevation & Crisp Hairline Borders
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── Minimal Shared Geometry & Base Tokens ─── */
+:root.minimal,
+:root.minimal-light,
+:root.minimal-dark {
+  --radius-sm:          10px;
+  --radius:             16px;
+  --radius-card:        24px;
+  --radius-lg:          24px;
+  --radius-pill:        9999px;
+  --sidebar-width:      260px;
+  --transition:         all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  --glass-blur-subtle:  none !important;
+  --glass-blur-elevated: none !important;
+  --glass-blur-overlay: blur(16px);
+  --glass-subtle-bg:    var(--bg-card) !important;
+  --glass-elevated-bg:  var(--bg-card) !important;
+  --glass-overlay-bg:   var(--bg-card) !important;
+  --glass-subtle-highlight: none !important;
+  --glass-elevated-highlight: none !important;
+  --glass-overlay-highlight: none !important;
+}
+
+/* ─── 1. Minimal Light Variant ─── */
+:root.minimal,
+:root.minimal-light,
+:root.minimal[data-theme="light"] {
+  /* Canvas & Surfaces */
+  --bg:                      #F6F6F4;
+  --bg-card:                 #FFFFFF;
+  --bg-secondary:            #F8F8F7;
+  --bg-card-header:          #FFFFFF;
+  --bg-subtle:               #F1F1EF;
+  --surface-sunken:          #EFEFEA;
+  --bg-hover:                #F2F2F0;
+  --sidebar-bg:              #FFFFFF;
+  --sidebar-text:            #525252;
+
+  /* Crisp Borders */
+  --border:                  #EBEBE9;
+  --border-light:            #F2F2F0;
+  --border-hover:            #D8D8D4;
+
+  /* Typography */
+  --text:                    #171717;
+  --text-secondary:          #737373;
+  --text-muted:              #9CA3AF;
+
+  /* Signature SaaS Emerald Green */
+  --brand-accent:            #168B45;
+  --brand-accent-hover:      #127339;
+  --brand-accent-active:     #0E5B2D;
+  --brand-accent-light:      #EAF7EC;
+  --brand-accent-border:     rgba(22, 139, 69, 0.25);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus:      rgba(22, 139, 69, 0.25);
+
+  --primary:                 #168B45;
+  --primary-hover:           #127339;
+  --primary-dark:            #0E5B2D;
+  --primary-light:           #EAF7EC;
+  --primary-50:              #EAF7EC;
+
+  /* Accent Highlight & Coin */
+  --accent-gold:             #168B45;
+  --accent-gold-bg:          #EAF7EC;
+  --accent-gold-border:      rgba(22, 139, 69, 0.25);
+  --accent-lime:             #92DF5B;
+  --accent-forest:           #164D3D;
+
+  /* Soft Ambient Shadows */
+  --shadow-sm:               0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow:                  0 4px 16px -2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-md:               0 8px 24px -4px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02);
+  --shadow-lg:               0 16px 40px -6px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+
+  /* Status Tokens */
+  --status-success:          #168B45;
+  --status-success-bg:       #EAF7EC;
+  --status-success-border:   #C6E7CE;
+  --status-warning:          #D97706;
+  --status-warning-bg:       #FEF3C7;
+  --status-warning-border:   #FDE68A;
+  --status-error:            #DC2626;
+  --status-error-bg:         #FEE2E2;
+  --status-error-border:     #FECACA;
+  --status-info:             #0284C7;
+  --status-info-bg:          #E0F2FE;
+  --status-info-border:      #BAE6FD;
+  --status-neutral:          #6B7280;
+  --status-neutral-bg:       #F3F4F6;
+  --status-neutral-border:   #E5E7EB;
+
+  --success:                 var(--status-success);
+  --success-light:           var(--status-success-bg);
+  --warning:                 var(--status-warning);
+  --warning-light:           var(--status-warning-bg);
+  --danger:                  var(--status-error);
+  --danger-light:            var(--status-error-bg);
+  --info:                    var(--status-info);
+  --info-light:              var(--status-info-bg);
+}
+
+/* ─── 2. Minimal Dark Variant ─── */
+:root.minimal-dark,
+:root.minimal.dark,
+:root.minimal.dark-mode,
+:root.minimal[data-theme="dark"] {
+  /* Canvas & Surfaces */
+  --bg:                      #0F1111;
+  --bg-card:                 #181B1B;
+  --bg-secondary:            #141717;
+  --bg-card-header:          #181B1B;
+  --bg-subtle:               #1D2121;
+  --surface-sunken:          #111313;
+  --bg-hover:                #1F2424;
+  --sidebar-bg:              #141717;
+  --sidebar-text:            #A1A1AA;
+
+  /* Crisp Borders */
+  --border:                  #272C2C;
+  --border-light:            #1E2222;
+  --border-hover:            #3B4242;
+
+  /* Typography */
+  --text:                    #F3F4F6;
+  --text-secondary:          #9CA3AF;
+  --text-muted:              #6B7280;
+
+  /* Spring Green for Dark Backgrounds */
+  --brand-accent:            #22C55E;
+  --brand-accent-hover:      #4ADE80;
+  --brand-accent-active:     #16A34A;
+  --brand-accent-light:      rgba(34, 197, 94, 0.16);
+  --brand-accent-border:     rgba(34, 197, 94, 0.30);
+  --brand-accent-foreground: #0B1E16;
+  --brand-accent-focus:      rgba(34, 197, 94, 0.35);
+
+  --primary:                 #22C55E;
+  --primary-hover:           #4ADE80;
+  --primary-dark:            #16A34A;
+  --primary-light:           rgba(34, 197, 94, 0.16);
+  --primary-50:              rgba(34, 197, 94, 0.16);
+
+  /* Accent Highlight & Coin */
+  --accent-gold:             #22C55E;
+  --accent-gold-bg:          rgba(34, 197, 94, 0.16);
+  --accent-gold-border:      rgba(34, 197, 94, 0.30);
+  --accent-lime:             #86EFAC;
+  --accent-forest:           #14532D;
+
+  /* Deep Atmospheric Dark Shadows */
+  --shadow-sm:               0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow:                  0 4px 16px -2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md:               0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg:               0 16px 40px -6px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* Status Tokens (Dark) */
+  --status-success:          #4ADE80;
+  --status-success-bg:       rgba(34, 197, 94, 0.16);
+  --status-success-border:   rgba(34, 197, 94, 0.30);
+  --status-warning:          #FBBF24;
+  --status-warning-bg:       rgba(245, 158, 11, 0.16);
+  --status-warning-border:   rgba(245, 158, 11, 0.30);
+  --status-error:            #F87171;
+  --status-error-bg:         rgba(239, 68, 68, 0.16);
+  --status-error-border:     rgba(239, 68, 68, 0.30);
+  --status-info:             #38BDF8;
+  --status-info-bg:          rgba(14, 165, 233, 0.16);
+  --status-info-border:      rgba(14, 165, 233, 0.30);
+  --status-neutral:          #9CA3AF;
+  --status-neutral-bg:       rgba(107, 114, 128, 0.18);
+  --status-neutral-border:   rgba(107, 114, 128, 0.30);
+
+  --success:                 var(--status-success);
+  --success-light:           var(--status-success-bg);
+  --warning:                 var(--status-warning);
+  --warning-light:           var(--status-warning-bg);
+  --danger:                  var(--status-error);
+  --danger-light:            var(--status-error-bg);
+  --info:                    var(--status-info);
+  --info-light:              var(--status-info-bg);
+}
+
+/* ─── 3. Minimal Component Architecture & Styling ─── */
+
+/* Global Typography & Numerals */
+:root.minimal,
+:root.minimal body,
+:root.minimal button,
+:root.minimal input,
+:root.minimal select,
+:root.minimal textarea {
+  font-family: var(--font-sans, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+:root.minimal .kpi-value,
+:root.minimal .price,
+:root.minimal .amount,
+:root.minimal .currency,
+:root.minimal td:has(.font-mono),
+:root.minimal .font-mono,
+:root.minimal [data-numeric="true"],
+:root.minimal table td:nth-child(n+4) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Sidebar Styling */
+:root.minimal .sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  box-shadow: none;
+}
+
+:root.minimal .sidebar-logo {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+:root.minimal .sidebar-section {
+  padding: 16px 20px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+:root.minimal .nav-item {
+  border-radius: var(--radius-pill);
+  padding: 10px 18px;
+  margin: 3px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--sidebar-text);
+  gap: 12px;
+  transition: all 0.15s ease;
+}
+
+:root.minimal .nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+:root.minimal-light .nav-item.active,
+:root.minimal:not(.minimal-dark):not(.dark):not(.dark-mode):not([data-theme="dark"]) .nav-item.active {
+  background: var(--primary-light) !important;
+  color: var(--primary) !important;
+  font-weight: 700;
+  box-shadow: none !important;
+}
+
+:root.minimal-light .nav-item.active svg,
+:root.minimal:not(.minimal-dark):not(.dark):not(.dark-mode):not([data-theme="dark"]) .nav-item.active svg {
+  stroke: var(--primary) !important;
+}
+
+:root.minimal-dark .nav-item.active,
+:root.minimal.dark .nav-item.active,
+:root.minimal.dark-mode .nav-item.active,
+:root.minimal[data-theme="dark"] .nav-item.active {
+  background: var(--primary-light) !important;
+  color: var(--primary) !important;
+  font-weight: 700;
+  box-shadow: none !important;
+}
+
+:root.minimal-dark .nav-item.active svg,
+:root.minimal.dark .nav-item.active svg,
+:root.minimal.dark-mode .nav-item.active svg,
+:root.minimal[data-theme="dark"] .nav-item.active svg {
+  stroke: var(--primary) !important;
+}
+
+:root.minimal .nav-item .badge,
+:root.minimal .nav-item-badge {
+  background: #FEE2E2;
+  color: #DC2626;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  margin-left: auto;
+}
+
+:root.minimal-dark .nav-item .badge,
+:root.minimal-dark .nav-item-badge {
+  background: rgba(239, 68, 68, 0.22);
+  color: #F87171;
+}
+
+/* Sidebar Firm Capsule (Reference Concept) */
+:root.minimal .sidebar-firm-capsule,
+:root.minimal .topbar-firm-capsule {
+  border-radius: 18px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+
+:root.minimal .sidebar-firm-capsule:hover,
+:root.minimal .topbar-firm-capsule:hover {
+  background: var(--bg-card);
+  border-color: var(--border-hover);
+}
+
+/* Topbar Styling */
+:root.minimal .topbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  height: 60px;
+  min-height: 60px;
+}
+
+:root.minimal .topbar-search-pill {
+  border-radius: var(--radius-pill);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  height: 40px;
+  padding: 0 16px;
+  color: var(--text-secondary);
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+:root.minimal .topbar-search-pill:hover,
+:root.minimal .topbar-search-pill:focus-within {
+  background: var(--bg-card);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  color: var(--text);
+}
+
+:root.minimal .topbar-search-pill kbd {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+:root.minimal .topbar-action-icon-btn,
+:root.minimal .theme-toggle-btn,
+:root.minimal .topbar-calc-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+:root.minimal .topbar-action-icon-btn:hover,
+:root.minimal .theme-toggle-btn:hover,
+:root.minimal .topbar-calc-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+:root.minimal .topbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 700;
+  border: 1.5px solid var(--border);
+}
+
+/* Card Surfaces (24px Geometry) */
+:root.minimal .card,
+:root.minimal .rcrm-dash-card,
+:root.minimal .rcrm-dash-workspace-card,
+:root.minimal .dash-card,
+:root.minimal .stat-card,
+:root.minimal .panel {
+  border-radius: 24px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  padding: 24px;
+  box-shadow: var(--shadow) !important;
+}
+
+/* KPI Cards (Clean Solid Surfaces, 24px Radii) */
+:root.minimal .kpi-card {
+  border-radius: 24px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  padding: 22px 24px;
+  box-shadow: var(--shadow) !important;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+:root.minimal .kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+:root.minimal .kpi-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+:root.minimal .kpi-value {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+:root.minimal .kpi-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+:root.minimal .kpi-card .kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* Neutralize Rainbow Gradient Tints in Minimal Mode */
+:root.minimal .kpi-blue,
+:root.minimal .kpi-sky,
+:root.minimal .kpi-green,
+:root.minimal .kpi-mint,
+:root.minimal .kpi-amber,
+:root.minimal .kpi-gold,
+:root.minimal .kpi-red,
+:root.minimal .kpi-rose,
+:root.minimal .kpi-purple,
+:root.minimal .kpi-lavender,
+:root.minimal .kpi-teal,
+:root.minimal .kpi-indigo {
+  background: var(--bg-card) !important;
+}
+
+/* Pill Buttons */
+:root.minimal .btn {
+  border-radius: var(--radius-pill) !important;
+  font-weight: 600;
+  height: 38px;
+  padding: 0 18px;
+  transition: all 0.15s ease;
+}
+
+:root.minimal .btn-primary {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--brand-accent-foreground, #FFFFFF) !important;
+  box-shadow: 0 2px 8px rgba(22, 139, 69, 0.22) !important;
+}
+
+:root.minimal .btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover) !important;
+  border-color: var(--primary-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(22, 139, 69, 0.32) !important;
+}
+
+:root.minimal .btn-secondary,
+:root.minimal .btn-outline {
+  background: var(--bg-card) !important;
+  border: 1.5px solid var(--border) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+:root.minimal .btn-secondary:hover:not(:disabled),
+:root.minimal .btn-outline:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-hover) !important;
+  color: var(--text) !important;
+  transform: translateY(-1px);
+}
+
+:root.minimal .btn-ghost {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+:root.minimal .btn-ghost:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  color: var(--text) !important;
+}
+
+:root.minimal .btn-sm {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 0.8rem;
+  border-radius: var(--radius-pill) !important;
+}
+
+:root.minimal .btn-xs {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+  border-radius: var(--radius-pill) !important;
+}
+
+:root.minimal .btn-icon {
+  border-radius: 50% !important;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+/* Form Controls (12px Radii) */
+:root.minimal .input,
+:root.minimal .select,
+:root.minimal .textarea {
+  border-radius: 12px !important;
+  border: 1.5px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+}
+
+:root.minimal .input:focus,
+:root.minimal .select:focus,
+:root.minimal .textarea:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+/* Tables (Spacious 20px Rounded Container) */
+:root.minimal .table-container {
+  border-radius: 20px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+:root.minimal thead th {
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  padding: 13px 18px !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+:root.minimal tbody td {
+  padding: 14px 18px !important;
+  border-bottom: 1px solid var(--border-light) !important;
+  color: var(--text) !important;
+  vertical-align: middle;
+}
+
+:root.minimal tbody tr {
+  transition: background 0.12s ease;
+}
+
+:root.minimal tbody tr:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* Pill Badges & Status Tags */
+:root.minimal .badge {
+  border-radius: var(--radius-pill) !important;
+  padding: 4px 12px !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+}
+
+:root.minimal .badge-success,
+:root.minimal .badge-paid {
+  background: var(--status-success-bg) !important;
+  color: var(--status-success) !important;
+  border: 1px solid var(--status-success-border) !important;
+}
+
+:root.minimal .badge-warning,
+:root.minimal .badge-partial,
+:root.minimal .badge-pending {
+  background: var(--status-warning-bg) !important;
+  color: var(--status-warning) !important;
+  border: 1px solid var(--status-warning-border) !important;
+}
+
+:root.minimal .badge-danger,
+:root.minimal .badge-error,
+:root.minimal .badge-overdue {
+  background: var(--status-error-bg) !important;
+  color: var(--status-error) !important;
+  border: 1px solid var(--status-error-border) !important;
+}
+
+:root.minimal .badge-info {
+  background: var(--status-info-bg) !important;
+  color: var(--status-info) !important;
+  border: 1px solid var(--status-info-border) !important;
+}
+
+:root.minimal .badge-neutral,
+:root.minimal .badge-draft {
+  background: var(--status-neutral-bg) !important;
+  color: var(--status-neutral) !important;
+  border: 1px solid var(--status-neutral-border) !important;
+}
+
+/* Modals & Dialogs */
+:root.minimal .modal-content,
+:root.minimal .modal-box {
+  border-radius: 24px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+:root.minimal .modal-header {
+  border-bottom: 1px solid var(--border-light);
+  padding: 20px 24px;
+}
+
+:root.minimal .modal-footer {
+  border-top: 1px solid var(--border-light);
+  padding: 16px 24px;
+}
+
+/* System Status Bar */
+:root.minimal .bottom-status-bar {
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+:root.minimal .bottom-status-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ─── Minimal SaaS Curated Palettes ─── */
+:root.minimal[data-accent="slate"],
+:root.minimal-light[data-accent="slate"] {
+  --primary: #0F172A;
+  --primary-hover: #1E293B;
+  --primary-dark: #020617;
+  --primary-light: #F1F5F9;
+  --brand-accent: #0F172A;
+  --brand-accent-light: #F1F5F9;
+  --brand-accent-foreground: #FFFFFF;
+}
+:root.minimal-dark[data-accent="slate"],
+:root.minimal[data-theme="dark"][data-accent="slate"] {
+  --primary: #94A3B8;
+  --primary-hover: #CBD5E1;
+  --primary-dark: #64748B;
+  --primary-light: rgba(148, 163, 184, 0.16);
+  --brand-accent: #94A3B8;
+  --brand-accent-foreground: #090D16;
+}
+
+:root.minimal[data-accent="indigo"],
+:root.minimal-light[data-accent="indigo"] {
+  --primary: #4F46E5;
+  --primary-hover: #4338CA;
+  --primary-dark: #3730A3;
+  --primary-light: #EEF2FF;
+  --brand-accent: #4F46E5;
+  --brand-accent-light: #EEF2FF;
+  --brand-accent-foreground: #FFFFFF;
+}
+:root.minimal-dark[data-accent="indigo"],
+:root.minimal[data-theme="dark"][data-accent="indigo"] {
+  --primary: #818CF8;
+  --primary-hover: #A5B4FC;
+  --primary-dark: #6366F1;
+  --primary-light: rgba(129, 140, 248, 0.16);
+  --brand-accent: #818CF8;
+  --brand-accent-foreground: #0B0F19;
+}
+
+:root.minimal[data-accent="sage"],
+:root.minimal-light[data-accent="sage"] {
+  --primary: #2D6A4F;
+  --primary-hover: #1B4332;
+  --primary-dark: #081C15;
+  --primary-light: #D8F3DC;
+  --brand-accent: #2D6A4F;
+  --brand-accent-light: #D8F3DC;
+  --brand-accent-foreground: #FFFFFF;
+}
+:root.minimal-dark[data-accent="sage"],
+:root.minimal[data-theme="dark"][data-accent="sage"] {
+  --primary: #52B788;
+  --primary-hover: #74C69D;
+  --primary-dark: #40916C;
+  --primary-light: rgba(82, 183, 136, 0.16);
+  --brand-accent: #52B788;
+  --brand-accent-foreground: #081C15;
+}
+
+:root.minimal[data-accent="teal"],
+:root.minimal-light[data-accent="teal"] {
+  --primary: #0F766E;
+  --primary-hover: #115E59;
+  --primary-dark: #134E4A;
+  --primary-light: #F0FDFA;
+  --brand-accent: #0F766E;
+  --brand-accent-light: #F0FDFA;
+  --brand-accent-foreground: #FFFFFF;
+}
+:root.minimal-dark[data-accent="teal"],
+:root.minimal[data-theme="dark"][data-accent="teal"] {
+  --primary: #2DD4BF;
+  --primary-hover: #5EEAD4;
+  --primary-dark: #14B8A6;
+  --primary-light: rgba(45, 212, 191, 0.16);
+  --brand-accent: #2DD4BF;
+  --brand-accent-foreground: #081C1B;
+}
+
+/* ─── Typography Registries (Data-Font) ─── */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-font="inter"],
+:root[data-font="inter"] body,
+:root[data-font="inter"] button,
+:root[data-font="inter"] input,
+:root[data-font="inter"] select,
+:root[data-font="inter"] textarea,
+:root[data-font="inter"] .card,
+:root[data-font="inter"] table {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+:root[data-font="jakarta"],
+:root[data-font="jakarta"] body,
+:root[data-font="jakarta"] button,
+:root[data-font="jakarta"] input,
+:root[data-font="jakarta"] select,
+:root[data-font="jakarta"] textarea,
+:root[data-font="jakarta"] .card,
+:root[data-font="jakarta"] table {
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+:root[data-font="roboto"],
+:root[data-font="roboto"] body,
+:root[data-font="roboto"] button,
+:root[data-font="roboto"] input,
+:root[data-font="roboto"] select,
+:root[data-font="roboto"] textarea,
+:root[data-font="roboto"] .card,
+:root[data-font="roboto"] table {
+  --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif !important;
+}
+
+:root[data-font="system"],
+:root[data-font="system"] body,
+:root[data-font="system"] button,
+:root[data-font="system"] input,
+:root[data-font="system"] select,
+:root[data-font="system"] textarea,
+:root[data-font="system"] .card,
+:root[data-font="system"] table {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+:root[data-font="tahoma"],
+:root[data-font="tahoma"] body,
+:root[data-font="tahoma"] button,
+:root[data-font="tahoma"] input,
+:root[data-font="tahoma"] select,
+:root[data-font="tahoma"] textarea,
+:root[data-font="tahoma"] .card,
+:root[data-font="tahoma"] table {
+  --font-sans: 'Tahoma', 'Segoe UI', Arial, sans-serif;
+  font-family: 'Tahoma', 'Segoe UI', Arial, sans-serif !important;
+}
+
+:root[data-font="mssansserif"],
+:root[data-font="mssansserif"] body,
+:root[data-font="mssansserif"] button,
+:root[data-font="mssansserif"] input,
+:root[data-font="mssansserif"] select,
+:root[data-font="mssansserif"] textarea,
+:root[data-font="mssansserif"] .card,
+:root[data-font="mssansserif"] table {
+  --font-sans: 'MS Sans Serif', 'Tahoma', 'Segoe UI', sans-serif;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Segoe UI', sans-serif !important;
+}
+
+:root[data-font="fixedsys"],
+:root[data-font="fixedsys"] body,
+:root[data-font="fixedsys"] button,
+:root[data-font="fixedsys"] input,
+:root[data-font="fixedsys"] select,
+:root[data-font="fixedsys"] textarea,
+:root[data-font="fixedsys"] .card,
+:root[data-font="fixedsys"] table {
+  --font-sans: 'Fixedsys', 'Courier New', monospace;
+  font-family: 'Fixedsys', 'Courier New', monospace !important;
+}
+
+:root[data-font="segoe"],
+:root[data-font="segoe"] body,
+:root[data-font="segoe"] button,
+:root[data-font="segoe"] input,
+:root[data-font="segoe"] select,
+:root[data-font="segoe"] textarea,
+:root[data-font="segoe"] .card,
+:root[data-font="segoe"] table {
+  --font-sans: 'Segoe UI', Tahoma, Arial, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif !important;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   LIVE SANDBOXED THEME PREVIEW CONTAINER
+   ════════════════════════════════════════════════════════════════ */
+.theme-preview-sandbox {
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.theme-preview-sandbox[data-font="inter"] { font-family: 'Inter', -apple-system, sans-serif !important; }
+.theme-preview-sandbox[data-font="jakarta"] { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important; }
+.theme-preview-sandbox[data-font="roboto"] { font-family: 'Roboto', -apple-system, sans-serif !important; }
+.theme-preview-sandbox[data-font="system"] { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; }
+.theme-preview-sandbox[data-font="tahoma"] { font-family: 'Tahoma', 'Segoe UI', sans-serif !important; }
+.theme-preview-sandbox[data-font="mssansserif"] { font-family: 'MS Sans Serif', Tahoma, sans-serif !important; }
+.theme-preview-sandbox[data-font="fixedsys"] { font-family: 'Fixedsys', 'Courier New', monospace !important; }
+.theme-preview-sandbox[data-font="segoe"] { font-family: 'Segoe UI', Tahoma, sans-serif !important; }
+.theme-preview-sandbox * { font-family: inherit; }
+
+/* Sandbox Mode Surfaces */
+.theme-preview-sandbox.minimal-light {
+  --bg-app: #F6F6F4;
+  --bg-card: #FFFFFF;
+  --bg-secondary: #EBEBE9;
+  --border: #E5E5E3;
+  --text: #171717;
+  --text-secondary: #737373;
+  --card-radius: 20px;
+}
+.theme-preview-sandbox.minimal-dark {
+  --bg-app: #0F1111;
+  --bg-card: #181B1B;
+  --bg-secondary: #222626;
+  --border: #2A3030;
+  --text: #F3F4F6;
+  --text-secondary: #9CA3AF;
+  --card-radius: 20px;
+}
+.theme-preview-sandbox.light-1 {
+  --bg-app: #F4F6F8;
+  --bg-card: #FFFFFF;
+  --bg-secondary: #F1F5F9;
+  --border: #E2E8F0;
+  --text: #1E293B;
+  --text-secondary: #64748B;
+  --card-radius: 12px;
+}
+.theme-preview-sandbox.dark-1 {
+  --bg-app: #0B0F19;
+  --bg-card: #111827;
+  --bg-secondary: #1F2937;
+  --border: #374151;
+  --text: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --card-radius: 12px;
+}
+.theme-preview-sandbox.classic {
+  --bg-app: #008080;
+  --bg-card: #C0C0C0;
+  --bg-secondary: #D4D0C8;
+  --border: #808080;
+  --text: #000000;
+  --text-secondary: #404040;
+  --card-radius: 0px;
+}
+.theme-preview-sandbox.classic-dark {
+  --bg-app: #0C282C;
+  --bg-card: #1A1A1A;
+  --bg-secondary: #2A2A2A;
+  --border: #3A3A3A;
+  --text: #00FFCC;
+  --text-secondary: #80CBC4;
+  --card-radius: 0px;
+}
+
+/* Sandbox Palettes */
+.theme-preview-sandbox[data-accent="emerald"] { --primary: #168B45; --primary-light: #EAF7EC; --primary-hover: #126C35; }
+.theme-preview-sandbox.minimal-dark[data-accent="emerald"] { --primary: #22C55E; --primary-light: rgba(34, 197, 94, 0.16); --primary-hover: #4ADE80; }
+
+.theme-preview-sandbox[data-accent="slate"] { --primary: #0F172A; --primary-light: #F1F5F9; --primary-hover: #1E293B; }
+.theme-preview-sandbox.minimal-dark[data-accent="slate"] { --primary: #94A3B8; --primary-light: rgba(148, 163, 184, 0.16); --primary-hover: #CBD5E1; }
+
+.theme-preview-sandbox[data-accent="indigo"] { --primary: #4F46E5; --primary-light: #EEF2FF; --primary-hover: #4338CA; }
+.theme-preview-sandbox.minimal-dark[data-accent="indigo"] { --primary: #818CF8; --primary-light: rgba(129, 140, 248, 0.16); --primary-hover: #A5B4FC; }
+
+.theme-preview-sandbox[data-accent="sage"] { --primary: #2D6A4F; --primary-light: #D8F3DC; --primary-hover: #1B4332; }
+.theme-preview-sandbox.minimal-dark[data-accent="sage"] { --primary: #52B788; --primary-light: rgba(82, 183, 136, 0.16); --primary-hover: #74C69D; }
+
+.theme-preview-sandbox[data-accent="teal"] { --primary: #0F766E; --primary-light: #F0FDFA; --primary-hover: #115E59; }
+.theme-preview-sandbox.minimal-dark[data-accent="teal"] { --primary: #2DD4BF; --primary-light: rgba(45, 212, 191, 0.16); --primary-hover: #5EEAD4; }
+
+.theme-preview-sandbox[data-accent="forest"] { --primary: #16845B; --primary-light: #E7F1E9; --primary-hover: #126C4A; }
+.theme-preview-sandbox.dark-1[data-accent="forest"] { --primary: #39B987; --primary-light: rgba(57, 185, 135, 0.16); --primary-hover: #4EDBA5; }
+
+.theme-preview-sandbox[data-accent="navy"] { --primary: #1D4ED8; --primary-light: #EFF6FF; --primary-hover: #1E40AF; }
+.theme-preview-sandbox.dark-1[data-accent="navy"] { --primary: #60A5FA; --primary-light: rgba(96, 165, 250, 0.16); --primary-hover: #93C5FD; }
+
+.theme-preview-sandbox[data-accent="plum"] { --primary: #6B21A8; --primary-light: #FAF5FF; --primary-hover: #581C87; }
+.theme-preview-sandbox.dark-1[data-accent="plum"] { --primary: #C084FC; --primary-light: rgba(192, 132, 252, 0.16); --primary-hover: #E9D5FF; }
+
+.theme-preview-sandbox[data-accent="burgundy"] { --primary: #881337; --primary-light: #FFF1F2; --primary-hover: #700E2B; }
+.theme-preview-sandbox.dark-1[data-accent="burgundy"] { --primary: #FB7185; --primary-light: rgba(251, 113, 133, 0.16); --primary-hover: #FECDD3; }
+
+.theme-preview-sandbox[data-accent="amber"] { --primary: #B45309; --primary-light: #FFFBEB; --primary-hover: #92400E; }
+.theme-preview-sandbox.dark-1[data-accent="amber"] { --primary: #FBBF24; --primary-light: rgba(251, 191, 36, 0.16); --primary-hover: #FDE68A; }
+
+.theme-preview-sandbox[data-accent="win98-standard"] { --primary: #000080; --primary-light: #008080; }
+.theme-preview-sandbox[data-accent="win98-noir"] { --primary: #00E5FF; --primary-light: #000000; }
+.theme-preview-sandbox[data-accent="classic-slate"] { --primary: #3A6EA5; --primary-light: #D4D0C8; }
+.theme-preview-sandbox[data-accent="desert-gold"] { --primary: #800000; --primary-light: #D2B48C; }
+.theme-preview-sandbox[data-accent="spruce-green"] { --primary: #004040; --primary-light: #20B2AA; }
+.theme-preview-sandbox[data-accent="retro-plum"] { --primary: #4A0E4E; --primary-light: #FF007F; }
+
+/* ─── Minimal Balanced Density & Invoice Optimization ─── */
+:root.minimal .invoice-builder-card {
+  padding: 20px 24px !important;
+  border-radius: 20px !important;
+  margin-bottom: 20px !important;
+}
+
+:root.minimal .invoice-meta-grid {
+  padding: 14px 18px !important;
+  margin-bottom: 16px !important;
+  border-radius: 12px !important;
+  gap: 12px !important;
+}
+
+:root.minimal .invoice-table td,
+:root.minimal .invoice-items-table td {
+  padding: 7px 10px !important;
+  font-size: 0.84rem !important;
+}
+
+:root.minimal .invoice-table th,
+:root.minimal .invoice-items-table th {
+  padding: 8px 10px !important;
+  font-size: 0.74rem !important;
+}
+
+:root.minimal .invoice-table input,
+:root.minimal .invoice-table select,
+:root.minimal .invoice-items-table input,
+:root.minimal .invoice-items-table select {
+  height: 32px !important;
+  padding: 4px 8px !important;
+  font-size: 0.82rem !important;
+  border-radius: 8px !important;
+}
+
+:root.minimal .totals-box {
+  padding: 14px 18px !important;
+  border-radius: 14px !important;
+  gap: 8px !important;
+}
+
+:root.minimal .invoice-bottom-grid {
+  gap: 16px !important;
+  margin-top: 16px !important;
+}
+
+/* ─── Minimal SaaS Dashboard Reference Presentation ─── */
+.rcrm-minimal-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.rcrm-minimal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 4px 0 8px 0;
+}
+
+.rcrm-minimal-header-left h2 {
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 4px 0;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rcrm-minimal-header-left p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.rcrm-minimal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rcrm-minimal-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+
+.rcrm-minimal-pill-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.rcrm-minimal-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .rcrm-minimal-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .rcrm-minimal-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rcrm-minimal-kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 22px 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.rcrm-minimal-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
+}
+
+.rcrm-minimal-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rcrm-minimal-kpi-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  font-size: 1.15rem;
+}
+
+.rcrm-minimal-kpi-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 10px;
+  flex: 1;
+}
+
+.rcrm-minimal-kpi-info-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rcrm-minimal-kpi-val {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  line-height: 1.15;
+  margin: 6px 0 12px 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.rcrm-minimal-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.rcrm-minimal-delta-badge.positive {
+  background: #EAF7EC;
+  color: #168B45;
+  border: 1px solid #C6E7CE;
+}
+
+.rcrm-minimal-delta-badge.negative {
+  background: #FEE2E2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+}
+
+.rcrm-minimal-delta-badge.neutral {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+:root.minimal-dark .rcrm-minimal-delta-badge.positive {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ADE80;
+  border-color: rgba(34, 197, 94, 0.30);
+}
+:root.minimal-dark .rcrm-minimal-delta-badge.negative {
+  background: rgba(239, 68, 68, 0.16);
+  color: #F87171;
+  border-color: rgba(239, 68, 68, 0.30);
+}
+
+/* Secondary Metrics Pill Strip (Preserves remaining Business Metrics) */
+.rcrm-minimal-secondary-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.rcrm-minimal-secondary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  padding-right: 14px;
+  border-right: 1px solid var(--border);
+}
+
+.rcrm-minimal-secondary-item:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.rcrm-minimal-secondary-item strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Visualizations 2-Column Grid */
+.rcrm-minimal-viz-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 18px;
+}
+
+@media (max-width: 960px) {
+  .rcrm-minimal-viz-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rcrm-minimal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.rcrm-minimal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.rcrm-minimal-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.rcrm-minimal-action-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rcrm-minimal-action-circle:hover {
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
+  transform: translateX(2px);
+}
+
+/* 180-Degree Radial Gauge */
+.rcrm-minimal-radial-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0 16px 0;
+  position: relative;
+}
+
+.rcrm-minimal-radial-center {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.rcrm-minimal-radial-center h3 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--text);
+  line-height: 1;
+}
+
+.rcrm-minimal-radial-center span {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.rcrm-minimal-radial-note {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 12px 0 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rcrm-minimal-progress-bar {
+  display: flex;
+  height: 10px;
+  width: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--bg-secondary);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.rcrm-minimal-progress-seg {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.rcrm-minimal-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.rcrm-minimal-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+/* Weekly Pill-Bar Chart */
+.rcrm-minimal-pill-chart-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.rcrm-minimal-chart-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.rcrm-minimal-chart-big-val {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.rcrm-minimal-pill-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  height: 160px;
+  padding: 10px 0;
+  position: relative;
+}
+
+.rcrm-minimal-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rcrm-minimal-bar-pill {
+  width: 28px;
+  border-radius: var(--radius-pill);
+  transition: height 0.3s ease, background 0.2s ease;
+  position: relative;
+  min-height: 16px;
+  cursor: pointer;
+}
+
+.rcrm-minimal-bar-pill:hover {
+  filter: brightness(1.08);
+}
+
+.rcrm-minimal-bar-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Hatched pattern cap for quota/target */
+.rcrm-minimal-hatched-cap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  border-radius: 14px 14px 0 0;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0.3) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+/* Recent Invoices Table Card */
+.rcrm-minimal-table-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.rcrm-minimal-table-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  color: var(--text);
+  width: 220px;
+}
+
+.rcrm-minimal-table-search input {
+  background: none;
+  border: none;
+  outline: none;
+  width: 100%;
+  color: inherit;
+  font-size: inherit;
+}
+
+.rcrm-minimal-action-btn-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.8rem;
+}
+
+.rcrm-minimal-action-btn-sm:hover {
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
+}
+
 
 /* ---------- Classic Retro Theme (Windows 95/98 Light Variant) ---------- */
 :root.classic {
@@ -1073,6 +2668,44 @@
   --sidebar-bg: #2B3037;
   --sidebar-text: #FFFFFF;
 }
+
+/* ─── Classic Retro Curated Palettes ─── */
+:root.classic[data-accent="classic-slate"] {
+  --bg: #4A6572;
+  --bg-card: #C0C0C0;
+  --bg-card-header: #3A6EA5;
+  --primary: #3A6EA5;
+}
+:root.classic[data-accent="desert-gold"] {
+  --bg: #7C4D3A;
+  --bg-card: #C0C0C0;
+  --bg-card-header: #800000;
+  --primary: #800000;
+}
+:root.classic[data-accent="spruce-green"] {
+  --bg: #1B4D3E;
+  --bg-card: #C0C0C0;
+  --bg-card-header: #004040;
+  --primary: #004040;
+}
+
+:root.classic-dark[data-accent="win98-noir"] {
+  --bg: #000000;
+  --bg-card: #181818;
+  --bg-secondary: #000000;
+  --bg-card-header: #004080;
+  --primary: #00FFFF;
+  --text: #FFFFFF;
+}
+:root.classic-dark[data-accent="retro-plum"] {
+  --bg: #180018;
+  --bg-card: #281828;
+  --bg-secondary: #100010;
+  --bg-card-header: #600060;
+  --primary: #FF007F;
+  --text: #FFFFFF;
+}
+
 
 /* Enforce 0px border radius and retro font everywhere in classic-dark mode */
 :root.classic-dark,

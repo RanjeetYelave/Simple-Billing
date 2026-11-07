@@ -662,25 +662,25 @@ public class BackupService {
             if ("merge".equals(normalizedMode) && targetFirmId != null) {
                 oldToNewFirmIdMap.put(targetFirmId, singleMappedId);
             }
-            // Auto-map all entity firm IDs in single-firm backup
-            if (backup.getCustomers() != null) {
-                for (Customer c : backup.getCustomers()) {
-                    if (c.getFirmId() != null) oldToNewFirmIdMap.put(c.getFirmId(), singleMappedId);
+            // Auto-map entity firm IDs in single-firm backup ONLY if no selective firmIds scoping was requested,
+            // and only if all entities in the backup belong to a single consistent source firm ID.
+            // Never collapse multiple conflicting firm IDs or unselected firm data into a single destination firm!
+            if (selectedFirmIds == null || selectedFirmIds.isEmpty()) {
+                Set<Long> entityFirmIds = new HashSet<>();
+                if (backup.getCustomers() != null) {
+                    for (Customer c : backup.getCustomers()) if (c.getFirmId() != null) entityFirmIds.add(c.getFirmId());
                 }
-            }
-            if (backup.getProducts() != null) {
-                for (Product p : backup.getProducts()) {
-                    if (p.getFirmId() != null) oldToNewFirmIdMap.put(p.getFirmId(), singleMappedId);
+                if (backup.getProducts() != null) {
+                    for (Product p : backup.getProducts()) if (p.getFirmId() != null) entityFirmIds.add(p.getFirmId());
                 }
-            }
-            if (backup.getInvoices() != null) {
-                for (Invoice inv : backup.getInvoices()) {
-                    if (inv.getFirmId() != null) oldToNewFirmIdMap.put(inv.getFirmId(), singleMappedId);
+                if (backup.getInvoices() != null) {
+                    for (Invoice inv : backup.getInvoices()) if (inv.getFirmId() != null) entityFirmIds.add(inv.getFirmId());
                 }
-            }
-            if (backup.getNotifications() != null) {
-                for (Notification n : backup.getNotifications()) {
-                    if (n.getFirmId() != null) oldToNewFirmIdMap.put(n.getFirmId(), singleMappedId);
+                if (backup.getNotifications() != null) {
+                    for (Notification n : backup.getNotifications()) if (n.getFirmId() != null) entityFirmIds.add(n.getFirmId());
+                }
+                if (entityFirmIds.size() == 1) {
+                    oldToNewFirmIdMap.put(entityFirmIds.iterator().next(), singleMappedId);
                 }
             }
         }

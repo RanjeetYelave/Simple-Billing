@@ -829,17 +829,24 @@ public class DiagnosticRecoveryIntegrationTest {
                 .andReturn().getRequest().getSession(false);
 
         // Create valid snapshot
-        mockMvc.perform(post("/api/recovery/backups/snapshot/json").session(session))
-                .andExpect(status().isOk());
-
-        String scanResp = mockMvc.perform(get("/api/recovery/backups/scan").session(session))
+        String createResp = mockMvc.perform(post("/api/recovery/backups/snapshot/json").session(session))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        Map<?, ?> scanMap = objectMapper.readValue(scanResp, Map.class);
-        List<?> snapshots = (List<?>) scanMap.get("tier2bDiagnosticSnapshots");
-        Map<?, ?> firstSnap = (Map<?, ?>) snapshots.get(0);
-        String recoveryId = (String) firstSnap.get("recoveryId");
+        Map<?, ?> createMap = objectMapper.readValue(createResp, Map.class);
+        String createdFilename = (String) createMap.get("filename");
+        String recoveryId = (createdFilename != null) ? ("DIAGNOSTIC:" + createdFilename) : null;
+
+        if (recoveryId == null) {
+            String scanResp = mockMvc.perform(get("/api/recovery/backups/scan").session(session))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+
+            Map<?, ?> scanMap = objectMapper.readValue(scanResp, Map.class);
+            List<?> snapshots = (List<?>) scanMap.get("tier2bDiagnosticSnapshots");
+            Map<?, ?> firstSnap = (Map<?, ?>) snapshots.get(0);
+            recoveryId = (String) firstSnap.get("recoveryId");
+        }
 
         Long existingFirmId = firmDetailsRepo.findAll().isEmpty() ? 1L : firmDetailsRepo.findAll().get(0).getId();
         // Execute restore with firmIds scoping and CONFIRM token

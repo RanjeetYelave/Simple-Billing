@@ -76,6 +76,7 @@ public class InvoiceSnapshotDTO {
         private String unit;
         private String hsnCode;
         private BigDecimal pricePerUnit;
+        private BigDecimal unitCostPrice;
         private BigDecimal amountWithoutTax;
         private String discountType;
         private BigDecimal discountValue;

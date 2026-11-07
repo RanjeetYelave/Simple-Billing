@@ -928,6 +928,7 @@ public class ProductService {
 
 		BigDecimal totalRetailValue = BigDecimal.ZERO;
 		BigDecimal totalCostValue = BigDecimal.ZERO;
+		BigDecimal totalStockUnits = BigDecimal.ZERO;
 
 		BigDecimal totalMarginSum = BigDecimal.ZERO;
 		int marginProductCount = 0;
@@ -954,6 +955,7 @@ public class ProductService {
 			}
 
 			if (stock.compareTo(BigDecimal.ZERO) > 0) {
+				totalStockUnits = totalStockUnits.add(stock);
 				totalRetailValue = totalRetailValue.add(price.multiply(stock));
 				totalCostValue = totalCostValue.add(cost.multiply(stock));
 			}
@@ -974,11 +976,14 @@ public class ProductService {
 		summary.put("totalProducts", totalProducts);
 		summary.put("goodsCount", goodsCount);
 		summary.put("servicesCount", servicesCount);
+		summary.put("totalStockUnits", totalStockUnits.setScale(2, RoundingMode.HALF_UP));
 		summary.put("lowStockCount", lowStockCount);
 		summary.put("outOfStockCount", outOfStockCount);
 		summary.put("totalRetailValue", totalRetailValue.setScale(2, RoundingMode.HALF_UP));
 		summary.put("totalCostValue", totalCostValue.setScale(2, RoundingMode.HALF_UP));
+		summary.put("totalValuationAtCost", totalCostValue.setScale(2, RoundingMode.HALF_UP));
 		summary.put("averageGrossMarginPercent", avgGrossMargin);
+		summary.put("estimatedMarginPercent", avgGrossMargin);
 
 		return summary;
 	}

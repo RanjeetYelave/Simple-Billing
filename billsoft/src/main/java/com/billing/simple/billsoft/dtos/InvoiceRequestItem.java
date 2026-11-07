@@ -17,6 +17,7 @@ public class InvoiceRequestItem {
      * Must be provided by UI when selecting a product.
      * For custom/manual items, UI must create a temporary Product first.
      */
+    private Long id;
     private Long productId;
     private String productName;
 
@@ -34,6 +35,12 @@ public class InvoiceRequestItem {
     private BigDecimal pricePerUnit;
 
     /* -------------------------------------------------------------
+       HISTORICAL COST
+       If provided/retained → backend preserves historical cost
+    ------------------------------------------------------------- */
+    private BigDecimal unitCostPrice;
+
+    /* -------------------------------------------------------------
        DISCOUNT (ITEM-LEVEL)
        VALUE ONLY (₹ discount amount per line)
     ------------------------------------------------------------- */
@@ -44,6 +51,9 @@ public class InvoiceRequestItem {
        If null → backend uses Product.gstPercentage
     ------------------------------------------------------------- */
     private BigDecimal gstPercent;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
     public Long getProductId() { return productId; }
     public void setProductId(Long productId) { this.productId = productId; }
@@ -63,6 +73,9 @@ public class InvoiceRequestItem {
     public BigDecimal getPricePerUnit() { return pricePerUnit; }
     public void setPricePerUnit(BigDecimal pricePerUnit) { this.pricePerUnit = pricePerUnit; }
 
+    public BigDecimal getUnitCostPrice() { return unitCostPrice; }
+    public void setUnitCostPrice(BigDecimal unitCostPrice) { this.unitCostPrice = unitCostPrice; }
+
     public BigDecimal getDiscountValue() { return discountValue; }
     public void setDiscountValue(BigDecimal discountValue) { this.discountValue = discountValue; }
 
@@ -74,32 +87,38 @@ public class InvoiceRequestItem {
     }
 
     public static class InvoiceRequestItemBuilder {
+        private Long id;
         private Long productId;
         private String productName;
         private Integer qty;
         private String unit;
         private String hsnCode;
         private BigDecimal pricePerUnit;
+        private BigDecimal unitCostPrice;
         private BigDecimal discountValue;
         private BigDecimal gstPercent;
 
+        public InvoiceRequestItemBuilder id(Long id) { this.id = id; return this; }
         public InvoiceRequestItemBuilder productId(Long productId) { this.productId = productId; return this; }
         public InvoiceRequestItemBuilder productName(String productName) { this.productName = productName; return this; }
         public InvoiceRequestItemBuilder qty(Integer qty) { this.qty = qty; return this; }
         public InvoiceRequestItemBuilder unit(String unit) { this.unit = unit; return this; }
         public InvoiceRequestItemBuilder hsnCode(String hsnCode) { this.hsnCode = hsnCode; return this; }
         public InvoiceRequestItemBuilder pricePerUnit(BigDecimal pricePerUnit) { this.pricePerUnit = pricePerUnit; return this; }
+        public InvoiceRequestItemBuilder unitCostPrice(BigDecimal unitCostPrice) { this.unitCostPrice = unitCostPrice; return this; }
         public InvoiceRequestItemBuilder discountValue(BigDecimal discountValue) { this.discountValue = discountValue; return this; }
         public InvoiceRequestItemBuilder gstPercent(BigDecimal gstPercent) { this.gstPercent = gstPercent; return this; }
 
         public InvoiceRequestItem build() {
             InvoiceRequestItem item = new InvoiceRequestItem();
+            item.id = this.id;
             item.productId = this.productId;
             item.productName = this.productName;
             item.qty = this.qty;
             item.unit = this.unit;
             item.hsnCode = this.hsnCode;
             item.pricePerUnit = this.pricePerUnit;
+            item.unitCostPrice = this.unitCostPrice;
             item.discountValue = this.discountValue;
             item.gstPercent = this.gstPercent;
             return item;

@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequest.Discount;
@@ -157,6 +159,18 @@ public class InvoiceCalculationEngine {
         }
 
         /* ---------------------------
+           CAPTURE EXISTING PERSISTED ITEMS (FOR UPDATES)
+        ---------------------------- */
+        Map<Long, InvoiceItem> existingItemsById = new HashMap<>();
+        if (invoice.getItems() != null) {
+            for (InvoiceItem existingItem : invoice.getItems()) {
+                if (existingItem.getId() != null) {
+                    existingItemsById.put(existingItem.getId(), existingItem);
+                }
+            }
+        }
+
+        /* ---------------------------
            REBUILD ITEMS ALWAYS
         ---------------------------- */
         invoice.getItems().clear();
@@ -170,7 +184,7 @@ public class InvoiceCalculationEngine {
                         throw new com.billing.simple.billsoft.security.TenantSecurityException("Product (ID " + product.getId() + ", " + product.getName() + ") belongs to a different firm.");
                     }
                 }
-                InvoiceItem item = buildItem(ri, product, invoice.getPricingProfileId(), invoice.getFirmId());
+                InvoiceItem item = buildItem(ri, product, invoice.getPricingProfileId(), invoice.getFirmId(), existingItemsById, isUpdateMode);
                 if (item != null) {
                     item.setInvoice(invoice);
                     items.add(item);
@@ -343,7 +357,8 @@ public class InvoiceCalculationEngine {
     /* ======================================================================
        ITEM BUILDER
        ====================================================================== */
-    private InvoiceItem buildItem(InvoiceRequestItem req, Product product, Long pricingProfileId, Long firmId) {
+    private InvoiceItem buildItem(InvoiceRequestItem req, Product product, Long pricingProfileId, Long firmId,
+                                  Map<Long, InvoiceItem> existingItemsById, boolean isUpdate) {
         InvoiceItem item = new InvoiceItem();
 
         item.setProduct(product);
@@ -358,6 +373,34 @@ public class InvoiceCalculationEngine {
 
         item.setHsnCode(req.getHsnCode() != null && !req.getHsnCode().isBlank() ? req.getHsnCode()
                 : (product != null ? product.getHsnCode() : null));
+
+        // -------------------------
+        // HISTORICAL COST SNAPSHOT (SECURED)
+        // -------------------------
+        BigDecimal unitCost = null;
+
+        // 1. If updating an existing invoice, preserve the cost snapshot ONLY IF the line item
+        // was already persisted on this invoice AND corresponds to the exact same product.
+        if (isUpdate && req.getId() != null && existingItemsById != null && existingItemsById.containsKey(req.getId())) {
+            InvoiceItem existingItem = existingItemsById.get(req.getId());
+            Long existingProdId = (existingItem.getProduct() != null) ? existingItem.getProduct().getId() : null;
+            Long reqProdId = (product != null) ? product.getId() : (req.getProductId() != null ? req.getProductId() : null);
+
+            if (java.util.Objects.equals(existingProdId, reqProdId) && existingItem.getUnitCostPrice() != null) {
+                unitCost = existingItem.getUnitCostPrice();
+            }
+        }
+
+        // 2. Otherwise (new invoice, new line added during edit, or product changed on line):
+        // ALWAYS source cost strictly from the backend Product entity.
+        // Frontend-supplied unitCostPrice in req is strictly ignored to prevent client manipulation.
+        if (unitCost == null && product != null && product.getCostPrice() != null) {
+            unitCost = product.getCostPrice();
+        }
+
+        if (unitCost != null) {
+            item.setUnitCostPrice(unitCost.setScale(SCALE, RoundingMode.HALF_UP));
+        }
 
         BigDecimal price;
         if (req.getPricePerUnit() != null) {

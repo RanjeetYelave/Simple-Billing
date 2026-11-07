@@ -14,6 +14,7 @@
 
   <script src="js/api.js?v=20260914_licensing_v2"></script>
   <script src="js/utils.js?v=20261025_payment_terms_v2"></script>
+  <script src="js/dataSync.js?v=20261107_v1"></script>
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
@@ -406,7 +407,7 @@
       }
 
       // Determine light vs dark
-      const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark'));
+      const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark' || theme === 'minimal-dark'));
 
       // Resolve theme accent key (normalize aliases)
       const normAccent = (accent || '').toLowerCase().trim();
@@ -5346,15 +5347,27 @@
 
     // ─── SIDEBAR ───
     function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [] }) {
-      const navItems = [
+      const [sidebarThemeState, setSidebarThemeState] = useState(() => (window.getThemeState ? window.getThemeState() : { style: 'minimal' }));
+      useEffect(() => {
+        const handler = () => { if (window.getThemeState) setSidebarThemeState(window.getThemeState()); };
+        window.addEventListener('themeChanged', handler);
+        return () => window.removeEventListener('themeChanged', handler);
+      }, []);
+
+      const isMinimal = sidebarThemeState.style === 'minimal';
+
+      const mainNav = [
         { id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard },
         { id: 'invoices', label: 'Invoices & Quotes', icon: Icons.invoice },
         { id: 'firm', label: 'Firm', icon: Icons.building },
+      ];
+      const workspaceNav = [
         { id: 'planner', label: 'Planner', icon: Icons.planner },
         { id: 'inbox', label: 'Inbox', icon: Icons.inbox },
         { id: 'hr', label: 'HR', icon: Icons.users },
         { id: 'settings', label: 'Settings', icon: Icons.settings },
       ];
+
       const handleNav = (id) => { onNavigate(id); if (setMobileOpen) setMobileOpen(false); };
       return React.createElement(Fragment, null,
         mobileOpen && React.createElement('div', { className: 'sidebar-overlay active', onClick: () => setMobileOpen && setMobileOpen(false) }),
@@ -5430,7 +5443,20 @@
             )
           ),
           React.createElement('nav', { className: 'sidebar-nav' },
-            navItems.map(item =>
+            isMinimal ? React.createElement(Fragment, null,
+              React.createElement('div', { className: 'sidebar-section' }, 'Main'),
+              mainNav.map(item =>
+                React.createElement('div', { key: item.id, className: `nav-item${activePage === item.id ? ' active' : ''}`, onClick: () => handleNav(item.id) },
+                  item.icon, React.createElement('span', null, item.label)
+                )
+              ),
+              React.createElement('div', { className: 'sidebar-section', style: { marginTop: 14 } }, 'Workspace'),
+              workspaceNav.map(item =>
+                React.createElement('div', { key: item.id, className: `nav-item${activePage === item.id ? ' active' : ''}`, onClick: () => handleNav(item.id) },
+                  item.icon, React.createElement('span', null, item.label)
+                )
+              )
+            ) : [...mainNav, ...workspaceNav].map(item =>
               React.createElement('div', { key: item.id, className: `nav-item${activePage === item.id ? ' active' : ''}`, onClick: () => handleNav(item.id) },
                 item.icon, React.createElement('span', null, item.label)
               )
@@ -5661,15 +5687,23 @@
         if (onConvertToInvoice) onConvertToInvoice(doc.id);
       };
 
-      const loadData = useCallback(() => {
-        setLoading(true);
+      const loadData = useCallback((opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         Promise.all([
           API.invoices.listFinal(0, 1000),
           API.invoices.listEstimates(0, 1000),
           API.returns.list().catch(() => [])
         ]).then(([invList, estList, retsList]) => {
-          setInvoices(invList ? (Array.isArray(invList) ? invList : invList.content || []) : []);
-          setEstimates(estList ? (Array.isArray(estList) ? estList : estList.content || []) : []);
+          const freshInvoices = invList ? (Array.isArray(invList) ? invList : invList.content || []) : [];
+          const freshEstimates = estList ? (Array.isArray(estList) ? estList : estList.content || []) : [];
+          setInvoices(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshInvoices)) ? prev : freshInvoices);
+          setEstimates(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshEstimates)) ? prev : freshEstimates);
           const retMap = {};
           (retsList || []).forEach(r => {
             const invId = r.invoice ? r.invoice.id : null;
@@ -5678,11 +5712,12 @@
               retMap[invId].push(r);
             }
           });
-          setReturnsByInvoice(retMap);
-          setLoading(false);
-        }).catch(() => {
-          showToast('Failed to load documents', 'error');
-          setLoading(false);
+          setReturnsByInvoice(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, retMap)) ? prev : retMap);
+        }).catch(err => {
+          console.debug('[Invoices] Load error:', err);
+          if (!isSilent) showToast('Failed to load documents', 'error');
+        }).finally(() => {
+          if (!isSilent) setLoading(false);
         });
       }, []);
 
@@ -5719,10 +5754,16 @@
           }
         }
 
-        window.addEventListener('billsoft:app-refresh', loadData);
+        const onAppRefresh = (e) => {
+          const isSilent = Boolean((e && e.type === 'billsoft:silent-data-refresh') || (e && e.detail && e.detail.isSilent));
+          loadData({ silent: isSilent });
+        };
+        window.addEventListener('billsoft:app-refresh', onAppRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', onAppRefresh);
         window.addEventListener('billsoft:navigate-subtab', onNavFilter);
         return () => {
-          window.removeEventListener('billsoft:app-refresh', loadData);
+          window.removeEventListener('billsoft:app-refresh', onAppRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', onAppRefresh);
           window.removeEventListener('billsoft:navigate-subtab', onNavFilter);
         };
       }, [loadData]);
@@ -12019,6 +12060,12 @@
 
     const GestureCreationPalette = CompactQuickActionPalette;
 
+    // ─── MINIMAL SAAS DASHBOARD DEPRECATED (MIGRATED TO CANONICAL DASHBOARD) ───
+
+
+
+    // MinimalSaaSDashboardView has been retired. All themes use canonical Dashboard with theme CSS tokens.
+
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
@@ -12122,6 +12169,8 @@
       const [products, setProducts] = useState([]);
       const [parties, setParties] = useState([]);
       const [customers, setCustomers] = useState([]);
+      const [recentInvoices, setRecentInvoices] = useState([]);
+
       const [empAnalytics, setEmpAnalytics] = useState(null);
       const [searchName, setSearchName] = useState('');
       const [searchResults, setSearchResults] = useState(null);
@@ -12208,8 +12257,12 @@
 
       const norm = (res) => Array.isArray(res) ? res : (res && res.content && Array.isArray(res.content) ? res.content : []);
 
-      const loadDashboardData = useCallback(() => {
-        setLoading(true);
+      const loadDashboardData = useCallback((opts = {}) => {
+        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('dashboard')) return;
+
         Promise.allSettled([
           API.kpis.dashboard(),
           API.purchaseOrders && API.purchaseOrders.list ? API.purchaseOrders.list() : Promise.resolve([]),
@@ -12217,11 +12270,12 @@
           API.parties && API.parties.list ? API.parties.list() : Promise.resolve([]),
           API.customers && API.customers.list ? API.customers.list() : Promise.resolve([]),
           API.employees && API.employees.analytics ? API.employees.analytics() : Promise.resolve(null),
-          API.system && API.system.updateStatus ? API.system.updateStatus() : Promise.resolve(null)
-        ]).then(([kpiRes, poRes, prodRes, partyRes, custRes, empRes, updateRes]) => {
+          API.system && API.system.updateStatus ? API.system.updateStatus() : Promise.resolve(null),
+          API.invoices && API.invoices.list ? API.invoices.list(0, 10) : Promise.resolve([])
+        ]).then(([kpiRes, poRes, prodRes, partyRes, custRes, empRes, updateRes, invRes]) => {
           if (kpiRes.status === 'fulfilled' && kpiRes.value) {
-            setData(kpiRes.value);
-          } else {
+            setData(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, kpiRes.value)) ? prev : kpiRes.value);
+          } else if (!isSilent) {
             setData({
               totalBusiness: 0,
               totalPaid: 0,
@@ -12242,15 +12296,36 @@
               quoteCount: 0
             });
           }
-          if (poRes.status === 'fulfilled') setPurchaseOrders(norm(poRes.value));
-          if (prodRes.status === 'fulfilled') setProducts(norm(prodRes.value));
-          if (partyRes.status === 'fulfilled') setParties(norm(partyRes.value));
-          if (custRes.status === 'fulfilled') setCustomers(norm(custRes.value));
-          if (empRes.status === 'fulfilled' && empRes.value) setEmpAnalytics(empRes.value);
-          if (updateRes.status === 'fulfilled' && updateRes.value && updateRes.value.updateAvailable) setUpdateInfo(updateRes.value);
-          setLoading(false);
-        }).catch(() => {
-          setLoading(false);
+          if (poRes.status === 'fulfilled') {
+            const normed = norm(poRes.value);
+            setPurchaseOrders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (prodRes.status === 'fulfilled') {
+            const normed = norm(prodRes.value);
+            setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (partyRes.status === 'fulfilled') {
+            const normed = norm(partyRes.value);
+            setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (custRes.status === 'fulfilled') {
+            const normed = norm(custRes.value);
+            setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (empRes.status === 'fulfilled' && empRes.value) {
+            setEmpAnalytics(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, empRes.value)) ? prev : empRes.value);
+          }
+          if (updateRes.status === 'fulfilled' && updateRes.value && updateRes.value.updateAvailable) {
+            setUpdateInfo(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, updateRes.value)) ? prev : updateRes.value);
+          }
+          if (invRes && invRes.status === 'fulfilled') {
+            const normed = norm(invRes.value);
+            setRecentInvoices(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (!isSilent) setLoading(false);
+        }).catch(err => {
+          console.debug('[Dashboard] Load error:', err);
+          if (!isSilent) setLoading(false);
         });
       }, []);
 
@@ -12267,7 +12342,7 @@
           API.announcements.get()
             .then(res => {
               if (Array.isArray(res) && res.length > 0) {
-                setAnnouncements(res);
+                setAnnouncements(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res);
                 const currentKey = getAnnouncementsKey(res);
                 try {
                   const acknowledgedKey = localStorage.getItem('rupeecrm_announcements_ack');
@@ -12300,11 +12375,14 @@
       useEffect(() => {
         loadDashboardData();
         loadAnnouncements();
+        const handleSilentRefresh = () => loadDashboardData({ silent: true });
         window.addEventListener('billsoft:app-refresh', loadDashboardData);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
         window.addEventListener('billsoft:app-refresh', loadAnnouncements);
         window.addEventListener('billsoft:announcements-refresh', loadAnnouncements);
         return () => {
           window.removeEventListener('billsoft:app-refresh', loadDashboardData);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
           window.removeEventListener('billsoft:app-refresh', loadAnnouncements);
           window.removeEventListener('billsoft:announcements-refresh', loadAnnouncements);
         };
@@ -12653,7 +12731,12 @@
         : 0;
 
       const maxBusinessVal = Math.max(data.businessThisYear || 0, data.businessThisMonth || 0, data.businessThisWeek || 0, data.businessToday || 0, 1);
-      const currentFirmObj = firms ? firms.find(f => String(f.id) === String(API.firmId)) : null;
+      const currentFirmObj = (firms && Array.isArray(firms))
+        ? (firms.find(f => String(f.id) === String(API.firmId)) || firms[0] || null)
+        : null;
+      const greetingName = (currentFirmObj && (currentFirmObj.ownerName || currentFirmObj.firmName))
+        ? (currentFirmObj.ownerName || currentFirmObj.firmName)
+        : 'Business Owner';
 
       // ─── 6 Business KPIs ───
       const businessKpis = [
@@ -12752,13 +12835,13 @@
           // Left: Title + Segment Switcher
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'nowrap', minWidth: 0, flexShrink: 1 } },
             React.createElement('div', { style: { minWidth: 0, flexShrink: 1 } },
-              React.createElement('h1', { style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, 'Dashboard'),
+              React.createElement('h1', { className: 'dashboard-title', style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, `Welcome back, ${greetingName}! 👋`),
               React.createElement('div', {
                 style: {
                   fontSize: '0.78rem',
                   color: 'var(--text-secondary)',
                   marginTop: 2,
-                  maxWidth: 220,
+                  maxWidth: 280,
                   minWidth: 0,
                   whiteSpace: 'nowrap',
                   display: 'flex',
@@ -12769,7 +12852,7 @@
               },
                 React.createElement('span', { style: { flexShrink: 0 } }, new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
                 currentFirmObj ? React.createElement('span', { style: { flexShrink: 0, opacity: 0.6 } }, '•') : null,
-                currentFirmObj ? React.createElement('span', { style: { maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
+                currentFirmObj ? React.createElement('span', { style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
               )
             ),
             // Segment Switcher Pill
@@ -12855,6 +12938,7 @@
 
           // Compact Business Operational Highlights Ribbon
           React.createElement('div', {
+            className: 'rcrm-dash-ribbon',
             style: {
               display: 'flex',
               flexWrap: 'wrap',
@@ -14659,7 +14743,12 @@
       }, [editId]);
 
       useEffect(() => {
-        const handleBackgroundRefresh = async () => {
+        const handleBackgroundRefresh = async (e) => {
+          // If user has begun typing an invoice or added line items, preserve state completely
+          if (form && form.items && form.items.length > 0) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.canRefreshSafely()) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
           const targetFid = selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId || null));
           if (!targetFid) return;
           try {
@@ -14667,15 +14756,22 @@
               API.customers.list(targetFid),
               API.products.list({}, targetFid)
             ]);
-            setCustomers(custs || []);
-            setProducts(prods || []);
+            const freshCusts = custs || [];
+            const freshProds = prods || [];
+            setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCusts)) ? prev : freshCusts);
+            setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
           } catch (e) {
-            console.warn('InvoiceForm background refresh failed:', e);
+            console.debug('InvoiceForm background refresh failed:', e);
           }
         };
+
         window.addEventListener('billsoft:app-refresh', handleBackgroundRefresh);
-        return () => window.removeEventListener('billsoft:app-refresh', handleBackgroundRefresh);
-      }, [selectedFirmId, activeFirmId]);
+        window.addEventListener('billsoft:silent-data-refresh', handleBackgroundRefresh);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', handleBackgroundRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', handleBackgroundRefresh);
+        };
+      }, [selectedFirmId, activeFirmId, form]);
 
       const handlePricingProfileChange = async (e) => {
         const newProfileId = e.target.value;
@@ -15528,7 +15624,12 @@
             React.createElement('div', { className: 'invoice-title-block' },
               React.createElement('h2', null, isEstimate ? 'SALES QUOTATION' : 'TAX INVOICE'),
               React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                `${(firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId)) || {}).firmName || 'Apex Retail Solutions Pvt Ltd'} • GSTIN: ${(firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId)) || {}).gstin || '27AABCA1234F1Z6'}`
+                (() => {
+                  const currentF = firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId));
+                  const fName = (currentF && currentF.firmName) ? currentF.firmName : 'Our Business';
+                  const gstin = (currentF && currentF.gstin) ? ` • GSTIN: ${currentF.gstin}` : '';
+                  return `${fName}${gstin}`;
+                })()
               )
             )
           ),
@@ -17886,25 +17987,43 @@
         if (onClearSelectedReturnDetail) onClearSelectedReturnDetail();
       };
 
-      const load = useCallback((isManualRefresh = false) => {
-        if (isManualRefresh) setRefreshing(true);
-        else setLoading(true);
+      const load = useCallback((isManualRefresh = false, opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) {
+          if (isManualRefresh) setRefreshing(true);
+          else setLoading(true);
+        }
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         API.returns.list().then(list => {
-          setReturns(Array.isArray(list) ? list : []);
+          const fresh = Array.isArray(list) ? list : [];
+          setReturns(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
         }).catch(err => {
-          console.error(err);
-          showToast('Failed to load sales returns', 'error');
+          console.debug('[Returns] Load error:', err);
+          if (!isSilent) showToast('Failed to load sales returns', 'error');
         }).finally(() => {
-          setLoading(false);
-          setRefreshing(false);
+          if (!isSilent) {
+            setLoading(false);
+            setRefreshing(false);
+          }
         });
       }, []);
 
       useEffect(() => {
         load();
-        const onAppRefresh = () => load(true);
+        const onAppRefresh = (e) => {
+          const isSilent = Boolean(e && (e.type === 'billsoft:silent-data-refresh' || (e.detail && e.detail.isSilent)));
+          load(!isSilent, { silent: isSilent });
+        };
+        const handleSilent = () => load(false, { silent: true });
         window.addEventListener('billsoft:app-refresh', onAppRefresh);
-        return () => window.removeEventListener('billsoft:app-refresh', onAppRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', onAppRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
+        };
       }, [load]);
 
       const formatLocalDate = (d) => {
@@ -19917,21 +20036,31 @@
           });
       };
 
-      const load = useCallback(() => {
-        setLoading(true);
+      const load = useCallback((opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.products.list(),
           API.products.summary().catch(() => null),
           API.products.categories().catch(() => [])
         ]).then(([prods, sum, cats]) => {
-          setProducts(prods || []);
-          setSummary(sum);
-          setCategories(cats || []);
-          setLoading(false);
+          const freshProds = prods || [];
+          const freshCats = cats || [];
+          setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
+          if (sum) setSummary(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum)) ? prev : sum);
+          setCategories(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCats)) ? prev : freshCats);
+          if (!isSilent) setLoading(false);
         }).catch((err) => {
-          console.error(err);
-          showToast('Failed to load inventory', 'error');
-          setLoading(false);
+          console.debug('[Inventory] Load error:', err);
+          if (!isSilent) {
+            showToast('Failed to load inventory', 'error');
+            setLoading(false);
+          }
         });
       }, []);
 
@@ -19942,10 +20071,13 @@
             setInventoryTab(e.detail.inventoryTab);
           }
         };
+        const handleSilent = () => load({ silent: true });
         window.addEventListener('billsoft:app-refresh', load);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         window.addEventListener('billsoft:navigate-subtab', handleSubtabNav);
         return () => {
           window.removeEventListener('billsoft:app-refresh', load);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
           window.removeEventListener('billsoft:navigate-subtab', handleSubtabNav);
         };
       }, [load]);
@@ -20276,7 +20408,7 @@
             React.createElement('div', { className: 'firm-kpi-ribbon-item' },
               React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Valuation at Cost:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } },
-                BillsoftUtils.formatCurrency(summary.totalValuationAtCost || 0)
+                BillsoftUtils.formatCurrency(summary.totalValuationAtCost != null ? summary.totalValuationAtCost : (summary.totalCostValue || 0))
               )
             ),
             // Capsule 3: Low Stock Alerts (Click to filter)
@@ -20307,7 +20439,7 @@
             React.createElement('div', { className: 'firm-kpi-ribbon-item' },
               React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Est. Margin:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } },
-                `${summary.estimatedMarginPercent || 0}%`
+                `${summary.estimatedMarginPercent != null ? summary.estimatedMarginPercent : (summary.averageGrossMarginPercent || 0)}%`
               )
             )
           ),
@@ -22849,21 +22981,32 @@
       const [selectedCustomerId, setSelectedCustomerId] = useState(null);
       const [partyLinksMap, setPartyLinksMap] = useState({ customerToParty: {}, partyToCustomer: {} });
 
-      const load = useCallback(async () => {
-        setLoading(true);
+      const load = useCallback(async (opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm') && !RupeeCRMSync.isPageVisible('customers')) return;
+
         try {
           const [custList, kpiList, linkMap] = await Promise.all([
             API.customers.list().catch(() => []),
             API.kpis.customers().catch(() => []),
             API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
           ]);
-          setCustomers(custList || []);
-          setCustomerKpis(Array.isArray(kpiList) ? kpiList : []);
-          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
+          const freshCusts = custList || [];
+          const freshKpis = Array.isArray(kpiList) ? kpiList : [];
+          const freshMap = linkMap || { customerToParty: {}, partyToCustomer: {} };
+
+          setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCusts)) ? prev : freshCusts);
+          setCustomerKpis(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshKpis)) ? prev : freshKpis);
+          setPartyLinksMap(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshMap)) ? prev : freshMap);
         } catch (e) {
-          showToast('Failed to load customers', 'error');
+          console.debug('[Customers] Load error:', e);
+          if (!isSilent) showToast('Failed to load customers', 'error');
         } finally {
-          setLoading(false);
+          if (!isSilent) setLoading(false);
         }
       }, []);
 
@@ -22895,12 +23038,15 @@
           }
         }
 
+        const handleSilent = () => load({ silent: true });
         window.addEventListener('click', closeMenuOnOutsideClick);
         window.addEventListener('billsoft:app-refresh', load);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         window.addEventListener('billsoft:navigate-subtab', handleCustNav);
         return () => {
           window.removeEventListener('click', closeMenuOnOutsideClick);
           window.removeEventListener('billsoft:app-refresh', load);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
           window.removeEventListener('billsoft:navigate-subtab', handleCustNav);
         };
       }, [load]);
@@ -23224,7 +23370,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Dues:'),
                 React.createElement('strong', { style: { color: metrics.totalReceivables > 0 ? '#b91c1c' : 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.totalReceivables)}`
+                  BillsoftUtils.formatCurrency(metrics.totalReceivables)
                 ),
                 metrics.debtorCount > 0 && React.createElement('span', { style: { fontSize: '0.70rem', color: 'var(--text-muted)' } }, `(${metrics.debtorCount})`)
               ),
@@ -23243,7 +23389,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Collections:'),
                 React.createElement('strong', { style: { color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.realizedCollections)}`
+                  BillsoftUtils.formatCurrency(metrics.realizedCollections)
                 )
               ),
               React.createElement('div', {
@@ -23261,7 +23407,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Turnover:'),
                 React.createElement('strong', { style: { color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.lifetimeTurnover)}`
+                  BillsoftUtils.formatCurrency(metrics.lifetimeTurnover)
                 )
               )
             )
@@ -23387,11 +23533,11 @@
                             dues > 0 ? React.createElement('span', {
                               className: 'cust-balance-pill due',
                               style: { fontSize: '0.74rem', padding: '2px 6px' }
-                            }, `₹${BillsoftUtils.formatCurrency(dues)}`) :
+                            }, BillsoftUtils.formatCurrency(dues)) :
                             dues < 0 ? React.createElement('span', {
                               className: 'cust-balance-pill credit',
                               style: { fontSize: '0.74rem', padding: '2px 6px' }
-                            }, `₹${BillsoftUtils.formatCurrency(Math.abs(dues))} Adv`) :
+                            }, `${BillsoftUtils.formatCurrency(Math.abs(dues))} Adv`) :
                             React.createElement('span', {
                               className: 'cust-balance-pill settled',
                               style: { fontSize: '0.74rem', padding: '2px 6px' }
@@ -23491,19 +23637,19 @@
                     React.createElement('div', null,
                       React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Outstanding Due'),
                       React.createElement('div', { style: { fontSize: '0.96rem', fontWeight: 700, color: activeStats.dues > 0 ? '#b91c1c' : 'var(--text-primary)', fontFamily: 'var(--font-mono, monospace)' } },
-                        `₹${BillsoftUtils.formatCurrency(activeStats.dues)}`
+                        BillsoftUtils.formatCurrency(activeStats.dues)
                       )
                     ),
                     React.createElement('div', null,
                       React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Total Billed'),
                       React.createElement('div', { style: { fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono, monospace)' } },
-                        `₹${BillsoftUtils.formatCurrency(activeStats.totalBilled)}`
+                        BillsoftUtils.formatCurrency(activeStats.totalBilled)
                       )
                     ),
                     React.createElement('div', null,
                       React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' } }, 'Total Paid'),
                       React.createElement('div', { style: { fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono, monospace)' } },
-                        `₹${BillsoftUtils.formatCurrency(activeStats.totalPaid)}`
+                        BillsoftUtils.formatCurrency(activeStats.totalPaid)
                       )
                     ),
                     React.createElement('div', null,
@@ -23867,27 +24013,45 @@
         bankIfsc: '', upiId: '', openingBalance: 0, openingBalanceType: 'PAYABLE', notes: ''
       });
 
-      const load = () => {
-        setLoading(true);
+      const load = (opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.parties.list(),
           API.parties.listSummaries(),
           API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
         ]).then(([pList, sList, linkMap]) => {
-          setParties(pList ? (Array.isArray(pList) ? pList : pList.content || []) : []);
-          setSummaries(sList ? (Array.isArray(sList) ? sList : sList.content || []) : []);
-          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
-          setLoading(false);
-        }).catch(() => {
-          showToast('Failed to load parties', 'error');
-          setLoading(false);
+          const freshParties = pList ? (Array.isArray(pList) ? pList : pList.content || []) : [];
+          const freshSummaries = sList ? (Array.isArray(sList) ? sList : sList.content || []) : [];
+          const freshMap = linkMap || { customerToParty: {}, partyToCustomer: {} };
+
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshParties)) ? prev : freshParties);
+          setSummaries(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshSummaries)) ? prev : freshSummaries);
+          setPartyLinksMap(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshMap)) ? prev : freshMap);
+          if (!isSilent) setLoading(false);
+        }).catch((err) => {
+          console.debug('[Parties] Load error:', err);
+          if (!isSilent) {
+            showToast('Failed to load parties', 'error');
+            setLoading(false);
+          }
         });
       };
 
       useEffect(() => {
         load();
+        const handleSilent = () => load({ silent: true });
         window.addEventListener('billsoft:app-refresh', load);
-        return () => window.removeEventListener('billsoft:app-refresh', load);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', load);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
+        };
       }, []);
 
       const openCreate = () => {
@@ -24250,7 +24414,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Orders:'),
                 React.createElement('strong', { style: { color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.totalOrders)}`
+                  BillsoftUtils.formatCurrency(metrics.totalOrders)
                 )
               ),
               React.createElement('div', {
@@ -24268,7 +24432,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Paid:'),
                 React.createElement('strong', { style: { color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.totalPaid)}`
+                  BillsoftUtils.formatCurrency(metrics.totalPaid)
                 )
               ),
               React.createElement('div', {
@@ -24286,7 +24450,7 @@
               },
                 React.createElement('span', { style: { color: 'var(--text-muted)' } }, 'Debt:'),
                 React.createElement('strong', { style: { color: metrics.totalPayableDebt > 0 ? '#b91c1c' : 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
-                  `₹${BillsoftUtils.formatCurrency(metrics.totalPayableDebt)}`
+                  BillsoftUtils.formatCurrency(metrics.totalPayableDebt)
                 )
               )
             )
@@ -24346,11 +24510,11 @@
                       if (net > 0) {
                         badgeColor = '#ef4444';
                         badgeBg = 'rgba(239, 68, 68, 0.12)';
-                        badgeText = `₹${BillsoftUtils.formatCurrency(net).replace('₹', '')} Owe`;
+                        badgeText = `${BillsoftUtils.formatCurrency(net)} Owe`;
                       } else if (net < 0) {
                         badgeColor = '#10b981';
                         badgeBg = 'rgba(16, 185, 129, 0.12)';
-                        badgeText = `₹${BillsoftUtils.formatCurrency(Math.abs(net)).replace('₹', '')} Adv`;
+                        badgeText = `${BillsoftUtils.formatCurrency(Math.abs(net))} Adv`;
                       }
 
                       return React.createElement('tr', { key: p.id },
@@ -25809,20 +25973,32 @@
         items: [defaultItem()]
       });
 
-      const load = () => {
-        setLoading(true);
+      const load = (opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.purchaseOrders.list(),
           API.parties.list(),
           API.products.list()
         ]).then(([poList, pList, prList]) => {
-          setOrders(poList || []);
-          setParties(pList || []);
-          setProducts(prList || []);
-          setLoading(false);
-        }).catch(() => {
-          showToast('Failed to load purchase orders', 'error');
-          setLoading(false);
+          const freshOrders = poList || [];
+          const freshParties = pList || [];
+          const freshProds = prList || [];
+          setOrders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshOrders)) ? prev : freshOrders);
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshParties)) ? prev : freshParties);
+          setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
+          if (!isSilent) setLoading(false);
+        }).catch((err) => {
+          console.debug('[PurchaseOrders] Load error:', err);
+          if (!isSilent) {
+            showToast('Failed to load purchase orders', 'error');
+            setLoading(false);
+          }
         });
       };
 
@@ -26013,8 +26189,15 @@
           }
         }
 
+        const handleSilent = () => load({ silent: true });
+        window.addEventListener('billsoft:app-refresh', load);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         window.addEventListener('billsoft:navigate-subtab', handlePoNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handlePoNav);
+        return () => {
+          window.removeEventListener('billsoft:app-refresh', load);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
+          window.removeEventListener('billsoft:navigate-subtab', handlePoNav);
+        };
       }, [openEdit]);
 
       // Item update logic matching InvoiceForm
@@ -26491,15 +26674,16 @@
 
       // Metrics
       const metrics = useMemo(() => {
-        let totalOrders = orders.length;
+        let totalOrders = 0;
         let totalAmt = 0;
         let totalPaid = 0;
         let totalYetToPay = 0;
 
         orders.forEach(po => {
           if (po.status !== 'CANCELLED') {
-            const amt = po.totalAmount || 0;
-            const paid = po.paidAmount || (po.paymentStatus === 'PAID' ? amt : 0);
+            totalOrders++;
+            const amt = Number(po.totalAmount) || 0;
+            const paid = Number(po.paidAmount) || (po.paymentStatus === 'PAID' ? amt : 0);
             totalAmt += amt;
             totalPaid += paid;
             totalYetToPay += Math.max(0, amt - paid);
@@ -28854,9 +29038,19 @@
       const [journalSearch, setJournalSearch] = useState('');
       const [journalTypeFilter, setJournalTypeFilter] = useState('ALL'); // 'ALL' | 'SALE_INVOICE' | 'PURCHASE_ORDER' | 'VENDOR_PAYMENT'
 
-      const loadEntityData = useCallback(() => {
-        API.parties.list().then(setParties).catch(() => { });
-        API.customers.list().then(setCustomers).catch(() => { });
+      const loadEntityData = useCallback((opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined') ? RupeeCRMSync.isSilentRefresh(opts) : false;
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
+        API.parties.list().then(p => {
+          const fresh = p || [];
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
+        }).catch(() => { });
+
+        API.customers.list().then(c => {
+          const fresh = c || [];
+          setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
+        }).catch(() => { });
       }, []);
 
       useEffect(() => {
@@ -28867,14 +29061,16 @@
           setCustomerId('');
           setStatementData(null);
         };
-        const onAppRefresh = () => {
-          loadEntityData();
-        };
+        const onAppRefresh = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.coalesceEvent((e) => loadEntityData(e))
+          : (e) => loadEntityData(e);
         window.addEventListener('billsoft:firm-changed', onFirmChange);
         window.addEventListener('billsoft:app-refresh', onAppRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', onAppRefresh);
         return () => {
           window.removeEventListener('billsoft:firm-changed', onFirmChange);
           window.removeEventListener('billsoft:app-refresh', onAppRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', onAppRefresh);
         };
       }, [loadEntityData]);
 
@@ -29554,6 +29750,134 @@
                       React.createElement('button', { className: 'btn btn-primary', onClick: handleDownloadStatementPdf }, '📥 PDF Statement / Export'),
                       React.createElement('button', { className: 'btn btn-outline', onClick: handleDownloadStatementPdf }, '🖨️ Print')
                     )
+                  ),
+
+                  // ── PERIOD GROSS PROFIT SUMMARY CARD ──
+                  React.createElement('div', {
+                    className: 'card',
+                    style: {
+                      padding: '18px 20px',
+                      marginBottom: 20,
+                      background: 'var(--bg-card)',
+                      borderRadius: 'var(--radius)',
+                      border: '1px solid var(--border)',
+                      boxShadow: 'var(--shadow)'
+                    }
+                  },
+                    React.createElement('div', {
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                        borderBottom: '1px solid var(--border)',
+                        paddingBottom: 12,
+                        marginBottom: 14
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 } },
+                          '📈 Period Gross Profit Summary'
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          `Accounting Period: ${statementData.from ? BillsoftUtils.formatDate(statementData.from) : 'Beginning'} to ${statementData.to ? BillsoftUtils.formatDate(statementData.to) : 'Today'} (Historical Transaction Basis)`
+                        )
+                      ),
+                      (!statementData.isProfitComplete && statementData.uncostedLineItemsCount > 0) && React.createElement('span', {
+                        className: 'badge badge-warning',
+                        style: { fontSize: '0.74rem', padding: '4px 8px', borderRadius: 6 }
+                      }, `⚠️ Incomplete Cost Data (${statementData.uncostedLineItemsCount} legacy item(s) uncosted)`)
+                    ),
+
+                    // Profit Metrics Grid / Breakdown
+                    React.createElement('div', {
+                      style: {
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: 12,
+                        marginBottom: 14
+                      }
+                    },
+                      // 1. Total Sales (excl GST)
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Total Sales (excl. GST)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--text)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodTotalSalesExGst || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Gross selling minus discounts')
+                      ),
+
+                      // 2. Cost of Goods Sold
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Cost of Goods Sold (COGS)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: '#b45309' } },
+                          BillsoftUtils.formatCurrency(statementData.periodCogs || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Historical unit cost × sold qty')
+                      ),
+
+                      // 3. Sales Returns (excl GST)
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Sales Returns (excl. GST)'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--danger)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodSalesReturnsExGst || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Net returned sales revenue')
+                      ),
+
+                      // 4. Cost Reversed on Returns
+                      React.createElement('div', { style: { padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' } },
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Cost Reversed on Returns'),
+                        React.createElement('div', { style: { fontSize: '1.2rem', fontWeight: 700, margin: '4px 0', color: 'var(--success)' } },
+                          BillsoftUtils.formatCurrency(statementData.periodCostReversedOnReturns || 0)
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'Inventory cost reversed')
+                      )
+                    ),
+
+                    // Net Profit Row
+                    React.createElement('div', {
+                      style: {
+                        padding: '12px 16px',
+                        borderRadius: 'var(--radius)',
+                        background: (statementData.periodNetProfit || 0) >= 0 ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                        border: `1px solid ${(statementData.periodNetProfit || 0) >= 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10
+                      }
+                    },
+                      React.createElement('div', null,
+                        React.createElement('div', { style: { fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: (statementData.periodNetProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)' } },
+                          'Net Profit for Selected Period'
+                        ),
+                        React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                          'Formula: (Total Sales − Sales Returns) − (COGS − Cost Reversed on Returns)'
+                        )
+                      ),
+                      React.createElement('div', {
+                        style: {
+                          fontSize: '1.6rem',
+                          fontWeight: 800,
+                          color: (statementData.periodNetProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)'
+                        }
+                      },
+                        BillsoftUtils.formatCurrency(statementData.periodNetProfit || 0)
+                      )
+                    ),
+
+                    // Legacy item note if uncosted items present
+                    (!statementData.isProfitComplete && statementData.uncostedLineItemsCount > 0) && React.createElement('div', {
+                      style: {
+                        marginTop: 10,
+                        fontSize: '0.74rem',
+                        color: 'var(--text-secondary)',
+                        fontStyle: 'italic'
+                      }
+                    }, `* Notice: ${statementData.uncostedLineItemsCount} legacy line item(s) lack historical cost snapshots and are excluded from COGS to avoid misrepresenting estimates as verified profit.`)
                   ),
 
                   // 6 Executive Financial KPI Cards
@@ -33711,585 +34035,744 @@
       );
     }
 
-    // ─── APPEARANCE & DISPLAY SETTINGS ───
+    // ─── APPEARANCE & DISPLAY SETTINGS (IMMEDIATE APPLICATION, ZERO SEPARATE PREVIEW) ───
     function SettingsAppearance() {
-      const [themeState, setThemeState] = useState(() => (window.getThemeState ? window.getThemeState() : {
-        family: 'modern', isDark: false, activeIsDark: false, schedule: 'manual', customStart: '19:00', customEnd: '07:00', activeClass: 'light-1'
-      }));
+      // 1. Authoritative Persisted State from localStorage
+      const getSavedConfig = () => {
+        if (window.getStoredThemeConfig) return window.getStoredThemeConfig();
+        const initialTheme = (window.getThemeState ? window.getThemeState() : {});
+        return {
+          family: initialTheme.family === 'classic' ? 'classic' : 'material',
+          style: initialTheme.style || (initialTheme.family === 'classic' ? 'retro98' : 'minimal'),
+          mode: initialTheme.mode || (initialTheme.schedule === 'system' ? 'system' : (initialTheme.activeIsDark ? 'dark' : 'light')),
+          palette: initialTheme.accent || (initialTheme.family === 'classic' ? 'win98-standard' : (initialTheme.style === 'modern' ? 'forest' : 'emerald')),
+          font: initialTheme.font || (initialTheme.family === 'classic' ? 'tahoma' : 'inter'),
+          scheduleEnabled: Boolean(initialTheme.scheduleEnabled || initialTheme.schedule === 'sunset' || initialTheme.schedule === 'custom'),
+          scheduleMode: initialTheme.schedule === 'sunset' ? 'sunset' : (initialTheme.scheduleMode || 'custom'),
+          customDarkStart: initialTheme.customDarkStart || initialTheme.customStart || '19:00',
+          customLightStart: initialTheme.customLightStart || initialTheme.customEnd || '07:00'
+        };
+      };
+
+      const [appliedConfig, setAppliedConfig] = useState(getSavedConfig);
+      const [activeConfig, setActiveConfig] = useState(() => {
+        return (window.getActiveThemeConfig ? window.getActiveThemeConfig() : getSavedConfig());
+      });
+
+      const [pendingNav, setPendingNav] = useState(null);
+      const [showUnsavedModal, setShowUnsavedModal] = useState(false);
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
 
+      // Dirty State Detection
+      const isDirty = useMemo(() => {
+        const norm = (c) => ({
+          family: c.family,
+          style: c.style,
+          mode: c.mode,
+          palette: c.palette || c.accent,
+          font: c.font,
+          scheduleEnabled: !!c.scheduleEnabled,
+          scheduleMode: c.scheduleMode,
+          customDarkStart: c.customDarkStart,
+          customLightStart: c.customLightStart
+        });
+        return JSON.stringify(norm(activeConfig)) !== JSON.stringify(norm(appliedConfig));
+      }, [activeConfig, appliedConfig]);
+
+      // Immediate Live Application Helper (The application itself IS the preview!)
+      const updateActiveConfig = (updater) => {
+        setActiveConfig(prev => {
+          const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+          if (window.applyLiveTheme) {
+            window.applyLiveTheme(next);
+          }
+          return next;
+        });
+      };
+
+      // Navigation Guard Registration (Intercepts SPA navigation and tab switching)
+      useEffect(() => {
+        window.__rupeecrmUnsavedAppearance = isDirty;
+        if (isDirty) {
+          window.__rupeecrmNavigationInterceptor = (destination, executeNav) => {
+            setPendingNav({ destination, executeNav });
+            setShowUnsavedModal(true);
+          };
+          const handleBeforeUnload = (e) => {
+            e.preventDefault();
+            e.returnValue = '';
+          };
+          window.addEventListener('beforeunload', handleBeforeUnload);
+          return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.__rupeecrmUnsavedAppearance = false;
+            window.__rupeecrmNavigationInterceptor = null;
+          };
+        } else {
+          window.__rupeecrmNavigationInterceptor = null;
+        }
+      }, [isDirty, activeConfig, appliedConfig]);
+
+      // Sync if External Theme Changes Occur
       useEffect(() => {
         const handler = () => {
-          if (window.getThemeState) {
-            setThemeState(window.getThemeState());
+          if (!window.__rupeecrmUnsavedAppearance && window.getStoredThemeConfig) {
+            const saved = window.getStoredThemeConfig();
+            setAppliedConfig(saved);
+            setActiveConfig(saved);
           }
         };
         window.addEventListener('themeChanged', handler);
         return () => window.removeEventListener('themeChanged', handler);
       }, []);
 
-      const selectFamily = (family) => {
-        if (window.setThemeFamily) {
-          window.setThemeFamily(family);
-          setThemeState(window.getThemeState());
-          if (window.showToast) window.showToast(`Switched to ${family === 'classic' ? 'Classic Retro' : 'Modern'} theme!`, 'success');
+      // ─── SELECTION HANDLERS (IMMEDIATE LIVE APPLICATION) ───
+
+      // 1. Design Family Selection
+      const selectFamily = (targetFamily, optStyle) => {
+        let newFamily = 'material';
+        let newStyle = 'minimal';
+        let newPalette = 'emerald';
+        let newFont = 'inter';
+
+        if (targetFamily === 'classic' || targetFamily === 'retro98') {
+          newFamily = 'classic';
+          newStyle = 'retro98';
+          newPalette = 'win98-standard';
+          newFont = 'tahoma';
+        } else if (targetFamily === 'modern' || optStyle === 'modern') {
+          newFamily = 'material';
+          newStyle = 'modern';
+          newPalette = 'forest';
+          newFont = 'inter';
+        } else {
+          newFamily = 'material';
+          newStyle = 'minimal';
+          newPalette = 'emerald';
+          newFont = 'inter';
+        }
+
+        updateActiveConfig(prev => ({
+          ...prev,
+          family: newFamily,
+          style: newStyle,
+          palette: newPalette,
+          font: newFont,
+          mode: 'light'
+        }));
+      };
+
+      // 2. Mode Selection (Light / Dark / System)
+      const selectMode = (m) => {
+        updateActiveConfig({ mode: m });
+      };
+
+      // 3. Palette Selection
+      const selectPalette = (palId) => {
+        updateActiveConfig({ palette: palId });
+      };
+
+      // 4. Typography Selection
+      const selectFont = (fontId) => {
+        updateActiveConfig({ font: fontId });
+      };
+
+      // 5. Scheduling Settings
+      const toggleSchedule = (enabled) => {
+        updateActiveConfig({ scheduleEnabled: enabled });
+      };
+
+      const setScheduleMode = (mode) => {
+        updateActiveConfig({ scheduleMode: mode, scheduleEnabled: true });
+      };
+
+      const handleTimeChange = (type, val) => {
+        updateActiveConfig({
+          [type === 'dark' ? 'customDarkStart' : 'customLightStart']: val
+        });
+      };
+
+      // 6. Actions: Reset Style Defaults, Apply, Discard
+      const resetCurrentFamily = () => {
+        const curFam = activeConfig.family;
+        const curSty = activeConfig.style;
+        if (curFam === 'classic' || curSty === 'retro98') {
+          selectFamily('classic');
+        } else if (curSty === 'modern') {
+          selectFamily('modern');
+        } else {
+          selectFamily('minimal');
+        }
+        if (window.showToast) window.showToast('Reset to family style defaults.', 'info');
+      };
+
+      const handleApply = () => {
+        if (!isDirty) return;
+        if (window.saveThemeConfig) {
+          const success = window.saveThemeConfig(activeConfig);
+          if (success) {
+            setAppliedConfig({ ...activeConfig });
+            if (window.showToast) window.showToast('Appearance settings applied and saved successfully!', 'success');
+          } else {
+            if (window.showToast) window.showToast('Failed to save appearance settings.', 'error');
+          }
         }
       };
 
-      const setDark = (isDark) => {
-        if (window.setDarkMode) {
-          window.setDarkMode(isDark);
-          setThemeState(window.getThemeState());
-          if (window.showToast) window.showToast(isDark ? 'Dark mode enabled' : 'Light mode enabled', 'success');
+      const handleDiscard = () => {
+        if (window.restoreSavedTheme) {
+          window.restoreSavedTheme();
+        }
+        setActiveConfig({ ...appliedConfig });
+        if (window.showToast) window.showToast('Unsaved appearance changes discarded.', 'info');
+      };
+
+      // Unsaved Modal Action 1: Apply and proceed
+      const handleModalApply = () => {
+        if (window.saveThemeConfig) {
+          window.saveThemeConfig(activeConfig);
+        }
+        setAppliedConfig({ ...activeConfig });
+        setShowUnsavedModal(false);
+        const nav = pendingNav;
+        setPendingNav(null);
+        if (nav && typeof nav.executeNav === 'function') {
+          nav.executeNav();
         }
       };
 
-      const setSchedule = (mode) => {
-        if (window.setDarkSchedule) {
-          window.setDarkSchedule(mode, themeState.customStart, themeState.customEnd);
-          setThemeState(window.getThemeState());
-          const labels = {
-            manual: 'Dark mode schedule set to Manual',
-            sunset: 'Sunset-to-Sunrise schedule activated (18:00 – 06:00)',
-            system: 'Synchronized with System / OS theme',
-            custom: 'Custom Dark Mode schedule activated'
-          };
-          if (window.showToast) window.showToast(labels[mode] || 'Schedule updated', 'success');
+      // Unsaved Modal Action 2: Discard and proceed
+      const handleModalDiscard = () => {
+        if (window.restoreSavedTheme) {
+          window.restoreSavedTheme();
+        }
+        setActiveConfig({ ...appliedConfig });
+        setShowUnsavedModal(false);
+        const nav = pendingNav;
+        setPendingNav(null);
+        if (nav && typeof nav.executeNav === 'function') {
+          nav.executeNav();
         }
       };
 
-      const handleCustomTimeChange = (type, val) => {
-        const newStart = type === 'start' ? val : themeState.customStart;
-        const newEnd = type === 'end' ? val : themeState.customEnd;
-        if (window.setDarkSchedule) {
-          window.setDarkSchedule('custom', newStart, newEnd);
-          setThemeState(window.getThemeState());
-        }
+      // Unsaved Modal Action 3: Continue editing
+      const handleModalContinue = () => {
+        setShowUnsavedModal(false);
+        setPendingNav(null);
       };
 
       const handleStatusBarToggle = (e) => {
-        const checked = e.target.checked;
-        setShowStatusBar(checked);
-        localStorage.setItem('billsoft_show_status_bar', checked ? 'true' : 'false');
-        window.dispatchEvent(new CustomEvent('billsoft:statusbar-toggle', { detail: { show: checked } }));
-        if (window.showToast) window.showToast(checked ? 'System status bar enabled' : 'System status bar disabled', 'success');
+        const val = e.target.checked;
+        setShowStatusBar(val);
+        localStorage.setItem('billsoft_show_status_bar', String(val));
+        window.dispatchEvent(new CustomEvent('billsoft:toggle-status-bar', { detail: { show: val } }));
       };
 
-      const activeBadgeText = themeState.family === 'classic'
-        ? (themeState.activeIsDark ? '💾 Classic Noir (\'98 Dark)' : '💾 Classic Retro (\'98 Light)')
-        : (themeState.activeIsDark ? '🌙 Midnight Navy (Dark)' : '☀️ Modern Slate (Light)');
-
-      const MODERN_THEMES = [
-        {
-          id: 'forest',
-          aliases: ['emerald', 'green'],
-          label: 'Forest Green',
-          subtitle: 'Original Brand Identity (Default)',
-          light: { bg: '#F4F6F2', card: '#FFFFFF', primary: '#16845B', gold: '#D4AF37', border: '#DFE5DE' },
-          dark: { bg: '#0B0F0D', card: '#131A16', primary: '#39B987', gold: '#F5D061', border: '#232F28' }
-        },
-        {
-          id: 'navy',
-          aliases: ['blue', 'steel'],
-          label: 'Royal Navy',
-          subtitle: 'Deep Confident Blue',
-          light: { bg: '#F1F5F9', card: '#FFFFFF', primary: '#1D4ED8', gold: '#D4AF37', border: '#CBD5E1' },
-          dark: { bg: '#0A111E', card: '#111C2E', primary: '#60A5FA', gold: '#F5D061', border: '#1E314D' }
-        },
-        {
-          id: 'teal',
-          aliases: [],
-          label: 'Petrol Teal',
-          subtitle: 'Rich Blue-Green',
-          light: { bg: '#F0F6F5', card: '#FFFFFF', primary: '#0F766E', gold: '#D4AF37', border: '#CCDEDB' },
-          dark: { bg: '#081514', card: '#0F2220', primary: '#2DD4BF', gold: '#F5D061', border: '#1B3B38' }
-        },
-        {
-          id: 'plum',
-          aliases: ['violet', 'purple'],
-          label: 'Royal Plum',
-          subtitle: 'Deep Sophisticated Purple',
-          light: { bg: '#F5F3F7', card: '#FFFFFF', primary: '#6B21A8', gold: '#D4AF37', border: '#DED8E6' },
-          dark: { bg: '#120B1A', card: '#1C1226', primary: '#C084FC', gold: '#F5D061', border: '#36244A' }
-        },
-        {
-          id: 'burgundy',
-          aliases: ['red'],
-          label: 'Burgundy',
-          subtitle: 'Rich Wine Red',
-          light: { bg: '#F7F2F3', card: '#FFFFFF', primary: '#881337', gold: '#D4AF37', border: '#E5D3D6' },
-          dark: { bg: '#190B0F', card: '#241117', primary: '#FB7185', gold: '#F5D061', border: '#48222E' }
-        },
-        {
-          id: 'amber',
-          aliases: ['orange'],
-          label: 'Burnished Amber',
-          subtitle: 'Deep Warm Amber & Bronze',
-          light: { bg: '#F7F4F0', card: '#FFFFFF', primary: '#B45309', gold: '#D4AF37', border: '#E3DACD' },
-          dark: { bg: '#171109', card: '#241A0E', primary: '#FBBF24', gold: '#F5D061', border: '#45331C' }
-        }
-      ];
-
-      const currentAccentKey = themeState.accent || 'forest';
-      const activeThemeObj = MODERN_THEMES.find(t => t.id === currentAccentKey || (t.aliases && t.aliases.includes(currentAccentKey))) || MODERN_THEMES[0];
-
-      const selectAccent = (accentId, label) => {
-        if (window.setThemeAccent) {
-          window.setThemeAccent(accentId);
-          setThemeState(window.getThemeState());
-          if (window.showToast) window.showToast(`Modern theme set to ${label}`, 'success');
-        }
+      // ─── PALETTES & TYPOGRAPHY REGISTRIES (STRICTLY COMPATIBLE) ───
+      const PALETTES_BY_STYLE = {
+        minimal: [
+          { id: 'emerald', label: 'Emerald SaaS (Default)', primary: '#168B45', secondary: '#EAF7EC', subtitle: 'Signature RupeeCRM Minimal identity' },
+          { id: 'slate', label: 'Slate Minimal', primary: '#0F172A', secondary: '#F1F5F9', subtitle: 'Clean monochrome tech aesthetic' },
+          { id: 'indigo', label: 'Indigo Modern', primary: '#4F46E5', secondary: '#EEF2FF', subtitle: 'Vibrant modern SaaS violet-blue' },
+          { id: 'sage', label: 'Sage Nordic', primary: '#2D6A4F', secondary: '#D8F3DC', subtitle: 'Warm organic muted olive green' },
+          { id: 'teal', label: 'Petrol Teal', primary: '#0F766E', secondary: '#F0FDFA', subtitle: 'Rich professional blue-green' }
+        ],
+        modern: [
+          { id: 'forest', label: 'Forest Green (Default)', primary: '#16845B', secondary: '#F4F6F2', subtitle: 'Original Material Brand Identity' },
+          { id: 'navy', label: 'Royal Navy', primary: '#1D4ED8', secondary: '#F1F5F9', subtitle: 'Deep confident enterprise blue' },
+          { id: 'teal', label: 'Petrol Teal', primary: '#0F766E', secondary: '#F0F6F5', subtitle: 'Balanced oceanic blue-green' },
+          { id: 'plum', label: 'Royal Plum', primary: '#6B21A8', secondary: '#F5F3F7', subtitle: 'Deep sophisticated purple' },
+          { id: 'burgundy', label: 'Burgundy Wine', primary: '#881337', secondary: '#F7F2F3', subtitle: 'Rich premium wine red' },
+          { id: 'amber', label: 'Burnished Amber', primary: '#B45309', secondary: '#F7F4F0', subtitle: 'Warm bronze & golden amber' }
+        ],
+        retro98: [
+          { id: 'win98-standard', label: 'Win98 Standard (Default)', primary: '#000080', secondary: '#008080', subtitle: 'Authentic 90s Teal Desktop & Navy Titlebar' },
+          { id: 'win98-noir', label: 'Win98 Noir', primary: '#000000', secondary: '#00FFFF', subtitle: 'High contrast retro cyber monochrome' },
+          { id: 'classic-slate', label: 'Classic Slate', primary: '#3A6EA5', secondary: '#D4D0C8', subtitle: 'Subdued corporate 90s slate blue' },
+          { id: 'desert-gold', label: 'Desert Gold', primary: '#800000', secondary: '#D2B48C', subtitle: 'Warm retro Windows desert scheme' },
+          { id: 'spruce-green', label: 'Spruce Green', primary: '#004040', secondary: '#20B2AA', subtitle: 'Rich deep pine retro green' },
+          { id: 'retro-plum', label: 'Retro Plum', primary: '#4A0E4E', secondary: '#FF007F', subtitle: 'Vibrant 90s vaporwave purple' }
+        ]
       };
 
-      return React.createElement('div', { style: { maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
-        // 1. Theme Selection & Dark Mode Engine Card
-        React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-              React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🎨'),
-              React.createElement('div', null,
-                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Appearance & Theme Families'),
-                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Select your design system family and configure daytime/nighttime scheduling.')
-              )
-            ),
-            React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.8rem', padding: '6px 12px', borderRadius: 20 } }, activeBadgeText)
-          ),
+      const FONTS_BY_STYLE = {
+        minimal: [
+          { id: 'inter', name: 'Inter (Default)', stack: "'Inter', -apple-system, sans-serif", note: 'Optimized for high-density tables & tabular figures' },
+          { id: 'jakarta', name: 'Plus Jakarta Sans', stack: "'Plus Jakarta Sans', sans-serif", note: 'Contemporary geometric SaaS grotesque' },
+          { id: 'roboto', name: 'Roboto', stack: "'Roboto', sans-serif", note: 'Clean balanced neo-grotesque standard' },
+          { id: 'system', name: 'System Default', stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", note: 'Fast native operating system font stack' }
+        ],
+        modern: [
+          { id: 'inter', name: 'Inter (Default)', stack: "'Inter', -apple-system, sans-serif", note: 'Default balanced grotesque with tabular numerals' },
+          { id: 'jakarta', name: 'Plus Jakarta Sans', stack: "'Plus Jakarta Sans', sans-serif", note: 'Modern geometric letterforms' },
+          { id: 'roboto', name: 'Roboto', stack: "'Roboto', sans-serif", note: 'Original Android / Material Design specification font' },
+          { id: 'system', name: 'System Default', stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", note: 'Fast native operating system font stack' }
+        ],
+        retro98: [
+          { id: 'tahoma', name: 'Tahoma (Win98 SE)', stack: "'Tahoma', 'Segoe UI', sans-serif", note: 'Canonical Windows 98 Second Edition system typeface' },
+          { id: 'mssansserif', name: 'MS Sans Serif (Win95)', stack: "'MS Sans Serif', Tahoma, sans-serif", note: 'Iconic Windows 95 pixelated interface typography' },
+          { id: 'fixedsys', name: 'Fixedsys (Monospace)', stack: "'Fixedsys', 'Courier New', monospace", note: 'Authentic 90s terminal monospace proportions' },
+          { id: 'segoe', name: 'Segoe UI (System)', stack: "'Segoe UI', Tahoma, sans-serif", note: 'Clean modern system font fallback' }
+        ]
+      };
 
-          // Theme Family Selection (2 Cards)
-          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 24 } },
-            // Card 1: Modern System
+      const activeStyleKey = activeConfig.style || 'minimal';
+      const currentPalettes = PALETTES_BY_STYLE[activeStyleKey] || PALETTES_BY_STYLE.minimal;
+      const currentFonts = FONTS_BY_STYLE[activeStyleKey] || FONTS_BY_STYLE.minimal;
+
+      const isDarkActive = (window.getThemeState ? window.getThemeState().activeIsDark : activeConfig.mode === 'dark');
+      const activeBadgeText = activeStyleKey === 'minimal'
+        ? (isDarkActive ? 'Minimal Dark' : 'Minimal Light')
+        : (activeStyleKey === 'retro98'
+            ? (isDarkActive ? "Classic Retro '98 (Noir)" : "Classic Retro '98 (Light)")
+            : (isDarkActive ? 'Modern System (Dark)' : 'Modern System (Light)'));
+
+      return React.createElement('div', { style: { maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 } },
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // UNSAVED CHANGES CONFIRMATION POPUP (NAVIGATION GUARD)
+        // ══════════════════════════════════════════════════════════════════════════
+        showUnsavedModal && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }
+        },
+          React.createElement('div', {
+            className: 'modal-box card',
+            style: { maxWidth: 480, padding: 26, borderRadius: 18, background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: '0 12px 36px rgba(0,0,0,0.25)' }
+          },
+            React.createElement('h3', { style: { margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 700 } }, 'Unsaved changes'),
+            React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.5 } },
+              'Your appearance changes are currently active but haven\'t been saved.'
+            ),
             React.createElement('div', {
-              className: `theme-card ${themeState.family === 'modern' ? 'active' : ''}`,
-              onClick: () => selectFamily('modern'),
               style: {
-                border: themeState.family === 'modern' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                boxShadow: themeState.family === 'modern' ? '0 0 0 1px var(--primary)' : 'none',
-                position: 'relative',
-                cursor: 'pointer',
-                padding: 16,
-                borderRadius: 12,
-                background: 'var(--bg-card)'
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                marginBottom: 20,
+                fontSize: '0.82rem',
+                color: 'var(--text)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4
               }
             },
-              React.createElement('div', {
-                className: 'theme-preview-box',
-                style: {
-                  background: themeState.activeIsDark ? '#0F172A' : '#F1F5F9',
-                  border: `1px solid ${themeState.family === 'modern' ? 'var(--primary)' : 'rgba(0,0,0,0.1)'}`,
-                  height: 64,
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  display: 'flex',
-                  overflow: 'hidden'
-                }
-              },
-                React.createElement('div', { style: { width: '28%', background: '#1E293B' } }),
-                React.createElement('div', { style: { flex: 1, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 } },
-                  React.createElement('div', { style: { height: 10, width: '70%', background: themeState.activeIsDark ? '#1E293B' : '#FFFFFF', borderRadius: 3 } }),
-                  React.createElement('div', { style: { height: 16, width: '90%', background: themeState.activeIsDark ? '#1E293B' : '#FFFFFF', borderRadius: 3, display: 'flex', alignItems: 'center', padding: '0 4px' } },
-                    React.createElement('div', { style: { width: 14, height: 6, background: themeState.activeIsDark ? '#60A5FA' : '#4F46E5', borderRadius: 2 } })
-                  )
-                )
-              ),
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 6 } },
-                  '✨ Modern System'
-                ),
-                themeState.family === 'modern' ? React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem' } }, '✓ Active') : null
-              ),
-              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 } },
-                'Sleek interface with soft geometry, modern typography, and refined lighting. Includes Modern Slate (Light) & Midnight Navy (Dark).'
-              )
+              React.createElement('div', null, React.createElement('strong', null, 'Active Style: '), activeStyleKey === 'minimal' ? 'Minimal SaaS' : (activeStyleKey === 'modern' ? 'Modern System' : "Classic Retro '98")),
+              React.createElement('div', null, React.createElement('strong', null, 'Mode: '), activeConfig.mode),
+              React.createElement('div', null, React.createElement('strong', null, 'Palette: '), activeConfig.palette),
+              React.createElement('div', null, React.createElement('strong', null, 'Typography: '), activeConfig.font)
             ),
-
-            // Card 2: Classic Retro '98
-            React.createElement('div', {
-              className: `theme-card ${themeState.family === 'classic' ? 'active' : ''}`,
-              onClick: () => selectFamily('classic'),
-              style: {
-                border: themeState.family === 'classic' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                boxShadow: themeState.family === 'classic' ? '0 0 0 1px var(--primary)' : 'none',
-                position: 'relative',
-                cursor: 'pointer',
-                padding: 16,
-                borderRadius: 12,
-                background: 'var(--bg-card)'
-              }
-            },
-              React.createElement('div', {
-                className: 'theme-preview-box',
-                style: {
-                  background: themeState.activeIsDark ? '#0C282C' : '#008080',
-                  border: `1px solid ${themeState.family === 'classic' ? 'var(--primary)' : 'rgba(0,0,0,0.1)'}`,
-                  height: 64,
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  display: 'flex',
-                  overflow: 'hidden'
-                }
-              },
-                React.createElement('div', { style: { width: '28%', background: themeState.activeIsDark ? '#2B3037' : '#C0C0C0', borderRight: '1px solid #5A606A' } }),
-                React.createElement('div', { style: { flex: 1, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 } },
-                  React.createElement('div', { style: { height: 10, width: '70%', background: themeState.activeIsDark ? '#343940' : '#C0C0C0', border: `1px solid ${themeState.activeIsDark ? '#5A606A' : '#777'}` } }),
-                  React.createElement('div', { style: { height: 16, width: '90%', background: themeState.activeIsDark ? '#343940' : '#C0C0C0', border: `1px solid ${themeState.activeIsDark ? '#5A606A' : '#777'}`, display: 'flex', alignItems: 'center', padding: '0 4px' } },
-                    React.createElement('div', { style: { width: 14, height: 6, background: themeState.activeIsDark ? '#38BDF8' : '#000080' } })
-                  )
-                )
-              ),
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 6 } },
-                  '💾 Classic Retro \'98'
-                ),
-                React.createElement('span', {
-                  style: {
-                    background: 'linear-gradient(90deg, #000080, #1084d0)',
-                    color: '#ffffff',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    padding: '2px 7px',
-                    borderRadius: 3,
-                    border: '1px solid #ffffff',
-                    boxShadow: '1px 1px 0px #000000',
-                    letterSpacing: '0.03em'
-                  }
-                }, '💾 90s NOSTALGIA')
-              ),
-              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 } },
-                'Authentic 90s OS retro aesthetic with beveled 3D windows & 0px corners. Includes 90s Teal & Gray (Light) and 90s Noir (Dark).'
-              )
-            )
-          ),
-
-          // Divider
-          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '20px 0' } }),
-
-          // Accent Colour Section (Modern Theme - 6 Curated Themes with Split Previews)
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 } },
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem' } }, 'Modern Theme Palette'),
-                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } }, 'Select from six curated themes with dedicated Light and Dark variants')
-              ),
-              themeState.family === 'modern' ? React.createElement('span', {
-                style: {
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  color: 'var(--primary)'
-                }
-              }, `Active: ${activeThemeObj.label}`) : null
-            ),
-            themeState.family === 'classic'
-              ? React.createElement('div', {
-                  style: {
-                    padding: '12px 14px',
-                    borderRadius: 6,
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)',
-                    fontSize: '0.8rem',
-                    color: 'var(--text-secondary)'
-                  }
-                },
-                'Modern theme customization is active when using Modern System. Classic Retro (\'98) maintains its independent nostalgic aesthetic.'
-              )
-              : React.createElement('div', {
-                  style: {
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                    gap: 12,
-                    marginTop: 4
-                  }
-                },
-                MODERN_THEMES.map(themeItem => {
-                  const isSelected = activeThemeObj.id === themeItem.id;
-                  return React.createElement('div', {
-                    key: themeItem.id,
-                    role: 'button',
-                    tabIndex: 0,
-                    'aria-pressed': isSelected,
-                    'aria-label': `${themeItem.label} theme`,
-                    onClick: () => selectAccent(themeItem.id, themeItem.label),
-                    onKeyDown: (e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        selectAccent(themeItem.id, themeItem.label);
-                      }
-                    },
-                    style: {
-                      padding: '12px 14px',
-                      borderRadius: 10,
-                      background: 'var(--bg-card)',
-                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      boxShadow: isSelected ? '0 0 0 1px var(--primary), 0 2px 8px rgba(0,0,0,0.06)' : '0 1px 3px rgba(0,0,0,0.03)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                      position: 'relative',
-                      transition: 'all 0.15s ease',
-                      outline: 'none'
-                    }
-                  },
-                    // Top Row: Theme Name + Subtle Selected Check Indicator
-                    React.createElement('div', {
-                      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 20 }
-                    },
-                      React.createElement('span', {
-                        style: {
-                          fontWeight: isSelected ? 700 : 600,
-                          fontSize: '0.88rem',
-                          color: 'var(--text)'
-                        }
-                      }, themeItem.label),
-                      isSelected
-                        ? React.createElement('span', {
-                            style: {
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 18,
-                              height: 18,
-                              borderRadius: '50%',
-                              background: 'var(--primary)',
-                              color: '#FFFFFF',
-                              fontSize: '11px',
-                              fontWeight: 900
-                            }
-                          }, '✓')
-                        : React.createElement('span', {
-                            style: {
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              border: '1px solid var(--border)'
-                            }
-                          })
-                    ),
-                    // Miniature Split Preview: Light & Dark Appearances Side-by-Side
-                    React.createElement('div', {
-                      style: {
-                        height: 52,
-                        borderRadius: 6,
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        overflow: 'hidden'
-                      }
-                    },
-                      // Left side: Light Mode Miniature Preview
-                      React.createElement('div', {
-                        style: {
-                          flex: 1,
-                          background: themeItem.light.bg,
-                          padding: '6px 8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          borderRight: '1px solid var(--border)',
-                          position: 'relative'
-                        }
-                      },
-                        React.createElement('div', {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                          }
-                        },
-                          React.createElement('div', {
-                            style: {
-                              width: 22,
-                              height: 7,
-                              borderRadius: 3,
-                              background: themeItem.light.primary
-                            }
-                          }),
-                          React.createElement('div', {
-                            title: 'Gold Detail',
-                            style: {
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              background: themeItem.light.gold
-                            }
-                          })
-                        ),
-                        React.createElement('div', {
-                          style: {
-                            height: 18,
-                            borderRadius: 4,
-                            background: themeItem.light.card,
-                            border: `1px solid ${themeItem.light.border}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: '0 4px',
-                            gap: 3
-                          }
-                        },
-                          React.createElement('div', { style: { width: 4, height: 4, borderRadius: 1, background: themeItem.light.primary } }),
-                          React.createElement('div', { style: { width: 18, height: 3, borderRadius: 1.5, background: 'rgba(0,0,0,0.18)' } })
-                        )
-                      ),
-                      // Right side: Dark Mode Miniature Preview
-                      React.createElement('div', {
-                        style: {
-                          flex: 1,
-                          background: themeItem.dark.bg,
-                          padding: '6px 8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          position: 'relative'
-                        }
-                      },
-                        React.createElement('div', {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                          }
-                        },
-                          React.createElement('div', {
-                            style: {
-                              width: 22,
-                              height: 7,
-                              borderRadius: 3,
-                              background: themeItem.dark.primary
-                            }
-                          }),
-                          React.createElement('div', {
-                            title: 'Gold Detail',
-                            style: {
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              background: themeItem.dark.gold
-                            }
-                          })
-                        ),
-                        React.createElement('div', {
-                          style: {
-                            height: 18,
-                            borderRadius: 4,
-                            background: themeItem.dark.card,
-                            border: `1px solid ${themeItem.dark.border}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: '0 4px',
-                            gap: 3
-                          }
-                        },
-                          React.createElement('div', { style: { width: 4, height: 4, borderRadius: 1, background: themeItem.dark.primary } }),
-                          React.createElement('div', { style: { width: 18, height: 3, borderRadius: 1.5, background: 'rgba(255,255,255,0.22)' } })
-                        )
-                      )
-                    ),
-                    // Subtitle / Family Tone
-                    React.createElement('div', {
-                      style: {
-                        fontSize: '0.74rem',
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.3
-                      }
-                    }, themeItem.subtitle)
-                  );
-                })
-              )
-          ),
-
-          // Divider
-          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '20px 0' } }),
-
-          // Master Dark Mode Switch & Automation Controls
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
-            // Quick Dark Mode Toggle
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 6 } },
-                  '🌙 Dark Mode'
-                ),
-                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                  'Toggle daytime or nighttime contrast for the active theme family'
-                )
-              ),
-              React.createElement('div', { style: { display: 'inline-flex', background: 'var(--bg-secondary)', padding: 4, borderRadius: 8, border: '1px solid var(--border)', gap: 4 } },
-                React.createElement('button', {
-                  type: 'button',
-                  className: 'btn',
-                  onClick: () => setDark(false),
-                  style: {
-                    padding: '6px 14px',
-                    fontSize: '0.82rem',
-                    fontWeight: !themeState.activeIsDark ? 700 : 500,
-                    background: !themeState.activeIsDark ? 'var(--primary)' : 'transparent',
-                    color: !themeState.activeIsDark ? '#ffffff' : 'var(--text)',
-                    border: 'none',
-                    boxShadow: !themeState.activeIsDark ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    borderRadius: 6
-                  }
-                }, '☀️ Light'),
-                React.createElement('button', {
-                  type: 'button',
-                  className: 'btn',
-                  onClick: () => setDark(true),
-                  style: {
-                    padding: '6px 14px',
-                    fontSize: '0.82rem',
-                    fontWeight: themeState.activeIsDark ? 700 : 500,
-                    background: themeState.activeIsDark ? 'var(--primary)' : 'transparent',
-                    color: themeState.activeIsDark ? '#ffffff' : 'var(--text)',
-                    border: 'none',
-                    boxShadow: themeState.activeIsDark ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    borderRadius: 6
-                  }
-                }, '🌙 Dark')
-              )
-            ),
-
-            // Scheduling Selector
-            React.createElement('div', { style: { borderTop: '1px solid var(--border)', paddingTop: 18 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
-                React.createElement('div', null,
-                  React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, '⏱️ Auto Theme Scheduling'),
-                  React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Automatically switch light/dark mode based on time or system preference')
-                )
-              ),
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 12 } },
-                [
-                  { id: 'sunset', label: '🌅 Sunset to Sunrise' },
-                  { id: 'manual', label: '✋ Manual Switch' },
-                  { id: 'system', label: '💻 System Match' },
-                  { id: 'custom', label: '⏰ Custom Time' }
-                ].map(opt => React.createElement('button', {
-                  key: opt.id,
-                  type: 'button',
-                  onClick: () => setSchedule(opt.id),
-                  className: `btn ${themeState.schedule === opt.id ? 'btn-primary' : 'btn-secondary'}`,
-                  style: { padding: '8px 10px', fontSize: '0.78rem', justifyContent: 'center' }
-                }, opt.label))
-              ),
-              themeState.schedule === 'custom' && React.createElement('div', {
-                style: {
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                  background: 'var(--bg-secondary)', borderRadius: 8, marginTop: 10
-                }
-              },
-                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'Dark Mode from:'),
-                React.createElement('input', {
-                  type: 'time', className: 'input', value: themeState.customStart,
-                  onChange: e => handleCustomTimeChange('start', e.target.value),
-                  style: { padding: '4px 8px', fontSize: '0.8rem', width: 110 }
-                }),
-                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } }, 'to:'),
-                React.createElement('input', {
-                  type: 'time', className: 'input', value: themeState.customEnd,
-                  onChange: e => handleCustomTimeChange('end', e.target.value),
-                  style: { padding: '4px 8px', fontSize: '0.8rem', width: 110 }
-                })
-              )
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-secondary btn-sm',
+                onClick: handleModalContinue,
+                style: { fontWeight: 600 }
+              }, 'Continue Editing'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-secondary btn-sm',
+                onClick: handleModalDiscard,
+                style: { fontWeight: 600, color: 'var(--status-error, #EF4444)' }
+              }, 'Discard Changes'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary btn-sm',
+                onClick: handleModalApply,
+                style: { fontWeight: 700 }
+              }, 'Apply Changes')
             )
           )
         ),
 
-        // 2. Status Bar Card
+        // ══════════════════════════════════════════════════════════════════════════
+        // MAIN CARD: PROGRESSIVE CUSTOMIZATION HIERARCHY
+        // ══════════════════════════════════════════════════════════════════════════
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
+          // Header Bar
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { width: 42, height: 42, borderRadius: 12, background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.35rem' } }, '🎨'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'Appearance Settings & Design Systems'),
+                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Select design family, mode, palette, and typography. Changes apply immediately to the entire application.')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              isDirty && React.createElement('span', { style: { fontSize: '0.74rem', background: '#FEF3C7', color: '#B45309', fontWeight: 800, padding: '3px 10px', borderRadius: 9999, border: '1px solid #FCD34D' } }, '● Unsaved appearance changes'),
+              React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.82rem', padding: '6px 14px', borderRadius: 9999, fontWeight: 700 } }, activeBadgeText)
+            )
+          ),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 1. DESIGN FAMILY
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 } },
+            '1. Design Family'
+          ),
+
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 } },
+
+            // Family Card 1: Minimal SaaS
+            React.createElement('div', {
+              onClick: () => selectFamily('minimal'),
+              style: {
+                padding: '16px 18px',
+                borderRadius: 18,
+                cursor: 'pointer',
+                border: activeStyleKey === 'minimal' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                background: activeStyleKey === 'minimal' ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                boxShadow: activeStyleKey === 'minimal' ? '0 0 0 1px var(--primary), 0 4px 16px rgba(22, 139, 69, 0.12)' : 'none',
+                transition: 'all 0.18s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }
+            },
+              React.createElement('div', { style: { height: 50, borderRadius: 10, background: '#F6F6F4', border: '1px solid #EBEBE9', display: 'flex', overflow: 'hidden' } },
+                React.createElement('div', { style: { width: '32%', background: '#FFFFFF', borderRight: '1px solid #EBEBE9', padding: '6px 4px', display: 'flex', flexDirection: 'column', gap: 3 } },
+                  React.createElement('div', { style: { height: 6, width: '70%', background: '#EAF7EC', borderRadius: 9999 } }),
+                  React.createElement('div', { style: { height: 5, width: '85%', background: '#E5E5E3', borderRadius: 9999 } })
+                ),
+                React.createElement('div', { style: { flex: 1, padding: 6, display: 'flex', flexDirection: 'column', gap: 5 } },
+                  React.createElement('div', { style: { height: 6, width: '40%', background: '#E5E5E3', borderRadius: 3 } }),
+                  React.createElement('div', { style: { height: 16, width: '60%', background: '#168B45', borderRadius: 9999 } })
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('strong', { style: { fontSize: '0.98rem' } }, '🍃 Minimal SaaS'),
+                activeStyleKey === 'minimal' ? React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 800, fontSize: '0.8rem' } }, '✓ Selected') : null
+              ),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.35 } },
+                'Airy, warm neutral SaaS layout inspired by Commerly. 24px cards, pill-shaped buttons, high density.'
+              )
+            ),
+
+            // Family Card 2: Modern System
+            React.createElement('div', {
+              onClick: () => selectFamily('modern'),
+              style: {
+                padding: '16px 18px',
+                borderRadius: 18,
+                cursor: 'pointer',
+                border: activeStyleKey === 'modern' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                background: activeStyleKey === 'modern' ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                boxShadow: activeStyleKey === 'modern' ? '0 0 0 1px var(--primary), 0 4px 16px rgba(22, 132, 91, 0.12)' : 'none',
+                transition: 'all 0.18s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }
+            },
+              React.createElement('div', { style: { height: 50, borderRadius: 10, background: '#F1F5F9', border: '1px solid #E2E8F0', display: 'flex', overflow: 'hidden' } },
+                React.createElement('div', { style: { width: '28%', background: '#1E293B' } }),
+                React.createElement('div', { style: { flex: 1, padding: 6, display: 'flex', flexDirection: 'column', gap: 5 } },
+                  React.createElement('div', { style: { height: 8, width: '65%', background: '#FFFFFF', borderRadius: 3 } }),
+                  React.createElement('div', { style: { height: 16, width: '45%', background: '#1D4ED8', borderRadius: 4 } })
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('strong', { style: { fontSize: '0.98rem' } }, '✨ Modern System'),
+                activeStyleKey === 'modern' ? React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 800, fontSize: '0.8rem' } }, '✓ Selected') : null
+              ),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.35 } },
+                'Material-inspired interface with multi-tier metrics, soft elevations, and rich enterprise palettes.'
+              )
+            ),
+
+            // Family Card 3: Classic Retro '98
+            React.createElement('div', {
+              onClick: () => selectFamily('classic'),
+              style: {
+                padding: '16px 18px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                border: activeStyleKey === 'retro98' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                background: activeStyleKey === 'retro98' ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                boxShadow: activeStyleKey === 'retro98' ? '0 0 0 1px var(--primary), 0 4px 16px rgba(0, 0, 128, 0.15)' : 'none',
+                transition: 'all 0.18s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }
+            },
+              React.createElement('div', { style: { height: 50, borderRadius: 0, background: '#008080', border: '2px outset #FFFFFF', display: 'flex', overflow: 'hidden' } },
+                React.createElement('div', { style: { width: '28%', background: '#C0C0C0', borderRight: '2px outset #FFFFFF' } }),
+                React.createElement('div', { style: { flex: 1, padding: 4, display: 'flex', flexDirection: 'column', gap: 4 } },
+                  React.createElement('div', { style: { height: 10, width: '80%', background: '#000080', color: '#FFF', fontSize: '8px', padding: '1px 3px' } }, 'RupeeCRM.exe'),
+                  React.createElement('div', { style: { height: 16, width: '90%', background: '#FFFFFF', border: '1px inset #808080' } })
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('strong', { style: { fontSize: '0.98rem' } }, "💾 Classic Retro '98"),
+                activeStyleKey === 'retro98' ? React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 800, fontSize: '0.8rem' } }, '✓ Selected') : null
+              ),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.35 } },
+                'Authentic 90s desktop operating system aesthetics with 3D outsets, insets, and 0px radiuses.'
+              )
+            )
+          ),
+
+          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 2. APPEARANCE MODE (LIGHT / DARK / SYSTEM)
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 } },
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
+                '2. Appearance Mode'
+              ),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                'Independently designed Light, Dark, and System modes.'
+              )
+            ),
+            React.createElement('div', { style: { display: 'inline-flex', background: 'var(--bg-secondary)', padding: 4, borderRadius: 10, border: '1px solid var(--border)', gap: 4 } },
+              [
+                { id: 'light', label: '☀️ Light' },
+                { id: 'dark', label: '🌙 Dark' },
+                { id: 'system', label: '💻 System' }
+              ].map(m => React.createElement('button', {
+                key: m.id,
+                type: 'button',
+                onClick: () => selectMode(m.id),
+                className: 'btn',
+                style: {
+                  padding: '7px 16px',
+                  fontSize: '0.84rem',
+                  fontWeight: activeConfig.mode === m.id ? 700 : 500,
+                  background: activeConfig.mode === m.id ? 'var(--primary)' : 'transparent',
+                  color: activeConfig.mode === m.id ? '#FFFFFF' : 'var(--text)',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer'
+                }
+              }, m.label))
+            )
+          ),
+
+          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 3. CURATED COLOUR PALETTE
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 } },
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
+                  `3. Colour Palette (${activeStyleKey === 'minimal' ? 'Minimal SaaS' : (activeStyleKey === 'modern' ? 'Modern Material' : "Classic Retro '98")})`
+                ),
+                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  'Curated harmonious palettes specific to the active family.'
+                )
+              ),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)' } }, `Selected: ${activeConfig.palette}`)
+            ),
+
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 } },
+              currentPalettes.map(palette => {
+                const isSelected = activeConfig.palette === palette.id;
+                return React.createElement('div', {
+                  key: palette.id,
+                  onClick: () => selectPalette(palette.id),
+                  style: {
+                    padding: '12px 14px',
+                    borderRadius: activeStyleKey === 'retro98' ? 4 : 14,
+                    background: 'var(--bg-card)',
+                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    boxShadow: isSelected ? '0 0 0 1px var(--primary), 0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    transition: 'all 0.15s ease'
+                  }
+                },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                    React.createElement('span', { style: { fontWeight: isSelected ? 700 : 600, fontSize: '0.88rem', color: 'var(--text)' } }, palette.label),
+                    isSelected ? React.createElement('span', {
+                      style: {
+                        width: 18, height: 18, borderRadius: '50%', background: 'var(--primary)',
+                        color: '#FFFFFF', fontSize: '11px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }
+                    }, '✓') : React.createElement('span', { style: { width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--border)' } })
+                  ),
+                  React.createElement('div', { style: { height: 34, borderRadius: 8, display: 'flex', overflow: 'hidden', border: '1px solid var(--border)' } },
+                    React.createElement('div', { style: { flex: 1, background: palette.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700 } }, 'Primary'),
+                    React.createElement('div', { style: { flex: 1, background: palette.secondary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', fontSize: '0.72rem', fontWeight: 700 } }, 'Surface')
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.3 } }, palette.subtitle)
+                );
+              })
+            )
+          ),
+
+          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 4. TYPOGRAPHY (LOCAL OFFLINE BUNDLED FONTS)
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 } },
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
+                  '4. Typography & Numerals'
+                ),
+                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  'Local offline font assets bundled with desktop package. Verified font switching.'
+                )
+              ),
+              React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)' } }, `Selected: ${activeConfig.font}`)
+            ),
+
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 } },
+              currentFonts.map(font => {
+                const isSelected = activeConfig.font === font.id;
+                return React.createElement('div', {
+                  key: font.id,
+                  onClick: () => selectFont(font.id),
+                  style: {
+                    padding: '12px 14px',
+                    borderRadius: activeStyleKey === 'retro98' ? 4 : 14,
+                    background: 'var(--bg-card)',
+                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    boxShadow: isSelected ? '0 0 0 1px var(--primary), 0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    fontFamily: font.stack,
+                    transition: 'all 0.15s ease'
+                  }
+                },
+                  React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                    React.createElement('span', { style: { fontWeight: 700, fontSize: '0.90rem', color: 'var(--text)' } }, font.name),
+                    isSelected ? React.createElement('span', {
+                      style: {
+                        width: 18, height: 18, borderRadius: '50%', background: 'var(--primary)',
+                        color: '#FFFFFF', fontSize: '11px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }
+                    }, '✓') : null
+                  ),
+                  React.createElement('div', { style: { fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' } },
+                    '₹3,70,000.00'
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.3 } }, font.note)
+                );
+              })
+            )
+          ),
+
+          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 5. ADVANCED APPEARANCE SETTINGS (AUTOMATIC LIGHT/DARK SCHEDULING)
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
+                  '5. Advanced Appearance: Automatic Scheduling'
+                ),
+                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  'Automatically switch between Light and Dark mode based on machine time. Overrides manual mode when enabled.'
+                )
+              ),
+              React.createElement('label', { className: 'switch' },
+                React.createElement('input', {
+                  type: 'checkbox',
+                  checked: activeConfig.scheduleEnabled,
+                  onChange: e => toggleSchedule(e.target.checked)
+                }),
+                React.createElement('span', { className: 'slider' })
+              )
+            ),
+
+            activeConfig.scheduleEnabled && React.createElement('div', {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                padding: '14px 18px',
+                background: 'var(--bg-secondary)',
+                borderRadius: 12,
+                border: '1px solid var(--border)'
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', gap: 10 } },
+                [
+                  { id: 'sunset', label: '🌅 Sunset to Sunrise (18:00 – 06:00)' },
+                  { id: 'custom', label: '⏰ Custom Daily Time Window' }
+                ].map(opt => React.createElement('button', {
+                  key: opt.id,
+                  type: 'button',
+                  onClick: () => setScheduleMode(opt.id),
+                  className: `btn ${activeConfig.scheduleMode === opt.id ? 'btn-primary' : 'btn-secondary'} btn-sm`,
+                  style: { fontSize: '0.8rem' }
+                }, opt.label))
+              ),
+
+              activeConfig.scheduleMode === 'custom' && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' } },
+                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '🌙 Switch to Dark mode at:'),
+                React.createElement('input', {
+                  type: 'time',
+                  className: 'input',
+                  value: activeConfig.customDarkStart,
+                  onChange: e => handleTimeChange('dark', e.target.value),
+                  style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
+                }),
+                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '☀️ Switch to Light mode at:'),
+                React.createElement('input', {
+                  type: 'time',
+                  className: 'input',
+                  value: activeConfig.customLightStart,
+                  onChange: e => handleTimeChange('light', e.target.value),
+                  style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
+                })
+              )
+            )
+          ),
+
+          React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
+
+          // ──────────────────────────────────────────────────────────────────────────
+          // 6. ACTIONS BAR (RESET, DISCARD, APPLY)
+          // ──────────────────────────────────────────────────────────────────────────
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-secondary',
+              onClick: resetCurrentFamily,
+              style: { padding: '8px 18px', fontSize: '0.84rem' }
+            }, '↺ Reset Style Defaults'),
+
+            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+              isDirty && React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-secondary',
+                onClick: handleDiscard,
+                style: { padding: '8px 20px', fontSize: '0.84rem' }
+              }, 'Discard Changes'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                onClick: handleApply,
+                disabled: !isDirty,
+                style: {
+                  padding: '8px 24px',
+                  fontSize: '0.86rem',
+                  fontWeight: 700,
+                  opacity: isDirty ? 1 : 0.6
+                }
+              }, isDirty ? '✓ Apply Changes' : '✓ Applied')
+            )
+          )
+        ),
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // SECTION 7: SYSTEM STATUS BAR TOGGLE CARD
+        // ══════════════════════════════════════════════════════════════════════════
         React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
             React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
@@ -34310,6 +34793,7 @@
         )
       );
     }
+    
 
     // ─── SOFTWARE LICENSING & EULA UNIFIED TAB ───
     function SettingsLicensingEula() {
@@ -34812,6 +35296,42 @@
     const SettingsLegalEula = SettingsLicensingEula;
     const SettingsGeneral = SettingsAppearance;
 
+    // ─── AUTOMATIC DATA REFRESH CONFIGURATION & UTILITY ───
+    const AutoRefreshConfig = {
+      KEY_ENABLED: 'rupeecrm_auto_refresh_enabled',
+      KEY_INTERVAL: 'rupeecrm_auto_refresh_interval_sec',
+      DEFAULT_ENABLED: false,
+      DEFAULT_INTERVAL_SEC: 30,
+      MIN_INTERVAL_SEC: 1,
+      MAX_INTERVAL_SEC: 300,
+      isEnabled() {
+        return localStorage.getItem(this.KEY_ENABLED) === 'true';
+      },
+      setEnabled(val) {
+        localStorage.setItem(this.KEY_ENABLED, val ? 'true' : 'false');
+        window.dispatchEvent(new CustomEvent('billsoft:auto-refresh-config-changed'));
+      },
+      getIntervalSec() {
+        const stored = parseInt(localStorage.getItem(this.KEY_INTERVAL), 10);
+        if (isNaN(stored)) return this.DEFAULT_INTERVAL_SEC;
+        return Math.max(this.MIN_INTERVAL_SEC, Math.min(this.MAX_INTERVAL_SEC, stored));
+      },
+      setIntervalSec(sec) {
+        const bounded = Math.max(this.MIN_INTERVAL_SEC, Math.min(this.MAX_INTERVAL_SEC, parseInt(sec, 10) || this.DEFAULT_INTERVAL_SEC));
+        localStorage.setItem(this.KEY_INTERVAL, String(bounded));
+        window.dispatchEvent(new CustomEvent('billsoft:auto-refresh-config-changed'));
+      },
+      formatInterval(sec) {
+        const s = parseInt(sec, 10) || 0;
+        if (s < 60) return `${s} second${s === 1 ? '' : 's'}`;
+        const mins = Math.floor(s / 60);
+        const rem = s % 60;
+        if (rem === 0) return `${mins} minute${mins === 1 ? '' : 's'}`;
+        return `${mins} min ${rem} sec`;
+      }
+    };
+    window.AutoRefreshConfig = AutoRefreshConfig;
+
     // ─── SECURITY & ACCESS CONTROL ───
     function SettingsSecurity() {
       const [authEnabled, setAuthEnabled] = useState(false);
@@ -34822,6 +35342,26 @@
       const [confirmPassword, setConfirmPassword] = useState('');
       const [modalError, setModalError] = useState('');
       const [loading, setLoading] = useState(false);
+
+      const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => AutoRefreshConfig.isEnabled());
+      const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => AutoRefreshConfig.getIntervalSec());
+
+      const handleAutoRefreshToggle = (e) => {
+        const checked = e.target.checked;
+        setAutoRefreshEnabled(checked);
+        AutoRefreshConfig.setEnabled(checked);
+        if (window.showToast) {
+          window.showToast(checked ? `Auto-refresh enabled (${AutoRefreshConfig.formatInterval(autoRefreshInterval)})` : 'Auto-refresh disabled', 'success');
+        }
+      };
+
+      const handleAutoRefreshIntervalChange = (val) => {
+        const num = parseInt(val, 10);
+        if (!isNaN(num)) {
+          setAutoRefreshInterval(num);
+          AutoRefreshConfig.setIntervalSec(num);
+        }
+      };
 
       // Session timeout state (in minutes)
       const [sessionTimeoutMins, setSessionTimeoutMins] = useState(() => {
@@ -35108,6 +35648,52 @@
               disabled: !authEnabled,
               style: { color: authEnabled ? 'var(--primary)' : 'var(--text-muted)', borderColor: authEnabled ? 'var(--primary)' : 'var(--border)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }
             }, '🔒 Lock Workspace Now')
+          )
+        ),
+
+        // Automatic Data Refresh Card
+        React.createElement('div', { className: 'card', style: { padding: '24px 28px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { width: 40, height: 40, borderRadius: 10, background: 'rgba(22, 139, 69, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' } }, '🔄'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Automatic Data Refresh'),
+                React.createElement('p', { style: { margin: '2px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+                  'Automatically refresh application data at the selected interval.'
+                )
+              )
+            ),
+            React.createElement('label', { style: { display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 10 } },
+              React.createElement('span', { style: { fontSize: '0.85rem', fontWeight: 600, color: autoRefreshEnabled ? 'var(--primary)' : 'var(--text-muted)' } },
+                autoRefreshEnabled ? 'ON' : 'OFF'
+              ),
+              React.createElement('input', {
+                type: 'checkbox',
+                checked: autoRefreshEnabled,
+                onChange: handleAutoRefreshToggle,
+                style: { width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer' }
+              })
+            )
+          ),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 16, flexWrap: 'wrap', gap: 12 } },
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, 'Refresh Interval'),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                `Active interval: ${AutoRefreshConfig.formatInterval(autoRefreshInterval)} (range: 1s – 300s)`
+              )
+            ),
+            React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 8 } },
+              React.createElement('input', {
+                type: 'number',
+                className: 'input',
+                min: 1,
+                max: 300,
+                value: autoRefreshInterval,
+                onChange: e => handleAutoRefreshIntervalChange(e.target.value),
+                style: { width: 90, textAlign: 'center', padding: '6px 10px', fontSize: '0.88rem' }
+              }),
+              React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 } }, 'seconds')
+            )
           )
         ),
 
@@ -35871,7 +36457,14 @@
             { id: 'credits', label: 'Help & About', icon: Icons.helpCircle }
           ],
           activeTab: activeTab,
-          onChange: (newTab) => setTab(newTab),
+          onChange: (newTab) => {
+            if (newTab === activeTab) return;
+            if (window.__rupeecrmUnsavedAppearance && typeof window.__rupeecrmNavigationInterceptor === 'function') {
+              window.__rupeecrmNavigationInterceptor(`settings:${newTab}`, () => setTab(newTab));
+            } else {
+              setTab(newTab);
+            }
+          },
           ariaLabel: 'Settings navigation tabs',
           style: { marginBottom: 20 }
         }),
@@ -36102,7 +36695,10 @@
         const handleOnline = () => { setBrowserOnline(true); fetchMetrics(); };
         const handleOffline = () => { setBrowserOnline(false); setNetworkData(prev => ({ ...(prev || {}), connected: false })); };
         const handleNetStatus = (e) => { if (e && e.detail) setNetworkData(e.detail); };
-        const handleAppRefresh = () => { fetchMetrics(); };
+        const handleAppRefresh = (e) => {
+          if (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isSilentRefresh(e)) return;
+          fetchMetrics();
+        };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         window.addEventListener('billsoft:network-status', handleNetStatus);
@@ -37521,16 +38117,24 @@
         showToast('🔒 HR Module locked', 'info');
       };
 
-      const fetchEmployees = async () => {
+      const fetchEmployees = async (opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!sessionStorage.getItem('employeePin')) {
           setIsUnlocked(false);
           return;
         }
-        setLoading(true);
-        setStaffError(null);
+        if (!isSilent) {
+          setLoading(true);
+          setStaffError(null);
+        }
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('hr') && !RupeeCRMSync.isPageVisible('employees')) return;
+
         try {
           const data = await API.employees.getAll();
-          setEmployees(data || []);
+          const freshEmps = data || [];
+          setEmployees(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshEmps)) ? prev : freshEmps);
           if (API.firmId) {
             API.employees.applyPromotions().catch(() => { });
           }
@@ -37540,12 +38144,13 @@
             API.employeePin = '';
             setIsUnlocked(false);
             setPinError('HR session expired or PIN invalid. Please enter your PIN.');
-          } else {
+          } else if (!isSilent) {
             setStaffError('Unable to load staff');
             showToast('Unable to load staff', 'error');
           }
+        } finally {
+          if (!isSilent) setLoading(false);
         }
-        setLoading(false);
       };
 
       useEffect(() => {
@@ -37567,11 +38172,14 @@
           } catch (err) { }
         };
 
+        const handleSilent = () => fetchEmployees({ silent: true });
         window.addEventListener('billsoft:app-refresh', fetchEmployees);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         window.addEventListener('billsoft:focus-employee', handleFocusEmp);
         return () => {
           window.removeEventListener('billsoft:app-refresh', fetchEmployees);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
           window.removeEventListener('billsoft:navigate-subtab', handleNav);
           window.removeEventListener('billsoft:focus-employee', handleFocusEmp);
         };
@@ -40025,8 +40633,11 @@
         quoteCount: 0
       });
 
-      const loadSummary = useCallback(() => {
+      const loadSummary = useCallback((opts = {}) => {
         if (!API.firmId) return;
+        const isSilent = (typeof RupeeCRMSync !== 'undefined') ? RupeeCRMSync.isSilentRefresh(opts) : false;
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         API.analytics.firm().then(analytics => {
           if (!analytics) return;
 
@@ -40035,6 +40646,9 @@
           const totalCollected = Number(analytics.totalPaid) || 0;
           const unpaidCount = Number(analytics.unpaidInvoiceCount) || 0;
           const overdueCount = Number(analytics.overdueInvoiceCount) || 0;
+          const totalInvoiceCount = analytics.totalInvoiceCount != null
+            ? Number(analytics.totalInvoiceCount)
+            : (unpaidCount + overdueCount);
           const quotePipelineValue = Number(analytics.quotePipelineValue) || 0;
           const quoteCount = Number(analytics.quoteCount) || 0;
 
@@ -40042,9 +40656,9 @@
             ? Math.min(100, Math.max(0, (totalCollected / totalInvoiced) * 100))
             : 0;
 
-          setKpiStats({
+          const newKpiStats = {
             totalInvoiced,
-            invoiceCount: unpaidCount + overdueCount,
+            invoiceCount: totalInvoiceCount,
             totalPending,
             unpaidCount,
             overdueCount,
@@ -40052,7 +40666,9 @@
             collectionRate: Number(collectionRate.toFixed(1)),
             quotePipelineValue,
             quoteCount
-          });
+          };
+
+          setKpiStats(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, newKpiStats)) ? prev : newKpiStats);
         }).catch(() => { });
       }, []);
 
@@ -40096,12 +40712,18 @@
           handleNav({ detail: initialNav });
         }
 
+        const onSummaryRefresh = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.coalesceEvent((e) => loadSummary(e))
+          : (e) => loadSummary(e);
+
         window.addEventListener('billsoft:firm-changed', onFirmChange);
-        window.addEventListener('billsoft:app-refresh', loadSummary);
+        window.addEventListener('billsoft:app-refresh', onSummaryRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', onSummaryRefresh);
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => {
           window.removeEventListener('billsoft:firm-changed', onFirmChange);
-          window.removeEventListener('billsoft:app-refresh', loadSummary);
+          window.removeEventListener('billsoft:app-refresh', onSummaryRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', onSummaryRefresh);
           window.removeEventListener('billsoft:navigate-subtab', handleNav);
         };
       }, [loadSummary, onSubTabChange]);
@@ -40839,6 +41461,9 @@
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
+      useEffect(() => {
+        window.getCurrentPage = () => page;
+      }, [page]);
       const [featureLockTick, setFeatureLockTick] = useState(0);
       const [hasInvoicesEverMounted, setHasInvoicesEverMounted] = useState(() => {
         const isLocked = Boolean(
@@ -41485,87 +42110,212 @@
         if (currentId) { API.firm.get(currentId).then(f => { if (f && f.firmName) setFirmName(f.firmName); API.firm.list().then(list => setFirms(list)).catch(() => { }); }).catch(() => { }); }
       };
 
-      const handleAppRefresh = useCallback(async () => {
-        if (isSyncing) return;
-        setIsSyncing(true);
-        setSyncStatusText('Reloading workspace...');
+      const handleAppRefresh = useCallback(async (opts = {}) => {
+        const isAuto = Boolean(opts && opts.isAuto);
+        const isSilent = Boolean(isAuto || (opts && opts.silent));
+
+        if (!isSilent) {
+          if (isSyncing) return;
+          setIsSyncing(true);
+          setSyncStatusText('Reloading workspace...');
+        } else {
+          if (isSyncing || (isAutoRefreshingRef.current && !isAuto)) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.canRefreshSafely()) return;
+        }
 
         const startTime = Date.now();
+        const syncFirmId = API.firmId;
 
         // Dispatch app-wide refresh event for all active views/tabs
-        window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+        if (isSilent) {
+          window.dispatchEvent(new CustomEvent('billsoft:silent-data-refresh'));
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh', { detail: { isSilent: true } }));
+        } else {
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+        }
 
         // Concurrently refresh core app states
-        const refreshTasks = [
-          API.firm.list().then(list => {
-            if (Array.isArray(list) && list.length > 0) {
-              setFirms(list);
-              const currentId = API.firmId;
-              const f = list.find(x => x.id === currentId) || list[0];
-              if (f && f.firmName) setFirmName(f.firmName);
-            }
-          }).catch(() => { }),
-          (API.firmId ? API.firm.get(API.firmId).then(f => {
-            if (f && f.firmName) setFirmName(f.firmName);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(setReminders).catch(() => { }) : Promise.resolve()),
-          (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && API.firmId ? API.notes.listByFirm(API.firmId).then(setNotes).catch(() => { }) : Promise.resolve()),
-          (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && API.firmId ? API.expenses.listByFirm(API.firmId).then(setExpenses).catch(() => { }) : Promise.resolve()),
-          (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && API.firmId ? API.savings.listByFirm(API.firmId).then(setSavings).catch(() => { }) : Promise.resolve()),
-          (API.goals && typeof API.goals.list === 'function' && isAuthenticated && API.firmId ? API.goals.list().then(setGoals).catch(() => { }) : Promise.resolve()),
-          (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
-            if (lic) {
-              setLicenseInfo(lic);
-              if (lic.isValid && lic.status === 'ACTIVE') {
-                setLicenseStatus('ACTIVE');
-                setMembershipPlan(lic.plan);
-              } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
-                setLicenseStatus(lic.status);
-                setMembershipPlan(lic.plan);
-              } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
-                setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
-              } else if (lic.isTrial) {
-                setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
-                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
-              } else {
-                setLicenseStatus(lic.status || 'trial');
-                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+        const refreshTasks = [];
+
+        if (isSilent) {
+          // ── SCOPED BACKGROUND SYNCHRONIZATION ──
+          // 1. Notification badge & alerts (safe structural comparison)
+          if (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated && syncFirmId) {
+            refreshTasks.push(API.notifications.summary(syncFirmId).then(sum => {
+              if (sum && API.firmId === syncFirmId) {
+                setNotificationSummary(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum)) ? prev : sum);
+                if (Array.isArray(sum.items)) {
+                  setInboxMessages(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum.items)) ? prev : sum.items);
+                }
               }
+            }).catch(() => { }));
+          }
+
+          // 2. License Status & Trial expiry
+          if (API.license && typeof API.license.status === 'function') {
+            refreshTasks.push(API.license.status().then(lic => {
+              if (lic) {
+                setLicenseInfo(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, lic)) ? prev : lic);
+                const nextStatus = (lic.isValid && lic.status === 'ACTIVE') ? 'ACTIVE' : (lic.status || (lic.isTrial ? 'trial' : 'expired'));
+                setLicenseStatus(prev => prev === nextStatus ? prev : nextStatus);
+              }
+            }).catch(() => { }));
+          }
+
+          // 3. Planner / Personal metrics ONLY if active on planner view
+          if (page === 'planner') {
+            if (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated) {
+              refreshTasks.push(API.reminders.list().then(res => setReminders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : Promise.resolve()),
-          (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated ? API.notifications.summary(API.firmId).then(sum => {
-            if (sum) {
-              setNotificationSummary(sum);
-              if (Array.isArray(sum.items)) setInboxMessages(sum.items);
+            if (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.notes.listByFirm(syncFirmId).then(res => setNotes(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
-            if (Array.isArray(msgs)) setInboxMessages(msgs);
-          }).catch(() => { }) : Promise.resolve())),
-          (API.system && typeof API.system.getNetworkStatus === 'function' ? API.system.getNetworkStatus(true).then(net => {
-            if (net) {
-              setNetworkDetails(net);
-              setIsNetOnline(net.connected !== false);
-              window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: net }));
+            if (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.expenses.listByFirm(syncFirmId).then(res => setExpenses(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : Promise.resolve())
-        ];
+            if (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.savings.listByFirm(syncFirmId).then(res => setSavings(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
+            }
+            if (API.goals && typeof API.goals.list === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.goals.list().then(res => setGoals(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
+            }
+          }
+        } else {
+          // ── FULL MANUAL WORKSPACE RELOAD ──
+          refreshTasks.push(
+            API.firm.list().then(list => {
+              if (Array.isArray(list) && list.length > 0) {
+                setFirms(list);
+                const currentId = API.firmId;
+                const f = list.find(x => x.id === currentId) || list[0];
+                if (f && f.firmName) setFirmName(f.firmName);
+              }
+            }).catch(() => { }),
+            (syncFirmId ? API.firm.get(syncFirmId).then(f => {
+              if (f && f.firmName && API.firmId === syncFirmId) setFirmName(f.firmName);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(res => {
+              if (API.firmId === syncFirmId) setReminders(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.notes.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setNotes(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.expenses.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setExpenses(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.savings.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setSavings(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.goals && typeof API.goals.list === 'function' && isAuthenticated && syncFirmId ? API.goals.list().then(res => {
+              if (API.firmId === syncFirmId) setGoals(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
+              if (lic) {
+                setLicenseInfo(lic);
+                if (lic.isValid && lic.status === 'ACTIVE') {
+                  setLicenseStatus('ACTIVE');
+                  setMembershipPlan(lic.plan);
+                } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
+                  setLicenseStatus(lic.status);
+                  setMembershipPlan(lic.plan);
+                } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
+                  setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
+                } else if (lic.isTrial) {
+                  setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
+                  setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+                } else {
+                  setLicenseStatus(lic.status || 'trial');
+                  setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+                }
+              }
+            }).catch(() => { }) : Promise.resolve()),
+            (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated ? API.notifications.summary(syncFirmId).then(sum => {
+              if (sum && API.firmId === syncFirmId) {
+                setNotificationSummary(sum);
+                if (Array.isArray(sum.items)) setInboxMessages(sum.items);
+              }
+            }).catch(() => { }) : (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
+              if (Array.isArray(msgs)) setInboxMessages(msgs);
+            }).catch(() => { }) : Promise.resolve())),
+            (API.system && typeof API.system.getNetworkStatus === 'function' ? API.system.getNetworkStatus(true).then(net => {
+              if (net) {
+                setNetworkDetails(net);
+                setIsNetOnline(net.connected !== false);
+                window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: net }));
+              }
+            }).catch(() => { }) : Promise.resolve())
+          );
+        }
 
         await Promise.allSettled(refreshTasks);
 
-        // Ensure smooth minimum fluid animation duration
-        const elapsed = Date.now() - startTime;
-        const remainingDelay = Math.max(0, 600 - elapsed);
-        if (remainingDelay > 0) {
-          await new Promise(res => setTimeout(res, remainingDelay));
+        if (!isSilent) {
+          const elapsed = Date.now() - startTime;
+          const remainingDelay = Math.max(0, 600 - elapsed);
+          if (remainingDelay > 0) {
+            await new Promise(res => setTimeout(res, remainingDelay));
+          }
+
+          setSyncStatusText('✓ Workspace updated');
+          await new Promise(res => setTimeout(res, 280));
+
+          setIsSyncing(false);
+          if (window.showToast) window.showToast('Workspace refreshed & synchronized', 'success');
         }
+      }, [isSyncing, isAuthenticated, page]);
 
-        setSyncStatusText('✓ Workspace updated');
+      // ─── AUTOMATIC DATA REFRESH SCHEDULER & LIFECYCLE ───
+      const isAutoRefreshingRef = useRef(false);
+      useEffect(() => {
+        let timerId = null;
 
-        await new Promise(res => setTimeout(res, 280));
+        const scheduleNextRefresh = () => {
+          if (timerId) clearTimeout(timerId);
+          if (!AutoRefreshConfig.isEnabled()) return;
+          const intervalSec = AutoRefreshConfig.getIntervalSec();
+          timerId = setTimeout(async () => {
+            if (isSyncing || isAutoRefreshingRef.current) {
+              scheduleNextRefresh();
+              return;
+            }
+            if (document.hidden) {
+              scheduleNextRefresh();
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+              scheduleNextRefresh();
+              return;
+            }
+            if (document.querySelector('.modal-overlay')) {
+              scheduleNextRefresh();
+              return;
+            }
 
-        setIsSyncing(false);
-        if (window.showToast) window.showToast('Workspace refreshed & synchronized', 'success');
-      }, [isSyncing, isAuthenticated]);
+            try {
+              isAutoRefreshingRef.current = true;
+              await handleAppRefresh({ isAuto: true });
+            } catch (err) {
+              console.warn('[DataSync] Auto refresh error:', err);
+            } finally {
+              isAutoRefreshingRef.current = false;
+              scheduleNextRefresh();
+            }
+          }, intervalSec * 1000);
+        };
+
+        scheduleNextRefresh();
+
+        const handleConfigChanged = () => scheduleNextRefresh();
+        window.addEventListener('billsoft:auto-refresh-config-changed', handleConfigChanged);
+        document.addEventListener('visibilitychange', scheduleNextRefresh);
+
+        return () => {
+          if (timerId) clearTimeout(timerId);
+          window.removeEventListener('billsoft:auto-refresh-config-changed', handleConfigChanged);
+          document.removeEventListener('visibilitychange', scheduleNextRefresh);
+        };
+      }, [isSyncing, handleAppRefresh]);
 
       const fetchNotificationSummary = useCallback(() => {
         if (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated) {
@@ -41684,10 +42434,17 @@
       }, []);
 
       const navigate = (p) => {
-        setPage(p);
-        window.history.pushState({ page: p }, '', '');
-        if (p !== 'new-invoice') { setEditInvoiceId(null); setCloneInvoiceId(null); }
-        if (p !== 'new-quotation') { setEditQuotationId(null); setConvertedFromQuotationId(null); }
+        const doNavigate = () => {
+          setPage(p);
+          window.history.pushState({ page: p }, '', '');
+          if (p !== 'new-invoice') { setEditInvoiceId(null); setCloneInvoiceId(null); }
+          if (p !== 'new-quotation') { setEditQuotationId(null); setConvertedFromQuotationId(null); }
+        };
+        if (window.__rupeecrmUnsavedAppearance && typeof window.__rupeecrmNavigationInterceptor === 'function') {
+          window.__rupeecrmNavigationInterceptor(p, doNavigate);
+        } else {
+          doNavigate();
+        }
       };
       window.appNavigate = navigate;
       const handleEditInvoice = (id) => { setEditInvoiceId(id); setEditQuotationId(null); setConvertedFromQuotationId(null); setCloneInvoiceId(null); setPage('invoices'); };

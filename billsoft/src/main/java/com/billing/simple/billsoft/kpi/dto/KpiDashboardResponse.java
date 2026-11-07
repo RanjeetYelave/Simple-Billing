@@ -24,6 +24,8 @@ public class KpiDashboardResponse {
     private Double businessThisYear;
     private Double totalPaid;
     private Double totalPending;
+    private Long totalInvoiceCount;
+    private Long paidInvoiceCount;
     private Long unpaidInvoiceCount;
     private Long overdueInvoiceCount;
     private Double quotePipelineValue;

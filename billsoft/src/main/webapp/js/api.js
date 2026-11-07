@@ -107,7 +107,34 @@ const API = {
     return response;
   },
 
+  _inFlightRequests: new Map(),
+
   async _json(url, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    if (method === 'GET' && !options.skipDedupe) {
+      const key = `${this.firmId || '0'}:${url}`;
+      if (this._inFlightRequests.has(key)) {
+        return this._inFlightRequests.get(key);
+      }
+      const promise = (async () => {
+        try {
+          const res = await this._request(url, options);
+          if (res.status === 204) return null;
+          const text = await res.text();
+          if (!text || !text.trim()) return null;
+          try {
+            return JSON.parse(text);
+          } catch (e) {
+            return text;
+          }
+        } finally {
+          this._inFlightRequests.delete(key);
+        }
+      })();
+      this._inFlightRequests.set(key, promise);
+      return promise;
+    }
+
     const res = await this._request(url, options);
     if (res.status === 204) return null;
     const text = await res.text();

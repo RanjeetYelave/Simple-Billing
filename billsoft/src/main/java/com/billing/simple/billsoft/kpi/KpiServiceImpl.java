@@ -120,6 +120,8 @@ public class KpiServiceImpl implements KpiService {
                 .businessThisYear(analytics != null && analytics.getBusinessThisYear() != null ? analytics.getBusinessThisYear() : 0.0)
                 .totalPaid(analytics != null && analytics.getTotalPaid() != null ? analytics.getTotalPaid() : 0.0)
                 .totalPending(analytics != null && analytics.getTotalPending() != null ? analytics.getTotalPending() : 0.0)
+                .totalInvoiceCount(analytics != null && analytics.getTotalInvoiceCount() != null ? analytics.getTotalInvoiceCount() : 0L)
+                .paidInvoiceCount(analytics != null && analytics.getPaidInvoiceCount() != null ? analytics.getPaidInvoiceCount() : 0L)
                 .unpaidInvoiceCount(analytics != null && analytics.getUnpaidInvoiceCount() != null ? analytics.getUnpaidInvoiceCount() : 0L)
                 .overdueInvoiceCount(analytics != null && analytics.getOverdueInvoiceCount() != null ? analytics.getOverdueInvoiceCount() : 0L)
                 .quotePipelineValue(analytics != null && analytics.getQuotePipelineValue() != null ? analytics.getQuotePipelineValue() : 0.0)

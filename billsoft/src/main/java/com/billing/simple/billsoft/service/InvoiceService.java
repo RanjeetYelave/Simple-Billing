@@ -475,6 +475,8 @@ public class InvoiceService {
             }
         }
 
+        long totalInvoiceCount = 0;
+        long paidInvoiceCount = 0;
         long unpaidCount = 0;
         long overdueCount = 0;
         double quotePipelineVal = 0.0;
@@ -491,6 +493,8 @@ public class InvoiceService {
                 }
                 continue;
             }
+
+            totalInvoiceCount++;
 
             BigDecimal returnedAmt = invoiceReturnMap.getOrDefault(inv.getId(), BigDecimal.ZERO);
             BigDecimal effectiveAmt = rawAmt.subtract(returnedAmt);
@@ -514,6 +518,13 @@ public class InvoiceService {
 
             totalPaid = totalPaid.add(paidForInv);
             totalPending = totalPending.add(pendingForInv);
+
+            boolean isFullyPaid = Boolean.TRUE.equals(inv.getPaid())
+                    || inv.getStatus() == InvoiceStatus.PAID
+                    || (effectiveAmt.compareTo(BigDecimal.ZERO) > 0 && paidForInv.compareTo(effectiveAmt) >= 0);
+            if (isFullyPaid) {
+                paidInvoiceCount++;
+            }
 
             InvoiceStatus st = inv.getStatus();
             if (st == InvoiceStatus.UNPAID || st == InvoiceStatus.OVERDUE || st == InvoiceStatus.SENT
@@ -587,6 +598,8 @@ public class InvoiceService {
         resp.setTotalPaid(totalPaid.doubleValue());
         resp.setTotalPending(totalPending.doubleValue());
 
+        resp.setTotalInvoiceCount(totalInvoiceCount);
+        resp.setPaidInvoiceCount(paidInvoiceCount);
         resp.setUnpaidInvoiceCount(unpaidCount);
         resp.setOverdueInvoiceCount(overdueCount);
         resp.setQuotePipelineValue(quotePipelineVal);
@@ -1255,12 +1268,14 @@ public class InvoiceService {
         if (existing.getItems() != null) {
             List<InvoiceRequestItem> items = existing.getItems().stream().map(it -> {
                 InvoiceRequestItem ri = new InvoiceRequestItem();
+                ri.setId(it.getId());
                 ri.setProductId(it.getProduct() != null ? it.getProduct().getId() : null);
                 ri.setProductName(it.getProductName());
                 ri.setHsnCode(it.getHsnCode());
                 ri.setQty(it.getQty());
                 ri.setUnit(it.getUnit());
                 ri.setPricePerUnit(it.getPricePerUnit());
+                ri.setUnitCostPrice(it.getUnitCostPrice());
                 // Item-level discount is VALUE only
                 ri.setDiscountValue(it.getDiscountValue());
                 ri.setGstPercent(it.getGstPercent());
@@ -1493,6 +1508,7 @@ public class InvoiceService {
                 ni.setUnit(it.getUnit());
                 ni.setHsnCode(it.getHsnCode());
                 ni.setPricePerUnit(it.getPricePerUnit());
+                ni.setUnitCostPrice(it.getUnitCostPrice());
                 ni.setAmountWithoutTax(it.getAmountWithoutTax());
                 ni.setDiscountType(it.getDiscountType());
                 ni.setDiscountPercent(it.getDiscountPercent());

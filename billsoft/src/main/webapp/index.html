@@ -14,6 +14,7 @@
 
   <script src="js/api.js?v=20260914_licensing_v2"></script>
   <script src="js/utils.js?v=20261025_payment_terms_v2"></script>
+  <script src="js/dataSync.js?v=20261107_v1"></script>
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
@@ -5687,15 +5688,22 @@
       };
 
       const loadData = useCallback((opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         Promise.all([
           API.invoices.listFinal(0, 1000),
           API.invoices.listEstimates(0, 1000),
           API.returns.list().catch(() => [])
         ]).then(([invList, estList, retsList]) => {
-          setInvoices(invList ? (Array.isArray(invList) ? invList : invList.content || []) : []);
-          setEstimates(estList ? (Array.isArray(estList) ? estList : estList.content || []) : []);
+          const freshInvoices = invList ? (Array.isArray(invList) ? invList : invList.content || []) : [];
+          const freshEstimates = estList ? (Array.isArray(estList) ? estList : estList.content || []) : [];
+          setInvoices(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshInvoices)) ? prev : freshInvoices);
+          setEstimates(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshEstimates)) ? prev : freshEstimates);
           const retMap = {};
           (retsList || []).forEach(r => {
             const invId = r.invoice ? r.invoice.id : null;
@@ -5704,8 +5712,9 @@
               retMap[invId].push(r);
             }
           });
-          setReturnsByInvoice(retMap);
+          setReturnsByInvoice(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, retMap)) ? prev : retMap);
         }).catch(err => {
+          console.debug('[Invoices] Load error:', err);
           if (!isSilent) showToast('Failed to load documents', 'error');
         }).finally(() => {
           if (!isSilent) setLoading(false);
@@ -5746,7 +5755,7 @@
         }
 
         const onAppRefresh = (e) => {
-          const isSilent = Boolean(e && e.detail && e.detail.isSilent);
+          const isSilent = Boolean((e && e.type === 'billsoft:silent-data-refresh') || (e && e.detail && e.detail.isSilent));
           loadData({ silent: isSilent });
         };
         window.addEventListener('billsoft:app-refresh', onAppRefresh);
@@ -12801,6 +12810,9 @@
       const loadDashboardData = useCallback((opts = {}) => {
         const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('dashboard')) return;
+
         Promise.allSettled([
           API.kpis.dashboard(),
           API.purchaseOrders && API.purchaseOrders.list ? API.purchaseOrders.list() : Promise.resolve([]),
@@ -12812,7 +12824,7 @@
           API.invoices && API.invoices.list ? API.invoices.list(0, 10) : Promise.resolve([])
         ]).then(([kpiRes, poRes, prodRes, partyRes, custRes, empRes, updateRes, invRes]) => {
           if (kpiRes.status === 'fulfilled' && kpiRes.value) {
-            setData(kpiRes.value);
+            setData(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, kpiRes.value)) ? prev : kpiRes.value);
           } else if (!isSilent) {
             setData({
               totalBusiness: 0,
@@ -12834,15 +12846,35 @@
               quoteCount: 0
             });
           }
-          if (poRes.status === 'fulfilled') setPurchaseOrders(norm(poRes.value));
-          if (prodRes.status === 'fulfilled') setProducts(norm(prodRes.value));
-          if (partyRes.status === 'fulfilled') setParties(norm(partyRes.value));
-          if (custRes.status === 'fulfilled') setCustomers(norm(custRes.value));
-          if (empRes.status === 'fulfilled' && empRes.value) setEmpAnalytics(empRes.value);
-          if (updateRes.status === 'fulfilled' && updateRes.value && updateRes.value.updateAvailable) setUpdateInfo(updateRes.value);
-          if (invRes && invRes.status === 'fulfilled') setRecentInvoices(norm(invRes.value));
+          if (poRes.status === 'fulfilled') {
+            const normed = norm(poRes.value);
+            setPurchaseOrders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (prodRes.status === 'fulfilled') {
+            const normed = norm(prodRes.value);
+            setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (partyRes.status === 'fulfilled') {
+            const normed = norm(partyRes.value);
+            setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (custRes.status === 'fulfilled') {
+            const normed = norm(custRes.value);
+            setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
+          if (empRes.status === 'fulfilled' && empRes.value) {
+            setEmpAnalytics(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, empRes.value)) ? prev : empRes.value);
+          }
+          if (updateRes.status === 'fulfilled' && updateRes.value && updateRes.value.updateAvailable) {
+            setUpdateInfo(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, updateRes.value)) ? prev : updateRes.value);
+          }
+          if (invRes && invRes.status === 'fulfilled') {
+            const normed = norm(invRes.value);
+            setRecentInvoices(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, normed)) ? prev : normed);
+          }
           if (!isSilent) setLoading(false);
-        }).catch(() => {
+        }).catch(err => {
+          console.debug('[Dashboard] Load error:', err);
           if (!isSilent) setLoading(false);
         });
       }, []);
@@ -12860,7 +12892,7 @@
           API.announcements.get()
             .then(res => {
               if (Array.isArray(res) && res.length > 0) {
-                setAnnouncements(res);
+                setAnnouncements(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res);
                 const currentKey = getAnnouncementsKey(res);
                 try {
                   const acknowledgedKey = localStorage.getItem('rupeecrm_announcements_ack');
@@ -15276,7 +15308,12 @@
       }, [editId]);
 
       useEffect(() => {
-        const handleBackgroundRefresh = async () => {
+        const handleBackgroundRefresh = async (e) => {
+          // If user has begun typing an invoice or added line items, preserve state completely
+          if (form && form.items && form.items.length > 0) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.canRefreshSafely()) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
           const targetFid = selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId || null));
           if (!targetFid) return;
           try {
@@ -15284,19 +15321,22 @@
               API.customers.list(targetFid),
               API.products.list({}, targetFid)
             ]);
-            setCustomers(custs || []);
-            setProducts(prods || []);
+            const freshCusts = custs || [];
+            const freshProds = prods || [];
+            setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCusts)) ? prev : freshCusts);
+            setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
           } catch (e) {
-            console.warn('InvoiceForm background refresh failed:', e);
+            console.debug('InvoiceForm background refresh failed:', e);
           }
         };
+
         window.addEventListener('billsoft:app-refresh', handleBackgroundRefresh);
         window.addEventListener('billsoft:silent-data-refresh', handleBackgroundRefresh);
         return () => {
           window.removeEventListener('billsoft:app-refresh', handleBackgroundRefresh);
           window.removeEventListener('billsoft:silent-data-refresh', handleBackgroundRefresh);
         };
-      }, [selectedFirmId, activeFirmId]);
+      }, [selectedFirmId, activeFirmId, form]);
 
       const handlePricingProfileChange = async (e) => {
         const newProfileId = e.target.value;
@@ -18508,15 +18548,20 @@
       };
 
       const load = useCallback((isManualRefresh = false, opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) {
           if (isManualRefresh) setRefreshing(true);
           else setLoading(true);
         }
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         API.returns.list().then(list => {
-          setReturns(Array.isArray(list) ? list : []);
+          const fresh = Array.isArray(list) ? list : [];
+          setReturns(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
         }).catch(err => {
-          console.error(err);
+          console.debug('[Returns] Load error:', err);
           if (!isSilent) showToast('Failed to load sales returns', 'error');
         }).finally(() => {
           if (!isSilent) {
@@ -18529,15 +18574,15 @@
       useEffect(() => {
         load();
         const onAppRefresh = (e) => {
-          const isSilent = Boolean(e && e.detail && e.detail.isSilent);
+          const isSilent = Boolean(e && (e.type === 'billsoft:silent-data-refresh' || (e.detail && e.detail.isSilent)));
           load(!isSilent, { silent: isSilent });
         };
-        const onSilentRefresh = () => load(false, { silent: true });
+        const handleSilent = () => load(false, { silent: true });
         window.addEventListener('billsoft:app-refresh', onAppRefresh);
-        window.addEventListener('billsoft:silent-data-refresh', onSilentRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         return () => {
           window.removeEventListener('billsoft:app-refresh', onAppRefresh);
-          window.removeEventListener('billsoft:silent-data-refresh', onSilentRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
         };
       }, [load]);
 
@@ -20552,19 +20597,26 @@
       };
 
       const load = useCallback((opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.products.list(),
           API.products.summary().catch(() => null),
           API.products.categories().catch(() => [])
         ]).then(([prods, sum, cats]) => {
-          setProducts(prods || []);
-          if (sum) setSummary(sum);
-          setCategories(cats || []);
+          const freshProds = prods || [];
+          const freshCats = cats || [];
+          setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
+          if (sum) setSummary(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum)) ? prev : sum);
+          setCategories(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCats)) ? prev : freshCats);
           if (!isSilent) setLoading(false);
         }).catch((err) => {
-          console.error(err);
+          console.debug('[Inventory] Load error:', err);
           if (!isSilent) {
             showToast('Failed to load inventory', 'error');
             setLoading(false);
@@ -23490,18 +23542,28 @@
       const [partyLinksMap, setPartyLinksMap] = useState({ customerToParty: {}, partyToCustomer: {} });
 
       const load = useCallback(async (opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm') && !RupeeCRMSync.isPageVisible('customers')) return;
+
         try {
           const [custList, kpiList, linkMap] = await Promise.all([
             API.customers.list().catch(() => []),
             API.kpis.customers().catch(() => []),
             API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
           ]);
-          setCustomers(custList || []);
-          setCustomerKpis(Array.isArray(kpiList) ? kpiList : []);
-          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
+          const freshCusts = custList || [];
+          const freshKpis = Array.isArray(kpiList) ? kpiList : [];
+          const freshMap = linkMap || { customerToParty: {}, partyToCustomer: {} };
+
+          setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCusts)) ? prev : freshCusts);
+          setCustomerKpis(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshKpis)) ? prev : freshKpis);
+          setPartyLinksMap(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshMap)) ? prev : freshMap);
         } catch (e) {
+          console.debug('[Customers] Load error:', e);
           if (!isSilent) showToast('Failed to load customers', 'error');
         } finally {
           if (!isSilent) setLoading(false);
@@ -24512,18 +24574,28 @@
       });
 
       const load = (opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.parties.list(),
           API.parties.listSummaries(),
           API.partyLinks.map().catch(() => ({ customerToParty: {}, partyToCustomer: {} }))
         ]).then(([pList, sList, linkMap]) => {
-          setParties(pList ? (Array.isArray(pList) ? pList : pList.content || []) : []);
-          setSummaries(sList ? (Array.isArray(sList) ? sList : sList.content || []) : []);
-          setPartyLinksMap(linkMap || { customerToParty: {}, partyToCustomer: {} });
+          const freshParties = pList ? (Array.isArray(pList) ? pList : pList.content || []) : [];
+          const freshSummaries = sList ? (Array.isArray(sList) ? sList : sList.content || []) : [];
+          const freshMap = linkMap || { customerToParty: {}, partyToCustomer: {} };
+
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshParties)) ? prev : freshParties);
+          setSummaries(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshSummaries)) ? prev : freshSummaries);
+          setPartyLinksMap(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshMap)) ? prev : freshMap);
           if (!isSilent) setLoading(false);
-        }).catch(() => {
+        }).catch((err) => {
+          console.debug('[Parties] Load error:', err);
           if (!isSilent) {
             showToast('Failed to load parties', 'error');
             setLoading(false);
@@ -26462,18 +26534,27 @@
       });
 
       const load = (opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!isSilent) setLoading(true);
+
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
         Promise.all([
           API.purchaseOrders.list(),
           API.parties.list(),
           API.products.list()
         ]).then(([poList, pList, prList]) => {
-          setOrders(poList || []);
-          setParties(pList || []);
-          setProducts(prList || []);
+          const freshOrders = poList || [];
+          const freshParties = pList || [];
+          const freshProds = prList || [];
+          setOrders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshOrders)) ? prev : freshOrders);
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshParties)) ? prev : freshParties);
+          setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
           if (!isSilent) setLoading(false);
-        }).catch(() => {
+        }).catch((err) => {
+          console.debug('[PurchaseOrders] Load error:', err);
           if (!isSilent) {
             showToast('Failed to load purchase orders', 'error');
             setLoading(false);
@@ -29517,9 +29598,19 @@
       const [journalSearch, setJournalSearch] = useState('');
       const [journalTypeFilter, setJournalTypeFilter] = useState('ALL'); // 'ALL' | 'SALE_INVOICE' | 'PURCHASE_ORDER' | 'VENDOR_PAYMENT'
 
-      const loadEntityData = useCallback(() => {
-        API.parties.list().then(setParties).catch(() => { });
-        API.customers.list().then(setCustomers).catch(() => { });
+      const loadEntityData = useCallback((opts = {}) => {
+        const isSilent = (typeof RupeeCRMSync !== 'undefined') ? RupeeCRMSync.isSilentRefresh(opts) : false;
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('firm')) return;
+
+        API.parties.list().then(p => {
+          const fresh = p || [];
+          setParties(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
+        }).catch(() => { });
+
+        API.customers.list().then(c => {
+          const fresh = c || [];
+          setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
+        }).catch(() => { });
       }, []);
 
       useEffect(() => {
@@ -29530,9 +29621,9 @@
           setCustomerId('');
           setStatementData(null);
         };
-        const onAppRefresh = () => {
-          loadEntityData();
-        };
+        const onAppRefresh = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.coalesceEvent((e) => loadEntityData(e))
+          : (e) => loadEntityData(e);
         window.addEventListener('billsoft:firm-changed', onFirmChange);
         window.addEventListener('billsoft:app-refresh', onAppRefresh);
         window.addEventListener('billsoft:silent-data-refresh', onAppRefresh);
@@ -37164,7 +37255,10 @@
         const handleOnline = () => { setBrowserOnline(true); fetchMetrics(); };
         const handleOffline = () => { setBrowserOnline(false); setNetworkData(prev => ({ ...(prev || {}), connected: false })); };
         const handleNetStatus = (e) => { if (e && e.detail) setNetworkData(e.detail); };
-        const handleAppRefresh = () => { fetchMetrics(); };
+        const handleAppRefresh = (e) => {
+          if (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isSilentRefresh(e)) return;
+          fetchMetrics();
+        };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         window.addEventListener('billsoft:network-status', handleNetStatus);
@@ -38584,7 +38678,9 @@
       };
 
       const fetchEmployees = async (opts = {}) => {
-        const isSilent = Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
+        const isSilent = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.isSilentRefresh(opts)
+          : Boolean(opts && (opts.silent || (opts.detail && opts.detail.isSilent)));
         if (!sessionStorage.getItem('employeePin')) {
           setIsUnlocked(false);
           return;
@@ -38593,9 +38689,12 @@
           setLoading(true);
           setStaffError(null);
         }
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('hr') && !RupeeCRMSync.isPageVisible('employees')) return;
+
         try {
           const data = await API.employees.getAll();
-          setEmployees(data || []);
+          const freshEmps = data || [];
+          setEmployees(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshEmps)) ? prev : freshEmps);
           if (API.firmId) {
             API.employees.applyPromotions().catch(() => { });
           }
@@ -41094,8 +41193,11 @@
         quoteCount: 0
       });
 
-      const loadSummary = useCallback(() => {
+      const loadSummary = useCallback((opts = {}) => {
         if (!API.firmId) return;
+        const isSilent = (typeof RupeeCRMSync !== 'undefined') ? RupeeCRMSync.isSilentRefresh(opts) : false;
+        if (isSilent && typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.isPageVisible('invoices')) return;
+
         API.analytics.firm().then(analytics => {
           if (!analytics) return;
 
@@ -41114,7 +41216,7 @@
             ? Math.min(100, Math.max(0, (totalCollected / totalInvoiced) * 100))
             : 0;
 
-          setKpiStats({
+          const newKpiStats = {
             totalInvoiced,
             invoiceCount: totalInvoiceCount,
             totalPending,
@@ -41124,7 +41226,9 @@
             collectionRate: Number(collectionRate.toFixed(1)),
             quotePipelineValue,
             quoteCount
-          });
+          };
+
+          setKpiStats(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, newKpiStats)) ? prev : newKpiStats);
         }).catch(() => { });
       }, []);
 
@@ -41168,14 +41272,18 @@
           handleNav({ detail: initialNav });
         }
 
+        const onSummaryRefresh = (typeof RupeeCRMSync !== 'undefined')
+          ? RupeeCRMSync.coalesceEvent((e) => loadSummary(e))
+          : (e) => loadSummary(e);
+
         window.addEventListener('billsoft:firm-changed', onFirmChange);
-        window.addEventListener('billsoft:app-refresh', loadSummary);
-        window.addEventListener('billsoft:silent-data-refresh', loadSummary);
+        window.addEventListener('billsoft:app-refresh', onSummaryRefresh);
+        window.addEventListener('billsoft:silent-data-refresh', onSummaryRefresh);
         window.addEventListener('billsoft:navigate-subtab', handleNav);
         return () => {
           window.removeEventListener('billsoft:firm-changed', onFirmChange);
-          window.removeEventListener('billsoft:app-refresh', loadSummary);
-          window.removeEventListener('billsoft:silent-data-refresh', loadSummary);
+          window.removeEventListener('billsoft:app-refresh', onSummaryRefresh);
+          window.removeEventListener('billsoft:silent-data-refresh', onSummaryRefresh);
           window.removeEventListener('billsoft:navigate-subtab', handleNav);
         };
       }, [loadSummary, onSubTabChange]);
@@ -41913,6 +42021,9 @@
       const [appLoaded, setAppLoaded] = useState(false);
       const [authEnabled, setAuthEnabled] = useState(false);
       const [page, setPage] = useState('dashboard');
+      useEffect(() => {
+        window.getCurrentPage = () => page;
+      }, [page]);
       const [featureLockTick, setFeatureLockTick] = useState(0);
       const [hasInvoicesEverMounted, setHasInvoicesEverMounted] = useState(() => {
         const isLocked = Boolean(
@@ -42569,6 +42680,7 @@
           setSyncStatusText('Reloading workspace...');
         } else {
           if (isSyncing || (isAutoRefreshingRef.current && !isAuto)) return;
+          if (typeof RupeeCRMSync !== 'undefined' && !RupeeCRMSync.canRefreshSafely()) return;
         }
 
         const startTime = Date.now();
@@ -42583,74 +42695,121 @@
         }
 
         // Concurrently refresh core app states
-        const refreshTasks = [
-          API.firm.list().then(list => {
-            if (Array.isArray(list) && list.length > 0) {
-              setFirms(list);
-              const currentId = API.firmId;
-              const f = list.find(x => x.id === currentId) || list[0];
-              if (f && f.firmName) setFirmName(f.firmName);
-            }
-          }).catch(() => { }),
-          (syncFirmId ? API.firm.get(syncFirmId).then(f => {
-            if (f && f.firmName && API.firmId === syncFirmId) setFirmName(f.firmName);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(res => {
-            if (API.firmId === syncFirmId) setReminders(res);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.notes.listByFirm(syncFirmId).then(res => {
-            if (API.firmId === syncFirmId) setNotes(res);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.expenses.listByFirm(syncFirmId).then(res => {
-            if (API.firmId === syncFirmId) setExpenses(res);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.savings.listByFirm(syncFirmId).then(res => {
-            if (API.firmId === syncFirmId) setSavings(res);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.goals && typeof API.goals.list === 'function' && isAuthenticated && syncFirmId ? API.goals.list().then(res => {
-            if (API.firmId === syncFirmId) setGoals(res);
-          }).catch(() => { }) : Promise.resolve()),
-          (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
-            if (lic) {
-              setLicenseInfo(lic);
-              if (lic.isValid && lic.status === 'ACTIVE') {
-                setLicenseStatus('ACTIVE');
-                setMembershipPlan(lic.plan);
-              } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
-                setLicenseStatus(lic.status);
-                setMembershipPlan(lic.plan);
-              } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
-                setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
-              } else if (lic.isTrial) {
-                setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
-                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
-              } else {
-                setLicenseStatus(lic.status || 'trial');
-                setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+        const refreshTasks = [];
+
+        if (isSilent) {
+          // ── SCOPED BACKGROUND SYNCHRONIZATION ──
+          // 1. Notification badge & alerts (safe structural comparison)
+          if (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated && syncFirmId) {
+            refreshTasks.push(API.notifications.summary(syncFirmId).then(sum => {
+              if (sum && API.firmId === syncFirmId) {
+                setNotificationSummary(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum)) ? prev : sum);
+                if (Array.isArray(sum.items)) {
+                  setInboxMessages(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum.items)) ? prev : sum.items);
+                }
               }
+            }).catch(() => { }));
+          }
+
+          // 2. License Status & Trial expiry
+          if (API.license && typeof API.license.status === 'function') {
+            refreshTasks.push(API.license.status().then(lic => {
+              if (lic) {
+                setLicenseInfo(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, lic)) ? prev : lic);
+                const nextStatus = (lic.isValid && lic.status === 'ACTIVE') ? 'ACTIVE' : (lic.status || (lic.isTrial ? 'trial' : 'expired'));
+                setLicenseStatus(prev => prev === nextStatus ? prev : nextStatus);
+              }
+            }).catch(() => { }));
+          }
+
+          // 3. Planner / Personal metrics ONLY if active on planner view
+          if (page === 'planner') {
+            if (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated) {
+              refreshTasks.push(API.reminders.list().then(res => setReminders(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : Promise.resolve()),
-          (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated ? API.notifications.summary(syncFirmId).then(sum => {
-            if (sum && API.firmId === syncFirmId) {
-              setNotificationSummary(sum);
-              if (Array.isArray(sum.items)) setInboxMessages(sum.items);
+            if (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.notes.listByFirm(syncFirmId).then(res => setNotes(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
-            if (Array.isArray(msgs)) setInboxMessages(msgs);
-          }).catch(() => { }) : Promise.resolve())),
-          (API.system && typeof API.system.getNetworkStatus === 'function' ? API.system.getNetworkStatus(true).then(net => {
-            if (net) {
-              setNetworkDetails(net);
-              setIsNetOnline(net.connected !== false);
-              window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: net }));
+            if (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.expenses.listByFirm(syncFirmId).then(res => setExpenses(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
             }
-          }).catch(() => { }) : Promise.resolve())
-        ];
+            if (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.savings.listByFirm(syncFirmId).then(res => setSavings(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
+            }
+            if (API.goals && typeof API.goals.list === 'function' && isAuthenticated && syncFirmId) {
+              refreshTasks.push(API.goals.list().then(res => setGoals(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, res)) ? prev : res)).catch(() => { }));
+            }
+          }
+        } else {
+          // ── FULL MANUAL WORKSPACE RELOAD ──
+          refreshTasks.push(
+            API.firm.list().then(list => {
+              if (Array.isArray(list) && list.length > 0) {
+                setFirms(list);
+                const currentId = API.firmId;
+                const f = list.find(x => x.id === currentId) || list[0];
+                if (f && f.firmName) setFirmName(f.firmName);
+              }
+            }).catch(() => { }),
+            (syncFirmId ? API.firm.get(syncFirmId).then(f => {
+              if (f && f.firmName && API.firmId === syncFirmId) setFirmName(f.firmName);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.reminders && typeof API.reminders.list === 'function' && isAuthenticated ? API.reminders.list().then(res => {
+              if (API.firmId === syncFirmId) setReminders(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.notes && typeof API.notes.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.notes.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setNotes(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.expenses && typeof API.expenses.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.expenses.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setExpenses(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.savings && typeof API.savings.listByFirm === 'function' && isAuthenticated && syncFirmId ? API.savings.listByFirm(syncFirmId).then(res => {
+              if (API.firmId === syncFirmId) setSavings(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.goals && typeof API.goals.list === 'function' && isAuthenticated && syncFirmId ? API.goals.list().then(res => {
+              if (API.firmId === syncFirmId) setGoals(res);
+            }).catch(() => { }) : Promise.resolve()),
+            (API.license && typeof API.license.status === 'function' ? API.license.status().then(lic => {
+              if (lic) {
+                setLicenseInfo(lic);
+                if (lic.isValid && lic.status === 'ACTIVE') {
+                  setLicenseStatus('ACTIVE');
+                  setMembershipPlan(lic.plan);
+                } else if (lic.status === 'SUSPENDED' || lic.status === 'REVOKED') {
+                  setLicenseStatus(lic.status);
+                  setMembershipPlan(lic.plan);
+                } else if (lic.status === 'EXPIRED' || lic.status === 'expired' || (lic.isExpired && !lic.isTrial)) {
+                  setLicenseStatus(lic.isTrial ? 'expired' : 'EXPIRED');
+                } else if (lic.isTrial) {
+                  setLicenseStatus(lic.trialDaysRemaining <= 0 ? 'expired' : 'trial');
+                  setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+                } else {
+                  setLicenseStatus(lic.status || 'trial');
+                  setTrialDaysRemaining(lic.trialDaysRemaining != null ? lic.trialDaysRemaining : 30);
+                }
+              }
+            }).catch(() => { }) : Promise.resolve()),
+            (API.notifications && typeof API.notifications.summary === 'function' && isAuthenticated ? API.notifications.summary(syncFirmId).then(sum => {
+              if (sum && API.firmId === syncFirmId) {
+                setNotificationSummary(sum);
+                if (Array.isArray(sum.items)) setInboxMessages(sum.items);
+              }
+            }).catch(() => { }) : (API.license && typeof API.license.getMessages === 'function' ? API.license.getMessages().then(msgs => {
+              if (Array.isArray(msgs)) setInboxMessages(msgs);
+            }).catch(() => { }) : Promise.resolve())),
+            (API.system && typeof API.system.getNetworkStatus === 'function' ? API.system.getNetworkStatus(true).then(net => {
+              if (net) {
+                setNetworkDetails(net);
+                setIsNetOnline(net.connected !== false);
+                window.dispatchEvent(new CustomEvent('billsoft:network-status', { detail: net }));
+              }
+            }).catch(() => { }) : Promise.resolve())
+          );
+        }
 
         await Promise.allSettled(refreshTasks);
 
         if (!isSilent) {
-          // Ensure smooth minimum fluid animation duration
           const elapsed = Date.now() - startTime;
           const remainingDelay = Math.max(0, 600 - elapsed);
           if (remainingDelay > 0) {
@@ -42658,13 +42817,12 @@
           }
 
           setSyncStatusText('✓ Workspace updated');
-
           await new Promise(res => setTimeout(res, 280));
 
           setIsSyncing(false);
           if (window.showToast) window.showToast('Workspace refreshed & synchronized', 'success');
         }
-      }, [isSyncing, isAuthenticated]);
+      }, [isSyncing, isAuthenticated, page]);
 
       // ─── AUTOMATIC DATA REFRESH SCHEDULER & LIFECYCLE ───
       const isAutoRefreshingRef = useRef(false);
@@ -42698,7 +42856,7 @@
               isAutoRefreshingRef.current = true;
               await handleAppRefresh({ isAuto: true });
             } catch (err) {
-              console.warn('Auto refresh error:', err);
+              console.warn('[DataSync] Auto refresh error:', err);
             } finally {
               isAutoRefreshingRef.current = false;
               scheduleNextRefresh();

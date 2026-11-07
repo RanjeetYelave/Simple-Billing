@@ -141,5 +141,32 @@ public class AutoRefreshSettingsTest {
         assertTrue(content.contains("window.addEventListener('billsoft:silent-data-refresh', handleSilent);"),
                 "Modules must connect silent refresh listener to preserve UI stability");
     }
+
+    @Test
+    @DisplayName("Verify RupeeCRMSync data comparison engine and API request coalescing")
+    void testDataSyncEngineAndRequestCoalescing() throws IOException {
+        Path dataSyncPath = Paths.get("src/main/webapp/js/dataSync.js");
+        assertTrue(Files.exists(dataSyncPath), "dataSync.js must exist");
+        String syncContent = Files.readString(dataSyncPath);
+
+        // Core dataSync capabilities
+        assertTrue(syncContent.contains("isEqual(a, b)"), "Must provide deep structural equality check");
+        assertTrue(syncContent.contains("canRefreshSafely()"), "Must provide safety guard check");
+        assertTrue(syncContent.contains("isPageVisible(pageName)"), "Must provide scoped page visibility check");
+        assertTrue(syncContent.contains("coalesceEvent("), "Must provide event coalescing");
+        assertTrue(syncContent.contains("isSilentRefresh("), "Must provide silent refresh detector");
+
+        // API request deduplication & in-flight promise coalescing
+        Path apiJsPath = Paths.get("src/main/webapp/js/api.js");
+        assertTrue(Files.exists(apiJsPath), "api.js must exist");
+        String apiContent = Files.readString(apiJsPath);
+        assertTrue(apiContent.contains("_inFlightRequests: new Map()"), "API must track in-flight requests");
+        assertTrue(apiContent.contains("this._inFlightRequests.has(key)"), "Must join in-flight requests to prevent duplicate network calls");
+        assertTrue(apiContent.contains("this._inFlightRequests.delete(key)"), "Must cleanly clear in-flight requests on completion");
+
+        // Script inclusion in index.html
+        String indexContent = Files.readString(INDEX_HTML_PATH);
+        assertTrue(indexContent.contains("<script src=\"js/dataSync.js"), "dataSync.js must be loaded in index.html");
+    }
 }
 

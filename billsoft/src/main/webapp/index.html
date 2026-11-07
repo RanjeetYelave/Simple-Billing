@@ -12060,551 +12060,11 @@
 
     const GestureCreationPalette = CompactQuickActionPalette;
 
-    // ─── MINIMAL SAAS DASHBOARD COMPONENTS (COMMERLY & RUPEECRM MINIMAL CONCEPT) ───
-    function MinimalRadialGauge({ total = 0, collected = 0, pending = 0, label = 'Realized' }) {
-      const radius = 72;
-      const center = 90;
-      const totalTicks = 28;
-      const pct = total > 0 ? Math.min(100, Math.round((collected / total) * 100)) : 0;
-      const activeTicks = Math.round((pct / 100) * totalTicks);
+    // ─── MINIMAL SAAS DASHBOARD DEPRECATED (MIGRATED TO CANONICAL DASHBOARD) ───
 
-      const ticks = [];
-      for (let i = 0; i < totalTicks; i++) {
-        const angleDeg = 180 - (i / (totalTicks - 1)) * 180;
-        const angleRad = (angleDeg * Math.PI) / 180;
-        const innerR = radius - 10;
-        const outerR = radius + 2;
-        const x1 = center + innerR * Math.cos(angleRad);
-        const y1 = center - innerR * Math.sin(angleRad);
-        const x2 = center + outerR * Math.cos(angleRad);
-        const y2 = center - outerR * Math.sin(angleRad);
-        const isActive = i < activeTicks;
-        ticks.push(React.createElement('line', {
-          key: i,
-          x1, y1, x2, y2,
-          stroke: isActive ? 'var(--primary, #168B45)' : 'var(--border, #E5E7EB)',
-          strokeWidth: 4,
-          strokeLinecap: 'round'
-        }));
-      }
 
-      const pendingBal = pending > 0 ? pending : Math.max(0, total - collected);
-      const collectedPct = total > 0 ? Math.min(100, Math.round((collected / total) * 100)) : 0;
-      const pendingPct = total > 0 ? Math.min(100 - collectedPct, Math.round((pendingBal / total) * 100)) : 0;
 
-      return React.createElement('div', { className: 'rcrm-minimal-radial-wrap' },
-        React.createElement('svg', {
-          width: 180,
-          height: 105,
-          viewBox: '0 0 180 105',
-          style: { overflow: 'visible' }
-        },
-          ticks,
-          React.createElement('text', {
-            x: center,
-            y: center - 8,
-            textAnchor: 'middle',
-            fontSize: '26px',
-            fontWeight: 800,
-            fill: 'var(--text, #171717)',
-            fontVariantNumeric: 'tabular-nums'
-          }, `${pct}%`),
-          React.createElement('text', {
-            x: center,
-            y: center + 8,
-            textAnchor: 'middle',
-            fontSize: '11px',
-            fontWeight: 600,
-            fill: 'var(--text-secondary, #737373)'
-          }, label)
-        ),
-        React.createElement('div', { style: { textAlign: 'center', marginTop: 12, width: '100%' } },
-          React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 10 } },
-            total > 0
-              ? `${collectedPct}% of invoiced business collected in cash`
-              : 'No billing transactions recorded yet'
-          ),
-          React.createElement('div', {
-            style: {
-              height: 10,
-              width: '100%',
-              background: 'var(--bg-secondary)',
-              borderRadius: 9999,
-              display: 'flex',
-              overflow: 'hidden',
-              border: '1px solid var(--border)'
-            }
-          },
-            React.createElement('div', { style: { width: `${collectedPct}%`, background: 'var(--primary)' }, title: `Collected: ${collectedPct}%` }),
-            React.createElement('div', { style: { width: `${pendingPct}%`, background: 'var(--status-warning, #F59E0B)' }, title: `Pending Dues: ${pendingPct}%` })
-          ),
-          React.createElement('div', {
-            style: {
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 16,
-              marginTop: 10,
-              fontSize: '0.76rem',
-              color: 'var(--text-secondary)'
-            }
-          },
-            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
-              React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' } }),
-              `Collected: ${BillsoftUtils.formatCurrency(collected)}`
-            ),
-            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
-              React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--status-warning, #F59E0B)' } }),
-              `Pending: ${BillsoftUtils.formatCurrency(pendingBal)}`
-            )
-          )
-        )
-      );
-    }
-
-    function MinimalWeeklyChart({ invoices = [], dataVal = 0 }) {
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const today = new Date();
-      const dailyTotals = [0, 0, 0, 0, 0, 0, 0];
-
-      // Aggregate real recent invoices over past 7 days
-      if (Array.isArray(invoices) && invoices.length > 0) {
-        invoices.forEach(inv => {
-          if (!inv.invoiceDate && !inv.createdAt) return;
-          const d = new Date(inv.invoiceDate || inv.createdAt);
-          const diffDays = Math.floor((today - d) / (1000 * 60 * 60 * 24));
-          if (diffDays >= 0 && diffDays < 7) {
-            const dayIdx = d.getDay();
-            dailyTotals[dayIdx] += Number(inv.totalAmount || inv.total || 0);
-          }
-        });
-      }
-
-      const maxDaily = Math.max(...dailyTotals, 1);
-      const computedWeeklyTotal = dailyTotals.reduce((a, b) => a + b, 0);
-      const displayTotal = computedWeeklyTotal > 0 ? computedWeeklyTotal : (Number(dataVal) || 0);
-
-      const days = dayNames.map((name, idx) => {
-        const val = dailyTotals[idx];
-        const heightPct = computedWeeklyTotal > 0 ? Math.max(12, Math.round((val / maxDaily) * 90)) : 10;
-        const isPeak = val === maxDaily && val > 0;
-        return { day: name, height: heightPct, val, isPeak };
-      });
-
-      return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' } },
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            React.createElement('span', { style: { fontSize: '1.9rem', fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.025em' } },
-              BillsoftUtils.formatCurrency(displayTotal)
-            )
-          ),
-          React.createElement('div', { style: { display: 'flex', gap: 12, fontSize: '0.78rem', color: 'var(--text-secondary)' } },
-            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
-              React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' } }),
-              'Past 7 days'
-            )
-          )
-        ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: 160, padding: '10px 4px', position: 'relative' } },
-          [100, 75, 50, 25, 0].map(y => React.createElement('div', {
-            key: y,
-            style: {
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: `${y}%`,
-              borderBottom: '1px dashed var(--border-light, rgba(0,0,0,0.06))',
-              zIndex: 0
-            }
-          })),
-          days.map((item, idx) => React.createElement('div', {
-            key: idx,
-            style: {
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              height: '100%',
-              justifyContent: 'flex-end',
-              zIndex: 1,
-              flex: 1
-            }
-          },
-            React.createElement('div', {
-              style: {
-                width: 28,
-                height: 120,
-                background: 'var(--bg-secondary)',
-                borderRadius: 9999,
-                display: 'flex',
-                alignItems: 'flex-end',
-                padding: 2,
-                overflow: 'hidden'
-              },
-              title: `${item.day}: ${BillsoftUtils.formatCurrency(item.val)}`
-            },
-              React.createElement('div', {
-                style: {
-                  width: '100%',
-                  height: `${item.height}%`,
-                  background: item.isPeak ? 'var(--primary)' : 'var(--primary-light)',
-                  borderRadius: 9999,
-                  transition: 'height 0.4s ease'
-                }
-              })
-            ),
-            React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 } }, item.day)
-          ))
-        )
-      );
-    }
-
-    function MinimalRecentInvoicesTable({ invoices = [], onNavigate }) {
-      const [tableSearch, setTableSearch] = useState('');
-      const [filterStatus, setFilterStatus] = useState('ALL');
-
-      const displayList = (Array.isArray(invoices) && invoices.length > 0) ? invoices.slice(0, 5) : [];
-
-      const filtered = displayList.filter(inv => {
-        const num = (inv.invoiceNumber || inv.invoiceNo || '').toLowerCase();
-        const cust = (inv.customerName || (inv.customer && inv.customer.name) || inv.partyName || '').toLowerCase();
-        const matchesSearch = !tableSearch || num.includes(tableSearch.toLowerCase()) || cust.includes(tableSearch.toLowerCase());
-        const matchesFilter = filterStatus === 'ALL' || (inv.status || 'UNPAID').toUpperCase() === filterStatus;
-        return matchesSearch && matchesFilter;
-      });
-
-      return React.createElement('div', { className: 'rcrm-minimal-card', style: { padding: '24px' } },
-        React.createElement('div', { className: 'rcrm-minimal-card-header', style: { flexWrap: 'wrap', gap: 12 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            React.createElement('h3', { className: 'rcrm-minimal-card-title' }, 'Recent Invoices'),
-            React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.72rem', padding: '2px 8px', borderRadius: 9999 } }, `${filtered.length} recent`)
-          ),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
-            React.createElement('input', {
-              type: 'text',
-              className: 'rcrm-minimal-table-search',
-              placeholder: 'Search invoices...',
-              value: tableSearch,
-              onChange: e => setTableSearch(e.target.value)
-            }),
-            React.createElement('select', {
-              className: 'rcrm-minimal-pill-btn',
-              value: filterStatus,
-              onChange: e => setFilterStatus(e.target.value),
-              style: { padding: '6px 12px', fontSize: '0.8rem' }
-            },
-              React.createElement('option', { value: 'ALL' }, 'All Invoices'),
-              React.createElement('option', { value: 'PAID' }, 'Paid Only'),
-              React.createElement('option', { value: 'PARTIAL' }, 'Partial Only'),
-              React.createElement('option', { value: 'UNPAID' }, 'Unpaid Only')
-            ),
-            React.createElement('button', {
-              className: 'rcrm-minimal-pill-btn',
-              onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-              style: { fontSize: '0.8rem' }
-            }, 'All Invoices →')
-          )
-        ),
-
-        // Table
-        filtered.length > 0 ? React.createElement('div', { style: { overflowX: 'auto', width: '100%' } },
-          React.createElement('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px', fontSize: '0.86rem' } },
-            React.createElement('thead', null,
-              React.createElement('tr', { style: { color: 'var(--text-secondary)', fontSize: '0.78rem', textAlign: 'left' } },
-                React.createElement('th', { style: { padding: '8px 12px' } }, '#'),
-                React.createElement('th', { style: { padding: '8px 12px' } }, 'Invoice No.'),
-                React.createElement('th', { style: { padding: '8px 12px' } }, 'Customer'),
-                React.createElement('th', { style: { padding: '8px 12px' } }, 'Date'),
-                React.createElement('th', { style: { padding: '8px 12px', textAlign: 'right' } }, 'Amount'),
-                React.createElement('th', { style: { padding: '8px 12px', textAlign: 'right' } }, 'Paid'),
-                React.createElement('th', { style: { padding: '8px 12px', textAlign: 'right' } }, 'Balance'),
-                React.createElement('th', { style: { padding: '8px 12px', textAlign: 'center' } }, 'Status'),
-                React.createElement('th', { style: { padding: '8px 12px', textAlign: 'center' } }, 'Actions')
-              )
-            ),
-            React.createElement('tbody', null,
-              filtered.map((inv, idx) => {
-                const total = inv.totalAmount != null ? Number(inv.totalAmount) : 0;
-                const paid = inv.paidAmount != null ? Number(inv.paidAmount) : 0;
-                const bal = inv.pendingAmount != null ? Number(inv.pendingAmount) : Math.max(0, total - paid);
-                const isPaid = bal <= 0;
-                const isPartial = bal > 0 && paid > 0;
-                const statusCls = isPaid ? 'badge-success' : (isPartial ? 'badge-warning' : 'badge-danger');
-                const statusText = isPaid ? '✓ Paid' : (isPartial ? '⏱ Partial' : '✕ Unpaid');
-                const custName = inv.customerName || (inv.customer && inv.customer.name) || inv.partyName || 'Walk-in Customer';
-                const dateStr = inv.invoiceDate || (inv.createdAt ? inv.createdAt.split('T')[0] : 'Today');
-
-                return React.createElement('tr', {
-                  key: inv.id || idx,
-                  style: {
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                    transition: 'all 0.15s ease'
-                  }
-                },
-                  React.createElement('td', { style: { padding: '12px', borderRadius: '12px 0 0 12px', color: 'var(--text-secondary)' } }, idx + 1),
-                  React.createElement('td', { style: { padding: '12px', fontWeight: 700 } }, inv.invoiceNumber || inv.invoiceNo || `INV-000${idx + 1}`),
-                  React.createElement('td', { style: { padding: '12px', color: 'var(--text)' } }, custName),
-                  React.createElement('td', { style: { padding: '12px', color: 'var(--text-secondary)' } }, dateStr),
-                  React.createElement('td', { style: { padding: '12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' } }, BillsoftUtils.formatCurrency(total)),
-                  React.createElement('td', { style: { padding: '12px', textAlign: 'right', color: 'var(--primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, BillsoftUtils.formatCurrency(paid)),
-                  React.createElement('td', { style: { padding: '12px', textAlign: 'right', color: bal > 0 ? '#DC2626' : 'var(--text-secondary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, BillsoftUtils.formatCurrency(bal)),
-                  React.createElement('td', { style: { padding: '12px', textAlign: 'center' } },
-                    React.createElement('span', { className: `badge ${statusCls}`, style: { fontSize: '0.72rem', padding: '3px 9px', borderRadius: 9999 } }, statusText)
-                  ),
-                  React.createElement('td', { style: { padding: '12px', borderRadius: '0 12px 12px 0', textAlign: 'center' } },
-                    React.createElement('button', {
-                      className: 'btn btn-ghost btn-xs',
-                      style: { padding: '2px 6px' },
-                      onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-                      title: 'View Invoices'
-                    }, '👁')
-                  )
-                );
-              })
-            )
-          )
-        ) : React.createElement('div', {
-          style: {
-            padding: '36px 16px',
-            textAlign: 'center',
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 10
-          }
-        },
-          React.createElement('div', { style: { fontSize: '2.2rem' } }, '📄'),
-          React.createElement('div', { style: { fontWeight: 700, fontSize: '1rem', color: 'var(--text)' } }, 'No recent invoices found for this firm'),
-          React.createElement('div', { style: { fontSize: '0.84rem' } }, 'Billing transactions created in this firm will appear here automatically.'),
-          React.createElement('button', {
-            className: 'btn btn-primary btn-sm',
-            style: { marginTop: 6, borderRadius: 9999 },
-            onClick: () => onNavigate && onNavigate('invoices', 'create')
-          }, '+ Create First Invoice')
-        )
-      );
-    }
-
-    function MinimalSaaSDashboardView({
-      data = {},
-      customers = [],
-      products = [],
-      parties = [],
-      businessStats = {},
-      empAnalytics = null,
-      recentInvoices = [],
-      firms = [],
-      onNavigate,
-      onQuickCreate,
-      onTogglePerspective
-    }) {
-      const firmTitle = (firms && firms.length > 0 && firms[0].name) ? firms[0].name : 'Ranjeet';
-      const netSalesMonth = data.businessThisMonth || 0;
-      const totalCustCount = customers ? customers.length : 0;
-      const totalRev = data.totalBusiness || 0;
-      const totalProdCount = products ? products.length : (data.totalProducts || 0);
-
-      return React.createElement('div', { className: 'rcrm-minimal-dashboard' },
-
-        // 1. Top Header
-        React.createElement('div', { className: 'rcrm-minimal-header' },
-          React.createElement('div', { className: 'rcrm-minimal-header-left' },
-            React.createElement('h2', null, `Welcome back, ${firmTitle}! 👋`),
-            React.createElement('p', null, "Here's your business overview for this month.")
-          ),
-          React.createElement('div', { className: 'rcrm-minimal-header-actions' },
-            React.createElement('div', { className: 'rcrm-minimal-pill-btn' },
-              React.createElement('span', null, `📅 ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`)
-            ),
-            React.createElement('button', {
-              className: 'rcrm-minimal-pill-btn',
-              onClick: () => onNavigate && onNavigate('invoices', 'overview')
-            }, '⚡ Filter'),
-            React.createElement('button', {
-              className: 'rcrm-minimal-pill-btn',
-              onClick: onTogglePerspective,
-              title: 'Switch between Minimal SaaS and Standard Business views'
-            }, '📊 Standard View'),
-            React.createElement('button', {
-              className: 'btn btn-primary',
-              style: { borderRadius: 'var(--radius-pill, 9999px)', padding: '9px 18px', fontWeight: 700, gap: 6 },
-              onClick: () => onQuickCreate ? onQuickCreate('invoice') : (onNavigate && onNavigate('invoices', 'overview'))
-            }, '+ Create Invoice')
-          )
-        ),
-
-        // 2. Top 4 KPI Cards Grid
-        React.createElement('div', { className: 'rcrm-minimal-kpi-grid' },
-          // KPI 1: Total Sales
-          React.createElement('div', {
-            className: 'rcrm-minimal-kpi-card',
-            onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-            style: { cursor: 'pointer' },
-            title: 'Open Invoices'
-          },
-            React.createElement('div', { className: 'rcrm-minimal-kpi-top' },
-              React.createElement('div', { className: 'rcrm-minimal-kpi-icon-box' }, '🛒'),
-              React.createElement('span', { className: 'rcrm-minimal-kpi-title' }, 'Total Sales (Month)'),
-              React.createElement('button', { className: 'rcrm-minimal-kpi-info-btn' }, 'ⓘ')
-            ),
-            React.createElement('div', { className: 'rcrm-minimal-kpi-val' }, BillsoftUtils.formatCurrency(netSalesMonth)),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Current billing cycle'),
-              React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 9999 } }, 'Active Month')
-            )
-          ),
-
-          // KPI 2: Total Customers
-          React.createElement('div', {
-            className: 'rcrm-minimal-kpi-card',
-            onClick: () => onNavigate && onNavigate('firm', 'customers'),
-            style: { cursor: 'pointer' },
-            title: 'Open Customers'
-          },
-            React.createElement('div', { className: 'rcrm-minimal-kpi-top' },
-              React.createElement('div', { className: 'rcrm-minimal-kpi-icon-box' }, '👥'),
-              React.createElement('span', { className: 'rcrm-minimal-kpi-title' }, 'Total Customers'),
-              React.createElement('button', { className: 'rcrm-minimal-kpi-info-btn' }, 'ⓘ')
-            ),
-            React.createElement('div', { className: 'rcrm-minimal-kpi-val' }, totalCustCount.toLocaleString()),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Active client accounts'),
-              React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 9999 } }, 'Directory')
-            )
-          ),
-
-          // KPI 3: Total Cumulative Invoiced
-          React.createElement('div', {
-            className: 'rcrm-minimal-kpi-card',
-            onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-            style: { cursor: 'pointer' },
-            title: 'Open Invoices'
-          },
-            React.createElement('div', { className: 'rcrm-minimal-kpi-top' },
-              React.createElement('div', { className: 'rcrm-minimal-kpi-icon-box' }, '💵'),
-              React.createElement('span', { className: 'rcrm-minimal-kpi-title' }, 'Total Invoiced (All-Time)'),
-              React.createElement('button', { className: 'rcrm-minimal-kpi-info-btn' }, 'ⓘ')
-            ),
-            React.createElement('div', { className: 'rcrm-minimal-kpi-val' }, BillsoftUtils.formatCurrency(totalRev)),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Cumulative business'),
-              React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 9999 } }, 'All Invoices')
-            )
-          ),
-
-          // KPI 4: Total Products
-          React.createElement('div', {
-            className: 'rcrm-minimal-kpi-card',
-            onClick: () => onNavigate && onNavigate('firm', 'inventory'),
-            style: { cursor: 'pointer' },
-            title: 'Open Inventory Catalog'
-          },
-            React.createElement('div', { className: 'rcrm-minimal-kpi-top' },
-              React.createElement('div', { className: 'rcrm-minimal-kpi-icon-box' }, '📦'),
-              React.createElement('span', { className: 'rcrm-minimal-kpi-title' }, 'Total Products'),
-              React.createElement('button', { className: 'rcrm-minimal-kpi-info-btn' }, 'ⓘ')
-            ),
-            React.createElement('div', { className: 'rcrm-minimal-kpi-val' }, totalProdCount.toLocaleString()),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-              React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Active catalog items'),
-              React.createElement('span', { className: 'badge badge-primary', style: { fontSize: '0.7rem', padding: '2px 8px', borderRadius: 9999 } }, 'Inventory')
-            )
-          )
-        ),
-
-        // 3. Secondary Operational Metrics Strip (Guarantees zero metric omission)
-        React.createElement('div', { className: 'rcrm-minimal-secondary-strip' },
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Pending Receivables:'),
-            React.createElement('strong', { style: { color: (data.totalPending || 0) > 0 ? '#DC2626' : '#168B45' } }, BillsoftUtils.formatCurrency(data.totalPending || 0))
-          ),
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('firm', 'purchases'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Vendor Payables:'),
-            React.createElement('strong', null, BillsoftUtils.formatCurrency(businessStats.vendorPayables || data.vendorPayables || 0))
-          ),
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('firm', 'inventory'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Low Stock Items:'),
-            React.createElement('strong', { style: { color: businessStats.lowStockCount > 0 ? '#DC2626' : '#168B45' } }, `${businessStats.lowStockCount || 0} items`)
-          ),
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('hr', 'staff'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Active Staff:'),
-            React.createElement('strong', null, `${empAnalytics ? empAnalytics.totalEmployees || 0 : 0} members`)
-          ),
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Today Billed:'),
-            React.createElement('strong', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.businessToday || 0))
-          ),
-          React.createElement('div', {
-            className: 'rcrm-minimal-secondary-item',
-            onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-            style: { cursor: 'pointer' }
-          },
-            React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Quotes Pipeline:'),
-            React.createElement('strong', null, BillsoftUtils.formatCurrency(data.quotePipelineValue || 0))
-          )
-        ),
-
-        // 4. Visualizations 2-Column Grid
-        React.createElement('div', { className: 'rcrm-minimal-viz-grid' },
-          // Column 1: Sales Overview Card
-          React.createElement('div', { className: 'rcrm-minimal-card' },
-            React.createElement('div', { className: 'rcrm-minimal-card-header' },
-              React.createElement('h3', { className: 'rcrm-minimal-card-title' }, 'Sales Overview'),
-              React.createElement('div', {
-                className: 'rcrm-minimal-action-circle',
-                onClick: () => onNavigate && onNavigate('invoices', 'overview'),
-                title: 'Go to Invoices'
-              }, '→')
-            ),
-            React.createElement(MinimalRadialGauge, {
-              total: totalRev,
-              collected: data.collectedAmount || 0,
-              pending: data.totalPending || 0,
-              label: 'Realized'
-            })
-          ),
-
-          // Column 2: Revenue Insights Card
-          React.createElement('div', { className: 'rcrm-minimal-card' },
-            React.createElement('div', { className: 'rcrm-minimal-card-header' },
-              React.createElement('h3', { className: 'rcrm-minimal-card-title' }, 'Revenue Insights'),
-              React.createElement('div', { className: 'rcrm-minimal-pill-btn', style: { padding: '4px 10px', fontSize: '0.8rem' } },
-                'Weekly'
-              )
-            ),
-            React.createElement(MinimalWeeklyChart, {
-              invoices: recentInvoices || [],
-              dataVal: data.businessThisWeek || 0
-            })
-          )
-        ),
-
-        // 5. Recent Invoices Table Card
-        React.createElement(MinimalRecentInvoicesTable, { invoices: recentInvoices, onNavigate })
-      );
-    }
+    // MinimalSaaSDashboardView has been retired. All themes use canonical Dashboard with theme CSS tokens.
 
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
@@ -12710,16 +12170,6 @@
       const [parties, setParties] = useState([]);
       const [customers, setCustomers] = useState([]);
       const [recentInvoices, setRecentInvoices] = useState([]);
-      const [dashThemeState, setDashThemeState] = useState(() => (window.getThemeState ? window.getThemeState() : { style: 'minimal' }));
-      const [minimalViewMode, setMinimalViewMode] = useState('auto'); // 'auto' | 'minimal' | 'classic'
-
-      useEffect(() => {
-        const handleTheme = () => {
-          if (window.getThemeState) setDashThemeState(window.getThemeState());
-        };
-        window.addEventListener('themeChanged', handleTheme);
-        return () => window.removeEventListener('themeChanged', handleTheme);
-      }, []);
 
       const [empAnalytics, setEmpAnalytics] = useState(null);
       const [searchName, setSearchName] = useState('');
@@ -13281,7 +12731,12 @@
         : 0;
 
       const maxBusinessVal = Math.max(data.businessThisYear || 0, data.businessThisMonth || 0, data.businessThisWeek || 0, data.businessToday || 0, 1);
-      const currentFirmObj = firms ? firms.find(f => String(f.id) === String(API.firmId)) : null;
+      const currentFirmObj = (firms && Array.isArray(firms))
+        ? (firms.find(f => String(f.id) === String(API.firmId)) || firms[0] || null)
+        : null;
+      const greetingName = (currentFirmObj && (currentFirmObj.ownerName || currentFirmObj.firmName))
+        ? (currentFirmObj.ownerName || currentFirmObj.firmName)
+        : 'Business Owner';
 
       // ─── 6 Business KPIs ───
       const businessKpis = [
@@ -13380,13 +12835,13 @@
           // Left: Title + Segment Switcher
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'nowrap', minWidth: 0, flexShrink: 1 } },
             React.createElement('div', { style: { minWidth: 0, flexShrink: 1 } },
-              React.createElement('h1', { style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, 'Dashboard'),
+              React.createElement('h1', { className: 'dashboard-title', style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, `Welcome back, ${greetingName}! 👋`),
               React.createElement('div', {
                 style: {
                   fontSize: '0.78rem',
                   color: 'var(--text-secondary)',
                   marginTop: 2,
-                  maxWidth: 220,
+                  maxWidth: 280,
                   minWidth: 0,
                   whiteSpace: 'nowrap',
                   display: 'flex',
@@ -13397,7 +12852,7 @@
               },
                 React.createElement('span', { style: { flexShrink: 0 } }, new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
                 currentFirmObj ? React.createElement('span', { style: { flexShrink: 0, opacity: 0.6 } }, '•') : null,
-                currentFirmObj ? React.createElement('span', { style: { maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
+                currentFirmObj ? React.createElement('span', { style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
               )
             ),
             // Segment Switcher Pill
@@ -13462,22 +12917,7 @@
         // ════════════════════════════════════════════════════════════════════════
         // PERSPECTIVE 1: BUSINESS VIEW (DEFAULT)
         // ════════════════════════════════════════════════════════════════════════
-        dashSegment === 'business' && (
-          (minimalViewMode === 'minimal' || (minimalViewMode === 'auto' && (dashThemeState.style === 'minimal' || dashThemeState.family === 'minimal')))
-            ? React.createElement(MinimalSaaSDashboardView, {
-                data: data || {},
-                customers,
-                products,
-                parties,
-                businessStats,
-                empAnalytics,
-                recentInvoices,
-                firms,
-                onNavigate: navigateTo,
-                onQuickCreate: openQuickModal,
-                onTogglePerspective: () => setMinimalViewMode('classic')
-              })
-            : React.createElement(Fragment, null,
+        dashSegment === 'business' && React.createElement(Fragment, null,
 
           // Business Executive KPI Grid & Expected Revenue Forecaster
           React.createElement('div', { className: 'kpi-grid', style: { marginBottom: 0 } },
@@ -13498,6 +12938,7 @@
 
           // Compact Business Operational Highlights Ribbon
           React.createElement('div', {
+            className: 'rcrm-dash-ribbon',
             style: {
               display: 'flex',
               flexWrap: 'wrap',
@@ -13530,13 +12971,7 @@
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }, onClick: () => navigateTo('invoices', 'overview'), title: 'View Invoice Sales' },
               React.createElement('span', { style: { color: 'var(--text-secondary)' } }, '📈 This Month Billed:'),
               React.createElement('strong', { style: { color: 'var(--primary)' } }, BillsoftUtils.formatCurrency(data.businessThisMonth || 0))
-            ),
-            React.createElement('button', {
-              className: 'rcrm-dash-viewall-btn',
-              style: { padding: '4px 10px', fontSize: '0.78rem' },
-              onClick: () => setMinimalViewMode('minimal'),
-              title: 'Switch to Minimal SaaS Dashboard'
-            }, '🍃 Minimal SaaS View')
+            )
           ),
 
           // Business 2-Column Integrated Analytics & Operations Workspace
@@ -13751,7 +13186,7 @@
               )
             )
           )
-        )),
+        ),
 
         // ════════════════════════════════════════════════════════════════════════
         // PERSPECTIVE 2: PERSONAL VIEW (PRIVACY-SAFE SWITCH)
@@ -16189,7 +15624,12 @@
             React.createElement('div', { className: 'invoice-title-block' },
               React.createElement('h2', null, isEstimate ? 'SALES QUOTATION' : 'TAX INVOICE'),
               React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                `${(firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId)) || {}).firmName || 'Apex Retail Solutions Pvt Ltd'} • GSTIN: ${(firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId)) || {}).gstin || '27AABCA1234F1Z6'}`
+                (() => {
+                  const currentF = firms && firms.find(f => String(f.id) === String(selectedFirmId || activeFirmId || API.firmId));
+                  const fName = (currentF && currentF.firmName) ? currentF.firmName : 'Our Business';
+                  const gstin = (currentF && currentF.gstin) ? ` • GSTIN: ${currentF.gstin}` : '';
+                  return `${fName}${gstin}`;
+                })()
               )
             )
           ),

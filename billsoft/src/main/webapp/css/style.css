@@ -1769,7 +1769,161 @@
   margin-top: 16px !important;
 }
 
-/* ─── Minimal SaaS Dashboard Reference Presentation ─── */
+/* ─── Minimal Canonical Dashboard Presentation ─── */
+:root.minimal .dashboard-title {
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+  color: var(--text) !important;
+}
+
+:root.minimal .dashboard-segment-switcher {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  padding: 3px !important;
+  display: inline-flex !important;
+  gap: 2px !important;
+}
+
+:root.minimal .dashboard-segment-btn {
+  border-radius: var(--radius-pill, 9999px) !important;
+  padding: 6px 14px !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+:root.minimal .dashboard-segment-btn.active {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+  font-weight: 700 !important;
+}
+
+:root.minimal .rcrm-dash-ribbon {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg, 16px) !important;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03)) !important;
+  padding: 12px 20px !important;
+}
+
+:root.minimal .rcrm-dash-ribbon strong {
+  font-weight: 700 !important;
+}
+
+:root.minimal .kpi-grid {
+  gap: 16px !important;
+}
+
+:root.minimal .kpi-card {
+  border-radius: var(--radius-card, 24px) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03)) !important;
+  padding: 18px 20px !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+:root.minimal .kpi-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.06)) !important;
+}
+
+:root.minimal .kpi-value {
+  font-size: 1.65rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  color: var(--text) !important;
+}
+
+:root.minimal .kpi-label {
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  color: var(--text-muted) !important;
+}
+
+:root.minimal .expected-revenue-card {
+  border-radius: var(--radius-card, 24px) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03)) !important;
+}
+
+:root.minimal .rcrm-dash-lower-grid {
+  gap: 18px !important;
+}
+
+:root.minimal .rcrm-dash-workspace-card {
+  border-radius: var(--radius-card, 24px) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03)) !important;
+  padding: 22px 24px !important;
+}
+
+:root.minimal .rcrm-dash-horizon-strip {
+  border-radius: var(--radius-lg, 16px) !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  padding: 12px !important;
+  gap: 10px !important;
+}
+
+:root.minimal .rcrm-dash-horizon-item {
+  border-radius: var(--radius-sm, 10px) !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  padding: 10px 14px !important;
+}
+
+:root.minimal .rcrm-dash-segmented-nav {
+  background: var(--bg-secondary) !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  padding: 3px !important;
+  border: 1px solid var(--border) !important;
+  display: inline-flex !important;
+}
+
+:root.minimal .rcrm-dash-segmented-btn {
+  border-radius: var(--radius-pill, 9999px) !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  padding: 4px 12px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  cursor: pointer !important;
+}
+
+:root.minimal .rcrm-dash-segmented-btn.active {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+:root.minimal .rcrm-dash-search-input {
+  border-radius: var(--radius-pill, 9999px) !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  font-size: 0.82rem !important;
+  padding: 6px 14px 6px 34px !important;
+  color: var(--text) !important;
+}
+
+:root.minimal .rcrm-dash-search-input:focus {
+  background: var(--bg-card) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+/* ─── Minimal SaaS Dashboard Legacy Fallbacks ─── */
 .rcrm-minimal-dashboard {
   display: flex;
   flex-direction: column;

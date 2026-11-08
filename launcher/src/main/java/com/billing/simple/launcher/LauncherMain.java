@@ -1340,6 +1340,9 @@ public class LauncherMain {
                     if (json.contains("\"updateAvailable\":true")) {
                         showTrayNotification("Update Available", "A newer version of RupeeCRM is available. Open RupeeCRM to install.", TrayIcon.MessageType.INFO);
                         return;
+                    } else if (json.contains("\"error\":") && !json.contains("\"error\":null") && !json.contains("\"error\":\"\"")) {
+                        showTrayNotification("Update Check Failed", "Could not check for updates. Open RupeeCRM to retry.", TrayIcon.MessageType.WARNING);
+                        return;
                     } else {
                         showTrayNotification("RupeeCRM Up to Date", "You are running the latest version of RupeeCRM.", TrayIcon.MessageType.INFO);
                         return;

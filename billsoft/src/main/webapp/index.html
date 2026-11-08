@@ -37542,7 +37542,37 @@
             onClick: () => fetchUpdateInfo(true)
           }, 'Retry')
         ) : info ? React.createElement(Fragment, null,
-          info.updateAvailable ? React.createElement('div', {
+          (info.error && !info.updateAvailable) ? React.createElement('div', {
+            style: {
+              background: 'var(--danger-light, rgba(239, 68, 68, 0.08))',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: 12,
+              padding: '22px 20px',
+              textAlign: 'center',
+              marginTop: 12
+            }
+          },
+            React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 6 } }, '⚠️'),
+            React.createElement('h3', {
+              style: { margin: '0 0 6px 0', fontSize: '1.1rem', fontWeight: 700, color: 'var(--danger)' }
+            }, 'Update Check Unavailable'),
+            React.createElement('p', {
+              style: { margin: '0 0 14px 0', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }
+            }, info.error),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' } },
+              React.createElement('button', {
+                className: 'btn btn-primary btn-sm',
+                onClick: () => fetchUpdateInfo(true)
+              }, 'Retry Check'),
+              React.createElement('a', {
+                href: 'https://github.com/RanjeetYelave/Simple-Billing/releases/latest',
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                className: 'btn btn-outline btn-sm',
+                style: { textDecoration: 'none' }
+              }, 'View Releases on GitHub ↗')
+            )
+          ) : info.updateAvailable ? React.createElement('div', {
             style: {
               background: 'var(--primary-light, rgba(79, 70, 229, 0.08))',
               border: '1px solid var(--border)',

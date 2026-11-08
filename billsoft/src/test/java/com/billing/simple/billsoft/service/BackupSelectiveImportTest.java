@@ -453,4 +453,41 @@ class BackupSelectiveImportTest {
                 service.importSelectiveData(backup, Collections.singleton(1L), "merge", 10L)
         );
     }
+
+    @Test
+    void testImportSelectiveData_SingleFirmBackupWithOrphanedOtherFirmInvoices_NeverCollides() {
+        when(firmDetailsRepo.count()).thenReturn(1L);
+        FirmDetails f1 = new FirmDetails(); f1.setId(97L); f1.setFirmName("Firm 97");
+        when(firmDetailsRepo.save(any(FirmDetails.class))).thenAnswer(i -> {
+            FirmDetails fd = i.getArgument(0);
+            fd.setId(98L);
+            return fd;
+        });
+
+        BackupDTO backup = new BackupDTO();
+        backup.setMetadata(Map.of("version", "2.0", "type", "FULL_SYSTEM_BACKUP"));
+        backup.setAllFirms(Collections.singletonList(f1));
+
+        // Firm 97 invoice
+        Invoice inv97 = new Invoice(); inv97.setId(101L); inv97.setFirmId(97L); inv97.setInvoiceNumber("INV-0001");
+        // Orphaned / other firm invoices sharing same invoice number
+        Invoice invOther1 = new Invoice(); invOther1.setId(201L); invOther1.setFirmId(1L); invOther1.setInvoiceNumber("INV-0001");
+        Invoice invOther2 = new Invoice(); invOther2.setId(301L); invOther2.setFirmId(2L); invOther2.setInvoiceNumber("INV-0001");
+        backup.setInvoices(Arrays.asList(inv97, invOther1, invOther2));
+
+        when(invoiceRepo.findByInvoiceNumberAndFirmId(eq("INV-0001"), eq(98L))).thenReturn(Optional.empty());
+        when(invoiceRepo.save(any(Invoice.class))).thenAnswer(i -> {
+            Invoice inv = i.getArgument(0);
+            inv.setId(500L);
+            return inv;
+        });
+
+        // Restoring with selective scoping for Firm 97 in CLONE mode must NOT map or import other firm invoices
+        assertDoesNotThrow(() ->
+                service.importSelectiveData(backup, Collections.singleton(97L), "clone", null)
+        );
+
+        // Only ONE invoice (Firm 97's) should be saved
+        verify(invoiceRepo, times(1)).save(any(Invoice.class));
+    }
 }

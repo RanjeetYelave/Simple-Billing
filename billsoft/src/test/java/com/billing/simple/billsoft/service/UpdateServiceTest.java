@@ -112,6 +112,20 @@ class UpdateServiceTest {
     }
 
     @Test
+    void testCheckUpdateNetworkOrRateLimitFailureReturnsError() {
+        when(restTemplate.getForObject(contains("manifest.json"), eq(byte[].class)))
+                .thenThrow(new org.springframework.web.client.HttpClientErrorException(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "API rate limit exceeded"));
+
+        Map<String, Object> result = service.checkUpdate(true);
+        assertNotNull(result);
+        assertFalse((Boolean) result.get("updateAvailable"));
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).contains("rate limit exceeded") ||
+                   ((String) result.get("error")).toLowerCase().contains("failed"));
+    }
+
+    @Test
     void testCheckUpdateNoNewerInstalledEqualsLatest() throws Exception {
         UpdateManifest manifest = new UpdateManifest(
                 1, "1.0.0", "v1.0.0", "2026-10-19T14:00:00Z", "1.0.0",

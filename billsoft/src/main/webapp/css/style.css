@@ -7436,6 +7436,63 @@ body.dark-mode .planner-card,
   line-height: 1.25;
 }
 
+/* Primary Convert button in actions cell - high-contrast across all themes */
+.actions-primary-btn.btn-primary {
+  background: var(--primary) !important;
+  color: var(--brand-accent-foreground, #FFFFFF) !important;
+  border: 1px solid var(--primary) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.actions-primary-btn.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover, var(--primary-dark, #166534)) !important;
+  border-color: var(--primary-hover, var(--primary-dark, #166534)) !important;
+  color: var(--brand-accent-foreground, #FFFFFF) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+  transform: translateY(-1px);
+}
+
+.actions-primary-btn.btn-primary:active:not(:disabled) {
+  background: var(--primary-dark, var(--primary)) !important;
+  border-color: var(--primary-dark, var(--primary)) !important;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+
+.actions-primary-btn.btn-primary:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 1px !important;
+}
+
+.actions-primary-btn.btn-primary:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+:root.classic .actions-primary-btn.btn-primary {
+  background: #000080 !important;
+  color: #FFFFFF !important;
+  border-top: 1px solid #DFDFDF !important;
+  border-left: 1px solid #DFDFDF !important;
+  border-right: 1px solid #000000 !important;
+  border-bottom: 1px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+:root.classic-dark .actions-primary-btn.btn-primary {
+  background: #000080 !important;
+  color: #FFFFFF !important;
+  border-top: 1px solid #555555 !important;
+  border-left: 1px solid #555555 !important;
+  border-right: 1px solid #111111 !important;
+  border-bottom: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 /* Dedicated Return / Return More button styling */
 .actions-btn-return {
   padding: 2.5px 5px;
@@ -17477,7 +17534,7 @@ body.no-liquid-glass {
 
   /* 1. Document Actions Dropdown Trigger (More Options Button) */
   :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .btn-more-actions,
-  :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .actions-primary-btn {
+  :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .actions-primary-btn:not(.btn-primary) {
     background: var(--glass-btn-secondary-bg) !important;
     backdrop-filter: var(--glass-blur-subtle) !important;
     -webkit-backdrop-filter: var(--glass-blur-subtle) !important;
@@ -17487,7 +17544,7 @@ body.no-liquid-glass {
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
   :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .btn-more-actions:hover,
-  :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .actions-primary-btn:hover {
+  :root:not(.classic):not(.classic-dark):not([data-liquid-glass="false"]):not(.no-liquid-glass) .actions-primary-btn:not(.btn-primary):hover {
     background: var(--glass-btn-secondary-hover-bg) !important;
     border-color: var(--glass-btn-secondary-hover-border) !important;
     box-shadow: var(--glass-btn-secondary-hover-shadow) !important;

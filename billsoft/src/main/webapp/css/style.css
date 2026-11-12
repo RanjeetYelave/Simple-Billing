@@ -4416,17 +4416,70 @@ tbody tr:hover {
   background: var(--text-muted);
 }
 
+/* ============================================================
+   CENTRALIZED MODAL & OVERLAY STACKING TIER SYSTEM
+   ============================================================ */
+:root {
+  --z-base: 0;
+  --z-nav: 100;
+  --z-diagnostics: 900;
+  --z-dock: 1000;
+  --z-dropdown: 2000;
+  --z-modal-base: 10000;
+  --z-modal-foreground: 10100;
+  --z-modal-nested: 10200;
+  --z-modal-confirm: 10300;
+  --z-toast: 20000;
+  --z-eula: 99999;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
-  z-index: 10000;
+  z-index: var(--z-modal-base, 10000);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+}
+
+/* Foreground Modal: Previews, Statements, Record Payment, Documents, Share */
+.modal-overlay.modal-foreground,
+.modal-overlay-foreground {
+  z-index: var(--z-modal-foreground, 10100) !important;
+}
+
+/* Nested Modal: Sub-dialogs, Add Vendor in PO, Advance Adjustment */
+.modal-overlay.modal-nested,
+.modal-overlay-nested {
+  z-index: var(--z-modal-nested, 10200) !important;
+}
+
+/* Confirmation / Alert Modal: Delete confirmation, Admin PIN, Unlink confirmation */
+.modal-overlay.modal-confirm,
+.modal-overlay-confirm {
+  z-index: var(--z-modal-confirm, 10300) !important;
+}
+
+/* Body scroll lock when at least one modal is active */
+body.modal-open {
+  overflow: hidden !important;
+}
+
+/* Backgrounded overlay state when covered by a foreground modal */
+.modal-overlay.is-backgrounded {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+.modal-overlay.is-backgrounded > * {
+  pointer-events: none !important;
+}
+.modal-overlay.is-backgrounded-dim {
+  background: rgba(15, 23, 42, 0.25) !important;
+  backdrop-filter: blur(2px) !important;
 }
 
 .modal {

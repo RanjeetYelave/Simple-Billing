@@ -2808,11 +2808,11 @@
       ),
 
       // ═══════════════════════════════════════════════════════════════════
-      // SUB-MODAL 1: ADD NEW VENDOR (z-index 10050 above PO Workspace)
+      // SUB-MODAL 1: ADD NEW VENDOR (z-index 10200 above PO Workspace)
       // ═══════════════════════════════════════════════════════════════════
       showAddVendorModal && React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10050 },
+        className: 'modal-overlay modal-nested',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_add_vendor_modal', 'nested') : 10200 },
         onClick: () => { if (!savingVendor) setShowAddVendorModal(false); }
       },
         React.createElement('div', {
@@ -2868,11 +2868,11 @@
       ),
 
       // ═══════════════════════════════════════════════════════════════════
-      // SUB-MODAL 2: CREATE NEW PRODUCT (z-index 10050 above PO Workspace)
+      // SUB-MODAL 2: CREATE NEW PRODUCT (z-index 10200 above PO Workspace)
       // ═══════════════════════════════════════════════════════════════════
       showCreateProductModal && React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10050 },
+        className: 'modal-overlay modal-nested',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_create_product_modal', 'nested') : 10200 },
         onClick: () => { if (!savingProduct) setShowCreateProductModal(false); }
       },
         React.createElement('div', {
@@ -5968,10 +5968,12 @@
 
       // REVIEW CHANGES MODAL
       showReviewModal && React.createElement('div', {
-        className: 'modal-overlay',
+        className: 'modal-overlay modal-foreground',
         style: {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('bulk_review_modal', 'foreground') : 10100,
+          padding: 20
         }
       },
         React.createElement('div', {
@@ -6071,10 +6073,12 @@
 
       // UNSAVED CHANGES PROMPT
       showUnsavedPrompt && React.createElement('div', {
-        className: 'modal-overlay',
+        className: 'modal-overlay modal-confirm',
         style: {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 20
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('bulk_unsaved_prompt', 'confirm') : 10300,
+          padding: 20
         }
       },
         React.createElement('div', {

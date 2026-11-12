@@ -20,6 +20,7 @@
   <script src="js/calculator.js?v=20260919_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/featureLock.js"></script>
+  <script src="js/modalLayerManager.js?v=20261112_v1"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
   <script src="js/themeToggle.js?v=20260925_sunset_default_v1"></script>
@@ -682,10 +683,26 @@
         icon = '⚠️'
       } = dialogState;
 
+      useEffect(() => {
+        if (dialogState && dialogState.isOpen && typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('app_confirm_dialog', {
+            priority: 'confirm',
+            onClose: onCancel
+          });
+          return () => RupeeModalStack.unregister('app_confirm_dialog');
+        }
+      }, [dialogState?.isOpen, onCancel]);
+
       return ReactDOM.createPortal(
         React.createElement('div', {
-          className: 'modal-overlay',
-          style: { zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.6)' },
+          className: 'modal-overlay modal-confirm',
+          style: {
+            zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('app_confirm_dialog', 'confirm') : 10300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(15, 23, 42, 0.6)'
+          },
           onClick: onCancel
         },
           React.createElement('div', {
@@ -754,10 +771,26 @@
         onClose(false);
       };
 
+      useEffect(() => {
+        if (dialogState && dialogState.isOpen && typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('out_of_stock_dialog', {
+            priority: 'confirm',
+            onClose: handleCancel
+          });
+          return () => RupeeModalStack.unregister('out_of_stock_dialog');
+        }
+      }, [dialogState?.isOpen, handleCancel]);
+
       return ReactDOM.createPortal(
         React.createElement('div', {
-          className: 'modal-overlay',
-          style: { zIndex: 1250, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.6)' },
+          className: 'modal-overlay modal-confirm',
+          style: {
+            zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('out_of_stock_dialog', 'confirm') : 10300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(15, 23, 42, 0.6)'
+          },
           onClick: handleCancel
         },
           React.createElement('div', {
@@ -1196,8 +1229,18 @@
         };
 
         window.addEventListener('keydown', handleKeyDown);
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('doc_export_modal', {
+            priority: 'foreground',
+            onClose: () => { if (!actionLoading) onClose(); },
+            getContainer: () => modalRef.current
+          });
+        }
         return () => {
           window.removeEventListener('keydown', handleKeyDown);
+          if (typeof RupeeModalStack !== 'undefined') {
+            RupeeModalStack.unregister('doc_export_modal');
+          }
           const prevEl = prevFocusedElementRef.current;
           if (prevEl && typeof prevEl.focus === 'function') {
             try { prevEl.focus(); } catch (err) {}
@@ -1403,11 +1446,12 @@
       };
 
       return React.createElement('div', {
-        className: 'modal-overlay',
+        className: 'modal-overlay modal-foreground',
         id: 'invoice-print-dialog-overlay',
         style: {
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 9999,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('doc_export_modal', 'foreground') : 10100,
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         },
         onClick: (e) => { if (e.target === e.currentTarget && !actionLoading) onClose(); }
@@ -1762,6 +1806,17 @@
         setAttachPdf(hasPdf);
       }, [isOpen, validRecipients, recipientPhone, initialMessage, pdfBlob, hasPdf]);
 
+      useEffect(() => {
+        if (!isOpen) return;
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('whatsapp_share_modal', {
+            priority: 'foreground',
+            onClose: onClose
+          });
+          return () => RupeeModalStack.unregister('whatsapp_share_modal');
+        }
+      }, [isOpen, onClose]);
+
       const resolvedFileName = useMemo(() => {
         if (pdfFileName) return BillsoftWhatsApp.sanitizeFileName(pdfFileName);
         if (documentRef) return BillsoftWhatsApp.sanitizeFileName(`${documentRef}.pdf`);
@@ -1940,7 +1995,7 @@
 
       return ReactDOM.createPortal(
         React.createElement('div', {
-          className: 'modal-overlay',
+          className: 'modal-overlay modal-foreground',
           onClick: onClose,
           style: {
             position: 'fixed',
@@ -1950,7 +2005,7 @@
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('whatsapp_share_modal', 'foreground') : 10150,
             padding: 16
           }
         },
@@ -6448,7 +6503,11 @@
         }),
 
         // Delete Confirmation Modal
-        deleteDoc && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteDoc(null) },
+        deleteDoc && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('doc_delete_confirm', 'confirm') : 10300 },
+          onClick: () => setDeleteDoc(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } },
               `🗑️ Delete ${deleteDoc.isEstimate ? 'Quotation' : 'Invoice'}`
@@ -6464,7 +6523,11 @@
         ),
 
         // Convert Quotation Choice Modal
-        convertModalDoc && React.createElement('div', { className: 'modal-overlay', onClick: () => setConvertModalDoc(null) },
+        convertModalDoc && React.createElement('div', {
+          className: 'modal-overlay modal-nested',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('doc_convert_modal', 'nested') : 10200 },
+          onClick: () => setConvertModalDoc(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '92%', margin: '70px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, '⚡ Convert Quotation to Invoice'),
@@ -7748,14 +7811,14 @@
     // ─── SHARED NOTE / MEMO PREVIEW MODAL ───
     function NotePreviewModal({ note, onClose, onEdit }) {
       useEffect(() => {
-        const handleKeyDown = (e) => {
-          if (e.key === 'Escape' || e.key === 'Esc') {
-            if (onClose) onClose();
-          }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [onClose]);
+        if (note && typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('note_preview_modal', {
+            priority: 'foreground',
+            onClose: onClose
+          });
+          return () => RupeeModalStack.unregister('note_preview_modal');
+        }
+      }, [note, onClose]);
 
       if (!note) return null;
       const content = note.content || note.notes || note.note || '';
@@ -7766,10 +7829,10 @@
       const tagsList = note.tags ? note.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 
       return React.createElement('div', {
-        className: 'modal-overlay note-preview-overlay',
+        className: 'modal-overlay note-preview-overlay modal-foreground',
         onClick: onClose,
         style: {
-          zIndex: 1200,
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('note_preview_modal', 'foreground') : 10100,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -11830,7 +11893,7 @@
       const { icon, label } = getTitleLabel();
 
       return React.createElement('div', {
-        className: 'modal-overlay',
+        className: 'modal-overlay modal-confirm',
         onClick: onClose,
         style: {
           backdropFilter: 'blur(4px)',
@@ -11838,7 +11901,7 @@
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 9999
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('quick_action_palette', 'confirm') : 10300
         }
       },
         React.createElement('div', {
@@ -13694,8 +13757,8 @@
         // ════════════════════════════════════════════════════════════════════════
         showAnnouncementModal && Array.isArray(announcements) && announcements.length > 0 && React.createElement('div', {
           id: 'announcements-startup-modal-overlay',
-          className: 'modal-overlay',
-          style: { zIndex: 1050, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)' },
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('announcement_modal', 'foreground') : 10100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)' },
           onClick: handleAcknowledgeAnnouncements
         },
           React.createElement('div', {
@@ -16375,7 +16438,7 @@
         ),
 
         showMigrationModal && React.createElement('div', {
-          className: 'modal-overlay',
+          className: 'modal-overlay modal-foreground',
           style: {
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -16383,7 +16446,7 @@
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999
+            zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('invoice_migration_modal', 'foreground') : 10100
           }
         },
           React.createElement('div', {
@@ -16578,6 +16641,7 @@
 
     // ─── SALES RETURN MODAL (CREDIT NOTE / PARTIAL RETURN) ───
     function SalesReturnModal({ invoiceId, onClose, onSuccess }) {
+      const returnModalRef = useRef(null);
       const [loading, setLoading] = useState(true);
       const [submitting, setSubmitting] = useState(false);
       const [invoice, setInvoice] = useState(null);
@@ -16588,6 +16652,18 @@
       const [refundMode, setRefundMode] = useState('CASH');
       const [notes, setNotes] = useState('');
       const [items, setItems] = useState([]);
+
+      useEffect(() => {
+        const modalId = 'sales_return_modal_' + (invoiceId || 'default');
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register(modalId, {
+            priority: 'foreground',
+            onClose: onClose,
+            getContainer: () => returnModalRef.current
+          });
+          return () => RupeeModalStack.unregister(modalId);
+        }
+      }, [invoiceId, onClose]);
 
       // Penalty & Tax Exclusion States
       const [excludeTax, setExcludeTax] = useState(false);
@@ -16840,7 +16916,10 @@
       };
 
       if (loading) {
-        return React.createElement('div', { className: 'modal-overlay' },
+        return React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('sales_return_modal_' + (invoiceId || 'default'), 'foreground') : 10100 }
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 450, margin: '80px auto', padding: 24, textAlign: 'center' } },
             React.createElement(RupeeCRMLoader, { message: 'Loading return details...', size: 48, style: { minHeight: 120 } })
           )
@@ -16874,7 +16953,12 @@
         setItems(items.map((it, i) => i === idx ? { ...it, [field]: val } : it));
       };
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        ref: returnModalRef,
+        className: 'modal-overlay modal-foreground',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('sales_return_modal_' + (invoiceId || 'default'), 'foreground') : 10100 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: {
@@ -17505,6 +17589,7 @@
 
     // ─── RECORD PAYMENT MODAL (WITH LIVE BREAKDOWN & OUTCOME) ───
     function RecordPaymentModal({ invoice, onClose, onSuccess }) {
+      const pmtRef = useRef(null);
       const [loading, setLoading] = useState(true);
       const [submitting, setSubmitting] = useState(false);
       const [amount, setAmount] = useState('');
@@ -17516,6 +17601,18 @@
       const [showHistory, setShowHistory] = useState(false);
       const [pastPayments, setPastPayments] = useState([]);
       const [pastReturns, setPastReturns] = useState([]);
+
+      useEffect(() => {
+        const modalId = 'record_payment_modal_' + (invoice?.id || 'default');
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register(modalId, {
+            priority: 'foreground',
+            onClose: onClose,
+            getContainer: () => pmtRef.current
+          });
+          return () => RupeeModalStack.unregister(modalId);
+        }
+      }, [invoice?.id, onClose]);
 
       useEffect(() => {
         if (!invoice || !invoice.id) return;
@@ -17613,7 +17710,12 @@
       const docNo = invoice.invoiceNumber || ('#' + invoice.id);
       const totalTxCount = pastPayments.length + pastReturns.length;
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        ref: pmtRef,
+        className: 'modal-overlay modal-foreground',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('record_payment_modal_' + (invoice?.id || 'default'), 'foreground') : 10100 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 460, width: '92%', margin: '40px auto', padding: 0, overflow: 'hidden' },
@@ -17868,7 +17970,11 @@
         return invNo.includes(q) || custName.includes(q) || custPhone.includes(q);
       });
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        className: 'modal-overlay modal-nested',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('invoice_selector_for_return_modal', 'nested') : 10200 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 720, width: '92%', margin: '50px auto', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)' },
@@ -17947,7 +18053,11 @@
       const cust = returnData.customer || inv.customer || {};
       const items = returnData.items || [];
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        className: 'modal-overlay modal-foreground',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('sales_return_detail_modal', 'foreground') : 10100 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 860, width: '92%', margin: '40px auto', maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 16, border: '1px solid var(--border)' },
@@ -19263,7 +19373,11 @@
         }),
 
         // Delete Invoice Confirmation Modal
-        deleteInvoiceId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteInvoiceId(null) },
+        deleteInvoiceId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('delete_invoice_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteInvoiceId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Invoice'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -19740,7 +19854,11 @@
             ),
 
         // Convert Quotation Choice Modal
-        convertModalQuotation && React.createElement('div', { className: 'modal-overlay', onClick: () => setConvertModalQuotation(null) },
+        convertModalQuotation && React.createElement('div', {
+          className: 'modal-overlay modal-nested',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('quotation_convert_modal', 'nested') : 10200 },
+          onClick: () => setConvertModalQuotation(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '92%', margin: '70px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, '⚡ Convert Quotation to Invoice'),
@@ -19783,7 +19901,11 @@
         ),
 
         // Delete Quotation Confirmation Modal
-        deleteQuotationId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteQuotationId(null) },
+        deleteQuotationId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('delete_quotation_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteQuotationId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Quotation'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -21113,7 +21235,8 @@
         // MODAL 1: Create / Edit Product Modal
         // ════════════════════════════════════════════════════
         showModal && React.createElement('div', {
-          className: 'modal-overlay',
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_form_modal', 'foreground') : 10100 },
           onClick: () => setShowModal(false),
           onKeyDown: (e) => {
             if (e.key === 'Escape') {
@@ -21314,7 +21437,8 @@
         // MODAL 2: Quick Stock Adjustment Modal
         // ════════════════════════════════════════════════════
         adjustItem && React.createElement('div', {
-          className: 'modal-overlay',
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_adjust_modal', 'foreground') : 10100 },
           onClick: () => setAdjustItem(null),
           onKeyDown: (e) => {
             if (e.key === 'Escape') {
@@ -21417,7 +21541,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 3: Stock Movement Ledger History Modal
         // ════════════════════════════════════════════════════
-        showHistoryModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowHistoryModal(false) },
+        showHistoryModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_history_modal', 'foreground') : 10100 },
+          onClick: () => setShowHistoryModal(false)
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 750, width: '92%' }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title' },
@@ -21498,7 +21626,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 4: Archive Product Confirmation Modal
         // ════════════════════════════════════════════════════
-        deleteProductId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteProductId(null) },
+        deleteProductId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_archive_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteProductId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 440, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--status-warning, #f59e0b)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 } }, '📁 Archive Product'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -21514,7 +21646,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 5: Restore Product Confirmation Modal
         // ════════════════════════════════════════════════════
-        restoreCandidate && React.createElement('div', { className: 'modal-overlay', onClick: () => setRestoreCandidate(null) },
+        restoreCandidate && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_restore_modal', 'confirm') : 10300 },
+          onClick: () => setRestoreCandidate(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--primary, #3b82f6)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 } }, '🔄 Restore Product'),
             React.createElement('p', { style: { margin: '0 0 12px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -21542,7 +21678,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 6: Smart Duplicate Detection & Merge Modal
         // ════════════════════════════════════════════════════
-        showDuplicatesModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowDuplicatesModal(false) },
+        showDuplicatesModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_duplicates_modal', 'foreground') : 10100 },
+          onClick: () => setShowDuplicatesModal(false)
+        },
           React.createElement('div', { id: 'modal-duplicates-merge', className: 'modal', style: { maxWidth: 900, width: '96%', maxHeight: '90vh' }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
@@ -21682,7 +21822,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 7: Conflict Reconciliation Modal
         // ════════════════════════════════════════════════════
-        showConflictModal && conflictCandidate && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowConflictModal(false) },
+        showConflictModal && conflictCandidate && React.createElement('div', {
+          className: 'modal-overlay modal-nested',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_conflict_modal', 'nested') : 10200 },
+          onClick: () => setShowConflictModal(false)
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 580, width: '92%' }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title' }, '⚖️ Reconcile Item Merge'),
@@ -21745,7 +21889,11 @@
         // ════════════════════════════════════════════════════
         // MODAL 8: Bulk Items Import Modal
         // ════════════════════════════════════════════════════
-        showBulkImportModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowBulkImportModal(false) },
+        showBulkImportModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('product_bulk_import_modal', 'foreground') : 10100 },
+          onClick: () => setShowBulkImportModal(false)
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 780, width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: 12 } },
               React.createElement('div', null,
@@ -21858,7 +22006,18 @@
           }
         };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('role_activation_modal', {
+            priority: 'confirm',
+            onClose: onClose
+          });
+        }
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          if (typeof RupeeModalStack !== 'undefined') {
+            RupeeModalStack.unregister('role_activation_modal');
+          }
+        };
       }, [onClose]);
 
       const handleConfirm = async (e) => {
@@ -21936,8 +22095,15 @@
         : `🏭 Activate Supplier Role for "${item.canonicalName || item.name}"`;
 
       return React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10060, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        className: 'modal-overlay modal-confirm',
+        style: {
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('role_activation_modal', 'confirm') : 10300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(3px)'
+        },
         onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
       },
         React.createElement('div', {
@@ -22063,7 +22229,18 @@
           }
         };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('manage_party_link_modal', {
+            priority: 'foreground',
+            onClose: onClose
+          });
+        }
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          if (typeof RupeeModalStack !== 'undefined') {
+            RupeeModalStack.unregister('manage_party_link_modal');
+          }
+        };
       }, [onClose]);
 
       const loadAliases = useCallback(async () => {
@@ -22211,8 +22388,15 @@
       };
 
       return React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10055, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        className: 'modal-overlay modal-foreground',
+        style: {
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('manage_party_link_modal', 'foreground') : 10100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(3px)'
+        },
         onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
       },
         React.createElement('div', {
@@ -22538,6 +22722,16 @@
         searchCandidates('');
       }, [searchCandidates]);
 
+      useEffect(() => {
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('party_link_modal', {
+            priority: 'nested',
+            onClose: onClose
+          });
+          return () => RupeeModalStack.unregister('party_link_modal');
+        }
+      }, [onClose]);
+
       const handleConfirm = async () => {
         if (!selectedCandidate) return;
         const customerId = isCustomerContext ? activeCustomer?.id : selectedCandidate?.id;
@@ -22569,8 +22763,15 @@
         : `🔗 Link Customer to "${activeParty?.name || 'Supplier'}"`;
 
       return React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        className: 'modal-overlay modal-nested',
+        style: {
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_link_modal', 'nested') : 10200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(3px)'
+        },
         onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
       },
         React.createElement('div', {
@@ -22810,12 +23011,30 @@
           }
         };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register('unified_counterparty_statement_modal', {
+            priority: 'foreground',
+            onClose: onClose
+          });
+        }
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          if (typeof RupeeModalStack !== 'undefined') {
+            RupeeModalStack.unregister('unified_counterparty_statement_modal');
+          }
+        };
       }, [onClose]);
 
       return React.createElement('div', {
-        className: 'modal-overlay',
-        style: { zIndex: 10002, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' },
+        className: 'modal-overlay modal-foreground',
+        style: {
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('unified_counterparty_statement_modal', 'foreground') : 10100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(3px)'
+        },
         onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
       },
         React.createElement('div', {
@@ -23119,6 +23338,7 @@
 
     // ─── CUSTOMER 360 QUICK VIEW MODAL / DRAWER ───
     function Customer360Modal({ customer, initialTab = 'outstanding', onClose, onBill, onSettle, onStatement, onRemind, onOpenInvoice }) {
+      const c360Ref = useRef(null);
       const [activeTab, setActiveTab] = useState(initialTab);
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -23147,18 +23367,22 @@
 
       useEffect(() => {
         load();
+        const handleRefresh = () => load();
+        window.addEventListener('billsoft:app-refresh', handleRefresh);
+        return () => window.removeEventListener('billsoft:app-refresh', handleRefresh);
       }, [load]);
 
       useEffect(() => {
-        const handleKeyDown = (e) => {
-          if (e.key === 'Escape' || e.keyCode === 27) {
-            e.stopPropagation();
-            if (onClose) onClose();
-          }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [onClose]);
+        const modalId = 'customer_360_modal_' + (customer?.id || 'default');
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register(modalId, {
+            priority: 'base',
+            onClose: onClose,
+            getContainer: () => c360Ref.current
+          });
+          return () => RupeeModalStack.unregister(modalId);
+        }
+      }, [customer?.id, onClose]);
 
       const toggleInvoiceSelect = (invId) => {
         setSelectedInvoices(prev => ({ ...prev, [invId]: !prev[invId] }));
@@ -23208,7 +23432,12 @@
         }));
       };
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        ref: c360Ref,
+        className: 'modal-overlay',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('customer_360_modal_' + (customer?.id || 'default'), 'base') : 10000 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 840, width: '96%', margin: '30px auto', padding: 24, borderRadius: 14, maxHeight: '92vh', overflowY: 'auto' },
@@ -23626,6 +23855,7 @@
 
     // ─── CUSTOMER MULTI-INVOICE SETTLEMENT & ALLOCATION MODAL ───
     function CustomerSettlementModal({ customer, initialSelectedInvoiceIds = [], onClose, onSuccess }) {
+      const settleRef = useRef(null);
       const [loading, setLoading] = useState(true);
       const [submitting, setSubmitting] = useState(false);
       const [outstandingInvoices, setOutstandingInvoices] = useState([]);
@@ -23637,6 +23867,18 @@
       const [paymentDate, setPaymentDate] = useState(BillsoftUtils.todayStr());
       const [referenceNumber, setReferenceNumber] = useState('');
       const [notes, setNotes] = useState('');
+
+      useEffect(() => {
+        const modalId = 'customer_settlement_modal_' + (customer?.id || 'default');
+        if (typeof RupeeModalStack !== 'undefined') {
+          RupeeModalStack.register(modalId, {
+            priority: 'foreground',
+            onClose: onClose,
+            getContainer: () => settleRef.current
+          });
+          return () => RupeeModalStack.unregister(modalId);
+        }
+      }, [customer?.id, onClose]);
 
       useEffect(() => {
         if (!customer || !customer.id) return;
@@ -23798,7 +24040,12 @@
         }
       };
 
-      return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+      return React.createElement('div', {
+        ref: settleRef,
+        className: 'modal-overlay modal-foreground',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('customer_settlement_modal_' + (customer?.id || 'default'), 'foreground') : 10100 },
+        onClick: onClose
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 680, width: '95%', margin: '40px auto', padding: 24, borderRadius: 14, maxHeight: '90vh', overflowY: 'auto' },
@@ -24324,6 +24571,9 @@
         try {
           await API.customers.delete(deleteCustomerId);
           showToast('Customer deleted', 'success');
+          if (c360Customer && c360Customer.id === deleteCustomerId) {
+            setC360Customer(null);
+          }
           load();
         } catch (e) {
           showToast('Failed to delete customer', 'error');
@@ -24842,8 +25092,8 @@
           initialTab: c360InitialTab,
           onClose: () => setC360Customer(null),
           onBill: handleCreateBill,
-          onSettle: (cust, invIds) => { setC360Customer(null); openSettle(cust, invIds); },
-          onStatement: (cust) => { setC360Customer(null); openStatementModal(cust); },
+          onSettle: (cust, invIds) => openSettle(cust, invIds),
+          onStatement: (cust) => openStatementModal(cust),
           onRemind: handleWhatsAppReminder
         }),
 
@@ -24856,7 +25106,11 @@
         }),
 
         // ── 6. CUSTOMER STATEMENT & KHATA MODAL ──
-        statementCustomer && React.createElement('div', { className: 'modal-overlay', onClick: () => setStatementCustomer(null) },
+        statementCustomer && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('customer_statement_modal', 'foreground') : 10100 },
+          onClick: () => setStatementCustomer(null)
+        },
           React.createElement('div', {
             className: 'card modal-content',
             style: { maxWidth: 720, width: '95%', margin: '40px auto', padding: 24, borderRadius: 14, maxHeight: '90vh', overflowY: 'auto' },
@@ -24972,7 +25226,11 @@
         ),
 
         // ── 7. ADD / EDIT CUSTOMER MODAL ──
-        showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
+        showModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('customer_form_modal', 'foreground') : 10100 },
+          onClick: () => setShowModal(false)
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 500 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title' }, editItem ? '✏️ Edit Customer Profile' : '👤 Add New Customer'),
@@ -25103,7 +25361,11 @@
         ),
 
         // ── 6. DELETE CUSTOMER CONFIRMATION MODAL ──
-        deleteCustomerId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteCustomerId(null) },
+        deleteCustomerId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('delete_customer_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteCustomerId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Customer'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -25238,6 +25500,25 @@ function PartyDetailModal({
   }, [loadData]);
 
   // Keyboard accessibility
+  const partyModalId = 'party_detail_modal_' + (party?.id || 'default');
+  useEffect(() => {
+    if (typeof RupeeModalStack !== 'undefined') {
+      RupeeModalStack.register(partyModalId, {
+        priority: 'base',
+        onClose: () => {
+          if (showUnlinkModal) {
+            setShowUnlinkModal(false);
+          } else if (adjustPayment) {
+            setAdjustPayment(null);
+          } else if (onClose) {
+            onClose();
+          }
+        }
+      });
+      return () => RupeeModalStack.unregister(partyModalId);
+    }
+  }, [partyModalId, onClose, showUnlinkModal, adjustPayment]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' || e.keyCode === 27) {
@@ -25407,7 +25688,11 @@ function PartyDetailModal({
   const effectiveParty = partyData || party || {};
   const effectiveLink = linkInfo || partyLinksMap?.partyToCustomer?.[effectiveParty.id];
 
-  return React.createElement('div', { className: 'modal-overlay', onClick: onClose },
+  return React.createElement('div', {
+    className: 'modal-overlay',
+    style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex(partyModalId, 'base') : 10000 },
+    onClick: onClose
+  },
     React.createElement('div', {
       className: 'card modal-content party-detail-modal',
       style: { maxWidth: 960, width: '96%', maxHeight: '92vh', overflowY: 'auto', margin: '24px auto', padding: 24, borderRadius: 14 },
@@ -26108,7 +26393,11 @@ function PartyDetailModal({
       ),
 
       // ── SUB-MODAL: UNLINK CONFIRMATION REQUIRING ADMIN PIN ──
-      showUnlinkModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowUnlinkModal(false) },
+      showUnlinkModal && React.createElement('div', {
+        className: 'modal-overlay modal-confirm',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_unlink_modal', 'confirm') : 10300 },
+        onClick: () => setShowUnlinkModal(false)
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 440, width: '92%', margin: '80px auto', padding: 22, borderRadius: 12 },
@@ -26151,7 +26440,11 @@ function PartyDetailModal({
       ),
 
       // ── SUB-MODAL: ADJUST ADVANCE AGAINST PO ──
-      adjustPayment && React.createElement('div', { className: 'modal-overlay', onClick: () => setAdjustPayment(null) },
+      adjustPayment && React.createElement('div', {
+        className: 'modal-overlay modal-nested',
+        style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_adjust_modal', 'nested') : 10200 },
+        onClick: () => setAdjustPayment(null)
+      },
         React.createElement('div', {
           className: 'card modal-content',
           style: { maxWidth: 480, width: '92%', margin: '70px auto', padding: 22, borderRadius: 12 },
@@ -26963,7 +27256,11 @@ function PartyDetailModal({
           ),
 
         // Add / Edit Party Modal
-        showModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowModal(false) },
+        showModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_form_modal', 'foreground') : 10100 },
+          onClick: () => setShowModal(false)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 640, width: '95%', maxHeight: '90vh', overflowY: 'auto', margin: '40px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, editItem ? '✏️ Edit Party (Vendor)' : '➕ Add New Party (Vendor)'),
@@ -27147,7 +27444,11 @@ function PartyDetailModal({
         ),
 
         // Record Payment Modal
-        showPaymentModal && paymentParty && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowPaymentModal(false) },
+        showPaymentModal && paymentParty && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_payment_modal', 'foreground') : 10100 },
+          onClick: () => setShowPaymentModal(false)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 480, width: '92%', margin: '60px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, `💳 Record Payment to ${paymentParty.name}`),
@@ -27248,7 +27549,11 @@ function PartyDetailModal({
         ),
 
         // Ledger Drawer / Modal
-        showLedgerModal && ledgerParty && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowLedgerModal(false) },
+        showLedgerModal && ledgerParty && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_ledger_modal', 'base') : 10000 },
+          onClick: () => setShowLedgerModal(false)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 780, width: '95%', maxHeight: '90vh', overflowY: 'auto', margin: '40px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
               React.createElement('div', null,
@@ -27457,7 +27762,11 @@ function PartyDetailModal({
         ),
 
         // Advance Allocation to PO Modal (From Ledger)
-        adjustModalPayment && React.createElement('div', { className: 'modal-overlay', onClick: () => setAdjustModalPayment(null) },
+        adjustModalPayment && React.createElement('div', {
+          className: 'modal-overlay modal-nested',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_adjust_modal', 'nested') : 10200 },
+          onClick: () => setAdjustModalPayment(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 500, width: '92%', margin: '70px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, '⚡ Adjust Advance Against Purchase Order'),
@@ -27524,7 +27833,11 @@ function PartyDetailModal({
         ),
 
         // Delete Party Confirmation Modal
-        deletePartyId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeletePartyId(null) },
+        deletePartyId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_delete_modal', 'confirm') : 10300 },
+          onClick: () => setDeletePartyId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Party'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -27538,7 +27851,11 @@ function PartyDetailModal({
         ),
 
         // Delete Payment Confirmation Modal
-        deletePaymentConfirmId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeletePaymentConfirmId(null) },
+        deletePaymentConfirmId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_payment_delete_modal', 'confirm') : 10300 },
+          onClick: () => setDeletePaymentConfirmId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Payment Transaction'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -28269,7 +28586,11 @@ function PartyDetailModal({
         ),
 
         // ── 5. Create New Firm Modal ──
-        showCreateModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowCreateModal(false) },
+        showCreateModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('firm_create_modal', 'foreground') : 10100 },
+          onClick: () => setShowCreateModal(false)
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 440 }, onClick: e => e.stopPropagation() },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title' }, 'Register New Business Firm'),
@@ -28297,7 +28618,11 @@ function PartyDetailModal({
         ),
 
         // ── 6. Delete Firm Confirmation Modal ──
-        deleteFirmId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteFirmId(null) },
+        deleteFirmId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('firm_delete_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteFirmId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '92%', margin: '80px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 10px 0', color: 'var(--danger)', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: 8 } },
               'Confirm Firm Deletion'
@@ -29899,7 +30224,11 @@ function PartyDetailModal({
           ),
 
           // Comprehensive Inline Quick Add Party Modal
-          showInlinePartyModal && React.createElement('div', { className: 'modal-overlay', onClick: () => setShowInlinePartyModal(false) },
+          showInlinePartyModal && React.createElement('div', {
+            className: 'modal-overlay modal-nested',
+            style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_inline_party_modal', 'nested') : 10200 },
+            onClick: () => setShowInlinePartyModal(false)
+          },
             React.createElement('div', { className: 'card modal-content', style: { maxWidth: 540, width: '92%', maxHeight: '90vh', overflowY: 'auto', margin: '40px auto', padding: 24, borderRadius: 12 }, onClick: e => e.stopPropagation() },
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
                 React.createElement('h3', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, '➕ Quick Add Party / Vendor'),
@@ -30213,7 +30542,11 @@ function PartyDetailModal({
         }),
 
         // Quick Pay / Advance Adjustment Modal
-        quickPayPo && React.createElement('div', { className: 'modal-overlay', onClick: () => setQuickPayPo(null) },
+        quickPayPo && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_quick_pay_modal', 'foreground') : 10100 },
+          onClick: () => setQuickPayPo(null)
+        },
           React.createElement('div', {
             className: 'card modal-content',
             style: { maxWidth: 520, width: '94%', margin: '50px auto', padding: 24, borderRadius: 16, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' },
@@ -30473,7 +30806,11 @@ function PartyDetailModal({
         ),
 
         // Delete PO Modal
-        deletePoId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeletePoId(null) },
+        deletePoId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_delete_modal', 'confirm') : 10300 },
+          onClick: () => setDeletePoId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Purchase Order'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -31401,7 +31738,11 @@ function PartyDetailModal({
         }),
 
         // Delete Letter Modal
-        deleteLetterId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteLetterId(null) },
+        deleteLetterId && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('letter_delete_modal', 'confirm') : 10300 },
+          onClick: () => setDeleteLetterId(null)
+        },
           React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
             React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Business Letter'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
@@ -33475,7 +33816,10 @@ function PartyDetailModal({
         ),
 
         // ─── SELECTIVE MULTI-FIRM RESTORE MODAL ───
-        showRestoreModal && inspection && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9990 } },
+        showRestoreModal && inspection && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('restore_inspection_modal', 'base') : 10000 }
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 620, maxHeight: '90vh', display: 'flex', flexDirection: 'column' } },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
@@ -33652,8 +33996,8 @@ function PartyDetailModal({
 
         // Native Restore Confirmation Modal
         showRestoreConfirmModal && inspection && React.createElement('div', {
-          className: 'modal-overlay',
-          style: { zIndex: 10000 },
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('restore_confirm_modal', 'confirm') : 10300 },
           onClick: () => !loading && setShowRestoreConfirmModal(false)
         },
           React.createElement('div', {
@@ -33808,7 +34152,10 @@ function PartyDetailModal({
           )
         ),
 
-        showResetModal && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999 } },
+        showResetModal && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('factory_reset_modal', 'confirm') : 10300 }
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 500 } },
             React.createElement('div', { className: 'modal-header' }, React.createElement('div', { className: 'modal-title', style: { color: 'var(--danger)' } }, '🚨 Factory Reset Warning'), React.createElement('button', { className: 'modal-close', onClick: () => !loading && resetStep !== 1 && setShowResetModal(false) }, '✕')),
             React.createElement('div', { className: 'modal-body' },
@@ -38384,7 +38731,10 @@ function PartyDetailModal({
         ),
 
         // Enable Auth Modal
-        modalState === 'enable' && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999 } },
+        modalState === 'enable' && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('auth_settings_modal', 'confirm') : 10300 }
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 440 } },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title', style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -38433,7 +38783,10 @@ function PartyDetailModal({
         ),
 
         // Disable Auth Modal
-        modalState === 'disable' && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999 } },
+        modalState === 'disable' && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('auth_settings_modal', 'confirm') : 10300 }
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 440 } },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title', style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' } },
@@ -38470,7 +38823,10 @@ function PartyDetailModal({
         ),
 
         // Change Password Modal
-        modalState === 'change' && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9999 } },
+        modalState === 'change' && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('auth_settings_modal', 'confirm') : 10300 }
+        },
           React.createElement('div', { className: 'modal', style: { maxWidth: 440 } },
             React.createElement('div', { className: 'modal-header' },
               React.createElement('div', { className: 'modal-title', style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -39880,9 +40236,9 @@ function PartyDetailModal({
       };
 
       return React.createElement('div', {
-        className: 'modal-overlay',
+        className: 'modal-overlay modal-confirm',
         style: {
-          zIndex: 9999,
+          zIndex: 99990,
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
           display: 'flex',
           alignItems: 'center',
@@ -46753,7 +47109,10 @@ function PartyDetailModal({
           }
         }),
         React.createElement(UpdateProgressOverlay, { progress: updateProgress, isUpdating, onComplete: handleUpdateComplete, onCancel: handleCancelUpdate }),
-        updateCompleteBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        updateCompleteBanner && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: 10500, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        },
           React.createElement('div', { className: 'card', style: { maxWidth: 420, width: '90%', padding: '40px 30px', textAlign: 'center' } },
             React.createElement('div', { style: { fontSize: '3rem', marginBottom: 16 } }, '✅'),
             React.createElement('h3', { style: { marginBottom: 8, color: '#16a34a' } }, 'Update Complete!'),
@@ -46761,7 +47120,10 @@ function PartyDetailModal({
             React.createElement('button', { className: 'btn btn-primary', style: { marginTop: 20 }, onClick: () => { setUpdateCompleteBanner(null); window.location.reload(); } }, 'Continue')
           )
         ),
-        updateRollbackBanner && React.createElement('div', { className: 'modal-overlay', style: { zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        updateRollbackBanner && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: 10500, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        },
           React.createElement('div', { className: 'card', style: { maxWidth: 460, width: '90%', padding: '36px 28px', textAlign: 'center' } },
             React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 12 } }, '🛡️'),
             React.createElement('h3', { style: { marginBottom: 8, color: '#f59e0b' } }, 'Previous Version Restored'),

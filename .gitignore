@@ -127,6 +127,7 @@ playwright/.cache/
 scratch/
 billsoft/cp*.txt
 *.cp
+CLEANUP_AUDIT.md
 
 ###############################################################
 # STANDALONE OPERATOR TOOLS

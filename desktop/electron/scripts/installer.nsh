@@ -2,6 +2,8 @@
 ; RupeeCRM Desktop NSIS Lifecycle & Legacy Migration Script
 ; ==============================================================================
 
+!include "LogicLib.nsh"
+
 !macro customInit
   ; 1. Terminate running RupeeCRM electron process to release locked binaries
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'

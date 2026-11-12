@@ -44,9 +44,6 @@ public class CustomerAndProductAutocompleteSearchIntegrationTest {
     private ProductRepository productRepository;
 
     @Autowired
-    private InvoiceRepository invoiceRepository;
-
-    @Autowired
     private BusinessPartyLinkRepository businessPartyLinkRepository;
 
     private static final Long FIRM_A = 901L;
@@ -56,9 +53,10 @@ public class CustomerAndProductAutocompleteSearchIntegrationTest {
     void setUp() {
         TenantContext.clear();
         businessPartyLinkRepository.deleteAll();
-        invoiceRepository.deleteAll();
-        customerRepository.deleteAll();
-        productRepository.deleteAll();
+        customerRepository.findByFirmId(FIRM_A).forEach(customerRepository::delete);
+        customerRepository.findByFirmId(FIRM_B).forEach(customerRepository::delete);
+        productRepository.findByFirmId(FIRM_A).forEach(productRepository::delete);
+        productRepository.findByFirmId(FIRM_B).forEach(productRepository::delete);
 
         // ── Seed Firm A Customers ──
         Customer c1 = new Customer();
@@ -150,9 +148,10 @@ public class CustomerAndProductAutocompleteSearchIntegrationTest {
     void tearDown() {
         TenantContext.clear();
         businessPartyLinkRepository.deleteAll();
-        invoiceRepository.deleteAll();
-        customerRepository.deleteAll();
-        productRepository.deleteAll();
+        customerRepository.findByFirmId(FIRM_A).forEach(customerRepository::delete);
+        customerRepository.findByFirmId(FIRM_B).forEach(customerRepository::delete);
+        productRepository.findByFirmId(FIRM_A).forEach(productRepository::delete);
+        productRepository.findByFirmId(FIRM_B).forEach(productRepository::delete);
     }
 
     // ══════════════════════════════════════════════════════════════

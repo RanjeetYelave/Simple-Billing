@@ -44,13 +44,16 @@
       if (cosH > 1 || cosH < -1) return null; // Polar day or night
 
       const H = isSunrise ? ((360 - Math.acos(cosH) * 180 / Math.PI) / 15) : ((Math.acos(cosH) * 180 / Math.PI) / 15);
-      const T = H + RA - (0.06571 * t) - 6.622;
-      const UT = (T - lngHour + 24) % 24;
+      let T = H + RA - (0.06571 * t) - 6.622;
+      T = ((T % 24) + 24) % 24; // NOAA Step 8: normalize local solar time to [0, 24)
+      const rawUT = T - lngHour;
+      const dayOffset = Math.floor(rawUT / 24);
+      const UT = ((rawUT % 24) + 24) % 24;
 
       const hours = Math.floor(UT);
       const minutes = Math.floor((UT % 1) * 60);
       const seconds = Math.round(((UT % 1) * 60 % 1) * 60);
-      return new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+      return new Date(Date.UTC(year, month - 1, day + dayOffset, hours, minutes, seconds));
     }
 
     return {
@@ -93,7 +96,11 @@
     'America/Los_Angeles': { lat: 34.0522, lng: -118.2437, name: 'Pacific Time (PT)' },
     'Asia/Tokyo': { lat: 35.6762, lng: 139.6503, name: 'Japan Standard Time (JST)' },
     'Australia/Sydney': { lat: -33.8688, lng: 151.2093, name: 'Australian Eastern Time' },
-    'UTC': { lat: 51.4769, lng: 0.0000, name: 'Coordinated Universal Time (UTC)' }
+    'UTC': { lat: 51.4769, lng: 0.0000, name: 'Coordinated Universal Time (UTC)' },
+    'Etc/UTC': { lat: 51.4769, lng: 0.0000, name: 'Coordinated Universal Time (UTC)' },
+    'Etc/GMT': { lat: 51.4769, lng: 0.0000, name: 'Greenwich Mean Time (GMT)' },
+    'GMT': { lat: 51.4769, lng: 0.0000, name: 'Greenwich Mean Time (GMT)' },
+    'Universal': { lat: 51.4769, lng: 0.0000, name: 'Universal Time' }
   };
 
   function resolveLocationCoordinates() {
@@ -127,8 +134,15 @@
       return { lat: info.lat, lng: info.lng, name: `${info.name} (${tz})`, source: 'timezone', tz };
     }
 
-    // Default: Mumbai, India (IST) as canonical RupeeCRM baseline
-    return { lat: 19.0760, lng: 72.8777, name: `Timezone (${tz})`, source: 'fallback', tz };
+    // Robust universal fallback: calculate longitude based on local system timezone offset
+    // so solar day/night transitions deterministically align with the host machine's clock
+    let offsetMinutes = 330; // default IST (+5:30)
+    try {
+      offsetMinutes = -new Date().getTimezoneOffset();
+    } catch (e) {}
+    const fallbackLng = (offsetMinutes / 60) * 15;
+    const fallbackLat = 20.0;
+    return { lat: fallbackLat, lng: fallbackLng, name: `System Timezone (${tz || 'Local'})`, source: 'fallback', tz };
   }
 
   let cachedSolarSchedule = null;

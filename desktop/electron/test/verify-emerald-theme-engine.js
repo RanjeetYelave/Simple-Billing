@@ -81,7 +81,11 @@ function createMockEnvironment(initialStorage = {}) {
     matchMedia: () => ({ matches: false, addEventListener: () => {} }),
     Intl: {
       DateTimeFormat: () => ({
-        resolvedOptions: () => ({ timeZone: 'Asia/Kolkata' })
+        resolvedOptions: () => ({
+          timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+            ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata')
+            : 'Asia/Kolkata'
+        })
       })
     }
   };

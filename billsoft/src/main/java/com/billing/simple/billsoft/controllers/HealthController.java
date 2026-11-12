@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,6 +40,8 @@ public class HealthController {
     private final com.billing.simple.billsoft.service.NetworkReachabilityService networkReachabilityService;
     private final com.billing.simple.billsoft.service.NotificationService notificationService;
     private final org.springframework.core.env.Environment environment;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ConfigurableApplicationContext applicationContext;
 
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
@@ -58,13 +61,92 @@ public class HealthController {
         this.environment = environment;
     }
 
+    private boolean isLoopbackRequest(HttpServletRequest request) {
+        if (request == null) return false;
+        String remote = request.getRemoteAddr();
+        if (remote == null) return false;
+        return remote.equals("127.0.0.1") ||
+               remote.equals("0:0:0:0:0:0:0:1") ||
+               remote.equals("::1") ||
+               remote.equalsIgnoreCase("localhost");
+    }
+
     @GetMapping("/api/health")
     public ResponseEntity<Map<String, Object>> health() {
         String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
+        String commit = environment != null ? environment.getProperty("app.build.commit", "HEAD") : "HEAD";
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("status", "UP");
+        resp.put("timestamp", System.currentTimeMillis());
+        resp.put("version", ver);
+        resp.put("service", "RupeeCRM");
+        resp.put("pid", ProcessHandle.current().pid());
+        resp.put("commit", commit);
+        return ResponseEntity.ok(resp);
+    }
+
+    @GetMapping("/api/system/runtime-identity")
+    public ResponseEntity<Map<String, Object>> runtimeIdentity(HttpServletRequest request) {
+        if (!isLoopbackRequest(request)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied: local loopback only"));
+        }
+        String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
+        String commit = environment != null ? environment.getProperty("app.build.commit", "HEAD") : "HEAD";
+        String buildTime = environment != null ? environment.getProperty("app.build.timestamp", "") : "";
+        String warPath = "";
+        try {
+            if (HealthController.class.getProtectionDomain() != null &&
+                HealthController.class.getProtectionDomain().getCodeSource() != null &&
+                HealthController.class.getProtectionDomain().getCodeSource().getLocation() != null) {
+                warPath = HealthController.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+            }
+        } catch (Exception ignored) {}
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("status", "UP");
+        resp.put("service", "RupeeCRM");
+        resp.put("version", ver);
+        resp.put("commit", commit);
+        resp.put("buildTimestamp", buildTime);
+        resp.put("pid", ProcessHandle.current().pid());
+        resp.put("warPath", warPath);
+        resp.put("jvmVersion", System.getProperty("java.version"));
+        resp.put("os", System.getProperty("os.name"));
+        resp.put("authoritative", true);
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping({"/api/shutdown", "/api/system/shutdown"})
+    public ResponseEntity<Map<String, Object>> shutdown(HttpServletRequest request) {
+        if (!isLoopbackRequest(request)) {
+            log.warn("Blocked non-loopback shutdown attempt from: {}", request.getRemoteAddr());
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied: shutdown permitted from local loopback only"));
+        }
+        long pid = ProcessHandle.current().pid();
+        log.info("Authorized loopback shutdown requested (PID: {}). Initiating graceful termination...", pid);
+
+        new Thread(() -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException ignored) {}
+            log.info("Executing process shutdown for PID {}", pid);
+            if (environment != null && (java.util.Arrays.asList(environment.getActiveProfiles()).contains("test")
+                    || Boolean.parseBoolean(System.getProperty("rupeecrm.skip.exit", "false")))) {
+                log.info("Test profile detected; skipping System.exit(0)");
+                return;
+            }
+            if (applicationContext != null) {
+                try {
+                    applicationContext.close();
+                } catch (Exception ignored) {}
+            }
+            System.exit(0);
+        }, "RupeeCRM-Shutdown-Thread").start();
+
         return ResponseEntity.ok(Map.of(
-            "status", "UP",
-            "timestamp", System.currentTimeMillis(),
-            "version", ver
+            "status", "SHUTTING_DOWN",
+            "message", "RupeeCRM backend shutting down gracefully",
+            "pid", pid
         ));
     }
 

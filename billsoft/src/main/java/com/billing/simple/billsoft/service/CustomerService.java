@@ -46,6 +46,21 @@ public class CustomerService {
         return repo.findByFirmIdOrderByNameAsc(targetFirmId);
     }
 
+    public List<Customer> search(Long firmId, String query) {
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm customer search prohibited");
+        }
+        Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (targetFirmId == null) {
+            return java.util.Collections.emptyList();
+        }
+        if (query == null || query.trim().isEmpty()) {
+            return repo.findByFirmIdOrderByNameAsc(targetFirmId);
+        }
+        return repo.searchByFirmIdAndQuery(targetFirmId, query.trim());
+    }
+
     public Customer getById(Long id) {
         Long fid = TenantContext.getCurrentFirmId();
         return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
@@ -74,8 +89,13 @@ public class CustomerService {
             existing.setVersion(request.getVersion());
         }
 
-        if (request.getName() != null)
-            existing.setName(request.getName().trim());
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            String newName = request.getName().trim();
+            if (!newName.equalsIgnoreCase(existing.getName()) && linkRepo != null && linkRepo.existsByFirmIdAndActiveCustomerId(existing.getFirmId(), id)) {
+                throw new IllegalStateException("Customer #" + id + " is linked to a Supplier. Update the business name via Canonical Name Management on the shared profile.");
+            }
+            existing.setName(newName);
+        }
         existing.setPhone(request.getPhone());
         existing.setEmail(request.getEmail());
         existing.setAddress(request.getAddress());
@@ -88,10 +108,15 @@ public class CustomerService {
 
     @Transactional
     public boolean delete(Long id) {
-        if (linkRepo != null && linkRepo.existsByCustomerId(id)) {
-            throw new IllegalStateException("Cannot delete Customer #" + id + " because it is linked to a Supplier. Please unlink first.");
-        }
         Long fid = TenantContext.getCurrentFirmId();
+        if (linkRepo != null) {
+            boolean isLinked = (fid != null)
+                    ? linkRepo.existsByFirmIdAndActiveCustomerId(fid, id)
+                    : linkRepo.existsByCustomerId(id);
+            if (isLinked) {
+                throw new IllegalStateException("Cannot delete Customer #" + id + " because it is linked to a Supplier. Please unlink first.");
+            }
+        }
         if (fid != null) {
             if (!repo.existsByIdAndFirmId(id, fid))
                 return false;

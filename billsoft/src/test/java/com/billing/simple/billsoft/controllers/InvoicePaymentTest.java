@@ -36,6 +36,16 @@ public class InvoicePaymentTest {
     @Autowired
     private CustomerRepository customerRepo;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(1L);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        com.billing.simple.billsoft.security.TenantContext.clear();
+    }
+
     @Test
     void testPartialAndFullPaymentFlow() {
         Customer cust = new Customer();

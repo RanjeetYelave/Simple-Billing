@@ -67,6 +67,8 @@ public class BackupService {
     private final ItemDuplicateDismissalRepository itemDuplicateDismissalRepo;
     private final InvoiceMigrationRecordRepository invoiceMigrationRecordRepo;
     private final BusinessPartyLinkRepository linkRepo;
+    private final BusinessIdentityAliasRepository aliasRepo;
+    private final BusinessPartyLinkEventRepository linkEventRepo;
     private final BackupRecoveryCoordinator coordinator;
     private final ObjectMapper objectMapper;
 
@@ -115,12 +117,16 @@ public class BackupService {
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ItemDuplicateDismissalRepository itemDuplicateDismissalRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) InvoiceMigrationRecordRepository invoiceMigrationRecordRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) BusinessPartyLinkRepository linkRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) BusinessIdentityAliasRepository aliasRepo,
+                         @org.springframework.beans.factory.annotation.Autowired(required = false) BusinessPartyLinkEventRepository linkEventRepo,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) ObjectMapper objectMapper,
                          @org.springframework.beans.factory.annotation.Autowired(required = false) DataSource dataSource) {
         this.dataSource = dataSource;
         this.firmDetailsRepo = firmDetailsRepo;
         this.linkRepo = linkRepo;
+        this.aliasRepo = aliasRepo;
+        this.linkEventRepo = linkEventRepo;
         this.customerRepo = customerRepo;
         this.productRepo = productRepo;
         this.stockMovementRepo = stockMovementRepo;
@@ -257,6 +263,12 @@ public class BackupService {
         if (linkRepo != null) {
             backup.setBusinessPartyLinks(linkRepo.findByFirmId(firmId));
         }
+        if (aliasRepo != null) {
+            backup.setBusinessIdentityAliases(aliasRepo.findByFirmId(firmId));
+        }
+        if (linkEventRepo != null) {
+            backup.setBusinessPartyLinkEvents(linkEventRepo.findByFirmId(firmId));
+        }
 
         // Decision B1: Strict isolation - cross-firm migration history and source-firm snapshots are excluded from single-firm tenant exports
         backup.setInvoiceMigrationRecords(null);
@@ -329,6 +341,15 @@ public class BackupService {
         }
         if (invoiceMigrationRecordRepo != null) {
             backup.setInvoiceMigrationRecords(invoiceMigrationRecordRepo.findAllByOrderByIdAsc());
+        }
+        if (linkRepo != null) {
+            backup.setBusinessPartyLinks(linkRepo.findAll());
+        }
+        if (aliasRepo != null) {
+            backup.setBusinessIdentityAliases(aliasRepo.findAll());
+        }
+        if (linkEventRepo != null) {
+            backup.setBusinessPartyLinkEvents(linkEventRepo.findAll());
         }
 
         return backup;
@@ -2689,6 +2710,7 @@ public class BackupService {
         }
 
         // Restore BusinessPartyLinks with remapped customer and party identities
+        Map<Long, Long> oldToNewLinkIdMap = new HashMap<>();
         if (backup.getBusinessPartyLinks() != null && linkRepo != null) {
             for (BusinessPartyLink link : backup.getBusinessPartyLinks()) {
                 Long oldFid = link.getFirmId();
@@ -2697,19 +2719,97 @@ public class BackupService {
                     Customer newCust = oldToNewCustomerMap.get(link.getCustomerId());
                     Party newParty = oldToNewPartyMap.get(link.getPartyId());
                     if (newCust != null && newParty != null) {
-                        if (!linkRepo.existsByFirmIdAndCustomerId(mappedFirmId, newCust.getId()) &&
-                            !linkRepo.existsByFirmIdAndPartyId(mappedFirmId, newParty.getId())) {
+                        boolean isUnlinked = "UNLINKED".equalsIgnoreCase(link.getStatus());
+                        Long activeCustId = isUnlinked ? null : newCust.getId();
+                        Long activePartyId = isUnlinked ? null : newParty.getId();
+
+                        boolean activeExists = !isUnlinked && (
+                            linkRepo.existsByFirmIdAndActiveCustomerId(mappedFirmId, newCust.getId()) ||
+                            linkRepo.existsByFirmIdAndActivePartyId(mappedFirmId, newParty.getId())
+                        );
+
+                        if (!activeExists) {
                             BusinessPartyLink newLink = BusinessPartyLink.builder()
                                     .firmId(mappedFirmId)
                                     .customerId(newCust.getId())
                                     .partyId(newParty.getId())
+                                    .activeCustomerId(activeCustId)
+                                    .activePartyId(activePartyId)
                                     .linkedAt(link.getLinkedAt() != null ? link.getLinkedAt() : LocalDateTime.now())
                                     .linkedBy(link.getLinkedBy())
                                     .notes(link.getNotes())
+                                    .status(link.getStatus() != null ? link.getStatus() : "ACTIVE")
+                                    .customerRoleActive(link.getCustomerRoleActive() != null ? link.getCustomerRoleActive() : Boolean.TRUE)
+                                    .partyRoleActive(link.getPartyRoleActive() != null ? link.getPartyRoleActive() : Boolean.TRUE)
+                                    .relationshipVersion(link.getRelationshipVersion() != null ? link.getRelationshipVersion() : 1)
+                                    .disabledReason(link.getDisabledReason())
+                                    .unlinkedAt(link.getUnlinkedAt())
+                                    .unlinkedBy(link.getUnlinkedBy())
+                                    .unlinkReason(link.getUnlinkReason())
                                     .build();
-                            linkRepo.save(newLink);
+                            BusinessPartyLink savedLink = linkRepo.save(newLink);
+                            if (link.getId() != null) {
+                                oldToNewLinkIdMap.put(link.getId(), savedLink.getId());
+                            }
                         }
                     }
+                }
+            }
+        }
+
+        // Restore BusinessIdentityAliases
+        if (backup.getBusinessIdentityAliases() != null && aliasRepo != null) {
+            for (BusinessIdentityAlias alias : backup.getBusinessIdentityAliases()) {
+                Long oldFid = alias.getFirmId();
+                if (oldToNewFirmIdMap.containsKey(oldFid)) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedLinkId = alias.getLinkId() != null ? oldToNewLinkIdMap.get(alias.getLinkId()) : null;
+                    Customer mappedCust = alias.getCustomerId() != null ? oldToNewCustomerMap.get(alias.getCustomerId()) : null;
+                    Party mappedParty = alias.getPartyId() != null ? oldToNewPartyMap.get(alias.getPartyId()) : null;
+
+                    BusinessIdentityAlias newAlias = BusinessIdentityAlias.builder()
+                            .firmId(mappedFirmId)
+                            .linkId(mappedLinkId)
+                            .customerId(mappedCust != null ? mappedCust.getId() : null)
+                            .partyId(mappedParty != null ? mappedParty.getId() : null)
+                            .aliasValue(alias.getAliasValue())
+                            .normalizedValue(alias.getNormalizedValue() != null ? alias.getNormalizedValue() : BusinessIdentityAlias.normalize(alias.getAliasValue()))
+                            .aliasType(alias.getAliasType() != null ? alias.getAliasType() : "PREVIOUS_NAME")
+                            .ownerRole(alias.getOwnerRole() != null ? alias.getOwnerRole() : "SHARED")
+                            .active(alias.getActive() != null ? alias.getActive() : Boolean.TRUE)
+                            .createdAt(alias.getCreatedAt() != null ? alias.getCreatedAt() : LocalDateTime.now())
+                            .createdBy(alias.getCreatedBy())
+                            .resolutionNotes(alias.getResolutionNotes())
+                            .build();
+                    aliasRepo.save(newAlias);
+                }
+            }
+        }
+
+        // Restore BusinessPartyLinkEvents
+        if (backup.getBusinessPartyLinkEvents() != null && linkEventRepo != null) {
+            for (BusinessPartyLinkEvent event : backup.getBusinessPartyLinkEvents()) {
+                Long oldFid = event.getFirmId();
+                if (oldToNewFirmIdMap.containsKey(oldFid)) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedLinkId = event.getLinkId() != null ? oldToNewLinkIdMap.get(event.getLinkId()) : null;
+                    Customer mappedCust = event.getCustomerId() != null ? oldToNewCustomerMap.get(event.getCustomerId()) : null;
+                    Party mappedParty = event.getPartyId() != null ? oldToNewPartyMap.get(event.getPartyId()) : null;
+
+                    BusinessPartyLinkEvent newEvent = BusinessPartyLinkEvent.builder()
+                            .firmId(mappedFirmId)
+                            .linkId(mappedLinkId)
+                            .relationshipVersion(event.getRelationshipVersion() != null ? event.getRelationshipVersion() : 1)
+                            .customerId(mappedCust != null ? mappedCust.getId() : null)
+                            .partyId(mappedParty != null ? mappedParty.getId() : null)
+                            .action(event.getAction())
+                            .actor(event.getActor())
+                            .beforeValue(event.getBeforeValue())
+                            .afterValue(event.getAfterValue())
+                            .reason(event.getReason())
+                            .timestamp(event.getTimestamp() != null ? event.getTimestamp() : LocalDateTime.now())
+                            .build();
+                    linkEventRepo.save(newEvent);
                 }
             }
         }

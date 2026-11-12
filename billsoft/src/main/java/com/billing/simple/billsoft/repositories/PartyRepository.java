@@ -24,11 +24,23 @@ public interface PartyRepository extends JpaRepository<Party, Long> {
 
     Optional<Party> findFirstByFirmIdAndNameIgnoreCase(Long firmId, String name);
 
+    Optional<Party> findFirstByFirmIdAndGstinIgnoreCase(Long firmId, String gstin);
+
     Optional<Party> findFirstByFirmIdAndPhone(Long firmId, String phone);
 
     Optional<Party> findFirstByFirmIdAndPhoneAndNameIgnoreCase(Long firmId, String phone, String name);
 
     Optional<Party> findFirstByFirmIdAndNameIgnoreCaseAndPhoneIsNull(Long firmId, String name);
+
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM Party p WHERE p.firmId = :firmId AND (" +
+            "LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "p.phone LIKE CONCAT('%', :query, '%') OR " +
+            "LOWER(p.gstin) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(p.email) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(p.contactPerson) LIKE LOWER(CONCAT('%', :query, '%'))" +
+            ") ORDER BY p.name ASC")
+    List<Party> searchByFirmIdAndQuery(@org.springframework.data.repository.query.Param("firmId") Long firmId,
+                                       @org.springframework.data.repository.query.Param("query") String query);
 
     long countByFirmId(Long firmId);
 }

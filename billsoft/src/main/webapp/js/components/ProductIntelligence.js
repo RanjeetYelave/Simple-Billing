@@ -3081,6 +3081,9 @@
     const [rows, setRows] = useState([createEmptyRow(), createEmptyRow(), createEmptyRow()]);
     const [saving, setSaving] = useState(false);
     const [importingFile, setImportingFile] = useState(false);
+    const [previewData, setPreviewData] = useState(null);
+    const [selectedImportFile, setSelectedImportFile] = useState(null);
+    const [executingImport, setExecutingImport] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showPasteBox, setShowPasteBox] = useState(false);
     const [pasteText, setPasteText] = useState('');
@@ -3390,22 +3393,70 @@
     const handleFileChange = async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
+      setSelectedImportFile(file);
       setImportingFile(true);
       setErrorMsg(null);
+      setPreviewData(null);
       try {
-        const text = await file.text();
-        const res = await API.products.importCsv(text);
+        const preview = await API.products.previewFile(file);
+        setPreviewData(preview);
         if (typeof showToast === 'function') {
-          showToast(`Bulk CSV Import: ${res.importedCount || 0} products imported successfully!`, 'success');
+          if (preview.failedCount === 0) {
+            showToast(`Preview: ${preview.importedCount} valid rows ready to import!`, 'success');
+          } else {
+            showToast(`Preview: ${preview.failedCount} row(s) have errors`, 'warning');
+          }
+        }
+      } catch (err) {
+        console.error('File preview error:', err);
+        setErrorMsg('Import Validation Failed: ' + (err.message || 'Check file format and try again.'));
+      } finally {
+        setImportingFile(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+
+    const handleConfirmImport = async () => {
+      if (!selectedImportFile) return;
+      setExecutingImport(true);
+      setErrorMsg(null);
+      try {
+        const res = await API.products.importFile(selectedImportFile);
+        if (typeof showToast === 'function') {
+          showToast(`Bulk Import Success: ${res.importedCount || 0} products persisted to inventory!`, 'success');
         }
         if (onSuccess) onSuccess(res.products || []);
         onClose();
       } catch (err) {
-        console.error('CSV import error:', err);
-        setErrorMsg('CSV Import Failed: ' + (err.message || 'Check CSV format and try again.'));
+        console.error('Import execution error:', err);
+        setErrorMsg('Import Execution Failed: ' + (err.message || 'Failed to persist imported records.'));
       } finally {
-        setImportingFile(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        setExecutingImport(false);
+      }
+    };
+
+    const handleLoadPreviewIntoGrid = () => {
+      if (!previewData || !previewData.products || previewData.products.length === 0) return;
+      const loadedRows = previewData.products.map(p => ({
+        _id: Math.random().toString(36).substr(2, 9),
+        name: p.name || '',
+        hsnCode: p.hsnCode || '',
+        sku: p.sku || '',
+        barcode: p.barcode || '',
+        category: p.category || '',
+        itemType: p.itemType || 'GOODS',
+        price: p.price != null ? String(p.price) : '',
+        costPrice: p.costPrice != null ? String(p.costPrice) : '',
+        gstPercentage: p.gstPercentage != null ? String(p.gstPercentage) : '0',
+        initialStock: p.stockQuantity != null ? String(p.stockQuantity) : '0',
+        minStockLevel: p.minStockLevel != null ? String(p.minStockLevel) : '5',
+        unit: p.unit || 'pcs',
+        description: p.description || ''
+      }));
+      setRows(loadedRows);
+      setPreviewData(null);
+      if (typeof showToast === 'function') {
+        showToast(`Loaded ${loadedRows.length} rows into spreadsheet editor`, 'info');
       }
     };
 
@@ -3505,10 +3556,29 @@
             React.createElement('input', {
               type: 'file',
               ref: fileInputRef,
-              accept: '.csv',
+              accept: '.csv, .xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/csv',
               style: { display: 'none' },
               onChange: handleFileChange
             }),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              onClick: async () => {
+                try {
+                  const blob = await API.products.downloadTemplateXlsx();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'products_template.xlsx';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  if (typeof showToast === 'function') showToast('Failed to download Excel template: ' + err.message, 'error');
+                }
+              },
+              style: { display: 'flex', alignItems: 'center', gap: 4 }
+            }, '📥 Excel (.xlsx) Template'),
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               onClick: async () => {
@@ -3531,10 +3601,10 @@
             }, '📥 CSV Template'),
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
-              disabled: importingFile,
+              disabled: importingFile || executingImport,
               onClick: () => fileInputRef.current && fileInputRef.current.click(),
               style: { display: 'flex', alignItems: 'center', gap: 4 }
-            }, importingFile ? '⏳ Importing...' : '📁 Upload CSV'),
+            }, importingFile ? '⏳ Validating...' : '📁 Upload File (Excel / CSV)'),
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               onClick: () => setShowPasteBox(!showPasteBox),
@@ -3545,6 +3615,68 @@
               onClick: onClose,
               style: { fontSize: '1.2rem', padding: '4px 10px' }
             }, '✕')
+          )
+        ),
+
+        // Pre-Flight Import Preview Section
+        previewData && React.createElement('div', {
+          style: {
+            background: 'var(--bg-secondary)', padding: '16px 20px', borderBottom: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column', gap: 12
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 } },
+                '📋 Import Preview & Pre-Flight Validation',
+                React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 } },
+                  `(${selectedImportFile ? selectedImportFile.name : 'File'})`
+                )
+              ),
+              React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 6, fontSize: '0.82rem', flexWrap: 'wrap' } },
+                React.createElement('span', { style: { background: 'var(--bg-card)', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)' } }, `Total Rows: ${previewData.totalRows}`),
+                React.createElement('span', { style: { background: 'rgba(16, 185, 129, 0.1)', color: '#059669', padding: '2px 8px', borderRadius: 4, fontWeight: 600 } }, `✓ Valid to Import: ${previewData.importedCount}`),
+                previewData.skippedCount > 0 && React.createElement('span', { style: { background: 'var(--bg-card)', color: 'var(--text-muted)', padding: '2px 8px', borderRadius: 4 } }, `Skipped Blank: ${previewData.skippedCount}`),
+                previewData.failedCount > 0 && React.createElement('span', { style: { background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', padding: '2px 8px', borderRadius: 4, fontWeight: 700 } }, `✕ Errors: ${previewData.failedCount}`)
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              previewData.failedCount === 0 && React.createElement('button', {
+                className: 'btn btn-primary btn-sm',
+                disabled: executingImport,
+                onClick: handleConfirmImport,
+                style: { fontWeight: 600 }
+              }, executingImport ? '⏳ Persisting Records...' : `✓ Confirm & Import ${previewData.importedCount} Products`),
+              React.createElement('button', {
+                className: 'btn btn-outline btn-sm',
+                onClick: handleLoadPreviewIntoGrid
+              }, '✏️ Edit Rows in Spreadsheet'),
+              React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                onClick: () => { setPreviewData(null); setSelectedImportFile(null); }
+              }, 'Cancel')
+            )
+          ),
+          previewData.errors && previewData.errors.length > 0 && React.createElement('div', {
+            style: {
+              background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 6,
+              padding: 12, maxHeight: 180, overflowY: 'auto'
+            }
+          },
+            React.createElement('div', { style: { fontWeight: 700, fontSize: '0.8rem', color: '#dc2626', marginBottom: 6 } },
+              `⚠️ The file has ${previewData.errors.length} validation issue(s). Resolve them or click "Edit Rows in Spreadsheet" to fix:`
+            ),
+            React.createElement('ul', { style: { margin: 0, paddingLeft: 18, fontSize: '0.78rem', color: '#b91c1c' } },
+              previewData.errors.map((err, i) => React.createElement('li', { key: i, style: { marginBottom: 3 } }, err))
+            )
+          ),
+          previewData.warnings && previewData.warnings.length > 0 && React.createElement('div', {
+            style: {
+              background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 6,
+              padding: 10, fontSize: '0.78rem', color: '#b45309'
+            }
+          },
+            previewData.warnings.map((warn, i) => React.createElement('div', { key: i }, `ℹ️ ${warn}`))
           )
         ),
 

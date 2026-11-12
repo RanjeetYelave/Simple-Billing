@@ -482,12 +482,13 @@ public class InvoiceService {
         double quotePipelineVal = 0.0;
         long quoteCnt = 0;
 
+        populateConversionStatus(all);
         for (Invoice inv : all) {
             normalizeStatus(inv);
 
             BigDecimal rawAmt = nz(inv.getTotalAmount());
             if (inv.getStatus() == InvoiceStatus.ESTIMATE) {
-                if (inv.getConvertedInvoiceId() == null) {
+                if (!"CONVERTED".equals(inv.getConversionStatus())) {
                     quoteCnt++;
                     quotePipelineVal += rawAmt.doubleValue();
                 }
@@ -839,15 +840,23 @@ public class InvoiceService {
 
         // If this invoice is converted from a quotation/estimate, link the quotation
         if (request.getConvertedInvoiceId() != null) {
-            Invoice linkedEstimate = invoiceRepo.findByIdAndFirmId(request.getConvertedInvoiceId(), effectiveFirmId)
+            Invoice linkedEstimate = (effectiveFirmId != null
+                    ? invoiceRepo.findByIdAndFirmIdForUpdate(request.getConvertedInvoiceId(), effectiveFirmId)
+                    : invoiceRepo.findByIdForUpdate(request.getConvertedInvoiceId()))
                     .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
                             "Converted quotation not found for firm: " + request.getConvertedInvoiceId()));
             if (linkedEstimate.getConvertedInvoiceId() != null
                     && !linkedEstimate.getConvertedInvoiceId().equals(saved.getId())) {
-                throw new RuntimeException("This quotation has already been converted to invoice #"
-                        + linkedEstimate.getConvertedInvoiceId());
+                boolean activeInvoiceExists = (effectiveFirmId != null)
+                        ? invoiceRepo.existsByIdAndFirmId(linkedEstimate.getConvertedInvoiceId(), effectiveFirmId)
+                        : invoiceRepo.existsById(linkedEstimate.getConvertedInvoiceId());
+                if (activeInvoiceExists) {
+                    throw new RuntimeException("This quotation has already been converted to invoice #"
+                            + linkedEstimate.getConvertedInvoiceId());
+                }
             }
             linkedEstimate.setConvertedInvoiceId(saved.getId());
+            linkedEstimate.setConversionStatus("CONVERTED");
             invoiceRepo.save(linkedEstimate);
         }
 
@@ -957,6 +966,7 @@ public class InvoiceService {
         if (inv == null)
             return null;
         normalizeStatus(inv);
+        populateConversionStatus(inv);
         return inv;
     }
 
@@ -970,8 +980,13 @@ public class InvoiceService {
             return false;
         // Prevent deleting an estimate that has already been converted to an invoice
         if (inv.getConvertedInvoiceId() != null) {
-            throw new RuntimeException("Cannot delete this estimate as it has already been converted to invoice #"
-                    + inv.getConvertedInvoiceId());
+            boolean activeInvoiceExists = (currentFirmId != null)
+                    ? invoiceRepo.existsByIdAndFirmId(inv.getConvertedInvoiceId(), currentFirmId)
+                    : invoiceRepo.existsById(inv.getConvertedInvoiceId());
+            if (activeInvoiceExists) {
+                throw new RuntimeException("Cannot delete this estimate as it has already been converted to invoice #"
+                        + inv.getConvertedInvoiceId());
+            }
         }
 
         // AUDIT-029: Reject physical deletion if active sales returns or credit notes exist
@@ -1365,14 +1380,15 @@ public class InvoiceService {
     @Transactional(rollbackFor = Exception.class)
     public Invoice convertEstimateToInvoice(Long estimateId, InvoiceRequest overrideRequest) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Invoice estimate = (currentFirmId != null
-                ? invoiceRepo.findByIdAndFirmId(estimateId, currentFirmId)
-                : invoiceRepo.findById(estimateId)).orElse(null);
+        if (currentFirmId == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                    "Authoritative tenant context is required to convert quotations.");
+        }
+        Invoice estimate = invoiceRepo.findByIdAndFirmIdForUpdate(estimateId, currentFirmId)
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                        "Estimate #" + estimateId + " not found or unauthorized for current firm"));
 
-        if (estimate == null)
-            throw new com.billing.simple.billsoft.security.TenantSecurityException("Estimate not found: " + estimateId);
-
-        if (currentFirmId != null && !currentFirmId.equals(estimate.getFirmId())) {
+        if (!currentFirmId.equals(estimate.getFirmId())) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException(
                     "Cross-firm quotation conversion is strictly prohibited.");
         }
@@ -1381,8 +1397,14 @@ public class InvoiceService {
             throw new RuntimeException("Only estimates/drafts can be converted");
 
         if (estimate.getConvertedInvoiceId() != null) {
-            throw new RuntimeException(
-                    "This quotation has already been converted to invoice #" + estimate.getConvertedInvoiceId());
+            Long firmId = estimate.getFirmId();
+            boolean activeInvoiceExists = (firmId != null)
+                    ? invoiceRepo.existsByIdAndFirmId(estimate.getConvertedInvoiceId(), firmId)
+                    : invoiceRepo.existsById(estimate.getConvertedInvoiceId());
+            if (activeInvoiceExists) {
+                throw new RuntimeException(
+                        "This quotation has already been converted to invoice #" + estimate.getConvertedInvoiceId());
+            }
         }
 
         // Validate that customer and items belong to the authorized firm
@@ -1466,6 +1488,7 @@ public class InvoiceService {
 
             Invoice saved = invoiceRepo.save(calculated);
             estimate.setConvertedInvoiceId(saved.getId());
+            estimate.setConversionStatus("CONVERTED");
             invoiceRepo.save(estimate);
 
             // Deduct inventory stock for sales invoices
@@ -1543,6 +1566,7 @@ public class InvoiceService {
 
         Invoice saved = invoiceRepo.save(calculated);
         estimate.setConvertedInvoiceId(saved.getId());
+        estimate.setConversionStatus("CONVERTED");
         invoiceRepo.save(estimate);
 
         // Deduct inventory stock for sales invoices
@@ -1782,7 +1806,9 @@ public class InvoiceService {
         Long targetFirmId = (firmId != null) ? firmId
                 : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (targetFirmId != null) {
-            return invoiceRepo.findByFirmId(targetFirmId, pageable);
+            Page<Invoice> p = invoiceRepo.findByFirmId(targetFirmId, pageable);
+            populateConversionStatus(p.getContent());
+            return p;
         }
         return Page.empty(pageable);
     }
@@ -1791,7 +1817,9 @@ public class InvoiceService {
         Long targetFirmId = (firmId != null) ? firmId
                 : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (targetFirmId != null) {
-            return invoiceRepo.findByFirmIdAndStatus(targetFirmId, InvoiceStatus.ESTIMATE, pageable);
+            Page<Invoice> p = invoiceRepo.findByFirmIdAndStatus(targetFirmId, InvoiceStatus.ESTIMATE, pageable);
+            populateConversionStatus(p.getContent());
+            return p;
         }
         return Page.empty(pageable);
     }
@@ -1834,7 +1862,47 @@ public class InvoiceService {
             list = java.util.Collections.emptyList();
         }
         list.forEach(this::normalizeStatus);
+        populateConversionStatus(list);
         return list;
+    }
+
+    public void populateConversionStatus(Invoice inv) {
+        if (inv == null || inv.getStatus() != InvoiceStatus.ESTIMATE) {
+            return;
+        }
+        if (inv.getConvertedInvoiceId() == null) {
+            inv.setConversionStatus("NOT_CONVERTED");
+            return;
+        }
+        boolean exists = (inv.getFirmId() != null)
+                ? invoiceRepo.existsByIdAndFirmId(inv.getConvertedInvoiceId(), inv.getFirmId())
+                : invoiceRepo.existsById(inv.getConvertedInvoiceId());
+        inv.setConversionStatus(exists ? "CONVERTED" : "CONVERTED_INVOICE_DELETED");
+    }
+
+    public void populateConversionStatus(Iterable<Invoice> invoices) {
+        if (invoices == null) return;
+        Set<Long> targetIds = new HashSet<>();
+        for (Invoice inv : invoices) {
+            if (inv != null && inv.getStatus() == InvoiceStatus.ESTIMATE && inv.getConvertedInvoiceId() != null) {
+                targetIds.add(inv.getConvertedInvoiceId());
+            }
+        }
+        Set<Long> existingIds = Collections.emptySet();
+        if (!targetIds.isEmpty()) {
+            existingIds = invoiceRepo.findExistingIds(targetIds);
+        }
+        for (Invoice inv : invoices) {
+            if (inv != null && inv.getStatus() == InvoiceStatus.ESTIMATE) {
+                if (inv.getConvertedInvoiceId() == null) {
+                    inv.setConversionStatus("NOT_CONVERTED");
+                } else if (existingIds.contains(inv.getConvertedInvoiceId())) {
+                    inv.setConversionStatus("CONVERTED");
+                } else {
+                    inv.setConversionStatus("CONVERTED_INVOICE_DELETED");
+                }
+            }
+        }
     }
 
     public List<Invoice> getAllFinalInvoices(Long firmId) {
@@ -2094,10 +2162,18 @@ public class InvoiceService {
         BigDecimal excludedTaxTotal = BigDecimal.ZERO;
         BigDecimal grandTotal = BigDecimal.ZERO;
 
+        String custSnapshot = null;
+        if (invoice.getCustomer() != null && invoice.getCustomer().getName() != null) {
+            custSnapshot = invoice.getCustomer().getName();
+        } else if (invoice.getCustomerNameSnapshot() != null) {
+            custSnapshot = invoice.getCustomerNameSnapshot();
+        }
+
         SalesReturn salesReturn = SalesReturn.builder()
                 .firmId(firmId)
                 .invoice(invoice)
                 .customer(invoice.getCustomer())
+                .customerNameSnapshot(custSnapshot)
                 .returnNumber(returnNumber)
                 .returnDate(request.getReturnDate() != null ? request.getReturnDate() : LocalDate.now())
                 .reason(request.getReason() != null ? request.getReason().trim() : "Customer Return")

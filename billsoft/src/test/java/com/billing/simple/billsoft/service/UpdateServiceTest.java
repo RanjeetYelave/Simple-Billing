@@ -309,4 +309,41 @@ class UpdateServiceTest {
             Files.deleteIfExists(overrideFile);
         }
     }
+
+    @Test
+    void testStaleUpdateStateIgnoredWhenRunningBinaryIsAuthoritative() throws Exception {
+        service.setDefaultVersion("v1.0.308");
+        Path stateFile = service.getStateFilePath();
+        Files.createDirectories(stateFile.getParent());
+
+        UpdateState staleState = new UpdateState();
+        staleState.setStatus(UpdateState.STATUS_COMMITTED);
+        staleState.setCurrentVersion("1.0.280");
+        staleState.setTargetVersion("1.0.280");
+        staleState.saveAtomic(stateFile);
+
+        // Even though update-state.json says 1.0.280, the running binary version v1.0.308 must win
+        assertEquals("v1.0.308", service.getCurrentVersion());
+
+        // And update-state.json must have been reconciled to v1.0.308
+        UpdateState reconciled = UpdateState.load(stateFile);
+        assertNotNull(reconciled);
+        assertEquals("v1.0.308", reconciled.getCurrentVersion());
+    }
+
+    @Test
+    void testStaleTargetVersionDoesNotOverrideAuthoritativeVersion() throws Exception {
+        service.setDefaultVersion("v1.0.280");
+        Path stateFile = service.getStateFilePath();
+        Files.createDirectories(stateFile.getParent());
+
+        UpdateState staleState = new UpdateState();
+        staleState.setStatus(UpdateState.STATUS_COMMITTED);
+        staleState.setCurrentVersion("1.0.250");
+        staleState.setTargetVersion("1.0.308");
+        staleState.saveAtomic(stateFile);
+
+        // Running binary is actually 1.0.280, targetVersion 1.0.308 must not trick system
+        assertEquals("v1.0.280", service.getCurrentVersion());
+    }
 }

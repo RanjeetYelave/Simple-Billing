@@ -39,6 +39,87 @@ public class BusinessPartyLinkController {
         return ResponseEntity.status(HttpStatus.CREATED).body(linkService.link(request));
     }
 
+    @PostMapping("/enable-customer-role")
+    public ResponseEntity<BusinessPartyLinkResponse> enableCustomerRole(
+            @RequestBody EnableCustomerRoleRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.status(HttpStatus.CREATED).body(linkService.enableCustomerRole(request));
+    }
+
+    @PostMapping("/enable-party-role")
+    public ResponseEntity<BusinessPartyLinkResponse> enablePartyRole(
+            @RequestBody EnablePartyRoleRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.status(HttpStatus.CREATED).body(linkService.enablePartyRole(request));
+    }
+
+    @PutMapping("/{id}/canonical-name")
+    public ResponseEntity<BusinessPartyLinkResponse> updateCanonicalName(
+            @PathVariable Long id,
+            @RequestBody CanonicalNameUpdateRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.updateCanonicalName(id, request));
+    }
+
+    @PostMapping("/{id}/unlink")
+    public ResponseEntity<BusinessPartyLinkResponse> softUnlink(
+            @PathVariable Long id,
+            @RequestBody UnlinkRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.softUnlink(id, request));
+    }
+
+    @PutMapping("/{id}/sync")
+    public ResponseEntity<BusinessPartyLinkResponse> syncProfiles(
+            @PathVariable Long id,
+            @RequestBody SyncProfileRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.syncProfiles(id, request));
+    }
+
+    @GetMapping("/preview-customer-role")
+    public ResponseEntity<RoleMatchPreviewResponse> previewEnableCustomerRole(
+            @RequestParam Long partyId,
+            @RequestParam(required = false) String gstin,
+            @RequestParam(required = false) String phone,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.previewEnableCustomerRole(partyId, gstin, phone));
+    }
+
+    @GetMapping("/preview-party-role")
+    public ResponseEntity<RoleMatchPreviewResponse> previewEnablePartyRole(
+            @RequestParam Long customerId,
+            @RequestParam(required = false) String gstin,
+            @RequestParam(required = false) String phone,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.previewEnablePartyRole(customerId, gstin, phone));
+    }
+
+    @PutMapping("/{id}/disable-role")
+    public ResponseEntity<BusinessPartyLinkResponse> disableRole(
+            @PathVariable Long id,
+            @RequestBody RoleLifecycleRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.disableRole(id, request));
+    }
+
+    @PutMapping("/{id}/reenable-role")
+    public ResponseEntity<BusinessPartyLinkResponse> reenableRole(
+            @PathVariable Long id,
+            @RequestBody RoleLifecycleRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.reenableRole(id, request));
+    }
+
     @DeleteMapping
     public ResponseEntity<Void> unlink(
             @RequestParam Long customerId,
@@ -89,6 +170,73 @@ public class BusinessPartyLinkController {
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
         assertFirmAuthorization(firmIdHeader);
         return ResponseEntity.ok(linkService.searchCandidates(type, query));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<UnifiedCounterpartySearchResult>> searchUnified(
+            @RequestParam(defaultValue = "CUSTOMER") String targetRole,
+            @RequestParam(required = false, defaultValue = "") String q,
+            @RequestParam(required = false, defaultValue = "25") Integer limit,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.searchUnified(targetRole, q, limit));
+    }
+
+    @GetMapping("/{id}/aliases")
+    public ResponseEntity<List<AliasDto>> getAliases(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.getAliases(id));
+    }
+
+    @PostMapping("/{id}/aliases")
+    public ResponseEntity<AliasDto> addAlias(
+            @PathVariable Long id,
+            @RequestBody CreateAliasRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.status(HttpStatus.CREATED).body(linkService.addAlias(id, request));
+    }
+
+    @DeleteMapping("/{id}/aliases/{aliasId}")
+    public ResponseEntity<Void> removeAlias(
+            @PathVariable Long id,
+            @PathVariable Long aliasId,
+            @RequestParam(required = false) String reason,
+            @RequestParam(required = false) String actor,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        linkService.removeAlias(id, aliasId, reason, actor);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/events")
+    public ResponseEntity<List<AuditTrailEventDto>> getAuditEvents(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
+        assertFirmAuthorization(firmIdHeader);
+        return ResponseEntity.ok(linkService.getAuditEvents(id));
+    }
+
+    @GetMapping("/admin-pin/status")
+    public ResponseEntity<Map<String, Boolean>> getAdminPinStatus(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(required = false) Long firmId) {
+        Long authoritativeFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        assertFirmAuthorization(authoritativeFirmId);
+        return ResponseEntity.ok(Map.of("configured", linkService.isAdminPinConfigured(authoritativeFirmId)));
+    }
+
+    @PostMapping("/admin-pin/set")
+    public ResponseEntity<Map<String, String>> setAdminPin(
+            @RequestBody AdminPinSetRequest request,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(required = false) Long firmId) {
+        Long authoritativeFirmId = firmIdHeader != null ? firmIdHeader : firmId;
+        assertFirmAuthorization(authoritativeFirmId);
+        linkService.setAdminPin(authoritativeFirmId, request);
+        return ResponseEntity.ok(Map.of("message", "Administrator PIN configured successfully"));
     }
 
     @GetMapping("/map")

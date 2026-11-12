@@ -62,7 +62,13 @@ public class PartyServiceImpl implements PartyService {
             existing.setVersion(updated.getVersion());
         }
 
-        existing.setName(updated.getName());
+        if (updated.getName() != null && !updated.getName().trim().isEmpty()) {
+            String newName = updated.getName().trim();
+            if (!newName.equalsIgnoreCase(existing.getName()) && linkRepo != null && linkRepo.existsByFirmIdAndActivePartyId(updated.getFirmId(), id)) {
+                throw new IllegalStateException("Supplier #" + id + " is linked to a Customer. Update the business name via Canonical Name Management on the shared profile.");
+            }
+            existing.setName(newName);
+        }
         existing.setContactPerson(updated.getContactPerson());
         existing.setPhone(updated.getPhone());
         existing.setEmail(updated.getEmail());
@@ -101,8 +107,13 @@ public class PartyServiceImpl implements PartyService {
 
     @Override
     public void deleteParty(Long id, Long firmId) {
-        if (linkRepo != null && linkRepo.existsByPartyId(id)) {
-            throw new IllegalStateException("Cannot delete Supplier #" + id + " because it is linked to a Customer. Please unlink first.");
+        if (linkRepo != null) {
+            boolean isLinked = (firmId != null)
+                    ? linkRepo.existsByFirmIdAndActivePartyId(firmId, id)
+                    : linkRepo.existsByPartyId(id);
+            if (isLinked) {
+                throw new IllegalStateException("Cannot delete Supplier #" + id + " because it is linked to a Customer. Please unlink first.");
+            }
         }
         Party party = partyRepository.findByIdAndFirmId(id, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + id));

@@ -44,6 +44,8 @@ public class BackupDTO {
     private List<ForecastProduct> forecastProducts;
     private List<InvoiceMigrationRecord> invoiceMigrationRecords;
     private List<BusinessPartyLink> businessPartyLinks;
+    private List<BusinessIdentityAlias> businessIdentityAliases;
+    private List<BusinessPartyLinkEvent> businessPartyLinkEvents;
 
     public Long getSourceFirmId() {
         if (metadata != null && metadata.get("sourceFirmId") != null) {
@@ -344,5 +346,21 @@ public class BackupDTO {
 
     public void setBusinessPartyLinks(List<BusinessPartyLink> businessPartyLinks) {
         this.businessPartyLinks = businessPartyLinks;
+    }
+
+    public List<BusinessIdentityAlias> getBusinessIdentityAliases() {
+        return businessIdentityAliases;
+    }
+
+    public void setBusinessIdentityAliases(List<BusinessIdentityAlias> businessIdentityAliases) {
+        this.businessIdentityAliases = businessIdentityAliases;
+    }
+
+    public List<BusinessPartyLinkEvent> getBusinessPartyLinkEvents() {
+        return businessPartyLinkEvents;
+    }
+
+    public void setBusinessPartyLinkEvents(List<BusinessPartyLinkEvent> businessPartyLinkEvents) {
+        this.businessPartyLinkEvents = businessPartyLinkEvents;
     }
 }

@@ -37,8 +37,9 @@ public class SavedItemController {
     @GetMapping("/api/items/autocomplete")
     public ResponseEntity<List<UnifiedItemSuggestionDto>> autocompleteItems(
             @RequestParam(value = "q", required = false) String query,
+            @RequestParam(value = "firmId", required = false) Long firmParam,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
-        Long firmId = firmHeader != null ? firmHeader : TenantContext.getCurrentFirmId();
+        Long firmId = firmHeader != null ? firmHeader : (firmParam != null ? firmParam : TenantContext.getCurrentFirmId());
         return ResponseEntity.ok(savedItemService.searchUnifiedItems(firmId, query));
     }
 

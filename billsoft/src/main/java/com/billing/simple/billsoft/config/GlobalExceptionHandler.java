@@ -38,6 +38,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    @ExceptionHandler(com.billing.simple.billsoft.security.AdminAuthorizationException.class)
+    public ResponseEntity<Map<String, String>> handleAdminAuthorizationException(com.billing.simple.billsoft.security.AdminAuthorizationException exc) {
+        Map<String, String> response = new HashMap<>();
+        response.put("error", exc.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException exc) {
         Map<String, String> response = new HashMap<>();

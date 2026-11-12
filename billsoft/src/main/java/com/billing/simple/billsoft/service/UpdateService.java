@@ -36,15 +36,15 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Enterprise-grade OTA update engine for RupeeCRM.
  * Enforces cryptographic Ed25519 manifest verification, atomic .part downloads,
- * OS-level transaction locking, online H2 database quarantine snapshots, and safe handoff.
+ * OS-level transaction locking, online H2 database quarantine snapshots, and
+ * safe handoff.
  */
 @Service
 public class UpdateService {
 
     private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
 
-    public static final String DEFAULT_PUBLIC_KEY =
-            "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
+    public static final String DEFAULT_PUBLIC_KEY = "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
 
     @Value("${app.version:v1.0.0}")
     private String defaultVersion = "v1.0.0";
@@ -128,8 +128,24 @@ public class UpdateService {
         return getStagingDirectory().resolve("update.handoff");
     }
 
+    public void setDefaultVersion(String defaultVersion) {
+        this.defaultVersion = defaultVersion;
+    }
+
+    public String getAuthoritativeBinaryVersion() {
+        Package pkg = UpdateService.class.getPackage();
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
+            return pkg.getImplementationVersion().trim();
+        }
+        if (defaultVersion != null && !defaultVersion.isBlank()) {
+            return defaultVersion.trim();
+        }
+        return "v1.0.0";
+    }
+
     public String getCurrentVersion() {
-        // 1. Check for .billsoft-version metadata override file (used by CI validation & negative lifecycle tests)
+        // 1. Check for .billsoft-version metadata override file (used by CI validation
+        // & negative lifecycle tests)
         try {
             List<Path> candidateVersionFiles = new ArrayList<>();
             java.io.File dataDirFile = DataDirectoryResolver.resolveDataDirectory();
@@ -145,7 +161,8 @@ public class UpdateService {
                 if (staging != null) {
                     candidateVersionFiles.add(staging.resolve(".billsoft-version"));
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             candidateVersionFiles.add(Path.of(".billsoft-version"));
             candidateVersionFiles.add(Path.of("app", ".billsoft-version"));
             candidateVersionFiles.add(Path.of("app", "app", ".billsoft-version"));
@@ -155,9 +172,10 @@ public class UpdateService {
 
             try {
                 if (UpdateService.class.getProtectionDomain() != null &&
-                    UpdateService.class.getProtectionDomain().getCodeSource() != null &&
-                    UpdateService.class.getProtectionDomain().getCodeSource().getLocation() != null) {
-                    Path codePath = Path.of(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                        UpdateService.class.getProtectionDomain().getCodeSource() != null &&
+                        UpdateService.class.getProtectionDomain().getCodeSource().getLocation() != null) {
+                    Path codePath = Path
+                            .of(UpdateService.class.getProtectionDomain().getCodeSource().getLocation().toURI());
                     Path codeDir = Files.isDirectory(codePath) ? codePath : codePath.getParent();
                     if (codeDir != null) {
                         candidateVersionFiles.add(codeDir.resolve(".billsoft-version"));
@@ -166,7 +184,8 @@ public class UpdateService {
                         }
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             for (Path verFile : candidateVersionFiles) {
                 if (verFile != null && Files.exists(verFile)) {
@@ -179,35 +198,54 @@ public class UpdateService {
         } catch (Exception ignored) {
         }
 
-        // 2. Read from durable update state file
-        Path stateFile = getStateFilePath();
-        if (Files.exists(stateFile)) {
-            UpdateState state = UpdateState.load(stateFile);
-            if (state != null) {
-                String st = state.getStatus();
-                if (UpdateState.STATUS_COMMITTED.equals(st) ||
-                    UpdateState.STATUS_COMPLETED.equals(st) ||
-                    UpdateState.STATUS_STARTING_NEW_VERSION.equals(st) ||
-                    UpdateState.STATUS_HEALTH_CHECK.equals(st) ||
-                    UpdateState.STATUS_HEALTH_VERIFIED.equals(st) ||
-                    UpdateState.STATUS_SUCCESS.equals(st)) {
-                    if (state.getTargetVersion() != null && !state.getTargetVersion().trim().isEmpty()) {
-                        return state.getTargetVersion().trim();
+        // 2. Authoritative running binary version (from packaged manifest or application.properties)
+        String authoritativeVersion = getAuthoritativeBinaryVersion();
+
+        // 3. Inspect durable update-state.json and reconcile stale or contradictory metadata
+        try {
+            Path stateFile = getStateFilePath();
+            if (Files.exists(stateFile)) {
+                UpdateState state = UpdateState.load(stateFile);
+                if (state != null) {
+                    String stateVer = state.getCurrentVersion();
+                    String targetVer = state.getTargetVersion();
+                    boolean isStale = false;
+
+                    if (stateVer != null && !stateVer.isBlank() && compareVersions(authoritativeVersion, stateVer) != 0) {
+                        isStale = true;
+                    }
+                    if (targetVer != null && !targetVer.isBlank() && compareVersions(authoritativeVersion, targetVer) < 0
+                            && (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()))) {
+                        // Stale update-state claiming higher version while running binary is older
+                        isStale = true;
+                    }
+
+                    if (isStale) {
+                        log.warn("Detected stale or contradictory update-state metadata (recorded current: {}, recorded target: {}, actual running binary: {}). Reconciling update state.",
+                                stateVer, targetVer, authoritativeVersion);
+                        state.setCurrentVersion(authoritativeVersion);
+                        if (targetVer != null && compareVersions(authoritativeVersion, targetVer) >= 0) {
+                            state.setStatus(UpdateState.STATUS_COMMITTED);
+                        }
+                        try {
+                            state.saveAtomic(stateFile);
+                        } catch (Exception ignored) {}
+                        return authoritativeVersion;
+                    } else if (stateVer != null && !stateVer.isBlank() && compareVersions(authoritativeVersion, stateVer) == 0) {
+                        return stateVer;
+                    } else if (state.getStatus() != null && (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()))) {
+                        if (targetVer != null && compareVersions(authoritativeVersion, targetVer) >= 0 && !authoritativeVersion.equalsIgnoreCase(stateVer)) {
+                            state.setCurrentVersion(authoritativeVersion);
+                            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                        }
                     }
                 }
-                if (state.getCurrentVersion() != null && !state.getCurrentVersion().trim().isEmpty()) {
-                    return state.getCurrentVersion().trim();
-                }
             }
+        } catch (Exception e) {
+            log.warn("Note: Could not inspect or reconcile update-state file: {}", e.getMessage());
         }
 
-        // 3. Check Package implementation version from running JAR/WAR manifest
-        Package pkg = UpdateService.class.getPackage();
-        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
-            return pkg.getImplementationVersion().trim();
-        }
-
-        return defaultVersion;
+        return authoritativeVersion;
     }
 
     public synchronized Map<String, Object> checkUpdate() {
@@ -232,7 +270,8 @@ public class UpdateService {
                         apiUrl, org.springframework.http.HttpMethod.GET, entity, List.class);
 
                 if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                    // Strictly discover published STABLE releases only (prerelease=false, draft=false)
+                    // Strictly discover published STABLE releases only (prerelease=false,
+                    // draft=false)
                     for (Object item : resp.getBody()) {
                         if (item instanceof Map<?, ?> rel) {
                             if (Boolean.TRUE.equals(rel.get("draft")) || Boolean.TRUE.equals(rel.get("prerelease"))) {
@@ -249,7 +288,7 @@ public class UpdateService {
                 log.debug("GitHub Releases API discovery unavailable ({}), using direct manifest URL", e.getMessage());
             }
         }
-        return new String[]{mUrl, sUrl};
+        return new String[] { mUrl, sUrl };
     }
 
     private String[] extractManifestUrls(Map<?, ?> rel) {
@@ -269,7 +308,7 @@ public class UpdateService {
                 }
             }
             if (foundM != null && foundS != null) {
-                return new String[]{foundM, foundS};
+                return new String[] { foundM, foundS };
             }
         }
         return null;
@@ -286,7 +325,8 @@ public class UpdateService {
         String currentVer = getCurrentVersion();
         response.put("currentVersion", currentVer);
 
-        if (!updateCheckEnabled || "true".equalsIgnoreCase(System.getenv("DISABLE_UPDATE_CHECK")) || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
+        if (!updateCheckEnabled || "true".equalsIgnoreCase(System.getenv("DISABLE_UPDATE_CHECK"))
+                || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
             response.put("updateAvailable", false);
             response.put("message", "Update check is disabled by configuration");
             return response;
@@ -340,7 +380,8 @@ public class UpdateService {
 
     /**
      * Initiates the update download and verification asynchronously.
-     * Returns true if started, false if an update is already running or no update was discovered.
+     * Returns true if started, false if an update is already running or no update
+     * was discovered.
      */
     public boolean startUpdateAsync() {
         cancelRequested.set(false);
@@ -380,13 +421,17 @@ public class UpdateService {
         }
         String currentStatus = progressStatus.get();
         if ("restarting".equalsIgnoreCase(currentStatus) || "installing".equalsIgnoreCase(currentStatus)) {
-            return false; // Safe boundary: cannot cancel once restart or installation handoff has committed
+            return false; // Safe boundary: cannot cancel once restart or installation handoff has
+                          // committed
         }
 
         cancelRequested.set(true);
         HttpURLConnection conn = activeDownloadConnection;
         if (conn != null) {
-            try { conn.disconnect(); } catch (Exception ignored) {}
+            try {
+                conn.disconnect();
+            } catch (Exception ignored) {
+            }
         }
 
         try {
@@ -401,7 +446,8 @@ public class UpdateService {
                 state.setErrorMessage("Update was cancelled by the user.");
                 state.saveAtomic(stateFile);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         setProgress("cancelled", 0, "Update was cancelled by the user.");
         updateInProgress.set(false);
@@ -446,7 +492,8 @@ public class UpdateService {
             setProgress("downloading", 0, "Starting download...", manifest.getAppVersion());
 
             // 1. Download artifact to .part file with progress monitoring
-            downloadArtifactToPart(manifest.getArtifactUrl(), partFile, manifest.getArtifactSizeBytes(), manifest.getAppVersion());
+            downloadArtifactToPart(manifest.getArtifactUrl(), partFile, manifest.getArtifactSizeBytes(),
+                    manifest.getAppVersion());
 
             if (cancelRequested.get()) {
                 Files.deleteIfExists(partFile);
@@ -461,7 +508,8 @@ public class UpdateService {
             long actualSize = Files.size(partFile);
             if (actualSize != manifest.getArtifactSizeBytes()) {
                 Files.deleteIfExists(partFile);
-                throw new IllegalStateException("Downloaded artifact size (" + actualSize + " bytes) does not match manifest (" + manifest.getArtifactSizeBytes() + " bytes)");
+                throw new IllegalStateException("Downloaded artifact size (" + actualSize
+                        + " bytes) does not match manifest (" + manifest.getArtifactSizeBytes() + " bytes)");
             }
 
             // 3. Validate SHA-256 digest
@@ -469,7 +517,8 @@ public class UpdateService {
             String actualHash = UpdateCrypto.computeSha256(partFile);
             if (!manifest.getArtifactSha256().equalsIgnoreCase(actualHash)) {
                 Files.deleteIfExists(partFile);
-                throw new IllegalStateException("Artifact SHA-256 digest mismatch (expected: " + manifest.getArtifactSha256() + ", actual: " + actualHash + ")");
+                throw new IllegalStateException("Artifact SHA-256 digest mismatch (expected: "
+                        + manifest.getArtifactSha256() + ", actual: " + actualHash + ")");
             }
 
             // 4. Validate ZIP / WAR format magic bytes
@@ -479,9 +528,11 @@ public class UpdateService {
                 throw new IllegalStateException("Downloaded artifact is not a valid ZIP/WAR archive");
             }
 
-            // 5. Atomic promotion of .part to final staged war (guarantee BOTH manifest name and legacy name exist)
+            // 5. Atomic promotion of .part to final staged war (guarantee BOTH manifest
+            // name and legacy name exist)
             try {
-                Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
             } catch (Exception e) {
                 Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING);
             }
@@ -489,10 +540,12 @@ public class UpdateService {
             if (!finalWar.equals(manifestArtifact)) {
                 try {
                     Files.copy(manifestArtifact, finalWar, StandardCopyOption.REPLACE_EXISTING);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
 
-            // Save verified manifest and signature into txDir for Launcher independent verification
+            // Save verified manifest and signature into txDir for Launcher independent
+            // verification
             byte[] mBytes = latestVerifiedManifestBytes.get();
             if (mBytes == null) {
                 mBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
@@ -504,7 +557,8 @@ public class UpdateService {
             }
 
             // 6. Pre-update Quarantine Database Snapshot
-            setProgress("verifying", 97, "Creating pre-update database quarantine snapshot...", manifest.getAppVersion());
+            setProgress("verifying", 97, "Creating pre-update database quarantine snapshot...",
+                    manifest.getAppVersion());
             Path quarantineBackup = createQuarantineDatabaseBackup(state.getTransactionId());
             if (quarantineBackup != null) {
                 state.setQuarantineBackupPath(quarantineBackup.toAbsolutePath().toString());
@@ -536,14 +590,16 @@ public class UpdateService {
             state.saveAtomic(getStateFilePath());
 
             // 9. Notify frontend and trigger graceful restart via Exit Code 10
-            setProgress("restarting", 100, "Update verified and staged. Restarting service to activate...", manifest.getAppVersion());
+            setProgress("restarting", 100, "Update verified and staged. Restarting service to activate...",
+                    manifest.getAppVersion());
 
             new Thread(() -> {
                 try {
                     Thread.sleep(1200);
                     log.info("Requesting supervisor update restart via Exit Code 10");
                     System.exit(10);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }, "ota-restart-exit-thread").start();
 
         } catch (java.util.concurrent.CancellationException ce) {
@@ -554,7 +610,8 @@ public class UpdateService {
             state.setErrorMessage("Update was cancelled by the user.");
             try {
                 state.saveAtomic(getStateFilePath());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         } catch (Exception e) {
             log.error("Update pipeline failed: {}", e.getMessage(), e);
             setProgress("error", 0, "Update failed: " + e.getMessage());
@@ -563,13 +620,15 @@ public class UpdateService {
             state.setErrorMessage(e.getMessage());
             try {
                 state.saveAtomic(getStateFilePath());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         } finally {
             updateInProgress.set(false);
         }
     }
 
-    void downloadArtifactToPart(String downloadUrl, Path partFile, long expectedSize, String targetVersion) throws Exception {
+    void downloadArtifactToPart(String downloadUrl, Path partFile, long expectedSize, String targetVersion)
+            throws Exception {
         String currentUrl = downloadUrl;
         HttpURLConnection conn = null;
         int redirectCount = 0;
@@ -586,8 +645,10 @@ public class UpdateService {
                     throw new SecurityException("Insecure or unsupported download URL scheme: " + currentUrl);
                 }
                 String host = uri.getHost();
-                if ("http".equalsIgnoreCase(scheme) && host != null && !host.equals("127.0.0.1") && !host.equals("localhost") && !host.equals("::1")) {
-                    throw new SecurityException("Plaintext HTTP downloads are prohibited for non-loopback hosts: " + currentUrl);
+                if ("http".equalsIgnoreCase(scheme) && host != null && !host.equals("127.0.0.1")
+                        && !host.equals("localhost") && !host.equals("::1")) {
+                    throw new SecurityException(
+                            "Plaintext HTTP downloads are prohibited for non-loopback hosts: " + currentUrl);
                 }
 
                 URL url = uri.toURL();
@@ -601,9 +662,9 @@ public class UpdateService {
 
                 int responseCode = conn.getResponseCode();
                 if (responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                    responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                    responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
-                    responseCode == 307 || responseCode == 308) {
+                        responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                        responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                        responseCode == 307 || responseCode == 308) {
 
                     redirectCount++;
                     if (redirectCount > MAX_REDIRECTS) {
@@ -634,7 +695,7 @@ public class UpdateService {
             long lastUpdate = startTime;
 
             try (InputStream in = conn.getInputStream();
-                 OutputStream out = Files.newOutputStream(partFile)) {
+                    OutputStream out = Files.newOutputStream(partFile)) {
 
                 byte[] buffer = new byte[32768];
                 int read;
@@ -686,7 +747,7 @@ public class UpdateService {
             File backupsDir = DataDirectoryResolver.resolveBackupsDirectory();
             Path targetZip = backupsDir.toPath().resolve("pre-update-backup-" + txId + ".zip");
             try (Connection conn = dataSource.getConnection();
-                 Statement stmt = conn.createStatement()) {
+                    Statement stmt = conn.createStatement()) {
                 String escapedPath = targetZip.toFile().getAbsolutePath().replace("'", "''");
                 stmt.execute("BACKUP TO '" + escapedPath + "'");
             }
@@ -705,23 +766,29 @@ public class UpdateService {
         Path stateFile = getStateFilePath();
         if (Files.exists(stateFile)) {
             UpdateState state = UpdateState.load(stateFile);
-            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()) || UpdateState.STATUS_COMPLETED.equals(state.getStatus())) {
+            if (UpdateState.STATUS_COMMITTED.equals(state.getStatus())
+                    || UpdateState.STATUS_SUCCESS.equals(state.getStatus())
+                    || UpdateState.STATUS_COMPLETED.equals(state.getStatus())) {
                 String updatedVer = (state.getTargetVersion() != null && !state.getTargetVersion().isEmpty())
-                        ? state.getTargetVersion() : state.getCurrentVersion();
+                        ? state.getTargetVersion()
+                        : state.getCurrentVersion();
 
                 result.put("justUpdated", true);
                 result.put("justRolledBack", false);
                 result.put("updatedVersion", updatedVer);
                 result.put("currentVersion", updatedVer);
                 result.put("status", "SUCCESS");
+                this.defaultVersion = updatedVer;
                 state.setCurrentVersion(updatedVer);
                 state.setTargetVersion("");
                 state.setStatus(UpdateState.STATUS_IDLE);
                 try {
                     state.saveAtomic(stateFile);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 return result;
-            } else if (UpdateState.STATUS_ROLLED_BACK.equals(state.getStatus()) || UpdateState.STATUS_VERSION_MISMATCH.equals(state.getStatus())) {
+            } else if (UpdateState.STATUS_ROLLED_BACK.equals(state.getStatus())
+                    || UpdateState.STATUS_VERSION_MISMATCH.equals(state.getStatus())) {
                 result.put("justUpdated", false);
                 result.put("justRolledBack", true);
                 result.put("rolledBack", true);
@@ -734,7 +801,8 @@ public class UpdateService {
                 state.setStatus(UpdateState.STATUS_IDLE);
                 try {
                     state.saveAtomic(stateFile);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 return result;
             }
         }
@@ -784,13 +852,19 @@ public class UpdateService {
         setProgress(status, percent, message, latestVersion, "", "");
     }
 
-    private void setProgress(String status, int percent, String message, String latestVersion, String speed, String size) {
-        if (status != null) progressStatus.set(status);
+    private void setProgress(String status, int percent, String message, String latestVersion, String speed,
+            String size) {
+        if (status != null)
+            progressStatus.set(status);
         progressPercent.set(percent);
-        if (message != null) progressMessage.set(message);
-        if (latestVersion != null) progressLatestVersion.set(latestVersion);
-        if (speed != null) progressSpeed.set(speed);
-        if (size != null) progressSize.set(size);
+        if (message != null)
+            progressMessage.set(message);
+        if (latestVersion != null)
+            progressLatestVersion.set(latestVersion);
+        if (speed != null)
+            progressSpeed.set(speed);
+        if (size != null)
+            progressSize.set(size);
         sendProgressEvent();
     }
 
@@ -821,7 +895,8 @@ public class UpdateService {
         try (InputStream in = conn.getInputStream()) {
             byte[] bytes = in.readNBytes(maxBytes + 1);
             if (bytes.length > maxBytes) {
-                throw new IllegalStateException("Response from " + urlString + " exceeded limit of " + maxBytes + " bytes");
+                throw new IllegalStateException(
+                        "Response from " + urlString + " exceeded limit of " + maxBytes + " bytes");
             }
             return bytes;
         }
@@ -837,9 +912,12 @@ public class UpdateService {
     }
 
     public static int compareVersions(String v1, String v2) {
-        if (v1 == null && v2 == null) return 0;
-        if (v1 == null) return -1;
-        if (v2 == null) return 1;
+        if (v1 == null && v2 == null)
+            return 0;
+        if (v1 == null)
+            return -1;
+        if (v2 == null)
+            return 1;
 
         String norm1 = v1.replaceAll("^[vV]", "").trim();
         String norm2 = v2.replaceAll("^[vV]", "").trim();
@@ -855,10 +933,16 @@ public class UpdateService {
             long num1 = 0;
             long num2 = 0;
             if (i < parts1.length && !parts1[i].trim().isEmpty()) {
-                try { num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
+                try {
+                    num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", ""));
+                } catch (NumberFormatException ignored) {
+                }
             }
             if (i < parts2.length && !parts2[i].trim().isEmpty()) {
-                try { num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
+                try {
+                    num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", ""));
+                } catch (NumberFormatException ignored) {
+                }
             }
             if (num1 != num2) {
                 return Long.compare(num1, num2);
@@ -868,15 +952,19 @@ public class UpdateService {
         boolean hasSuffix1 = split1.length > 1 && !split1[1].isEmpty();
         boolean hasSuffix2 = split2.length > 1 && !split2[1].isEmpty();
 
-        if (!hasSuffix1 && hasSuffix2) return 1;
-        if (hasSuffix1 && !hasSuffix2) return -1;
-        if (hasSuffix1 && hasSuffix2) return split1[1].compareToIgnoreCase(split2[1]);
+        if (!hasSuffix1 && hasSuffix2)
+            return 1;
+        if (hasSuffix1 && !hasSuffix2)
+            return -1;
+        if (hasSuffix1 && hasSuffix2)
+            return split1[1].compareToIgnoreCase(split2[1]);
 
         return 0;
     }
 
     public static String extractCustomerChangelog(String rawBody) {
-        if (rawBody == null || rawBody.trim().isEmpty()) return "";
+        if (rawBody == null || rawBody.trim().isEmpty())
+            return "";
         return rawBody.trim();
     }
 }

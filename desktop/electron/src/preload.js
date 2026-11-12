@@ -47,7 +47,12 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
 
   // Native PDF Document Actions (Print & Save)
   savePdf: (base64Data, defaultFilename) => ipcRenderer.invoke('pdf:save', { base64Data, defaultFilename }),
-  printPdf: (base64Data, options) => ipcRenderer.invoke('pdf:print', { base64Data, options }),
+  printPdf: (payload, options) => {
+    if (typeof payload === 'string') {
+      return ipcRenderer.invoke('pdf:print', { base64Data: payload, options });
+    }
+    return ipcRenderer.invoke('pdf:print', { ...(payload || {}), options: options || (payload && payload.options) });
+  },
 
   // Event Listeners for State Updates
   onBackendStateChange: (callback) => {

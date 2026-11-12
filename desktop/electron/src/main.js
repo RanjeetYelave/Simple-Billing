@@ -10,9 +10,39 @@
  * - Seamless integration with existing Spring Boot backend & in-app updater
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, session } = require('electron');
+const electron = require('electron');
+const isElectron = typeof electron === 'object' && electron !== null && !!electron.app;
+
+const app = isElectron ? electron.app : {
+  isPackaged: false,
+  getVersion: () => {
+    try {
+      const p = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+      return p.version || '1.0.308';
+    } catch (e) {
+      return '1.0.308';
+    }
+  },
+  getPath: (name) => path.join(process.env.LOCALAPPDATA || process.env.HOME || '.', '.rupeecrm'),
+  requestSingleInstanceLock: () => true,
+  setAppUserModelId: () => { },
+  getLoginItemSettings: () => ({ openAtLogin: false }),
+  setLoginItemSettings: () => { },
+  quit: () => { },
+  on: () => { },
+  whenReady: () => new Promise(() => { })
+};
+const BrowserWindow = isElectron ? electron.BrowserWindow : class { };
+const Tray = isElectron ? electron.Tray : class { };
+const Menu = isElectron ? electron.Menu : class { static buildFromTemplate() { return {}; } static setApplicationMenu() { } };
+const ipcMain = isElectron ? electron.ipcMain : { handle: () => { }, on: () => { } };
+const shell = isElectron ? electron.shell : { openPath: () => { }, openExternal: () => { } };
+const dialog = isElectron ? electron.dialog : { showSaveDialogSync: () => null };
+const session = isElectron ? electron.session : null;
+
 const path = require('path');
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const child_process = require('child_process');
@@ -31,6 +61,7 @@ if (!gotTheLock) {
 const PORT = parseInt(process.env.RUPEECRM_PORT || '28080', 10);
 const APP_URL = `http://localhost:${PORT}/`;
 const HEALTH_URL = `http://127.0.0.1:${PORT}/api/health`;
+const IDENTITY_URL = `http://127.0.0.1:${PORT}/api/system/runtime-identity`;
 const SHUTDOWN_URL = `http://127.0.0.1:${PORT}/api/shutdown`;
 
 // Global State
@@ -44,6 +75,10 @@ let startHidden = false;
 let backendHealthy = false;
 let hasShownTrayNotice = false;
 let recentLogs = [];
+let legacyMigrationDetected = false;
+let legacyMigrationDetails = [];
+let activeBackendIdentity = null;
+let unidentifiedProcessConflict = null;
 
 function logMessage(msg) {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -118,6 +153,14 @@ function resolveJavaRuntime() {
     const devJava = path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'javaw.exe' : 'java');
     if (fs.existsSync(devJava)) return devJava;
   }
+  if (process.platform === 'darwin') {
+    try {
+      const jh = child_process.execSync('/usr/libexec/java_home', { encoding: 'utf8' }).trim();
+      if (jh && fs.existsSync(path.join(jh, 'bin', 'java'))) {
+        return path.join(jh, 'bin', 'java');
+      }
+    } catch (e) {}
+  }
   return process.platform === 'win32' ? 'javaw' : 'java';
 }
 
@@ -135,7 +178,7 @@ function resolveLauncherJar() {
 }
 
 // =========================================================================
-// 3. Backend Health Check & Supervisor Management
+// 3. Backend Health, Lifecycle & Supervisor Management
 // =========================================================================
 function checkBackendHealth(timeoutMs = 1500) {
   return new Promise((resolve) => {
@@ -150,6 +193,310 @@ function checkBackendHealth(timeoutMs = 1500) {
   });
 }
 
+function isPortListening(port, timeoutMs = 400) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+
+    const cleanup = (status) => {
+      if (!settled) {
+        settled = true;
+        socket.destroy();
+        resolve(status);
+      }
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => cleanup(true));
+    socket.once('timeout', () => cleanup(false));
+    socket.once('error', () => cleanup(false));
+
+    socket.connect(port, '127.0.0.1');
+  });
+}
+
+function inspectListeningProcess(port) {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      const psCmd = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $p = Get-CimInstance Win32_Process -Filter \\"ProcessId = $($c.OwningProcess)\\" -ErrorAction SilentlyContinue; if ($p) { [PSCustomObject]@{ pid = $p.ProcessId; name = $p.Name; path = $p.ExecutablePath; cmd = $p.CommandLine } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ pid = $c.OwningProcess; name = ''; path = ''; cmd = '' } | ConvertTo-Json -Compress } }"`;
+      child_process.exec(psCmd, { timeout: 3500 }, (err, stdout) => {
+        if (err || !stdout || !stdout.trim()) {
+          try {
+            const netstatOut = child_process.execSync('netstat -ano -p tcp', { encoding: 'utf8', timeout: 2000 });
+            const line = netstatOut.split(/\r?\n/).find(l => l.includes(`:${port}`) && l.includes('LISTENING'));
+            if (line) {
+              const parts = line.trim().split(/\s+/);
+              const pid = parseInt(parts[parts.length - 1], 10);
+              if (!isNaN(pid)) {
+                return resolve({ pid, name: 'unknown', executablePath: '', commandLine: '', isRupeeCRM: false });
+              }
+            }
+          } catch (ignored) { }
+          return resolve({ pid: null, name: '', executablePath: '', commandLine: '', isRupeeCRM: false });
+        }
+        try {
+          const parsed = JSON.parse(stdout.trim());
+          const cmd = (parsed.cmd || '').toLowerCase();
+          const pPath = (parsed.path || '').toLowerCase();
+          const pName = (parsed.name || '').toLowerCase();
+          const isRupeeCRM = cmd.includes('rupeecrm') || cmd.includes('billsoft') || cmd.includes('launcher.jar') ||
+            pPath.includes('rupeecrm') || pPath.includes('simple-billing') || pName.includes('rupeecrm');
+          resolve({
+            pid: parsed.pid || null,
+            name: parsed.name || '',
+            executablePath: parsed.path || '',
+            commandLine: parsed.cmd || '',
+            isRupeeCRM
+          });
+        } catch (e) {
+          resolve({ pid: null, name: '', executablePath: '', commandLine: '', isRupeeCRM: false });
+        }
+      });
+    } else {
+      // macOS / Linux
+      child_process.exec(`lsof -nP -iTCP:${port} -sTCP:LISTEN -t`, { timeout: 2500 }, (err, stdout) => {
+        if (err || !stdout || !stdout.trim()) {
+          return resolve({ pid: null, name: '', executablePath: '', commandLine: '', isRupeeCRM: false });
+        }
+        const pid = parseInt(stdout.trim().split(/\s+/)[0], 10);
+        if (isNaN(pid)) {
+          return resolve({ pid: null, name: '', executablePath: '', commandLine: '', isRupeeCRM: false });
+        }
+        child_process.exec(`ps -p ${pid} -o comm=,args=`, { timeout: 2000 }, (err2, stdout2) => {
+          const raw = stdout2 ? stdout2.trim() : '';
+          const lower = raw.toLowerCase();
+          const isRupeeCRM = lower.includes('rupeecrm') || lower.includes('billsoft') || lower.includes('launcher') || lower.includes('simple-billing');
+          resolve({
+            pid,
+            name: raw.split(/\s+/)[0] || '',
+            executablePath: raw.split(/\s+/)[0] || '',
+            commandLine: raw,
+            isRupeeCRM
+          });
+        });
+      });
+    }
+  });
+}
+
+function getBackendRuntimeIdentity(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    // 1. First query authoritative /api/system/runtime-identity endpoint
+    const req = http.get(IDENTITY_URL, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode === 200) {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            return resolve({
+              version: json.version || null,
+              commit: json.commit || null,
+              buildTimestamp: json.buildTimestamp || null,
+              pid: json.pid || null,
+              warPath: json.warPath || null,
+              service: json.service || 'RupeeCRM',
+              authoritative: true
+            });
+          } catch (e) {
+            // fallback to /api/health
+          }
+        });
+        return;
+      }
+
+      // 2. Fallback to /api/health
+      queryHealthFallback(resolve, timeoutMs);
+    });
+
+    req.on('error', () => queryHealthFallback(resolve, timeoutMs));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+function queryHealthFallback(resolve, timeoutMs) {
+  const req = http.get(HEALTH_URL, { timeout: timeoutMs }, (res) => {
+    if (res.statusCode !== 200) return resolve(null);
+    let data = '';
+    res.on('data', (chunk) => { data += chunk; });
+    res.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        resolve({
+          version: json.version || null,
+          commit: json.commit || null,
+          pid: json.pid || null,
+          service: json.service || null,
+          authoritative: false
+        });
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+  req.on('error', () => resolve(null));
+  req.on('timeout', () => {
+    req.destroy();
+    resolve(null);
+  });
+}
+
+function compareAppVersions(v1, v2) {
+  if (!v1 && !v2) return 0;
+  if (!v1) return -1;
+  if (!v2) return 1;
+  const p1 = v1.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
+  const p2 = v2.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
+  const max = Math.max(p1.length, p2.length);
+  for (let i = 0; i < max; i++) {
+    const n1 = parseInt((p1[i] || '0').replace(/\D/g, ''), 10) || 0;
+    const n2 = parseInt((p2[i] || '0').replace(/\D/g, ''), 10) || 0;
+    if (n1 !== n2) return n1 > n2 ? 1 : -1;
+  }
+  return 0;
+}
+
+function cleanLegacyStartupEntries() {
+  if (process.platform !== 'win32') return;
+
+  try {
+    // 1. Inspect and remove legacy Startup folder VBS script from v1.0.280
+    const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Roaming');
+    const startupDir = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    const vbsPath = path.join(startupDir, 'RupeeCRM.vbs');
+
+    if (fs.existsSync(vbsPath)) {
+      try {
+        const content = fs.readFileSync(vbsPath, 'utf8');
+        if (/rupeecrm|billsoft/i.test(content)) {
+          fs.unlinkSync(vbsPath);
+          legacyMigrationDetected = true;
+          legacyMigrationDetails.push(`Removed legacy startup script: ${vbsPath}`);
+          logMessage(`[Migration] Cleaned legacy startup script: ${vbsPath}`);
+        }
+      } catch (err) {
+        logMessage(`[Migration] Notice: Could not remove legacy VBS script: ${err.message}`);
+      }
+    }
+
+    // 2. Inspect and remove legacy HKCU Run registry value from v1.0.280
+    try {
+      const queryOut = child_process.execSync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v RupeeCRMService',
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }
+      );
+      if (/rupeecrm|billsoft/i.test(queryOut)) {
+        child_process.execSync(
+          'reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v RupeeCRMService /f',
+          { stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }
+        );
+        legacyMigrationDetected = true;
+        legacyMigrationDetails.push('Removed legacy registry Run key: RupeeCRMService');
+        logMessage('[Migration] Cleaned legacy registry key: HKCU Run -> RupeeCRMService');
+      }
+    } catch (ignored) { }
+
+    // 3. Clean legacy jpackage binary directory if present alongside modern installation
+    const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Local');
+    const legacyAppDir = path.join(localAppData, 'Programs', 'RupeeCRM', 'app');
+    const legacyCfg = path.join(legacyAppDir, 'RupeeCRM.cfg');
+    if (fs.existsSync(legacyCfg)) {
+      try {
+        fs.rmSync(legacyAppDir, { recursive: true, force: true });
+        legacyMigrationDetected = true;
+        legacyMigrationDetails.push(`Removed stale jpackage app directory: ${legacyAppDir}`);
+        logMessage(`[Migration] Cleaned stale jpackage directory: ${legacyAppDir}`);
+      } catch (err) {
+        logMessage(`[Migration] Notice: Could not remove stale jpackage app dir: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    logMessage(`[Migration] Error during legacy cleanup: ${err.message}`);
+  }
+}
+
+async function triggerGracefulBackendShutdown(targetPort = PORT) {
+  logMessage(`Triggering graceful backend HTTP shutdown on port ${targetPort}...`);
+  return new Promise((resolve) => {
+    try {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: targetPort,
+          path: '/api/shutdown',
+          method: 'POST',
+          timeout: 2000
+        },
+        (res) => {
+          resolve(res.statusCode === 200);
+        }
+      );
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+      req.end();
+    } catch (e) {
+      resolve(false);
+    }
+  });
+}
+
+async function terminateRupeeCRMProcess(procInfo, maxWaitMs = 6000, targetPort = PORT) {
+  if (!procInfo || !procInfo.isRupeeCRM) {
+    logMessage('Refusing to terminate process: Target process is not verified as RupeeCRM.');
+    return false;
+  }
+
+  logMessage(`Initiating controlled shutdown of RupeeCRM process (PID: ${procInfo.pid || 'unknown'}) on port ${targetPort}...`);
+
+  // Step 1: Attempt graceful HTTP shutdown signal
+  await triggerGracefulBackendShutdown(targetPort);
+
+  // Wait up to 1500ms for port to release naturally
+  const start = Date.now();
+  while (Date.now() - start < 1500) {
+    const stillListening = await isPortListening(targetPort, 250);
+    if (!stillListening) {
+      logMessage(`Backend (PID: ${procInfo.pid}) exited cleanly following HTTP shutdown signal.`);
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  // Step 2: Target-specific PID termination (OS-level fallback)
+  if (procInfo.pid) {
+    logMessage(`Backend still active after graceful shutdown signal. Terminating verified RupeeCRM PID ${procInfo.pid}...`);
+    try {
+      if (process.platform === 'win32') {
+        child_process.execSync(`taskkill /PID ${procInfo.pid} /F`, { stdio: 'ignore', timeout: 3000 });
+      } else {
+        process.kill(procInfo.pid, 'SIGKILL');
+      }
+    } catch (err) {
+      logMessage(`Notice: Process termination command returned: ${err.message}`);
+    }
+  }
+
+  // Step 3: Wait for port to become available
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const occupied = await isPortListening(targetPort, 250);
+    if (!occupied) {
+      logMessage(`Port ${targetPort} confirmed released.`);
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  logMessage(`Warning: Port ${targetPort} remained occupied after termination attempts.`);
+  return false;
+}
+
 async function waitForBackend(maxSeconds = 60, onProgress = null) {
   const start = Date.now();
   const maxMs = maxSeconds * 1000;
@@ -160,6 +507,7 @@ async function waitForBackend(maxSeconds = 60, onProgress = null) {
     const healthy = await checkBackendHealth(1200);
     if (healthy) {
       backendHealthy = true;
+      activeBackendIdentity = await getBackendRuntimeIdentity(1500);
       updateTrayMenu();
       return true;
     }
@@ -179,71 +527,81 @@ async function waitForBackend(maxSeconds = 60, onProgress = null) {
   return false;
 }
 
-function getRunningBackendVersion(timeoutMs = 1500) {
-  return new Promise((resolve) => {
-    const req = http.get(HEALTH_URL, { timeout: timeoutMs }, (res) => {
-      if (res.statusCode !== 200) return resolve(null);
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          resolve(json.version || null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
-}
-
-function compareAppVersions(v1, v2) {
-  if (!v1 && !v2) return 0;
-  if (!v1) return -1;
-  if (!v2) return 1;
-  const p1 = v1.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
-  const p2 = v2.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
-  const max = Math.max(p1.length, p2.length);
-  for (let i = 0; i < max; i++) {
-    const n1 = parseInt((p1[i] || '0').replace(/\D/g, ''), 10) || 0;
-    const n2 = parseInt((p2[i] || '0').replace(/\D/g, ''), 10) || 0;
-    if (n1 !== n2) return n1 > n2 ? 1 : -1;
-  }
-  return 0;
-}
-
 async function startJavaSupervisor() {
-  // First verify if backend is ALREADY active (e.g. running from service or prior launch)
-  const alreadyRunning = await checkBackendHealth(1200);
-  if (alreadyRunning) {
-    const runningVer = await getRunningBackendVersion(1500);
-    const packagedVer = app.getVersion();
-    logMessage(`RupeeCRM backend already active. Running version: ${runningVer || 'unknown'}, Packaged version: ${packagedVer}`);
+  cleanLegacyStartupEntries();
 
-    if (runningVer && packagedVer && compareAppVersions(packagedVer, runningVer) > 0) {
-      logMessage(`Active backend version (${runningVer}) is older than packaged version (${packagedVer}). Restarting backend...`);
-      await triggerGracefulBackendShutdown();
-      await new Promise((r) => setTimeout(r, 2000));
+  const packagedVer = app.getVersion();
+  logMessage(`Evaluating backend lifecycle. Packaged Electron version: v${packagedVer}`);
+
+  const portOccupied = await isPortListening(PORT, 500);
+
+  if (portOccupied) {
+    logMessage(`Port ${PORT} is occupied. Inspecting owning process & backend identity...`);
+    const procInfo = await inspectListeningProcess(PORT);
+    const identity = await getBackendRuntimeIdentity(2000);
+    const runningVer = identity ? identity.version : null;
+
+    logMessage(`Process on port ${PORT}: PID=${procInfo.pid || 'unknown'}, isRupeeCRM=${procInfo.isRupeeCRM}, reportedVersion=${runningVer || 'UNKNOWN'}`);
+
+    if (!procInfo.isRupeeCRM) {
+      // Case D-unidentified: Unrelated process occupying port
+      logMessage(`CRITICAL: Port ${PORT} is occupied by an unidentified non-RupeeCRM process (PID: ${procInfo.pid}, Path: ${procInfo.executablePath}).`);
+      unidentifiedProcessConflict = procInfo;
+      updateSplashStatus(`Port ${PORT} is occupied by an unidentified process (${procInfo.name || 'PID ' + procInfo.pid}). Startup halted for safety.`, true);
+      showDiagnosticsWindow();
+      return false;
+    }
+
+    // Process IS verified as RupeeCRM
+    if (!runningVer) {
+      // Case D-legacy: Legacy RupeeCRM without version reporting (e.g. v1.0.280)
+      logMessage(`Legacy RupeeCRM process detected on port ${PORT} (PID ${procInfo.pid}) without version metadata. Migrating to packaged v${packagedVer}...`);
+      updateSplashStatus('Migrating legacy RupeeCRM backend process...');
+      const terminated = await terminateRupeeCRMProcess(procInfo);
+      if (!terminated) {
+        logMessage('Failed to release port from legacy RupeeCRM process.');
+        updateSplashStatus('Could not terminate legacy RupeeCRM process. Please close it manually.', true);
+        return false;
+      }
     } else {
-      backendHealthy = true;
-      return;
+      const cmp = compareAppVersions(packagedVer, runningVer);
+
+      if (cmp === 0) {
+        // Case B: Matching version & verified RupeeCRM process
+        logMessage(`Legitimate RupeeCRM backend (v${runningVer}, PID ${procInfo.pid}) is active and matches packaged version. Reusing.`);
+        backendHealthy = true;
+        activeBackendIdentity = identity;
+        return true;
+      } else if (cmp > 0) {
+        // Case C: Older version (e.g. running 1.0.280 or older while packaged is 1.0.308)
+        logMessage(`Active RupeeCRM backend (v${runningVer}) is older than packaged version (v${packagedVer}). Terminating older backend...`);
+        updateSplashStatus(`Updating RupeeCRM runtime from v${runningVer} to v${packagedVer}...`);
+        const terminated = await terminateRupeeCRMProcess(procInfo);
+        if (!terminated) {
+          logMessage('Failed to release port from older RupeeCRM process.');
+          updateSplashStatus('Could not terminate older RupeeCRM process. Please close it manually.', true);
+          return false;
+        }
+      } else {
+        // Case E: Running backend is newer than packaged Electron
+        logMessage(`Active RupeeCRM backend reports newer version (v${runningVer} > packaged v${packagedVer}). Retaining newer active backend under compatibility policy.`);
+        backendHealthy = true;
+        activeBackendIdentity = identity;
+        return true;
+      }
     }
   }
 
+  // Case A (or post-termination of Case C/D): Spawn packaged supervisor
   const javaBin = resolveJavaRuntime();
   const launcherJar = resolveLauncherJar();
 
   if (!launcherJar) {
     logMessage('Warning: launcher.jar not located. Assuming backend started externally.');
-    return;
+    return false;
   }
 
-  logMessage(`Spawning Java Supervisor via: ${javaBin} -jar ${launcherJar}`);
+  logMessage(`Spawning packaged Java Supervisor via: ${javaBin} -jar ${launcherJar}`);
 
   const args = [
     '-Xms128m',
@@ -281,38 +639,12 @@ async function startJavaSupervisor() {
       backendHealthy = false;
       updateTrayMenu();
     });
+
+    return true;
   } catch (err) {
     logMessage(`Failed to spawn supervisor: ${err.message}`);
+    return false;
   }
-}
-
-async function triggerGracefulBackendShutdown() {
-  logMessage('Triggering graceful backend HTTP shutdown...');
-  return new Promise((resolve) => {
-    try {
-      const parsedUrl = new URL(SHUTDOWN_URL);
-      const req = http.request(
-        {
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port,
-          path: parsedUrl.pathname,
-          method: 'POST',
-          timeout: 2000
-        },
-        (res) => {
-          resolve(true);
-        }
-      );
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(false);
-      });
-      req.end();
-    } catch (e) {
-      resolve(false);
-    }
-  });
 }
 
 async function stopSupervisor() {
@@ -333,7 +665,7 @@ async function stopSupervisor() {
         logMessage('Supervisor did not exit gracefully; sending SIGKILL.');
         supervisorProcess.kill('SIGKILL');
       }
-    } catch (ignored) {}
+    } catch (ignored) { }
     supervisorProcess = null;
   }
 }
@@ -720,14 +1052,16 @@ function registerIpcHandlers() {
 
   ipcMain.handle('diagnostics:get-info', async () => {
     let latencyMs = null;
-    let backendVersion = 'Unknown';
+    let identity = activeBackendIdentity;
 
     if (backendHealthy) {
       const start = Date.now();
       try {
         await checkBackendHealth(1000);
         latencyMs = Date.now() - start;
-      } catch (ignored) {}
+        const freshId = await getBackendRuntimeIdentity(1000);
+        if (freshId) identity = freshId;
+      } catch (ignored) { }
     }
 
     const dbPath = path.join(dirs.dataDir, 'rupeecrm.mv.db');
@@ -736,16 +1070,21 @@ function registerIpcHandlers() {
     return {
       appVersion: app.getVersion(),
       javaRuntime: resolveJavaRuntime(),
-      supervisorPid: supervisorProcess ? supervisorProcess.pid : 'External / Managed',
+      supervisorPid: supervisorProcess ? supervisorProcess.pid : (identity && identity.pid ? identity.pid : 'External / Managed'),
       supervisorMode: 'Background Service',
       backendPort: PORT,
       backendHealthy,
       latencyMs,
-      backendVersion: 'v' + app.getVersion(),
+      backendVersion: identity ? (identity.version || 'v' + app.getVersion()) : 'Unknown',
+      backendCommit: identity ? (identity.commit || 'HEAD') : 'HEAD',
+      warPath: identity && identity.warPath ? identity.warPath : 'authoritative packaged WAR',
+      legacyMigrationDetected,
+      legacyMigrationDetails,
+      unidentifiedProcessConflict,
       dataDir: dirs.dataDir,
       dbExists,
       logsDir: dirs.logsDir,
-      recentLogs: recentLogs.slice(-15)
+      recentLogs: recentLogs.slice(-20)
     };
   });
 
@@ -810,14 +1149,24 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('pdf:print', async (event, { base64Data, options }) => {
-    let tempPath = null;
+  ipcMain.handle('pdf:print', async (event, payload = {}) => {
     let printWin = null;
     try {
-      if (!base64Data) throw new Error('No PDF content provided for printing');
-      const tempDir = app.getPath('temp');
-      tempPath = path.join(tempDir, `rupeecrm_print_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
-      await fs.promises.writeFile(tempPath, Buffer.from(base64Data, 'base64'));
+      const base64Data = payload.base64Data || (typeof payload === 'string' ? payload : null);
+      const pages = payload.pages || null;
+      const format = payload.format || 'A4';
+      const options = payload.options || {};
+
+      if (!base64Data && (!pages || pages.length === 0)) {
+        throw new Error('No PDF content or rendered pages provided for printing');
+      }
+
+      logMessage(`[Print] Native print requested: format=${format}, hasPreRenderedPages=${Boolean(pages && pages.length)}, pageCount=${pages ? pages.length : 'dynamic'}, silent=${Boolean(options.silent)}`);
+
+      const runnerPath = path.join(__dirname, 'print/print-runner.html');
+      if (!fs.existsSync(runnerPath)) {
+        throw new Error(`Print runner template not found at ${runnerPath}`);
+      }
 
       printWin = new BrowserWindow({
         show: false,
@@ -828,37 +1177,62 @@ function registerIpcHandlers() {
         }
       });
 
-      await printWin.loadURL(pathToFileURL(tempPath).href);
+      await printWin.loadURL(pathToFileURL(runnerPath).href);
+      logMessage('[Print] Print runner loaded; rendering document pages into DOM...');
 
-      return new Promise((resolve) => {
-        printWin.webContents.print(
-          {
-            silent: false,
-            printBackground: true,
-            ...(options || {})
-          },
-          (success, failureReason) => {
-            if (!success) {
-              logMessage(`Native print dismissed/failed: ${failureReason}`);
-            } else {
-              logMessage('Native print job sent successfully');
-            }
-            if (printWin && !printWin.isDestroyed()) {
-              printWin.close();
-            }
-            if (tempPath && fs.existsSync(tempPath)) {
-              try { fs.unlinkSync(tempPath); } catch (e) {}
-            }
-            resolve({ success, failureReason });
-          }
+      if (Array.isArray(pages) && pages.length > 0) {
+        await printWin.webContents.executeJavaScript(
+          `window.renderPagesFromImages(${JSON.stringify(pages)}, ${JSON.stringify(format)})`
         );
+      } else {
+        await printWin.webContents.executeJavaScript(
+          `window.renderPagesFromPdfBase64(${JSON.stringify(base64Data)}, ${JSON.stringify(format)}, 2.5)`
+        );
+      }
+
+      const renderedCount = await printWin.webContents.executeJavaScript(
+        `document.querySelectorAll('.print-page img').length`
+      );
+      logMessage(`[Print] Document rendering verified: ${renderedCount} page(s) ready in print pipeline`);
+
+      if (renderedCount === 0) {
+        throw new Error('Document rendering failed: 0 pages rendered');
+      }
+
+      // Ensure layout and paint pass before invoking native print dialog
+      await printWin.webContents.executeJavaScript(
+        `new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 80)))`
+      );
+
+      const printOpts = {
+        silent: Boolean(options.silent),
+        printBackground: true,
+        color: true,
+        margins: { marginType: 'none' },
+        ...(options || {})
+      };
+
+      logMessage('[Print] Invoking native webContents.print...');
+      return new Promise((resolve) => {
+        printWin.webContents.print(printOpts, (success, failureReason) => {
+          if (!success) {
+            logMessage(`[Print] Native print dismissed/cancelled: ${failureReason || 'User cancelled'}`);
+          } else {
+            logMessage('[Print] Native print job successfully sent to printer spooler');
+          }
+          if (printWin && !printWin.isDestroyed()) {
+            printWin.close();
+            printWin = null;
+          }
+          resolve({ success, failureReason: success ? null : (failureReason || 'User cancelled') });
+        });
       });
     } catch (err) {
-      if (printWin && !printWin.isDestroyed()) printWin.close();
-      if (tempPath && fs.existsSync(tempPath)) {
-        try { fs.unlinkSync(tempPath); } catch (e) {}
+      if (printWin && !printWin.isDestroyed()) {
+        printWin.close();
+        printWin = null;
       }
-      logMessage(`Native print error: ${err.message}`);
+      logMessage(`[Print] Native print error: ${err.message}`);
       return { success: false, error: err.message };
     }
   });
@@ -943,7 +1317,11 @@ app.whenReady().then(async () => {
   }
 
   // Start supervisor & wait for readiness
-  await startJavaSupervisor();
+  const supervisorStarted = await startJavaSupervisor();
+  if (!supervisorStarted && !backendHealthy) {
+    logMessage('Backend supervisor startup halted.');
+    return;
+  }
 
   updateSplashStatus('Waiting for RupeeCRM application backend...');
   const ready = await waitForBackend(60, (statusText) => {
@@ -958,3 +1336,16 @@ app.whenReady().then(async () => {
     updateSplashStatus('Backend startup timed out. Check system logs.', true);
   }
 });
+
+// Export lifecycle helpers for automated regression verification
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    compareAppVersions,
+    isPortListening,
+    inspectListeningProcess,
+    cleanLegacyStartupEntries,
+    getBackendRuntimeIdentity,
+    terminateRupeeCRMProcess,
+    triggerGracefulBackendShutdown
+  };
+}

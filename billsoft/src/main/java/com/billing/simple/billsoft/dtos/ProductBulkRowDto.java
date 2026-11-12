@@ -25,4 +25,5 @@ public class ProductBulkRowDto {
     private String description;
     private Boolean inInventory;
     private Long preferredPartyId;
+    private Integer rowNumber;
 }

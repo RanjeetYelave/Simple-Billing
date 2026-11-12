@@ -37,6 +37,15 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     List<Customer> findTop5ByFirmIdAndPhoneContainingOrderByNameAsc(Long firmId, String phone);
 
+    @org.springframework.data.jpa.repository.Query("SELECT c FROM Customer c WHERE c.firmId = :firmId AND (" +
+            "LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "c.phone LIKE CONCAT('%', :query, '%') OR " +
+            "LOWER(c.gstin) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(c.email) LIKE LOWER(CONCAT('%', :query, '%'))" +
+            ") ORDER BY c.name ASC")
+    List<Customer> searchByFirmIdAndQuery(@org.springframework.data.repository.query.Param("firmId") Long firmId,
+                                          @org.springframework.data.repository.query.Param("query") String query);
+
     void deleteByIdAndFirmId(Long id, Long firmId);
 
     long countByFirmId(Long firmId);

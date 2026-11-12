@@ -175,7 +175,10 @@ public class SalesReturnPdfService {
         }
 
         billToCell.addElement(new Paragraph("CUSTOMER DETAILS", new Font(Font.HELVETICA, 8 * scale, Font.BOLD, primaryColor)));
-        billToCell.addElement(new Paragraph(cust != null ? cust.getName() : "Direct Customer", new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK)));
+        String effectiveCustName = salesReturn.getCustomerNameSnapshot() != null && !salesReturn.getCustomerNameSnapshot().isBlank()
+                ? salesReturn.getCustomerNameSnapshot()
+                : (cust != null ? cust.getName() : "Direct Customer");
+        billToCell.addElement(new Paragraph(effectiveCustName, new Font(Font.HELVETICA, 9.5f * scale, Font.BOLD, DocumentThemeHelper.TEXT_DARK)));
         if (cust != null) {
             if (cust.getAddress() != null) billToCell.addElement(new Paragraph(cust.getAddress(), firmSubFont));
             if (cust.getPhone() != null) billToCell.addElement(new Paragraph("Phone: " + cust.getPhone(), firmSubFont));
@@ -393,9 +396,12 @@ public class SalesReturnPdfService {
             pMeta.add(new Chunk("Ref Inv: " + invNum + "\n", subFont));
         }
         Customer cust = salesReturn.getCustomer();
-        if (cust != null) {
-            pMeta.add(new Chunk("Customer: " + cust.getName() + "\n", subFont));
-            if (cust.getPhone() != null) pMeta.add(new Chunk("Phone: " + cust.getPhone() + "\n", subFont));
+        String effectiveThermalCustName = salesReturn.getCustomerNameSnapshot() != null && !salesReturn.getCustomerNameSnapshot().isBlank()
+                ? salesReturn.getCustomerNameSnapshot()
+                : (cust != null ? cust.getName() : null);
+        if (effectiveThermalCustName != null) {
+            pMeta.add(new Chunk("Customer: " + effectiveThermalCustName + "\n", subFont));
+            if (cust != null && cust.getPhone() != null) pMeta.add(new Chunk("Phone: " + cust.getPhone() + "\n", subFont));
         }
         doc.add(pMeta);
         doc.add(pDashes);

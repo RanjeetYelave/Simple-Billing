@@ -162,7 +162,7 @@ public class ProductService {
 
 		for (int i = 0; i < rows.size(); i++) {
 			com.billing.simple.billsoft.dtos.ProductBulkRowDto row = rows.get(i);
-			int rowNum = i + 1;
+			int rowNum = row.getRowNumber() != null ? row.getRowNumber() : (i + 1);
 
 			if (row.getName() == null || row.getName().trim().isEmpty()) {
 				throw new IllegalArgumentException("Row " + rowNum + ": Product name is required");
@@ -312,6 +312,29 @@ public class ProductService {
 			return Collections.emptyList();
 		}
 		return repo.findByFirmIdAndIsArchivedFalseOrderByNameAsc(targetFirmId);
+	}
+
+	public List<Product> searchProducts(Long firmId, String query) {
+		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product search prohibited");
+		}
+		Long targetFirmId = firmId != null ? firmId : authoritativeFirmId;
+		if (targetFirmId == null) {
+			return Collections.emptyList();
+		}
+		List<Product> list = repo.findByFirmId(targetFirmId);
+		String q = query != null ? query.trim().toLowerCase() : "";
+		return list.stream()
+				.filter(p -> p.getIsArchived() == null || !p.getIsArchived())
+				.filter(p -> q.isEmpty() ||
+						(p.getName() != null && p.getName().toLowerCase().contains(q)) ||
+						(p.getSku() != null && p.getSku().toLowerCase().contains(q)) ||
+						(p.getBarcode() != null && p.getBarcode().toLowerCase().contains(q)) ||
+						(p.getCategory() != null && p.getCategory().toLowerCase().contains(q)) ||
+						(p.getHsnCode() != null && p.getHsnCode().toLowerCase().contains(q)))
+				.limit(30)
+				.toList();
 	}
 
 	public List<Product> getUnimportedProducts(Long firmId) {
@@ -1017,14 +1040,195 @@ public class ProductService {
 	}
 
 	public byte[] getProductCsvTemplate() {
-		String template = "Product Name,HSN/SAC Code,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Initial Stock,Min Stock,Unit,Description\n"
-				+ "Sample Product A,84713010,8901234567890,Electronics,GOODS,25000.00,20000.00,18,10,2,pcs,Sample Goods Item\n"
-				+ "Consulting Service,998311,,Services,SERVICE,5000.00,0.00,18,0,0,hours,Professional Services\n";
+		String template = "Product Name,HSN/SAC Code,SKU,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Initial Stock,Min Stock,Unit,Description\n"
+				+ "Sample Product A,84713010,SKU-PROD-001,8901234567890,Electronics,GOODS,25000.00,20000.00,18,10,2,pcs,Sample Goods Item\n"
+				+ "Consulting Service,998311,SKU-SRV-002,,Services,SERVICE,5000.00,0.00,18,0,0,hours,Professional Services\n";
 		return template.getBytes(StandardCharsets.UTF_8);
+	}
+
+	public byte[] getProductXlsxTemplate() {
+		return com.billing.simple.billsoft.util.ProductBulkImportUtils.generateXlsxTemplate();
+	}
+
+	@Transactional(rollbackFor = Exception.class)
+	public ProductImportResponseDto importProductsFromFile(byte[] bytes, String filename, Long clientFirmId) {
+		if (bytes == null || bytes.length == 0) {
+			throw new IllegalArgumentException("Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
+		}
+
+		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isLegacyXls(bytes, filename)) {
+			throw new IllegalArgumentException("Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
+		}
+
+		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isZipOrXlsx(bytes, filename)) {
+			try {
+				return importProductsFromXlsx(bytes, clientFirmId);
+			} catch (IllegalArgumentException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new IllegalArgumentException("Failed to parse Excel (.xlsx) file: " + e.getMessage(), e);
+			}
+		}
+
+		// Detect corrupted/binary unsupported formats (e.g. PDF, image, binary executables)
+		if (isBinaryNonText(bytes)) {
+			throw new IllegalArgumentException("Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
+		}
+
+		String csvText = com.billing.simple.billsoft.util.ProductBulkImportUtils.cleanUtf8String(bytes);
+		return importProductsFromCsv(csvText, clientFirmId);
+	}
+
+	private boolean isBinaryNonText(byte[] bytes) {
+		int checkLen = Math.min(bytes.length, 512);
+		int nullBytes = 0;
+		for (int i = 0; i < checkLen; i++) {
+			if (bytes[i] == 0) {
+				nullBytes++;
+			}
+		}
+		return nullBytes > 2;
+	}
+
+	@Transactional(rollbackFor = Exception.class)
+	public ProductImportResponseDto importProductsFromXlsx(byte[] bytes, Long clientFirmId) {
+		try {
+			List<List<String>> parsedLines = com.billing.simple.billsoft.util.ProductBulkImportUtils.parseXlsx(bytes);
+			return processProductsTable(parsedLines, clientFirmId, false);
+		} catch (IllegalArgumentException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Failed to read Excel worksheet: " + e.getMessage(), e);
+		}
 	}
 
 	@Transactional(rollbackFor = Exception.class)
 	public ProductImportResponseDto importProductsFromCsv(String csvContent, Long clientFirmId) {
+		if (csvContent == null || csvContent.trim().isEmpty()) {
+			throw new IllegalArgumentException("CSV content is empty");
+		}
+		List<List<String>> parsedLines = parseCsv(csvContent);
+		return processProductsTable(parsedLines, clientFirmId, false);
+	}
+
+	@Transactional(rollbackFor = Exception.class)
+	public ProductImportResponseDto importProductsFromTable(List<List<String>> parsedLines, Long clientFirmId) {
+		return processProductsTable(parsedLines, clientFirmId, false);
+	}
+
+	public ProductImportResponseDto previewProductsFromFile(byte[] bytes, String filename, Long clientFirmId) {
+		if (bytes == null || bytes.length == 0) {
+			throw new IllegalArgumentException("Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
+		}
+		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isLegacyXls(bytes, filename)) {
+			throw new IllegalArgumentException("Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
+		}
+		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isZipOrXlsx(bytes, filename)) {
+			try {
+				List<List<String>> parsedLines = com.billing.simple.billsoft.util.ProductBulkImportUtils.parseXlsx(bytes);
+				return processProductsTable(parsedLines, clientFirmId, true);
+			} catch (IllegalArgumentException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new IllegalArgumentException("Failed to parse Excel (.xlsx) file: " + e.getMessage(), e);
+			}
+		}
+		if (isBinaryNonText(bytes)) {
+			throw new IllegalArgumentException("Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
+		}
+		String csvText = com.billing.simple.billsoft.util.ProductBulkImportUtils.cleanUtf8String(bytes);
+		return previewProductsFromCsv(csvText, clientFirmId);
+	}
+
+	public ProductImportResponseDto previewProductsFromCsv(String csvContent, Long clientFirmId) {
+		if (csvContent == null || csvContent.trim().isEmpty()) {
+			throw new IllegalArgumentException("CSV content is empty");
+		}
+		List<List<String>> parsedLines = parseCsv(csvContent);
+		return processProductsTable(parsedLines, clientFirmId, true);
+	}
+
+	private static final Set<String> SUPPORTED_UNITS = Set.of(
+			"pcs", "piece", "pieces", "kg", "g", "gram", "grams",
+			"litre", "ltr", "litres", "ml", "m", "meter", "meters",
+			"cm", "box", "boxes", "packet", "pkt", "packets",
+			"dozen", "ft", "feet", "nos", "set", "sets",
+			"hours", "hrs", "days", "month", "mon",
+			"roll", "rolls", "bundle", "bundles", "can", "drum",
+			"bag", "bags", "pair", "pairs", "sqft", "sqm"
+	);
+
+	private static String normalizeUnit(String rawUnit) {
+		if (rawUnit == null || rawUnit.trim().isEmpty()) {
+			return "pcs";
+		}
+		String u = rawUnit.trim().toLowerCase();
+		switch (u) {
+			case "piece":
+			case "pieces":
+				return "pcs";
+			case "gram":
+			case "grams":
+				return "g";
+			case "ltr":
+			case "litres":
+				return "litre";
+			case "meter":
+			case "meters":
+				return "m";
+			case "boxes":
+				return "box";
+			case "pkt":
+			case "packets":
+				return "packet";
+			case "feet":
+				return "ft";
+			case "sets":
+				return "set";
+			case "hrs":
+				return "hours";
+			case "mon":
+				return "month";
+			case "rolls":
+				return "roll";
+			case "bundles":
+				return "bundle";
+			case "bags":
+				return "bag";
+			case "pairs":
+				return "pair";
+			default:
+				return rawUnit.trim();
+		}
+	}
+
+	private static boolean isSupportedUnit(String unit) {
+		if (unit == null || unit.trim().isEmpty()) return true;
+		return SUPPORTED_UNITS.contains(unit.trim().toLowerCase());
+	}
+
+	private static class ParseResult<T> {
+		final T value;
+		final boolean hasError;
+		ParseResult(T value, boolean hasError) {
+			this.value = value;
+			this.hasError = hasError;
+		}
+	}
+
+	private ParseResult<BigDecimal> parseNumeric(String str, BigDecimal defaultVal) {
+		if (str == null || str.trim().isEmpty()) {
+			return new ParseResult<>(defaultVal, false);
+		}
+		String clean = str.trim().replace(",", "");
+		try {
+			return new ParseResult<>(new BigDecimal(clean), false);
+		} catch (Exception e) {
+			return new ParseResult<>(defaultVal, true);
+		}
+	}
+
+	private ProductImportResponseDto processProductsTable(List<List<String>> parsedLines, Long clientFirmId, boolean isPreview) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
 			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product import prohibited");
@@ -1033,13 +1237,8 @@ public class ProductService {
 		if (targetFirmId == null) {
 			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to import products");
 		}
-		if (csvContent == null || csvContent.trim().isEmpty()) {
-			throw new IllegalArgumentException("CSV content is empty");
-		}
-
-		List<List<String>> parsedLines = parseCsv(csvContent);
-		if (parsedLines.isEmpty()) {
-			throw new IllegalArgumentException("No data rows found in CSV");
+		if (parsedLines == null || parsedLines.isEmpty()) {
+			throw new IllegalArgumentException("No data rows found in uploaded file");
 		}
 
 		List<String> firstRow = parsedLines.get(0);
@@ -1047,71 +1246,236 @@ public class ProductService {
 		Map<String, Integer> colMap = hasHeader ? mapHeaders(firstRow) : getDefaultColMap();
 		int startIdx = hasHeader ? 1 : 0;
 
+		if (hasHeader && parsedLines.size() <= 1) {
+			throw new IllegalArgumentException("The file contains headers but no product data rows to import");
+		}
+
 		List<ProductBulkRowDto> bulkRows = new ArrayList<>();
+		List<Product> previewProducts = new ArrayList<>();
 		List<String> warnings = new ArrayList<>();
+		List<String> errors = new ArrayList<>();
+		int skippedCount = 0;
 		boolean legacySkuWithoutHsn = hasHeader && colMap.containsKey("sku") && !colMap.containsKey("hsn");
+
+		Set<String> batchSkus = new HashSet<>();
+		Set<String> batchBarcodes = new HashSet<>();
+		Set<String> batchNamesWithoutIdentifiers = new HashSet<>();
 
 		for (int i = startIdx; i < parsedLines.size(); i++) {
 			List<String> cols = parsedLines.get(i);
-			int rowNum = i + 1;
+			int rowNum = i + 1; // 1-based spreadsheet row number
+
+			// Check if row is completely empty
+			boolean isRowBlank = true;
+			for (String cell : cols) {
+				if (cell != null && !cell.trim().isEmpty()) {
+					isRowBlank = false;
+					break;
+				}
+			}
+			if (isRowBlank) {
+				skippedCount++;
+				continue;
+			}
+
+			boolean rowHasError = false;
+
 			String name = getColVal(cols, colMap, "name");
 			if (name == null || name.trim().isEmpty()) {
-				continue; // Skip blank rows
+				errors.add("Row " + rowNum + ": Product name is required");
+				rowHasError = true;
 			}
 
 			String hsn = getColVal(cols, colMap, "hsn");
 			String sku = getColVal(cols, colMap, "sku");
 
-			// Leading zeros and whitespace trimming:
 			hsn = (hsn != null && !hsn.trim().isEmpty()) ? hsn.trim() : null;
 			sku = (sku != null && !sku.trim().isEmpty()) ? sku.trim() : null;
 
 			if (legacySkuWithoutHsn && sku != null) {
-				warnings.add("Row " + rowNum + " ('" + name + "'): Preserved legacy SKU '" + sku + "' without automatic assignment as HSN/SAC code.");
+				warnings.add("Row " + rowNum + " ('" + (name != null ? name.trim() : "Unknown") + "'): Preserved legacy SKU '" + sku + "' without automatic assignment as HSN/SAC code.");
 			}
 
 			String barcode = getColVal(cols, colMap, "barcode");
 			barcode = (barcode != null && !barcode.trim().isEmpty()) ? barcode.trim() : null;
 
+			if (sku != null) {
+				String skuLower = sku.toLowerCase();
+				if (batchSkus.contains(skuLower)) {
+					errors.add("Row " + rowNum + ": Duplicate SKU in batch: '" + sku + "'");
+					rowHasError = true;
+				} else {
+					batchSkus.add(skuLower);
+					if (repo.existsByFirmIdAndSku(targetFirmId, sku)) {
+						errors.add("Row " + rowNum + ": Product with SKU '" + sku + "' already exists for this firm");
+						rowHasError = true;
+					}
+				}
+			}
+
+			if (barcode != null) {
+				String barcodeLower = barcode.toLowerCase();
+				if (batchBarcodes.contains(barcodeLower)) {
+					errors.add("Row " + rowNum + ": Duplicate Barcode in batch: '" + barcode + "'");
+					rowHasError = true;
+				} else {
+					batchBarcodes.add(barcodeLower);
+					if (repo.existsByFirmIdAndBarcode(targetFirmId, barcode)) {
+						errors.add("Row " + rowNum + ": Product with Barcode '" + barcode + "' already exists for this firm");
+						rowHasError = true;
+					}
+				}
+			}
+
+			if (sku == null && barcode == null && name != null && !name.trim().isEmpty()) {
+				String nameLower = name.trim().toLowerCase();
+				if (batchNamesWithoutIdentifiers.contains(nameLower)) {
+					errors.add("Row " + rowNum + ": Duplicate product name in batch: '" + name.trim() + "' (please assign unique SKUs or distinct names)");
+					rowHasError = true;
+				} else {
+					batchNamesWithoutIdentifiers.add(nameLower);
+				}
+			}
+
 			String category = getColVal(cols, colMap, "category");
 			category = (category != null && !category.trim().isEmpty()) ? category.trim() : null;
 
-			String itemType = getColVal(cols, colMap, "itemtype");
-			itemType = (itemType != null && !itemType.trim().isEmpty()) ? itemType.trim().toUpperCase() : "GOODS";
+			String rawItemType = getColVal(cols, colMap, "itemtype");
+			String itemType = "GOODS";
+			if (rawItemType != null && !rawItemType.trim().isEmpty()) {
+				String it = rawItemType.trim().toUpperCase();
+				if (!"GOODS".equals(it) && !"SERVICE".equals(it)) {
+					errors.add("Row " + rowNum + ": Invalid Item Type '" + rawItemType.trim() + "'. Must be 'GOODS' or 'SERVICE'");
+					rowHasError = true;
+				} else {
+					itemType = it;
+				}
+			}
 
-			String unit = getColVal(cols, colMap, "unit");
-			unit = (unit != null && !unit.trim().isEmpty()) ? unit.trim() : "pcs";
+			String rawUnit = getColVal(cols, colMap, "unit");
+			if (rawUnit != null && !rawUnit.trim().isEmpty() && !isSupportedUnit(rawUnit)) {
+				errors.add("Row " + rowNum + ": Unknown or unsupported unit '" + rawUnit.trim() + "'. Supported units: pcs, kg, g, litre, ml, m, cm, box, dozen, ft, nos, set, hours, days");
+				rowHasError = true;
+			}
+			String unit = normalizeUnit(rawUnit);
 
 			String desc = getColVal(cols, colMap, "description");
 			desc = (desc != null && !desc.trim().isEmpty()) ? desc.trim() : null;
 
-			BigDecimal price = parseDecimal(getColVal(cols, colMap, "price"), BigDecimal.ZERO);
-			BigDecimal costPrice = parseDecimal(getColVal(cols, colMap, "costprice"), null);
-			BigDecimal gst = parseDecimal(getColVal(cols, colMap, "gst"), BigDecimal.ZERO);
-			BigDecimal initStock = parseDecimal(getColVal(cols, colMap, "initialstock"), BigDecimal.ZERO);
-			BigDecimal minStock = parseDecimal(getColVal(cols, colMap, "minstock"), new BigDecimal("5.000"));
+			String rawPrice = getColVal(cols, colMap, "price");
+			ParseResult<BigDecimal> priceRes = parseNumeric(rawPrice, BigDecimal.ZERO);
+			BigDecimal price = priceRes.value;
+			if (priceRes.hasError) {
+				errors.add("Row " + rowNum + ": Invalid selling price '" + rawPrice.trim() + "'. Must be a valid numeric amount");
+				rowHasError = true;
+			} else if (price.compareTo(BigDecimal.ZERO) < 0) {
+				errors.add("Row " + rowNum + ": Selling price cannot be negative");
+				rowHasError = true;
+			}
+
+			String rawCostPrice = getColVal(cols, colMap, "costprice");
+			ParseResult<BigDecimal> costRes = parseNumeric(rawCostPrice, null);
+			BigDecimal costPrice = costRes.value;
+			if (costRes.hasError) {
+				errors.add("Row " + rowNum + ": Invalid cost price '" + rawCostPrice.trim() + "'. Must be a valid numeric amount");
+				rowHasError = true;
+			} else if (costPrice != null && costPrice.compareTo(BigDecimal.ZERO) < 0) {
+				errors.add("Row " + rowNum + ": Cost price cannot be negative");
+				rowHasError = true;
+			}
+
+			String rawGst = getColVal(cols, colMap, "gst");
+			ParseResult<BigDecimal> gstRes = parseNumeric(rawGst, BigDecimal.ZERO);
+			BigDecimal gst = gstRes.value;
+			if (gstRes.hasError) {
+				errors.add("Row " + rowNum + ": Invalid GST percentage '" + rawGst.trim() + "'. Must be a valid numeric percentage between 0 and 100");
+				rowHasError = true;
+			} else if (gst.compareTo(BigDecimal.ZERO) < 0 || gst.compareTo(new BigDecimal("100.00")) > 0) {
+				errors.add("Row " + rowNum + ": GST percentage must be between 0 and 100");
+				rowHasError = true;
+			}
+
+			String rawInitStock = getColVal(cols, colMap, "initialstock");
+			ParseResult<BigDecimal> initStockRes = parseNumeric(rawInitStock, BigDecimal.ZERO);
+			BigDecimal initStock = initStockRes.value;
+			if (initStockRes.hasError) {
+				errors.add("Row " + rowNum + ": Invalid initial stock quantity '" + rawInitStock.trim() + "'. Must be a valid numeric quantity");
+				rowHasError = true;
+			} else if (initStock.compareTo(BigDecimal.ZERO) < 0) {
+				errors.add("Row " + rowNum + ": Initial stock cannot be negative");
+				rowHasError = true;
+			}
+
+			String rawMinStock = getColVal(cols, colMap, "minstock");
+			ParseResult<BigDecimal> minStockRes = parseNumeric(rawMinStock, new BigDecimal("5.000"));
+			BigDecimal minStock = minStockRes.value;
+			if (minStockRes.hasError) {
+				errors.add("Row " + rowNum + ": Invalid minimum stock level '" + rawMinStock.trim() + "'. Must be a valid numeric quantity");
+				rowHasError = true;
+			} else if (minStock.compareTo(BigDecimal.ZERO) < 0) {
+				errors.add("Row " + rowNum + ": Minimum stock level cannot be negative");
+				rowHasError = true;
+			}
 
 			String trackInvStr = getColVal(cols, colMap, "trackininventory");
 			boolean inInventory = trackInvStr == null || !("no".equalsIgnoreCase(trackInvStr.trim()) || "false".equalsIgnoreCase(trackInvStr.trim()));
 
-			ProductBulkRowDto rowDto = ProductBulkRowDto.builder()
-					.name(name.trim())
-					.hsnCode(hsn)
-					.sku(sku)
-					.barcode(barcode)
-					.category(category)
-					.itemType(itemType)
-					.unit(unit)
-					.description(desc)
-					.price(price)
-					.costPrice(costPrice)
-					.gstPercentage(gst)
-					.initialStock(initStock)
-					.minStockLevel(minStock)
-					.inInventory(inInventory)
-					.build();
+			if (!rowHasError) {
+				ProductBulkRowDto rowDto = ProductBulkRowDto.builder()
+						.name(name.trim())
+						.hsnCode(hsn)
+						.sku(sku)
+						.barcode(barcode)
+						.category(category)
+						.itemType(itemType)
+						.unit(unit)
+						.description(desc)
+						.price(price)
+						.costPrice(costPrice)
+						.gstPercentage(gst)
+						.initialStock(initStock)
+						.minStockLevel(minStock)
+						.inInventory(inInventory)
+						.rowNumber(rowNum)
+						.build();
 
-			bulkRows.add(rowDto);
+				bulkRows.add(rowDto);
+
+				previewProducts.add(Product.builder()
+						.firmId(targetFirmId)
+						.name(name.trim())
+						.hsnCode(hsn)
+						.sku(sku)
+						.barcode(barcode)
+						.category(category)
+						.itemType(itemType)
+						.unit(unit)
+						.description(desc)
+						.price(price)
+						.costPrice(costPrice)
+						.gstPercentage(gst)
+						.stockQuantity(initStock)
+						.minStockLevel(minStock)
+						.inInventory(inInventory)
+						.isArchived(false)
+						.build());
+			}
+		}
+
+		if (isPreview) {
+			return ProductImportResponseDto.builder()
+					.totalRows(bulkRows.size() + errors.size() + skippedCount)
+					.importedCount(bulkRows.size())
+					.skippedCount(skippedCount)
+					.failedCount(errors.size())
+					.products(previewProducts)
+					.warnings(warnings)
+					.errors(errors)
+					.build();
+		}
+
+		if (!errors.isEmpty()) {
+			throw new IllegalArgumentException("Import failed with " + errors.size() + " validation error(s):\n" + String.join("\n", errors));
 		}
 
 		if (bulkRows.isEmpty()) {
@@ -1120,10 +1484,13 @@ public class ProductService {
 
 		List<Product> saved = createBulk(bulkRows, targetFirmId);
 		return ProductImportResponseDto.builder()
-				.totalRows(bulkRows.size())
+				.totalRows(bulkRows.size() + skippedCount)
 				.importedCount(saved.size())
+				.skippedCount(skippedCount)
+				.failedCount(0)
 				.products(saved)
 				.warnings(warnings)
+				.errors(Collections.emptyList())
 				.build();
 	}
 
@@ -1226,62 +1593,6 @@ public class ProductService {
 	}
 
 	public static List<List<String>> parseCsv(String text) {
-		List<List<String>> rows = new ArrayList<>();
-		if (text == null || text.trim().isEmpty()) {
-			return rows;
-		}
-		List<String> currentRow = new ArrayList<>();
-		StringBuilder curVal = new StringBuilder();
-		boolean inQuotes = false;
-
-		char[] chars = text.toCharArray();
-		for (int i = 0; i < chars.length; i++) {
-			char c = chars[i];
-			if (inQuotes) {
-				if (c == '"') {
-					if (i + 1 < chars.length && chars[i + 1] == '"') {
-						curVal.append('"');
-						i++;
-					} else {
-						inQuotes = false;
-					}
-				} else {
-					curVal.append(c);
-				}
-			} else {
-				if (c == '"') {
-					inQuotes = true;
-				} else if (c == ',' || c == '\t') {
-					currentRow.add(curVal.toString().trim());
-					curVal.setLength(0);
-				} else if (c == '\r') {
-					if (i + 1 < chars.length && chars[i + 1] == '\n') {
-						i++;
-					}
-					currentRow.add(curVal.toString().trim());
-					curVal.setLength(0);
-					if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
-						rows.add(currentRow);
-					}
-					currentRow = new ArrayList<>();
-				} else if (c == '\n') {
-					currentRow.add(curVal.toString().trim());
-					curVal.setLength(0);
-					if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
-						rows.add(currentRow);
-					}
-					currentRow = new ArrayList<>();
-				} else {
-					curVal.append(c);
-				}
-			}
-		}
-		if (curVal.length() > 0 || !currentRow.isEmpty()) {
-			currentRow.add(curVal.toString().trim());
-			if (!currentRow.isEmpty() && !(currentRow.size() == 1 && currentRow.get(0).isEmpty())) {
-				rows.add(currentRow);
-			}
-		}
-		return rows;
+		return com.billing.simple.billsoft.util.ProductBulkImportUtils.parseCsv(text);
 	}
 }

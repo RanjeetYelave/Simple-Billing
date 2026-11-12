@@ -14,6 +14,8 @@ import java.util.List;
 public class ProductImportResponseDto {
     private int totalRows;
     private int importedCount;
+    private int skippedCount;
+    private int failedCount;
     @Builder.Default
     private List<Product> products = new ArrayList<>();
     @Builder.Default

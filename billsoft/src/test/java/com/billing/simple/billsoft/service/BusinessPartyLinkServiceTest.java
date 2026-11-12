@@ -25,6 +25,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -57,6 +59,15 @@ class BusinessPartyLinkServiceTest {
 
     @Mock
     private PartyPaymentRepository partyPaymentRepo;
+
+    @Mock
+    private com.billing.simple.billsoft.repositories.BusinessIdentityAliasRepository aliasRepo;
+
+    @Mock
+    private com.billing.simple.billsoft.repositories.BusinessPartyLinkEventRepository eventRepo;
+
+    @Mock
+    private com.billing.simple.billsoft.repo.AppConfigRepository appConfigRepo;
 
     @InjectMocks
     private BusinessPartyLinkServiceImpl linkService;
@@ -118,7 +129,7 @@ class BusinessPartyLinkServiceTest {
         assertEquals(100L, response.getCustomerId());
         assertEquals(200L, response.getPartyId());
         assertEquals("Acme Retailer", response.getCustomerName());
-        assertEquals("Acme Wholesaler", response.getPartyName());
+        assertEquals("Acme Retailer", response.getPartyName());
         verify(linkRepo, times(1)).save(any(BusinessPartyLink.class));
     }
 
@@ -234,7 +245,8 @@ class BusinessPartyLinkServiceTest {
 
         linkService.unlink(1L);
 
-        verify(linkRepo, times(1)).delete(linkFirmA);
+        verify(linkRepo, times(1)).save(linkFirmA);
+        assertEquals("UNLINKED", linkFirmA.getStatus());
     }
 
     @Test
@@ -244,7 +256,7 @@ class BusinessPartyLinkServiceTest {
         BusinessPartyLinkRepository mockLinkRepo = mock(BusinessPartyLinkRepository.class);
         CustomerService customerService = new CustomerService(mockCustRepo, mockLinkRepo);
 
-        when(mockLinkRepo.existsByCustomerId(100L)).thenReturn(true);
+        when(mockLinkRepo.existsByFirmIdAndActiveCustomerId(any(), eq(100L))).thenReturn(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> customerService.delete(100L));
         assertTrue(ex.getMessage().contains("Cannot delete Customer #100 because it is linked to a Supplier"));
@@ -260,7 +272,7 @@ class BusinessPartyLinkServiceTest {
         BusinessPartyLinkRepository mockLinkRepo = mock(BusinessPartyLinkRepository.class);
         PartyServiceImpl partyServiceImpl = new PartyServiceImpl(mockPartyRepo, mockPaymentRepo, mockPoRepo, mockLinkRepo);
 
-        when(mockLinkRepo.existsByPartyId(200L)).thenReturn(true);
+        when(mockLinkRepo.existsByFirmIdAndActivePartyId(any(), eq(200L))).thenReturn(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> partyServiceImpl.deleteParty(200L, FIRM_A));
         assertTrue(ex.getMessage().contains("Cannot delete Supplier #200 because it is linked to a Customer"));
@@ -307,5 +319,195 @@ class BusinessPartyLinkServiceTest {
                 linkService.getLinkedPartyForCustomer(999L));
 
         assertTrue(ex.getMessage().contains("Customer #999 not found in current firm"));
+    }
+
+    @Test
+    @DisplayName("Enable Customer Role: Creates new Customer and links to Supplier")
+    void testEnableCustomerRole_CreatesNewCustomerAndLinks() {
+        when(partyRepo.findByIdAndFirmId(200L, FIRM_A)).thenReturn(Optional.of(partyA));
+        when(linkRepo.existsByFirmIdAndPartyId(FIRM_A, 200L)).thenReturn(false);
+        when(customerRepo.findByFirmIdAndGstinIgnoreCase(FIRM_A, "27AAAAA0000A1Z5")).thenReturn(java.util.Collections.emptyList());
+        when(customerRepo.findByFirmIdAndPhone(FIRM_A, "9876543210")).thenReturn(java.util.Collections.emptyList());
+
+        Customer savedCustomer = new Customer();
+        savedCustomer.setId(101L);
+        savedCustomer.setName("Acme Wholesaler");
+        savedCustomer.setFirmId(FIRM_A);
+        savedCustomer.setPhone("9876543210");
+        savedCustomer.setGstin("27AAAAA0000A1Z5");
+        when(customerRepo.save(any(Customer.class))).thenReturn(savedCustomer);
+
+        BusinessPartyLink savedLink = BusinessPartyLink.builder()
+                .id(10L)
+                .firmId(FIRM_A)
+                .customerId(101L)
+                .partyId(200L)
+                .linkedAt(LocalDateTime.now())
+                .notes("Enabled customer role from supplier")
+                .build();
+        when(linkRepo.save(any(BusinessPartyLink.class))).thenReturn(savedLink);
+
+        EnableCustomerRoleRequest req = EnableCustomerRoleRequest.builder()
+                .partyId(200L)
+                .build();
+
+        BusinessPartyLinkResponse response = linkService.enableCustomerRole(req);
+
+        assertNotNull(response);
+        assertEquals(10L, response.getId());
+        assertEquals(101L, response.getCustomerId());
+        assertEquals(200L, response.getPartyId());
+        verify(customerRepo, times(1)).save(any(Customer.class));
+        verify(linkRepo, times(1)).save(any(BusinessPartyLink.class));
+    }
+
+    @Test
+    @DisplayName("Enable Customer Role: Links existing unlinked Customer matching GSTIN")
+    void testEnableCustomerRole_LinksExistingCustomerByGstin() {
+        when(partyRepo.findByIdAndFirmId(200L, FIRM_A)).thenReturn(Optional.of(partyA));
+        when(linkRepo.existsByFirmIdAndPartyId(FIRM_A, 200L)).thenReturn(false);
+        when(customerRepo.findByFirmIdAndGstinIgnoreCase(FIRM_A, "27AAAAA0000A1Z5")).thenReturn(List.of(customerA));
+        when(customerRepo.findByFirmIdAndPhone(FIRM_A, "9876543210")).thenReturn(List.of(customerA));
+        when(linkRepo.existsByFirmIdAndCustomerId(FIRM_A, 100L)).thenReturn(false);
+
+        BusinessPartyLink savedLink = BusinessPartyLink.builder()
+                .id(11L)
+                .firmId(FIRM_A)
+                .customerId(100L)
+                .partyId(200L)
+                .linkedAt(LocalDateTime.now())
+                .build();
+        when(linkRepo.save(any(BusinessPartyLink.class))).thenReturn(savedLink);
+
+        EnableCustomerRoleRequest req = EnableCustomerRoleRequest.builder()
+                .partyId(200L)
+                .build();
+
+        BusinessPartyLinkResponse response = linkService.enableCustomerRole(req);
+
+        assertNotNull(response);
+        assertEquals(11L, response.getId());
+        assertEquals(100L, response.getCustomerId());
+        assertEquals(200L, response.getPartyId());
+        verify(customerRepo, times(1)).save(customerA); // Synced canonical name to existing customer
+        verify(linkRepo, times(1)).save(any(BusinessPartyLink.class));
+    }
+
+    @Test
+    @DisplayName("Enable Customer Role: Rejects when Party already linked")
+    void testEnableCustomerRole_PartyAlreadyLinked_ThrowsIllegalStateException() {
+        when(partyRepo.findByIdAndFirmId(200L, FIRM_A)).thenReturn(Optional.of(partyA));
+        when(linkRepo.existsByFirmIdAndPartyId(FIRM_A, 200L)).thenReturn(true);
+
+        EnableCustomerRoleRequest req = EnableCustomerRoleRequest.builder()
+                .partyId(200L)
+                .build();
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> linkService.enableCustomerRole(req));
+        assertTrue(ex.getMessage().contains("already linked to a Customer"));
+        verify(linkRepo, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Enable Supplier Role: Creates new Party and links to Customer")
+    void testEnablePartyRole_CreatesNewPartyAndLinks() {
+        when(customerRepo.findByIdAndFirmId(100L, FIRM_A)).thenReturn(Optional.of(customerA));
+        when(linkRepo.existsByFirmIdAndCustomerId(FIRM_A, 100L)).thenReturn(false);
+        when(partyRepo.findFirstByFirmIdAndGstinIgnoreCase(FIRM_A, "27AAAAA0000A1Z5")).thenReturn(Optional.empty());
+        when(partyRepo.findFirstByFirmIdAndPhone(FIRM_A, "9876543210")).thenReturn(Optional.empty());
+
+        Party savedParty = new Party();
+        savedParty.setId(205L);
+        savedParty.setName("Acme Retailer");
+        savedParty.setFirmId(FIRM_A);
+        savedParty.setPhone("9876543210");
+        savedParty.setGstin("27AAAAA0000A1Z5");
+        when(partyRepo.save(any(Party.class))).thenReturn(savedParty);
+
+        BusinessPartyLink savedLink = BusinessPartyLink.builder()
+                .id(12L)
+                .firmId(FIRM_A)
+                .customerId(100L)
+                .partyId(205L)
+                .linkedAt(LocalDateTime.now())
+                .build();
+        when(linkRepo.save(any(BusinessPartyLink.class))).thenReturn(savedLink);
+
+        EnablePartyRoleRequest req = EnablePartyRoleRequest.builder()
+                .customerId(100L)
+                .build();
+
+        BusinessPartyLinkResponse response = linkService.enablePartyRole(req);
+
+        assertNotNull(response);
+        assertEquals(12L, response.getId());
+        assertEquals(100L, response.getCustomerId());
+        assertEquals(205L, response.getPartyId());
+        verify(partyRepo, times(1)).save(any(Party.class));
+        verify(linkRepo, times(1)).save(any(BusinessPartyLink.class));
+    }
+
+    @Test
+    @DisplayName("Enable Supplier Role: Rejects when Customer already linked")
+    void testEnablePartyRole_CustomerAlreadyLinked_ThrowsIllegalStateException() {
+        when(customerRepo.findByIdAndFirmId(100L, FIRM_A)).thenReturn(Optional.of(customerA));
+        when(linkRepo.existsByFirmIdAndCustomerId(FIRM_A, 100L)).thenReturn(true);
+
+        EnablePartyRoleRequest req = EnablePartyRoleRequest.builder()
+                .customerId(100L)
+                .build();
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> linkService.enablePartyRole(req));
+        assertTrue(ex.getMessage().contains("already linked to a Supplier"));
+        verify(linkRepo, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Sync Profiles: Pushes Customer updates to linked Supplier")
+    void testSyncProfiles_FromCustomerToParty() {
+        BusinessPartyLink link = BusinessPartyLink.builder()
+                .id(50L)
+                .firmId(FIRM_A)
+                .customerId(100L)
+                .partyId(200L)
+                .build();
+        when(linkRepo.findById(50L)).thenReturn(Optional.of(link));
+        when(customerRepo.findByIdAndFirmId(100L, FIRM_A)).thenReturn(Optional.of(customerA));
+        when(partyRepo.findByIdAndFirmId(200L, FIRM_A)).thenReturn(Optional.of(partyA));
+        when(partyRepo.save(any(Party.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SyncProfileRequest req = SyncProfileRequest.builder()
+                .source("CUSTOMER")
+                .name("Acme Group Worldwide")
+                .phone("9999999999")
+                .address("New Tower, Pune")
+                .build();
+
+        BusinessPartyLinkResponse res = linkService.syncProfiles(50L, req);
+
+        assertNotNull(res);
+        assertEquals("Acme Group Worldwide", partyA.getName());
+        assertEquals("9999999999", partyA.getPhone());
+        assertEquals("New Tower, Pune", partyA.getAddress());
+        verify(partyRepo, times(1)).save(partyA);
+    }
+
+    @Test
+    @DisplayName("Sync Profiles: Rejects cross-firm access")
+    void testSyncProfiles_CrossFirmForbidden() {
+        BusinessPartyLink linkOtherFirm = BusinessPartyLink.builder()
+                .id(51L)
+                .firmId(FIRM_B)
+                .customerId(100L)
+                .partyId(200L)
+                .build();
+        when(linkRepo.findById(51L)).thenReturn(Optional.of(linkOtherFirm));
+
+        SyncProfileRequest req = SyncProfileRequest.builder()
+                .source("CUSTOMER")
+                .build();
+
+        assertThrows(TenantSecurityException.class, () -> linkService.syncProfiles(51L, req));
+        verify(partyRepo, never()).save(any());
     }
 }

@@ -136,6 +136,9 @@ public class Invoice {
     // For ESTIMATE → INVOICE mapping
     private Long convertedInvoiceId;
 
+    @Transient
+    private String conversionStatus;
+
     // ------------------------
     // FLAGS
     // ------------------------
@@ -261,6 +264,16 @@ public class Invoice {
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
     public Long getConvertedInvoiceId() { return convertedInvoiceId; }
     public void setConvertedInvoiceId(Long convertedInvoiceId) { this.convertedInvoiceId = convertedInvoiceId; }
+    public String getConversionStatus() {
+        if (conversionStatus != null) {
+            return conversionStatus;
+        }
+        if (status == InvoiceStatus.ESTIMATE && convertedInvoiceId == null) {
+            return "NOT_CONVERTED";
+        }
+        return conversionStatus;
+    }
+    public void setConversionStatus(String conversionStatus) { this.conversionStatus = conversionStatus; }
     public Boolean getPaid() { return paid; }
     public void setPaid(Boolean paid) { this.paid = paid; }
     public Long getFirmId() { return firmId; }

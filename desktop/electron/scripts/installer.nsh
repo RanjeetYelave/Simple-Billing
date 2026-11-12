@@ -9,7 +9,7 @@
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
 
   ; 2. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($conn) { $p = Get-CimInstance Win32_Process -Filter \"ProcessId = $($conn.OwningProcess)\" -ErrorAction SilentlyContinue; if ($p -and ($p.CommandLine -match \"(?i)rupeecrm\" -or $p.CommandLine -match \"(?i)billsoft\")) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"ProcessId = $$($$conn.OwningProcess)\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"(?i)rupeecrm\" -or $$p.CommandLine -match \"(?i)billsoft\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
 
   ; 3. Clean legacy Windows Startup folder VBS script from v1.0.280
   ${If} ${FileExists} "$SMSTARTUP\RupeeCRM.vbs"

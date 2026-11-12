@@ -902,6 +902,8 @@ public class BackupService {
                         if (p.getGstPercentage() != null && productToUse.getGstPercentage() == null) productToUse.setGstPercentage(p.getGstPercentage());
                         if (p.getInInventory() != null) productToUse.setInInventory(p.getInInventory());
                         if (p.getIsArchived() != null) productToUse.setIsArchived(p.getIsArchived());
+                        if (p.getArchivedAt() != null) productToUse.setArchivedAt(p.getArchivedAt());
+                        if (p.getArchiveReason() != null) productToUse.setArchiveReason(p.getArchiveReason());
                         productToUse = productRepo.save(productToUse);
                     } else {
                         Product newP = Product.builder()
@@ -921,6 +923,8 @@ public class BackupService {
                                 .description(p.getDescription())
                                 .inInventory(p.getInInventory() != null ? p.getInInventory() : true)
                                 .isArchived(p.getIsArchived() != null ? p.getIsArchived() : false)
+                                .archivedAt(p.getArchivedAt())
+                                .archiveReason(p.getArchiveReason())
                                 .build();
                         productToUse = productRepo.save(newP);
                     }

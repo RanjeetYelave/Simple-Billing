@@ -19864,8 +19864,46 @@
       const [movementsLoading, setMovementsLoading] = useState(false);
       const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-      // Delete Modal State
+      // Delete / Archive Modal State
       const [deleteProductId, setDeleteProductId] = useState(null);
+
+      // Archive Tab State
+      const [archivedProducts, setArchivedProducts] = useState([]);
+      const [archivedLoading, setArchivedLoading] = useState(false);
+      const [archivedSearch, setArchivedSearch] = useState('');
+      const [restoreCandidate, setRestoreCandidate] = useState(null);
+      const [restoringId, setRestoringId] = useState(null);
+
+      // Keyboard Scrolling Handler for Long Tables & Modals
+      const handleScrollKeyDown = (e) => {
+        if (e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) {
+          return;
+        }
+        const el = e.currentTarget;
+        if (!el) return;
+        const scrollStep = 55;
+        const pageStep = el.clientHeight ? el.clientHeight * 0.8 : 300;
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          el.scrollBy({ top: scrollStep, behavior: 'smooth' });
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          el.scrollBy({ top: -scrollStep, behavior: 'smooth' });
+        } else if (e.key === 'PageDown') {
+          e.preventDefault();
+          el.scrollBy({ top: pageStep, behavior: 'smooth' });
+        } else if (e.key === 'PageUp') {
+          e.preventDefault();
+          el.scrollBy({ top: -pageStep, behavior: 'smooth' });
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          el.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        }
+      };
 
       // Smart Reorder Queue Navigation
       const openSmartReorder = (productId = null) => {
@@ -20191,8 +20229,6 @@
 
       const openCreate = () => {
         setEditItem(null);
-        setPendingLinkCustomer(null);
-        setCrossRoleCustSuggestion(null);
         setForm({
           name: '',
           sku: '',
@@ -20213,8 +20249,6 @@
 
       const openEdit = (p) => {
         setEditItem(p);
-        setPendingLinkCustomer(null);
-        setCrossRoleCustSuggestion(null);
         setForm({
           name: p.name || '',
           sku: p.sku || '',
@@ -20372,11 +20406,65 @@
       const handleDelete = (id) => setDeleteProductId(id);
       const confirmDeleteProduct = () => {
         if (!deleteProductId) return;
-        API.products.delete(deleteProductId)
-          .then(() => { showToast('Product deleted', 'success'); load(); })
-          .catch(() => showToast('Delete failed', 'error'))
+        (API.products.archive ? API.products.archive(deleteProductId, 'Archived from Inventory') : API.products.delete(deleteProductId))
+          .then(() => {
+            showToast('Product archived successfully', 'success');
+            load();
+            if (inventoryTab === 'ARCHIVE') loadArchived();
+          })
+          .catch((err) => showToast(err.message || 'Archive failed', 'error'))
           .finally(() => setDeleteProductId(null));
       };
+
+      const loadArchived = useCallback(() => {
+        setArchivedLoading(true);
+        if (API.products && API.products.listArchived) {
+          API.products.listArchived()
+            .then(data => {
+              setArchivedProducts(Array.isArray(data) ? data : []);
+              setArchivedLoading(false);
+            })
+            .catch(() => {
+              setArchivedLoading(false);
+            });
+        } else {
+          setArchivedLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        if (inventoryTab === 'ARCHIVE') {
+          loadArchived();
+        }
+      }, [inventoryTab, loadArchived]);
+
+      const handleRestoreProduct = async (p) => {
+        if (!p) return;
+        setRestoringId(p.id);
+        try {
+          await API.products.restore(p.id);
+          showToast(`Product "${p.name}" restored successfully`, 'success');
+          setRestoreCandidate(null);
+          loadArchived();
+          load();
+        } catch (err) {
+          showToast(err.message || 'Failed to restore product', 'error');
+        } finally {
+          setRestoringId(null);
+        }
+      };
+
+      const archivedFiltered = useMemo(() => {
+        if (!archivedSearch || !archivedSearch.trim()) return archivedProducts;
+        const q = archivedSearch.toLowerCase().trim();
+        return archivedProducts.filter(p => {
+          return (p.name && p.name.toLowerCase().includes(q)) ||
+                 (p.sku && p.sku.toLowerCase().includes(q)) ||
+                 (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+                 (p.category && p.category.toLowerCase().includes(q)) ||
+                 (p.hsnCode && p.hsnCode.toLowerCase().includes(q));
+        });
+      }, [archivedProducts, archivedSearch]);
 
       // Filtered & Searched List
       const filteredProducts = useMemo(() => {
@@ -20442,7 +20530,8 @@
         React.createElement(RupeeCRMSubTabs, {
           tabs: [
             { id: 'STANDARD', label: 'Standard Inventory', icon: Icons.package },
-            { id: 'SMART_REORDER', label: 'Smart Reorder Queue', icon: React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)' } }, '⚡') }
+            { id: 'SMART_REORDER', label: 'Smart Reorder Queue', icon: React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)' } }, '⚡') },
+            { id: 'ARCHIVE', label: 'Archive', icon: React.createElement('span', { style: { fontSize: '0.9rem' } }, '📁') }
           ],
           activeTab: inventoryTab,
           onChange: (id) => setInventoryTab(id),
@@ -20453,6 +20542,151 @@
           typeof SmartReorderView !== 'undefined' ? React.createElement(SmartReorderView, {
             onOpenInsights: (prodId) => setSelectedDetailProdId(prodId)
           }) : React.createElement('div', null, 'Loading Smart Reorder...')
+        ) : inventoryTab === 'ARCHIVE' ? (
+          React.createElement(Fragment, null,
+            // ARCHIVED INVENTORY VIEW
+            React.createElement('div', { className: 'manager-header rcrm-view-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 12 } },
+              React.createElement('div', { className: 'rcrm-view-header-title' },
+                React.createElement('h2', { className: 'card-title', style: { margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+                  '📁 Archived Products Catalog'
+                ),
+                React.createElement('p', { className: 'rcrm-view-header-desc', style: { margin: '2px 0 0', fontSize: '0.835rem', color: 'var(--text-secondary)' } },
+                  'Archived items are retained for historical audit, past invoices, quotations, and reports. They do not appear in active stock or selection dropdowns unless restored.'
+                )
+              ),
+              React.createElement('div', { className: 'inventory-canonical-toolbar rcrm-action-cluster' },
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  onClick: loadArchived,
+                  disabled: archivedLoading,
+                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                }, archivedLoading ? 'Loading...' : '🔄 Refresh Archive')
+              )
+            ),
+
+            // Search Filter Bar for Archive
+            React.createElement('div', {
+              className: 'card',
+              style: {
+                padding: '8px 12px',
+                marginBottom: 10,
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 10,
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }
+            },
+              React.createElement('div', { style: { position: 'relative', minWidth: 260, flex: 1, maxWidth: 400 } },
+                React.createElement('input', {
+                  className: 'input w-full',
+                  style: { paddingLeft: 32 },
+                  placeholder: 'Search archived name, SKU, barcode, category...',
+                  value: archivedSearch,
+                  onChange: e => setArchivedSearch(e.target.value)
+                }),
+                React.createElement('span', { style: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 } }, '🔍'),
+                archivedSearch && React.createElement('button', {
+                  style: { position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 },
+                  onClick: () => setArchivedSearch('')
+                }, '✕')
+              ),
+              React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                `Showing ${archivedFiltered.length} of ${archivedProducts.length} archived products`
+              )
+            ),
+
+            // Archived Table
+            archivedLoading ? React.createElement(RupeeCRMLoader, { message: 'Loading archived products...', size: 56, style: { minHeight: 260 } }) :
+              React.createElement('div', { className: 'card firm-table-card' },
+                React.createElement('div', { className: 'table-container' },
+                  React.createElement('table', { style: { width: '100%', margin: 0 } },
+                    React.createElement('thead', null, React.createElement('tr', null,
+                      React.createElement('th', { style: { width: '24%' } }, 'Product Name'),
+                      React.createElement('th', { style: { width: '13%' } }, 'HSN / SKU / Barcode'),
+                      React.createElement('th', { style: { width: '12%' } }, 'Category'),
+                      React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, 'Cost Price'),
+                      React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Selling Price'),
+                      React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Stock Retained'),
+                      React.createElement('th', { style: { width: '18%' } }, 'Archived Date & Reason'),
+                      React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
+                    )),
+                    React.createElement('tbody', null,
+                      archivedFiltered.length === 0 ? React.createElement('tr', null,
+                        React.createElement('td', { colSpan: 8, style: { textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' } },
+                          React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📁'),
+                          React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' } }, 'No archived products'),
+                          React.createElement('div', { style: { fontSize: '0.85rem', marginTop: 4 } }, 'Deleted products will appear here and can be restored at any time.')
+                        )
+                      ) :
+                        archivedFiltered.map(p => {
+                          const isService = p.itemType === 'SERVICE';
+                          return React.createElement('tr', { key: p.id, style: { opacity: 0.9 } },
+                            // Name
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                                React.createElement('span', { style: { fontSize: '1.1rem' } }, isService ? '🛠️' : '📦'),
+                                React.createElement('div', null,
+                                  React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, p.name),
+                                  React.createElement('span', { className: 'badge', style: { fontSize: '0.7rem', padding: '1px 6px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' } }, 'Archived')
+                                )
+                              )
+                            ),
+                            // HSN / SKU / Barcode
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontSize: '0.78rem' } },
+                                p.hsnCode && React.createElement('div', null, `HSN: ${p.hsnCode}`),
+                                p.sku && React.createElement('div', null, `SKU: ${p.sku}`),
+                                p.barcode && React.createElement('div', null, `🏷️ ${p.barcode}`),
+                                (!p.hsnCode && !p.sku && !p.barcode) && React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                              )
+                            ),
+                            // Category
+                            React.createElement('td', null,
+                              p.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem', padding: '2px 8px' } }, p.category) : '—'
+                            ),
+                            // Cost Price
+                            React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } },
+                              p.costPrice != null ? BillsoftUtils.formatCurrency(p.costPrice) : '—'
+                            ),
+                            // Selling Price
+                            React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' } },
+                              BillsoftUtils.formatCurrency(p.price)
+                            ),
+                            // Stock Retained
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              isService ? 'Service' : `${p.stockQuantity || 0} ${p.unit || 'pcs'}`
+                            ),
+                            // Archived Date & Reason
+                            React.createElement('td', null,
+                              React.createElement('div', { style: { fontSize: '0.78rem' } },
+                                React.createElement('div', { style: { color: 'var(--text-secondary)' } },
+                                  p.archivedAt ? BillsoftUtils.formatDateTime(p.archivedAt) : (p.updatedAt ? BillsoftUtils.formatDateTime(p.updatedAt) : '—')
+                                ),
+                                React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: '0.72rem', fontStyle: 'italic', marginTop: 2 } },
+                                  p.archiveReason || 'Archived'
+                                )
+                              )
+                            ),
+                            // Action
+                            React.createElement('td', { style: { textAlign: 'center' } },
+                              React.createElement('button', {
+                                className: 'btn btn-outline btn-sm',
+                                style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.78rem' },
+                                title: 'Restore product to active inventory',
+                                onClick: () => setRestoreCandidate(p)
+                              }, '🔄 Restore')
+                            )
+                          );
+                        })
+                    )
+                  )
+                )
+              )
+          )
         ) : React.createElement(Fragment, null,
           // Header & Quick Action Hierarchy (Level 4 Controls)
           React.createElement('div', { className: 'manager-header rcrm-view-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 12 } },
@@ -20641,7 +20875,7 @@
         // Product Table
         loading ? React.createElement(RupeeCRMLoader, { message: 'Loading products & stock inventory...', size: 56, style: { minHeight: 280 } }) :
           React.createElement('div', { className: 'card firm-table-card' },
-            React.createElement('div', { className: 'table-container' },
+            React.createElement('div', { className: 'table-container', tabIndex: 0, onKeyDown: handleScrollKeyDown, style: { outline: 'none' } },
               React.createElement('table', { style: { width: '100%', margin: 0 } },
                 React.createElement('thead', null, React.createElement('tr', null,
                   React.createElement('th', { style: { width: '22%' } }, 'Product Name'),
@@ -20847,11 +21081,11 @@
                               style: { color: 'var(--text-secondary)' },
                               onClick: () => openEdit(p)
                             }, Icons.edit),
-                            // Delete button
+                            // Archive button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               style: { color: 'var(--status-error)' },
-                              title: 'Delete Product',
+                              title: 'Archive Product',
                               onClick: () => handleDelete(p.id)
                             }, Icons.trash)
                           )
@@ -20878,9 +21112,6 @@
         // ════════════════════════════════════════════════════
         // MODAL 1: Create / Edit Product Modal
         // ════════════════════════════════════════════════════
-        // ════════════════════════════════════════════════════
-        // MODAL 1: Create / Edit Product Modal
-        // ════════════════════════════════════════════════════
         showModal && React.createElement('div', {
           className: 'modal-overlay',
           onClick: () => setShowModal(false),
@@ -20899,7 +21130,12 @@
               React.createElement('div', { className: 'modal-title' }, editItem ? '✏️ Edit Product / Service' : '✨ Add New Product / Service'),
               React.createElement('button', { className: 'modal-close', onClick: () => setShowModal(false) }, '✕')
             ),
-            React.createElement('div', { className: 'modal-body', style: { maxHeight: '72vh', overflowY: 'auto' } },
+            React.createElement('div', {
+              className: 'modal-body',
+              tabIndex: 0,
+              onKeyDown: handleScrollKeyDown,
+              style: { maxHeight: '72vh', overflowY: 'auto', outline: 'none' }
+            },
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
                 // Section 1: Item Identity & Type
                 React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 } },
@@ -20907,10 +21143,8 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'Product / Item Name *'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      autoFocus: true,
-                      value: form.name,
+                      value: form.name != null ? form.name : '',
                       onChange: e => setForm(f => ({ ...f, name: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. Dell Monitor 27", Accounting Service'
                     })
                   ),
@@ -20918,7 +21152,7 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'Item Type'),
                     React.createElement('select', {
                       className: 'select w-full',
-                      value: form.itemType,
+                      value: form.itemType || 'GOODS',
                       onChange: e => setForm(f => ({ ...f, itemType: e.target.value }))
                     },
                       React.createElement('option', { value: 'GOODS' }, '📦 Goods (Physical Stock)'),
@@ -20933,9 +21167,8 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block', fontWeight: 600 } }, 'HSN / SAC Code'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.hsnCode,
+                      value: form.hsnCode != null ? form.hsnCode : '',
                       onChange: e => setForm(f => ({ ...f, hsnCode: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 8471, 9983'
                     })
                   ),
@@ -20943,9 +21176,8 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Barcode'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.barcode,
+                      value: form.barcode != null ? form.barcode : '',
                       onChange: e => setForm(f => ({ ...f, barcode: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 890123456789'
                     })
                   ),
@@ -20953,9 +21185,8 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Category / Group'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.category,
+                      value: form.category != null ? form.category : '',
                       onChange: e => setForm(f => ({ ...f, category: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. Electronics, Spares'
                     })
                   )
@@ -20969,9 +21200,8 @@
                       className: 'input w-full',
                       type: 'number',
                       step: '0.01',
-                      value: form.price,
+                      value: form.price != null ? form.price : '',
                       onChange: e => setForm(f => ({ ...f, price: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 15000'
                     })
                   ),
@@ -20981,9 +21211,8 @@
                       className: 'input w-full',
                       type: 'number',
                       step: '0.01',
-                      value: form.costPrice,
+                      value: form.costPrice != null ? form.costPrice : '',
                       onChange: e => setForm(f => ({ ...f, costPrice: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 12000'
                     })
                   ),
@@ -20991,7 +21220,7 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Unit of Measure'),
                     React.createElement('select', {
                       className: 'select w-full',
-                      value: form.unit,
+                      value: form.unit || 'pcs',
                       onChange: e => setForm(f => ({ ...f, unit: e.target.value }))
                     },
                       ['pcs', 'kg', 'g', 'litre', 'ml', 'm', 'cm', 'box', 'dozen', 'Ft', 'Nos', 'Set', 'hours', 'days'].map(u =>
@@ -21009,9 +21238,8 @@
                       className: 'input w-full',
                       type: 'number',
                       step: '0.01',
-                      value: form.gstPercentage,
+                      value: form.gstPercentage != null ? form.gstPercentage : '',
                       onChange: e => setForm(f => ({ ...f, gstPercentage: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 18'
                     })
                   ),
@@ -21019,9 +21247,8 @@
                     React.createElement('label', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'SKU (Legacy Reference)'),
                     React.createElement('input', {
                       className: 'input w-full',
-                      value: form.sku,
+                      value: form.sku != null ? form.sku : '',
                       onChange: e => setForm(f => ({ ...f, sku: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. SKU-MON-27'
                     })
                   )
@@ -21045,9 +21272,8 @@
                       className: 'input w-full',
                       type: 'number',
                       step: 'any',
-                      value: form.initialStock,
+                      value: form.initialStock != null ? form.initialStock : '',
                       onChange: e => setForm(f => ({ ...f, initialStock: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 50'
                     })
                   ),
@@ -21057,9 +21283,8 @@
                       className: 'input w-full',
                       type: 'number',
                       step: 'any',
-                      value: form.minStockLevel,
+                      value: form.minStockLevel != null ? form.minStockLevel : '',
                       onChange: e => setForm(f => ({ ...f, minStockLevel: e.target.value })),
-                      onFocus: e => { if (e.target && e.target.select) e.target.select(); },
                       placeholder: 'e.g. 5'
                     })
                   )
@@ -21071,7 +21296,7 @@
                   React.createElement('textarea', {
                     className: 'input w-full',
                     style: { height: 60, resize: 'vertical' },
-                    value: form.description,
+                    value: form.description != null ? form.description : '',
                     onChange: e => setForm(f => ({ ...f, description: e.target.value })),
                     placeholder: 'Optional specifications or internal item notes...'
                   })
@@ -21271,17 +21496,43 @@
         ),
 
         // ════════════════════════════════════════════════════
-        // MODAL 4: Delete Product Confirmation Modal
+        // MODAL 4: Archive Product Confirmation Modal
         // ════════════════════════════════════════════════════
         deleteProductId && React.createElement('div', { className: 'modal-overlay', onClick: () => setDeleteProductId(null) },
-          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 420, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
-            React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--danger)', fontSize: '1.05rem' } }, '🗑️ Delete Product'),
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 440, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--status-warning, #f59e0b)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 } }, '📁 Archive Product'),
             React.createElement('p', { style: { margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
-              'Are you sure you want to delete this product? All stock tracking for this item will be removed.'
+              'Archive this product? Archived products will no longer appear in active inventory or selection dropdowns, but existing invoices, quotations, purchase orders, and financial reports will retain full reference integrity.'
             ),
             React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
               React.createElement('button', { className: 'btn btn-outline', onClick: () => setDeleteProductId(null) }, 'Cancel'),
-              React.createElement('button', { className: 'btn btn-danger', onClick: confirmDeleteProduct }, '🗑️ Delete Product')
+              React.createElement('button', { className: 'btn btn-danger', style: { background: 'var(--status-warning, #d97706)', borderColor: 'var(--status-warning, #d97706)' }, onClick: confirmDeleteProduct }, '📁 Archive Product')
+            )
+          )
+        ),
+
+        // ════════════════════════════════════════════════════
+        // MODAL 5: Restore Product Confirmation Modal
+        // ════════════════════════════════════════════════════
+        restoreCandidate && React.createElement('div', { className: 'modal-overlay', onClick: () => setRestoreCandidate(null) },
+          React.createElement('div', { className: 'card modal-content', style: { maxWidth: 460, width: '90%', margin: '80px auto', padding: 22, borderRadius: 12 }, onClick: e => e.stopPropagation() },
+            React.createElement('h3', { style: { margin: '0 0 8px 0', color: 'var(--primary, #3b82f6)', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 } }, '🔄 Restore Product'),
+            React.createElement('p', { style: { margin: '0 0 12px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' } },
+              `Restore "${restoreCandidate.name}" back to active inventory? It will immediately become available for sales, billing, and stock adjustments.`
+            ),
+            React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 16 } },
+              React.createElement('div', { style: { fontWeight: 600, marginBottom: 4 } }, restoreCandidate.name),
+              restoreCandidate.sku && React.createElement('div', { style: { color: 'var(--text-secondary)' } }, `SKU: ${restoreCandidate.sku}`),
+              restoreCandidate.barcode && React.createElement('div', { style: { color: 'var(--text-secondary)' } }, `Barcode: ${restoreCandidate.barcode}`),
+              React.createElement('div', { style: { color: 'var(--text-secondary)' } }, `Retained Stock: ${restoreCandidate.stockQuantity || 0} ${restoreCandidate.unit || 'pcs'}`)
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', { className: 'btn btn-outline', onClick: () => setRestoreCandidate(null) }, 'Cancel'),
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                disabled: restoringId === restoreCandidate.id,
+                onClick: () => handleRestoreProduct(restoreCandidate)
+              }, restoringId === restoreCandidate.id ? 'Restoring...' : '🔄 Confirm Restore')
             )
           )
         ),

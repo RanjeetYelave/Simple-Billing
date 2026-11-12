@@ -159,7 +159,9 @@ class ProductServiceTest {
         boolean result = service.delete(id);
 
         assertTrue(result);
-        verify(repo, times(1)).deleteByIdAndFirmId(id, 1L);
+        verify(repo, times(1)).save(product);
+        assertTrue(product.getIsArchived());
+        assertNotNull(product.getArchivedAt());
     }
 
     @Test

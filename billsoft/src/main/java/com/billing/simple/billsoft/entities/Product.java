@@ -95,6 +95,12 @@ public class Product {
     @Column(name = "is_archived")
     private Boolean isArchived = false;
 
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
+    @Column(name = "archive_reason", length = 500)
+    private String archiveReason;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -168,6 +174,12 @@ public class Product {
     public void setInInventory(Boolean inInventory) { this.inInventory = inInventory; }
     public Boolean getIsArchived() { return isArchived; }
     public void setIsArchived(Boolean isArchived) { this.isArchived = isArchived; }
+    public Boolean isArchived() { return isArchived != null && isArchived; }
+    public void setArchived(Boolean archived) { this.isArchived = archived; }
+    public LocalDateTime getArchivedAt() { return archivedAt; }
+    public void setArchivedAt(LocalDateTime archivedAt) { this.archivedAt = archivedAt; }
+    public String getArchiveReason() { return archiveReason; }
+    public void setArchiveReason(String archiveReason) { this.archiveReason = archiveReason; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
@@ -198,6 +210,8 @@ public class Product {
         private Long canonicalProductId;
         private Boolean inInventory = true;
         private Boolean isArchived = false;
+        private LocalDateTime archivedAt;
+        private String archiveReason;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -221,6 +235,9 @@ public class Product {
         public ProductBuilder canonicalProductId(Long canonicalProductId) { this.canonicalProductId = canonicalProductId; return this; }
         public ProductBuilder inInventory(Boolean inInventory) { this.inInventory = inInventory; return this; }
         public ProductBuilder isArchived(Boolean isArchived) { this.isArchived = isArchived; return this; }
+        public ProductBuilder archived(Boolean archived) { this.isArchived = archived; return this; }
+        public ProductBuilder archivedAt(LocalDateTime archivedAt) { this.archivedAt = archivedAt; return this; }
+        public ProductBuilder archiveReason(String archiveReason) { this.archiveReason = archiveReason; return this; }
         public ProductBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProductBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
@@ -246,6 +263,8 @@ public class Product {
             p.canonicalProductId = this.canonicalProductId;
             p.inInventory = this.inInventory != null ? this.inInventory : true;
             p.isArchived = this.isArchived != null ? this.isArchived : false;
+            p.archivedAt = this.archivedAt;
+            p.archiveReason = this.archiveReason;
             p.createdAt = this.createdAt;
             p.updatedAt = this.updatedAt;
             return p;

@@ -427,6 +427,16 @@ const API = {
     })),
     update: (id, data) => API._json(`/api/products/${id}`, { method: 'PUT', body: data }),
     delete: (id) => API._request(`/api/products/${id}`, { method: 'DELETE' }),
+    archive: (id, reason) => API._json(`/api/products/${id}/archive`, {
+      method: 'POST',
+      body: { reason: reason || 'Archived by user' }
+    }),
+    restore: (id) => API._json(`/api/products/${id}/restore`, { method: 'POST' }),
+    listArchived: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/archived', fid ? { firmId: fid } : {}), { headers }));
+    },
     summary: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/summary'))),
     categories: (firmIdOverride) => {
       const fid = firmIdOverride || API.firmId;

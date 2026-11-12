@@ -5392,8 +5392,22 @@
         // Product Master Table
         React.createElement('div', {
           ref: bulkTableRef,
+          tabIndex: 0,
+          onKeyDown: (e) => {
+            if (e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
+            const el = e.currentTarget;
+            if (!el) return;
+            const scrollStep = 55;
+            const pageStep = el.clientHeight ? el.clientHeight * 0.8 : 300;
+            if (e.key === 'ArrowDown') { e.preventDefault(); el.scrollBy({ top: scrollStep, behavior: 'smooth' }); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); el.scrollBy({ top: -scrollStep, behavior: 'smooth' }); }
+            else if (e.key === 'PageDown') { e.preventDefault(); el.scrollBy({ top: pageStep, behavior: 'smooth' }); }
+            else if (e.key === 'PageUp') { e.preventDefault(); el.scrollBy({ top: -pageStep, behavior: 'smooth' }); }
+            else if (e.key === 'Home') { e.preventDefault(); el.scrollTo({ top: 0, behavior: 'smooth' }); }
+            else if (e.key === 'End') { e.preventDefault(); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
+          },
           className: 'table-container card firm-table-card',
-          style: { padding: 0, overflowX: 'auto', flex: 1, minHeight: 0 }
+          style: { padding: 0, overflowX: 'auto', flex: 1, minHeight: 0, outline: 'none' }
         },
           React.createElement('table', {
             className: 'data-table',

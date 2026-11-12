@@ -253,6 +253,24 @@ public class ProductController {
 		return ResponseEntity.ok(service.getStockMovements(id, firmId));
 	}
 
+	@GetMapping("/archived")
+	public ResponseEntity<List<Product>> getArchived(@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.listArchived(firmId));
+	}
+
+	@PostMapping("/{id}/archive")
+	public ResponseEntity<Product> archiveProduct(
+			@PathVariable Long id,
+			@RequestBody(required = false) Map<String, Object> body) {
+		String reason = (body != null && body.get("reason") != null) ? body.get("reason").toString() : "Archived by user";
+		return ResponseEntity.ok(service.archive(id, reason));
+	}
+
+	@PostMapping("/{id}/restore")
+	public ResponseEntity<Product> restoreProduct(@PathVariable Long id) {
+		return ResponseEntity.ok(service.restore(id));
+	}
+
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> delete(@PathVariable Long id) {
 		boolean removed = service.delete(id);

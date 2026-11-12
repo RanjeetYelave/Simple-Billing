@@ -71,17 +71,29 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     List<Product> findTop5ByFirmIdAndIsArchivedFalseAndNameContainingIgnoreCaseOrderByNameAsc(Long firmId, String name);
 
+    List<Product> findByFirmIdAndIsArchivedTrueOrderByNameAsc(Long firmId);
+
+    List<Product> findByFirmIdAndIsArchivedTrueOrderByUpdatedAtDesc(Long firmId);
+
     List<Product> findByFirmIdAndSku(Long firmId, String sku);
 
     Optional<Product> findFirstByFirmIdAndSku(Long firmId, String sku);
 
+    Optional<Product> findFirstByFirmIdAndSkuAndIsArchivedFalse(Long firmId, String sku);
+
     boolean existsByFirmIdAndSku(Long firmId, String sku);
+
+    boolean existsByFirmIdAndSkuAndIsArchivedFalse(Long firmId, String sku);
 
     Optional<Product> findFirstByBarcode(String barcode);
 
     Optional<Product> findFirstByFirmIdAndBarcode(Long firmId, String barcode);
 
+    Optional<Product> findFirstByFirmIdAndBarcodeAndIsArchivedFalse(Long firmId, String barcode);
+
     boolean existsByFirmIdAndBarcode(Long firmId, String barcode);
+
+    boolean existsByFirmIdAndBarcodeAndIsArchivedFalse(Long firmId, String barcode);
 
     List<Product> findByFirmIdAndHsnCode(Long firmId, String hsnCode);
 

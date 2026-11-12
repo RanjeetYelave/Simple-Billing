@@ -498,21 +498,21 @@ public class ProductService {
 			existing.setItemType(updated.getItemType().trim().toUpperCase());
 		}
 
-		// SKU uniqueness validation
+		// SKU uniqueness validation against active products
 		String sku = updated.getSku() != null && !updated.getSku().trim().isEmpty() ? updated.getSku().trim() : null;
 		if (sku != null) {
 			Optional<Product> conflict = repo.findFirstByFirmIdAndSku(fid, sku);
-			if (conflict.isPresent() && !conflict.get().getId().equals(id)) {
+			if (conflict.isPresent() && !conflict.get().getId().equals(id) && (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
 				throw new IllegalArgumentException("Product with SKU '" + sku + "' already exists for this firm");
 			}
 		}
 		existing.setSku(sku);
 
-		// Barcode uniqueness validation
+		// Barcode uniqueness validation against active products
 		String barcode = updated.getBarcode() != null && !updated.getBarcode().trim().isEmpty() ? updated.getBarcode().trim() : null;
 		if (barcode != null) {
 			Optional<Product> conflict = repo.findFirstByFirmIdAndBarcode(fid, barcode);
-			if (conflict.isPresent() && !conflict.get().getId().equals(id)) {
+			if (conflict.isPresent() && !conflict.get().getId().equals(id) && (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
 				throw new IllegalArgumentException("Product with Barcode '" + barcode + "' already exists for this firm");
 			}
 		}
@@ -709,28 +709,75 @@ public class ProductService {
 	}
 
 	@Transactional
+	public Product archive(Long id, String reason) {
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
+		if (opt.isEmpty()) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized: " + id);
+		}
+		Product p = opt.get();
+		p.setIsArchived(true);
+		p.setArchivedAt(LocalDateTime.now());
+		p.setArchiveReason(reason != null && !reason.trim().isEmpty() ? reason.trim() : "Archived by user");
+		return repo.save(p);
+	}
+
+	@Transactional
+	public Product restore(Long id) {
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
+		if (opt.isEmpty()) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized: " + id);
+		}
+		Product p = opt.get();
+		Long targetFirmId = p.getFirmId();
+
+		// Check for SKU conflicts with active products in same firm
+		if (p.getSku() != null && !p.getSku().trim().isEmpty()) {
+			String sku = p.getSku().trim();
+			if (repo.existsByFirmIdAndSkuAndIsArchivedFalse(targetFirmId, sku)) {
+				throw new IllegalStateException("Cannot restore product: an active product with SKU '" + sku + "' already exists");
+			}
+		}
+
+		// Check for Barcode conflicts with active products in same firm
+		if (p.getBarcode() != null && !p.getBarcode().trim().isEmpty()) {
+			String barcode = p.getBarcode().trim();
+			if (repo.existsByFirmIdAndBarcodeAndIsArchivedFalse(targetFirmId, barcode)) {
+				throw new IllegalStateException("Cannot restore product: an active product with Barcode '" + barcode + "' already exists");
+			}
+		}
+
+		p.setIsArchived(false);
+		p.setArchivedAt(null);
+		p.setArchiveReason(null);
+		return repo.save(p);
+	}
+
+	public List<Product> listArchived(Long firmId) {
+		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Long targetFirmId = firmId != null ? firmId : authoritativeFirmId;
+		if (targetFirmId == null) {
+			return Collections.emptyList();
+		}
+		return repo.findByFirmIdAndIsArchivedTrueOrderByUpdatedAtDesc(targetFirmId);
+	}
+
+	@Transactional
 	public boolean delete(Long id) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (fid != null) {
-			Optional<Product> opt = repo.findByIdAndFirmId(id, fid);
-			if (opt.isEmpty())
-				return false;
-			Product p = opt.get();
-			boolean hasHistory = (invoiceItemRepo != null && invoiceItemRepo.existsByProduct_Id(id))
-					|| (salesReturnItemRepo != null && salesReturnItemRepo.existsByProduct_Id(id));
-			if (hasHistory) {
-				p.setIsArchived(true);
-				repo.save(p);
-				return true;
-			}
-			repo.deleteByIdAndFirmId(id, fid);
-			return true;
-		} else {
-			if (!repo.existsById(id))
-				return false;
-			repo.deleteById(id);
-			return true;
+		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
+		if (opt.isEmpty()) {
+			return false;
 		}
+		Product p = opt.get();
+		p.setIsArchived(true);
+		p.setArchivedAt(LocalDateTime.now());
+		if (p.getArchiveReason() == null || p.getArchiveReason().trim().isEmpty()) {
+			p.setArchiveReason("Archived via delete");
+		}
+		repo.save(p);
+		return true;
 	}
 
 	/**

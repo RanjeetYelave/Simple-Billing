@@ -1,7 +1,9 @@
 package com.billing.simple.billsoft.repo;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -94,6 +96,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     Optional<Invoice> findByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
     boolean existsByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
     boolean existsByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
+
+    @Query("SELECT i.id FROM Invoice i WHERE i.id IN :ids")
+    Set<Long> findExistingIds(@Param("ids") Collection<Long> ids);
 
 
     // ── Aggregation queries for analytics ──

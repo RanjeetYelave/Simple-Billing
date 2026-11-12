@@ -1103,8 +1103,7 @@
 }
 
 :root.minimal .topbar-action-icon-btn,
-:root.minimal .theme-toggle-btn,
-:root.minimal .topbar-calc-button {
+:root.minimal .theme-toggle-btn {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -1119,12 +1118,105 @@
 }
 
 :root.minimal .topbar-action-icon-btn:hover,
-:root.minimal .theme-toggle-btn:hover,
-:root.minimal .topbar-calc-button:hover {
+:root.minimal .theme-toggle-btn:hover {
   background: var(--bg-hover);
   border-color: var(--border-hover);
   color: var(--text);
   transform: translateY(-1px);
+}
+
+:root.minimal .topbar-calc-button,
+:root.minimal #topbar-calculator-btn,
+:root[data-style="minimal"] .topbar-calc-button,
+:root[data-style="minimal"] #topbar-calculator-btn {
+  width: auto !important;
+  min-width: 38px !important;
+  max-width: none !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  padding: 0 14px !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  transition: all 0.15s ease !important;
+}
+
+:root.minimal .topbar-calc-button::before,
+:root.minimal #topbar-calculator-btn::before,
+:root[data-style="minimal"] .topbar-calc-button::before,
+:root[data-style="minimal"] #topbar-calculator-btn::before {
+  display: none !important;
+}
+
+:root.minimal .topbar-calc-button:hover,
+:root.minimal #topbar-calculator-btn:hover,
+:root[data-style="minimal"] .topbar-calc-button:hover,
+:root[data-style="minimal"] #topbar-calculator-btn:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-hover) !important;
+  color: var(--text) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: none !important;
+}
+
+:root.minimal .topbar-calc-button:hover svg,
+:root.minimal #topbar-calculator-btn:hover svg,
+:root[data-style="minimal"] .topbar-calc-button:hover svg,
+:root[data-style="minimal"] #topbar-calculator-btn:hover svg {
+  stroke: var(--primary) !important;
+  opacity: 1 !important;
+}
+
+:root.minimal .topbar-calc-button:active,
+:root.minimal #topbar-calculator-btn:active,
+:root[data-style="minimal"] .topbar-calc-button:active,
+:root[data-style="minimal"] #topbar-calculator-btn:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+:root.minimal .topbar-calc-button:focus-visible,
+:root.minimal #topbar-calculator-btn:focus-visible,
+:root[data-style="minimal"] .topbar-calc-button:focus-visible,
+:root[data-style="minimal"] #topbar-calculator-btn:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 2px !important;
+}
+
+:root.minimal .topbar-calc-button:disabled,
+:root.minimal #topbar-calculator-btn:disabled,
+:root[data-style="minimal"] .topbar-calc-button:disabled,
+:root[data-style="minimal"] #topbar-calculator-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 1100px) {
+  :root.minimal .topbar-calc-button,
+  :root.minimal #topbar-calculator-btn,
+  :root[data-style="minimal"] .topbar-calc-button,
+  :root[data-style="minimal"] #topbar-calculator-btn {
+    width: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+  }
 }
 
 :root.minimal .topbar-avatar {
@@ -12648,8 +12740,21 @@ body.dark-mode .wa-target-btn.active {
   border-radius: var(--radius, 8px);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
-  z-index: 1000;
+  z-index: 9999 !important;
   animation: omni-fade-in 0.12s ease-out;
+}
+
+:root.minimal .autocomplete-dropdown {
+  background: var(--bg-card, #ffffff) !important;
+  border-color: var(--border, #e2e8f0) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14) !important;
+}
+
+:root.minimal[data-theme='dark'] .autocomplete-dropdown,
+:root.minimal.dark-1 .autocomplete-dropdown {
+  background: var(--bg-card, #1e293b) !important;
+  border-color: var(--border, #334155) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
 }
 
 .autocomplete-item {
@@ -15491,6 +15596,14 @@ body:has(.invoice-bottom-dock) .toast-dock {
   align-items: start;
 }
 
+.invoice-meta-bottom-strip > div {
+  position: relative;
+}
+
+.invoice-meta-bottom-strip > div:focus-within {
+  z-index: 70;
+}
+
 @media (max-width: 640px) {
   .invoice-meta-bottom-strip {
     grid-template-columns: 1fr !important;
@@ -15524,8 +15637,31 @@ body:has(.invoice-bottom-dock) .toast-dock {
   margin-bottom: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--bg-card);
+}
+
+.invoice-table-wrapper {
+  overflow: visible;
+  position: relative;
+}
+
+.invoice-items-table td:nth-child(2) {
+  position: relative;
+}
+
+.invoice-items-table tr.has-open-dropdown,
+.invoice-items-table tr:focus-within {
+  position: relative;
+  z-index: 50;
+}
+
+.invoice-meta-col {
+  position: relative;
+}
+
+.invoice-meta-col:focus-within {
+  z-index: 60;
 }
 
 .invoice-table th {

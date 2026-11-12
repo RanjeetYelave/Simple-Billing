@@ -276,18 +276,63 @@ const BillsoftUtils = {
 
     // 1. Electron Desktop Integration: Native Print Bridge
     if (typeof window !== 'undefined' && window.rupeeDesktop && typeof window.rupeeDesktop.printPdf === 'function') {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
+      const executeElectronPrint = async () => {
         try {
-          const parts = String(reader.result).split(',');
-          const base64 = parts.length > 1 ? parts[1] : parts[0];
-          await window.rupeeDesktop.printPdf(base64, options);
-          if (typeof options.onComplete === 'function') options.onComplete();
-        } catch (err) {
-          console.error('Electron native print error:', err);
+          let renderedPages = options.pages || null;
+
+          // If pre-rendered pages were not provided, render them using pdfjsLib if present
+          if ((!renderedPages || renderedPages.length === 0) && typeof pdfjsLib !== 'undefined') {
+            try {
+              const arrayBuffer = await blob.arrayBuffer();
+              const typedarray = new Uint8Array(arrayBuffer);
+              const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+              renderedPages = [];
+              const renderScale = (options.format && (String(options.format).toUpperCase().includes('THERMAL') || String(options.format).toUpperCase() === '80MM')) ? 2.0 : 2.5;
+              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: renderScale });
+                const canvas = document.createElement('canvas');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                const context = canvas.getContext('2d');
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                renderedPages.push(canvas.toDataURL('image/png'));
+              }
+            } catch (renderErr) {
+              console.warn('Client-side PDF.js rendering for print failed, falling back to Electron runner:', renderErr);
+            }
+          }
+
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            try {
+              const parts = String(reader.result).split(',');
+              const base64 = parts.length > 1 ? parts[1] : parts[0];
+              const payload = {
+                base64Data: base64,
+                pages: renderedPages,
+                format: options.format || 'A4',
+                options: options
+              };
+              const res = await window.rupeeDesktop.printPdf(payload, options);
+              if (res && res.success) {
+                if (typeof options.onComplete === 'function') options.onComplete(res);
+              } else if (res && !res.success && res.failureReason && !String(res.failureReason).toLowerCase().includes('cancel')) {
+                console.warn('Electron native print not completed:', res.failureReason);
+                if (typeof showToast === 'function') showToast('Print job not completed: ' + res.failureReason, 'warning');
+              }
+            } catch (err) {
+              console.error('Electron native print execution error:', err);
+              if (typeof showToast === 'function') showToast('Print error: ' + (err.message || 'Error'), 'error');
+            }
+          };
+          reader.readAsDataURL(blob);
+        } catch (bridgeErr) {
+          console.error('Electron print preparation error:', bridgeErr);
         }
       };
-      reader.readAsDataURL(blob);
+
+      executeElectronPrint();
       return;
     }
 

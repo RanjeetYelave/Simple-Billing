@@ -161,4 +161,168 @@ class BusinessPartyLinkControllerTest {
                 .andExpect(jsonPath("$.netPosition").value(5000.0))
                 .andExpect(jsonPath("$.netPositionLabel").value("NET_RECEIVABLE"));
     }
+
+    @Test
+    void testEnableCustomerRole() throws Exception {
+        BusinessPartyLinkResponse res = BusinessPartyLinkResponse.builder()
+                .id(99L)
+                .customerId(10L)
+                .partyId(20L)
+                .customerName("Rahul Traders Customer")
+                .partyName("Rahul Traders")
+                .build();
+
+        when(linkService.enableCustomerRole(any(EnableCustomerRoleRequest.class))).thenReturn(res);
+
+        EnableCustomerRoleRequest req = EnableCustomerRoleRequest.builder()
+                .partyId(20L)
+                .customerName("Rahul Traders Customer")
+                .build();
+
+        mockMvc.perform(post("/api/party-links/enable-customer-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(99L))
+                .andExpect(jsonPath("$.customerId").value(10L))
+                .andExpect(jsonPath("$.customerName").value("Rahul Traders Customer"));
+    }
+
+    @Test
+    void testEnablePartyRole() throws Exception {
+        BusinessPartyLinkResponse res = BusinessPartyLinkResponse.builder()
+                .id(100L)
+                .customerId(10L)
+                .partyId(25L)
+                .customerName("Rahul Sharma")
+                .partyName("Rahul Sharma Supplier")
+                .build();
+
+        when(linkService.enablePartyRole(any(EnablePartyRoleRequest.class))).thenReturn(res);
+
+        EnablePartyRoleRequest req = EnablePartyRoleRequest.builder()
+                .customerId(10L)
+                .partyName("Rahul Sharma Supplier")
+                .build();
+
+        mockMvc.perform(post("/api/party-links/enable-party-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(100L))
+                .andExpect(jsonPath("$.partyId").value(25L))
+                .andExpect(jsonPath("$.partyName").value("Rahul Sharma Supplier"));
+    }
+
+    @Test
+    void testSyncProfiles() throws Exception {
+        BusinessPartyLinkResponse res = BusinessPartyLinkResponse.builder()
+                .id(50L)
+                .customerId(10L)
+                .partyId(20L)
+                .customerName("Synced Name")
+                .partyName("Synced Name")
+                .build();
+
+        when(linkService.syncProfiles(eq(50L), any(SyncProfileRequest.class))).thenReturn(res);
+
+        SyncProfileRequest req = SyncProfileRequest.builder()
+                .source("CUSTOMER")
+                .name("Synced Name")
+                .build();
+
+        mockMvc.perform(put("/api/party-links/50/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(50L))
+                .andExpect(jsonPath("$.customerName").value("Synced Name"));
+    }
+
+    @Test
+    void testPreviewEnableCustomerRole() throws Exception {
+        RoleMatchPreviewResponse preview = RoleMatchPreviewResponse.builder()
+                .targetRole("CUSTOMER")
+                .resolution("REUSE_EXISTING")
+                .matchedBy("GSTIN")
+                .existingEntityId(101L)
+                .existingEntityName("Existing Customer")
+                .message("Matched existing Customer")
+                .build();
+
+        when(linkService.previewEnableCustomerRole(20L, "27AAAAA0000A1Z5", "9876543210"))
+                .thenReturn(preview);
+
+        mockMvc.perform(get("/api/party-links/preview-customer-role")
+                        .param("partyId", "20")
+                        .param("gstin", "27AAAAA0000A1Z5")
+                        .param("phone", "9876543210"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resolution").value("REUSE_EXISTING"))
+                .andExpect(jsonPath("$.matchedBy").value("GSTIN"))
+                .andExpect(jsonPath("$.existingEntityId").value(101L));
+    }
+
+    @Test
+    void testPreviewEnablePartyRole() throws Exception {
+        RoleMatchPreviewResponse preview = RoleMatchPreviewResponse.builder()
+                .targetRole("PARTY")
+                .resolution("CREATE_NEW")
+                .matchedBy("NONE")
+                .message("No matching supplier found")
+                .build();
+
+        when(linkService.previewEnablePartyRole(10L, null, null)).thenReturn(preview);
+
+        mockMvc.perform(get("/api/party-links/preview-party-role")
+                        .param("customerId", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetRole").value("PARTY"))
+                .andExpect(jsonPath("$.resolution").value("CREATE_NEW"));
+    }
+
+    @Test
+    void testDisableAndReenableRole() throws Exception {
+        BusinessPartyLinkResponse disabledRes = BusinessPartyLinkResponse.builder()
+                .id(77L)
+                .customerId(10L)
+                .partyId(20L)
+                .status("PARTY_DISABLED")
+                .customerRoleActive(true)
+                .partyRoleActive(false)
+                .disabledReason("Seasonal supplier paused")
+                .build();
+
+        BusinessPartyLinkResponse enabledRes = BusinessPartyLinkResponse.builder()
+                .id(77L)
+                .customerId(10L)
+                .partyId(20L)
+                .status("ACTIVE")
+                .customerRoleActive(true)
+                .partyRoleActive(true)
+                .build();
+
+        when(linkService.disableRole(eq(77L), any(RoleLifecycleRequest.class))).thenReturn(disabledRes);
+        when(linkService.reenableRole(eq(77L), any(RoleLifecycleRequest.class))).thenReturn(enabledRes);
+
+        RoleLifecycleRequest req = RoleLifecycleRequest.builder()
+                .role("PARTY")
+                .reason("Seasonal supplier paused")
+                .build();
+
+        mockMvc.perform(put("/api/party-links/77/disable-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PARTY_DISABLED"))
+                .andExpect(jsonPath("$.partyRoleActive").value(false))
+                .andExpect(jsonPath("$.customerRoleActive").value(true));
+
+        mockMvc.perform(put("/api/party-links/77/reenable-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.partyRoleActive").value(true));
+    }
 }

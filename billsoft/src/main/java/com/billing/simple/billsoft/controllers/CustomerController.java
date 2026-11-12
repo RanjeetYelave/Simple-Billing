@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,6 +54,15 @@ public class CustomerController {
 	@GetMapping
 	public ResponseEntity<List<Customer>> getAll(@RequestParam(required = false) Long firmId) {
 		return ResponseEntity.ok(service.getAll(firmId));
+	}
+
+	@GetMapping("/search")
+	public ResponseEntity<List<Customer>> search(
+			@RequestParam(value = "q", required = false) String query,
+			@RequestParam(value = "firmId", required = false) Long firmParam,
+			@RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
+		Long firmId = firmHeader != null ? firmHeader : (firmParam != null ? firmParam : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId());
+		return ResponseEntity.ok(service.search(firmId, query));
 	}
 
 	@GetMapping("/{id}")

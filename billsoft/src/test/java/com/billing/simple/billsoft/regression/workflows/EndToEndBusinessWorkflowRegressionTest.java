@@ -5,6 +5,7 @@ import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.service.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -56,6 +57,7 @@ class EndToEndBusinessWorkflowRegressionTest {
 
     @BeforeEach
     void setUp() {
+        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(testFirmId);
         FirmDetails firm = new FirmDetails();
         firm.setFirmName("Bharat Heavy Instruments");
         firm.setGstin("27AAACB1234F1Z9");
@@ -166,5 +168,10 @@ class EndToEndBusinessWorkflowRegressionTest {
         assertThat(backup.getCustomers()).isNotEmpty();
         assertThat(backup.getProducts()).isNotEmpty();
         assertThat(backup.getInvoices()).isNotEmpty();
+    }
+
+    @AfterEach
+    void tearDown() {
+        com.billing.simple.billsoft.security.TenantContext.clear();
     }
 }

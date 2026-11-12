@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RupeeCRM Print Runner</title>
+  <style>
+    @page {
+      size: auto;
+      margin: 0mm;
+    }
+    *, *:before, *:after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .print-container {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .print-page {
+      page-break-after: always;
+      break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      display: block;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .print-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .print-page img {
+      display: block;
+      margin: 0;
+      padding: 0;
+      border: none;
+    }
+
+    body.format-sheet .print-page {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.format-sheet .print-page img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    body.format-thermal .print-page {
+      width: 80mm;
+      min-height: auto;
+      height: auto;
+    }
+    body.format-thermal .print-page img {
+      width: 100%;
+      height: auto;
+    }
+  </style>
+  <script src="../vendor/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '../vendor/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body class="format-sheet">
+  <div id="print-container" class="print-container"></div>
+  <script>
+    window.renderPagesFromImages = function(pages, format) {
+      const container = document.getElementById('print-container');
+      container.innerHTML = '';
+      if (format && (String(format).toUpperCase().includes('THERMAL') || String(format).toUpperCase() === '80MM')) {
+        document.body.className = 'format-thermal';
+      } else {
+        document.body.className = 'format-sheet';
+      }
+      for (let i = 0; i < pages.length; i++) {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'print-page';
+        const img = document.createElement('img');
+        img.src = pages[i];
+        pageDiv.appendChild(img);
+        container.appendChild(pageDiv);
+      }
+      return Promise.all(Array.from(document.images).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(res => { img.onload = img.onerror = res; });
+      }));
+    };
+
+    window.renderPagesFromPdfBase64 = async function(base64Data, format, scale = 2.5) {
+      if (typeof pdfjsLib === 'undefined') {
+        throw new Error('PDF rendering engine (PDF.js) not available');
+      }
+      const raw = atob(base64Data);
+      const uint8 = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) {
+        uint8[i] = raw.charCodeAt(i);
+      }
+      const pdf = await pdfjsLib.getDocument({ data: uint8 }).promise;
+      const pages = [];
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: scale });
+        const canvas = document.createElement('canvas');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        pages.push(canvas.toDataURL('image/png'));
+      }
+      return window.renderPagesFromImages(pages, format);
+    };
+  </script>
+</body>
+</html>
+

@@ -187,17 +187,43 @@ public class PurchaseOrderPdfService {
                 : (party != null ? party.getName() : "—");
         vendorCell.addElement(new Paragraph(partyName, boldFont));
 
+        String pContact = po != null && po.getPartyContactPerson() != null && !po.getPartyContactPerson().trim().isEmpty()
+                ? po.getPartyContactPerson()
+                : (party != null ? party.getContactPerson() : null);
+        if (pContact != null && !pContact.isEmpty()) vendorCell.addElement(new Paragraph("Attn: " + pContact, normalFont));
+
+        String pAddr = po != null && po.getPartyAddress() != null && !po.getPartyAddress().trim().isEmpty()
+                ? po.getPartyAddress()
+                : (party != null ? party.getAddress() : null);
+        if (pAddr != null && !pAddr.isEmpty()) vendorCell.addElement(new Paragraph(pAddr, normalFont));
+
+        String pCityState = "";
         if (party != null) {
-            if (party.getAddress() != null && !party.getAddress().isEmpty()) vendorCell.addElement(new Paragraph(party.getAddress(), normalFont));
-            String pCityState = "";
             if (party.getCity() != null) pCityState += party.getCity();
             if (party.getState() != null) pCityState += (pCityState.isEmpty() ? "" : ", ") + party.getState();
             if (party.getPincode() != null) pCityState += " - " + party.getPincode();
-            if (!pCityState.isEmpty()) vendorCell.addElement(new Paragraph(pCityState, normalFont));
-            if (party.getGstin() != null && !party.getGstin().isEmpty()) vendorCell.addElement(new Paragraph("GSTIN: " + party.getGstin(), boldFont));
-            if (party.getPhone() != null && !party.getPhone().isEmpty()) vendorCell.addElement(new Paragraph("Phone: " + party.getPhone(), normalFont));
-            if (party.getEmail() != null && !party.getEmail().isEmpty()) vendorCell.addElement(new Paragraph("Email: " + party.getEmail(), normalFont));
         }
+        if (!pCityState.isEmpty()) vendorCell.addElement(new Paragraph(pCityState, normalFont));
+
+        String pGstin = po != null && po.getPartyGstin() != null && !po.getPartyGstin().trim().isEmpty()
+                ? po.getPartyGstin()
+                : (party != null ? party.getGstin() : null);
+        if (pGstin != null && !pGstin.isEmpty()) vendorCell.addElement(new Paragraph("GSTIN: " + pGstin, boldFont));
+
+        String pPan = po != null && po.getPartyPan() != null && !po.getPartyPan().trim().isEmpty()
+                ? po.getPartyPan()
+                : (party != null ? party.getPan() : null);
+        if (pPan != null && !pPan.isEmpty()) vendorCell.addElement(new Paragraph("PAN: " + pPan, normalFont));
+
+        String pPhone = po != null && po.getPartyPhone() != null && !po.getPartyPhone().trim().isEmpty()
+                ? po.getPartyPhone()
+                : (party != null ? party.getPhone() : null);
+        if (pPhone != null && !pPhone.isEmpty()) vendorCell.addElement(new Paragraph("Phone: " + pPhone, normalFont));
+
+        String pEmail = po != null && po.getPartyEmail() != null && !po.getPartyEmail().trim().isEmpty()
+                ? po.getPartyEmail()
+                : (party != null ? party.getEmail() : null);
+        if (pEmail != null && !pEmail.isEmpty()) vendorCell.addElement(new Paragraph("Email: " + pEmail, normalFont));
         partyTable.addCell(vendorCell);
 
         PdfPCell shipCell = new PdfPCell();

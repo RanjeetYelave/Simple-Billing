@@ -52,6 +52,9 @@ public class SalesReturn {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Customer customer;
 
+    @Column(length = 255)
+    private String customerNameSnapshot;
+
     @Column(length = 500)
     private String reason; // e.g., "Defective item", "Customer returned goods", "Excess billing"
 
@@ -115,6 +118,13 @@ public class SalesReturn {
         this.updatedAt = LocalDateTime.now();
         if (this.returnDate == null) {
             this.returnDate = LocalDate.now();
+        }
+        if (this.customerNameSnapshot == null || this.customerNameSnapshot.isBlank()) {
+            if (this.customer != null && this.customer.getName() != null) {
+                this.customerNameSnapshot = this.customer.getName();
+            } else if (this.invoice != null && this.invoice.getCustomerNameSnapshot() != null) {
+                this.customerNameSnapshot = this.invoice.getCustomerNameSnapshot();
+            }
         }
         if (this.includeDiscounts == null) this.includeDiscounts = false;
         if (this.grossAmount == null) this.grossAmount = BigDecimal.ZERO;

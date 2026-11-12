@@ -21,6 +21,7 @@ public class BusinessPartyLinkResponse {
     // Customer Snapshot / Context
     private String customerName;
     private String customerPhone;
+    private String customerEmail;
     private String customerGstin;
     private String customerAddress;
     private Double customerNetReceivable;
@@ -28,9 +29,22 @@ public class BusinessPartyLinkResponse {
     // Party Snapshot / Context
     private String partyName;
     private String partyPhone;
+    private String partyEmail;
     private String partyGstin;
     private String partyAddress;
     private String partyContactPerson;
     private Double partyNetPayable;
     private String partyBalanceStatus;
+
+    // Lifecycle Status
+    private String status;
+    private Integer relationshipVersion;
+    private String canonicalName;
+    private Boolean customerRoleActive;
+    private Boolean partyRoleActive;
+    private LocalDateTime statusUpdatedAt;
+    private String disabledReason;
+    private LocalDateTime unlinkedAt;
+    private String unlinkedBy;
+    private String unlinkReason;
 }

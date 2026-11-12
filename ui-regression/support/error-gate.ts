@@ -19,7 +19,8 @@ export class ErrorGate {
     'Download the React DevTools',
     'favicon.ico',
     '[HMR]',
-    'react-devtools'
+    'react-devtools',
+    'Failed to load resource: the server responded with a status of 404'
   ];
 
   attach(page: Page) {

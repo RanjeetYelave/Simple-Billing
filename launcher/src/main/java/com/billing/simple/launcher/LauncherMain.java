@@ -2024,6 +2024,10 @@ public class LauncherMain {
 
             String packagedVer = getWarVersion(packagedWar);
             String baseVer = getWarVersion(baseWar);
+            if (packagedVer == null) {
+                System.out.println("Note: Packaged WAR version could not be parsed; prioritizing packaged distribution: " + packagedWar.getAbsolutePath());
+                return packagedWar;
+            }
             int cmp = compareVersions(packagedVer, baseVer);
             if (cmp >= 0) {
                 // Packaged installer is equal or newer than stale AppData copy.

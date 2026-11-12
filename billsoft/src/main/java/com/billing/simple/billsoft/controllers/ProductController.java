@@ -43,20 +43,29 @@ public class ProductController {
 				.body(csv);
 	}
 
-	@PostMapping("/import/csv")
+	@GetMapping(value = "/template/xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	public ResponseEntity<byte[]> downloadTemplateXlsx() {
+		byte[] xlsx = service.getProductXlsxTemplate();
+		return ResponseEntity.ok()
+				.header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"products_template.xlsx\"")
+				.body(xlsx);
+	}
+
+	@PostMapping(value = {"/import/csv", "/import"})
 	public ResponseEntity<com.billing.simple.billsoft.dtos.ProductImportResponseDto> importCsv(
 			@RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
 			@RequestBody(required = false) String rawBody,
 			@RequestParam(required = false) Long firmId) {
-		String csvContent = "";
 		if (file != null && !file.isEmpty()) {
 			try {
-				csvContent = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
+				byte[] bytes = file.getBytes();
+				return ResponseEntity.ok(service.importProductsFromFile(bytes, file.getOriginalFilename(), firmId));
 			} catch (java.io.IOException e) {
-				throw new IllegalArgumentException("Failed to read uploaded CSV file: " + e.getMessage());
+				throw new IllegalArgumentException("Failed to read uploaded file: " + e.getMessage());
 			}
 		} else if (rawBody != null && !rawBody.trim().isEmpty()) {
 			String trimmed = rawBody.trim();
+			String csvContent = trimmed;
 			if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
 				try {
 					com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(trimmed);
@@ -64,19 +73,44 @@ public class ProductController {
 						csvContent = node.get("csv").asText();
 					} else if (node.has("content")) {
 						csvContent = node.get("content").asText();
-					} else {
-						csvContent = trimmed;
 					}
-				} catch (Exception e) {
-					csvContent = trimmed;
-				}
-			} else {
-				csvContent = rawBody;
+				} catch (Exception ignored) {}
 			}
+			return ResponseEntity.ok(service.importProductsFromCsv(csvContent, firmId));
 		} else {
-			throw new IllegalArgumentException("CSV content or file is required for product import");
+			throw new IllegalArgumentException("CSV or Excel content or file is required for product import");
 		}
-		return ResponseEntity.ok(service.importProductsFromCsv(csvContent, firmId));
+	}
+
+	@PostMapping(value = {"/import/preview"})
+	public ResponseEntity<com.billing.simple.billsoft.dtos.ProductImportResponseDto> previewImport(
+			@RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
+			@RequestBody(required = false) String rawBody,
+			@RequestParam(required = false) Long firmId) {
+		if (file != null && !file.isEmpty()) {
+			try {
+				byte[] bytes = file.getBytes();
+				return ResponseEntity.ok(service.previewProductsFromFile(bytes, file.getOriginalFilename(), firmId));
+			} catch (java.io.IOException e) {
+				throw new IllegalArgumentException("Failed to read uploaded file: " + e.getMessage());
+			}
+		} else if (rawBody != null && !rawBody.trim().isEmpty()) {
+			String trimmed = rawBody.trim();
+			String csvContent = trimmed;
+			if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+				try {
+					com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(trimmed);
+					if (node.has("csv")) {
+						csvContent = node.get("csv").asText();
+					} else if (node.has("content")) {
+						csvContent = node.get("content").asText();
+					}
+				} catch (Exception ignored) {}
+			}
+			return ResponseEntity.ok(service.previewProductsFromCsv(csvContent, firmId));
+		} else {
+			throw new IllegalArgumentException("CSV or Excel content or file is required for product import preview");
+		}
 	}
 
 	@PostMapping("/bulk")
@@ -123,6 +157,15 @@ public class ProductController {
 			return ResponseEntity.ok(service.getUnimportedProducts(firmId));
 		}
 		return ResponseEntity.ok(service.getAll(firmId, inInventory != null ? inInventory : true));
+	}
+
+	@GetMapping("/search")
+	public ResponseEntity<List<Product>> searchProducts(
+			@RequestParam(value = "q", required = false) String query,
+			@RequestParam(value = "firmId", required = false) Long firmParam,
+			@RequestHeader(value = "X-Firm-Id", required = false) Long firmHeader) {
+		Long firmId = firmHeader != null ? firmHeader : (firmParam != null ? firmParam : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId());
+		return ResponseEntity.ok(service.searchProducts(firmId, query));
 	}
 
 	@GetMapping("/unimported")

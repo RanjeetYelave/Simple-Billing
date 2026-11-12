@@ -125,6 +125,8 @@ playwright/.cache/
 *.scratch
 *.bak
 scratch/
+billsoft/cp*.txt
+*.cp
 
 ###############################################################
 # STANDALONE OPERATOR TOOLS

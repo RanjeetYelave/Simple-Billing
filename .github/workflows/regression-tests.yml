@@ -7,12 +7,16 @@ on:
       - OTA_update
       - Release-branch
       - overhaul
+      - PROD
+      - PREPROD
   pull_request:
     branches:
       - main
       - OTA_update
       - Release-branch
       - overhaul
+      - PROD
+      - PREPROD
   workflow_dispatch:
 
 permissions:

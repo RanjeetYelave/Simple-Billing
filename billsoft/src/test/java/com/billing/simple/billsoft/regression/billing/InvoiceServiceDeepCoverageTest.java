@@ -4,6 +4,7 @@ import com.billing.simple.billsoft.dtos.*;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.service.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -51,6 +52,7 @@ class InvoiceServiceDeepCoverageTest {
 
     @BeforeEach
     void setUp() {
+        com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(testFirmId);
         backupService.factoryReset();
 
         FirmDetails firm = new FirmDetails();
@@ -220,5 +222,10 @@ class InvoiceServiceDeepCoverageTest {
         boolean deleted = invoiceService.delete(inv.getId());
         assertThat(deleted).isTrue();
         assertThat(invoiceService.getById(inv.getId())).isNull();
+    }
+
+    @AfterEach
+    void tearDown() {
+        com.billing.simple.billsoft.security.TenantContext.clear();
     }
 }

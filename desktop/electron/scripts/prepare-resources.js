@@ -38,4 +38,18 @@ if (fs.existsSync(warSrc)) {
   console.warn(`  [!] Warning: ${warSrc} not found. Run './mvnw package -pl billsoft' first.`);
 }
 
+// 3. Stage vendor PDF.js libraries for print runner
+const vendorDir = path.join(electronRoot, 'src', 'vendor');
+fs.mkdirSync(vendorDir, { recursive: true });
+const pdfMinSrc = path.join(repoRoot, 'billsoft', 'src', 'main', 'webapp', 'js', 'vendor', 'pdf.min.js');
+const pdfWorkerSrc = path.join(repoRoot, 'billsoft', 'src', 'main', 'webapp', 'js', 'vendor', 'pdf.worker.min.js');
+if (fs.existsSync(pdfMinSrc)) {
+  fs.copyFileSync(pdfMinSrc, path.join(vendorDir, 'pdf.min.js'));
+  console.log('  -> Staged pdf.min.js for print runner');
+}
+if (fs.existsSync(pdfWorkerSrc)) {
+  fs.copyFileSync(pdfWorkerSrc, path.join(vendorDir, 'pdf.worker.min.js'));
+  console.log('  -> Staged pdf.worker.min.js for print runner');
+}
+
 console.log('[RupeeCRM] Resource staging complete.');

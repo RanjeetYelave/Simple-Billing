@@ -162,10 +162,20 @@ const API = {
   // ── Customers ──
   customers: {
     list: (firmIdOverride) => {
-      const fid = firmIdOverride || API.firmId;
-      const url = fid ? `/api/customers?firmId=${fid}` : '/api/customers';
-      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
-      return API._json(url, { headers });
+      return API._ensureFirmReady().then(() => {
+        const fid = firmIdOverride || API.firmId;
+        const url = fid ? `/api/customers?firmId=${fid}` : '/api/customers';
+        const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+        return API._json(url, { headers });
+      });
+    },
+    search: (query, firmIdOverride) => {
+      return API._ensureFirmReady().then(() => {
+        const fid = firmIdOverride || API.firmId;
+        const url = API._qs('/api/customers/search', { q: query || '', ...(fid ? { firmId: fid } : {}) });
+        const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+        return API._json(url, { headers });
+      });
     },
     get: (id) => API._json(`/api/customers/${id}`),
     create: (data, firmIdOverride) => {
@@ -219,22 +229,76 @@ const API = {
       method: 'POST',
       body: data
     })),
-    unlink: (arg1, arg2) => API._ensureFirmReady().then(() => {
-      if (arg2 != null) {
-        return API._request(API._qs('/api/party-links', { customerId: arg1, partyId: arg2 }), { method: 'DELETE' });
+    unlink: (idOrData, maybeData) => API._ensureFirmReady().then(() => {
+      let id = idOrData;
+      let body = maybeData || {};
+      if (typeof idOrData === 'object' && idOrData !== null) {
+        id = idOrData.id || idOrData.linkId;
+        body = idOrData;
       }
-      if (typeof arg1 === 'object' && arg1 !== null) {
-        if (arg1.customerId && arg1.partyId) {
-          return API._request(API._qs('/api/party-links', { customerId: arg1.customerId, partyId: arg1.partyId }), { method: 'DELETE' });
-        }
-        return API._request(`/api/party-links/${arg1.id}`, { method: 'DELETE' });
-      }
-      return API._request(`/api/party-links/${arg1}`, { method: 'DELETE' });
+      return API._json(`/api/party-links/${id}/unlink`, {
+        method: 'POST',
+        body: body
+      });
     }),
+    search: (targetRole, q, limit) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/search', {
+      targetRole,
+      ...(q ? { q } : {}),
+      ...(limit ? { limit } : {})
+    }))),
+    updateCanonicalName: (linkId, data) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/canonical-name`, {
+      method: 'PUT',
+      body: typeof data === 'string' ? { canonicalName: data } : data
+    })),
+    getAliases: (linkId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/aliases`)),
+    addAlias: (linkId, data) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/aliases`, {
+      method: 'POST',
+      body: typeof data === 'string' ? { aliasValue: data } : data
+    })),
+    removeAlias: (linkId, aliasId, reason, actor) => API._ensureFirmReady().then(() => API._request(API._qs(`/api/party-links/${linkId}/aliases/${aliasId}`, {
+      ...(reason ? { reason } : {}),
+      ...(actor ? { actor } : {})
+    }), { method: 'DELETE' })),
+    getEvents: (linkId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/events`)),
+    checkAdminPinStatus: () => API._ensureFirmReady().then(() => API._json('/api/party-links/admin-pin/status')),
+    setAdminPin: (newPin, oldPin) => API._ensureFirmReady().then(() => API._json('/api/party-links/admin-pin/set', {
+      method: 'POST',
+      body: { newPin, ...(oldPin ? { oldPin } : {}) }
+    })),
     getByCustomer: (customerId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/customer/${customerId}`)),
     getByParty: (partyId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/party/${partyId}`)),
     candidates: (type, query) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/candidates', { type, query: query || '' }))),
     map: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/map'))),
+    enableCustomerRole: (data) => API._ensureFirmReady().then(() => API._json('/api/party-links/enable-customer-role', {
+      method: 'POST',
+      body: data
+    })),
+    enablePartyRole: (data) => API._ensureFirmReady().then(() => API._json('/api/party-links/enable-party-role', {
+      method: 'POST',
+      body: data
+    })),
+    previewCustomerRole: (partyId, gstin, phone) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/preview-customer-role', {
+      partyId,
+      ...(gstin ? { gstin } : {}),
+      ...(phone ? { phone } : {})
+    }))),
+    previewPartyRole: (customerId, gstin, phone) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/preview-party-role', {
+      customerId,
+      ...(gstin ? { gstin } : {}),
+      ...(phone ? { phone } : {})
+    }))),
+    disableRole: (linkId, role, reason) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/disable-role`, {
+      method: 'PUT',
+      body: { role, ...(reason ? { reason } : {}) }
+    })),
+    reenableRole: (linkId, role) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/reenable-role`, {
+      method: 'PUT',
+      body: { role }
+    })),
+    syncProfiles: (linkId, data) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/sync`, {
+      method: 'PUT',
+      body: data
+    })),
     unifiedStatement: (customerId, partyId, from, to) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/unified-statement', {
       customerId, partyId,
       ...(from ? { from } : {}),
@@ -348,6 +412,14 @@ const API = {
         return API._json(url, { headers });
       });
     },
+    search: (query, firmIdOverride) => {
+      return API._ensureFirmReady().then(() => {
+        const fid = firmIdOverride || API.firmId;
+        const url = API._qs('/api/products/search', { q: query || '', ...(fid ? { firmId: fid } : {}) });
+        const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+        return API._json(url, { headers });
+      });
+    },
     get: (id) => API._json(`/api/products/${id}`),
     create: (data) => API._ensureFirmReady().then(() => API._json('/api/products', {
       method: 'POST',
@@ -400,10 +472,42 @@ const API = {
     },
     downloadTemplateCsvUrl: () => '/api/products/template/csv',
     downloadTemplateCsv: () => API._request('/api/products/template/csv').then(r => r.text()),
+    downloadTemplateXlsx: () => API._request('/api/products/template/xlsx').then(r => r.blob()),
     importCsv: (csvContent, firmIdOverride) => {
       const fid = firmIdOverride || API.firmId;
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
       return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/import/csv', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'text/plain' },
+        body: csvContent
+      }));
+    },
+    importFile: (file, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const formData = new FormData();
+      formData.append('file', file);
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/import/csv', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers,
+        body: formData
+      }));
+    },
+    previewFile: (file, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const formData = new FormData();
+      formData.append('file', file);
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/import/preview', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers,
+        body: formData
+      }));
+    },
+    previewCsv: (csvContent, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/import/preview', fid ? { firmId: fid } : {}), {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'text/plain' },
         body: csvContent
@@ -1341,7 +1445,13 @@ const API = {
 
   // ─── Saved / Uncatalogued Items & Deduplication ───
   savedItems: {
-    getUnifiedAutocomplete: (q) => API._json(API._qs('/api/items/autocomplete', { q })),
+    getUnifiedAutocomplete: (q, firmIdOverride) => {
+      return API._ensureFirmReady().then(() => {
+        const fid = firmIdOverride || API.firmId;
+        const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+        return API._json(API._qs('/api/items/autocomplete', { q, ...(fid ? { firmId: fid } : {}) }), { headers });
+      });
+    },
     list: () => API._json(API._qs('/api/saved-items')),
     promote: (id, payload) => API._json(API._qs(`/api/saved-items/${id}/promote`), { method: 'POST', body: payload }),
     delete: (id) => API._json(API._qs(`/api/saved-items/${id}`), { method: 'DELETE' })

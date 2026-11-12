@@ -788,6 +788,8 @@
   --bg-secondary:            #F8F8F7;
   --bg-card-header:          #FFFFFF;
   --bg-subtle:               #F1F1EF;
+  --surface:                 #FFFFFF;
+  --surface-elevated:        #FFFFFF;
   --surface-sunken:          #EFEFEA;
   --bg-hover:                #F2F2F0;
   --sidebar-bg:              #FFFFFF;
@@ -811,10 +813,12 @@
   --brand-accent-border:     rgba(22, 139, 69, 0.25);
   --brand-accent-foreground: #FFFFFF;
   --brand-accent-focus:      rgba(22, 139, 69, 0.25);
+  --focus-ring:              rgba(22, 139, 69, 0.35);
 
   --primary:                 #168B45;
   --primary-hover:           #127339;
   --primary-dark:            #0E5B2D;
+  --primary-active:          #0E5B2D;
   --primary-light:           #EAF7EC;
   --primary-50:              #EAF7EC;
 
@@ -869,6 +873,8 @@
   --bg-secondary:            #141717;
   --bg-card-header:          #181B1B;
   --bg-subtle:               #1D2121;
+  --surface:                 #181B1B;
+  --surface-elevated:        #1D2121;
   --surface-sunken:          #111313;
   --bg-hover:                #1F2424;
   --sidebar-bg:              #141717;
@@ -892,10 +898,12 @@
   --brand-accent-border:     rgba(34, 197, 94, 0.30);
   --brand-accent-foreground: #0B1E16;
   --brand-accent-focus:      rgba(34, 197, 94, 0.35);
+  --focus-ring:              rgba(34, 197, 94, 0.40);
 
   --primary:                 #22C55E;
   --primary-hover:           #4ADE80;
   --primary-dark:            #16A34A;
+  --primary-active:          #16A34A;
   --primary-light:           rgba(34, 197, 94, 0.16);
   --primary-50:              rgba(34, 197, 94, 0.16);
 
@@ -948,7 +956,7 @@
 :root.minimal input,
 :root.minimal select,
 :root.minimal textarea {
-  font-family: var(--font-sans, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-family: var(--font-sans, "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
 :root.minimal .kpi-value,
@@ -1519,6 +1527,46 @@
 }
 
 /* ─── Minimal SaaS Curated Palettes ─── */
+/* 0. Emerald SaaS (Canonical Default) */
+:root.minimal[data-accent="emerald"],
+:root.minimal-light[data-accent="emerald"] {
+  --primary: #168B45;
+  --primary-hover: #127339;
+  --primary-dark: #0E5B2D;
+  --primary-active: #0E5B2D;
+  --primary-light: #EAF7EC;
+  --primary-50: #EAF7EC;
+  --brand-accent: #168B45;
+  --brand-accent-hover: #127339;
+  --brand-accent-active: #0E5B2D;
+  --brand-accent-light: #EAF7EC;
+  --brand-accent-border: rgba(22, 139, 69, 0.25);
+  --brand-accent-foreground: #FFFFFF;
+  --brand-accent-focus: rgba(22, 139, 69, 0.25);
+  --focus-ring: rgba(22, 139, 69, 0.35);
+  --surface: #FFFFFF;
+  --surface-elevated: #FFFFFF;
+}
+:root.minimal-dark[data-accent="emerald"],
+:root.minimal[data-theme="dark"][data-accent="emerald"] {
+  --primary: #22C55E;
+  --primary-hover: #4ADE80;
+  --primary-dark: #16A34A;
+  --primary-active: #16A34A;
+  --primary-light: rgba(34, 197, 94, 0.16);
+  --primary-50: rgba(34, 197, 94, 0.16);
+  --brand-accent: #22C55E;
+  --brand-accent-hover: #4ADE80;
+  --brand-accent-active: #16A34A;
+  --brand-accent-light: rgba(34, 197, 94, 0.16);
+  --brand-accent-border: rgba(34, 197, 94, 0.30);
+  --brand-accent-foreground: #0B1E16;
+  --brand-accent-focus: rgba(34, 197, 94, 0.35);
+  --focus-ring: rgba(34, 197, 94, 0.40);
+  --surface: #181B1B;
+  --surface-elevated: #1D2121;
+}
+
 :root.minimal[data-accent="slate"],
 :root.minimal-light[data-accent="slate"] {
   --primary: #0F172A;
@@ -1601,7 +1649,7 @@
 
 /* ─── Typography Registries (Data-Font) ─── */
 :root {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 :root[data-font="inter"],
 :root[data-font="inter"] body,
@@ -1623,8 +1671,8 @@
 :root[data-font="jakarta"] textarea,
 :root[data-font="jakarta"] .card,
 :root[data-font="jakarta"] table {
-  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
 :root[data-font="roboto"],
@@ -3743,7 +3791,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: var(--font-sans, 'Plus Jakarta Sans', -apple-system, sans-serif);
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;

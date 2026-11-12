@@ -4,10 +4,53 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261025_smart_reorder_v2" />
+  <link rel="stylesheet" href="css/style.css?v=20261113_emerald_v1" />
+  <!-- Synchronous pre-paint theme bootstrap script: eliminates theme flash on startup -->
+  <script>
+    (function() {
+      try {
+        var isFresh = (
+          localStorage.getItem('themeFamily') === null &&
+          localStorage.getItem('themeStyle') === null &&
+          localStorage.getItem('themeMode') === null &&
+          localStorage.getItem('themeBase') === null
+        );
+        var family = localStorage.getItem('themeFamily') || (isFresh ? 'material' : 'material');
+        var style = localStorage.getItem('themeStyle') || (isFresh ? 'minimal' : 'minimal');
+        var mode = localStorage.getItem('themeMode') || (isFresh ? 'auto' : 'light');
+        var accent = localStorage.getItem('themeAccentColor') || (isFresh ? 'emerald' : 'emerald');
+        var font = localStorage.getItem('themeFontFamily') || (isFresh ? 'jakarta' : 'jakarta');
+        var isDark = false;
+
+        if (mode === 'dark') {
+          isDark = true;
+        } else if (mode === 'light') {
+          isDark = false;
+        } else {
+          // Instant local solar estimate before CSS paint
+          var now = new Date();
+          var h = now.getHours() + (now.getMinutes() / 60);
+          isDark = (h < 6.75 || h >= 18.0);
+        }
+
+        var themeClass = (style === 'minimal' || family === 'minimal')
+          ? (isDark ? 'minimal-dark' : 'minimal-light')
+          : (style === 'retro98' || family === 'classic'
+              ? (isDark ? 'classic-dark' : 'classic')
+              : (isDark ? 'dark-1' : 'light-1'));
+
+        var root = document.documentElement;
+        root.className = themeClass + ' ' + (style === 'minimal' ? 'minimal material' : (family === 'classic' ? 'classic' : 'modern material')) + (isDark ? ' dark dark-mode' : '');
+        root.setAttribute('data-family', family);
+        root.setAttribute('data-style', style);
+        root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        root.setAttribute('data-accent', accent);
+        root.setAttribute('data-palette', accent);
+        root.setAttribute('data-font', font);
+      } catch (e) {}
+    })();
+  </script>
+  <script src="js/themeToggle.js?v=20261113_emerald_v1"></script>
   <script src="js/vendor/react.production.min.js"></script>
   <script src="js/vendor/react-dom.production.min.js"></script>
   <script src="js/vendor/qrcode.min.js"></script>
@@ -23,7 +66,6 @@
   <script src="js/modalLayerManager.js?v=20261112_v1"></script>
 
   <!-- PDF.js for standalone cross-browser print preview without system extensions -->
-  <script src="js/themeToggle.js?v=20260925_sunset_default_v1"></script>
   <script src="js/vendor/pdf.min.js"></script>
   <script>
     if (typeof pdfjsLib !== 'undefined') {
@@ -37077,11 +37119,11 @@ function PartyDetailModal({
         return {
           family: initialTheme.family === 'classic' ? 'classic' : 'material',
           style: initialTheme.style || (initialTheme.family === 'classic' ? 'retro98' : 'minimal'),
-          mode: initialTheme.mode || (initialTheme.schedule === 'system' ? 'system' : (initialTheme.activeIsDark ? 'dark' : 'light')),
+          mode: initialTheme.mode || 'auto',
           palette: initialTheme.accent || (initialTheme.family === 'classic' ? 'win98-standard' : (initialTheme.style === 'modern' ? 'forest' : 'emerald')),
-          font: initialTheme.font || (initialTheme.family === 'classic' ? 'tahoma' : 'inter'),
-          scheduleEnabled: Boolean(initialTheme.scheduleEnabled || initialTheme.schedule === 'sunset' || initialTheme.schedule === 'custom'),
-          scheduleMode: initialTheme.schedule === 'sunset' ? 'sunset' : (initialTheme.scheduleMode || 'custom'),
+          font: initialTheme.font || (initialTheme.family === 'classic' ? 'tahoma' : 'jakarta'),
+          scheduleEnabled: initialTheme.mode === 'auto' || Boolean(initialTheme.scheduleEnabled || initialTheme.schedule === 'sunset' || initialTheme.schedule === 'custom'),
+          scheduleMode: (initialTheme.mode === 'auto' || initialTheme.schedule === 'sunset') ? 'sunset' : (initialTheme.scheduleMode || 'custom'),
           customDarkStart: initialTheme.customDarkStart || initialTheme.customStart || '19:00',
           customLightStart: initialTheme.customLightStart || initialTheme.customEnd || '07:00'
         };
@@ -37092,9 +37134,47 @@ function PartyDetailModal({
         return (window.getActiveThemeConfig ? window.getActiveThemeConfig() : getSavedConfig());
       });
 
+      const [selectedCity, setSelectedCity] = useState(() => localStorage.getItem('themeLocationCity') || 'auto');
+      const [solarSchedule, setSolarSchedule] = useState(() => (window.getSolarSchedule ? window.getSolarSchedule() : null));
+
       const [pendingNav, setPendingNav] = useState(null);
       const [showUnsavedModal, setShowUnsavedModal] = useState(false);
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
+
+      // Refresh solar state periodically and on theme change
+      useEffect(() => {
+        const refreshSolar = () => {
+          if (window.getSolarSchedule) setSolarSchedule(window.getSolarSchedule());
+        };
+        const timer = setInterval(refreshSolar, 30000);
+        window.addEventListener('themeChanged', refreshSolar);
+        return () => {
+          clearInterval(timer);
+          window.removeEventListener('themeChanged', refreshSolar);
+        };
+      }, []);
+
+      const handleCityChange = (e) => {
+        const cityId = e.target.value;
+        setSelectedCity(cityId);
+        if (window.setLocationCity) window.setLocationCity(cityId);
+        if (window.getSolarSchedule) setSolarSchedule(window.getSolarSchedule());
+      };
+
+      const handleDetectLocation = () => {
+        if (window.detectDeviceLocation) {
+          window.detectDeviceLocation(
+            () => {
+              setSelectedCity('auto');
+              if (window.getSolarSchedule) setSolarSchedule(window.getSolarSchedule());
+              if (window.showToast) window.showToast('Device location detected and astronomical solar times calculated!', 'success');
+            },
+            (err) => {
+              if (window.showToast) window.showToast('Could not detect location: ' + (err.message || 'Permission denied'), 'error');
+            }
+          );
+        }
+      };
 
       // Dirty State Detection
       const isDirty = useMemo(() => {
@@ -37166,7 +37246,7 @@ function PartyDetailModal({
         let newFamily = 'material';
         let newStyle = 'minimal';
         let newPalette = 'emerald';
-        let newFont = 'inter';
+        let newFont = 'jakarta';
 
         if (targetFamily === 'classic' || targetFamily === 'retro98') {
           newFamily = 'classic';
@@ -37182,7 +37262,7 @@ function PartyDetailModal({
           newFamily = 'material';
           newStyle = 'minimal';
           newPalette = 'emerald';
-          newFont = 'inter';
+          newFont = 'jakarta';
         }
 
         updateActiveConfig(prev => ({
@@ -37191,13 +37271,27 @@ function PartyDetailModal({
           style: newStyle,
           palette: newPalette,
           font: newFont,
-          mode: 'light'
+          mode: 'auto',
+          scheduleEnabled: true,
+          scheduleMode: 'sunset'
         }));
       };
 
-      // 2. Mode Selection (Light / Dark / System)
+      // 2. Mode Selection (Light / Dark / Automatic)
       const selectMode = (m) => {
-        updateActiveConfig({ mode: m });
+        if (m === 'auto') {
+          updateActiveConfig({
+            mode: 'auto',
+            scheduleEnabled: true,
+            scheduleMode: 'sunset'
+          });
+        } else {
+          updateActiveConfig({
+            mode: m,
+            scheduleEnabled: false,
+            scheduleMode: 'manual'
+          });
+        }
       };
 
       // 3. Palette Selection
@@ -37236,7 +37330,7 @@ function PartyDetailModal({
         } else {
           selectFamily('minimal');
         }
-        if (window.showToast) window.showToast('Reset to family style defaults.', 'info');
+        if (window.showToast) window.showToast('Reset to Emerald SaaS & Minimal defaults.', 'info');
       };
 
       const handleApply = () => {
@@ -37330,14 +37424,14 @@ function PartyDetailModal({
 
       const FONTS_BY_STYLE = {
         minimal: [
-          { id: 'inter', name: 'Inter (Default)', stack: "'Inter', -apple-system, sans-serif", note: 'Optimized for high-density tables & tabular figures' },
-          { id: 'jakarta', name: 'Plus Jakarta Sans', stack: "'Plus Jakarta Sans', sans-serif", note: 'Contemporary geometric SaaS grotesque' },
+          { id: 'jakarta', name: 'Plus Jakarta Sans (Default)', stack: "'Plus Jakarta Sans', sans-serif", note: 'Contemporary geometric SaaS grotesque' },
+          { id: 'inter', name: 'Inter', stack: "'Inter', -apple-system, sans-serif", note: 'Optimized for high-density tables & tabular figures' },
           { id: 'roboto', name: 'Roboto', stack: "'Roboto', sans-serif", note: 'Clean balanced neo-grotesque standard' },
           { id: 'system', name: 'System Default', stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", note: 'Fast native operating system font stack' }
         ],
         modern: [
-          { id: 'inter', name: 'Inter (Default)', stack: "'Inter', -apple-system, sans-serif", note: 'Default balanced grotesque with tabular numerals' },
           { id: 'jakarta', name: 'Plus Jakarta Sans', stack: "'Plus Jakarta Sans', sans-serif", note: 'Modern geometric letterforms' },
+          { id: 'inter', name: 'Inter (Default)', stack: "'Inter', -apple-system, sans-serif", note: 'Default balanced grotesque with tabular numerals' },
           { id: 'roboto', name: 'Roboto', stack: "'Roboto', sans-serif", note: 'Original Android / Material Design specification font' },
           { id: 'system', name: 'System Default', stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", note: 'Fast native operating system font stack' }
         ],
@@ -37550,39 +37644,121 @@ function PartyDetailModal({
           React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
 
           // ──────────────────────────────────────────────────────────────────────────
-          // 2. APPEARANCE MODE (LIGHT / DARK / SYSTEM)
+          // 2. APPEARANCE MODE (LIGHT / DARK / AUTOMATIC SUNSET-TO-SUNRISE)
           // ──────────────────────────────────────────────────────────────────────────
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 } },
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
-                '2. Appearance Mode'
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 } },
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
+                  '2. Appearance Mode'
+                ),
+                React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                  'Select Light, Dark, or Automatic Sunset-to-Sunrise appearance.'
+                )
               ),
-              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                'Independently designed Light, Dark, and System modes.'
+              React.createElement('div', { style: { display: 'inline-flex', background: 'var(--bg-secondary)', padding: 4, borderRadius: 10, border: '1px solid var(--border)', gap: 4 } },
+                [
+                  { id: 'light', label: '☀️ Light' },
+                  { id: 'dark', label: '🌙 Dark' },
+                  { id: 'auto', label: '🌅 Automatic (Sunset to Sunrise)' }
+                ].map(m => React.createElement('button', {
+                  key: m.id,
+                  type: 'button',
+                  onClick: () => selectMode(m.id),
+                  className: 'btn',
+                  style: {
+                    padding: '7px 16px',
+                    fontSize: '0.84rem',
+                    fontWeight: activeConfig.mode === m.id ? 700 : 500,
+                    background: activeConfig.mode === m.id ? 'var(--primary)' : 'transparent',
+                    color: activeConfig.mode === m.id ? '#FFFFFF' : 'var(--text)',
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }
+                }, m.label))
               )
             ),
-            React.createElement('div', { style: { display: 'inline-flex', background: 'var(--bg-secondary)', padding: 4, borderRadius: 10, border: '1px solid var(--border)', gap: 4 } },
-              [
-                { id: 'light', label: '☀️ Light' },
-                { id: 'dark', label: '🌙 Dark' },
-                { id: 'system', label: '💻 System' }
-              ].map(m => React.createElement('button', {
-                key: m.id,
-                type: 'button',
-                onClick: () => selectMode(m.id),
-                className: 'btn',
-                style: {
-                  padding: '7px 16px',
-                  fontSize: '0.84rem',
-                  fontWeight: activeConfig.mode === m.id ? 700 : 500,
-                  background: activeConfig.mode === m.id ? 'var(--primary)' : 'transparent',
-                  color: activeConfig.mode === m.id ? '#FFFFFF' : 'var(--text)',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer'
+
+            // Live Astronomical Solar Status Card when in Automatic Mode
+            activeConfig.mode === 'auto' && (() => {
+              const sol = solarSchedule || (window.getSolarSchedule ? window.getSolarSchedule() : null);
+              const fmt = (d) => {
+                if (!d) return '--:--';
+                try {
+                  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } catch (e) {
+                  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
                 }
-              }, m.label))
-            )
+              };
+              const sRise = sol ? fmt(sol.sunrise) : '06:44 AM';
+              const sSet = sol ? fmt(sol.sunset) : '06:01 PM';
+              const isDarkNow = sol ? sol.isDark : false;
+              const nextTime = sol ? fmt(sol.nextTransition) : '06:01 PM';
+              const nextType = sol ? (sol.nextTransitionType === 'sunset' ? 'Dark' : 'Light') : 'Dark';
+              const locName = (sol && sol.location && sol.location.name) || 'Local Timezone';
+
+              return React.createElement('div', {
+                style: {
+                  padding: '16px 20px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: 14,
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 14
+                }
+              },
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                    React.createElement('span', {
+                      className: `badge ${isDarkNow ? 'badge-info' : 'badge-success'}`,
+                      style: { fontSize: '0.82rem', padding: '5px 12px', borderRadius: 9999, fontWeight: 700 }
+                    }, isDarkNow ? '🌙 Active Appearance: Dark (Nighttime)' : '☀️ Active Appearance: Light (Daytime)'),
+                    React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
+                      `Next transition: Switches to ${nextType} at ${nextTime}`
+                    )
+                  ),
+                  React.createElement('span', {
+                    style: { fontSize: '0.72rem', background: 'var(--bg-card)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--text-muted)' }
+                  }, '100% Offline NOAA Solar Engine')
+                ),
+                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 } },
+                  React.createElement('div', { style: { padding: '10px 14px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' } },
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🌅 Today\'s Sunrise'),
+                    React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)', marginTop: 2 } }, sRise)
+                  ),
+                  React.createElement('div', { style: { padding: '10px 14px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' } },
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '🌇 Today\'s Sunset'),
+                    React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)', marginTop: 2 } }, sSet)
+                  ),
+                  React.createElement('div', { style: { padding: '10px 14px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' } },
+                    React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 } }, '⏱️ Next Scheduled Flip'),
+                    React.createElement('div', { style: { fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)', marginTop: 2 } }, `${nextTime} (${nextType})`)
+                  )
+                ),
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, paddingTop: 8, borderTop: '1px solid var(--border)' } },
+                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                    React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' } }, '📍 Location:'),
+                    React.createElement('select', {
+                      className: 'select',
+                      value: selectedCity,
+                      onChange: handleCityChange,
+                      style: { fontSize: '0.8rem', padding: '4px 10px', minWidth: 200 }
+                    },
+                      (window.getCitiesCatalog ? window.getCitiesCatalog() : []).map(c => React.createElement('option', { key: c.id, value: c.id }, c.name))
+                    ),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-secondary btn-sm',
+                      onClick: handleDetectLocation,
+                      style: { fontSize: '0.78rem', padding: '4px 10px' }
+                    }, '🎯 Detect Device Location')
+                  ),
+                  React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)' } }, locName)
+                )
+              );
+            })()
           ),
 
           React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
@@ -37700,70 +37876,64 @@ function PartyDetailModal({
           React.createElement('div', { style: { height: 1, background: 'var(--border)', margin: '22px 0' } }),
 
           // ──────────────────────────────────────────────────────────────────────────
-          // 5. ADVANCED APPEARANCE SETTINGS (AUTOMATIC LIGHT/DARK SCHEDULING)
+          // 5. ADVANCED: CUSTOM FIXED DAILY TIME WINDOW
           // ──────────────────────────────────────────────────────────────────────────
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               React.createElement('div', null,
                 React.createElement('div', { style: { fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' } },
-                  '5. Advanced Appearance: Automatic Scheduling'
+                  '5. Advanced: Custom Fixed Daily Time Window'
                 ),
                 React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                  'Automatically switch between Light and Dark mode based on machine time. Overrides manual mode when enabled.'
+                  'Specify custom clock hours instead of automatic astronomical sunset-to-sunrise calculations.'
                 )
               ),
               React.createElement('label', { className: 'switch' },
                 React.createElement('input', {
                   type: 'checkbox',
-                  checked: activeConfig.scheduleEnabled,
-                  onChange: e => toggleSchedule(e.target.checked)
+                  checked: activeConfig.scheduleEnabled && activeConfig.scheduleMode === 'custom',
+                  onChange: e => {
+                    const en = e.target.checked;
+                    updateActiveConfig({
+                      scheduleEnabled: en,
+                      scheduleMode: en ? 'custom' : 'sunset',
+                      mode: en ? 'auto' : (activeConfig.mode || 'auto')
+                    });
+                  }
                 }),
                 React.createElement('span', { className: 'slider' })
               )
             ),
 
-            activeConfig.scheduleEnabled && React.createElement('div', {
+            activeConfig.scheduleEnabled && activeConfig.scheduleMode === 'custom' && React.createElement('div', {
               style: {
                 display: 'flex',
-                flexDirection: 'column',
+                alignItems: 'center',
                 gap: 12,
-                padding: '14px 18px',
+                marginTop: 4,
+                flexWrap: 'wrap',
+                padding: '12px 16px',
                 background: 'var(--bg-secondary)',
                 borderRadius: 12,
                 border: '1px solid var(--border)'
               }
             },
-              React.createElement('div', { style: { display: 'flex', gap: 10 } },
-                [
-                  { id: 'sunset', label: '🌅 Sunset to Sunrise (18:00 – 06:00)' },
-                  { id: 'custom', label: '⏰ Custom Daily Time Window' }
-                ].map(opt => React.createElement('button', {
-                  key: opt.id,
-                  type: 'button',
-                  onClick: () => setScheduleMode(opt.id),
-                  className: `btn ${activeConfig.scheduleMode === opt.id ? 'btn-primary' : 'btn-secondary'} btn-sm`,
-                  style: { fontSize: '0.8rem' }
-                }, opt.label))
-              ),
-
-              activeConfig.scheduleMode === 'custom' && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' } },
-                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '🌙 Switch to Dark mode at:'),
-                React.createElement('input', {
-                  type: 'time',
-                  className: 'input',
-                  value: activeConfig.customDarkStart,
-                  onChange: e => handleTimeChange('dark', e.target.value),
-                  style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
-                }),
-                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '☀️ Switch to Light mode at:'),
-                React.createElement('input', {
-                  type: 'time',
-                  className: 'input',
-                  value: activeConfig.customLightStart,
-                  onChange: e => handleTimeChange('light', e.target.value),
-                  style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
-                })
-              )
+              React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '🌙 Switch to Dark mode at:'),
+              React.createElement('input', {
+                type: 'time',
+                className: 'input',
+                value: activeConfig.customDarkStart,
+                onChange: e => handleTimeChange('dark', e.target.value),
+                style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
+              }),
+              React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text)' } }, '☀️ Switch to Light mode at:'),
+              React.createElement('input', {
+                type: 'time',
+                className: 'input',
+                value: activeConfig.customLightStart,
+                onChange: e => handleTimeChange('light', e.target.value),
+                style: { padding: '4px 8px', fontSize: '0.82rem', width: 110 }
+              })
             )
           ),
 

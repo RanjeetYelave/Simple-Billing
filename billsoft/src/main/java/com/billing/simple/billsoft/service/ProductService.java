@@ -415,7 +415,11 @@ public class ProductService {
 
 	public Product getById(Long id) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
+		Product p = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
+		if (p != null && Boolean.TRUE.equals(p.getIsArchived())) {
+			return null;
+		}
+		return p;
 	}
 
 	public Product getById(Long id, Long firmId) {
@@ -424,6 +428,15 @@ public class ProductService {
 			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
 		}
 		Long fid = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+		Product p = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
+		if (p != null && Boolean.TRUE.equals(p.getIsArchived())) {
+			return null;
+		}
+		return p;
+	}
+
+	public Product getByIdIncludingArchived(Long id) {
+		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		return (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
 	}
 
@@ -767,7 +780,7 @@ public class ProductService {
 	public boolean delete(Long id) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
-		if (opt.isEmpty()) {
+		if (opt.isEmpty() || Boolean.TRUE.equals(opt.get().getIsArchived())) {
 			return false;
 		}
 		Product p = opt.get();

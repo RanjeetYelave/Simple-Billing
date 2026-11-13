@@ -39,6 +39,7 @@ const ipcMain = isElectron ? electron.ipcMain : { handle: () => { }, on: () => {
 const shell = isElectron ? electron.shell : { openPath: () => { }, openExternal: () => { } };
 const dialog = isElectron ? electron.dialog : { showSaveDialogSync: () => null };
 const session = isElectron ? electron.session : null;
+const nativeImage = isElectron ? electron.nativeImage : { createFromPath: () => ({ isEmpty: () => true }) };
 
 const path = require('path');
 const http = require('http');
@@ -132,7 +133,20 @@ function resolveDirectories() {
 const dirs = resolveDirectories();
 
 function resolveAssetPath(assetName) {
-  return path.join(__dirname, '..', 'assets', assetName);
+  const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : __dirname;
+  const resPath = process.resourcesPath || path.join(__dirname, '..');
+  const candidates = [
+    path.join(__dirname, '..', 'assets', assetName),
+    path.join(appPath, 'assets', assetName),
+    path.join(resPath, assetName),
+    path.join(resPath, 'assets', assetName)
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return candidates[0];
 }
 
 function resolveJavaRuntime() {
@@ -915,7 +929,7 @@ function showDiagnosticsWindow() {
     width: 680,
     height: 580,
     title: 'RupeeCRM System Diagnostics',
-    icon: resolveAssetPath('icon.ico'),
+    icon: resolveAssetPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     resizable: true,
     minimizable: false,
     backgroundColor: '#0f172a',
@@ -1280,6 +1294,22 @@ app.on('window-all-closed', () => {
 
 app.whenReady().then(async () => {
   logMessage('RupeeCRM Desktop Shell starting up...');
+
+  // Explicitly configure macOS Dock icon with branded asset
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      const dockIconPath = resolveAssetPath('icon.png');
+      if (fs.existsSync(dockIconPath)) {
+        const image = nativeImage.createFromPath(dockIconPath);
+        if (!image.isEmpty()) {
+          app.dock.setIcon(image);
+        }
+      }
+    } catch (err) {
+      logMessage(`Notice: Could not set macOS Dock icon: ${err.message}`);
+    }
+  }
+
   registerIpcHandlers();
   setupSystemTray();
 

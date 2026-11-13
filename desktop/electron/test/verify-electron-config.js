@@ -17,6 +17,7 @@ const splashPath = path.join(baseDir, 'src', 'splash', 'splash.html');
 const diagPath = path.join(baseDir, 'src', 'diagnostics', 'diagnostics.html');
 const icoPath = path.join(baseDir, 'assets', 'icon.ico');
 const pngPath = path.join(baseDir, 'assets', 'icon.png');
+const icnsPath = path.join(baseDir, 'assets', 'icon.icns');
 
 // 1. Verify Files Exist
 console.log('[1/7] Verifying core desktop files exist...');
@@ -28,6 +29,7 @@ assert(fs.existsSync(splashPath), 'splash.html must exist');
 assert(fs.existsSync(diagPath), 'diagnostics.html must exist');
 assert(fs.existsSync(icoPath), 'assets/icon.ico must exist');
 assert(fs.existsSync(pngPath), 'assets/icon.png must exist');
+assert(fs.existsSync(icnsPath), 'assets/icon.icns must exist');
 console.log('  -> All core files present.');
 
 // 2. Verify package.json

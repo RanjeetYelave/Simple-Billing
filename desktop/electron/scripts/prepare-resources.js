@@ -52,4 +52,32 @@ if (fs.existsSync(pdfWorkerSrc)) {
   console.log('  -> Staged pdf.worker.min.js for print runner');
 }
 
-console.log('[RupeeCRM] Resource staging complete.');
+// 4. Validate and stage branding assets (prevent default Electron icon fallback)
+console.log('  -> Validating application branding assets...');
+const assetsDir = path.join(electronRoot, 'assets');
+const requiredAssets = [
+  { name: 'icon.ico', minSize: 10000, magic: Buffer.from([0x00, 0x00, 0x01, 0x00]) },
+  { name: 'icon.png', minSize: 10000, magic: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+  { name: 'icon.icns', minSize: 50000, magic: Buffer.from([0x69, 0x63, 0x6e, 0x73]) }
+];
+
+for (const asset of requiredAssets) {
+  const assetPath = path.join(assetsDir, asset.name);
+  if (!fs.existsSync(assetPath)) {
+    throw new Error(`CRITICAL: Branding asset ${asset.name} is missing in ${assetsDir}! Build halted to prevent default Electron icon fallback.`);
+  }
+  const stat = fs.statSync(assetPath);
+  if (stat.size < asset.minSize) {
+    throw new Error(`CRITICAL: Branding asset ${asset.name} size (${stat.size} bytes) is below minimum required (${asset.minSize} bytes)!`);
+  }
+  const fd = fs.openSync(assetPath, 'r');
+  const buffer = Buffer.alloc(asset.magic.length);
+  fs.readSync(fd, buffer, 0, asset.magic.length, 0);
+  fs.closeSync(fd);
+  if (!buffer.equals(asset.magic)) {
+    throw new Error(`CRITICAL: Branding asset ${asset.name} has invalid binary header: expected ${asset.magic.toString('hex')}, got ${buffer.toString('hex')}!`);
+  }
+  console.log(`  ✓ Verified branding asset: ${asset.name} (${(stat.size / 1024).toFixed(1)} KB)`);
+}
+
+console.log('[RupeeCRM] Resource staging and branding verification complete.');

@@ -42,6 +42,33 @@ public class HealthController {
     private final org.springframework.core.env.Environment environment;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ConfigurableApplicationContext applicationContext;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.service.UpdateService updateService;
+
+    public void setUpdateService(com.billing.simple.billsoft.service.UpdateService updateService) {
+        this.updateService = updateService;
+    }
+
+    public String resolveVersion() {
+        if (updateService != null) {
+            try {
+                String cur = updateService.getCurrentVersion();
+                if (cur != null && !cur.isBlank() && !"v1.0.0".equalsIgnoreCase(cur)) {
+                    return cur.startsWith("v") ? cur : "v" + cur;
+                }
+            } catch (Exception ignored) {}
+        }
+        String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
+        if (ver != null && !ver.isBlank() && !"v1.0.0".equalsIgnoreCase(ver)) {
+            return ver.startsWith("v") ? ver : "v" + ver;
+        }
+        Package pkg = HealthController.class.getPackage();
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
+            String imp = pkg.getImplementationVersion().trim();
+            return imp.startsWith("v") ? imp : "v" + imp;
+        }
+        return ver != null && !ver.isBlank() ? ver : "v1.0.0";
+    }
 
     public HealthController(SystemMetricsService systemMetricsService,
                             AutoBackupService autoBackupService,
@@ -73,7 +100,7 @@ public class HealthController {
 
     @GetMapping("/api/health")
     public ResponseEntity<Map<String, Object>> health() {
-        String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
+        String ver = resolveVersion();
         String commit = environment != null ? environment.getProperty("app.build.commit", "HEAD") : "HEAD";
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("status", "UP");
@@ -90,7 +117,7 @@ public class HealthController {
         if (!isLoopbackRequest(request)) {
             return ResponseEntity.status(403).body(Map.of("error", "Access denied: local loopback only"));
         }
-        String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
+        String ver = resolveVersion();
         String commit = environment != null ? environment.getProperty("app.build.commit", "HEAD") : "HEAD";
         String buildTime = environment != null ? environment.getProperty("app.build.timestamp", "") : "";
         String warPath = "";

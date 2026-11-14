@@ -7307,7 +7307,29 @@ body.dark-mode .planner-card,
    INVOICE / QUOTATION FORM - COMPLETE REDESIGN
    ============================================================ */
 .invoice-form {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.document-multi-tab-container {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.invoice-bottom-dock-inner {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  box-sizing: border-box;
 }
 
 /* Form section cards with accent borders */
@@ -9048,6 +9070,55 @@ th.sortable svg {
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+}
+
+/* ============================================================
+   FOCUSED WORKSPACE MODE (INVOICES, QUOTATIONS & FOCUSED BILLING)
+   ============================================================ */
+.app-layout.focused-workspace .sidebar:not(.open) {
+  transform: translateX(-100%) !important;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.app-layout.focused-workspace .sidebar.open {
+  transform: translateX(0) !important;
+  z-index: 1001 !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25) !important;
+}
+
+.app-layout.focused-workspace .sidebar-container {
+  width: 0 !important;
+  min-width: 0 !important;
+  z-index: 1000 !important;
+}
+
+.app-layout.focused-workspace .sidebar-overlay {
+  z-index: 1000 !important;
+}
+
+.app-layout.focused-workspace .main-content {
+  margin-left: 0 !important;
+  max-width: 100vw !important;
+  width: 100% !important;
+  transition: margin-left 0.25s ease !important;
+}
+
+.app-layout.focused-workspace .mobile-toggle-btn {
+  display: inline-flex !important;
+}
+
+.app-layout.focused-workspace .topbar {
+  padding: 8px 24px !important;
+  height: 50px !important;
+  min-height: 50px !important;
+}
+
+.app-layout.focused-workspace .page-content {
+  padding: 16px 24px 80px 24px !important;
+}
+
+.app-layout.focused-workspace .invoice-form-bottom-actions {
+  left: 0 !important;
 }
 
 /* ============================================================
@@ -15670,23 +15741,30 @@ body:has(.invoice-bottom-dock) .toast-dock {
 
 .invoice-meta-top-strip {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 24px;
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  gap: 16px 20px;
   align-items: start;
 }
 
-@media (min-width: 1440px) {
+@media (max-width: 1024px) {
   .invoice-meta-top-strip {
-    grid-template-columns: repeat(4, minmax(240px, 1fr));
-    gap: 16px 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
   }
 }
 
 @media (max-width: 640px) {
   .invoice-meta-top-strip {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 14px;
   }
+}
+
+.invoice-payment-terms-select,
+.invoice-meta-col select {
+  padding-right: 26px !important;
+  background-position: right 8px center !important;
+  min-width: 190px;
 }
 
 .invoice-meta-bottom-strip {
@@ -15743,8 +15821,11 @@ body:has(.invoice-bottom-dock) .toast-dock {
 }
 
 .invoice-table-wrapper {
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
   position: relative;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .invoice-items-table td:nth-child(2) {

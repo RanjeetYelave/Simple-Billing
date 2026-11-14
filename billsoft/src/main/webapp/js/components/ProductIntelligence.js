@@ -4738,19 +4738,19 @@
     const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
     const [selectedProductId, setSelectedProductId] = useState(null);
 
-    // Single Row Inline Edit State
-    const [editingRowId, setEditingRowId] = useState(null);
-    const [singleEditForm, setSingleEditForm] = useState({});
-    const [savingSingle, setSavingSingle] = useState(false);
-
-    // Bulk Edit Mode Workspace State
-    const [isBulkEditMode, setIsBulkEditMode] = useState(false);
+    // Unified Product Master Edit Workspace State
+    const [editMode, setEditMode] = useState(null); // null | 'BULK' | 'INDIVIDUAL'
+    const [individualEditProdId, setIndividualEditProdId] = useState(null);
     const [draftChanges, setDraftChanges] = useState({}); // { [productId]: { field: val, ... } }
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [savingBulk, setSavingBulk] = useState(false);
     const [bulkError, setBulkError] = useState(null);
     const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
     const [pendingTab, setPendingTab] = useState(null);
+
+    const isBulkEditMode = editMode === 'BULK';
+    const isIndividualEditMode = editMode === 'INDIVIDUAL';
+    const isWorkspaceEditing = editMode !== null;
 
     // Product Master Pagination State
     const [masterPage, setMasterPage] = useState(1);
@@ -4874,6 +4874,18 @@
       return filteredProducts.slice(start, start + masterPageSize);
     }, [filteredProducts, safeMasterPage, masterPageSize]);
 
+    const selectedIndividualProduct = useMemo(() => {
+      if (!individualEditProdId) return null;
+      return products.find(p => p.id === individualEditProdId) || null;
+    }, [products, individualEditProdId]);
+
+    const displayedProducts = useMemo(() => {
+      if (isIndividualEditMode) {
+        return selectedIndividualProduct ? [selectedIndividualProduct] : [];
+      }
+      return paginatedMasterProducts;
+    }, [isIndividualEditMode, selectedIndividualProduct, paginatedMasterProducts]);
+
     // Overall Catalog Summary KPIs
     const catalogSummary = useMemo(() => {
       let totalStock = 0;
@@ -4967,75 +4979,48 @@
       }
     };
 
-    // Single inline edit actions
-    const handleStartSingleEdit = (p) => {
-      setEditingRowId(p.id);
-      setSingleEditForm({
-        name: p.name || '',
-        sku: p.sku || '',
-        barcode: p.barcode || '',
-        category: p.category || '',
-        price: p.price != null ? String(p.price) : '',
-        costPrice: p.costPrice != null ? String(p.costPrice) : '',
-        minStockLevel: p.minStockLevel != null ? String(p.minStockLevel) : '5',
-        unit: p.unit || 'pcs',
-        hsnCode: p.hsnCode || '',
-        gstPercentage: p.gstPercentage != null ? String(p.gstPercentage) : '0',
-        preferredPartyId: p.preferredPartyId ? String(p.preferredPartyId) : '',
-        description: p.description || '',
-        trackInInventory: !p.inInventory ? false : true,
-        openingStock: '0'
-      });
-    };
-
-    const handleCancelSingleEdit = () => {
-      setEditingRowId(null);
-      setSingleEditForm({});
-    };
-
-    const handleSaveSingleEdit = async (prodId) => {
-      const form = singleEditForm;
-      if (!form.name || !form.name.trim()) {
-        if (typeof showToast === 'function') showToast('Product name cannot be empty', 'error');
-        return;
+    // Individual and Bulk Editing Workflow Handlers
+    const handleStartIndividualEdit = (p) => {
+      if (isWorkspaceEditing && totalChangesCount > 0) {
+        if (!confirm('You have unsaved changes. Discard them to edit this product?')) {
+          return;
+        }
       }
-      setSavingSingle(true);
-      try {
-        const prod = products.find(x => x.id === prodId);
-        const payload = {
-          name: (form.name || '').trim(),
-          sku: (form.sku || '').trim() || null,
-          barcode: (form.barcode || '').trim() || null,
-          category: (form.category || '').trim() || null,
-          price: form.price !== '' && form.price != null ? Number(form.price) : 0,
-          costPrice: form.costPrice !== '' && form.costPrice != null ? Number(form.costPrice) : 0,
-          minStockLevel: form.minStockLevel !== '' && form.minStockLevel != null ? Number(form.minStockLevel) : 5,
-          unit: (form.unit || 'pcs').trim(),
-          hsnCode: (form.hsnCode || '').trim() || null,
-          gstPercentage: form.gstPercentage !== '' && form.gstPercentage != null ? Number(form.gstPercentage) : 0,
-          preferredPartyId: form.preferredPartyId ? Number(form.preferredPartyId) : null,
-          description: form.description || null
-        };
-        if (form.trackInInventory && (!prod || !prod.inInventory)) {
-          payload.inInventory = true;
-          if (form.openingStock && Number(form.openingStock) > 0) {
-            payload.stockQuantity = Number(form.openingStock);
+      setDraftChanges({});
+      setBulkError(null);
+      setIndividualEditProdId(p.id);
+      setEditMode('INDIVIDUAL');
+    };
+
+    const handleExitEditing = () => {
+      if (totalChangesCount > 0) {
+        if (!confirm('Exit editing? Any unsaved draft changes will be discarded.')) {
+          return;
+        }
+      }
+      setDraftChanges({});
+      setBulkError(null);
+      setEditMode(null);
+      setIndividualEditProdId(null);
+    };
+
+    const handleToggleBulkEdit = () => {
+      if (isBulkEditMode) {
+        handleExitEditing();
+      } else {
+        if (isIndividualEditMode && totalChangesCount > 0) {
+          if (!confirm('Exit individual edit mode? Any unsaved changes will be discarded.')) {
+            return;
           }
         }
-        const updated = await API.products.update(prodId, payload);
-        if (typeof showToast === 'function') showToast(`Product '${updated.name}' updated successfully.`, 'success');
-        setEditingRowId(null);
-        setSingleEditForm({});
-        await loadProducts();
-      } catch (err) {
-        console.error(err);
-        if (typeof showToast === 'function') showToast(err.message || 'Failed to update product', 'error');
-      } finally {
-        setSavingSingle(false);
+        setDraftChanges({});
+        setBulkError(null);
+        setIndividualEditProdId(null);
+        setEditMode('BULK');
       }
     };
 
-    // Bulk Save execution
+    // Unified Save Execution (handles single product and bulk products)
     const handleConfirmBulkSave = async () => {
       if (changedProductIds.length === 0) return;
       setSavingBulk(true);
@@ -5043,17 +5028,16 @@
       try {
         const updates = changedProductIds.map(id => {
           const changes = draftChanges[id] || {};
-          const prod = products.find(x => x.id === id) || {};
           const row = { productId: id };
-          if (changes.name !== undefined) row.name = changes.name.trim();
-          if (changes.sku !== undefined) row.sku = changes.sku.trim();
-          if (changes.barcode !== undefined) row.barcode = changes.barcode.trim();
-          if (changes.category !== undefined) row.category = changes.category.trim();
+          if (changes.name !== undefined) row.name = (changes.name || '').trim();
+          if (changes.sku !== undefined) row.sku = (changes.sku || '').trim();
+          if (changes.barcode !== undefined) row.barcode = (changes.barcode || '').trim();
+          if (changes.category !== undefined) row.category = (changes.category || '').trim();
           if (changes.price !== undefined) row.price = Number(changes.price);
           if (changes.costPrice !== undefined) row.costPrice = Number(changes.costPrice);
           if (changes.minStockLevel !== undefined) row.minStockLevel = Number(changes.minStockLevel);
-          if (changes.unit !== undefined) row.unit = changes.unit.trim();
-          if (changes.hsnCode !== undefined) row.hsnCode = changes.hsnCode.trim();
+          if (changes.unit !== undefined) row.unit = (changes.unit || 'pcs').trim();
+          if (changes.hsnCode !== undefined) row.hsnCode = (changes.hsnCode || '').trim();
           if (changes.gstPercentage !== undefined) row.gstPercentage = Number(changes.gstPercentage);
           if (changes.preferredPartyId !== undefined) row.preferredPartyId = changes.preferredPartyId ? Number(changes.preferredPartyId) : 0;
           if (changes.description !== undefined) row.description = changes.description;
@@ -5066,17 +5050,39 @@
           return row;
         });
 
+        // Client-side validations
+        for (const u of updates) {
+          if (u.name !== undefined && !u.name.trim()) {
+            throw new Error('Product name cannot be empty');
+          }
+          if (u.price !== undefined && (isNaN(u.price) || u.price < 0)) {
+            throw new Error('Selling price cannot be negative');
+          }
+          if (u.costPrice !== undefined && (isNaN(u.costPrice) || u.costPrice < 0)) {
+            throw new Error('Cost price cannot be negative');
+          }
+          if (u.minStockLevel !== undefined && (isNaN(u.minStockLevel) || u.minStockLevel < 0)) {
+            throw new Error('Min stock level cannot be negative');
+          }
+        }
+
         const resp = await API.products.updateBulk(updates);
         if (typeof showToast === 'function') {
-          showToast(`Successfully updated ${resp.updatedCount || updates.length} products.`, 'success');
+          if (isIndividualEditMode) {
+            const prod = products.find(x => x.id === changedProductIds[0]);
+            showToast(`Product '${(updates[0] && updates[0].name) || (prod && prod.name) || 'item'}' updated successfully.`, 'success');
+          } else {
+            showToast(`Successfully updated ${resp.updatedCount || updates.length} products.`, 'success');
+          }
         }
         setDraftChanges({});
         setShowReviewModal(false);
-        setIsBulkEditMode(false);
-        loadProducts();
+        setEditMode(null);
+        setIndividualEditProdId(null);
+        await loadProducts();
       } catch (err) {
-        console.error('Bulk save error:', err);
-        setBulkError(err.message || 'Failed to save bulk changes. Check for duplicate SKUs or invalid values.');
+        console.error('Save error:', err);
+        setBulkError(err.message || 'Failed to save changes. Check for duplicate SKUs or invalid values.');
       } finally {
         setSavingBulk(false);
       }
@@ -5084,7 +5090,7 @@
 
     // Navigation Tab Guard
     const handleTabChange = (newTab) => {
-      if (isBulkEditMode && totalChangesCount > 0 && newTab !== hubTab) {
+      if (isWorkspaceEditing && totalChangesCount > 0 && newTab !== hubTab) {
         setPendingTab(newTab);
         setShowUnsavedPrompt(true);
       } else {
@@ -5193,20 +5199,16 @@
         ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           hubTab === 'INTELLIGENCE' && React.createElement('button', {
-            className: `btn ${isBulkEditMode ? 'btn-secondary' : 'btn-primary'}`,
+            className: `btn ${isWorkspaceEditing ? 'btn-secondary' : 'btn-primary'}`,
             onClick: () => {
-              if (isBulkEditMode && totalChangesCount > 0) {
-                if (confirm('Exit Bulk Edit Mode? Any unsaved draft changes will be discarded.')) {
-                  setDraftChanges({});
-                  setIsBulkEditMode(false);
-                }
+              if (isIndividualEditMode) {
+                handleExitEditing();
               } else {
-                setIsBulkEditMode(!isBulkEditMode);
-                setEditingRowId(null);
+                handleToggleBulkEdit();
               }
             },
             style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }
-          }, isBulkEditMode ? '✖️ Exit Bulk Edit' : '📋 Bulk Edit Mode'),
+          }, isIndividualEditMode ? '✖️ Exit Individual Edit' : (isBulkEditMode ? '✖️ Exit Bulk Edit' : '📋 Bulk Edit Mode')),
 
           React.createElement('button', {
             className: 'btn btn-outline',
@@ -5290,28 +5292,47 @@
           )
         ),
 
-        // Bulk Edit Banner if active
-        isBulkEditMode && React.createElement('div', {
+        // Workspace Editing Banner (Unified for Bulk Edit & Individual Edit)
+        isWorkspaceEditing && React.createElement('div', {
           style: {
-            background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.08))',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 25,
+            background: isIndividualEditMode
+              ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.14), rgba(99, 102, 241, 0.10))'
+              : 'linear-gradient(90deg, rgba(99, 102, 241, 0.14), rgba(16, 185, 129, 0.08))',
+            border: isIndividualEditMode ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(99, 102, 241, 0.35)',
             borderRadius: 8,
             padding: '10px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 10
+            gap: 10,
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
           }
         },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            React.createElement('span', { style: { fontSize: '1.2rem' } }, '📋'),
+            React.createElement('span', { style: { fontSize: '1.25rem' } }, isIndividualEditMode ? '✏️' : '📋'),
             React.createElement('div', null,
-              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } },
-                'Bulk Product Master Edit Workspace'
+              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 } },
+                isIndividualEditMode
+                  ? `Individual Product Master Edit: ${selectedIndividualProduct ? selectedIndividualProduct.name : 'Selected Product'}`
+                  : 'Bulk Product Master Edit Workspace',
+                React.createElement('span', {
+                  className: 'badge',
+                  style: {
+                    background: isIndividualEditMode ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)',
+                    color: isIndividualEditMode ? '#10b981' : '#6366f1',
+                    fontSize: '0.72rem',
+                    fontWeight: 700
+                  }
+                }, isIndividualEditMode ? 'Single Product Focus' : 'Multi-Item Workspace')
               ),
               React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
-                'Edit cells directly in the table. You can search or filter categories without losing unsaved edits. Press Tab to move across cells, Enter to move down.'
+                isIndividualEditMode
+                  ? 'Edit cells directly. Press Tab to move across fields. Click "Review Changes & Save" in the top bar to commit.'
+                  : 'Edit cells directly in the table. You can search or filter categories without losing unsaved edits. Press Tab to move across cells, Enter to move down.'
               )
             )
           ),
@@ -5324,10 +5345,15 @@
                 fontWeight: 700,
                 fontSize: '0.85rem'
               }
-            }, `${changedProductIds.length} products modified (${totalChangesCount} fields)`),
+            }, `${changedProductIds.length} ${changedProductIds.length === 1 ? 'product' : 'products'} modified (${totalChangesCount} ${totalChangesCount === 1 ? 'field' : 'fields'})`),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              onClick: handleExitEditing,
+              style: { fontWeight: 600 }
+            }, isIndividualEditMode ? '✖️ Cancel & Exit' : '✖️ Exit Bulk Edit'),
             React.createElement('button', {
               className: 'btn btn-primary btn-sm',
-              disabled: totalChangesCount === 0,
+              disabled: totalChangesCount === 0 || savingBulk,
               onClick: () => setShowReviewModal(true),
               style: { fontWeight: 700 }
             }, '🔍 Review Changes & Save')
@@ -5407,15 +5433,24 @@
             else if (e.key === 'End') { e.preventDefault(); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
           },
           className: 'table-container card firm-table-card',
-          style: { padding: 0, overflowX: 'auto', flex: 1, minHeight: 0, outline: 'none' }
+          style: { padding: 0, overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 270px)', flex: 1, minHeight: 0, outline: 'none', position: 'relative' }
         },
           React.createElement('table', {
             className: 'data-table',
-            style: { width: '100%', margin: 0, borderCollapse: 'collapse', minWidth: (isBulkEditMode || editingRowId) ? 1200 : '100%' }
+            style: { width: '100%', margin: 0, borderCollapse: 'collapse', minWidth: isWorkspaceEditing ? 1200 : '100%' }
           },
-            React.createElement('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-card, #1e293b)', zIndex: 10 } },
-              (isBulkEditMode || editingRowId) ? React.createElement('tr', null,
-                React.createElement('th', { style: { minWidth: 200 } }, 'Product Name'),
+            React.createElement('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-card, #1e293b)', zIndex: 12 } },
+              isWorkspaceEditing ? React.createElement('tr', null,
+                React.createElement('th', {
+                  style: {
+                    minWidth: 200,
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 20,
+                    background: 'var(--bg-card, #1e293b)',
+                    boxShadow: '2px 0 6px -1px rgba(0,0,0,0.25)'
+                  }
+                }, 'Product Name'),
                 React.createElement('th', { style: { minWidth: 120 } }, 'HSN/SAC Code'),
                 React.createElement('th', { style: { minWidth: 110 } }, 'Barcode'),
                 React.createElement('th', { style: { minWidth: 140 } }, 'Category'),
@@ -5440,23 +5475,22 @@
             ),
             React.createElement('tbody', null,
               loading ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                React.createElement('td', { colSpan: isWorkspaceEditing ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
                   'Loading product master records...'
                 )
-              ) : filteredProducts.length === 0 ? React.createElement('tr', null,
-                React.createElement('td', { colSpan: (isBulkEditMode || editingRowId) ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
-                  'No products match the selected criteria.'
+              ) : displayedProducts.length === 0 ? React.createElement('tr', null,
+                React.createElement('td', { colSpan: isWorkspaceEditing ? 13 : 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                  isIndividualEditMode ? 'Selected product not found.' : 'No products match the selected criteria.'
                 )
-              ) : paginatedMasterProducts.map((p, rowIdx) => {
+              ) : displayedProducts.map((p, rowIdx) => {
                 const isService = (p.itemType || 'GOODS') === 'SERVICE';
                 const isTracked = Boolean(p.inInventory);
                 const stock = Number(p.stockQuantity || 0);
                 const minLvl = Number(p.minStockLevel || 5);
                 const isModified = Boolean(draftChanges[p.id]);
-                const isEditingSingle = editingRowId === p.id;
 
-                // ── ROW IN BULK EDIT MODE ──
-                if (isBulkEditMode) {
+                // ── ROW IN WORKSPACE EDIT MODE (SHARED BY BULK AND INDIVIDUAL) ──
+                if (isWorkspaceEditing) {
                   const valName = getCellVal(p, 'name');
                   const valSku = getCellVal(p, 'sku');
                   const valBarcode = getCellVal(p, 'barcode');
@@ -5478,8 +5512,17 @@
                       borderLeft: isModified ? '3px solid #6366f1' : '3px solid transparent'
                     }
                   },
-                    // Product Name Input
-                    React.createElement('td', { style: { padding: '6px 8px' } },
+                    // Product Name Input (Sticky Column)
+                    React.createElement('td', {
+                      style: {
+                        padding: '6px 8px',
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 8,
+                        background: isModified ? 'var(--bg-card-hover, #232d42)' : 'var(--bg-card, #1e293b)',
+                        boxShadow: '2px 0 6px -1px rgba(0,0,0,0.25)'
+                      }
+                    },
                       React.createElement('input', {
                         type: 'text',
                         className: 'form-control form-control-sm',
@@ -5644,178 +5687,27 @@
                           })
                         )
                     ),
-                    // Actions (Pill indicator)
+                    // Column 13: Actions Cell
                     React.createElement('td', { style: { textAlign: 'center', padding: '6px 8px' } },
-                      isModified ? React.createElement('span', {
-                        className: 'badge',
-                        style: { background: '#6366f1', color: '#fff', fontSize: '0.7rem' }
-                      }, 'Edited') : React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.75rem' } }, '—')
-                    )
-                  );
-                }
-
-                // ── ROW IN SINGLE INLINE EDIT MODE ──
-                if (isEditingSingle) {
-                  return React.createElement('tr', {
-                    key: p.id,
-                    style: { background: 'rgba(99, 102, 241, 0.08)', borderLeft: '3px solid #6366f1' }
-                  },
-                    // Name
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.name,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, name: e.target.value })
-                      })
-                    ),
-                    // HSN/SAC Code
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.hsnCode,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, hsnCode: e.target.value })
-                      })
-                    ),
-                    // Barcode
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.barcode,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, barcode: e.target.value })
-                      })
-                    ),
-                    // Category
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        list: 'master-categories-datalist',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.category,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, category: e.target.value })
-                      })
-                    ),
-                    // Base Price
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'number',
-                        step: 'any',
-                        min: '0',
-                        className: 'form-control form-control-sm',
-                        style: { textAlign: 'right', fontWeight: 600 },
-                        value: singleEditForm.price,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, price: e.target.value })
-                      })
-                    ),
-                    // Cost Price
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'number',
-                        step: 'any',
-                        min: '0',
-                        className: 'form-control form-control-sm',
-                        style: { textAlign: 'right' },
-                        value: singleEditForm.costPrice,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, costPrice: e.target.value })
-                      })
-                    ),
-                    // Min Stock
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'number',
-                        step: 'any',
-                        min: '0',
-                        className: 'form-control form-control-sm',
-                        style: { textAlign: 'right' },
-                        value: singleEditForm.minStockLevel,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, minStockLevel: e.target.value })
-                      })
-                    ),
-                    // Unit
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.unit,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, unit: e.target.value })
-                      })
-                    ),
-                    // SKU (Legacy)
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('input', {
-                        type: 'text',
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.sku,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, sku: e.target.value })
-                      })
-                    ),
-                    // GST
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('select', {
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.gstPercentage,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, gstPercentage: e.target.value })
-                      },
-                        React.createElement('option', { value: '0' }, '0%'),
-                        React.createElement('option', { value: '5' }, '5%'),
-                        React.createElement('option', { value: '12' }, '12%'),
-                        React.createElement('option', { value: '18' }, '18%'),
-                        React.createElement('option', { value: '28' }, '28%')
-                      )
-                    ),
-                    // Vendor
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      React.createElement('select', {
-                        className: 'form-control form-control-sm',
-                        value: singleEditForm.preferredPartyId,
-                        onChange: (e) => setSingleEditForm({ ...singleEditForm, preferredPartyId: e.target.value })
-                      },
-                        React.createElement('option', { value: '' }, 'None'),
-                        parties.map(pt => React.createElement('option', { key: pt.id, value: pt.id }, pt.name))
-                      )
-                    ),
-                    // Inventory Status
-                    React.createElement('td', { style: { padding: '6px 8px' } },
-                      isTracked ? React.createElement('span', {
-                        className: 'badge',
-                        style: { background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.75rem' }
-                      }, `Tracked (${fmtNum(stock, 0)})`)
-                        : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-                          React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', cursor: 'pointer', margin: 0 } },
-                            React.createElement('input', {
-                              type: 'checkbox',
-                              checked: Boolean(singleEditForm.trackInInventory),
-                              onChange: (e) => setSingleEditForm({ ...singleEditForm, trackInInventory: e.target.checked })
-                            }),
-                            'Track Stock'
-                          ),
-                          singleEditForm.trackInInventory && React.createElement('input', {
-                            type: 'number',
-                            min: '0',
-                            step: 'any',
-                            placeholder: 'Open Qty',
-                            className: 'form-control form-control-xs',
-                            value: singleEditForm.openingStock,
-                            onChange: (e) => setSingleEditForm({ ...singleEditForm, openingStock: e.target.value }),
-                            style: { width: 85, fontSize: '0.75rem' }
-                          })
-                        )
-                    ),
-                    // Save / Cancel Actions
-                    React.createElement('td', { style: { textAlign: 'center', padding: '6px 8px' } },
-                      React.createElement('div', { style: { display: 'inline-flex', gap: 4 } },
+                      isIndividualEditMode ? React.createElement('div', { style: { display: 'inline-flex', gap: 4, alignItems: 'center' } },
                         React.createElement('button', {
                           className: 'btn btn-primary btn-xs',
-                          disabled: savingSingle,
-                          onClick: () => handleSaveSingleEdit(p.id)
-                        }, savingSingle ? '⏳' : '💾 Save'),
+                          disabled: savingBulk || totalChangesCount === 0,
+                          onClick: () => setShowReviewModal(true),
+                          title: 'Review changes and save',
+                          style: { fontWeight: 700 }
+                        }, savingBulk ? '⏳' : '💾 Save'),
                         React.createElement('button', {
                           className: 'btn btn-ghost btn-xs',
-                          disabled: savingSingle,
-                          onClick: handleCancelSingleEdit
+                          disabled: savingBulk,
+                          onClick: handleExitEditing,
+                          title: 'Exit editing'
                         }, '✖️')
+                      ) : (
+                        isModified ? React.createElement('span', {
+                          className: 'badge',
+                          style: { background: '#6366f1', color: '#fff', fontSize: '0.7rem' }
+                        }, 'Edited') : React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '0.75rem' } }, '—')
                       )
                     )
                   );
@@ -5908,7 +5800,7 @@
                         className: 'btn btn-outline btn-xs',
                         style: { padding: '2px 6px', fontSize: '0.75rem' },
                         title: 'Edit product',
-                        onClick: () => handleStartSingleEdit(p)
+                        onClick: () => handleStartIndividualEdit(p)
                       }, '✏️ Edit'),
                       React.createElement('button', {
                         className: 'btn btn-outline btn-xs',
@@ -5933,7 +5825,11 @@
         // Docked pagination footer
         React.createElement('div', { className: 'firm-docked-pagination' },
           React.createElement('div', null,
-            `Showing ${filteredProducts.length === 0 ? 0 : (safeMasterPage - 1) * masterPageSize + 1}–${Math.min(safeMasterPage * masterPageSize, filteredProducts.length)} of ${filteredProducts.length} products`
+            isIndividualEditMode ? (
+              `Editing 1 product · Pagination preserved (Page ${safeMasterPage} of ${totalMasterPages})`
+            ) : (
+              `Showing ${filteredProducts.length === 0 ? 0 : (safeMasterPage - 1) * masterPageSize + 1}–${Math.min(safeMasterPage * masterPageSize, filteredProducts.length)} of ${filteredProducts.length} products`
+            )
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Rows:'),
@@ -5941,6 +5837,7 @@
               className: 'form-control form-control-sm',
               style: { width: 'auto', padding: '2px 6px', height: 26, fontSize: '0.78rem' },
               value: masterPageSize,
+              disabled: isIndividualEditMode,
               onChange: (e) => {
                 setMasterPageSize(Number(e.target.value));
                 setMasterPage(1);
@@ -5953,13 +5850,13 @@
             ),
             React.createElement('button', {
               className: 'btn btn-outline btn-xs',
-              disabled: safeMasterPage <= 1,
+              disabled: isIndividualEditMode || safeMasterPage <= 1,
               onClick: () => setMasterPage(p => Math.max(1, p - 1))
             }, '◀ Prev'),
             React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600 } }, `${safeMasterPage} / ${totalMasterPages}`),
             React.createElement('button', {
               className: 'btn btn-outline btn-xs',
-              disabled: safeMasterPage >= totalMasterPages,
+              disabled: isIndividualEditMode || safeMasterPage >= totalMasterPages,
               onClick: () => setMasterPage(p => Math.min(totalMasterPages, p + 1))
             }, 'Next ▶')
           )
@@ -5985,9 +5882,13 @@
         },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
             React.createElement('div', null,
-              React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } }, '🔍 Review Bulk Product Master Changes'),
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } },
+                isIndividualEditMode ? '🔍 Review Product Changes' : '🔍 Review Bulk Product Master Changes'
+              ),
               React.createElement('p', { style: { margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
-                'Inspect the modified fields before confirming atomic persistence to the database.'
+                isIndividualEditMode
+                  ? 'Inspect the modified fields before confirming persistence to the database.'
+                  : 'Inspect the modified fields before confirming atomic persistence to the database.'
               )
             ),
             React.createElement('button', {
@@ -6066,7 +5967,7 @@
               disabled: savingBulk || reviewDiffs.totalProducts === 0,
               onClick: handleConfirmBulkSave,
               style: { fontWeight: 700, padding: '10px 24px' }
-            }, savingBulk ? '⏳ Persisting Changes...' : '💾 Confirm & Save All Changes')
+            }, savingBulk ? '⏳ Persisting Changes...' : (isIndividualEditMode ? '💾 Confirm & Save Changes' : '💾 Confirm & Save All Changes'))
           )
         )
       ),
@@ -6085,9 +5986,9 @@
           className: 'modal-content card',
           style: { maxWidth: 440, width: '100%', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }
         },
-          React.createElement('h4', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, '⚠️ Unsaved Bulk Edits'),
+          React.createElement('h4', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, '⚠️ Unsaved Changes'),
           React.createElement('p', { style: { margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' } },
-            `You have ${totalChangesCount} unsaved field changes across ${changedProductIds.length} products. If you leave, these draft changes will be lost.`
+            `You have ${totalChangesCount} unsaved field changes across ${changedProductIds.length} ${changedProductIds.length === 1 ? 'product' : 'products'}. If you leave, these draft changes will be lost.`
           ),
           React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 } },
             React.createElement('button', {
@@ -6098,7 +5999,8 @@
               className: 'btn btn-danger',
               onClick: () => {
                 setDraftChanges({});
-                setIsBulkEditMode(false);
+                setEditMode(null);
+                setIndividualEditProdId(null);
                 setShowUnsavedPrompt(false);
                 if (pendingTab) setHubTab(pendingTab);
               }

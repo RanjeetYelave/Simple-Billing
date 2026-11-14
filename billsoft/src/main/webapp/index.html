@@ -420,28 +420,52 @@
 
     // ─── Full Brandmark Logo Component (Centralized Approved Asset Mapping) ───
     function RupeeCRMLogo({ size = 38, showWordmark = true, showTagline = false, isDarkBg = undefined, className = '', style = {} }) {
-      const [themeState, setThemeState] = useState(() => {
+      const getThemeInfo = () => {
         const theme = window.getAppTheme ? window.getAppTheme() : 'light-1';
         const accent = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-accent')) || 'forest';
-        return { theme, accent };
-      });
+        const isDarkDom = (typeof document !== 'undefined' && (
+          document.documentElement.getAttribute('data-is-dark') === 'true' ||
+          document.documentElement.classList.contains('dark-mode') ||
+          document.documentElement.classList.contains('minimal-dark') ||
+          document.documentElement.classList.contains('dark-1') ||
+          document.documentElement.classList.contains('classic-dark')
+        ));
+        const isDarkState = (typeof window !== 'undefined' && window.getThemeState && typeof window.getThemeState === 'function')
+          ? Boolean(window.getThemeState().activeIsDark)
+          : false;
+        const isDarkTheme = isDarkDom || isDarkState || Boolean(theme && (theme.includes('dark') || theme.startsWith('dark-') || theme === 'minimal-dark'));
+        return { theme, accent, isDarkTheme };
+      };
+
+      const [themeState, setThemeState] = useState(getThemeInfo);
 
       useEffect(() => {
         const handler = (e) => {
           const detail = (e && e.detail) || {};
           const theme = detail.theme || (window.getAppTheme ? window.getAppTheme() : 'light-1');
           const accent = detail.accent || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-accent')) || 'forest';
-          setThemeState({ theme, accent });
+          const isDarkTheme = (detail.isDark !== undefined)
+            ? Boolean(detail.isDark)
+            : ((typeof document !== 'undefined' && (
+                document.documentElement.getAttribute('data-is-dark') === 'true' ||
+                document.documentElement.classList.contains('dark-mode') ||
+                document.documentElement.classList.contains('minimal-dark') ||
+                document.documentElement.classList.contains('dark-1') ||
+                document.documentElement.classList.contains('classic-dark')
+              ))
+              || (window.getThemeState ? window.getThemeState().activeIsDark : Boolean(theme && (theme.includes('dark') || theme.startsWith('dark-') || theme === 'minimal-dark'))));
+          setThemeState({ theme, accent, isDarkTheme });
         };
         window.addEventListener('themeChanged', handler);
         return () => window.removeEventListener('themeChanged', handler);
       }, []);
 
-      const { theme, accent } = themeState;
+      const { theme, accent, isDarkTheme } = themeState;
 
       // Retro / Classic theme
       if (theme === 'classic' || theme === 'classic-dark') {
-        return React.createElement(RupeeCRMRetroLogo, { size, showWordmark, showTagline, isDark: theme === 'classic-dark', className, style });
+        const isDarkRetro = (isDarkBg === true) || (isDarkBg !== false && (theme === 'classic-dark' || isDarkTheme));
+        return React.createElement(RupeeCRMRetroLogo, { size, showWordmark, showTagline, isDark: isDarkRetro, className, style });
       }
 
       // Standalone symbol requested (no wordmark)
@@ -449,8 +473,8 @@
         return React.createElement(RupeeCRMIcon, { size: size, className: className, style: style });
       }
 
-      // Determine light vs dark
-      const isDark = (isDarkBg === true) || (isDarkBg !== false && ((theme && theme.startsWith('dark-')) || theme === 'classic-dark' || theme === 'minimal-dark'));
+      // Determine light vs dark: if isDarkBg is explicitly provided use it; otherwise follow active theme
+      const isDark = (isDarkBg === true) || (isDarkBg !== false && isDarkTheme);
 
       // Resolve theme accent key (normalize aliases)
       const normAccent = (accent || '').toLowerCase().trim();
@@ -16008,8 +16032,8 @@
                 const activeTermId = form.paymentTerms || getActivePaymentTermId(form.invoiceDate, form.dueDate);
                 return React.createElement(React.Fragment, null,
                   React.createElement('select', {
-                    className: 'select select-sm',
-                    style: { width: '100%', height: 30, fontSize: '0.82rem', fontWeight: 600, borderRadius: 6 },
+                    className: 'select select-sm invoice-payment-terms-select',
+                    style: { width: '100%', minWidth: 190, height: 30, fontSize: '0.82rem', fontWeight: 600, borderRadius: 6 },
                     value: activeTermId,
                     onChange: e => handlePaymentTermsSelect(e.target.value)
                   },
@@ -16041,7 +16065,7 @@
           React.createElement('div', {
             className: 'invoice-meta-bottom-strip',
             style: {
-              gridTemplateColumns: showExtraCustomer ? 'repeat(4, minmax(0, 1fr))' : '1fr 2fr'
+              gridTemplateColumns: showExtraCustomer ? 'repeat(4, minmax(0, 1fr))' : 'minmax(220px, 1fr) 2.5fr'
             }
           },
             React.createElement('div', null,
@@ -16097,13 +16121,13 @@
             React.createElement('thead', null,
               React.createElement('tr', null,
                 React.createElement('th', { style: { width: 40, textAlign: 'center' } }, '#'),
-                React.createElement('th', null, 'ITEM DESCRIPTION'),
+                React.createElement('th', { style: { minWidth: 260 } }, 'ITEM DESCRIPTION'),
                 React.createElement('th', { style: { width: 100 } }, 'HSN/SAC'),
                 React.createElement('th', { className: 'num', style: { width: 80 } }, 'QTY'),
-                React.createElement('th', { className: 'num', style: { width: 120 } }, 'UNIT RATE'),
+                React.createElement('th', { className: 'num', style: { width: 110 } }, 'UNIT RATE'),
                 React.createElement('th', { className: 'num', style: { width: 80 } }, 'DISC'),
                 React.createElement('th', { className: 'num', style: { width: 80 } }, 'GST %'),
-                React.createElement('th', { className: 'num', style: { width: 140 } }, 'TAXABLE AMT'),
+                React.createElement('th', { className: 'num', style: { width: 130 } }, 'TAXABLE AMT'),
                 React.createElement('th', { className: 'num', style: { width: 140 } }, 'TOTAL (₹)'),
                 React.createElement('th', { style: { width: 40, textAlign: 'center' } })
               )
@@ -35522,7 +35546,7 @@ function PartyDetailModal({
           style: { maxWidth: 460, width: '100%', boxSizing: 'border-box', padding: '36px 30px', textAlign: 'center' }
         },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 18 } },
-            React.createElement(RupeeCRMLogo, { size: 50, showWordmark: true, showTagline: false, isDarkBg: false })
+            React.createElement(RupeeCRMLogo, { size: 50, showWordmark: true, showTagline: false })
           ),
           React.createElement('div', {
             style: {
@@ -35637,7 +35661,7 @@ function PartyDetailModal({
       return React.createElement('div', { className: 'login-container' },
         React.createElement('div', { className: 'login-card', style: { maxWidth: 440, width: '100%', boxSizing: 'border-box', padding: '36px 32px' } },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 20 } },
-            React.createElement(RupeeCRMLogo, { size: 52, showWordmark: true, showTagline: true, isDarkBg: false })
+            React.createElement(RupeeCRMLogo, { size: 52, showWordmark: true, showTagline: true })
           ),
           React.createElement('p', { className: 'login-subtitle', style: { margin: '0 0 20px', color: 'var(--text-secondary)', fontSize: '0.9rem' } }, 'Enter your Master PIN to unlock'),
           error && React.createElement('div', { style: { background: 'var(--danger-light)', color: 'var(--danger)', padding: '12px 16px', borderRadius: 'var(--radius)', marginBottom: 20, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' } }, Icons.alert, React.createElement('span', null, error)),
@@ -39096,7 +39120,7 @@ function PartyDetailModal({
           // Header
           React.createElement('div', { className: 'eula-header' },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-              React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, showTagline: false, isDarkBg: false }),
+              React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true, showTagline: false }),
               React.createElement('div', null,
                 React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' } }, content.title),
                 React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
@@ -39261,7 +39285,7 @@ function PartyDetailModal({
             border: '1px solid rgba(99,102,241,0.2)', borderRadius: 16
           }
         },
-          React.createElement(RupeeCRMLogo, { size: 56, showWordmark: true, showTagline: true, isDarkBg: false }),
+          React.createElement(RupeeCRMLogo, { size: 56, showWordmark: true, showTagline: true }),
           React.createElement('div', { style: { marginTop: 14, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 } },
             `${displayVersion} • Offline-First CRM & Enterprise Billing Suite`
           )
@@ -44076,6 +44100,14 @@ function PartyDetailModal({
 
       const isEditorMode = (activeView === 'editor' && openTabs.length > 0);
 
+      useEffect(() => {
+        const isFocused = (activeView === 'editor' && openTabs.length > 0);
+        window.dispatchEvent(new CustomEvent('billsoft:focused-workspace', { detail: { active: isFocused } }));
+        return () => {
+          window.dispatchEvent(new CustomEvent('billsoft:focused-workspace', { detail: { active: false } }));
+        };
+      }, [activeView, openTabs.length]);
+
       // ─── DOCUMENT MULTI-TAB EDITOR VIEW (Max 10 Tabs with Keep-Alive State) ───
       if (isEditorMode) {
         return React.createElement('div', { className: 'document-multi-tab-container' },
@@ -46538,6 +46570,7 @@ function PartyDetailModal({
       );
 
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
+      const [isFocusedWorkspace, setIsFocusedWorkspace] = useState(false);
 
       useEffect(() => {
         const handler = (e) => {
@@ -46551,13 +46584,23 @@ function PartyDetailModal({
         return () => window.removeEventListener('billsoft:statusbar-toggle', handler);
       }, []);
 
+      useEffect(() => {
+        const handler = (e) => {
+          setIsFocusedWorkspace(Boolean(e && e.detail && e.detail.active));
+        };
+        window.addEventListener('billsoft:focused-workspace', handler);
+        return () => window.removeEventListener('billsoft:focused-workspace', handler);
+      }, []);
+
+      const isFocusedActive = (page === 'invoices' && isFocusedWorkspace);
+
       if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', licenseInfo: licenseInfo, onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
       if (!appLoaded) return React.createElement(RupeeCRMLoader, { message: 'Initializing RupeeCRM...', size: 72, fullScreen: true });
       if (firstTimeSetup) return React.createElement(Fragment, null, React.createElement(FirstTimeSetupComponent, { onComplete: () => { setFirstTimeSetup(false); setFirmLoadKey(k => k + 1); } }), React.createElement(Toast, { toasts, removeToast }));
       if (licenseStatus === 'expired' || licenseStatus === 'EXPIRED' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
-      return React.createElement('div', { className: 'app-layout' },
+      return React.createElement('div', { className: `app-layout${isFocusedActive ? ' focused-workspace' : ''}` },
         React.createElement('div', { className: 'sidebar-container' },
           React.createElement(Sidebar, {
             activePage: page,

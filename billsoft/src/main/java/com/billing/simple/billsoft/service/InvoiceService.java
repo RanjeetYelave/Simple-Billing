@@ -897,7 +897,7 @@ public class InvoiceService {
 
         // Deduct inventory stock for finalized sales invoices (skip for DRAFT, ESTIMATE, CANCELLED)
         if (isStockAffecting(saved.getStatus())) {
-            deductInventoryStockForInvoice(saved);
+            deductInventoryStockForInvoice(saved, Boolean.TRUE.equals(request.getAllowOutOfStock()));
         }
 
         return saved;
@@ -1246,13 +1246,14 @@ public class InvoiceService {
         boolean wasStockAffecting = isStockAffecting(oldStatus);
         boolean isNowStockAffecting = isStockAffecting(targetStatus);
         String invRef = saved.getInvoiceNumber() != null ? saved.getInvoiceNumber() : String.valueOf(saved.getId());
+        boolean allowOutOfStock = req != null && Boolean.TRUE.equals(req.getAllowOutOfStock());
 
         if (wasStockAffecting && !isNowStockAffecting) {
             // Status changed from active to inactive -> restore all unreturned stock
             restorePhysicallyDeductedStock(saved, "Invoice status changed to " + targetStatus + " - stock restored");
         } else if (!wasStockAffecting && isNowStockAffecting) {
             // Status changed from inactive to active -> deduct stock
-            deductInventoryStockForInvoice(saved);
+            deductInventoryStockForInvoice(saved, allowOutOfStock);
         } else if (wasStockAffecting && isNowStockAffecting) {
             // Active -> Active: reconcile deltas at the product level
             Map<Long, Integer> newQtyByProduct = new HashMap<>();
@@ -1291,7 +1292,8 @@ public class InvoiceService {
                             toDeduct.negate(),
                             "INVOICE",
                             invRef,
-                            "Invoice " + invRef + " updated - quantity increased");
+                            "Invoice " + invRef + " updated - quantity increased",
+                            allowOutOfStock);
                 }
             }
         }
@@ -1535,7 +1537,8 @@ public class InvoiceService {
             invoiceRepo.save(estimate);
 
             // Deduct inventory stock for sales invoices
-            deductInventoryStockForInvoice(saved);
+            boolean allowOutOfStock = overrideRequest != null && Boolean.TRUE.equals(overrideRequest.getAllowOutOfStock());
+            deductInventoryStockForInvoice(saved, allowOutOfStock);
 
             return saved;
         }
@@ -1613,12 +1616,17 @@ public class InvoiceService {
         invoiceRepo.save(estimate);
 
         // Deduct inventory stock for sales invoices
-        deductInventoryStockForInvoice(saved);
+        boolean allowOutOfStock = req != null && Boolean.TRUE.equals(req.getAllowOutOfStock());
+        deductInventoryStockForInvoice(saved, allowOutOfStock);
 
         return saved;
     }
 
     private void deductInventoryStockForInvoice(Invoice invoice) {
+        deductInventoryStockForInvoice(invoice, false);
+    }
+
+    private void deductInventoryStockForInvoice(Invoice invoice, boolean allowNegativeStock) {
         if (invoice != null && invoice.getStatus() != InvoiceStatus.ESTIMATE && invoice.getItems() != null) {
             for (InvoiceItem it : invoice.getItems()) {
                 if (it.getProduct() != null && it.getProduct().getId() != null && it.getQty() != null
@@ -1633,7 +1641,8 @@ public class InvoiceService {
                             invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber()
                                     : String.valueOf(invoice.getId()),
                             "Invoice sale to "
-                                    + (invoice.getCustomer() != null ? invoice.getCustomer().getName() : "Customer"));
+                                    + (invoice.getCustomer() != null ? invoice.getCustomer().getName() : "Customer"),
+                            allowNegativeStock);
                 }
             }
         }

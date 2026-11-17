@@ -658,4 +658,42 @@ public class InvoiceInventoryReconciliationRegressionTest {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(totalDeducted).isEqualByComparingTo("-50.000");
     }
+
+    @Test
+    @DisplayName("Invoice creation with allowOutOfStock=true must succeed in strict mode for out-of-stock items")
+    void testAllowOutOfStockRequestFlagBypassesStrictRejection() {
+        TenantContext.setCurrentFirmId(testFirmId);
+
+        // Product with 0 stock
+        Product p = createGoodsProduct("Zero Stock Item", BigDecimal.ZERO);
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(testFirmId);
+        req.setCustomerId(testCustomer.getId());
+        req.setPaid(true);
+        req.setItems(List.of(buildRequestItem(p.getId(), p.getName(), 3, BigDecimal.valueOf(50.00))));
+
+        // 1. Without allowOutOfStock, it throws InsufficientStockException in default strict mode
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.billing.simple.billsoft.exception.InsufficientStockException.class,
+                () -> invoiceService.createInvoice(req)
+        );
+
+        // 2. With allowOutOfStock = true, it succeeds and records negative stock balance
+        req.setAllowOutOfStock(true);
+        Invoice inv = invoiceService.createInvoice(req);
+        assertThat(inv).isNotNull();
+        assertThat(inv.getId()).isNotNull();
+
+        Product afterSale = productService.getById(p.getId());
+        assertThat(afterSale.getStockQuantity()).isEqualByComparingTo("-3.000");
+
+        List<StockMovement> movements = stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(p.getId(), testFirmId);
+        assertThat(movements).isNotEmpty();
+        StockMovement mov = movements.get(0);
+        assertThat(mov.getMovementType()).isEqualTo("INVOICE_SALE");
+        assertThat(mov.getQuantityChange()).isEqualByComparingTo("-3.000");
+        assertThat(mov.getNewStock()).isEqualByComparingTo("-3.000");
+        assertThat(mov.getNote()).contains("[Negative Stock Warning - Shortage: 3");
+    }
 }

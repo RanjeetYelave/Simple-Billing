@@ -28,6 +28,7 @@ public class InvoiceRequest {
     private String tags;
     private Long pricingProfileId;
     private String placeOfSupply;
+    private Boolean allowOutOfStock;
 
     public String getPlaceOfSupply() { return placeOfSupply; }
     public void setPlaceOfSupply(String placeOfSupply) { this.placeOfSupply = placeOfSupply; }
@@ -109,6 +110,9 @@ public class InvoiceRequest {
 
     public String getInvoiceDate() { return invoiceDate; }
     public void setInvoiceDate(String invoiceDate) { this.invoiceDate = invoiceDate; }
+
+    public Boolean getAllowOutOfStock() { return allowOutOfStock; }
+    public void setAllowOutOfStock(Boolean allowOutOfStock) { this.allowOutOfStock = allowOutOfStock; }
 
     public static class Discount {
         private String type;      // "PERCENT" or "VALUE"

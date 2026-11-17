@@ -346,4 +346,76 @@ class NotificationServiceTest {
         assertThat(poResolved.getStatus()).isEqualTo(NotificationStatus.DISMISSED);
     }
 
+    @Test
+    @DisplayName("Notification preferences should sync categories list and suppress disabled categories")
+    void testNotificationPreferencesCategorySyncAndSuppression() {
+        // 1. Default preferences should have all categories enabled
+        NotificationPreferencesDto defaultPrefs = notificationService.getPreferences(firm1);
+        assertThat(defaultPrefs.isEnabled()).isTrue();
+        assertThat(defaultPrefs.isBellEnabled()).isTrue();
+        assertThat(defaultPrefs.isInboxEnabled()).isTrue();
+        assertThat(defaultPrefs.getCategories()).containsExactlyInAnyOrder(
+                "BILLING", "INVENTORY", "PURCHASE", "PLANNER", "HR", "LICENSING", "SYSTEM"
+        );
+
+        // 2. Disable INVENTORY and PLANNER by updating categories list
+        NotificationPreferencesDto updateReq = NotificationPreferencesDto.builder()
+                .enabled(true)
+                .bellEnabled(true)
+                .inboxEnabled(true)
+                .defaultSnooze("1d")
+                .categories(List.of("BILLING", "PURCHASE", "HR", "LICENSING", "SYSTEM"))
+                .build();
+
+        NotificationPreferencesDto updated = notificationService.updatePreferences(firm1, updateReq);
+        assertThat(updated.isInventoryEnabled()).isFalse();
+        assertThat(updated.isPlannerEnabled()).isFalse();
+        assertThat(updated.isBillingEnabled()).isTrue();
+        assertThat(updated.getCategories()).doesNotContain("INVENTORY", "PLANNER");
+        assertThat(updated.getCategories()).contains("BILLING", "PURCHASE", "HR", "LICENSING", "SYSTEM");
+
+        // 3. Attempting to create an INVENTORY notification should now be suppressed (returns null)
+        NotificationRequest invReq = NotificationRequest.builder()
+                .firmId(firm1)
+                .eventKey("inventory:low-stock:aggregate:" + firm1)
+                .category(NotificationCategory.INVENTORY)
+                .priority(NotificationPriority.HIGH)
+                .title("Low Stock Warning")
+                .body("Item count low")
+                .build();
+        Notification invNotif = notificationService.createOrUpdate(invReq);
+        assertThat(invNotif).isNull();
+
+        // 4. BILLING notification should still be created
+        NotificationRequest billReq = NotificationRequest.builder()
+                .firmId(firm1)
+                .eventKey("billing:invoice:overdue:999")
+                .category(NotificationCategory.BILLING)
+                .priority(NotificationPriority.NORMAL)
+                .title("Invoice Overdue")
+                .body("Payment pending")
+                .build();
+        Notification billNotif = notificationService.createOrUpdate(billReq);
+        assertThat(billNotif).isNotNull();
+
+        // 5. Test getSummary returns bellEnabled and unreadCount
+        NotificationSummaryResponse summary = notificationService.getSummary(firm1);
+        assertThat(summary.isBellEnabled()).isTrue();
+        assertThat(summary.getUnreadCount()).isEqualTo(1);
+        assertThat(summary.getItems()).extracting(Notification::getEventKey).contains("billing:invoice:overdue:999");
+
+        // 6. Test bellEnabled=false hides notifications in summary
+        notificationService.updatePreferences(firm1, NotificationPreferencesDto.builder()
+                .enabled(true)
+                .bellEnabled(false)
+                .inboxEnabled(true)
+                .categories(List.of("BILLING", "PURCHASE", "HR", "LICENSING", "SYSTEM"))
+                .build());
+
+        NotificationSummaryResponse hiddenSummary = notificationService.getSummary(firm1);
+        assertThat(hiddenSummary.isBellEnabled()).isFalse();
+        assertThat(hiddenSummary.getUnreadCount()).isEqualTo(0);
+        assertThat(hiddenSummary.getItems()).isEmpty();
+    }
+
 }

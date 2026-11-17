@@ -823,6 +823,12 @@
       const { itemName = 'Item', productId = null } = dialogState;
       const [dontRemind, setDontRemind] = useState(false);
 
+      useEffect(() => {
+        if (dialogState?.isOpen) {
+          setDontRemind(false);
+        }
+      }, [dialogState?.isOpen, dialogState?.productId]);
+
       const handleContinue = () => {
         if (dontRemind && productId) {
           try {
@@ -15388,6 +15394,32 @@
               gstPercent: (extraProd.taxRate !== undefined && extraProd.taxRate !== null) ? String(extraProd.taxRate) : (extraProd.gstPercentage !== undefined ? String(extraProd.gstPercentage) : items[idx].gstPercent),
               unit: extraProd.unit || items[idx].unit || ''
             };
+
+            const curStock = (extraProd.stockQuantity != null) ? Number(extraProd.stockQuantity) : 0;
+            if (pId && extraProd.itemType !== 'SERVICE' && curStock <= 0) {
+              const suppressKey = 'out_of_stock_suppress_' + pId;
+              let isSuppressed = false;
+              try {
+                const suppressedUntil = localStorage.getItem(suppressKey);
+                if (suppressedUntil && Date.now() < parseInt(suppressedUntil, 10)) {
+                  isSuppressed = true;
+                }
+              } catch (e) {}
+
+              if (!isSuppressed && typeof window.showOutOfStockWarning === 'function') {
+                window.showOutOfStockWarning(extraProd.name || 'Item', pId).then(proceed => {
+                  if (!proceed) {
+                    setForm(f => {
+                      const rev = [...f.items];
+                      if (rev[idx]) {
+                        rev[idx] = { ...rev[idx], productId: '', productName: '', pricePerUnit: '', gstPercent: '', hsnCode: '', unit: '' };
+                      }
+                      return { ...f, items: rev };
+                    });
+                  }
+                });
+              }
+            }
           } else {
             items[idx] = { ...items[idx], productId: '', productName: val || '', pricePerUnit: '', gstPercent: '', hsnCode: '', unit: '' };
           }
@@ -15483,11 +15515,11 @@
         // Check for insufficient / out-of-stock items (non-blocking warning popup)
         for (let i = 0; i < itemsToValidate.length; i++) {
           const it = itemsToValidate[i];
-          const matched = (products || []).find(p => String(p.id) === String(it.productId));
+          const matched = (products || []).find(p => String(p.id) === String(it.productId) || (p.rawId && String(p.rawId) === String(it.productId)));
           if (matched && matched.itemType !== 'SERVICE') {
             const curStock = matched.stockQuantity != null ? Number(matched.stockQuantity) : 0;
             const reqQty = parseInt(it.qty, 10) || 0;
-            if (reqQty > curStock) {
+            if (reqQty > curStock || curStock <= 0) {
               const prodId = matched.id;
               const suppressKey = 'out_of_stock_suppress_' + prodId;
               let isSuppressed = false;
@@ -15596,6 +15628,7 @@
             invoiceDiscount: form.invoiceDiscount.value ? form.invoiceDiscount : undefined,
             roundOff: form.roundOff || undefined,
             convertedInvoiceId: convertedFromQuotationId || undefined,
+            allowOutOfStock: true,
           };
 
           let savedInv;
@@ -39537,12 +39570,23 @@ function PartyDetailModal({
         if (API.notifications && typeof API.notifications.getPreferences === 'function') {
           API.notifications.getPreferences(API.firmId).then(res => {
             if (res) {
+              let cats = Array.isArray(res.categories) ? res.categories : null;
+              if (!cats) {
+                cats = [];
+                if (res.billingEnabled !== false) cats.push('BILLING');
+                if (res.inventoryEnabled !== false) cats.push('INVENTORY');
+                if (res.purchaseEnabled !== false) cats.push('PURCHASE');
+                if (res.plannerEnabled !== false) cats.push('PLANNER');
+                if (res.hrEnabled !== false) cats.push('HR');
+                if (res.licensingEnabled !== false) cats.push('LICENSING');
+                if (res.systemEnabled !== false) cats.push('SYSTEM');
+              }
               setPrefs({
                 enabled: res.enabled !== false,
                 bellEnabled: res.bellEnabled !== false,
                 inboxEnabled: res.inboxEnabled !== false,
                 defaultSnooze: res.defaultSnooze || '1d',
-                categories: Array.isArray(res.categories) ? res.categories : ['BILLING', 'INVENTORY', 'PURCHASE', 'PLANNER', 'HR', 'LICENSING', 'SYSTEM']
+                categories: cats
               });
             }
           }).catch(() => { }).finally(() => setLoading(false));
@@ -39565,7 +39609,18 @@ function PartyDetailModal({
         setSaving(true);
         try {
           if (API.notifications && typeof API.notifications.savePreferences === 'function') {
-            await API.notifications.savePreferences(prefs, API.firmId);
+            const cats = prefs.categories || [];
+            const payload = {
+              ...prefs,
+              billingEnabled: cats.includes('BILLING'),
+              inventoryEnabled: cats.includes('INVENTORY'),
+              purchaseEnabled: cats.includes('PURCHASE'),
+              plannerEnabled: cats.includes('PLANNER'),
+              hrEnabled: cats.includes('HR'),
+              licensingEnabled: cats.includes('LICENSING'),
+              systemEnabled: cats.includes('SYSTEM')
+            };
+            await API.notifications.savePreferences(payload, API.firmId);
             window.dispatchEvent(new CustomEvent('billsoft:notifications-refresh'));
             if (window.showToast) window.showToast('Notification preferences saved successfully', 'success');
           }
@@ -46816,6 +46871,9 @@ function PartyDetailModal({
                   )
                 ),
                 (() => {
+                  if (notificationSummary && (notificationSummary.bellEnabled === false || notificationSummary.enabled === false)) {
+                    return null;
+                  }
                   const unreadCount = (notificationSummary && notificationSummary.unreadCount != null)
                     ? notificationSummary.unreadCount
                     : ((inboxMessages && Array.isArray(inboxMessages)) ? inboxMessages.filter(m => !m.read && m.status !== 'READ').length : 0);

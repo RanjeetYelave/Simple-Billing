@@ -881,6 +881,12 @@ public class ProductService {
 	@Transactional
 	public BigDecimal recordStockMovement(Long productId, Long firmId, String movementType, BigDecimal quantityChange,
 			String referenceType, String referenceId, String note) {
+		return recordStockMovement(productId, firmId, movementType, quantityChange, referenceType, referenceId, note, false);
+	}
+
+	@Transactional
+	public BigDecimal recordStockMovement(Long productId, Long firmId, String movementType, BigDecimal quantityChange,
+			String referenceType, String referenceId, String note, boolean allowNegativeOverride) {
 		if (productId == null || quantityChange == null || quantityChange.compareTo(BigDecimal.ZERO) == 0) {
 			return BigDecimal.ZERO;
 		}
@@ -914,7 +920,7 @@ public class ProductService {
 
 		if (quantityChange.compareTo(BigDecimal.ZERO) < 0) {
 			BigDecimal requestedDeduction = quantityChange.abs();
-			boolean allowNegative = isAllowNegativeStock(targetFirmId);
+			boolean allowNegative = allowNegativeOverride || isAllowNegativeStock(targetFirmId);
 
 			if (prevStock.compareTo(requestedDeduction) < 0) {
 				if (!allowNegative) {

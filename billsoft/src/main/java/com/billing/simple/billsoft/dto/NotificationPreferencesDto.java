@@ -1,6 +1,7 @@
 package com.billing.simple.billsoft.dto;
 
 import lombok.*;
+import java.util.List;
 
 @Getter
 @Setter
@@ -19,4 +20,5 @@ public class NotificationPreferencesDto {
     private boolean plannerEnabled;
     private boolean hrEnabled;
     private boolean systemEnabled;
+    private List<String> categories;
 }

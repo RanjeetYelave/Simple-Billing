@@ -24,6 +24,10 @@ public class InvoiceUpdateRequest {
     private String currency;
     private Boolean roundOff;
     private String tags;
+    private Boolean allowOutOfStock;
+
+    public Boolean getAllowOutOfStock() { return allowOutOfStock; }
+    public void setAllowOutOfStock(Boolean allowOutOfStock) { this.allowOutOfStock = allowOutOfStock; }
 
     public Long getCustomerId() { return customerId; }
     public void setCustomerId(Long customerId) { this.customerId = customerId; }

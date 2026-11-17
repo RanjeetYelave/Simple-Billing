@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class NotificationService {
@@ -248,16 +249,6 @@ public class NotificationService {
                     .build();
         }
 
-        long unreadCount = notificationRepository.countByFirmIdAndStatus(firmId, NotificationStatus.UNREAD);
-        if (!Notification.GLOBAL_FIRM_ID.equals(firmId)) {
-            unreadCount += notificationRepository.countByFirmIdAndStatus(Notification.GLOBAL_FIRM_ID, NotificationStatus.UNREAD);
-        }
-
-        long activeCount = notificationRepository.countByFirmIdAndStatusIn(firmId, List.of(NotificationStatus.UNREAD, NotificationStatus.READ));
-        if (!Notification.GLOBAL_FIRM_ID.equals(firmId)) {
-            activeCount += notificationRepository.countByFirmIdAndStatusIn(Notification.GLOBAL_FIRM_ID, List.of(NotificationStatus.UNREAD, NotificationStatus.READ));
-        }
-
         List<Long> targetFirmIds = Notification.GLOBAL_FIRM_ID.equals(firmId)
                 ? List.of(Notification.GLOBAL_FIRM_ID)
                 : List.of(firmId, Notification.GLOBAL_FIRM_ID);
@@ -265,13 +256,26 @@ public class NotificationService {
         List<Notification> activeItems = notificationRepository.findByFirmIdInAndStatusInOrderByCreatedAtDesc(
                 targetFirmIds,
                 List.of(NotificationStatus.UNREAD, NotificationStatus.READ),
-                PageRequest.of(0, 10)
+                PageRequest.of(0, 50)
         );
+
+        List<Notification> filteredItems = activeItems.stream()
+                .filter(n -> pref.isCategoryEnabled(n.getCategory()))
+                .limit(10)
+                .collect(Collectors.toList());
+
+        long unreadCount = activeItems.stream()
+                .filter(n -> n.getStatus() == NotificationStatus.UNREAD && pref.isCategoryEnabled(n.getCategory()))
+                .count();
+
+        long activeCount = activeItems.stream()
+                .filter(n -> pref.isCategoryEnabled(n.getCategory()))
+                .count();
 
         return NotificationSummaryResponse.builder()
                 .unreadCount(unreadCount)
                 .totalActiveCount(activeCount)
-                .items(activeItems)
+                .items(filteredItems)
                 .bellEnabled(pref.isBellEnabled())
                 .inboxEnabled(pref.isInboxEnabled())
                 .build();
@@ -284,6 +288,11 @@ public class NotificationService {
     public List<Notification> listNotifications(Long requestedFirmId, String statusFilter, String categoryFilter, int limit) {
         reconcileExpiredSnoozes();
         Long firmId = resolveAuthoritativeFirmId(requestedFirmId);
+        NotificationPreference pref = getOrCreatePreference(firmId);
+
+        if (!pref.isEnabled() || !pref.isInboxEnabled()) {
+            return Collections.emptyList();
+        }
 
         Collection<NotificationStatus> statuses;
         String normalizedStatus = statusFilter != null ? statusFilter.trim().toUpperCase() : "ACTIVE";
@@ -324,16 +333,23 @@ public class NotificationService {
         if (categoryFilter != null && !categoryFilter.isBlank() && !"ALL".equalsIgnoreCase(categoryFilter)) {
             try {
                 NotificationCategory cat = NotificationCategory.valueOf(categoryFilter.trim().toUpperCase());
+                if (!pref.isCategoryEnabled(cat)) {
+                    return Collections.emptyList();
+                }
                 return notificationRepository.findByFirmIdInAndCategoryAndStatusInOrderByCreatedAtDesc(targetFirmIds, cat, statuses, PageRequest.of(0, maxLimit));
             } catch (IllegalArgumentException ignored) {
             }
         }
 
-        return notificationRepository.findByFirmIdInAndStatusInOrderByCreatedAtDesc(
+        List<Notification> rawList = notificationRepository.findByFirmIdInAndStatusInOrderByCreatedAtDesc(
                 targetFirmIds,
                 statuses,
                 PageRequest.of(0, maxLimit)
         );
+
+        return rawList.stream()
+                .filter(n -> pref.isCategoryEnabled(n.getCategory()))
+                .collect(Collectors.toList());
     }
 
     @Transactional
@@ -444,6 +460,15 @@ public class NotificationService {
     public NotificationPreferencesDto getPreferences(Long requestedFirmId) {
         Long firmId = resolveAuthoritativeFirmId(requestedFirmId);
         NotificationPreference pref = getOrCreatePreference(firmId);
+        List<String> categories = new ArrayList<>();
+        if (pref.isBillingEnabled()) categories.add("BILLING");
+        if (pref.isInventoryEnabled()) categories.add("INVENTORY");
+        if (pref.isPurchaseEnabled()) categories.add("PURCHASE");
+        if (pref.isPlannerEnabled()) categories.add("PLANNER");
+        if (pref.isHrEnabled()) categories.add("HR");
+        if (pref.isLicensingEnabled()) categories.add("LICENSING");
+        if (pref.isSystemEnabled()) categories.add("SYSTEM");
+
         return NotificationPreferencesDto.builder()
                 .enabled(pref.isEnabled())
                 .bellEnabled(pref.isBellEnabled())
@@ -456,6 +481,7 @@ public class NotificationService {
                 .plannerEnabled(pref.isPlannerEnabled())
                 .hrEnabled(pref.isHrEnabled())
                 .systemEnabled(pref.isSystemEnabled())
+                .categories(categories)
                 .build();
     }
 
@@ -486,13 +512,29 @@ public class NotificationService {
             if (dto.getDefaultSnooze() != null && !dto.getDefaultSnooze().isBlank()) {
                 pref.setDefaultSnooze(dto.getDefaultSnooze().trim());
             }
-            pref.setLicensingEnabled(dto.isLicensingEnabled());
-            pref.setBillingEnabled(dto.isBillingEnabled());
-            pref.setInventoryEnabled(dto.isInventoryEnabled());
-            pref.setPurchaseEnabled(dto.isPurchaseEnabled());
-            pref.setPlannerEnabled(dto.isPlannerEnabled());
-            pref.setHrEnabled(dto.isHrEnabled());
-            pref.setSystemEnabled(dto.isSystemEnabled());
+
+            if (dto.getCategories() != null) {
+                Set<String> catSet = dto.getCategories().stream()
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toSet());
+                pref.setLicensingEnabled(catSet.contains("LICENSING"));
+                pref.setBillingEnabled(catSet.contains("BILLING"));
+                pref.setInventoryEnabled(catSet.contains("INVENTORY"));
+                pref.setPurchaseEnabled(catSet.contains("PURCHASE"));
+                pref.setPlannerEnabled(catSet.contains("PLANNER"));
+                pref.setHrEnabled(catSet.contains("HR"));
+                pref.setSystemEnabled(catSet.contains("SYSTEM"));
+            } else {
+                pref.setLicensingEnabled(dto.isLicensingEnabled());
+                pref.setBillingEnabled(dto.isBillingEnabled());
+                pref.setInventoryEnabled(dto.isInventoryEnabled());
+                pref.setPurchaseEnabled(dto.isPurchaseEnabled());
+                pref.setPlannerEnabled(dto.isPlannerEnabled());
+                pref.setHrEnabled(dto.isHrEnabled());
+                pref.setSystemEnabled(dto.isSystemEnabled());
+            }
             pref.setUpdatedAt(LocalDateTime.now());
             preferenceRepository.save(pref);
         }

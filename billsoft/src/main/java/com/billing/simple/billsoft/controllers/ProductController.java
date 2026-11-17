@@ -271,6 +271,14 @@ public class ProductController {
 		return ResponseEntity.ok(service.restore(id));
 	}
 
+	@PostMapping("/{id}/snooze-stock-warning")
+	public ResponseEntity<Product> snoozeStockWarning(
+			@PathVariable Long id,
+			@RequestParam(required = false, defaultValue = "7") int days,
+			@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.snoozeStockAlert(id, firmId, days));
+	}
+
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> delete(@PathVariable Long id) {
 		boolean removed = service.delete(id);

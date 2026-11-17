@@ -432,6 +432,14 @@ const API = {
       body: { reason: reason || 'Archived by user' }
     }),
     restore: (id) => API._json(`/api/products/${id}/restore`, { method: 'POST' }),
+    snoozeStockWarning: (id, days = 7, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/${id}/snooze-stock-warning`, { days, ...(fid ? { firmId: fid } : {}) }), {
+        method: 'POST',
+        headers
+      }));
+    },
     listArchived: (firmIdOverride) => {
       const fid = firmIdOverride || API.firmId;
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
@@ -1371,10 +1379,23 @@ const API = {
     applyUpdate: () => API._json('/api/system/apply-update', {
       method: 'POST'
     }),
+    pauseUpdate: () => API._json('/api/system/pause-update', {
+      method: 'POST'
+    }),
+    resumeUpdate: () => API._json('/api/system/resume-update', {
+      method: 'POST'
+    }),
+    retryUpdate: () => API._json('/api/system/retry-update', {
+      method: 'POST'
+    }),
+    installUpdate: () => API._json('/api/system/install-update', {
+      method: 'POST'
+    }),
     cancelUpdate: () => API._json('/api/system/cancel-update', {
       method: 'POST'
     }),
     checkUpdateComplete: () => API._json('/api/system/check-update-complete'),
+    updateDiagnostics: () => API._json('/api/system/update-diagnostics'),
     getDevLogs: () => API._json('/api/system/dev-logs'),
     setDevLogs: (enabled) => API._json('/api/system/dev-logs', {
       method: 'POST',

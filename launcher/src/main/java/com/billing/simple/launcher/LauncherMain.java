@@ -1689,9 +1689,10 @@ public class LauncherMain {
             state.setTargetVersion(manifest.getAppVersion());
             try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
 
-            // 4. Atomically replace WAR (with retries for Windows locks)
+            // 4. Atomically replace WAR (with retries & GC backoff for Windows locks)
+            System.gc();
             boolean moved = false;
-            for (int attempt = 1; attempt <= 5; attempt++) {
+            for (int attempt = 1; attempt <= 10; attempt++) {
                 try {
                     Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                     moved = true;
@@ -1702,8 +1703,12 @@ public class LauncherMain {
                         moved = true;
                         break;
                     } catch (Exception e2) {
-                        if (attempt == 5) throw e2;
-                        try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                        if (attempt == 10) throw e2;
+                        System.gc();
+                        try {
+                            long delay = Math.min(1000L, 300L + (attempt * 70L));
+                            Thread.sleep(delay);
+                        } catch (InterruptedException ignored) {}
                     }
                 }
             }

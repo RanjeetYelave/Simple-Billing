@@ -820,7 +820,12 @@
     // ─── Out of Stock Warning Modal ───
     function OutOfStockDialog({ dialogState, onClose }) {
       if (!dialogState || !dialogState.isOpen) return null;
-      const { itemName = 'Item', productId = null } = dialogState;
+      const items = Array.isArray(dialogState.items) && dialogState.items.length > 0
+        ? dialogState.items
+        : (dialogState.productId ? [{ productId: dialogState.productId, productName: dialogState.itemName || 'Item', available: 0, requested: 1, shortage: 1 }] : []);
+      const isMultiple = items.length > 1;
+      const itemName = dialogState.itemName || (items.length > 0 ? (items[0].productName || items[0].name) : 'Item');
+      const productId = dialogState.productId || (items.length > 0 ? items[0].productId : null);
       const [dontRemind, setDontRemind] = useState(false);
 
       useEffect(() => {
@@ -830,10 +835,23 @@
       }, [dialogState?.isOpen, dialogState?.productId]);
 
       const handleContinue = () => {
-        if (dontRemind && productId) {
+        if (dontRemind) {
           try {
             const expireAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
-            localStorage.setItem('out_of_stock_suppress_' + productId, String(expireAt));
+            items.forEach(it => {
+              if (it && it.productId) {
+                localStorage.setItem('out_of_stock_suppress_' + it.productId, String(expireAt));
+                if (window.API && window.API.products && window.API.products.snoozeStockWarning) {
+                  window.API.products.snoozeStockWarning(it.productId, 7).catch(() => {});
+                }
+              }
+            });
+            if (productId) {
+              localStorage.setItem('out_of_stock_suppress_' + productId, String(expireAt));
+              if (window.API && window.API.products && window.API.products.snoozeStockWarning) {
+                window.API.products.snoozeStockWarning(productId, 7).catch(() => {});
+              }
+            }
           } catch (e) {}
         }
         onClose(true);
@@ -868,7 +886,7 @@
           React.createElement('div', {
             className: 'modal-box',
             style: {
-              maxWidth: 440,
+              maxWidth: isMultiple ? 560 : 440,
               width: '90%',
               padding: 24,
               borderRadius: 14,
@@ -882,14 +900,48 @@
               React.createElement('span', { style: { fontSize: '1.75rem', lineHeight: 1 } }, '⚠️'),
               React.createElement('h3', { style: { margin: 0, fontSize: '1.18rem', color: '#f59e0b', fontWeight: 700 } }, 'Stock Warning')
             ),
-            React.createElement('div', {
-              style: {
-                fontSize: '0.94rem',
-                lineHeight: 1.55,
-                color: 'var(--text-primary)',
-                marginBottom: 16
-              }
-            }, `We are out of stock for ${itemName}.`),
+            isMultiple ? (
+              React.createElement('div', { style: { marginBottom: 16 } },
+                React.createElement('p', { style: { fontSize: '0.92rem', color: 'var(--text-secondary)', margin: '0 0 10px' } },
+                  'The following items have insufficient or zero available stock in inventory:'
+                ),
+                React.createElement('div', { style: { maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 } },
+                  React.createElement('table', { style: { width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse', textAlign: 'left' } },
+                    React.createElement('thead', { style: { background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' } },
+                      React.createElement('tr', null,
+                        React.createElement('th', { style: { padding: '8px 10px', fontWeight: 600 } }, 'Item'),
+                        React.createElement('th', { style: { padding: '8px 10px', textAlign: 'right', fontWeight: 600 } }, 'Available'),
+                        React.createElement('th', { style: { padding: '8px 10px', textAlign: 'right', fontWeight: 600 } }, 'Requested'),
+                        React.createElement('th', { style: { padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: '#ef4444' } }, 'Shortage')
+                      )
+                    ),
+                    React.createElement('tbody', null,
+                      items.map((it, idx) => React.createElement('tr', { key: idx, style: { borderBottom: '1px solid var(--border)' } },
+                        React.createElement('td', { style: { padding: '8px 10px', fontWeight: 500 } }, it.productName || it.name || 'Item'),
+                        React.createElement('td', { style: { padding: '8px 10px', textAlign: 'right', color: 'var(--text-secondary)' } }, String(it.available != null ? it.available : 0)),
+                        React.createElement('td', { style: { padding: '8px 10px', textAlign: 'right' } }, String(it.requested != null ? it.requested : it.qty || 1)),
+                        React.createElement('td', { style: { padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: '#ef4444' } }, String(it.shortage != null ? it.shortage : '-'))
+                      ))
+                    )
+                  )
+                )
+              )
+            ) : (
+              React.createElement('div', {
+                style: {
+                  fontSize: '0.94rem',
+                  lineHeight: 1.55,
+                  color: 'var(--text-primary)',
+                  marginBottom: 16
+                }
+              }, `We are out of stock for ${itemName}.`,
+                items.length === 1 && items[0].shortage != null && items[0].shortage > 0 ? (
+                  React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 6 } },
+                    `Available: ${items[0].available || 0} | Requested: ${items[0].requested || 1} | Shortage: ${items[0].shortage}`
+                  )
+                ) : null
+              )
+            ),
             React.createElement('label', {
               style: {
                 display: 'flex',
@@ -907,20 +959,20 @@
                 checked: dontRemind,
                 onChange: e => setDontRemind(e.target.checked)
               }),
-              "Don't remind me for 7 days for this item"
+              isMultiple ? "Don't remind me for 7 days for these items" : "Don't remind me for 7 days for this item"
             ),
             React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
               React.createElement('button', {
                 className: 'btn btn-outline btn-sm',
-                style: { minWidth: 80 },
+                style: { minWidth: 100 },
                 onClick: handleCancel
-              }, 'Cancel'),
+              }, 'Go Back / Review Items'),
               React.createElement('button', {
                 className: 'btn btn-sm btn-primary',
-                style: { minWidth: 100, fontWeight: 600 },
+                style: { minWidth: 120, fontWeight: 600 },
                 onClick: handleContinue,
                 autoFocus: true
-              }, 'Continue')
+              }, 'Proceed Anyway')
             )
           )
         ),
@@ -15512,7 +15564,8 @@
           }
         }
 
-        // Check for insufficient / out-of-stock items (non-blocking warning popup)
+        // Check for insufficient / out-of-stock items (non-blocking consolidated warning popup)
+        const insufficientItems = [];
         for (let i = 0; i < itemsToValidate.length; i++) {
           const it = itemsToValidate[i];
           const matched = (products || []).find(p => String(p.id) === String(it.productId) || (p.rawId && String(p.rawId) === String(it.productId)));
@@ -15528,15 +15581,31 @@
                 if (suppressedUntil && Date.now() < parseInt(suppressedUntil, 10)) {
                   isSuppressed = true;
                 }
+                if (!isSuppressed && matched.stockAlertSnoozedUntil) {
+                  const bDate = new Date(matched.stockAlertSnoozedUntil);
+                  if (!isNaN(bDate.getTime()) && Date.now() < bDate.getTime()) {
+                    isSuppressed = true;
+                  }
+                }
               } catch (e) {}
 
-              if (!isSuppressed && typeof window.showOutOfStockWarning === 'function') {
-                const proceed = await window.showOutOfStockWarning(matched.name || it.productName || 'Item', prodId);
-                if (!proceed) {
-                  return; // User cancelled transaction
-                }
+              if (!isSuppressed) {
+                insufficientItems.push({
+                  productId: prodId,
+                  productName: matched.name || it.productName || 'Item',
+                  available: curStock,
+                  requested: reqQty,
+                  shortage: Math.max(0, reqQty - Math.max(0, curStock))
+                });
               }
             }
+          }
+        }
+
+        if (insufficientItems.length > 0 && typeof window.showOutOfStockWarning === 'function') {
+          const proceed = await window.showOutOfStockWarning(insufficientItems);
+          if (!proceed) {
+            return; // User cancelled transaction
           }
         }
 
@@ -40509,7 +40578,7 @@ function PartyDetailModal({
     }
 
     // ─── UPDATE PROGRESS OVERLAY ───
-    function UpdateProgressOverlay({ progress, onComplete, onCancel, isUpdating }) {
+    function UpdateProgressOverlay({ progress, onComplete, onCancel, onPause, onResume, onRetry, onInstallNow, onMinimize, isUpdating }) {
       const status = progress && progress.status ? progress.status : 'idle';
       const percent = progress ? progress.percent : 0;
       const message = progress ? progress.message : '';
@@ -40517,18 +40586,36 @@ function PartyDetailModal({
       const speed = progress ? progress.speed : '';
       const size = progress ? progress.size : '';
       const elapsedSeconds = progress && progress.elapsedSeconds ? progress.elapsedSeconds : 0;
-      const showBar = status === 'downloading' || status === 'installing';
-      const isRestarting = status === 'restarting';
-      const showComplete = status === 'complete';
-      const isError = status === 'error';
+      const etaSeconds = progress && progress.etaSeconds ? progress.etaSeconds : null;
+
+      const isPaused = status === 'paused';
+      const isReadyToInstall = status === 'ready_to_install';
+      const isRestarting = status === 'restarting' || status === 'applying_update' || status === 'installing';
+      const showComplete = status === 'complete' || status === 'update_success';
+      const isError = status === 'error' || status === 'update_failed';
+      const showBar = status === 'downloading' || status === 'installing' || isPaused;
 
       if (!isUpdating) return null;
 
       const formatTime = (secs) => {
+        if (!secs || isNaN(secs) || secs < 0) return 'calculating...';
         const m = Math.floor(secs / 60);
-        const s = secs % 60;
+        const s = Math.floor(secs % 60);
         return m > 0 ? `${m}m ${s < 10 ? '0' : ''}${s}s` : `${s}s`;
       };
+
+      const title = isPaused ? 'Download Paused' :
+        isReadyToInstall ? 'Verification & Backup Complete' :
+        isError ? 'Update Process Interrupted' :
+        showComplete ? 'Update Successfully Installed!' :
+        isRestarting ? 'Applying Update & Restarting Service' :
+        'Downloading RupeeCRM Update';
+
+      const icon = isPaused ? '⏸️' :
+        isReadyToInstall ? '📦' :
+        showComplete ? '🎉' :
+        isError ? '❌' :
+        isRestarting ? '⚡' : '📥';
 
       return React.createElement('div', {
         className: 'modal-overlay modal-confirm',
@@ -40555,22 +40642,15 @@ function PartyDetailModal({
             background: 'var(--bg-card)'
           }
         },
-          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 14 } },
-            showComplete ? '🎉' : isError ? '❌' : isRestarting ? '⚡' : '📥'
-          ),
+          React.createElement('div', { style: { fontSize: '3.2rem', marginBottom: 14 } }, icon),
           React.createElement('h3', {
             style: {
               marginBottom: 6,
               fontSize: '1.35rem',
               fontWeight: 700,
-              color: isError ? 'var(--danger)' : showComplete ? '#16a34a' : 'var(--primary)'
+              color: isError ? 'var(--danger)' : (showComplete || isReadyToInstall) ? '#16a34a' : 'var(--primary)'
             }
-          },
-            isError ? 'Update Process Interrupted' :
-              showComplete ? 'Update Successfully Installed!' :
-                isRestarting ? 'Applying Update & Restarting Service' :
-                  'Downloading RupeeCRM Update'
-          ),
+          }, title),
           latestVersion ? React.createElement('div', {
             style: {
               display: 'inline-block',
@@ -40584,7 +40664,7 @@ function PartyDetailModal({
             }
           }, `Target Version: ${latestVersion}`) : null,
 
-          // Downloading Progress Bar
+          // Downloading / Paused Progress Bar
           showBar && React.createElement('div', { style: { marginTop: 8, marginBottom: 16 } },
             React.createElement('div', {
               style: {
@@ -40595,7 +40675,7 @@ function PartyDetailModal({
               React.createElement('div', {
                 style: {
                   width: `${percent}%`, height: '100%',
-                  backgroundColor: 'var(--primary)',
+                  backgroundColor: isPaused ? '#eab308' : 'var(--primary)',
                   borderRadius: 6, transition: 'width 0.4s ease-in-out'
                 }
               })
@@ -40606,9 +40686,29 @@ function PartyDetailModal({
                 fontSize: '0.8rem', color: 'var(--text-secondary)'
               }
             },
-              React.createElement('span', null, speed || ''),
+              React.createElement('span', null, speed || (isPaused ? 'Paused' : '')),
               React.createElement('span', null, `${percent}%`),
               React.createElement('span', null, size || '')
+            ),
+            etaSeconds !== null && !isPaused && React.createElement('div', {
+              style: { marginTop: 6, fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'right' }
+            }, `Est. time remaining: ${formatTime(etaSeconds)}`)
+          ),
+
+          // Ready to Install Info
+          isReadyToInstall && React.createElement('div', {
+            style: {
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              borderRadius: 10,
+              padding: '14px 16px',
+              textAlign: 'left',
+              marginBottom: 16
+            }
+          },
+            React.createElement('div', { style: { fontWeight: 600, color: '#065f46', fontSize: '0.88rem', marginBottom: 4 } }, 'Verification & Backup Complete'),
+            React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.45 } },
+              'The update package has been downloaded, verified with cryptographic signatures, and a safety database backup is prepared. You can apply the update now or continue invoicing and install later.'
             )
           ),
 
@@ -40646,31 +40746,82 @@ function PartyDetailModal({
           ),
 
           // General Status Message
-          !isRestarting && React.createElement('p', {
+          !isRestarting && !isReadyToInstall && React.createElement('p', {
             style: {
               color: isError ? 'var(--danger)' : 'var(--text-secondary)',
               fontSize: '0.9rem', margin: '8px 0 16px 0', lineHeight: 1.5
             }
-          }, message || (isError ? 'Something went wrong.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
+          }, message || (isError ? 'Something went wrong.' : isPaused ? 'Download is paused. You can resume at any time.' : showComplete ? 'Your system is now updated and ready!' : 'Please wait...')),
 
-          // Footer Action Buttons
-          status === 'downloading' && React.createElement('button', {
-            className: 'btn btn-outline btn-sm',
-            style: { marginTop: 12, width: '100%', fontSize: '0.82rem', color: 'var(--danger)', borderColor: 'var(--danger)' },
-            onClick: onCancel
-          }, 'Cancel Download'),
+          // Footer Action Controls
+          status === 'downloading' && React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem' },
+              onClick: onPause
+            }, 'Pause Download'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem' },
+              onClick: onMinimize
+            }, 'Run in Background'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem', color: 'var(--danger)', borderColor: 'var(--danger)' },
+              onClick: onCancel
+            }, 'Cancel Download')
+          ),
+
+          isPaused && React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+            React.createElement('button', {
+              className: 'btn btn-primary btn-sm',
+              style: { flex: 1, fontWeight: 600, fontSize: '0.85rem' },
+              onClick: onResume
+            }, 'Resume Download'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem', color: 'var(--danger)', borderColor: 'var(--danger)' },
+              onClick: onCancel
+            }, 'Cancel Download')
+          ),
+
+          isReadyToInstall && React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+            React.createElement('button', {
+              className: 'btn btn-primary btn-sm',
+              style: { flex: 2, fontWeight: 700, fontSize: '0.9rem', background: '#059669', borderColor: '#059669' },
+              onClick: onInstallNow
+            }, 'Install Now & Restart'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem' },
+              onClick: onMinimize
+            }, 'Remind Me Later')
+          ),
+
+          isError && React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+            React.createElement('button', {
+              className: 'btn btn-primary btn-sm',
+              style: { flex: 1, fontWeight: 600 },
+              onClick: onRetry
+            }, 'Retry Update'),
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { flex: 1, fontSize: '0.82rem' },
+              onClick: onComplete
+            }, 'Close')
+          ),
 
           showComplete && React.createElement('button', {
             className: 'btn btn-primary btn-lg',
-            style: { marginTop: 12, width: '100%' },
+            style: { marginTop: 16, width: '100%' },
             onClick: () => { window.location.reload(); }
           }, '🚀 Launch Updated App Now'),
 
-          (isError || isRestarting) && React.createElement('button', {
+          isRestarting && React.createElement('button', {
             className: 'btn btn-outline btn-sm',
-            style: { marginTop: 12, width: '100%', fontSize: '0.82rem' },
+            style: { marginTop: 16, width: '100%', fontSize: '0.82rem' },
             onClick: onComplete
-          }, isRestarting ? 'Dismiss Overlay (Backend Running in Background)' : 'Close')
+          }, 'Dismiss Overlay (Backend Running in Background)')
         )
       );
     }
@@ -45366,14 +45517,24 @@ function PartyDetailModal({
       const [outOfStockDialog, setOutOfStockDialog] = useState({ isOpen: false });
       const outOfStockResolverRef = useRef(null);
 
-      window.showOutOfStockWarning = useCallback((itemName, productId) => {
+      window.showOutOfStockWarning = useCallback((arg1, arg2) => {
         return new Promise((resolve) => {
           outOfStockResolverRef.current = resolve;
-          setOutOfStockDialog({
-            isOpen: true,
-            itemName,
-            productId
-          });
+          if (Array.isArray(arg1)) {
+            setOutOfStockDialog({
+              isOpen: true,
+              items: arg1,
+              itemName: arg1.length === 1 ? (arg1[0].productName || arg1[0].name) : null,
+              productId: arg1.length === 1 ? arg1[0].productId : null
+            });
+          } else {
+            setOutOfStockDialog({
+              isOpen: true,
+              itemName: arg1,
+              productId: arg2,
+              items: arg2 ? [{ productId: arg2, productName: arg1 }] : []
+            });
+          }
         });
       }, []);
 
@@ -46473,6 +46634,62 @@ function PartyDetailModal({
         });
       };
 
+      const handlePauseUpdate = async () => {
+        try {
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.pause) {
+            await window.rupeeDesktop.updater.pause();
+          } else {
+            await API.system.pauseUpdate();
+          }
+          setUpdateProgress(prev => prev ? { ...prev, status: 'paused', message: 'Download paused.' } : null);
+        } catch (e) {
+          console.warn('Failed to pause update:', e);
+        }
+      };
+
+      const handleResumeUpdate = async () => {
+        try {
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.resume) {
+            await window.rupeeDesktop.updater.resume();
+          } else {
+            await API.system.resumeUpdate();
+          }
+          setUpdateProgress(prev => prev ? { ...prev, status: 'downloading', message: 'Resuming download...' } : null);
+        } catch (e) {
+          console.warn('Failed to resume update:', e);
+        }
+      };
+
+      const handleRetryUpdate = async () => {
+        try {
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.retry) {
+            await window.rupeeDesktop.updater.retry();
+          } else {
+            await API.system.retryUpdate();
+          }
+          setUpdateProgress(prev => prev ? { ...prev, status: 'downloading', message: 'Retrying update...' } : null);
+        } catch (e) {
+          console.warn('Failed to retry update:', e);
+        }
+      };
+
+      const handleInstallNow = async () => {
+        try {
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.install) {
+            await window.rupeeDesktop.updater.install();
+          } else {
+            await API.system.installUpdate();
+          }
+          setUpdateProgress(prev => prev ? { ...prev, status: 'restarting', message: 'Applying update and restarting...' } : null);
+        } catch (e) {
+          console.warn('Failed to install update:', e);
+        }
+      };
+
+      const handleMinimizeUpdate = () => {
+        setIsUpdating(false);
+      };
+
       const [invoiceSubTab, setInvoiceSubTab] = useState('overview');
       const [quickDocType, setQuickDocType] = useState(null);
 
@@ -47425,7 +47642,17 @@ function PartyDetailModal({
             setFirmLoadKey(k => k + 1);
           }
         }),
-        React.createElement(UpdateProgressOverlay, { progress: updateProgress, isUpdating, onComplete: handleUpdateComplete, onCancel: handleCancelUpdate }),
+        React.createElement(UpdateProgressOverlay, {
+          progress: updateProgress,
+          isUpdating,
+          onComplete: handleUpdateComplete,
+          onCancel: handleCancelUpdate,
+          onPause: handlePauseUpdate,
+          onResume: handleResumeUpdate,
+          onRetry: handleRetryUpdate,
+          onInstallNow: handleInstallNow,
+          onMinimize: handleMinimizeUpdate
+        }),
         updateCompleteBanner && React.createElement('div', {
           className: 'modal-overlay modal-confirm',
           style: { zIndex: 10500, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }

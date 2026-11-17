@@ -12,19 +12,40 @@ import java.util.regex.Pattern;
 
 /**
  * Durable update transaction journal persisted across processes and system restarts.
+ * Guarantees crash-safe, atomic updates via temporary file promotion.
  */
 public final class UpdateState {
 
+    // Canonical 20-state update machine
     public static final String STATUS_IDLE = "IDLE";
-    public static final String STATUS_CHECKING = "CHECKING";
-    public static final String STATUS_AVAILABLE = "AVAILABLE";
+    public static final String STATUS_UPDATE_AVAILABLE = "UPDATE_AVAILABLE";
+    public static final String STATUS_PREPARING_DOWNLOAD = "PREPARING_DOWNLOAD";
     public static final String STATUS_DOWNLOADING = "DOWNLOADING";
+    public static final String STATUS_DOWNLOAD_PAUSED = "DOWNLOAD_PAUSED";
+    public static final String STATUS_DOWNLOAD_RETRYING = "DOWNLOAD_RETRYING";
+    public static final String STATUS_DOWNLOAD_VERIFYING = "DOWNLOAD_VERIFYING";
+    public static final String STATUS_DOWNLOAD_COMPLETED = "DOWNLOAD_COMPLETED";
+    public static final String STATUS_INSTALLATION_PENDING = "INSTALLATION_PENDING";
+    public static final String STATUS_BACKUP_IN_PROGRESS = "BACKUP_IN_PROGRESS";
+    public static final String STATUS_READY_TO_INSTALL = "READY_TO_INSTALL";
+    public static final String STATUS_APPLICATION_SHUTDOWN_PENDING = "APPLICATION_SHUTDOWN_PENDING";
+    public static final String STATUS_APPLYING_UPDATE = "APPLYING_UPDATE";
+    public static final String STATUS_APPLICATION_RESTARTING = "APPLICATION_RESTARTING";
+    public static final String STATUS_POST_UPDATE_HEALTH_CHECK = "POST_UPDATE_HEALTH_CHECK";
+    public static final String STATUS_UPDATE_SUCCESS = "UPDATE_SUCCESS";
+    public static final String STATUS_ROLLBACK_IN_PROGRESS = "ROLLBACK_IN_PROGRESS";
+    public static final String STATUS_ROLLBACK_COMPLETED = "ROLLBACK_COMPLETED";
+    public static final String STATUS_UPDATE_FAILED = "UPDATE_FAILED";
+    public static final String STATUS_RECOVERY_REQUIRED = "RECOVERY_REQUIRED";
+
+    // Legacy & granular aliases (preserved for backward compatibility)
+    public static final String STATUS_AVAILABLE = "AVAILABLE";
+    public static final String STATUS_CHECKING = "CHECKING";
     public static final String STATUS_DOWNLOAD_CANCELLED = "DOWNLOAD_CANCELLED";
     public static final String STATUS_DOWNLOAD_INTERRUPTED = "DOWNLOAD_INTERRUPTED";
     public static final String STATUS_DOWNLOAD_FAILED = "DOWNLOAD_FAILED";
     public static final String STATUS_VERIFYING = "VERIFYING";
     public static final String STATUS_VERIFICATION_FAILED = "VERIFICATION_FAILED";
-    public static final String STATUS_READY_TO_INSTALL = "READY_TO_INSTALL";
     public static final String STATUS_EXTRACTING = "EXTRACTING";
     public static final String STATUS_MIGRATING = "MIGRATING";
     public static final String STATUS_VERIFIED_STAGED = "VERIFIED_STAGED";
@@ -43,9 +64,7 @@ public final class UpdateState {
     public static final String STATUS_COMMITTED = "COMMITTED";
     public static final String STATUS_COMPLETED = "COMPLETED";
     public static final String STATUS_FAILED = "FAILED";
-    public static final String STATUS_ROLLBACK_IN_PROGRESS = "ROLLBACK_IN_PROGRESS";
     public static final String STATUS_ROLLED_BACK = "ROLLED_BACK";
-    public static final String STATUS_RECOVERY_REQUIRED = "RECOVERY_REQUIRED";
 
     private String transactionId;
     private String status;
@@ -53,6 +72,13 @@ public final class UpdateState {
     private String targetVersion;
     private String expectedSha256;
     private long expectedSizeBytes;
+    private long bytesDownloaded;
+    private String etag;
+    private String lastModified;
+    private String downloadUrl;
+    private String errorCategory;
+    private int retryCount;
+    private long nextRetryTime;
     private String stagedArtifactPath;
     private String backupArtifactPath;
     private String quarantineBackupPath;
@@ -75,6 +101,13 @@ public final class UpdateState {
         this.targetVersion = targetVersion != null ? targetVersion : "";
         this.expectedSha256 = expectedSha256 != null ? expectedSha256 : "";
         this.expectedSizeBytes = expectedSizeBytes;
+        this.bytesDownloaded = 0L;
+        this.etag = "";
+        this.lastModified = "";
+        this.downloadUrl = "";
+        this.errorCategory = "";
+        this.retryCount = 0;
+        this.nextRetryTime = 0L;
         this.stagedArtifactPath = stagedArtifactPath != null ? stagedArtifactPath : "";
         this.backupArtifactPath = backupArtifactPath != null ? backupArtifactPath : "";
         this.quarantineBackupPath = quarantineBackupPath != null ? quarantineBackupPath : "";
@@ -84,6 +117,9 @@ public final class UpdateState {
 
     public String getTransactionId() { return transactionId; }
     public void setTransactionId(String id) { this.transactionId = id; }
+
+    public String getOperationId() { return transactionId; }
+    public void setOperationId(String id) { this.transactionId = id; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; this.updatedAt = System.currentTimeMillis(); }
@@ -99,6 +135,27 @@ public final class UpdateState {
 
     public long getExpectedSizeBytes() { return expectedSizeBytes; }
     public void setExpectedSizeBytes(long expectedSizeBytes) { this.expectedSizeBytes = expectedSizeBytes; }
+
+    public long getBytesDownloaded() { return bytesDownloaded; }
+    public void setBytesDownloaded(long bytesDownloaded) { this.bytesDownloaded = bytesDownloaded; }
+
+    public String getEtag() { return etag; }
+    public void setEtag(String etag) { this.etag = etag; }
+
+    public String getLastModified() { return lastModified; }
+    public void setLastModified(String lastModified) { this.lastModified = lastModified; }
+
+    public String getDownloadUrl() { return downloadUrl; }
+    public void setDownloadUrl(String downloadUrl) { this.downloadUrl = downloadUrl; }
+
+    public String getErrorCategory() { return errorCategory; }
+    public void setErrorCategory(String errorCategory) { this.errorCategory = errorCategory; }
+
+    public int getRetryCount() { return retryCount; }
+    public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
+
+    public long getNextRetryTime() { return nextRetryTime; }
+    public void setNextRetryTime(long nextRetryTime) { this.nextRetryTime = nextRetryTime; }
 
     public String getStagedArtifactPath() { return stagedArtifactPath; }
     public void setStagedArtifactPath(String stagedArtifactPath) { this.stagedArtifactPath = stagedArtifactPath; }
@@ -118,11 +175,19 @@ public final class UpdateState {
     public String toJson() {
         return "{\n" +
                 "  \"transactionId\": \"" + escapeJson(transactionId) + "\",\n" +
+                "  \"operationId\": \"" + escapeJson(transactionId) + "\",\n" +
                 "  \"status\": \"" + escapeJson(status) + "\",\n" +
                 "  \"currentVersion\": \"" + escapeJson(currentVersion) + "\",\n" +
                 "  \"targetVersion\": \"" + escapeJson(targetVersion) + "\",\n" +
                 "  \"expectedSha256\": \"" + escapeJson(expectedSha256) + "\",\n" +
                 "  \"expectedSizeBytes\": " + expectedSizeBytes + ",\n" +
+                "  \"bytesDownloaded\": " + bytesDownloaded + ",\n" +
+                "  \"etag\": \"" + escapeJson(etag) + "\",\n" +
+                "  \"lastModified\": \"" + escapeJson(lastModified) + "\",\n" +
+                "  \"downloadUrl\": \"" + escapeJson(downloadUrl) + "\",\n" +
+                "  \"errorCategory\": \"" + escapeJson(errorCategory) + "\",\n" +
+                "  \"retryCount\": " + retryCount + ",\n" +
+                "  \"nextRetryTime\": " + nextRetryTime + ",\n" +
                 "  \"stagedArtifactPath\": \"" + escapeJson(stagedArtifactPath) + "\",\n" +
                 "  \"backupArtifactPath\": \"" + escapeJson(backupArtifactPath) + "\",\n" +
                 "  \"quarantineBackupPath\": \"" + escapeJson(quarantineBackupPath) + "\",\n" +
@@ -135,8 +200,12 @@ public final class UpdateState {
         if (json == null || json.trim().isEmpty()) {
             return new UpdateState();
         }
-        return new UpdateState(
-                extractString(json, "transactionId"),
+        String txId = extractString(json, "transactionId");
+        if (txId.isEmpty()) {
+            txId = extractString(json, "operationId");
+        }
+        UpdateState state = new UpdateState(
+                txId,
                 extractString(json, "status"),
                 extractString(json, "currentVersion"),
                 extractString(json, "targetVersion"),
@@ -148,8 +217,19 @@ public final class UpdateState {
                 extractString(json, "errorMessage"),
                 extractLong(json, "updatedAt", 0L)
         );
+        state.setBytesDownloaded(extractLong(json, "bytesDownloaded", 0L));
+        state.setEtag(extractString(json, "etag"));
+        state.setLastModified(extractString(json, "lastModified"));
+        state.setDownloadUrl(extractString(json, "downloadUrl"));
+        state.setErrorCategory(extractString(json, "errorCategory"));
+        state.setRetryCount((int) extractLong(json, "retryCount", 0L));
+        state.setNextRetryTime(extractLong(json, "nextRetryTime", 0L));
+        return state;
     }
 
+    /**
+     * Atomically saves this state to disk using a temporary file and atomic rename.
+     */
     public synchronized void saveAtomic(Path targetFile) throws IOException {
         Path parent = targetFile.getParent();
         if (parent != null && !Files.exists(parent)) {
@@ -161,10 +241,14 @@ public final class UpdateState {
         try {
             Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (Exception e) {
+            // Fallback for filesystems that do not support ATOMIC_MOVE
             Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
+    /**
+     * Loads the state from disk, or returns a new IDLE state if not found or corrupted.
+     */
     public static UpdateState load(Path stateFile) {
         if (stateFile == null || !Files.exists(stateFile)) {
             return new UpdateState();

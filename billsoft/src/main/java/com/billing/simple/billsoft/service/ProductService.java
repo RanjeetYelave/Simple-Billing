@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.billing.simple.billsoft.dtos.PageResponse;
 import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
+import com.billing.simple.billsoft.entities.NotificationStatus;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.repo.StockMovementRepository;
 import com.billing.simple.billsoft.repo.InvoiceItemRepository;
@@ -37,6 +38,10 @@ public class ProductService {
 	private final SalesReturnItemRepository salesReturnItemRepo;
 	private final PartyRepository partyRepo;
 	private final AppConfigRepository appConfigRepo;
+
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	@org.springframework.context.annotation.Lazy
+	private NotificationService notificationService;
 
 	@jakarta.persistence.PersistenceContext
 	private jakarta.persistence.EntityManager entityManager;
@@ -850,6 +855,16 @@ public class ProductService {
 		}
 
 		product.setStockQuantity(newStock);
+		if (newStock.compareTo(BigDecimal.ZERO) > 0) {
+			if (product.getStockAlertSnoozedUntil() != null) {
+				product.setStockAlertSnoozedUntil(null);
+			}
+			if (notificationService != null) {
+				try {
+					notificationService.resolveByEventKey(product.getFirmId(), "inventory:stock:item:" + product.getId());
+				} catch (Exception ignored) { }
+			}
+		}
 		Product saved = repo.save(product);
 
 		StockMovement movement = StockMovement.builder()
@@ -955,6 +970,16 @@ public class ProductService {
 		}
 
 		product.setStockQuantity(newStock);
+		if (newStock.compareTo(BigDecimal.ZERO) > 0) {
+			if (product.getStockAlertSnoozedUntil() != null) {
+				product.setStockAlertSnoozedUntil(null);
+			}
+			if (notificationService != null) {
+				try {
+					notificationService.resolveByEventKey(targetFirmId, "inventory:stock:item:" + product.getId());
+				} catch (Exception ignored) { }
+			}
+		}
 		repo.save(product);
 
 		if (actualChange.compareTo(BigDecimal.ZERO) != 0) {
@@ -1657,5 +1682,25 @@ public class ProductService {
 
 	public static List<List<String>> parseCsv(String text) {
 		return com.billing.simple.billsoft.util.ProductBulkImportUtils.parseCsv(text);
+	}
+
+	@Transactional
+	public Product snoozeStockAlert(Long productId, Long requestedFirmId, int days) {
+		Long firmId = resolveFirmId(requestedFirmId);
+		Product p = (firmId != null)
+				? repo.findByIdAndFirmId(productId, firmId).orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId))
+				: repo.findById(productId).orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId));
+		int effectiveDays = days > 0 ? days : 7;
+		LocalDateTime expiry = LocalDateTime.now().plusDays(effectiveDays);
+		p.setStockAlertSnoozedUntil(expiry);
+		p.setUpdatedAt(LocalDateTime.now());
+		Product saved = repo.save(p);
+
+		if (notificationService != null) {
+			try {
+				notificationService.resolveByEventKey(p.getFirmId(), "inventory:stock:item:" + p.getId(), NotificationStatus.SNOOZED);
+			} catch (Exception ignored) { }
+		}
+		return saved;
 	}
 }

@@ -194,6 +194,11 @@ public class NotificationService {
                     || n.getStatus() == NotificationStatus.READ
                     || n.getStatus() == NotificationStatus.SNOOZED) {
                 n.setStatus(desired);
+                if (desired == NotificationStatus.SNOOZED) {
+                    n.setSnoozedUntil(LocalDateTime.now().plusDays(7));
+                } else if (desired == NotificationStatus.ACTIONED || desired == NotificationStatus.DISMISSED) {
+                    n.setSnoozedUntil(null);
+                }
                 n.setUpdatedAt(LocalDateTime.now());
                 notificationRepository.save(n);
                 return true;
@@ -321,7 +326,7 @@ public class NotificationService {
                 break;
             case "ACTIVE":
             default:
-                statuses = List.of(NotificationStatus.UNREAD, NotificationStatus.READ, NotificationStatus.SNOOZED);
+                statuses = List.of(NotificationStatus.UNREAD, NotificationStatus.READ);
                 break;
         }
 
@@ -429,7 +434,10 @@ public class NotificationService {
 
         // Handle backend-approved API_ACTION handlers
         if (actionType == NotificationActionType.API_ACTION && actionTarget != null) {
-            handleBackendApprovedApiAction(n, actionTarget, request.getPayload());
+            if ("SNOOZE_7D".equalsIgnoreCase(actionTarget) || "SNOOZE".equalsIgnoreCase(actionTarget)) {
+                return snooze(n.getId(), "7d");
+            }
+            handleBackendApprovedApiAction(n, actionTarget, request != null ? request.getPayload() : null);
         }
 
         n.setStatus(NotificationStatus.ACTIONED);

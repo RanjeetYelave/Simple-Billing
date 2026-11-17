@@ -274,8 +274,10 @@ public class SafeNotificationLegacyCleanupVerificationTest {
         );
         assertThat(duplicates).isEmpty();
 
-        long count = notificationRepository.count();
-        assertThat(count).isEqualTo(1);
+        // Exactly 2 notifications: 1 aggregate notification and 1 item-specific out-of-stock notification
+        assertThat(notificationRepository.findByFirmIdAndEventKey(firmAId, "inventory:low-stock:aggregate:" + firmAId)).isPresent();
+        assertThat(notificationRepository.findByFirmIdAndEventKey(firmAId, "inventory:stock:item:" + p.getId())).isPresent();
+        assertThat(notificationRepository.count()).isEqualTo(2);
     }
 
     @Test

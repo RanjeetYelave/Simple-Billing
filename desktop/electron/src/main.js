@@ -18,9 +18,9 @@ const app = isElectron ? electron.app : {
   getVersion: () => {
     try {
       const p = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-      return p.version || '1.0.319';
+      return p.version || '1.0.320';
     } catch (e) {
-      return '1.0.319';
+      return '1.0.320';
     }
   },
   getPath: (name) => path.join(process.env.LOCALAPPDATA || process.env.HOME || '.', '.rupeecrm'),
@@ -430,6 +430,51 @@ function cleanLegacyStartupEntries() {
   } catch (err) {
     logMessage(`[Migration] Error during legacy cleanup: ${err.message}`);
   }
+}
+
+function sendBackendRequest(method, reqPath, postData = null, timeoutMs = 4000) {
+  return new Promise((resolve, reject) => {
+    try {
+      const options = {
+        hostname: '127.0.0.1',
+        port: PORT,
+        path: reqPath,
+        method: method,
+        timeout: timeoutMs,
+        headers: {
+          'User-Agent': 'RupeeCRM-Desktop-Electron',
+          'Content-Type': 'application/json'
+        }
+      };
+      if (postData) {
+        const bodyStr = typeof postData === 'string' ? postData : JSON.stringify(postData);
+        options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+      }
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            resolve({ statusCode: res.statusCode, body: data ? JSON.parse(data) : {} });
+          } catch (e) {
+            resolve({ statusCode: res.statusCode, body: data });
+          }
+        });
+      });
+      req.on('error', (err) => reject(err));
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timed out to ' + reqPath));
+      });
+      if (postData) {
+        const bodyStr = typeof postData === 'string' ? postData : JSON.stringify(postData);
+        req.write(bodyStr);
+      }
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 async function triggerGracefulBackendShutdown(targetPort = PORT) {
@@ -850,26 +895,55 @@ function createMainWindow() {
         <head>
           <title>RupeeCRM - Reconnecting</title>
           <style>
-            body { font-family: Segoe UI, sans-serif; background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            h2 { margin-bottom: 8px; font-weight: 600; }
-            p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
-            .spinner { width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s infinite linear; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #064e3b; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 16px; padding: 36px 40px; text-align: center; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); backdrop-filter: blur(12px); }
+            h2 { margin: 16px 0 8px 0; font-size: 1.35rem; font-weight: 700; color: #34d399; }
+            p { color: #94a3b8; font-size: 14px; margin: 0 0 16px 0; line-height: 1.5; }
+            .timer { font-size: 12px; color: #6ee7b7; font-family: monospace; margin-bottom: 20px; }
+            .spinner { width: 40px; height: 40px; border: 3px solid rgba(16, 185, 129, 0.2); border-top-color: #10b981; border-radius: 50%; animation: spin 0.9s infinite linear; margin: 0 auto; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            .actions { display: none; margin-top: 16px; gap: 10px; justify-content: center; }
+            .btn { background: #059669; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+            .btn:hover { background: #10b981; }
+            .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #cbd5e1; }
+            .btn-outline:hover { background: rgba(255,255,255,0.08); }
           </style>
           <script>
+            let elapsed = 0;
+            const startTime = Date.now();
+            function updateTimer() {
+              elapsed = Math.floor((Date.now() - startTime) / 1000);
+              const tElem = document.getElementById('timer-text');
+              if (tElem) tElem.innerText = 'Elapsed: ' + elapsed + 's (checking health...)';
+              if (elapsed >= 45) {
+                const act = document.getElementById('action-buttons');
+                const sub = document.getElementById('sub-text');
+                if (act) act.style.display = 'flex';
+                if (sub) sub.innerText = 'Service is taking longer than expected to restart. The supervisor maintains automatic recovery and rollback.';
+              }
+            }
+            setInterval(updateTimer, 1000);
+
             function pollHealth() {
               fetch('${HEALTH_URL}').then(r => {
                 if (r.ok) location.href = '${APP_URL}?v=${encodeURIComponent(appVer)}&t=' + Date.now();
-                else setTimeout(pollHealth, 1000);
-              }).catch(() => setTimeout(pollHealth, 1000));
+                else setTimeout(pollHealth, 1200);
+              }).catch(() => setTimeout(pollHealth, 1200));
             }
-            setInterval(pollHealth, 1500);
+            pollHealth();
           </script>
         </head>
         <body>
-          <div class="spinner"></div>
-          <h2 style="margin-top: 20px;">Updating RupeeCRM Backend...</h2>
-          <p>Please wait while services restart and complete transaction verification.</p>
+          <div class="card">
+            <div class="spinner"></div>
+            <h2>Updating RupeeCRM Backend...</h2>
+            <p id="sub-text">Please wait while services restart and complete transaction verification.</p>
+            <div class="timer" id="timer-text">Elapsed: 0s (checking health...)</div>
+            <div class="actions" id="action-buttons">
+              <button class="btn" onclick="pollHealth()">Reconnect Now</button>
+              <button class="btn btn-outline" onclick="location.reload()">Reload Window</button>
+            </div>
+          </div>
         </body>
         </html>
       `)}`);
@@ -1114,6 +1188,61 @@ function registerIpcHandlers() {
       mainWindow.loadURL(APP_URL);
     }
     return { success: true };
+  });
+
+  // OTA Updater IPC Handlers
+  ipcMain.handle('updater:pause', async () => {
+    try {
+      const res = await sendBackendRequest('POST', '/api/system/pause-update');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('updater:resume', async () => {
+    try {
+      const res = await sendBackendRequest('POST', '/api/system/resume-update');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('updater:retry', async () => {
+    try {
+      const res = await sendBackendRequest('POST', '/api/system/retry-update');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('updater:install', async () => {
+    try {
+      const res = await sendBackendRequest('POST', '/api/system/install-update');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('updater:cancel', async () => {
+    try {
+      const res = await sendBackendRequest('POST', '/api/system/cancel-update');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('updater:diagnostics', async () => {
+    try {
+      const res = await sendBackendRequest('GET', '/api/system/update-diagnostics');
+      return res.body;
+    } catch (e) {
+      return { error: e.message };
+    }
   });
 
   ipcMain.on('system:open-external', (event, urlStr) => {

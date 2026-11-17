@@ -93,9 +93,9 @@ class OtaUpgradeAndRollbackCertificationTest {
         byte[] manifestBytes = null;
         String signatureBase64 = null;
 
-        // First check if already cached in /tmp from release verification
-        Path localManifest = Path.of("/tmp/manifest.json");
-        Path localSig = Path.of("/tmp/manifest.sig");
+        // First check if already cached in /tmp from release verification for v1.0.315
+        Path localManifest = Path.of("/tmp/manifest-1.0.315.json");
+        Path localSig = Path.of("/tmp/manifest-1.0.315.sig");
         if (Files.exists(localManifest) && Files.exists(localSig)) {
             try {
                 manifestBytes = Files.readAllBytes(localManifest);

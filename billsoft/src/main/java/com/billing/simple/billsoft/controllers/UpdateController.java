@@ -58,7 +58,6 @@ public class UpdateController {
                         HttpStatus.UNAUTHORIZED, "Invalid or expired update progress streaming ticket");
             }
         }
-        // Create a fresh SSE emitter with cleanup callbacks
         return updateService.createProgressEmitter();
     }
 
@@ -73,11 +72,71 @@ public class UpdateController {
         if (started) {
             return ResponseEntity.ok(Map.of(
                     "status", "success",
-                    "message", "Update download started successfully"
+                    "message", "Update pipeline started successfully"
             ));
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "error", "Cannot start update: another update transaction is in progress or no verified update was found"
+            ));
+        }
+    }
+
+    @PostMapping("/pause-update")
+    public ResponseEntity<Map<String, Object>> pauseUpdate() {
+        boolean paused = updateService.pauseUpdate();
+        if (paused) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "paused",
+                    "message", "Update download paused successfully"
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Cannot pause: no active download in progress or installation is already committing"
+            ));
+        }
+    }
+
+    @PostMapping("/resume-update")
+    public ResponseEntity<Map<String, Object>> resumeUpdate() {
+        boolean resumed = updateService.resumeUpdate();
+        if (resumed) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "resumed",
+                    "message", "Update download resumed successfully"
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Cannot resume: update is already in progress or cannot be resumed"
+            ));
+        }
+    }
+
+    @PostMapping("/retry-update")
+    public ResponseEntity<Map<String, Object>> retryUpdate() {
+        boolean retried = updateService.retryUpdate();
+        if (retried) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "retrying",
+                    "message", "Update retry initiated successfully"
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Cannot retry: an update transaction is already running"
+            ));
+        }
+    }
+
+    @PostMapping("/install-update")
+    public ResponseEntity<Map<String, Object>> installUpdate() {
+        boolean installed = updateService.installStagedUpdate();
+        if (installed) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "restarting",
+                    "message", "Update activation initiated. Service restarting..."
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Cannot install update: no verified update is staged and ready to install"
             ));
         }
     }
@@ -95,6 +154,11 @@ public class UpdateController {
                     "error", "Cannot cancel update: no active download in progress or installation already committing"
             ));
         }
+    }
+
+    @GetMapping("/update-diagnostics")
+    public ResponseEntity<Map<String, Object>> getUpdateDiagnostics() {
+        return ResponseEntity.ok(updateService.getUpdateDiagnostics());
     }
 
     @GetMapping("/version-info")

@@ -101,6 +101,10 @@ public class Product {
     @Column(name = "archive_reason", length = 500)
     private String archiveReason;
 
+    // Persistent 7-day snooze for out-of-stock warning
+    @Column(name = "stock_alert_snoozed_until")
+    private LocalDateTime stockAlertSnoozedUntil;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

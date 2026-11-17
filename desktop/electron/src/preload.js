@@ -54,6 +54,16 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
     return ipcRenderer.invoke('pdf:print', { ...(payload || {}), options: options || (payload && payload.options) });
   },
 
+  // OTA Updater Controls
+  updater: {
+    pause: () => ipcRenderer.invoke('updater:pause'),
+    resume: () => ipcRenderer.invoke('updater:resume'),
+    retry: () => ipcRenderer.invoke('updater:retry'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    cancel: () => ipcRenderer.invoke('updater:cancel'),
+    getDiagnostics: () => ipcRenderer.invoke('updater:diagnostics')
+  },
+
   // Event Listeners for State Updates
   onBackendStateChange: (callback) => {
     if (typeof callback !== 'function') return () => {};

@@ -108,18 +108,99 @@ public class PlannerNotificationScheduler {
 
         List<Product> outOfStock = new ArrayList<>();
         List<Product> lowStock = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
 
         for (Product p : products) {
-            if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
+            if ("SERVICE".equalsIgnoreCase(p.getItemType()) || Boolean.FALSE.equals(p.getInInventory())) {
                 continue;
             }
             java.math.BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : java.math.BigDecimal.ZERO;
             java.math.BigDecimal min = p.getMinStockLevel() != null ? p.getMinStockLevel() : new java.math.BigDecimal("5.000");
+            String itemEventKey = "inventory:stock:item:" + p.getId();
 
             if (stock.compareTo(java.math.BigDecimal.ZERO) <= 0) {
                 outOfStock.add(p);
+
+                // Per-Product Out of Stock Notification
+                if (notificationService != null) {
+                    boolean isShortage = stock.compareTo(java.math.BigDecimal.ZERO) < 0;
+                    String alertType = isShortage ? "NEGATIVE_STOCK" : "OUT_OF_STOCK";
+                    String title = isShortage ? "🔴 Stock Shortage: " + p.getName() : "🔴 Out of Stock: " + p.getName();
+                    String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? p.getSku() : (p.getHsnCode() != null ? p.getHsnCode() : "N/A");
+                    String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
+
+                    StringBuilder itemBody = new StringBuilder();
+                    itemBody.append("Product: ").append(p.getName()).append("\n");
+                    itemBody.append("SKU / Code: ").append(skuStr).append("\n");
+                    itemBody.append("Current Stock: ").append(stock.stripTrailingZeros().toPlainString()).append(" ").append(unitStr).append("\n");
+                    itemBody.append("Minimum Stock Threshold: ").append(min.stripTrailingZeros().toPlainString()).append(" ").append(unitStr).append("\n");
+                    itemBody.append("Alert Type: ").append(alertType).append("\n");
+                    itemBody.append("Relevant Firm ID: ").append(firmId).append("\n");
+                    itemBody.append("Generated At: ").append(now.toString().replace("T", " ")).append("\n\n");
+                    itemBody.append("Action Required: Please generate a purchase order or adjust stock count.");
+
+                    NotificationRequest nReq = NotificationRequest.builder()
+                            .firmId(firmId)
+                            .eventKey(itemEventKey)
+                            .category(NotificationCategory.INVENTORY)
+                            .priority(NotificationPriority.HIGH)
+                            .title(title)
+                            .body(itemBody.toString())
+                            .sender("Inventory System")
+                            .primaryActionLabel("Snooze 7 Days")
+                            .primaryActionType(NotificationActionType.API_ACTION)
+                            .primaryActionTarget("SNOOZE_7D")
+                            .secondaryActionLabel("Create Purchase Order")
+                            .secondaryActionType(NotificationActionType.NAVIGATE)
+                            .secondaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\"}")
+                            .build();
+
+                    Notification created = notificationService.createOrUpdate(nReq);
+                    if (created != null && p.getStockAlertSnoozedUntil() != null && now.isBefore(p.getStockAlertSnoozedUntil())) {
+                        if (created.getStatus() != NotificationStatus.SNOOZED) {
+                            notificationService.snooze(created.getId(), "7d");
+                        }
+                    }
+                }
             } else if (stock.compareTo(min) <= 0) {
                 lowStock.add(p);
+
+                // Per-Product Low Stock Notification
+                if (notificationService != null) {
+                    String skuStr = (p.getSku() != null && !p.getSku().isBlank()) ? p.getSku() : (p.getHsnCode() != null ? p.getHsnCode() : "N/A");
+                    String unitStr = p.getUnit() != null ? p.getUnit() : "pcs";
+
+                    StringBuilder itemBody = new StringBuilder();
+                    itemBody.append("Product: ").append(p.getName()).append("\n");
+                    itemBody.append("SKU / Code: ").append(skuStr).append("\n");
+                    itemBody.append("Current Stock: ").append(stock.stripTrailingZeros().toPlainString()).append(" ").append(unitStr).append("\n");
+                    itemBody.append("Minimum Stock Threshold: ").append(min.stripTrailingZeros().toPlainString()).append(" ").append(unitStr).append("\n");
+                    itemBody.append("Alert Type: LOW_STOCK\n");
+                    itemBody.append("Relevant Firm ID: ").append(firmId).append("\n");
+                    itemBody.append("Generated At: ").append(now.toString().replace("T", " ")).append("\n\n");
+                    itemBody.append("Action Required: Stock is low. Consider restocking soon.");
+
+                    notificationService.createOrUpdate(NotificationRequest.builder()
+                            .firmId(firmId)
+                            .eventKey(itemEventKey)
+                            .category(NotificationCategory.INVENTORY)
+                            .priority(NotificationPriority.NORMAL)
+                            .title("⚠️ Low Stock: " + p.getName())
+                            .body(itemBody.toString())
+                            .sender("Inventory System")
+                            .primaryActionLabel("Open Inventory Catalog")
+                            .primaryActionType(NotificationActionType.NAVIGATE)
+                            .primaryActionTarget("{\"page\":\"firm\",\"tab\":\"inventory\"}")
+                            .secondaryActionLabel("Create Purchase Order")
+                            .secondaryActionType(NotificationActionType.NAVIGATE)
+                            .secondaryActionTarget("{\"page\":\"firm\",\"tab\":\"paperwork\",\"subTab\":\"orders\"}")
+                            .build());
+                }
+            } else {
+                // Stock is strictly above threshold -> resolve any active item alerts
+                if (notificationService != null) {
+                    notificationService.resolveByEventKey(firmId, itemEventKey);
+                }
             }
         }
 

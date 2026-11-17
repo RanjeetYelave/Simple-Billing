@@ -144,8 +144,6 @@ public class SavedItemService {
      */
     public List<UnifiedItemSuggestionDto> searchUnifiedItems(Long firmId, String query) {
         Long targetFirmId = resolveFirmId(firmId);
-        String q = (query != null ? query.trim().toLowerCase() : "");
-
         List<UnifiedItemSuggestionDto> results = new ArrayList<>();
 
         // Fetch active Inventory Products
@@ -153,72 +151,74 @@ public class SavedItemService {
         for (Product p : products) {
             if (Boolean.TRUE.equals(p.getIsArchived())) continue;
 
-            boolean matches = q.isEmpty() ||
-                    (p.getName() != null && p.getName().toLowerCase().contains(q)) ||
-                    (p.getSku() != null && p.getSku().toLowerCase().contains(q)) ||
-                    (p.getBarcode() != null && p.getBarcode().toLowerCase().contains(q)) ||
-                    (p.getCategory() != null && p.getCategory().toLowerCase().contains(q)) ||
-                    (p.getHsnCode() != null && p.getHsnCode().toLowerCase().contains(q));
-
-            if (matches) {
-                String badge;
-                if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
-                    badge = "Service";
-                } else {
-                    BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
-                    badge = "Stock: " + stock.stripTrailingZeros().toPlainString() + " " + (p.getUnit() != null ? p.getUnit() : "pcs");
-                }
-
-                results.add(UnifiedItemSuggestionDto.builder()
-                        .id("PROD_" + p.getId())
-                        .rawId(p.getId())
-                        .source("INVENTORY")
-                        .name(p.getName())
-                        .sku(p.getSku())
-                        .barcode(p.getBarcode())
-                        .unit(p.getUnit())
-                        .price(p.getPrice())
-                        .costPrice(p.getCostPrice())
-                        .stockQuantity(p.getStockQuantity())
-                        .minStockLevel(p.getMinStockLevel())
-                        .itemType(p.getItemType())
-                        .hsnCode(p.getHsnCode())
-                        .gstPercentage(p.getGstPercentage())
-                        .category(p.getCategory())
-                        .description(p.getDescription())
-                        .badge(badge)
-                        .canonicalProductId(p.getId())
-                        .build());
+            String badge;
+            if ("SERVICE".equalsIgnoreCase(p.getItemType())) {
+                badge = "Service";
+            } else {
+                BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
+                badge = "Stock: " + stock.stripTrailingZeros().toPlainString() + " " + (p.getUnit() != null ? p.getUnit() : "pcs");
             }
+
+            results.add(UnifiedItemSuggestionDto.builder()
+                    .id("PROD_" + p.getId())
+                    .rawId(p.getId())
+                    .source("INVENTORY")
+                    .name(p.getName())
+                    .sku(p.getSku())
+                    .barcode(p.getBarcode())
+                    .unit(p.getUnit())
+                    .price(p.getPrice())
+                    .costPrice(p.getCostPrice())
+                    .stockQuantity(p.getStockQuantity())
+                    .minStockLevel(p.getMinStockLevel())
+                    .itemType(p.getItemType())
+                    .hsnCode(p.getHsnCode())
+                    .gstPercentage(p.getGstPercentage())
+                    .category(p.getCategory())
+                    .description(p.getDescription())
+                    .badge(badge)
+                    .canonicalProductId(p.getId())
+                    .build());
         }
+
         List<SavedItem> savedItems = savedItemRepo.findActiveUnpromotedByFirmId(targetFirmId);
         for (SavedItem s : savedItems) {
-            boolean matches = q.isEmpty() ||
-                    (s.getName() != null && s.getName().toLowerCase().contains(q)) ||
-                    (s.getNormalizedName() != null && s.getNormalizedName().contains(q));
-
-            if (matches) {
-                results.add(UnifiedItemSuggestionDto.builder()
-                        .id("SAVED_" + s.getId())
-                        .rawId(s.getId())
-                        .source("SAVED_ITEM")
-                        .name(s.getName())
-                        .unit(s.getUnit())
-                        .price(s.getSellingPrice())
-                        .usageCount(s.getUsageCount())
-                        .badge("Saved Item · Not in Inventory")
-                        .build());
-            }
+            results.add(UnifiedItemSuggestionDto.builder()
+                    .id("SAVED_" + s.getId())
+                    .rawId(s.getId())
+                    .source("SAVED_ITEM")
+                    .name(s.getName())
+                    .unit(s.getUnit())
+                    .price(s.getSellingPrice())
+                    .usageCount(s.getUsageCount())
+                    .badge("Saved Item · Not in Inventory")
+                    .build());
         }
 
-        results.sort((a, b) -> {
-            int srcComp = String.valueOf(a.getSource()).compareTo(String.valueOf(b.getSource()));
-            if (srcComp != 0) {
-                return srcComp;
-            }
-            return String.valueOf(a.getName()).compareToIgnoreCase(String.valueOf(b.getName()));
-        });
-        return results;
+        if (query == null || query.trim().isEmpty()) {
+            results.sort((a, b) -> {
+                int srcComp = String.valueOf(a.getSource()).compareTo(String.valueOf(b.getSource()));
+                if (srcComp != 0) {
+                    return srcComp;
+                }
+                return String.valueOf(a.getName()).compareToIgnoreCase(String.valueOf(b.getName()));
+            });
+            return results.stream().limit(50).toList();
+        }
+
+        return com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
+                results,
+                query,
+                dto -> Arrays.asList(
+                        dto.getName(),
+                        dto.getCategory(),
+                        dto.getSku(),
+                        dto.getHsnCode(),
+                        dto.getBarcode(),
+                        dto.getDescription()
+                ),
+                50
+        );
     }
 
     public List<SavedItem> getAllSavedItems(Long firmId) {

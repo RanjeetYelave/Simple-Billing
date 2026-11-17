@@ -739,5 +739,47 @@ class InvoiceServiceTest {
         }
         assertEquals(5, generatedNumbers.size());
     }
+
+    @Test
+    void testCreateInvoiceAutoCreatesCustomerWhenCustomerIdNullAndNameProvided() {
+        Product p = createProduct("AutoCustProduct", "150.00", "0.00");
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(null);
+        req.setCustomerName("AutoCreatedCustomer");
+        req.setCustomerPhone("9876543210");
+        req.setCustomerAddress("123 Auto Lane");
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        Invoice inv = invoiceService.createInvoice(req);
+
+        assertNotNull(inv.getId());
+        assertNotNull(inv.getCustomer());
+        assertEquals("AutoCreatedCustomer", inv.getCustomer().getName());
+        assertEquals("9876543210", inv.getCustomer().getPhone());
+        assertEquals("123 Auto Lane", inv.getCustomer().getAddress());
+        assertEquals(1L, inv.getCustomer().getFirmId());
+    }
+
+    @Test
+    void testCreateInvoiceResolvesExistingCustomerByNameWhenCustomerIdNull() {
+        Customer existing = createCustomer("ResolvedByNameCustomer");
+        Product p = createProduct("ResolveProd", "200.00", "0.00");
+
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(1L);
+        req.setCustomerId(null);
+        req.setCustomerName("ResolvedByNameCustomer");
+        req.setStatus(InvoiceStatus.FINAL);
+        req.setItems(Collections.singletonList(buildItem(p, 1)));
+
+        Invoice inv = invoiceService.createInvoice(req);
+
+        assertNotNull(inv.getId());
+        assertNotNull(inv.getCustomer());
+        assertEquals(existing.getId(), inv.getCustomer().getId());
+    }
 }
 

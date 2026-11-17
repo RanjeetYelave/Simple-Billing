@@ -14278,16 +14278,22 @@
       }, [text]);
 
       const filtered = useMemo(() => {
-        if (remoteSuggestions && remoteSuggestions.length > 0) {
-          return remoteSuggestions;
+        const pool = (remoteSuggestions && remoteSuggestions.length > 0)
+          ? remoteSuggestions
+          : (products || []);
+        if (!text || !text.trim()) return pool || [];
+        const q = text.trim();
+        if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.fuzzyFilterAndSort === 'function') {
+          return BillsoftUtils.fuzzyFilterAndSort(pool, q, p => [
+            p.name, p.category, p.sku, p.hsnCode, p.barcode, p.description
+          ]);
         }
-        if (!text || !text.trim()) return products || [];
-        const q = text.toLowerCase().trim();
-        return (products || []).filter(p =>
-          (p.name && p.name.toLowerCase().includes(q)) ||
-          (p.hsnCode && p.hsnCode.toLowerCase().includes(q)) ||
-          (p.sku && p.sku.toLowerCase().includes(q)) ||
-          (p.category && p.category.toLowerCase().includes(q))
+        const lowerQ = q.toLowerCase();
+        return (pool || []).filter(p =>
+          (p.name && p.name.toLowerCase().includes(lowerQ)) ||
+          (p.hsnCode && p.hsnCode.toLowerCase().includes(lowerQ)) ||
+          (p.sku && p.sku.toLowerCase().includes(lowerQ)) ||
+          (p.category && p.category.toLowerCase().includes(lowerQ))
         );
       }, [products, text, remoteSuggestions]);
 
@@ -14338,7 +14344,13 @@
           }
           setShowSuggestions(false);
           setHighlightIdx(-1);
-          const match = (filtered || []).find(p => p.name && p.name.toLowerCase() === text.trim().toLowerCase());
+          const match = (filtered || []).find(p => {
+            if (!p || !p.name) return false;
+            if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.normalizeSearchText === 'function') {
+              return BillsoftUtils.normalizeSearchText(p.name) === BillsoftUtils.normalizeSearchText(text);
+            }
+            return p.name.toLowerCase() === text.trim().toLowerCase();
+          });
           if (match) {
             selectProduct(match);
           } else {
@@ -14525,27 +14537,37 @@
       }, [text, firmId]);
 
       const filtered = useMemo(() => {
-        const q = (text || '').trim().toLowerCase();
+        const q = (text || '').trim();
         if (!q) return [];
-        const localMatches = (customers || []).filter(c =>
-          (c.name && c.name.toLowerCase().includes(q)) ||
-          (c.phone && c.phone.includes(q)) ||
-          (c.gstin && c.gstin.toLowerCase().includes(q)) ||
-          (c.email && c.email.toLowerCase().includes(q))
-        );
+        const pool = (remoteSuggestions && remoteSuggestions.length > 0)
+          ? [...remoteSuggestions, ...(customers || [])]
+          : (customers || []);
         const seenIds = new Set();
-        const combined = [];
-        const sourceList = (remoteSuggestions && remoteSuggestions.length > 0)
-          ? [...remoteSuggestions, ...localMatches]
-          : localMatches;
-        for (const item of sourceList) {
+        const uniqueList = [];
+        for (const item of pool) {
           const id = item.customerId != null ? ('C_' + item.customerId) : (item.id != null ? ('C_' + item.id) : (item.partyId != null ? ('P_' + item.partyId) : (item.canonicalName || item.name || '')));
           if (!seenIds.has(id)) {
             seenIds.add(id);
-            combined.push(item);
+            uniqueList.push(item);
           }
         }
-        return combined.slice(0, 10);
+        if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.fuzzyFilterAndSort === 'function') {
+          return BillsoftUtils.fuzzyFilterAndSort(uniqueList, q, c => [
+            c.canonicalName || c.name || '',
+            c.phone || '',
+            c.gstin || '',
+            c.email || '',
+            c.address || '',
+            c.matchedAlias || ''
+          ]).slice(0, 10);
+        }
+        const lowerQ = q.toLowerCase();
+        return uniqueList.filter(c =>
+          (c.name && c.name.toLowerCase().includes(lowerQ)) ||
+          (c.phone && c.phone.includes(lowerQ)) ||
+          (c.gstin && c.gstin.toLowerCase().includes(lowerQ)) ||
+          (c.email && c.email.toLowerCase().includes(lowerQ))
+        ).slice(0, 10);
       }, [customers, text, remoteSuggestions]);
 
       const selectCustomer = (cust) => {
@@ -15502,10 +15524,28 @@
             if (existingInFirm) {
               finalCustId = existingInFirm.id;
               setForm(f => ({ ...f, customerId: String(existingInFirm.id) }));
+            } else if (form.customerName && form.customerName.trim()) {
+              try {
+                const newCust = await API.customers.create({
+                  name: form.customerName.trim(),
+                  phone: form.customerPhone ? form.customerPhone.trim() : undefined,
+                  email: form.customerEmail ? form.customerEmail.trim() : undefined,
+                  address: form.customerAddress ? form.customerAddress.trim() : undefined,
+                  gstin: form.customerGstin ? form.customerGstin.trim().toUpperCase() : undefined,
+                  firmId: targetFirmId
+                });
+                if (newCust && newCust.id) {
+                  finalCustId = newCust.id;
+                  setCustomers(prev => [...(prev || []).filter(c => c.id !== newCust.id), newCust]);
+                  setForm(f => ({ ...f, customerId: String(newCust.id) }));
+                }
+              } catch (custErr) {
+                console.warn('Could not auto-create customer in frontend:', custErr);
+              }
             }
           }
-          if (!finalCustId) {
-            showToast('Please select a customer from search suggestions or click "+ Add Customer"', 'warning');
+          if (!finalCustId && (!form.customerName || !form.customerName.trim())) {
+            showToast('Please enter a customer name or select an existing customer', 'warning');
             setSaving(false);
             setSubmitDisabled(false);
             return;
@@ -15539,7 +15579,13 @@
           const req = {
             firmId: targetFirmId,
             pricingProfileId: form.pricingProfileId ? parseInt(form.pricingProfileId, 10) : undefined,
-            customerId: parseInt(finalCustId), items: reqItems,
+            customerId: finalCustId ? parseInt(finalCustId) : undefined,
+            customerName: form.customerName ? form.customerName.trim() : undefined,
+            customerPhone: form.customerPhone ? form.customerPhone.trim() : undefined,
+            customerAddress: form.customerAddress ? form.customerAddress.trim() : undefined,
+            customerEmail: form.customerEmail ? form.customerEmail.trim() : undefined,
+            customerGstin: form.customerGstin ? form.customerGstin.trim().toUpperCase() : undefined,
+            items: reqItems,
             invoiceNumber: isEstimate ? undefined : (form.invoiceNumber || undefined),
             estimateNumber: isEstimate ? (form.estimateNumber || undefined) : undefined,
             status: calculatedStatus,
@@ -16011,7 +16057,7 @@
                     },
                     title: `Also registered as Supplier: ${linkedSupplierChip.partyName}`
                   }, `🤝 Supplier: ${linkedSupplierChip.partyName}`)
-                ) : (form.customerName ? 'Quick-entry customer' : 'Customer selection')
+                ) : (form.customerName ? '✨ Quick-entry customer (will auto-create profile on save)' : 'Customer selection')
               )
             ),
 

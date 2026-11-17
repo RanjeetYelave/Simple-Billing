@@ -323,18 +323,15 @@ public class ProductService {
 		if (targetFirmId == null) {
 			return Collections.emptyList();
 		}
-		List<Product> list = repo.findByFirmId(targetFirmId);
-		String q = query != null ? query.trim().toLowerCase() : "";
-		return list.stream()
+		List<Product> list = repo.findByFirmId(targetFirmId).stream()
 				.filter(p -> p.getIsArchived() == null || !p.getIsArchived())
-				.filter(p -> q.isEmpty() ||
-						(p.getName() != null && p.getName().toLowerCase().contains(q)) ||
-						(p.getSku() != null && p.getSku().toLowerCase().contains(q)) ||
-						(p.getBarcode() != null && p.getBarcode().toLowerCase().contains(q)) ||
-						(p.getCategory() != null && p.getCategory().toLowerCase().contains(q)) ||
-						(p.getHsnCode() != null && p.getHsnCode().toLowerCase().contains(q)))
-				.limit(30)
 				.toList();
+		return com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
+				list,
+				query,
+				p -> Arrays.asList(p.getName(), p.getCategory(), p.getSku(), p.getHsnCode(), p.getBarcode(), p.getDescription()),
+				50
+		);
 	}
 
 	public List<Product> getUnimportedProducts(Long firmId) {

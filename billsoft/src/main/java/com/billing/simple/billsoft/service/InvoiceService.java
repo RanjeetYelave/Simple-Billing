@@ -721,6 +721,42 @@ public class InvoiceService {
                 "Customer not found or does not belong to firm: " + requestedCustomerId);
     }
 
+    private Customer resolveOrCreateCustomerForFirm(InvoiceRequest request, Long effectiveFirmId) {
+        if (request == null) {
+            return null;
+        }
+        if (request.getCustomerId() != null) {
+            return resolveCustomerForFirm(request.getCustomerId(), effectiveFirmId);
+        }
+        if (request.getCustomerName() != null && !request.getCustomerName().trim().isEmpty() && effectiveFirmId != null) {
+            String name = request.getCustomerName().trim();
+            String phone = (request.getCustomerPhone() != null && !request.getCustomerPhone().trim().isEmpty())
+                    ? request.getCustomerPhone().trim() : null;
+            if (phone != null) {
+                Optional<Customer> byPhone = customerRepo.findFirstByFirmIdAndPhone(effectiveFirmId, phone);
+                if (byPhone.isPresent()) {
+                    return byPhone.get();
+                }
+            }
+            Optional<Customer> byName = customerRepo.findFirstByFirmIdAndNameIgnoreCase(effectiveFirmId, name);
+            if (byName.isPresent()) {
+                return byName.get();
+            }
+            Customer newCust = new Customer();
+            newCust.setFirmId(effectiveFirmId);
+            newCust.setName(name);
+            newCust.setPhone(phone);
+            newCust.setAddress((request.getCustomerAddress() != null && !request.getCustomerAddress().trim().isEmpty())
+                    ? request.getCustomerAddress().trim() : null);
+            newCust.setEmail((request.getCustomerEmail() != null && !request.getCustomerEmail().trim().isEmpty())
+                    ? request.getCustomerEmail().trim() : null);
+            newCust.setGstin((request.getCustomerGstin() != null && !request.getCustomerGstin().trim().isEmpty())
+                    ? request.getCustomerGstin().trim().toUpperCase() : null);
+            return customerRepo.save(newCust);
+        }
+        return null;
+    }
+
     // -------------------------
     // CREATE (persist)
     // -------------------------
@@ -746,9 +782,8 @@ public class InvoiceService {
         validateInvoiceDiscount(request.getInvoiceDiscount());
         validateInvoiceItems(request.getItems());
 
-        // Load customer if provided (resolve or replicate into target firm if switching
-        // firms)
-        Customer customer = resolveCustomerForFirm(request.getCustomerId(), effectiveFirmId);
+        // Load customer if provided or resolve/auto-create if customerName provided
+        Customer customer = resolveOrCreateCustomerForFirm(request, effectiveFirmId);
         if (customer != null) {
             request.setCustomerId(customer.getId());
         }
@@ -894,6 +929,14 @@ public class InvoiceService {
         Customer customer = null;
         if (request.getCustomerId() != null) {
             customer = customerRepo.findById(request.getCustomerId()).orElse(null);
+        } else if (request.getCustomerName() != null && !request.getCustomerName().trim().isEmpty()) {
+            customer = new Customer();
+            customer.setName(request.getCustomerName().trim());
+            customer.setPhone(request.getCustomerPhone());
+            customer.setAddress(request.getCustomerAddress());
+            customer.setEmail(request.getCustomerEmail());
+            customer.setGstin(request.getCustomerGstin());
+            customer.setFirmId(request.getFirmId());
         }
 
         InvoiceStatus status = request.getStatus();

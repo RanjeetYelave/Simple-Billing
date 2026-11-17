@@ -2,6 +2,166 @@
  * Billsoft Utility Functions
  */
 const BillsoftUtils = {
+  // ── Universal Case, Space, Special-Char, Partial-Word & Tokenized Fuzzy Matcher ──
+  normalizeSearchText(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text.toLowerCase()
+      .replace(/[-_/\\.,()[\]{}|*+&!@~:;'"?<>`#^%=]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  toCompactAlphanumeric(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  },
+
+  toDigitsOnly(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text.replace(/\D+/g, '');
+  },
+
+  _isSubsequence(needle, haystack) {
+    if (!needle || !haystack) return false;
+    let nIdx = 0;
+    for (let hIdx = 0; hIdx < haystack.length && nIdx < needle.length; hIdx++) {
+      if (needle[nIdx] === haystack[hIdx]) nIdx++;
+    }
+    return nIdx === needle.length;
+  },
+
+  scoreSearchMatch(query, candidateOrFields, primaryField = '') {
+    if (!query || !query.trim()) return 1;
+    const rawQuery = query.trim();
+    const normQuery = this.normalizeSearchText(rawQuery);
+    const queryCompact = this.toCompactAlphanumeric(rawQuery);
+    const queryDigits = this.toDigitsOnly(rawQuery);
+
+    if (!normQuery && !queryCompact) return 1;
+
+    const queryTokens = normQuery ? normQuery.split(' ').filter(Boolean) : [queryCompact];
+    if (queryTokens.length === 0) return 1;
+
+    const fields = Array.isArray(candidateOrFields)
+      ? candidateOrFields.filter(Boolean).map(String)
+      : [String(candidateOrFields || '')];
+
+    const primaryNorm = this.normalizeSearchText(primaryField || fields[0] || '');
+    const combinedRaw = fields.join(' ');
+    const combinedNorm = this.normalizeSearchText(combinedRaw);
+    const combinedCompact = this.toCompactAlphanumeric(combinedRaw);
+    const combinedDigits = this.toDigitsOnly(combinedRaw);
+
+    let baseScore = 0;
+    if (normQuery) {
+      if (primaryNorm === normQuery) {
+        baseScore += 1000;
+      } else if (primaryNorm.startsWith(normQuery)) {
+        baseScore += 600;
+      } else if (primaryNorm.includes(normQuery)) {
+        baseScore += 400;
+      } else if (combinedNorm.includes(normQuery)) {
+        baseScore += 300;
+      }
+    }
+    if (queryCompact && combinedCompact.includes(queryCompact)) {
+      baseScore += 250;
+    }
+
+    const candidateWords = combinedNorm.split(' ').filter(Boolean);
+    const wordSet = new Set(candidateWords);
+
+    let matchedTokenCount = 0;
+    let tokenScore = 0;
+    const matchedTokenSet = new Set();
+
+    for (const token of queryTokens) {
+      let tokenMatched = false;
+      if (wordSet.has(token)) {
+        tokenMatched = true;
+        tokenScore += 80;
+      } else {
+        for (const word of candidateWords) {
+          if (word.startsWith(token)) {
+            tokenMatched = true;
+            tokenScore += 50;
+            break;
+          } else if (word.includes(token)) {
+            tokenMatched = true;
+            tokenScore += 30;
+            break;
+          } else if (token.length >= 3 && this._isSubsequence(token, word)) {
+            tokenMatched = true;
+            tokenScore += 15;
+            break;
+          }
+        }
+      }
+
+      if (!tokenMatched && combinedNorm.includes(token)) {
+        tokenMatched = true;
+        tokenScore += 20;
+      }
+      if (!tokenMatched && queryCompact && combinedCompact.includes(token)) {
+        tokenMatched = true;
+        tokenScore += 25;
+      }
+      if (!tokenMatched && queryDigits && token.length >= 3 && combinedDigits.includes(token)) {
+        tokenMatched = true;
+        tokenScore += 40;
+      }
+
+      if (tokenMatched) {
+        matchedTokenCount++;
+        matchedTokenSet.add(token);
+      }
+    }
+
+    // Any numeric token (e.g. dimensions, codes, numbers like "15", "20") must strictly match
+    const numericTokens = queryTokens.filter(t => /\d/.test(t));
+    if (numericTokens.length > 0) {
+      const allNumericMatched = numericTokens.every(nt =>
+        matchedTokenSet.has(nt) ||
+        (queryCompact && combinedCompact.includes(nt)) ||
+        (combinedDigits && combinedDigits.includes(nt))
+      );
+      if (!allNumericMatched) {
+        return 0;
+      }
+    }
+
+    const allMatched = matchedTokenCount === queryTokens.length;
+    const partialMatched = queryTokens.length >= 3 && matchedTokenCount >= queryTokens.length - 1;
+
+    if (!allMatched && !partialMatched && baseScore === 0) {
+      if (queryCompact && queryCompact.length >= 2 && combinedCompact.includes(queryCompact)) {
+        return 100;
+      }
+      if (queryDigits && queryDigits.length >= 4 && combinedDigits.includes(queryDigits)) {
+        return 120;
+      }
+      return 0;
+    }
+
+    return baseScore + tokenScore + (matchedTokenCount * 20);
+  },
+
+  fuzzyFilterAndSort(items, query, getFields) {
+    if (!Array.isArray(items)) return [];
+    if (!query || !query.trim()) return items;
+    const scored = [];
+    for (const item of items) {
+      const fields = getFields ? getFields(item) : [item.name || item.title || ''];
+      const primary = fields[0] || '';
+      const score = this.scoreSearchMatch(query, fields, primary);
+      if (score > 0) {
+        scored.push({ item, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map(s => s.item);
+  },
+
   getInitials(name) {
     if (!name || typeof name !== 'string') return '??';
     const parts = name.trim().split(/\s+/).filter(Boolean);

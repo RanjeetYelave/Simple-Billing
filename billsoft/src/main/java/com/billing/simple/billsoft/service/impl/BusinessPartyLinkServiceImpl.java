@@ -1157,15 +1157,19 @@ public class BusinessPartyLinkServiceImpl implements BusinessPartyLinkService {
             partyIdToLink.put(link.getPartyId(), link);
         }
 
-        // Match customers using DB query
+        // Match customers using DB query or in-memory fuzzy matcher
+        List<Customer> allCustomers = customerRepo.findByFirmIdOrderByNameAsc(firmId);
         List<Customer> matchedCustomers = hasText(q)
-                ? customerRepo.searchByFirmIdAndQuery(firmId, q)
-                : customerRepo.findByFirmIdOrderByNameAsc(firmId);
+                ? com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
+                        allCustomers, q, c -> Arrays.asList(c.getName(), c.getPhone(), c.getGstin(), c.getEmail(), c.getAddress()), 50)
+                : allCustomers;
 
-        // Match parties using DB query
+        // Match parties using DB query or in-memory fuzzy matcher
+        List<Party> allParties = partyRepo.findByFirmIdOrderByNameAsc(firmId);
         List<Party> matchedParties = hasText(q)
-                ? partyRepo.searchByFirmIdAndQuery(firmId, q)
-                : partyRepo.findByFirmIdOrderByNameAsc(firmId);
+                ? com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
+                        allParties, q, p -> Arrays.asList(p.getName(), p.getPhone(), p.getGstin(), p.getEmail(), p.getContactPerson()), 50)
+                : allParties;
 
         // Match active aliases
         List<BusinessIdentityAlias> matchedAliases = hasText(q)

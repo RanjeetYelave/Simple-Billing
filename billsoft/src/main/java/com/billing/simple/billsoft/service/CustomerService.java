@@ -1,5 +1,6 @@
 package com.billing.simple.billsoft.service;
 
+import java.util.Arrays;
 import java.util.List;
 
 import com.billing.simple.billsoft.security.TenantContext;
@@ -58,7 +59,13 @@ public class CustomerService {
         if (query == null || query.trim().isEmpty()) {
             return repo.findByFirmIdOrderByNameAsc(targetFirmId);
         }
-        return repo.searchByFirmIdAndQuery(targetFirmId, query.trim());
+        List<Customer> allCustomers = repo.findByFirmId(targetFirmId);
+        return com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
+                allCustomers,
+                query,
+                c -> Arrays.asList(c.getName(), c.getPhone(), c.getGstin(), c.getEmail(), c.getAddress()),
+                50
+        );
     }
 
     public Customer getById(Long id) {

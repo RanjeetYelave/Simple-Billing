@@ -12524,6 +12524,28 @@
         return list.join('||');
       };
 
+      const renderAnnouncementContent = (text) => {
+        if (!text) return '';
+        let clean = text;
+        let bannerType = null;
+        if (typeof clean === 'string' && clean.startsWith('[')) {
+          const closeBracket = clean.indexOf(']');
+          if (closeBracket > 1) {
+            const tag = clean.substring(1, closeBracket);
+            clean = clean.substring(closeBracket + 1).trim();
+            bannerType = tag.includes('|') ? tag.split('|')[0].trim() : tag.trim();
+          }
+        }
+        if (bannerType) {
+          const badgeClass = bannerType === 'URGENT' ? 'badge badge-danger' : (bannerType === 'WARNING' ? 'badge badge-warning' : 'badge badge-info');
+          return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+            React.createElement('span', { className: badgeClass, style: { width: 'fit-content', fontSize: '0.70rem', padding: '1px 6px', fontWeight: 700 } }, bannerType),
+            React.createElement('span', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, clean)
+          );
+        }
+        return React.createElement('span', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, clean);
+      };
+
       const loadAnnouncements = useCallback(() => {
         if (API.announcements && API.announcements.get) {
           API.announcements.get()
@@ -13871,7 +13893,7 @@
               className: 'announcement-item'
             },
               React.createElement('span', { className: 'announcement-item-dot' }, '•'),
-              React.createElement('div', { className: 'announcement-item-text' }, ann)
+              React.createElement('div', { className: 'announcement-item-text' }, renderAnnouncementContent(ann))
             ))
           )
         ),
@@ -13964,7 +13986,7 @@
                 }
               },
                 React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 'bold', fontSize: '1rem', marginTop: 1 } }, '•'),
-                React.createElement('div', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 } }, ann)
+                React.createElement('div', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 } }, renderAnnouncementContent(ann))
               ))
             ),
 

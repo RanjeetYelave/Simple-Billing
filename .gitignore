@@ -134,3 +134,11 @@ CLEANUP_AUDIT.md
 ###############################################################
 tools/SoftwareManagementTool.html
 SoftwareManagementTool.html
+
+###############################################################
+# DATABASE & OPERATIONAL DATA
+###############################################################
+*.db
+*.mv.db
+*.trace.db
+data/

@@ -228,4 +228,94 @@ public class AnnouncementServiceTest {
         assertEquals("Legacy notice 1", loaded.get(0));
         assertEquals("Legacy notice 2", loaded.get(1));
     }
+
+    @Test
+    public void testCanonicalSmtHeaderParsingAndMetadataStripping() {
+        Instant now = Instant.now();
+        Instant pub = now.minus(Duration.ofMinutes(10));
+        Instant exp = now.plus(Duration.ofDays(2));
+
+        String raw = String.format("[WARNING|id=ANN-42|publishAt=%s|expiresAt=%s|target=ALL] Maintenance: Tonight at midnight",
+                pub.toString(), exp.toString());
+
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+        assertEquals(1, parsed.size());
+        // Metadata is stripped, clean banner and content preserved
+        assertEquals("[WARNING] Maintenance: Tonight at midnight", parsed.get(0));
+    }
+
+    @Test
+    public void testExpiredAnnouncementDiscardedInRealTime() {
+        Instant now = Instant.now();
+        Instant pastExp = now.minus(Duration.ofHours(2));
+        Instant validExp = now.plus(Duration.ofHours(5));
+
+        String raw = String.format("[INFO|id=ANN-1|expiresAt=%s|target=ALL] Old notice: Should be dropped\n\n@@@\n\n[INFO|id=ANN-2|expiresAt=%s|target=ALL] Fresh notice: Should be kept",
+                pastExp.toString(), validExp.toString());
+
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+        assertEquals(1, parsed.size());
+        assertEquals("[INFO] Fresh notice: Should be kept", parsed.get(0));
+    }
+
+    @Test
+    public void testScheduledFutureAnnouncementDiscardedUntilPublishTime() {
+        Instant now = Instant.now();
+        Instant futurePub = now.plus(Duration.ofHours(24));
+        Instant currentPub = now.minus(Duration.ofMinutes(5));
+
+        String raw = String.format("[INFO|id=ANN-1|publishAt=%s|target=ALL] Future promo: Not yet active\n\n@@@\n\n[INFO|id=ANN-2|publishAt=%s|target=ALL] Current promo: Active now",
+                futurePub.toString(), currentPub.toString());
+
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+        assertEquals(1, parsed.size());
+        assertEquals("[INFO] Current promo: Active now", parsed.get(0));
+    }
+
+    @Test
+    public void testTargetAudienceFiltering() {
+        announcementService.setMachineIdForTesting("MID-DESKTOP-1234");
+
+        String raw = "[INFO|id=ANN-1|target=ALL] Global Message\n\n@@@\n\n" +
+                     "[INFO|id=ANN-2|target=MID-DESKTOP-1234] Targeted to this machine\n\n@@@\n\n" +
+                     "[INFO|id=ANN-3|target=MID-OTHER-9999] Targeted to other machine";
+
+        List<String> parsed = announcementService.parseAnnouncements(raw);
+        assertEquals(2, parsed.size());
+        assertEquals("[INFO] Global Message", parsed.get(0));
+        assertEquals("[INFO] Targeted to this machine", parsed.get(1));
+    }
+
+    @Test
+    public void testCacheHitRealTimeExpiryFiltering() {
+        Instant now = Instant.now();
+        Instant expSoon = now.plus(Duration.ofMinutes(5));
+
+        String raw = String.format("[INFO|id=ANN-1|expiresAt=%s|target=ALL] Expiring in 5 min", expSoon.toString());
+        List<AnnouncementService.AnnouncementItem> items = announcementService.parseAnnouncementItems(raw);
+
+        // Simulate item in cache
+        announcementService.filterEligibleAnnouncements(items, now, null);
+        assertEquals(1, announcementService.filterEligibleAnnouncements(items, now, null).size());
+
+        // 10 minutes later, item expires without remote call
+        Instant tenMinutesLater = now.plus(Duration.ofMinutes(10));
+        assertEquals(0, announcementService.filterEligibleAnnouncements(items, tenMinutesLater, null).size());
+    }
+
+    @Test
+    public void testStaleDiskCacheOver24HoursDiscarded() throws Exception {
+        // Create cache file with 30-hour old timestamp
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        long thirtyHoursAgo = System.currentTimeMillis() - (30L * 3600 * 1000L);
+        AnnouncementService.CacheRecord staleRecord = new AnnouncementService.CacheRecord(
+                thirtyHoursAgo, List.of("Ancient announcement"), null);
+        mapper.writeValue(testCacheFile, staleRecord);
+        testCacheFile.setLastModified(thirtyHoursAgo);
+
+        AnnouncementService service = new AnnouncementService(testCacheFile);
+        assertFalse(service.isCacheFresh(), "Cache must not be fresh from stale file");
+        assertNull(service.getLastFetchTime(), "Last fetch time must be null after discarding stale cache");
+        assertFalse(testCacheFile.exists(), "Stale cache file should be deleted");
+    }
 }

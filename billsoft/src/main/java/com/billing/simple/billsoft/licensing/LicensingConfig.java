@@ -12,11 +12,11 @@ public final class LicensingConfig {
     public static final String DEFAULT_EDITION = "PRO";
     public static final int QR_VERSION = 1;
 
-    // Default Master Ed25519 Public Key in X.509 Base64 format (44 bytes encoded)
+    // Master Ed25519 Public Key V2 in X.509 Base64 format (44 bytes encoded)
     public static final String MASTER_PUBLIC_KEY_X509_BASE64 =
-            "MCowBQYDK2VwAyEAtdG8eJgrX0L7jtx13wOGnqSeeID2B/aRv1+OZQ7v3C8=";
+            "MCowBQYDK2VwAyEAIZpl7UOIywTEPkj5L3rH5AYPVAtnofHYJoyZ0Bj/6SM=";
 
-    // Legacy Master Ed25519 Public Key for backward-compatible verification during key transition
+    // Legacy Master Ed25519 Public Key V1 for backward-compatible verification during key transition
     public static final String LEGACY_MASTER_PUBLIC_KEY_X509_BASE64 =
             "MCowBQYDK2VwAyEAdmc4i0VRQ4Whs4OqCfxuOWSiiLQiiyp8VlTRhBTGRZo=";
 

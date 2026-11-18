@@ -219,7 +219,7 @@ public class LicenseVerifier {
     }
 
     /**
-     * Verifies a customer message signature.
+     * Verifies a customer message signature using primary key V2 with fallback to legacy key V1.
      */
     public boolean verifyMessage(String machineId, CustomerMessage message) {
         if (message == null || message.getSignature() == null) {
@@ -232,7 +232,14 @@ public class LicenseVerifier {
             Signature sig = Signature.getInstance("Ed25519");
             sig.initVerify(publicKey);
             sig.update(canonical.getBytes(StandardCharsets.UTF_8));
-            return sig.verify(signatureBytes);
+            boolean verified = sig.verify(signatureBytes);
+            if (!verified && fallbackPublicKey != null) {
+                Signature fallbackSig = Signature.getInstance("Ed25519");
+                fallbackSig.initVerify(fallbackPublicKey);
+                fallbackSig.update(canonical.getBytes(StandardCharsets.UTF_8));
+                verified = fallbackSig.verify(signatureBytes);
+            }
+            return verified;
         } catch (Exception e) {
             return false;
         }

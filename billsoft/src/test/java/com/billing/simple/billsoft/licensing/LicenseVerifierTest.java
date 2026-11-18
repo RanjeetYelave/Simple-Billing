@@ -468,4 +468,133 @@ public class LicenseVerifierTest {
         assertEquals(ValidationResult.CORRUPT_PAYLOAD, result);
         assertFalse(result.isValid());
     }
+
+    @Test
+    void testDualTrustKeyRotation_PrimaryV2_and_LegacyFallbackV1_License() throws Exception {
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair keyPairV2 = kpg.generateKeyPair();
+        KeyPair keyPairV1 = kpg.generateKeyPair();
+        KeyPair untrustedKey = kpg.generateKeyPair();
+
+        String pubV2Base64 = Base64.getEncoder().encodeToString(keyPairV2.getPublic().getEncoded());
+        String pubV1Base64 = Base64.getEncoder().encodeToString(keyPairV1.getPublic().getEncoded());
+
+        LicenseVerifier dualVerifier = new LicenseVerifier(pubV2Base64, pubV1Base64);
+
+        LicensePayload licenseV2 = new LicensePayload(
+                "LIC-V2-001",
+                "K7XM-92QP-4B9R-XD6T",
+                "V2 Customer",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.GOLD,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                null,
+                null,
+                null
+        );
+        licenseV2.setSchemaVersion(3);
+        Signature sigV2 = Signature.getInstance("Ed25519");
+        sigV2.initSign(keyPairV2.getPrivate());
+        sigV2.update(LicenseVerifier.buildCanonicalString(licenseV2).getBytes(StandardCharsets.UTF_8));
+        licenseV2.setSignature(Base64.getEncoder().encodeToString(sigV2.sign()));
+
+        assertEquals(ValidationResult.VALID, dualVerifier.verifyLicense(licenseV2, "K7XM-92QP-4B9R-XD6T"),
+                "License signed with primary Key V2 must verify successfully");
+
+        LicensePayload licenseV1 = new LicensePayload(
+                "LIC-V1-002",
+                "K7XM-92QP-4B9R-XD6T",
+                "V1 Legacy Customer",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.SILVER,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now().minus(30, ChronoUnit.DAYS),
+                Instant.now().plus(300, ChronoUnit.DAYS),
+                null,
+                null
+        );
+        licenseV1.setSchemaVersion(3);
+        Signature sigV1 = Signature.getInstance("Ed25519");
+        sigV1.initSign(keyPairV1.getPrivate());
+        sigV1.update(LicenseVerifier.buildCanonicalString(licenseV1).getBytes(StandardCharsets.UTF_8));
+        licenseV1.setSignature(Base64.getEncoder().encodeToString(sigV1.sign()));
+
+        assertEquals(ValidationResult.VALID, dualVerifier.verifyLicense(licenseV1, "K7XM-92QP-4B9R-XD6T"),
+                "Legacy license signed with legacy Key V1 must verify successfully through fallback");
+
+        LicensePayload licenseUntrusted = new LicensePayload(
+                "LIC-BAD-003",
+                "K7XM-92QP-4B9R-XD6T",
+                "Untrusted Customer",
+                "RupeeCRM",
+                "PRO",
+                MembershipPlan.GOLD,
+                LicenseStatus.ACTIVE,
+                1,
+                Instant.now(),
+                null,
+                null,
+                null
+        );
+        licenseUntrusted.setSchemaVersion(3);
+        Signature sigBad = Signature.getInstance("Ed25519");
+        sigBad.initSign(untrustedKey.getPrivate());
+        sigBad.update(LicenseVerifier.buildCanonicalString(licenseUntrusted).getBytes(StandardCharsets.UTF_8));
+        licenseUntrusted.setSignature(Base64.getEncoder().encodeToString(sigBad.sign()));
+
+        assertEquals(ValidationResult.INVALID_SIGNATURE, dualVerifier.verifyLicense(licenseUntrusted, "K7XM-92QP-4B9R-XD6T"),
+                "License signed with untrusted key must be strictly rejected");
+    }
+
+    @Test
+    void testDualTrustCustomerMessageVerification() throws Exception {
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair keyPairV2 = kpg.generateKeyPair();
+        KeyPair keyPairV1 = kpg.generateKeyPair();
+        KeyPair untrustedKey = kpg.generateKeyPair();
+
+        String pubV2Base64 = Base64.getEncoder().encodeToString(keyPairV2.getPublic().getEncoded());
+        String pubV1Base64 = Base64.getEncoder().encodeToString(keyPairV1.getPublic().getEncoded());
+
+        LicenseVerifier dualVerifier = new LicenseVerifier(pubV2Base64, pubV1Base64);
+        String machineId = "MID-TEST-789";
+
+        CustomerMessage msgV2 = new CustomerMessage(
+                "MSG-101", "Payment Notice", "Payment received successfully", Instant.now(), null
+        );
+        Signature sigV2 = Signature.getInstance("Ed25519");
+        sigV2.initSign(keyPairV2.getPrivate());
+        sigV2.update(LicenseVerifier.buildMessageCanonicalString(machineId, msgV2).getBytes(StandardCharsets.UTF_8));
+        msgV2.setSignature(Base64.getEncoder().encodeToString(sigV2.sign()));
+
+        assertTrue(dualVerifier.verifyMessage(machineId, msgV2),
+                "Customer message signed with primary Key V2 must verify successfully");
+
+        CustomerMessage msgV1 = new CustomerMessage(
+                "MSG-102", "Legacy Reminder", "Legacy EMI installment pending", Instant.now().minus(10, ChronoUnit.DAYS), null
+        );
+        Signature sigV1 = Signature.getInstance("Ed25519");
+        sigV1.initSign(keyPairV1.getPrivate());
+        sigV1.update(LicenseVerifier.buildMessageCanonicalString(machineId, msgV1).getBytes(StandardCharsets.UTF_8));
+        msgV1.setSignature(Base64.getEncoder().encodeToString(sigV1.sign()));
+
+        assertTrue(dualVerifier.verifyMessage(machineId, msgV1),
+                "Customer message signed with legacy Key V1 must verify successfully through fallback");
+
+        CustomerMessage msgBad = new CustomerMessage(
+                "MSG-103", "Spoofed Title", "Spoofed body text", Instant.now(), null
+        );
+        Signature sigBad = Signature.getInstance("Ed25519");
+        sigBad.initSign(untrustedKey.getPrivate());
+        sigBad.update(LicenseVerifier.buildMessageCanonicalString(machineId, msgBad).getBytes(StandardCharsets.UTF_8));
+        msgBad.setSignature(Base64.getEncoder().encodeToString(sigBad.sign()));
+
+        assertFalse(dualVerifier.verifyMessage(machineId, msgBad),
+                "Customer message signed with untrusted key must be strictly rejected");
+    }
 }

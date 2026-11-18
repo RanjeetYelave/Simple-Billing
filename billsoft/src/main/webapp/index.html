@@ -12589,7 +12589,12 @@
         window.addEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
         window.addEventListener('billsoft:app-refresh', loadAnnouncements);
         window.addEventListener('billsoft:announcements-refresh', loadAnnouncements);
+        // Periodic real-time evaluation every 60 seconds to purge expired announcements
+        const announcementsTimer = setInterval(() => {
+          loadAnnouncements();
+        }, 60000);
         return () => {
+          clearInterval(announcementsTimer);
           window.removeEventListener('billsoft:app-refresh', loadDashboardData);
           window.removeEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
           window.removeEventListener('billsoft:app-refresh', loadAnnouncements);

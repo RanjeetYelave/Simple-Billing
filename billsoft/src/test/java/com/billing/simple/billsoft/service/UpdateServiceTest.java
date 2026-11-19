@@ -301,10 +301,26 @@ class UpdateServiceTest {
 
     @Test
     void testBillsoftVersionMetadataOverride() throws Exception {
+        System.setProperty("app.version.allow-mock-override", "true");
         Path overrideFile = Path.of(".billsoft-version");
         try {
             Files.writeString(overrideFile, "v0.9.0");
             assertEquals("v0.9.0", service.getCurrentVersion());
+        } finally {
+            System.clearProperty("app.version.allow-mock-override");
+            Files.deleteIfExists(overrideFile);
+        }
+    }
+
+    @Test
+    void testStaleBillsoftVersionPurgedWhenRunningBinaryIsAuthoritative() throws Exception {
+        service.setDefaultVersion("v1.0.329");
+        Path overrideFile = Path.of(".billsoft-version");
+        try {
+            Files.writeString(overrideFile, "v1.0.320");
+            // Running binary v1.0.329 is authoritative and must purge stale v1.0.320 file
+            assertEquals("v1.0.329", service.getCurrentVersion());
+            assertFalse(Files.exists(overrideFile), "Stale .billsoft-version file must be purged");
         } finally {
             Files.deleteIfExists(overrideFile);
         }

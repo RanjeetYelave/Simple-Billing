@@ -311,10 +311,139 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  verify-windows-installation:
+    name: Verify Windows Installation Lifecycle
+    runs-on: windows-latest
+    needs: [build-app, build-windows-installer]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Application Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: app-binaries
+          path: app-binaries
+
+      - name: Download Windows Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: rupeecrm-windows-installer
+          path: release-dist
+
+      - name: Validate Binary Consistency
+        shell: pwsh
+        run: |
+          Write-Host "=== Validating Artifact Integrity & Consistency ==="
+          $rawWar = "app-binaries/rupeecrm.war"
+          $distWar = "release-dist/rupeecrm.war"
+          if (-not (Test-Path $rawWar) -or -not (Test-Path $distWar)) {
+            throw "CRITICAL: rupeecrm.war missing from artifacts!"
+          }
+          $rawHash = (Get-FileHash -Algorithm SHA256 $rawWar).Hash.ToLower()
+          $distHash = (Get-FileHash -Algorithm SHA256 $distWar).Hash.ToLower()
+          if ($rawHash -ne $distHash) {
+            throw "CRITICAL: rupeecrm.war hash mismatch between build-app ($rawHash) and release-dist ($distHash)!"
+          }
+          Write-Host "✓ Verified consistent rupeecrm.war SHA256: $rawHash"
+
+      - name: Test Silent Windows Installation & Runtime Verification
+        shell: pwsh
+        run: |
+          Write-Host "=== Testing Silent Installation on Windows Runner ==="
+          $installer = Get-ChildItem "release-dist" -Filter "*.exe" | Where-Object { $_.Name -like "*-Setup-*" } | Select-Object -First 1
+          if (-not $installer) {
+            throw "CRITICAL: Setup installer not found in release-dist!"
+          }
+          Write-Host "Running installer: $($installer.FullName)..."
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) {
+            throw "Installer exited with non-zero exit code: $($installProcess.ExitCode)"
+          }
+          Write-Host "✓ Silent installation finished successfully."
+
+          # Verify installed application directory
+          $installDir = "$env:LOCALAPPDATA\Programs\RupeeCRM"
+          if (-not (Test-Path "$installDir\RupeeCRM.exe")) {
+            throw "CRITICAL: Installed RupeeCRM.exe not found at $installDir\RupeeCRM.exe!"
+          }
+          if (-not (Test-Path "$installDir\resources\rupeecrm.war")) {
+            throw "CRITICAL: Installed rupeecrm.war not found at $installDir\resources\rupeecrm.war!"
+          }
+          Write-Host "✓ Verified installation directory structure at $installDir"
+
+          # Verify installed rupeecrm.war matches built war
+          $installedHash = (Get-FileHash -Algorithm SHA256 "$installDir\resources\rupeecrm.war").Hash.ToLower()
+          $builtHash = (Get-FileHash -Algorithm SHA256 "app-binaries/rupeecrm.war").Hash.ToLower()
+          if ($installedHash -ne $builtHash) {
+            throw "CRITICAL: Installed rupeecrm.war hash ($installedHash) does not match built artifact ($builtHash)!"
+          }
+          Write-Host "✓ Verified installed WAR binary matches build artifact."
+
+          # Launch installed RupeeCRM application
+          Write-Host "=== Launching Installed RupeeCRM Application ==="
+          $appProc = Start-Process -FilePath "$installDir\RupeeCRM.exe" -PassThru
+          Write-Host "RupeeCRM process started with PID: $($appProc.Id)"
+
+          $expectedVersion = "1.0.${{ github.run_number }}"
+          Write-Host "Expected build version: $expectedVersion"
+
+          $verified = $false
+          $attempts = 0
+          $maxAttempts = 40
+          $identityUrl = "http://127.0.0.1:28080/api/system/runtime-identity"
+          $healthUrl = "http://127.0.0.1:28080/api/health"
+          $updateStatusUrl = "http://127.0.0.1:28080/api/system/update-status"
+
+          while ($attempts -lt $maxAttempts -and -not $verified) {
+            Start-Sleep -Seconds 2
+            $attempts++
+            try {
+              $identity = Invoke-RestMethod -Uri $identityUrl -TimeoutSec 3 -ErrorAction SilentlyContinue
+              if ($identity -and $identity.status -eq "UP") {
+                Write-Host "✓ Backend active on port 28080! Reported version: $($identity.version)"
+                $reported = "$($identity.version)".Trim()
+                if ($reported -eq "1.0.320" -or $reported -eq "v1.0.320") {
+                  throw "CRITICAL FAILURE: Installed application reported stale Build 320 instead of $expectedVersion!"
+                }
+                if ($reported -ne $expectedVersion -and $reported -ne "v$expectedVersion") {
+                  throw "CRITICAL FAILURE: Reported version ($reported) does not match expected ($expectedVersion)!"
+                }
+                $verified = $true
+              }
+            } catch {
+              Write-Host "Waiting for backend on port 28080 (attempt $attempts/$maxAttempts)..."
+            }
+          }
+
+          if (-not $verified) {
+            $logPath = "$env:LOCALAPPDATA\RupeeCRM\logs\application.log"
+            if (Test-Path $logPath) {
+              Write-Host "=== Application Log Dump ==="
+              Get-Content $logPath -Tail 50
+            }
+            throw "CRITICAL TIMEOUT: Backend did not respond on port 28080 within timeout!"
+          }
+
+          Write-Host "=== Verifying /api/system/update-status Endpoint ==="
+          $updateResp = Invoke-RestMethod -Uri $updateStatusUrl -TimeoutSec 5
+          Write-Host "update-status currentVersion: $($updateResp.currentVersion)"
+          if ($updateResp.currentVersion -eq "1.0.320" -or $updateResp.currentVersion -eq "v1.0.320") {
+            throw "CRITICAL FAILURE: /api/system/update-status reported stale Build 320!"
+          }
+
+          Write-Host "✓ SUCCESS: Installed application verified running $expectedVersion on Windows runner!"
+
+          # Clean shutdown
+          Stop-Process -Id $appProc.Id -Force -ErrorAction SilentlyContinue
+          cmd /c "taskkill /F /IM RupeeCRM.exe 2>nul"
+          cmd /c "taskkill /F /IM javaw.exe 2>nul"
+
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-app, build-windows-installer]
+    needs: [build-app, build-windows-installer, verify-windows-installation]
     if: github.repository == 'RanjeetYelave/Simple-Billing' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/PROD' || github.ref_name == 'PROD' || github.ref == 'refs/heads/main' || github.ref_name == 'main' || github.ref == 'refs/heads/overhaul' || github.ref_name == 'overhaul' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write

@@ -130,6 +130,37 @@ runCheck('UpdateService checkForUpdateComplete handles STATUS_UPDATE_FAILED', ()
   assert(updateService.includes('result.put("updateFailed", true)'), 'updateFailed must be returned to client');
 });
 
+console.log('\n--- Suite 5: Version Alignment & Legacy Metadata Purging ---');
+
+const installerNshPath = path.resolve(__dirname, '../scripts/installer.nsh');
+const releaseYmlPath = path.resolve(__dirname, '../../../.github/workflows/release.yml');
+const installerNsh = fs.readFileSync(installerNshPath, 'utf8');
+const releaseYml = fs.readFileSync(releaseYmlPath, 'utf8');
+
+runCheck('main.js must NOT contain hardcoded 1.0.320 fallback strings', () => {
+  assert(!mainJs.includes("'1.0.320'"), 'main.js must not contain hardcoded 1.0.320 fallback string');
+});
+
+runCheck('UpdateService.java purges stale .billsoft-version files when running binary is newer', () => {
+  assert(updateService.includes('Purging obsolete file'), 'UpdateService must purge obsolete version metadata');
+  assert(updateService.includes('int cmp = compareVersions(authoritativeVersion, ver)'), 'authoritativeVersion must be compared against on-disk metadata');
+});
+
+runCheck('LauncherMain.java deletes stale .billsoft-version files when packaged WAR is executed', () => {
+  assert(launcherMain.includes('Files.deleteIfExists(base.resolve("app").resolve(".billsoft-version"))'), 'LauncherMain must purge stale app .billsoft-version');
+  assert(launcherMain.includes('Files.deleteIfExists(getDataDirectory().resolve(".billsoft-version"))'), 'LauncherMain must purge stale data .billsoft-version');
+});
+
+runCheck('installer.nsh purges obsolete metadata and All-Users shortcuts', () => {
+  assert(installerNsh.includes('Delete "$LOCALAPPDATA\\RupeeCRM\\data\\.billsoft-version"'), 'installer.nsh must purge data .billsoft-version');
+  assert(installerNsh.includes('Delete "$COMMONDESKTOP\\RupeeCRM.lnk"'), 'installer.nsh must delete shadowing All-Users desktop shortcut');
+});
+
+runCheck('release.yml defines verify-windows-installation job gating release', () => {
+  assert(releaseYml.includes('verify-windows-installation:'), 'verify-windows-installation job must exist in release.yml');
+  assert(releaseYml.includes('needs: [build-app, build-windows-installer, verify-windows-installation]'), 'publish-release must require verify-windows-installation');
+});
+
 console.log('\n═══════════════════════════════════════════════════════════════════');
 console.log(`ALL CHECKS PASSED: ${passCount}/${totalCount}`);
 console.log('═══════════════════════════════════════════════════════════════════\n');

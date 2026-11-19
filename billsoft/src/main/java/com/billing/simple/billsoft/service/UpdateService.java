@@ -174,7 +174,12 @@ public class UpdateService {
     }
 
     public String getCurrentVersion() {
-        // 1. Check for .billsoft-version metadata override file
+        // 1. Authoritative running binary version (source of truth compiled into WAR / JAR)
+        String authoritativeVersion = getAuthoritativeBinaryVersion();
+        boolean allowMockOverride = "true".equalsIgnoreCase(System.getProperty("app.version.allow-mock-override"))
+                || "true".equalsIgnoreCase(System.getenv("RUPEECRM_ALLOW_MOCK_VERSION"));
+
+        // 2. Check for .billsoft-version metadata override files and purge stale/downgrade remnants
         try {
             List<Path> candidateVersionFiles = new ArrayList<>();
             java.io.File dataDirFile = DataDirectoryResolver.resolveDataDirectory();
@@ -220,15 +225,24 @@ public class UpdateService {
                 if (verFile != null && Files.exists(verFile)) {
                     String ver = Files.readString(verFile, StandardCharsets.UTF_8).trim();
                     if (!ver.isEmpty()) {
-                        return ver;
+                        int cmp = compareVersions(authoritativeVersion, ver);
+                        if (cmp >= 0 && !allowMockOverride) {
+                            // On-disk file is older than or equal to the currently executing binary.
+                            // Purge this obsolete metadata so it never masquerades as or downgrades the running application!
+                            log.warn("Detected stale version metadata file {} (contained: {}, actual running binary: {}). Purging obsolete file.",
+                                    verFile, ver, authoritativeVersion);
+                            try {
+                                Files.deleteIfExists(verFile);
+                            } catch (Exception ignored) {}
+                        } else {
+                            // Strictly newer version (e.g. pending candidate) or explicit mock override
+                            return ver;
+                        }
                     }
                 }
             }
         } catch (Exception ignored) {
         }
-
-        // 2. Authoritative running binary version
-        String authoritativeVersion = getAuthoritativeBinaryVersion();
 
         // 3. Inspect durable update-state.json and reconcile stale or contradictory metadata
         try {

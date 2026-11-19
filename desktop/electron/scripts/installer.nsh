@@ -8,15 +8,19 @@
   ; 1. Terminate running RupeeCRM electron process to release locked binaries
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
 
-  ; 2. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM
+  ; 2. Terminate background Java processes executing RupeeCRM or Launcher
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
+
+  ; 3. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM
   nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"ProcessId = $$($$conn.OwningProcess)\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"(?i)rupeecrm\" -or $$p.CommandLine -match \"(?i)billsoft\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
 
-  ; 3. Clean legacy Windows Startup folder VBS script from v1.0.280
+  ; 4. Clean legacy Windows Startup folder VBS script from v1.0.280
   ${If} ${FileExists} "$SMSTARTUP\RupeeCRM.vbs"
     Delete "$SMSTARTUP\RupeeCRM.vbs"
   ${EndIf}
 
-  ; 4. Clean legacy Registry Run entry from v1.0.280
+  ; 5. Clean legacy Registry Run entry from v1.0.280
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RupeeCRMService"
 !macroend
 
@@ -27,6 +31,21 @@
   ${EndIf}
   ${If} ${FileExists} "$INSTDIR\runtime\bin\java.dll"
     RMDir /r "$INSTDIR\runtime"
+  ${EndIf}
+
+  ; Purge any obsolete version override files that could hijack runtime version reporting
+  Delete "$LOCALAPPDATA\RupeeCRM\data\.billsoft-version"
+  Delete "$LOCALAPPDATA\RupeeCRM\.billsoft-version"
+  Delete "$LOCALAPPDATA\RupeeCRM\staging\.billsoft-version"
+  Delete "$INSTDIR\resources\.billsoft-version"
+  Delete "$INSTDIR\.billsoft-version"
+
+  ; Clean up legacy All-Users shortcuts that could shadow per-user desktop shortcut
+  ${If} ${FileExists} "$COMMONDESKTOP\RupeeCRM.lnk"
+    Delete "$COMMONDESKTOP\RupeeCRM.lnk"
+  ${EndIf}
+  ${If} ${FileExists} "$COMMONSTARTMENU\Programs\RupeeCRM.lnk"
+    Delete "$COMMONSTARTMENU\Programs\RupeeCRM.lnk"
   ${EndIf}
 
   ; Ensure legacy startup VBS and registry entries are purged

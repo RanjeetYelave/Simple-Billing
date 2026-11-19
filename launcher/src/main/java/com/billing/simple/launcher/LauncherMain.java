@@ -2180,6 +2180,10 @@ public class LauncherMain {
                     baseWar.delete();
                     File bak = new File(baseWar.getAbsolutePath() + ".bak");
                     if (bak.exists()) bak.delete();
+                    Files.deleteIfExists(base.resolve("app").resolve(".billsoft-version"));
+                    Files.deleteIfExists(base.resolve(".billsoft-version"));
+                    Files.deleteIfExists(getDataDirectory().resolve(".billsoft-version"));
+                    Files.deleteIfExists(getStagingDirectory().resolve(".billsoft-version"));
                 } catch (Exception ignored) {}
                 return packagedWar;
             } else {
@@ -2189,7 +2193,15 @@ public class LauncherMain {
             }
         }
 
-        if (packagedWar != null) return packagedWar;
+        if (packagedWar != null) {
+            try {
+                Files.deleteIfExists(base.resolve("app").resolve(".billsoft-version"));
+                Files.deleteIfExists(base.resolve(".billsoft-version"));
+                Files.deleteIfExists(getDataDirectory().resolve(".billsoft-version"));
+                Files.deleteIfExists(getStagingDirectory().resolve(".billsoft-version"));
+            } catch (Exception ignored) {}
+            return packagedWar;
+        }
         if (baseWar != null) return baseWar;
 
         // 4. Local Development target paths

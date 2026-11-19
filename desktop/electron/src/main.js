@@ -18,9 +18,9 @@ const app = isElectron ? electron.app : {
   getVersion: () => {
     try {
       const p = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-      return p.version || '1.0.320';
+      return p.version || '1.0.0';
     } catch (e) {
-      return '1.0.320';
+      return '1.0.0';
     }
   },
   getPath: (name) => path.join(process.env.LOCALAPPDATA || process.env.HOME || '.', '.rupeecrm'),

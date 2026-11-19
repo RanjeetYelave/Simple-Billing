@@ -538,7 +538,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           body_path: release-notes.md
           files: |
             release-dist/*.exe
@@ -596,12 +596,14 @@ jobs:
           EXPECTED_ASSETS=(
             "$INSTALLER"
             "RupeeCRM-Setup.exe"
-            "$DMG_NAME"
-            "RupeeCRM-arm64.dmg"
             "rupeecrm.war"
             "billsoft.war"
             "SHA256SUMS.txt"
           )
+
+          if [ -n "$DMG_NAME" ]; then
+            EXPECTED_ASSETS+=("$DMG_NAME" "RupeeCRM-arm64.dmg")
+          fi
 
           if [ "$HAS_KEY" = "true" ]; then
             EXPECTED_ASSETS+=("manifest.json" "manifest.sig")

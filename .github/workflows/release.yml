@@ -662,17 +662,22 @@ jobs:
             cp release-meta/manifest.sig "$OTA_STAGING_DIR/manifest.sig"
 
             # Create package metadata
-            cat <<EOF > "$OTA_STAGING_DIR/package-metadata.json"
-{
-  "application": "RupeeCRM",
-  "version": "${APP_VER}",
-  "releaseTag": "${RELEASE_TAG}",
-  "commit": "${{ github.sha }}",
-  "buildNumber": "${{ github.run_number }}",
-  "packageType": "manual-ota-update",
-  "generatedAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-}
-EOF
+            jq -n \
+              --arg app "RupeeCRM" \
+              --arg ver "${APP_VER}" \
+              --arg tag "${RELEASE_TAG}" \
+              --arg commit "${{ github.sha }}" \
+              --arg bld "${{ github.run_number }}" \
+              --arg date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+              '{
+                application: $app,
+                version: $ver,
+                releaseTag: $tag,
+                commit: $commit,
+                buildNumber: $bld,
+                packageType: "manual-ota-update",
+                generatedAt: $date
+              }' > "$OTA_STAGING_DIR/package-metadata.json"
 
             # Create package-specific checksum file
             cd "$OTA_STAGING_DIR"
@@ -748,13 +753,11 @@ EOF
             done
             echo "✓ Check 7/10: Package contains no path traversal or absolute paths."
 
-            # Check 8: Package can be consumed by existing update engine (ZIP magic byte header check)
-            python3 -c "
-with open('$VERIFY_DIR/rupeecrm.war', 'rb') as f:
-    magic = f.read(4)
-    if magic != b'\x50\x4b\x03\x04':
-        raise SystemExit('Invalid ZIP magic bytes in packaged WAR: ' + repr(magic))
-" || { echo "CRITICAL: WAR is not a valid ZIP archive!"; exit 1; }
+            # Check 8: Package can be consumed by existing update engine (ZIP magic byte header check 504b0304)
+            MAGIC_BYTES=$(head -c 4 "$VERIFY_DIR/rupeecrm.war" | od -A n -t x1 | tr -d ' \n')
+            if [ "$MAGIC_BYTES" != "504b0304" ]; then
+              echo "CRITICAL: WAR is not a valid ZIP archive! Found magic bytes: $MAGIC_BYTES"; exit 1;
+            fi
             echo "✓ Check 8/10: WAR archive format valid for update engine."
 
             # Check 9: Package does not contain stale build artifacts

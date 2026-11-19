@@ -130,6 +130,16 @@ public class DataProtectionCredentialStoreTest {
     }
 
     @Test
+    public void testMaskAndUnmaskRoundtrip() {
+        String testToken = "github_pat_DUMMY_DP_TEST_TOKEN_XYZ1234567890";
+        String masked = DataProtectionCredentialStore.maskPayload(testToken);
+        assertNotNull(masked);
+        assertNotEquals(testToken, masked);
+        String unmasked = DataProtectionCredentialStore.unmaskPayload(masked);
+        assertEquals(testToken, unmasked);
+    }
+
+    @Test
     public void testCorruptOrEmptyPayloadRejected() throws Exception {
         DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
         assertFalse(store.updateCredential(1, "", "sig", masterPublicKey));

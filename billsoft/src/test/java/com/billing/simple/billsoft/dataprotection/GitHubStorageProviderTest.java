@@ -34,7 +34,7 @@ public class GitHubStorageProviderTest {
     @Test
     public void testMissingCredentialsReturnsSafeErrorWithoutCorruptingData() {
         DataProtectionCredentialStore emptyStore = new DataProtectionCredentialStore(emptyConfigFile);
-        GitHubStorageProvider provider = new GitHubStorageProvider("RanjeetYelave/rupeecrm-dataprotection-vault", null, emptyStore);
+        GitHubStorageProvider provider = new GitHubStorageProvider("crucified1215/rupeecrm-dataprotection-vault", null, emptyStore);
 
         byte[] payload = "test-encrypted-payload".getBytes();
         BackupStorageProvider.UploadResult result = provider.uploadBackup("TEST_MACHINE_001", payload, null);
@@ -53,7 +53,7 @@ public class GitHubStorageProviderTest {
     public void testCredentialIsolationLicenseTokenNotUsedForDataProtection() {
         System.setProperty("rupeecrm.licensing.token", "license-pat-dummy");
         DataProtectionCredentialStore emptyStore = new DataProtectionCredentialStore(emptyConfigFile);
-        GitHubStorageProvider provider = new GitHubStorageProvider("RanjeetYelave/rupeecrm-dataprotection-vault", null, emptyStore);
+        GitHubStorageProvider provider = new GitHubStorageProvider("crucified1215/rupeecrm-dataprotection-vault", null, emptyStore);
 
         BackupStorageProvider.UploadResult result = provider.uploadBackup("TEST_MACHINE_001", new byte[]{1, 2, 3}, null);
         assertFalse(result.isSuccess());
@@ -63,7 +63,7 @@ public class GitHubStorageProviderTest {
     @Test
     public void testInvalidParametersRejected() {
         DataProtectionCredentialStore emptyStore = new DataProtectionCredentialStore(emptyConfigFile);
-        GitHubStorageProvider provider = new GitHubStorageProvider("RanjeetYelave/rupeecrm-dataprotection-vault", "dummy-pat", emptyStore);
+        GitHubStorageProvider provider = new GitHubStorageProvider("crucified1215/rupeecrm-dataprotection-vault", "dummy-pat", emptyStore);
 
         BackupStorageProvider.UploadResult resultNullMachine = provider.uploadBackup(null, new byte[]{1}, null);
         assertFalse(resultNullMachine.isSuccess());
@@ -75,5 +75,18 @@ public class GitHubStorageProviderTest {
 
         assertNull(provider.downloadBackup(null));
         assertNull(provider.downloadBackup("   "));
+    }
+
+    @Test
+    public void testLiveDownloadFromVaultRepository() {
+        DataProtectionCredentialStore store = new DataProtectionCredentialStore();
+        String token = store.getCurrentToken();
+        if (token != null && !token.isBlank()) {
+            GitHubStorageProvider provider = new GitHubStorageProvider("crucified1215/rupeecrm-dataprotection-vault", token, store);
+            byte[] backup = provider.downloadBackup("WW1Z-AW5M-RTDP-5JK7");
+            assertNotNull(backup, "Live backup download must succeed for WW1Z-AW5M-RTDP-5JK7");
+            assertTrue(backup.length >= 29, "Downloaded backup must contain valid envelope header");
+            assertEquals(0x01, backup[0], "Version byte must be 0x01");
+        }
     }
 }

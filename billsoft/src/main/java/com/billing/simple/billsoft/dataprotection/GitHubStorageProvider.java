@@ -26,7 +26,7 @@ import java.util.Map;
 public class GitHubStorageProvider implements BackupStorageProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GitHubStorageProvider.class);
-    private static final String DEFAULT_REPO = "RanjeetYelave/rupeecrm-dataprotection-vault";
+    private static final String DEFAULT_REPO = "crucified1215/rupeecrm-dataprotection-vault";
     private static final String API_BASE = "https://api.github.com";
 
     private final String repo;

@@ -29,6 +29,7 @@ mac:
   icon: assets/icon.icns
   category: public.app-category.business
   artifactName: "${productName}-${version}-${arch}.${ext}"
+  identity: null
   hardenedRuntime: false
   gatekeeperAssess: false
 

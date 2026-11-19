@@ -185,10 +185,136 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  build-mac-installer:
+    name: Build Electron macOS ARM64 Installer
+    runs-on: macos-14
+    needs: [build-app]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download Application Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: app-binaries
+          path: app-binaries
+
+      - name: Validate Downloaded Application Binaries
+        shell: bash
+        run: |
+          echo "=== Inspecting app-binaries directory ==="
+          if [ ! -f "app-binaries/rupeecrm.war" ] || [ ! -f "app-binaries/launcher-0.0.1-SNAPSHOT.jar" ]; then
+            echo "CRITICAL: Required build artifacts missing from app-binaries!"
+            exit 1
+          fi
+          echo "✓ Verified rupeecrm.war ($(stat -f%z app-binaries/rupeecrm.war) bytes)"
+          echo "✓ Verified launcher jar ($(stat -f%z app-binaries/launcher-0.0.1-SNAPSHOT.jar) bytes)"
+
+      - name: Stage Electron Resources and Bundled macOS JRE
+        shell: bash
+        run: |
+          mkdir -p desktop/electron/resources
+          cp app-binaries/rupeecrm.war desktop/electron/resources/rupeecrm.war
+          cp app-binaries/launcher-0.0.1-SNAPSHOT.jar desktop/electron/resources/launcher.jar
+
+          # Stage runner's authoritative Apple Silicon OpenJDK 21 into resources/jre
+          echo "Staging Java 21 JRE from $JAVA_HOME into desktop/electron/resources/jre..."
+          cp -R "$JAVA_HOME" desktop/electron/resources/jre
+
+          if [ ! -f "desktop/electron/resources/jre/bin/java" ]; then
+            echo "CRITICAL: Staged JRE is missing bin/java!"
+            exit 1
+          fi
+          chmod +x desktop/electron/resources/jre/bin/java
+          echo "✓ Staged bundled Apple Silicon OpenJDK 21 runtime successfully."
+
+      - name: Synchronize Electron Package Version
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "desktop/electron/package.json";
+            const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
+            pkg.version = "1.0.${{ github.run_number }}";
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
+            console.log("✓ Synchronized package.json version to " + pkg.version);
+          '
+
+      - name: Install Electron Dependencies and Run Tests
+        working-directory: ./desktop/electron
+        run: |
+          npm ci
+          npm test
+
+      - name: Build Electron macOS arm64 Packages
+        working-directory: ./desktop/electron
+        run: |
+          npx electron-builder --mac --arm64 -c.mac.identity=null
+
+      - name: Verify and Stage macOS Distribution Artifacts
+        shell: bash
+        run: |
+          mkdir -p mac-release-dist
+          echo "=== Inspecting desktop/electron/dist ==="
+          ls -lh desktop/electron/dist/
+
+          DMG=$(find desktop/electron/dist -maxdepth 1 -name "RupeeCRM-*-arm64.dmg" | head -n 1)
+          if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
+            echo "CRITICAL: electron-builder did not produce a .dmg installer in desktop/electron/dist!"
+            exit 1
+          fi
+
+          DMG_SIZE=$(stat -f%z "$DMG" 2>/dev/null || stat -c%s "$DMG" 2>/dev/null)
+          if [ "$DMG_SIZE" -lt 50000000 ]; then
+            echo "CRITICAL: DMG size is unexpectedly small: $DMG_SIZE bytes!"
+            exit 1
+          fi
+
+          DMG_NAME=$(basename "$DMG")
+          echo "✓ Verified macOS DMG Installer: $DMG_NAME ($((DMG_SIZE / 1048576)) MB)"
+          cp "$DMG" "mac-release-dist/$DMG_NAME"
+          cp "$DMG" "mac-release-dist/RupeeCRM-arm64.dmg"
+
+          # Stage zip if generated
+          ZIP=$(find desktop/electron/dist -maxdepth 1 -name "RupeeCRM-*-arm64*.zip" | head -n 1)
+          if [ -n "$ZIP" ] && [ -f "$ZIP" ]; then
+            ZIP_NAME=$(basename "$ZIP")
+            echo "✓ Found macOS ZIP: $ZIP_NAME"
+            cp "$ZIP" "mac-release-dist/$ZIP_NAME"
+            shasum -a 256 "$ZIP" | awk '{print $1}' > "mac-release-dist/$ZIP_NAME.sha256"
+          fi
+
+          # Generate SHA256 checksums
+          shasum -a 256 "$DMG" | awk '{print $1}' > "mac-release-dist/$DMG_NAME.sha256"
+          shasum -a 256 "mac-release-dist/RupeeCRM-arm64.dmg" | awk '{print $1}' > "mac-release-dist/RupeeCRM-arm64.dmg.sha256"
+
+          echo "=== Staged mac-release-dist contents ==="
+          ls -lh mac-release-dist/
+
+      - name: Upload macOS Installer and Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rupeecrm-mac-installer
+          path: mac-release-dist/
+          if-no-files-found: error
+          retention-days: 3
+
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-app, build-windows-installer]
+    needs: [build-app, build-windows-installer, build-mac-installer]
     if: github.repository == 'RanjeetYelave/Simple-Billing' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/PROD' || github.ref_name == 'PROD' || github.ref == 'refs/heads/main' || github.ref_name == 'main' || github.ref == 'refs/heads/overhaul' || github.ref_name == 'overhaul' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
@@ -264,6 +390,12 @@ jobs:
           name: rupeecrm-windows-installer
           path: release-dist
 
+      - name: Download macOS Installer Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rupeecrm-mac-installer
+          path: release-dist
+
       - name: Validate Downloaded Distribution Artifacts
         shell: bash
         run: |
@@ -283,9 +415,22 @@ jobs:
           fi
           echo "✓ Verified Windows Setup Installer: $INSTALLER ($((FILESIZE / 1048576)) MB)"
 
+          DMG=$(find release-dist -maxdepth 1 -name "RupeeCRM-*-arm64.dmg" | head -n 1)
+          if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
+            echo "CRITICAL ERROR: RupeeCRM-*-arm64.dmg not found in release-dist!"
+            exit 1
+          fi
+
+          DMG_SIZE=$(stat -c%s "$DMG" 2>/dev/null || stat -f%z "$DMG" 2>/dev/null)
+          if [ "$DMG_SIZE" -lt 50000000 ]; then
+            echo "CRITICAL ERROR: DMG size ($DMG_SIZE bytes) is suspiciously small! Aborting release."
+            exit 1
+          fi
+          echo "✓ Verified macOS DMG Installer: $DMG ($((DMG_SIZE / 1048576)) MB)"
+
           # Generate SHA256SUMS.txt
           cd release-dist
-          sha256sum RupeeCRM-Setup*.exe *.war > SHA256SUMS.txt
+          sha256sum RupeeCRM-Setup*.exe *.war *.dmg *.zip 2>/dev/null > SHA256SUMS.txt || true
           cat SHA256SUMS.txt
           cd ..
 
@@ -304,9 +449,15 @@ jobs:
           CANONICAL_SIZE=$(ls -lh "release-dist/RupeeCRM-Setup.exe" | awk '{print $5}')
           CANONICAL_HASH=$(cat "release-dist/RupeeCRM-Setup.exe.sha256" 2>/dev/null || sha256sum "release-dist/RupeeCRM-Setup.exe" | awk '{print $1}')
 
+          DMG_FILE=$(find release-dist -maxdepth 1 -name "RupeeCRM-*-arm64.dmg" | head -n 1)
+          DMG_NAME=$(basename "$DMG_FILE")
+          DMG_SIZE=$(ls -lh "$DMG_FILE" | awk '{print $5}')
+          DMG_HASH=$(cat "release-dist/${DMG_NAME}.sha256" 2>/dev/null || sha256sum "$DMG_FILE" | awk '{print $1}')
+
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "release_title=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
           echo "installer_name=${INSTALLER_NAME}" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=${DMG_NAME}" >> "$GITHUB_OUTPUT"
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
           sed "s/^[ \t]*//" << EOF > release-notes.md
@@ -327,6 +478,8 @@ jobs:
           |---|---|---|---|
           | **Windows x64 Installer (Versioned)** | [\`${INSTALLER_NAME}\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${INSTALLER_NAME}) | \`${INSTALLER_SIZE}\` | \`${INSTALLER_HASH}\` |
           | **Windows x64 Installer (Latest)** | [\`RupeeCRM-Setup.exe\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/RupeeCRM-Setup.exe) | \`${CANONICAL_SIZE}\` | \`${CANONICAL_HASH}\` |
+          | **macOS ARM64 DMG (Versioned)** | [\`${DMG_NAME}\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${DMG_NAME}) | \`${DMG_SIZE}\` | \`${DMG_HASH}\` |
+          | **macOS ARM64 DMG (Latest)** | [\`RupeeCRM-arm64.dmg\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/RupeeCRM-arm64.dmg) | \`${DMG_SIZE}\` | \`${DMG_HASH}\` |
           | **In-App OTA Application Package** | [\`rupeecrm.war\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/rupeecrm.war) | \`~82 MB\` | See \`SHA256SUMS.txt\` |
           | **Legacy OTA Package** | [\`billsoft.war\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/billsoft.war) | \`~82 MB\` | See \`SHA256SUMS.txt\` |
           | **Integrity Checksums** | [\`SHA256SUMS.txt\`](https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/SHA256SUMS.txt) | \`<1 KB\` | Checksum Manifest |
@@ -334,6 +487,12 @@ jobs:
           ### Verification (PowerShell)
           \`\`\`powershell
           (Get-FileHash -Algorithm SHA256 .\\${INSTALLER_NAME}).Hash -eq "${INSTALLER_HASH}"
+          \`\`\`
+
+          ### Verification (macOS Terminal)
+          \`\`\`bash
+          shasum -a 256 ${DMG_NAME}
+          # Matches ${DMG_HASH}
           \`\`\`
 
           > [!NOTE]
@@ -395,6 +554,8 @@ jobs:
           body_path: release-notes.md
           files: |
             release-dist/*.exe
+            release-dist/*.dmg
+            release-dist/*.zip
             release-dist/*.sha256
             release-dist/SHA256SUMS.txt
             release-dist/*.war
@@ -410,6 +571,7 @@ jobs:
           TAG="${{ steps.prep-release.outputs.tag_name }}"
           APP_VER="${{ steps.prep-release.outputs.app_version }}"
           INSTALLER="${{ steps.prep-release.outputs.installer_name }}"
+          DMG_NAME="${{ steps.prep-release.outputs.dmg_name }}"
           REPO="${{ github.repository }}"
 
           echo "Polling GitHub Release API for tag: ${TAG}"
@@ -446,6 +608,8 @@ jobs:
           EXPECTED_ASSETS=(
             "$INSTALLER"
             "RupeeCRM-Setup.exe"
+            "$DMG_NAME"
+            "RupeeCRM-arm64.dmg"
             "rupeecrm.war"
             "billsoft.war"
             "SHA256SUMS.txt"
@@ -506,8 +670,8 @@ jobs:
   cleanup-old-runs:
     name: Auto-Cleanup Older Workflow Runs
     runs-on: ubuntu-latest
-    needs: [build-app, build-windows-installer, publish-release]
-    if: always() && needs.build-app.result == 'success' && needs.build-windows-installer.result == 'success' && (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
+    needs: [build-app, build-windows-installer, build-mac-installer, publish-release]
+    if: always() && needs.build-app.result == 'success' && needs.build-windows-installer.result == 'success' && needs.build-mac-installer.result == 'success' && (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
 
     steps:
       - name: Purge Older Workflow Runs & Artifacts

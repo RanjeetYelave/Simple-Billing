@@ -163,11 +163,14 @@ public class UpdateService {
     }
 
     public String getAuthoritativeBinaryVersion() {
+        if (defaultVersion != null && !defaultVersion.isBlank() && !"v1.0.0".equalsIgnoreCase(defaultVersion) && !"1.0.0".equalsIgnoreCase(defaultVersion) && !defaultVersion.contains("SNAPSHOT")) {
+            return defaultVersion.trim();
+        }
         Package pkg = UpdateService.class.getPackage();
-        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank() && !pkg.getImplementationVersion().contains("SNAPSHOT")) {
             return pkg.getImplementationVersion().trim();
         }
-        if (defaultVersion != null && !defaultVersion.isBlank()) {
+        if (defaultVersion != null && !defaultVersion.isBlank() && !defaultVersion.contains("SNAPSHOT")) {
             return defaultVersion.trim();
         }
         return "v1.0.0";

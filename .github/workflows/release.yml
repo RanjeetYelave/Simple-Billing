@@ -413,6 +413,10 @@ jobs:
                 $verified = $true
               }
             } catch {
+              $errMsg = "$($_.Exception.Message)"
+              if ($errMsg -like "*CRITICAL FAILURE*") {
+                throw
+              }
               Write-Host "Waiting for backend on port 28080 (attempt $attempts/$maxAttempts)..."
             }
           }

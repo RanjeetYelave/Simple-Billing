@@ -350,15 +350,18 @@ public class Group5ComprehensiveRegressionTest {
                 try {
                     String invNum = sequenceService.generateNextNumber(DocumentType.INVOICE, FIRM_A, date);
                     generatedNumbers.add(invNum);
+                } catch (Exception e) {
+                    org.slf4j.LoggerFactory.getLogger(Group5ComprehensiveRegressionTest.class).error("Error in sequence generation", e);
                 } finally {
                     latch.countDown();
                 }
             });
         }
 
-        latch.await(10, TimeUnit.SECONDS);
+        boolean completed = latch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
+        assertThat(completed).isTrue();
         assertThat(generatedNumbers).hasSize(threads);
     }
 

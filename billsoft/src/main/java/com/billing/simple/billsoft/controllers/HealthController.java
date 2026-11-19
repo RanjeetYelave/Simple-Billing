@@ -53,21 +53,21 @@ public class HealthController {
         if (updateService != null) {
             try {
                 String cur = updateService.getCurrentVersion();
-                if (cur != null && !cur.isBlank() && !"v1.0.0".equalsIgnoreCase(cur)) {
+                if (cur != null && !cur.isBlank() && !"v1.0.0".equalsIgnoreCase(cur) && !"1.0.0".equalsIgnoreCase(cur) && !cur.contains("SNAPSHOT")) {
                     return cur.startsWith("v") ? cur : "v" + cur;
                 }
             } catch (Exception ignored) {}
         }
         String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
-        if (ver != null && !ver.isBlank() && !"v1.0.0".equalsIgnoreCase(ver)) {
+        if (ver != null && !ver.isBlank() && !"v1.0.0".equalsIgnoreCase(ver) && !"1.0.0".equalsIgnoreCase(ver) && !ver.contains("SNAPSHOT")) {
             return ver.startsWith("v") ? ver : "v" + ver;
         }
         Package pkg = HealthController.class.getPackage();
-        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()) {
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank() && !pkg.getImplementationVersion().contains("SNAPSHOT")) {
             String imp = pkg.getImplementationVersion().trim();
             return imp.startsWith("v") ? imp : "v" + imp;
         }
-        return ver != null && !ver.isBlank() ? ver : "v1.0.0";
+        return ver != null && !ver.isBlank() && !ver.contains("SNAPSHOT") ? ver : "v1.0.0";
     }
 
     public HealthController(SystemMetricsService systemMetricsService,
@@ -157,7 +157,7 @@ public class HealthController {
                 Thread.sleep(300);
             } catch (InterruptedException ignored) {}
             log.info("Executing process shutdown for PID {}", pid);
-            if (environment != null && (java.util.Arrays.asList(environment.getActiveProfiles()).contains("test")
+            if (environment != null && ((environment.getActiveProfiles() != null && java.util.Arrays.asList(environment.getActiveProfiles()).contains("test"))
                     || Boolean.parseBoolean(System.getProperty("rupeecrm.skip.exit", "false")))) {
                 log.info("Test profile detected; skipping System.exit(0)");
                 return;

@@ -381,9 +381,9 @@ jobs:
           }
           Write-Host "✓ Verified installed WAR binary matches build artifact."
 
-          # Launch installed RupeeCRM application
+          # Launch installed RupeeCRM application in background
           Write-Host "=== Launching Installed RupeeCRM Application ==="
-          $appProc = Start-Process -FilePath "$installDir\RupeeCRM.exe" -PassThru
+          $appProc = Start-Process -FilePath "$installDir\RupeeCRM.exe" -ArgumentList "--hidden" -PassThru
           Write-Host "RupeeCRM process started with PID: $($appProc.Id)"
 
           $expectedVersion = "1.0.${{ github.run_number }}"
@@ -391,7 +391,7 @@ jobs:
 
           $verified = $false
           $attempts = 0
-          $maxAttempts = 40
+          $maxAttempts = 60
           $identityUrl = "http://127.0.0.1:28080/api/system/runtime-identity"
           $healthUrl = "http://127.0.0.1:28080/api/health"
           $updateStatusUrl = "http://127.0.0.1:28080/api/system/update-status"

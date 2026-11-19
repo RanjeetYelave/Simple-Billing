@@ -153,7 +153,7 @@ runCheck('LauncherMain.java deletes stale .billsoft-version files when packaged 
 
 runCheck('installer.nsh purges obsolete metadata and All-Users shortcuts', () => {
   assert(installerNsh.includes('Delete "$LOCALAPPDATA\\RupeeCRM\\data\\.billsoft-version"'), 'installer.nsh must purge data .billsoft-version');
-  assert(installerNsh.includes('Delete "$COMMONDESKTOP\\RupeeCRM.lnk"'), 'installer.nsh must delete shadowing All-Users desktop shortcut');
+  assert(installerNsh.includes('SetShellVarContext all') && installerNsh.includes('Delete "$DESKTOP\\RupeeCRM.lnk"'), 'installer.nsh must delete shadowing All-Users desktop shortcut');
 });
 
 runCheck('release.yml defines verify-windows-installation job gating release', () => {

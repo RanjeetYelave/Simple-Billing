@@ -41,12 +41,10 @@
   Delete "$INSTDIR\.billsoft-version"
 
   ; Clean up legacy All-Users shortcuts that could shadow per-user desktop shortcut
-  ${If} ${FileExists} "$COMMONDESKTOP\RupeeCRM.lnk"
-    Delete "$COMMONDESKTOP\RupeeCRM.lnk"
-  ${EndIf}
-  ${If} ${FileExists} "$COMMONSTARTMENU\Programs\RupeeCRM.lnk"
-    Delete "$COMMONSTARTMENU\Programs\RupeeCRM.lnk"
-  ${EndIf}
+  SetShellVarContext all
+  Delete "$DESKTOP\RupeeCRM.lnk"
+  Delete "$SMPROGRAMS\RupeeCRM.lnk"
+  SetShellVarContext current
 
   ; Ensure legacy startup VBS and registry entries are purged
   ${If} ${FileExists} "$SMSTARTUP\RupeeCRM.vbs"

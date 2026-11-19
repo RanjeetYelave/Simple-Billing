@@ -37,6 +37,7 @@ class HealthControllerLifecycleTest {
 
         when(environment.getProperty("app.version", "v1.0.0")).thenReturn("v1.0.308");
         when(environment.getProperty("app.build.commit", "HEAD")).thenReturn("f8b2320");
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"test"});
 
         controller = new HealthController(
                 metrics, backup, diag, dataSource, audit, reach, null, environment

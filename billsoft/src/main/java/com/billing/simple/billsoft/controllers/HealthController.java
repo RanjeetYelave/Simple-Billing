@@ -143,6 +143,25 @@ public class HealthController {
         return ResponseEntity.ok(resp);
     }
 
+    private boolean isTestEnvironment() {
+        if (Boolean.getBoolean("rupeecrm.skip.exit") || "true".equalsIgnoreCase(System.getProperty("rupeecrm.skip.exit"))) {
+            return true;
+        }
+        if (environment != null && environment.getActiveProfiles() != null && java.util.Arrays.asList(environment.getActiveProfiles()).contains("test")) {
+            return true;
+        }
+        try {
+            for (java.util.Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                for (StackTraceElement ste : entry.getValue()) {
+                    if (ste.getClassName().startsWith("org.junit.") || ste.getClassName().startsWith("org.apache.maven.surefire.")) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     @PostMapping({"/api/shutdown", "/api/system/shutdown"})
     public ResponseEntity<Map<String, Object>> shutdown(HttpServletRequest request) {
         if (!isLoopbackRequest(request)) {
@@ -157,9 +176,8 @@ public class HealthController {
                 Thread.sleep(300);
             } catch (InterruptedException ignored) {}
             log.info("Executing process shutdown for PID {}", pid);
-            if (environment != null && ((environment.getActiveProfiles() != null && java.util.Arrays.asList(environment.getActiveProfiles()).contains("test"))
-                    || Boolean.parseBoolean(System.getProperty("rupeecrm.skip.exit", "false")))) {
-                log.info("Test profile detected; skipping System.exit(0)");
+            if (isTestEnvironment()) {
+                log.info("Test environment detected; skipping System.exit(0)");
                 return;
             }
             if (applicationContext != null) {

@@ -67,6 +67,8 @@ public class UpdateService {
     @Value("${app.update.public-key:" + DEFAULT_PUBLIC_KEY + "}")
     private String publicKeyBase64;
 
+    private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
+
     private final RestTemplate restTemplate;
     private final DataSource dataSource;
 
@@ -336,10 +338,21 @@ public class UpdateService {
         return null;
     }
 
+    public void setSchedulerService(com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService) {
+        this.schedulerService = schedulerService;
+    }
+
     public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
         long now = System.currentTimeMillis();
-        if (!forceRefresh && cachedResponse != null && (now - lastCheckTime) < CACHE_DURATION_MS) {
-            return cachedResponse;
+        if (!forceRefresh) {
+            if (schedulerService != null && !schedulerService.isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.APP_UPDATES)) {
+                if (cachedResponse != null) {
+                    return cachedResponse;
+                }
+            }
+            if (cachedResponse != null && (now - lastCheckTime) < CACHE_DURATION_MS) {
+                return cachedResponse;
+            }
         }
 
         Map<String, Object> response = new HashMap<>();

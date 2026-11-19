@@ -46,6 +46,8 @@ public class DataProtectionService {
     private final ObjectMapper mapper;
     private final AtomicBoolean uploadInProgress = new AtomicBoolean(false);
 
+    private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
+
     private DataProtectionStatus currentStatus;
 
     @Autowired
@@ -123,6 +125,10 @@ public class DataProtectionService {
         return (hash & 0x7fffffff) % MAX_DETERMINISTIC_JITTER_SECONDS;
     }
 
+    public void setSchedulerService(com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService) {
+        this.schedulerService = schedulerService;
+    }
+
     /**
      * Periodic scheduled check (Hourly).
      * Local-only decision: Checks if DP is enabled and >= 7 days + deterministic machine jitter elapsed.
@@ -130,6 +136,10 @@ public class DataProtectionService {
      */
     public void performScheduledBackupCheck() {
         try {
+            if (schedulerService != null && !schedulerService.isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.DATA_PROTECTION)) {
+                return; // Managed by persistent git check scheduler: 0 remote calls if not due
+            }
+
             if (entitlement == null || !entitlement.isDataProtectionActive()) {
                 return; // DP is not active or license is expired/missing. 0 remote calls.
             }

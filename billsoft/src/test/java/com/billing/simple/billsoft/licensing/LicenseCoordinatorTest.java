@@ -241,7 +241,7 @@ public class LicenseCoordinatorTest {
     }
 
     @Test
-    void testFetchWithClassification_FastFailOnTerminalFailure_DoesNotAttemptFallback() {
+    void testFetchWithClassification_ConnectionFailureOnPrimary_AttemptsFallback() {
         java.util.concurrent.atomic.AtomicInteger httpCallCount = new java.util.concurrent.atomic.AtomicInteger(0);
         LicenseCoordinator testCoordinator = new LicenseCoordinator(machineIdentity, licenseVerifier, licenseStorage) {
             @Override
@@ -256,8 +256,8 @@ public class LicenseCoordinatorTest {
 
         assertEquals(FetchClassification.CONNECTION_FAILURE, result.getClassification());
         assertTrue(result.isTerminalNetworkFailure());
-        // Verify only 1 attempt was made (fallback was not called because primary was a terminal failure)
-        assertEquals(1, httpCallCount.get(), "Terminal network failure must fast-fail without attempting secondary fallback URL");
+        // Verify both primary and secondary fallback were attempted to bypass ISP/network blocks
+        assertEquals(2, httpCallCount.get(), "Primary failure must trigger fallback URL attempt within budget");
     }
 
     @Test

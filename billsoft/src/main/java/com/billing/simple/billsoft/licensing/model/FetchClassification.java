@@ -5,6 +5,7 @@ package com.billing.simple.billsoft.licensing.model;
  */
 public enum FetchClassification {
     SUCCESS,
+    NOT_MODIFIED,               // HTTP 304 Not Modified
     RESOURCE_NOT_FOUND,         // HTTP 404
     FORBIDDEN_OR_UNAUTHORIZED,  // HTTP 403 / 401
     SERVER_ERROR,               // HTTP 500, 502, 503, 504
@@ -12,5 +13,5 @@ public enum FetchClassification {
     READ_TIMEOUT,               // Server accepted connection but stalled response
     CONNECTION_FAILURE,         // DNS failure, Connection refused, or unreachable host
     MALFORMED_RESPONSE,         // Response body could not be parsed or verified
-    OVERALL_DEADLINE_EXCEEDED   // Overall 3,500ms budget expired before operation could finish
+    OVERALL_DEADLINE_EXCEEDED   // Overall deadline budget expired before operation could finish
 }

@@ -29,6 +29,9 @@ public class LicensingController {
     private final AppConfigRepository appConfigRepo;
     private final FirmDetailsRepository firmDetailsRepo;
 
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
+
     public LicensingController() {
         this(new LicenseCoordinator(), null, null);
     }
@@ -227,14 +230,22 @@ public class LicensingController {
 
     @PostMapping("/check-online")
     public ResponseEntity<Map<String, Object>> checkOnline() {
-        coordinator.syncWithRegistry(true);
+        if (schedulerService != null) {
+            schedulerService.triggerCheck(com.billing.simple.billsoft.service.scheduler.CheckType.LICENSE, true);
+        } else {
+            coordinator.syncWithRegistry(true);
+        }
         return getStatus();
     }
 
     @PostMapping("/recover-emi")
     public ResponseEntity<Map<String, Object>> recoverEmi() {
         // "I HAVE PAID EMI" deliberate recovery action with in-flight mutex
-        coordinator.syncWithRegistry(true);
+        if (schedulerService != null) {
+            schedulerService.triggerCheck(com.billing.simple.billsoft.service.scheduler.CheckType.LICENSE, true);
+        } else {
+            coordinator.syncWithRegistry(true);
+        }
         return getStatus();
     }
 

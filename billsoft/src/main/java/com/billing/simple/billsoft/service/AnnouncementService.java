@@ -42,9 +42,8 @@ public class AnnouncementService {
     public static final int MAX_FILE_SIZE_BYTES = 32 * 1024; // 32 KB limit
     public static final int MAX_ANNOUNCEMENTS = 10;
     public static final int MAX_ANNOUNCEMENT_LENGTH = 1000;
-    public static final long DEFAULT_TTL_HOURS = 1; // 1 hour cache TTL for responsive announcement updates
-    public static final long DEFAULT_RETRY_COOLDOWN_MINUTES = 5; // 5 minutes cooldown on network failure (reduced from
-                                                                 // 30m)
+    public static final long DEFAULT_TTL_HOURS = 1; // 1 hour internal memory cache TTL
+    public static final long DEFAULT_RETRY_COOLDOWN_MINUTES = 5; // 5 minutes cooldown on network failure
     public static final long DEFAULT_OFFLINE_CACHE_MAX_AGE_HOURS = 24; // 24 hours max age for offline disk cache
                                                                        // fallback
 
@@ -55,6 +54,8 @@ public class AnnouncementService {
 
     @Autowired(required = false)
     private MachineIdentity machineIdentity;
+
+    private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
 
     private String machineIdOverride = null;
 
@@ -86,6 +87,10 @@ public class AnnouncementService {
         this.machineIdOverride = machineId;
     }
 
+    public void setSchedulerService(com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService) {
+        this.schedulerService = schedulerService;
+    }
+
     /**
      * Gets the active list of announcements. Returns cached version if fresh (<
      * 48h),
@@ -102,6 +107,10 @@ public class AnnouncementService {
      */
     public synchronized List<String> getAnnouncements(boolean force) {
         if (!force) {
+            if (schedulerService != null && !schedulerService.isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.ANNOUNCEMENTS)) {
+                return getCachedOrEmpty();
+            }
+
             if (isCacheFresh()) {
                 return getCachedOrEmpty();
             }
@@ -129,6 +138,25 @@ public class AnnouncementService {
         }
 
         return getCachedOrEmpty();
+    }
+
+    public synchronized com.billing.simple.billsoft.service.scheduler.GitCheckExecutionResult refreshFromRemote(String etag) {
+        try {
+            String rawContent = fetchRemoteContent();
+            if (rawContent != null) {
+                List<AnnouncementItem> allItems = parseAnnouncementItems(rawContent);
+                List<String> parsed = filterEligibleAnnouncements(allItems, Instant.now(), getMachineId());
+                updateCache(parsed, allItems);
+                this.lastFailureTime = null;
+                return com.billing.simple.billsoft.service.scheduler.GitCheckExecutionResult.success(null);
+            } else {
+                this.lastFailureTime = Instant.now();
+                return com.billing.simple.billsoft.service.scheduler.GitCheckExecutionResult.networkError("Announcements remote fetch returned empty/null body");
+            }
+        } catch (Exception e) {
+            this.lastFailureTime = Instant.now();
+            return com.billing.simple.billsoft.service.scheduler.GitCheckExecutionResult.networkError(e.getMessage());
+        }
     }
 
     /**

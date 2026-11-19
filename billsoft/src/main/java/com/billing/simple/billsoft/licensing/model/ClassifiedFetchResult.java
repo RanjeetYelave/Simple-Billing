@@ -9,12 +9,18 @@ public final class ClassifiedFetchResult {
     private final int httpStatusCode;
     private final String body;
     private final long elapsedMillis;
+    private final String etag;
 
     public ClassifiedFetchResult(FetchClassification classification, int httpStatusCode, String body, long elapsedMillis) {
+        this(classification, httpStatusCode, body, elapsedMillis, null);
+    }
+
+    public ClassifiedFetchResult(FetchClassification classification, int httpStatusCode, String body, long elapsedMillis, String etag) {
         this.classification = classification;
         this.httpStatusCode = httpStatusCode;
         this.body = body;
         this.elapsedMillis = elapsedMillis;
+        this.etag = etag;
     }
 
     public FetchClassification getClassification() {
@@ -33,8 +39,17 @@ public final class ClassifiedFetchResult {
         return elapsedMillis;
     }
 
+    public String getEtag() {
+        return etag;
+    }
+
     public boolean isSuccess() {
-        return classification == FetchClassification.SUCCESS;
+        return classification == FetchClassification.SUCCESS || classification == FetchClassification.NOT_MODIFIED
+                || httpStatusCode == 200 || httpStatusCode == 304;
+    }
+
+    public boolean isNotModified() {
+        return classification == FetchClassification.NOT_MODIFIED || httpStatusCode == 304;
     }
 
     public boolean isTerminalNetworkFailure() {
@@ -50,6 +65,7 @@ public final class ClassifiedFetchResult {
                 "classification=" + classification +
                 ", httpStatusCode=" + httpStatusCode +
                 ", elapsedMillis=" + elapsedMillis +
+                ", etag=" + (etag != null ? etag : "none") +
                 '}';
     }
 }

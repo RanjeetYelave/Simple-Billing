@@ -559,10 +559,16 @@ public class UpdateService {
         try {
             UpdateState state = UpdateState.load(stateFile);
             Path handoff = getHandoffFilePath();
+            Path handoffTmp = handoff.resolveSibling("update.handoff.tmp." + System.currentTimeMillis());
             String handoffData = "transactionId=" + state.getTransactionId() + "\n" +
                     "targetVersion=" + state.getTargetVersion() + "\n" +
                     "timestamp=" + System.currentTimeMillis() + "\n";
-            Files.writeString(handoff, handoffData, StandardCharsets.UTF_8);
+            Files.writeString(handoffTmp, handoffData, StandardCharsets.UTF_8);
+            try {
+                Files.move(handoffTmp, handoff, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (Exception e) {
+                Files.move(handoffTmp, handoff, StandardCopyOption.REPLACE_EXISTING);
+            }
 
             state.setStatus(UpdateState.STATUS_APPLICATION_SHUTDOWN_PENDING);
             state.saveAtomic(stateFile);
@@ -572,6 +578,13 @@ public class UpdateService {
             new Thread(() -> {
                 try {
                     Thread.sleep(1000);
+                    // Explicitly complete/close progress emitter so Tomcat does not hang on shutdown!
+                    if (this.progressEmitter != null) {
+                        try {
+                            this.progressEmitter.complete();
+                        } catch (Exception ignored) {}
+                        this.progressEmitter = null;
+                    }
                     log.info("Requesting supervisor update restart via Exit Code 10");
                     System.exit(10);
                 } catch (Exception ignored) {}
@@ -1111,6 +1124,24 @@ public class UpdateService {
                 result.put("errorMessage", state.getErrorMessage());
                 result.put("quarantineBackupPath", state.getQuarantineBackupPath());
                 result.put("status", "ROLLED_BACK");
+                state.setTargetVersion("");
+                state.setStatus(UpdateState.STATUS_IDLE);
+                try {
+                    state.saveAtomic(stateFile);
+                } catch (Exception ignored) {
+                }
+                return result;
+            } else if (UpdateState.STATUS_UPDATE_FAILED.equals(state.getStatus())
+                    || UpdateState.STATUS_FAILED.equals(state.getStatus())
+                    || UpdateState.STATUS_INSTALLATION_FAILED.equals(state.getStatus())
+                    || UpdateState.STATUS_RECOVERY_REQUIRED.equals(state.getStatus())) {
+                result.put("justUpdated", false);
+                result.put("justRolledBack", false);
+                result.put("updateFailed", true);
+                result.put("currentVersion", state.getCurrentVersion() != null ? state.getCurrentVersion() : getCurrentVersion());
+                result.put("failedVersion", state.getTargetVersion());
+                result.put("errorMessage", state.getErrorMessage() != null ? state.getErrorMessage() : "Update installation failed");
+                result.put("status", "UPDATE_FAILED");
                 state.setTargetVersion("");
                 state.setStatus(UpdateState.STATUS_IDLE);
                 try {

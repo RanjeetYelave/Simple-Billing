@@ -104,7 +104,7 @@ if (process.platform === 'win32') {
 // 2. Path Resolution (Authoritative Local Storage & Binaries)
 // =========================================================================
 function resolveDirectories() {
-  let dataDir, logsDir, backupsDir;
+  let dataDir, logsDir, backupsDir, stagingDir, appBaseDir;
 
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Local');
@@ -112,22 +112,27 @@ function resolveDirectories() {
     dataDir = path.join(root, 'data');
     logsDir = path.join(root, 'logs');
     backupsDir = path.join(root, 'backups');
+    stagingDir = path.join(root, 'staging');
+    appBaseDir = path.join(root, 'app');
   } else {
     const userData = app.getPath('userData');
     dataDir = path.join(userData, 'data');
     logsDir = path.join(userData, 'logs');
     backupsDir = path.join(userData, 'backups');
+    stagingDir = path.join(userData, 'staging');
+    appBaseDir = path.join(userData, 'app');
   }
 
   try {
     fs.mkdirSync(dataDir, { recursive: true });
     fs.mkdirSync(logsDir, { recursive: true });
     fs.mkdirSync(backupsDir, { recursive: true });
+    fs.mkdirSync(stagingDir, { recursive: true });
   } catch (e) {
     console.warn('[RupeeCRM] Could not ensure directory structure:', e.message);
   }
 
-  return { dataDir, logsDir, backupsDir };
+  return { dataDir, logsDir, backupsDir, stagingDir, appBaseDir };
 }
 
 const dirs = resolveDirectories();
@@ -1218,17 +1223,26 @@ function registerIpcHandlers() {
     }
   });
 
+  let activeUpdateSession = null;
+
   ipcMain.handle('updater:install', async () => {
     try {
+      activeUpdateSession = {
+        startTime: Date.now(),
+        lastStatus: 'APPLYING_UPDATE'
+      };
+      logMessage('[Updater] Update activation requested by user.');
       const res = await sendBackendRequest('POST', '/api/system/install-update');
       return res.body;
     } catch (e) {
+      activeUpdateSession = null;
       return { error: e.message };
     }
   });
 
   ipcMain.handle('updater:cancel', async () => {
     try {
+      activeUpdateSession = null;
       const res = await sendBackendRequest('POST', '/api/system/cancel-update');
       return res.body;
     } catch (e) {
@@ -1238,10 +1252,30 @@ function registerIpcHandlers() {
 
   ipcMain.handle('updater:diagnostics', async () => {
     try {
-      const res = await sendBackendRequest('GET', '/api/system/update-diagnostics');
+      const res = await sendBackendRequest('GET', '/api/system/update-diagnostics', null, 2500);
       return res.body;
     } catch (e) {
-      return { error: e.message };
+      // Backend offline or restarting: read durable transaction state directly from staging directory on disk
+      try {
+        const stateFile = path.join(dirs.stagingDir, 'update-state.json');
+        if (fs.existsSync(stateFile)) {
+          const raw = fs.readFileSync(stateFile, 'utf8');
+          const state = JSON.parse(raw);
+          return {
+            status: state.status,
+            targetVersion: state.targetVersion,
+            currentVersion: state.currentVersion,
+            errorMessage: state.errorMessage,
+            errorCategory: state.errorCategory,
+            transactionId: state.transactionId,
+            fromDiskFallback: true,
+            backendHealthy: false
+          };
+        }
+      } catch (diskErr) {
+        logMessage(`[Updater] Notice: could not read update-state.json from disk: ${diskErr.message}`);
+      }
+      return { error: e.message, status: 'BACKEND_OFFLINE', backendHealthy: false };
     }
   });
 

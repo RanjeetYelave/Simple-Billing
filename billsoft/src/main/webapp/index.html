@@ -46348,9 +46348,12 @@ function PartyDetailModal({
 
       const startRestartPolling = (latestVer) => {
         if (restartPollingRef.current) return;
-        let attempts = 0;
-        const maxAttempts = 200; // 200 * 1.5s = 300s (5 minutes)
+
+        const MAX_TOTAL_RESTART_TIMEOUT_MS = 300000; // 5 minutes hard deadline
         const startTime = Date.now();
+        const deadline = startTime + MAX_TOTAL_RESTART_TIMEOUT_MS;
+        let isPollingTick = false;
+        let activeAbortController = null;
 
         // Prevent accidental page reloads that cause ERR_CONNECTION_REFUSED
         window.onbeforeunload = (e) => {
@@ -46358,31 +46361,119 @@ function PartyDetailModal({
           return (e.returnValue = "RupeeCRM is currently updating and restarting. Leaving or reloading may interrupt the reconnection process.");
         };
 
-        restartPollingRef.current = setInterval(async () => {
-          attempts++;
-          const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        const stopPolling = () => {
+          if (restartPollingRef.current) {
+            clearInterval(restartPollingRef.current);
+            restartPollingRef.current = null;
+          }
+          if (activeAbortController) {
+            try { activeAbortController.abort(); } catch(e) {}
+            activeAbortController = null;
+          }
+          window.onbeforeunload = null;
+        };
+
+        const fetchJsonWithTimeout = async (url, timeoutMs = 3000) => {
+          const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          activeAbortController = controller;
+          let timerId = null;
           try {
-            // Check /api/system/check-update-complete first
-            const compRes = await fetch(API.BASE_URL + '/api/system/check-update-complete', { cache: 'no-cache' });
-            if (compRes.ok) {
-              const compData = await compRes.json();
-              if (compData.justRolledBack) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
+            if (controller) {
+              timerId = setTimeout(() => {
+                try { controller.abort(); } catch(e) {}
+              }, timeoutMs);
+            }
+            const res = await fetch(url, {
+              cache: 'no-cache',
+              signal: controller ? controller.signal : undefined
+            });
+            if (!res.ok) {
+              return { ok: false, status: res.status, data: null };
+            }
+            const data = await res.json();
+            return { ok: true, status: res.status, data };
+          } catch (err) {
+            return { ok: false, error: err, isAborted: controller ? controller.signal.aborted : false };
+          } finally {
+            if (timerId) clearTimeout(timerId);
+            if (activeAbortController === controller) {
+              activeAbortController = null;
+            }
+          }
+        };
+
+        restartPollingRef.current = setInterval(async () => {
+          if (isPollingTick) return; // Prevent overlapping requests
+          isPollingTick = true;
+          const now = Date.now();
+          const elapsedSec = Math.floor((now - startTime) / 1000);
+
+          try {
+            // Enforce strictly bounded monotonic deadline
+            if (now >= deadline) {
+              stopPolling();
+              let diagStatus = null;
+              let diagError = null;
+              try {
+                const diagRes = await fetchJsonWithTimeout(API.BASE_URL + '/api/system/update-diagnostics', 2500);
+                if (diagRes.ok && diagRes.data) {
+                  diagStatus = diagRes.data.status || (diagRes.data.state && diagRes.data.state.status);
+                  diagError = diagRes.data.errorMessage || (diagRes.data.state && diagRes.data.state.errorMessage);
+                }
+              } catch (ignored) {}
+
+              if (diagStatus === 'COMMITTED' || diagStatus === 'SUCCESS' || diagStatus === 'COMPLETED') {
+                setUpdateProgress({
+                  status: 'complete',
+                  percent: 100,
+                  elapsedSeconds: elapsedSec,
+                  message: `RupeeCRM service updated successfully to v${latestVer || ''}!`,
+                  latestVersion: latestVer || ''
+                });
+                setTimeout(() => { window.location.reload(); }, 1500);
+                return;
+              }
+
+              setUpdateProgress({
+                status: 'error',
+                percent: 0,
+                elapsedSeconds: elapsedSec,
+                message: diagError
+                  ? `Update timeout: ${diagError}. The desktop supervisor is monitoring background recovery.`
+                  : 'Update timeout: Service restart took longer than 5 minutes. The supervisor will automatically restore the previous working version if startup does not complete. You can inspect logs or retry safely once the service is idle.',
+                latestVersion: latestVer || ''
+              });
+              return;
+            }
+
+            // 1. Check /api/system/check-update-complete
+            const comp = await fetchJsonWithTimeout(API.BASE_URL + '/api/system/check-update-complete', 3000);
+            if (comp.ok && comp.data) {
+              const compData = comp.data;
+              if (compData.justRolledBack || compData.status === 'ROLLED_BACK' || compData.rolledBack) {
+                stopPolling();
                 setUpdateProgress({
                   status: 'error',
                   percent: 0,
                   elapsedSeconds: elapsedSec,
-                  message: `Update to v${compData.failedVersion || latestVer} failed and was rolled back to v${compData.currentVersion}. Customer data was preserved.`,
+                  message: `Update to v${compData.failedVersion || latestVer} failed and was safely rolled back to v${compData.currentVersion}. Customer data was preserved.`,
+                  latestVersion: latestVer || ''
+                });
+                return;
+              }
+              if (compData.updateFailed || compData.status === 'UPDATE_FAILED' || compData.status === 'FAILED') {
+                stopPolling();
+                setUpdateProgress({
+                  status: 'error',
+                  percent: 0,
+                  elapsedSeconds: elapsedSec,
+                  message: `Update installation failed: ${compData.errorMessage || 'File replacement error'}. Running version is v${compData.currentVersion}.`,
                   latestVersion: latestVer || ''
                 });
                 return;
               }
               if (compData.complete === true || compData.justUpdated === true || compData.status === 'SUCCESS' || compData.status === 'COMPLETED' || (compData.currentVersion && latestVer && compData.currentVersion === latestVer)) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
+                stopPolling();
                 setUpdateProgress({
                   status: 'complete',
                   percent: 100,
@@ -46390,89 +46481,130 @@ function PartyDetailModal({
                   message: `RupeeCRM service updated successfully to v${compData.currentVersion || compData.updatedVersion || latestVer}!`,
                   latestVersion: latestVer || ''
                 });
-                setTimeout(() => {
-                  window.location.reload();
-                }, 1500);
+                setTimeout(() => { window.location.reload(); }, 1500);
                 return;
               }
             }
 
-            // Also check /api/system/update-status
-            const statusRes = await fetch(API.BASE_URL + '/api/system/update-status', { cache: 'no-cache' });
-            if (statusRes.ok) {
-              const statusData = await statusRes.json();
-              if (statusData.justRolledBack) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
-                setUpdateProgress({
-                  status: 'error',
-                  percent: 0,
-                  elapsedSeconds: elapsedSec,
-                  message: `Update to v${statusData.failedVersion || latestVer} failed and was rolled back to v${statusData.currentVersion}. Customer data was preserved.`,
-                  latestVersion: latestVer || ''
-                });
-                return;
-              }
-              const isMatch = (statusData.currentVersion && latestVer && statusData.currentVersion === latestVer) ||
-                              statusData.status === 'SUCCESS' || statusData.status === 'COMMITTED' || statusData.status === 'COMPLETED';
-              if (isMatch) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
+            // 2. Check /api/system/update-diagnostics (exposes durable transaction status)
+            const diag = await fetchJsonWithTimeout(API.BASE_URL + '/api/system/update-diagnostics', 3000);
+            if (diag.ok && diag.data) {
+              const diagData = diag.data;
+              const dStatus = diagData.status || (diagData.state && diagData.state.status);
+              const dCurrentVer = diagData.currentVersion || (diagData.state && diagData.state.currentVersion);
+              const dTargetVer = diagData.targetVersion || (diagData.state && diagData.state.targetVersion);
+              const dError = diagData.errorMessage || (diagData.state && diagData.state.errorMessage);
+
+              if (dStatus === 'COMMITTED' || dStatus === 'SUCCESS' || dStatus === 'COMPLETED' || (dCurrentVer && latestVer && dCurrentVer === latestVer)) {
+                stopPolling();
                 setUpdateProgress({
                   status: 'complete',
                   percent: 100,
                   elapsedSeconds: elapsedSec,
-                  message: `RupeeCRM service updated successfully to v${statusData.currentVersion || latestVer}!`,
+                  message: `RupeeCRM service updated successfully to v${dCurrentVer || latestVer}!`,
                   latestVersion: latestVer || ''
                 });
-                setTimeout(() => {
-                  window.location.reload();
-                }, 1500);
+                setTimeout(() => { window.location.reload(); }, 1500);
                 return;
               }
 
-              const isActiveProgress = ['STARTING_NEW_VERSION', 'RESTARTING', 'ACTIVATION_STARTED', 'HEALTH_CHECK', 'MIGRATING', 'EXTRACTING', 'INSTALLING', 'HANDOFF_REQUESTED'].includes(statusData.status);
-              if (isActiveProgress) {
-                // Heartbeat / progress watchdog extension: reset counter if actively progressing
-                if (attempts > 50) attempts = 20;
+              if (dStatus === 'ROLLED_BACK' || dStatus === 'ROLLBACK_COMPLETED') {
+                stopPolling();
+                setUpdateProgress({
+                  status: 'error',
+                  percent: 0,
+                  elapsedSeconds: elapsedSec,
+                  message: `Update failed and was rolled back to previous version v${dCurrentVer}. Details: ${dError || 'Safety rollback executed.'}`,
+                  latestVersion: latestVer || ''
+                });
+                return;
+              }
+
+              if (dStatus === 'UPDATE_FAILED' || dStatus === 'FAILED' || dStatus === 'INSTALLATION_FAILED' || dStatus === 'RECOVERY_REQUIRED') {
+                stopPolling();
+                setUpdateProgress({
+                  status: 'error',
+                  percent: 0,
+                  elapsedSeconds: elapsedSec,
+                  message: `Update installation failed: ${dError || 'File replacement error'}. Running version is v${dCurrentVer}.`,
+                  latestVersion: latestVer || ''
+                });
+                return;
+              }
+
+              // Active progress states: update UI message with elapsed time without resetting any watchdog counter
+              const activeProgressStatuses = [
+                'APPLICATION_SHUTDOWN_PENDING', 'ACTIVATION_STARTED', 'STARTING_NEW_VERSION',
+                'APPLYING_UPDATE', 'RESTARTING', 'APPLICATION_RESTARTING',
+                'HEALTH_CHECK', 'POST_UPDATE_HEALTH_CHECK', 'MIGRATING', 'EXTRACTING',
+                'INSTALLING', 'HANDOFF_REQUESTED'
+              ];
+              if (activeProgressStatuses.includes(dStatus)) {
+                let msg = `Applying update and restarting service... (${elapsedSec}s elapsed)`;
+                if (dStatus === 'MIGRATING') {
+                  msg = `Running database schema migrations... (${elapsedSec}s elapsed)`;
+                } else if (dStatus === 'HEALTH_CHECK' || dStatus === 'POST_UPDATE_HEALTH_CHECK') {
+                  msg = `Verifying backend health and version... (${elapsedSec}s elapsed)`;
+                } else if (dStatus === 'ACTIVATION_STARTED' || dStatus === 'APPLYING_UPDATE') {
+                  msg = `Replacing application files... (${elapsedSec}s elapsed)`;
+                }
                 setUpdateProgress(prev => ({
                   ...(prev || {}),
                   status: 'restarting',
                   percent: 100,
                   elapsedSeconds: elapsedSec,
-                  message: statusData.status === 'MIGRATING'
-                    ? `Running database schema migrations... (${elapsedSec}s elapsed)`
-                    : statusData.status === 'HEALTH_CHECK'
-                    ? `Verifying backend health and version... (${elapsedSec}s elapsed)`
-                    : `Applying update and restarting service... (${elapsedSec}s elapsed)`,
-                  latestVersion: latestVer || (prev ? prev.latestVersion : '')
+                  message: msg,
+                  latestVersion: latestVer || dTargetVer || (prev ? prev.latestVersion : '')
                 }));
-              } else if (statusData.currentVersion && latestVer && statusData.currentVersion !== latestVer) {
-                clearInterval(restartPollingRef.current);
-                restartPollingRef.current = null;
-                window.onbeforeunload = null;
+                return;
+              }
+
+              // If status is IDLE, but version matches target:
+              if (dStatus === 'IDLE' && dCurrentVer && latestVer && dCurrentVer === latestVer) {
+                stopPolling();
+                setUpdateProgress({
+                  status: 'complete',
+                  percent: 100,
+                  elapsedSeconds: elapsedSec,
+                  message: `RupeeCRM updated successfully to v${dCurrentVer}!`,
+                  latestVersion: latestVer || ''
+                });
+                setTimeout(() => { window.location.reload(); }, 1500);
+                return;
+              }
+
+              // If status is IDLE, but version does not match target, and elapsed time > 15s (backend is alive with old version):
+              if (dStatus === 'IDLE' && dCurrentVer && latestVer && dCurrentVer !== latestVer && elapsedSec > 15) {
+                stopPolling();
                 setUpdateProgress({
                   status: 'error',
                   percent: 0,
                   elapsedSeconds: elapsedSec,
-                  message: `Update rejected or not applied. Running version is v${statusData.currentVersion}. Please check launcher logs.`,
+                  message: `Update rejected or not applied. Running version is v${dCurrentVer}. Please check launcher logs.`,
                   latestVersion: latestVer || ''
                 });
                 return;
               }
             }
 
-            // General health fallback
-            const res = await fetch(API.BASE_URL + '/api/health', { cache: 'no-cache' });
-            if (res.ok) {
+            // 3. Fallback health check (/api/health)
+            const health = await fetchJsonWithTimeout(API.BASE_URL + '/api/health', 2500);
+            if (health.ok) {
               setUpdateProgress(prev => ({
                 ...(prev || {}),
                 status: 'restarting',
                 percent: 100,
                 elapsedSeconds: elapsedSec,
                 message: `Verifying application version and system health... (${elapsedSec}s)`,
+                latestVersion: latestVer || (prev ? prev.latestVersion : '')
+              }));
+            } else {
+              setUpdateProgress(prev => ({
+                ...(prev || {}),
+                status: 'restarting',
+                percent: 100,
+                elapsedSeconds: elapsedSec,
+                message: `Applying update and restarting service... (${elapsedSec}s elapsed)`,
                 latestVersion: latestVer || (prev ? prev.latestVersion : '')
               }));
             }
@@ -46485,19 +46617,8 @@ function PartyDetailModal({
               message: `Applying update and restarting service... (${elapsedSec}s elapsed)`,
               latestVersion: latestVer || (prev ? prev.latestVersion : '')
             }));
-          }
-
-          if (attempts >= maxAttempts) {
-            clearInterval(restartPollingRef.current);
-            restartPollingRef.current = null;
-            window.onbeforeunload = null;
-            setUpdateProgress({
-              status: 'error',
-              percent: 0,
-              elapsedSeconds: elapsedSec,
-              message: 'Restart is taking longer than expected. The desktop supervisor is monitoring service health and will automatically restore the previous version if startup does not complete.',
-              latestVersion: latestVer || ''
-            });
+          } finally {
+            isPollingTick = false;
           }
         }, 1500);
       };
@@ -46542,19 +46663,25 @@ function PartyDetailModal({
               return { ...prev, status: 'restarting', message: 'Restarting RupeeCRM service...', percent: 100 };
             }
             if (prev.status === 'downloading') {
-              fetch(API.BASE_URL + '/api/system/update-status', { cache: 'no-cache' })
+              const diagCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+              const diagTimer = diagCtrl ? setTimeout(() => { try { diagCtrl.abort(); } catch(e) {} }, 3000) : null;
+              fetch(API.BASE_URL + '/api/system/update-diagnostics', { cache: 'no-cache', signal: diagCtrl ? diagCtrl.signal : undefined })
                 .then(r => r.json())
-                .then(status => {
-                  if (status.status === 'RESTARTING' || status.status === 'ACTIVATION_STARTED' || status.status === 'READY_TO_INSTALL') {
-                    startRestartPolling(status.targetVersion || latestVersion);
+                .then(diagData => {
+                  if (diagTimer) clearTimeout(diagTimer);
+                  const dStatus = diagData.status || (diagData.state && diagData.state.status);
+                  const dTargetVer = diagData.targetVersion || (diagData.state && diagData.state.targetVersion);
+                  if (dStatus === 'RESTARTING' || dStatus === 'ACTIVATION_STARTED' || dStatus === 'READY_TO_INSTALL' || dStatus === 'APPLICATION_SHUTDOWN_PENDING') {
+                    startRestartPolling(dTargetVer || latestVersion);
                     setUpdateProgress({ ...prev, status: 'restarting', message: 'Applying update & restarting...', percent: 100 });
-                  } else if (status.status === 'DOWNLOAD_CANCELLED') {
+                  } else if (dStatus === 'DOWNLOAD_CANCELLED') {
                     setUpdateProgress({ status: 'error', percent: 0, message: 'Update download cancelled.', latestVersion: latestVersion || '' });
                   } else {
                     setUpdateProgress({ status: 'error', percent: 0, message: 'Download interrupted by network disconnection. Please retry.', latestVersion: latestVersion || '' });
                   }
                 })
                 .catch(() => {
+                  if (diagTimer) clearTimeout(diagTimer);
                   startRestartPolling(prev.latestVersion || latestVersion);
                 });
             }
@@ -46702,14 +46829,17 @@ function PartyDetailModal({
 
       const handleInstallNow = async () => {
         try {
+          const targetVer = updateProgress ? (updateProgress.latestVersion || '') : '';
+          setUpdateProgress(prev => prev ? { ...prev, status: 'restarting', message: 'Applying update and restarting service...' } : null);
+          startRestartPolling(targetVer);
           if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.install) {
             await window.rupeeDesktop.updater.install();
           } else {
             await API.system.installUpdate();
           }
-          setUpdateProgress(prev => prev ? { ...prev, status: 'restarting', message: 'Applying update and restarting...' } : null);
         } catch (e) {
           console.warn('Failed to install update:', e);
+          setUpdateProgress(prev => prev ? { ...prev, status: 'error', message: 'Failed to initiate update: ' + (e.message || e) } : null);
         }
       };
 

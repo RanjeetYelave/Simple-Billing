@@ -310,12 +310,25 @@ public class LauncherMain {
                         try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
 
                         try {
-                            Files.copy(activeBackupWar.toPath(), warFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            System.out.println("Rollback restored binary: " + warFile.getAbsolutePath());
-                            state.setStatus(UpdateState.STATUS_ROLLED_BACK);
-                            state.setErrorMessage("Version v" + candidateVersion + " failed health check; rolled back to previous binary");
-                            state.saveAtomic(stateFile);
-                            showTrayNotification("Previous Version Restored", "RupeeCRM restored your previous working version. Customer data was safely preserved.", TrayIcon.MessageType.INFO);
+                            boolean rollbackRestored = false;
+                            for (int r = 1; r <= 10; r++) {
+                                try {
+                                    Files.copy(activeBackupWar.toPath(), warFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                                    rollbackRestored = true;
+                                    break;
+                                } catch (Exception re) {
+                                    if (r == 10) throw re;
+                                    System.gc();
+                                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                                }
+                            }
+                            if (rollbackRestored) {
+                                System.out.println("Rollback restored binary: " + warFile.getAbsolutePath());
+                                state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+                                state.setErrorMessage("Version v" + candidateVersion + " failed health check; rolled back to previous binary");
+                                state.saveAtomic(stateFile);
+                                showTrayNotification("Previous Version Restored", "RupeeCRM restored your previous working version. Customer data was safely preserved.", TrayIcon.MessageType.INFO);
+                            }
                         } catch (Exception e) {
                             System.err.println("CRITICAL: Failed to restore backup binary: " + e.getMessage());
                             state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
@@ -484,23 +497,20 @@ public class LauncherMain {
         if (candidateVersion == null || candidateVersion.trim().isEmpty()) {
             return true;
         }
-        for (int attempt = 0; attempt < 10; attempt++) {
+        for (int attempt = 0; attempt < 15; attempt++) {
             try {
-                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-status");
+                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/version-info");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(2000);
                 conn.setReadTimeout(2000);
                 conn.setRequestMethod("GET");
                 if (conn.getResponseCode() == 200) {
                     String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
-                        body.contains("\"status\":\"SUCCESS\"") ||
-                        body.contains("\"status\":\"HEALTH_VERIFIED\"") ||
-                        body.contains("\"status\":\"COMMITTED\"") ||
-                        body.contains("\"status\":\"COMPLETED\"")) {
+                    if (body.contains("\"version\":\"" + candidateVersion + "\"") ||
+                        body.contains("\"version\":\"v" + candidateVersion + "\"") ||
+                        body.contains(candidateVersion)) {
                         return true;
-                    }
-                    if (body.contains("\"currentVersion\":") && !body.contains(candidateVersion) && attempt >= 5) {
+                    } else if (attempt >= 5) {
                         System.err.println("Running backend reported version does not match candidate " + candidateVersion + ": " + body);
                         return false;
                     }
@@ -509,15 +519,32 @@ public class LauncherMain {
                 // Backend still initializing
             }
             try {
+                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-diagnostics");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(2000);
+                conn.setReadTimeout(2000);
+                conn.setRequestMethod("GET");
+                if (conn.getResponseCode() == 200) {
+                    String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
+                        body.contains("\"currentVersion\":\"v" + candidateVersion + "\"") ||
+                        body.contains("\"targetVersion\":\"" + candidateVersion + "\"") ||
+                        body.contains(candidateVersion)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {}
+            try {
                 Path v1 = getDataDirectory().resolve(".billsoft-version");
                 if (Files.exists(v1)) {
                     String v = Files.readString(v1, StandardCharsets.UTF_8).trim();
-                    if (candidateVersion.equals(v)) return true;
+                    if (candidateVersion.equals(v) || ("v" + candidateVersion).equals(v)) return true;
                 }
             } catch (Exception ignored) {}
             try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
         }
-        return true;
+        System.err.println("CRITICAL: Candidate version verification timed out for expected version v" + candidateVersion);
+        return false;
     }
 
     private boolean waitForBackend(int maxSeconds) {
@@ -1563,16 +1590,29 @@ public class LauncherMain {
             } else if (UpdateState.STATUS_ACTIVATION_STARTED.equals(status) || UpdateState.STATUS_ROLLBACK_IN_PROGRESS.equals(status)) {
                 if (backupWar != null && backupWar.exists() && backupWar.length() > 0 && currentWar != null) {
                     System.err.println("RECOVERY: Crash detected during update activation/rollback. Restoring backup binary from " + backupWar.getAbsolutePath());
-                    Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    boolean restored = false;
+                    for (int r = 1; r <= 10; r++) {
+                        try {
+                            Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            restored = true;
+                            break;
+                        } catch (Exception re) {
+                            if (r == 10) System.err.println("RECOVERY: Retry " + r + " failed to restore backup: " + re.getMessage());
+                            System.gc();
+                            try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                        }
+                    }
                     state.setStatus(UpdateState.STATUS_ROLLED_BACK);
                     state.setErrorMessage("Interrupted update transaction recovered; restored previous working binary");
                     try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    try { Files.deleteIfExists(getStagingDirectory().resolve("update.handoff")); } catch (Exception ignored) {}
                     System.out.println("RECOVERY: Successfully restored backup binary: " + currentWar.getAbsolutePath());
                 } else {
                     System.err.println("CRITICAL RECOVERY ERROR: Interrupted update activation/rollback detected, but backup binary is missing or corrupted!");
                     state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
                     state.setErrorMessage("Interrupted update recovery failed: backup binary missing or corrupted (" + (backupWar != null ? backupWar.getAbsolutePath() : "null") + ")");
                     try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    try { Files.deleteIfExists(getStagingDirectory().resolve("update.handoff")); } catch (Exception ignored) {}
                 }
             }
         } catch (Exception e) {
@@ -1608,6 +1648,9 @@ public class LauncherMain {
             if (!Files.exists(manifestFile) || !Files.exists(sigFile)) {
                 System.err.println("REJECTED: Staged update missing manifest.json or manifest.sig");
                 Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Staged update missing manifest.json or manifest.sig");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
@@ -1625,7 +1668,7 @@ public class LauncherMain {
             } catch (Exception e) {
                 System.err.println("SECURITY REJECTION: Launcher manifest signature verification failed: " + e.getMessage());
                 Files.deleteIfExists(handoffToken);
-                state.setStatus(UpdateState.STATUS_RECOVERY_REQUIRED);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
                 state.setErrorMessage("Launcher signature verification failed: " + e.getMessage());
                 try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
@@ -1643,6 +1686,9 @@ public class LauncherMain {
                 } else {
                     System.err.println("REJECTED: Staged artifact not found: " + stagedWar);
                     Files.deleteIfExists(handoffToken);
+                    state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                    state.setErrorMessage("Staged artifact not found: " + stagedWar);
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                     return false;
                 }
             }
@@ -1651,6 +1697,9 @@ public class LauncherMain {
             if (stagedSize != manifest.getArtifactSizeBytes()) {
                 System.err.println("REJECTED: Staged size mismatch: " + stagedSize + " != " + manifest.getArtifactSizeBytes());
                 Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Staged size mismatch: " + stagedSize + " != " + manifest.getArtifactSizeBytes());
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
@@ -1658,26 +1707,66 @@ public class LauncherMain {
             if (!manifest.getArtifactSha256().equalsIgnoreCase(stagedHash)) {
                 System.err.println("REJECTED: Staged SHA-256 digest mismatch: " + stagedHash + " != " + manifest.getArtifactSha256());
                 Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Staged SHA-256 digest mismatch: " + stagedHash + " != " + manifest.getArtifactSha256());
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
             if (!UpdateCrypto.isZipFile(stagedWar)) {
                 System.err.println("REJECTED: Staged artifact failed ZIP magic check");
                 Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Staged artifact failed ZIP magic check");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
             File currentWar = findCurrentWar();
             if (currentWar == null || !currentWar.exists()) {
                 System.err.println("REJECTED: Current live WAR not found");
+                Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Current live WAR not found");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
+            File targetWar = currentWar;
+            boolean isCurrentWritable = false;
+            try {
+                if (currentWar.getParentFile() != null) {
+                    File testProbe = new File(currentWar.getParentFile(), ".probe-write-" + System.currentTimeMillis());
+                    if (testProbe.createNewFile()) {
+                        testProbe.delete();
+                        isCurrentWritable = true;
+                    }
+                }
+            } catch (Exception e) {
+                isCurrentWritable = false;
+            }
+
+            if (!isCurrentWritable) {
+                Path baseAppDir = getBaseDirectory().resolve("app");
+                File baseWar = baseAppDir.resolve("rupeecrm.war").toFile();
+                System.out.println("Notice: Packaged WAR location is read-only (" + currentWar.getAbsolutePath() + "). Redirecting update target to user-writable base directory: " + baseWar.getAbsolutePath());
+                try {
+                    Files.createDirectories(baseAppDir);
+                } catch (Exception e) {
+                    System.err.println("CRITICAL: Failed to create user base directory: " + e.getMessage());
+                }
+                targetWar = baseWar;
+            }
+
             // 3. Create and verify old WAR backup
-            File backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
+            File backupWar = new File(targetWar.getParentFile(), targetWar.getName() + ".bak");
             Files.copy(currentWar.toPath(), backupWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
             if (!backupWar.exists() || backupWar.length() != currentWar.length()) {
                 System.err.println("REJECTED: Failed to create valid backup of current binary");
+                Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Failed to create valid backup of current binary");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
             }
 
@@ -1689,34 +1778,66 @@ public class LauncherMain {
             state.setTargetVersion(manifest.getAppVersion());
             try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
 
-            // 4. Atomically replace WAR (with retries & GC backoff for Windows locks)
+            // 4. Atomically replace WAR (with retries & backoff for Windows locks)
             System.gc();
             boolean moved = false;
-            for (int attempt = 1; attempt <= 10; attempt++) {
+            long replaceStart = System.currentTimeMillis();
+            File oldRenamedWar = new File(targetWar.getParentFile(), targetWar.getName() + ".old");
+
+            for (int attempt = 1; attempt <= 25; attempt++) {
                 try {
-                    Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    Files.move(stagedWar, targetWar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                     moved = true;
                     break;
                 } catch (Exception e1) {
                     try {
-                        Files.move(stagedWar, currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        Files.move(stagedWar, targetWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
                         moved = true;
                         break;
                     } catch (Exception e2) {
-                        if (attempt == 10) throw e2;
-                        System.gc();
                         try {
-                            long delay = Math.min(1000L, 300L + (attempt * 70L));
-                            Thread.sleep(delay);
-                        } catch (InterruptedException ignored) {}
+                            if (targetWar.exists()) {
+                                try { Files.deleteIfExists(oldRenamedWar.toPath()); } catch (Exception ignored) {}
+                                Files.move(targetWar.toPath(), oldRenamedWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            }
+                            Files.copy(stagedWar, targetWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            try { Files.deleteIfExists(stagedWar); } catch (Exception ignored) {}
+                            moved = true;
+                            break;
+                        } catch (Exception e3) {
+                            long elapsed = System.currentTimeMillis() - replaceStart;
+                            String errCat = (e2 instanceof java.nio.file.AccessDeniedException) ? "ACCESS_DENIED" : "SHARING_VIOLATION";
+                            System.err.println(String.format("File replacement attempt %d/25 failed [%s, %dms elapsed]: %s",
+                                    attempt, errCat, elapsed, e2.getMessage()));
+                            if (attempt == 25) {
+                                throw new IllegalStateException("Exhausted 25 replacement retries: " + e2.getMessage(), e2);
+                            }
+                            System.gc();
+                            try {
+                                long delay = Math.min(2000L, 300L + (attempt * 100L));
+                                Thread.sleep(delay);
+                            } catch (InterruptedException ignored) {}
+                        }
                     }
                 }
             }
 
+            try { Files.deleteIfExists(oldRenamedWar.toPath()); } catch (Exception ignored) {}
+
+            // Post-replacement SHA-256 integrity verification
+            String targetHash = UpdateCrypto.computeSha256(targetWar.toPath());
+            if (!manifest.getArtifactSha256().equalsIgnoreCase(targetHash)) {
+                System.err.println("CRITICAL: Replaced binary SHA-256 digest mismatch! Expected: "
+                        + manifest.getArtifactSha256() + ", actual: " + targetHash + ". Restoring backup immediately!");
+                Files.copy(backupWar.toPath(), targetWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                throw new IllegalStateException("Post-replacement checksum verification failed (expected: "
+                        + manifest.getArtifactSha256() + ", got: " + targetHash + ")");
+            }
+
             // Write version stamp for unambiguous verification
             try {
-                if (currentWar.getParentFile() != null) {
-                    Files.writeString(currentWar.getParentFile().toPath().resolve(".billsoft-version"), manifest.getAppVersion(), StandardCharsets.UTF_8);
+                if (targetWar.getParentFile() != null) {
+                    Files.writeString(targetWar.getParentFile().toPath().resolve(".billsoft-version"), manifest.getAppVersion(), StandardCharsets.UTF_8);
                 }
                 Files.writeString(getDataDirectory().resolve(".billsoft-version"), manifest.getAppVersion(), StandardCharsets.UTF_8);
             } catch (Exception ignored) {}
@@ -1731,10 +1852,23 @@ public class LauncherMain {
             this.candidateVersion = manifest.getAppVersion();
             this.activeBackupWar = backupWar;
 
-            System.out.println("Update successfully activated: " + currentWar.getAbsolutePath() + " (v" + candidateVersion + ")");
+            System.out.println("Update successfully activated: " + targetWar.getAbsolutePath() + " (v" + candidateVersion + ")");
             return true;
         } catch (Exception e) {
-            System.err.println("Error applying pending update: " + e.getMessage());
+            System.err.println("CRITICAL: Error applying pending update: " + e.getMessage());
+            try {
+                Path stateFile = getStagingDirectory().resolve("update-state.json");
+                if (Files.exists(stateFile)) {
+                    UpdateState state = UpdateState.load(stateFile);
+                    state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                    state.setErrorMessage("Error applying update: " + e.getMessage());
+                    state.saveAtomic(stateFile);
+                }
+            } catch (Exception ignored) {}
+            try {
+                Path handoffToken = getStagingDirectory().resolve("update.handoff");
+                Files.deleteIfExists(handoffToken);
+            } catch (Exception ignored) {}
             return false;
         }
     }
@@ -1916,6 +2050,10 @@ public class LauncherMain {
     }
 
     private File getAppDirectory() {
+        String customApp = System.getProperty("RUPEECRM_APP_DIR");
+        if (customApp != null && !customApp.trim().isEmpty()) {
+            return new File(customApp.trim());
+        }
         try {
             return new File(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile();
         } catch (Exception e) {

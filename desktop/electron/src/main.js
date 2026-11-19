@@ -1225,14 +1225,16 @@ function registerIpcHandlers() {
 
   let activeUpdateSession = null;
 
-  ipcMain.handle('updater:install', async () => {
+  ipcMain.handle('updater:install', async (event, payload) => {
     try {
       activeUpdateSession = {
         startTime: Date.now(),
         lastStatus: 'APPLYING_UPDATE'
       };
       logMessage('[Updater] Update activation requested by user.');
-      const res = await sendBackendRequest('POST', '/api/system/install-update');
+      const targetVersion = (payload && payload.targetVersion) ? payload.targetVersion : null;
+      const endpoint = targetVersion ? `/api/system/install-update?targetVersion=${encodeURIComponent(targetVersion)}` : '/api/system/install-update';
+      const res = await sendBackendRequest('POST', endpoint);
       return res.body;
     } catch (e) {
       activeUpdateSession = null;

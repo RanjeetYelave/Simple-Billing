@@ -53,7 +53,7 @@ runCheck('updater exposes pause, resume, retry, install, cancel, getDiagnostics'
   assert(preloadJs.includes("pause: () => ipcRenderer.invoke('updater:pause')"), 'updater.pause missing');
   assert(preloadJs.includes("resume: () => ipcRenderer.invoke('updater:resume')"), 'updater.resume missing');
   assert(preloadJs.includes("retry: () => ipcRenderer.invoke('updater:retry')"), 'updater.retry missing');
-  assert(preloadJs.includes("install: () => ipcRenderer.invoke('updater:install')"), 'updater.install missing');
+  assert(preloadJs.includes("install: (payload) => ipcRenderer.invoke('updater:install', payload)") || preloadJs.includes("install: () => ipcRenderer.invoke('updater:install')"), 'updater.install missing');
   assert(preloadJs.includes("cancel: () => ipcRenderer.invoke('updater:cancel')"), 'updater.cancel missing');
   assert(preloadJs.includes("getDiagnostics: () => ipcRenderer.invoke('updater:diagnostics')"), 'updater.getDiagnostics missing');
 });

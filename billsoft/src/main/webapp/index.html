@@ -12256,6 +12256,7 @@
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
+      onInstallStaged,
       reminders = [],
       notes = [],
       expenses = [],
@@ -13120,10 +13121,26 @@
         // Streamlined Alert Banner (System updates)
         (updateInfo && !updateDismissed) ? React.createElement('div', { className: 'card', style: { borderLeft: '4px solid var(--primary)', background: 'rgba(79, 70, 229, 0.08)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: 8 } },
           React.createElement('div', null,
-            React.createElement('strong', { style: { color: 'var(--primary)', fontSize: '0.9rem' } }, `⚡ Update Available: Version ${updateInfo.latestVersion}`)
+            React.createElement('strong', { style: { color: 'var(--primary)', fontSize: '0.9rem' } },
+              updateInfo.stagedUpdateAvailable
+                ? `📦 Staged Update Ready: Version ${updateInfo.stagedVersion}`
+                : `⚡ Update Available: Version ${updateInfo.latestVersion}`
+            )
           ),
           React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-            React.createElement('button', { className: 'btn btn-xs btn-primary', onClick: () => { if (onStartUpdate) onStartUpdate(updateInfo.latestVersion); else API.system.applyUpdate(); } }, 'Install Now'),
+            React.createElement('button', {
+              className: 'btn btn-xs btn-primary',
+              onClick: () => {
+                if (updateInfo.stagedUpdateAvailable) {
+                  if (onInstallStaged) onInstallStaged(updateInfo.stagedVersion);
+                  else if (onStartUpdate) onStartUpdate(updateInfo.stagedVersion);
+                  else API.system.installUpdate();
+                } else {
+                  if (onStartUpdate) onStartUpdate(updateInfo.latestVersion);
+                  else API.system.applyUpdate(updateInfo.latestVersion);
+                }
+              }
+            }, updateInfo.stagedUpdateAvailable ? 'Install Staged Update' : 'Install Now'),
             React.createElement('button', { className: 'btn btn-xs btn-ghost', onClick: () => setUpdateDismissed(true) }, '✕ Dismiss')
           )
         ) : null,
@@ -39837,7 +39854,7 @@ function PartyDetailModal({
       );
     }
 
-    function SettingsHub({ onFirmChanged, onStartUpdate }) {
+    function SettingsHub({ onFirmChanged, onStartUpdate, onInstallStaged }) {
       const normalizeSettingsTab = (t) => {
         if (!t) return 'appearance';
         const low = String(t).toLowerCase();
@@ -39907,7 +39924,7 @@ function PartyDetailModal({
         activeTab === 'security' && React.createElement(SettingsSecurity, null),
         activeTab === 'firm' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
         activeTab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
-        activeTab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate }),
+        activeTab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate, onInstallStaged: onInstallStaged }),
         activeTab === 'credits' && React.createElement(CreditsHelpdesk, null)
       );
     }
@@ -40622,6 +40639,20 @@ function PartyDetailModal({
       const isError = status === 'error' || status === 'update_failed';
       const showBar = status === 'downloading' || status === 'installing' || isPaused;
 
+      // Prevent accidental Escape key dismissal during installation and restart
+      useEffect(() => {
+        if (isRestarting) {
+          const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.keyCode === 27) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          };
+          window.addEventListener('keydown', handleKeyDown, true);
+          return () => window.removeEventListener('keydown', handleKeyDown, true);
+        }
+      }, [isRestarting]);
+
       if (!isUpdating) return null;
 
       const formatTime = (secs) => {
@@ -40644,8 +40675,37 @@ function PartyDetailModal({
         isError ? '❌' :
         isRestarting ? '⚡' : '📥';
 
+      // 6 state-driven installation and restart phases
+      const phases = [
+        { id: 1, label: '1. Update package downloaded & verified' },
+        { id: 2, label: '2. Replacing application' },
+        { id: 3, label: '3. Restarting service' },
+        { id: 4, label: '4. Database schema verification' },
+        { id: 5, label: '5. Checking application health' },
+        { id: 6, label: '6. Confirming installed version' }
+      ];
+
+      let currentPhaseIndex = 2;
+      if (showComplete) {
+        currentPhaseIndex = 7;
+      } else if (isRestarting) {
+        const msgLower = (message || '').toLowerCase();
+        if (msgLower.includes('confirming installed version') || msgLower.includes('version verified') || elapsedSeconds >= 45) {
+          currentPhaseIndex = 6;
+        } else if (msgLower.includes('verifying') || msgLower.includes('health') || elapsedSeconds >= 30) {
+          currentPhaseIndex = 5;
+        } else if (msgLower.includes('schema') || msgLower.includes('migrating') || elapsedSeconds >= 20) {
+          currentPhaseIndex = 4;
+        } else if (msgLower.includes('restarting') || elapsedSeconds >= 8) {
+          currentPhaseIndex = 3;
+        } else {
+          currentPhaseIndex = 2;
+        }
+      }
+
       return React.createElement('div', {
         className: 'modal-overlay modal-confirm',
+        onClick: (e) => { e.stopPropagation(); },
         style: {
           zIndex: 99990,
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
@@ -40658,6 +40718,7 @@ function PartyDetailModal({
       },
         React.createElement('div', {
           className: 'card',
+          onClick: (e) => { e.stopPropagation(); },
           style: {
             maxWidth: 540,
             width: '100%',
@@ -40739,7 +40800,7 @@ function PartyDetailModal({
             )
           ),
 
-          // Restarting Message & Steps Checklist
+          // Restarting Message & 6 State-Driven Steps Checklist
           isRestarting && React.createElement('div', { style: { marginTop: 8, marginBottom: 16 } },
             React.createElement('p', {
               style: {
@@ -40748,16 +40809,18 @@ function PartyDetailModal({
               }
             }, 'The update files are being replaced and the RupeeCRM background service is restarting. The system will automatically reconnect as soon as it is ready.'),
 
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' } },
-                '✅', React.createElement('span', { style: { fontWeight: 500 } }, '1. Update package downloaded & verified')
-              ),
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' } },
-                '🔄', React.createElement('span', { style: { fontWeight: 600 } }, '2. Replacing application & restarting service...')
-              ),
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' } },
-                '⚪', React.createElement('span', null, '3. Database schema verification & service warmup')
-              )
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem', textAlign: 'left' } },
+              phases.map(p => {
+                const isDone = p.id < currentPhaseIndex;
+                const isCurrent = p.id === currentPhaseIndex;
+                const icon = isDone ? '✅' : isCurrent ? '🔄' : '⚪';
+                const color = isDone ? '#16a34a' : isCurrent ? 'var(--primary)' : 'var(--text-muted)';
+                const fontWeight = isCurrent ? 700 : (isDone ? 600 : 400);
+                return React.createElement('div', { key: p.id, style: { display: 'flex', alignItems: 'center', gap: 8, color } },
+                  icon,
+                  React.createElement('span', { style: { fontWeight } }, p.label + (isCurrent ? '...' : ''))
+                );
+              })
             ),
 
             React.createElement('div', {
@@ -40821,7 +40884,12 @@ function PartyDetailModal({
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               style: { flex: 1, fontSize: '0.82rem' },
-              onClick: onMinimize
+              onClick: () => {
+                if (API.system && typeof API.system.remindLater === 'function') {
+                  API.system.remindLater().catch(() => {});
+                }
+                onMinimize();
+              }
             }, 'Remind Me Later')
           ),
 
@@ -40842,19 +40910,13 @@ function PartyDetailModal({
             className: 'btn btn-primary btn-lg',
             style: { marginTop: 16, width: '100%' },
             onClick: () => { window.location.reload(); }
-          }, '🚀 Launch Updated App Now'),
-
-          isRestarting && React.createElement('button', {
-            className: 'btn btn-outline btn-sm',
-            style: { marginTop: 16, width: '100%', fontSize: '0.82rem' },
-            onClick: onComplete
-          }, 'Dismiss Overlay (Backend Running in Background)')
+          }, '🚀 Launch Updated App Now')
         )
       );
     }
 
     // ─── SOFTWARE UPDATE ───
-    function SoftwareUpdate({ onStartUpdate }) {
+    function SoftwareUpdate({ onStartUpdate, onInstallStaged }) {
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
@@ -40919,15 +40981,35 @@ function PartyDetailModal({
         }
       };
 
-      const handleInstall = () => {
+      const handleInstall = (targetVersion) => {
+        const ver = targetVersion || info?.latestVersion;
         if (onStartUpdate) {
-          onStartUpdate(info?.latestVersion);
+          onStartUpdate(ver);
         } else {
           setLoading(true);
-          API.system.applyUpdate()
-            .then(() => showToast('Update started successfully', 'success'))
+          API.system.applyUpdate(ver)
+            .then(() => {
+              if (window.showToast) showToast('Update started successfully', 'success');
+            })
             .catch(e => {
-              showToast(e.message || 'Update failed', 'error');
+              if (window.showToast) showToast(e.message || 'Update failed', 'error');
+              setLoading(false);
+            });
+        }
+      };
+
+      const handleDirectInstallStaged = (stagedVersion) => {
+        const ver = stagedVersion || info?.stagedVersion;
+        if (onInstallStaged) {
+          onInstallStaged(ver);
+        } else {
+          setLoading(true);
+          API.system.installUpdate()
+            .then(() => {
+              if (window.showToast) showToast('Activation started. Restarting service...', 'success');
+            })
+            .catch(e => {
+              if (window.showToast) showToast(e.message || 'Installation failed', 'error');
               setLoading(false);
             });
         }
@@ -41000,6 +41082,10 @@ function PartyDetailModal({
         });
       };
 
+      const isStaged = Boolean(info && info.stagedUpdateAvailable);
+      const hasNewer = Boolean(info && info.hasNewerRelease);
+      const isUpdateAvail = Boolean(info && info.updateAvailable);
+
       return React.createElement('div', {
         className: 'card',
         style: {
@@ -41057,7 +41143,7 @@ function PartyDetailModal({
             onClick: () => fetchUpdateInfo(true)
           }, 'Retry')
         ) : info ? React.createElement(Fragment, null,
-          (info.error && !info.updateAvailable) ? React.createElement('div', {
+          (info.error && !isStaged && !isUpdateAvail) ? React.createElement('div', {
             style: {
               background: 'var(--danger-light, rgba(239, 68, 68, 0.08))',
               border: '1px solid rgba(239, 68, 68, 0.25)',
@@ -41087,7 +41173,195 @@ function PartyDetailModal({
                 style: { textDecoration: 'none' }
               }, 'View Releases on GitHub ↗')
             )
-          ) : info.updateAvailable ? React.createElement('div', {
+          ) : (isStaged && hasNewer) ? React.createElement('div', {
+            style: {
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: 12,
+              padding: '20px 22px',
+              marginTop: 12
+            }
+          },
+            React.createElement('div', { style: { textAlign: 'center', marginBottom: 14 } },
+              React.createElement('div', {
+                style: {
+                  display: 'inline-block',
+                  padding: '3px 12px',
+                  borderRadius: 20,
+                  background: '#f59e0b',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginBottom: 8
+                }
+              }, 'Update Version Choice Available'),
+              React.createElement('h3', {
+                style: { margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }
+              }, 'Choose Version to Install'),
+              React.createElement('p', {
+                style: { margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)' }
+              }, 'An update is already downloaded and waiting to be installed, and a newer version has also been released.')
+            ),
+
+            // Clear Version Comparison Box
+            React.createElement('div', {
+              style: {
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '16px 20px',
+                marginBottom: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }
+            },
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.88rem', color: 'var(--text-secondary)' } }, 'Downloaded update:'),
+                React.createElement('span', { style: { fontWeight: 700, color: '#10b981', fontSize: '0.94rem' } }, info.stagedVersion)
+              ),
+              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: '0.88rem', color: 'var(--text-secondary)' } }, 'Latest available update:'),
+                React.createElement('span', { style: { fontWeight: 700, color: 'var(--primary)', fontSize: '0.94rem' } }, info.latestVersion)
+              )
+            ),
+
+            info.releaseNotes && React.createElement('div', {
+              style: {
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '14px 18px',
+                fontSize: '0.84rem',
+                maxHeight: '180px',
+                overflowY: 'auto',
+                marginBottom: 16,
+                lineHeight: 1.55
+              }
+            },
+              React.createElement('div', {
+                style: { fontWeight: 700, marginBottom: 8, color: 'var(--text)', fontSize: '0.82rem' }
+              }, `What's New in ${info.latestVersion}:`),
+              renderReleaseNotes(info.releaseNotes)
+            ),
+
+            // Dual Action Buttons
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              React.createElement('button', {
+                className: 'btn btn-primary',
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  fontSize: '0.92rem',
+                  fontWeight: 600,
+                  background: '#059669',
+                  borderColor: '#059669',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  borderRadius: 10
+                },
+                onClick: () => handleDirectInstallStaged(info.stagedVersion)
+              },
+                React.createElement('span', null, '⚡'),
+                React.createElement('span', null, `Install Downloaded Version (${info.stagedVersion})`)
+              ),
+              React.createElement('button', {
+                className: 'btn btn-outline',
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  fontSize: '0.92rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  borderRadius: 10
+                },
+                onClick: () => handleInstall(info.latestVersion)
+              },
+                React.createElement('span', null, '📥'),
+                React.createElement('span', null, `Download Latest Version (${info.latestVersion})`)
+              )
+            )
+          ) : (isStaged && !hasNewer) ? React.createElement('div', {
+            style: {
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              borderRadius: 12,
+              padding: '20px 22px',
+              marginTop: 12
+            }
+          },
+            React.createElement('div', { style: { textAlign: 'center', marginBottom: 12 } },
+              React.createElement('div', {
+                style: {
+                  display: 'inline-block',
+                  padding: '3px 12px',
+                  borderRadius: 20,
+                  background: '#10b981',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginBottom: 8
+                }
+              }, 'Update Ready to Install'),
+              React.createElement('h3', {
+                style: { margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }
+              }, `RupeeCRM ${info.stagedVersion}`),
+              React.createElement('p', {
+                style: { margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)' }
+              }, 'The update package has been downloaded, verified, and database backup is prepared.')
+            ),
+
+            (info.stagedReleaseNotes || info.releaseNotes) && React.createElement('div', {
+              style: {
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '14px 18px',
+                fontSize: '0.84rem',
+                maxHeight: '180px',
+                overflowY: 'auto',
+                margin: '14px 0 16px 0',
+                lineHeight: 1.55
+              }
+            },
+              React.createElement('div', {
+                style: { fontWeight: 700, marginBottom: 8, color: 'var(--text)', fontSize: '0.82rem' }
+              }, `What's New in ${info.stagedVersion}:`),
+              renderReleaseNotes(info.stagedReleaseNotes || info.releaseNotes)
+            ),
+
+            // Exact button specification for State B:
+            React.createElement('button', {
+              className: 'btn btn-primary',
+              style: {
+                width: '100%',
+                padding: '12px 20px',
+                fontSize: '0.94rem',
+                fontWeight: 600,
+                background: '#059669',
+                borderColor: '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                borderRadius: 10,
+                marginTop: 14
+              },
+              onClick: () => handleDirectInstallStaged(info.stagedVersion)
+            },
+              React.createElement('span', null, '⚡'),
+              React.createElement('span', null, 'Downloaded, Install and Restart')
+            )
+          ) : isUpdateAvail ? React.createElement('div', {
             style: {
               background: 'var(--primary-light, rgba(79, 70, 229, 0.08))',
               border: '1px solid var(--border)',
@@ -41117,7 +41391,7 @@ function PartyDetailModal({
               }, `RupeeCRM ${info.latestVersion}`),
               React.createElement('p', {
                 style: { margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)' }
-              }, 'A new version is ready to install.')
+              }, 'A new version is ready to download.')
             ),
 
             // Release Notes Box
@@ -41140,7 +41414,7 @@ function PartyDetailModal({
               renderReleaseNotes(info.releaseNotes)
             ),
 
-            // Install Button
+            // Exact button specification for State A:
             React.createElement('button', {
               className: 'btn btn-primary',
               style: {
@@ -41154,10 +41428,10 @@ function PartyDetailModal({
                 gap: 8,
                 borderRadius: 10
               },
-              onClick: handleInstall
+              onClick: () => handleInstall(info.latestVersion)
             },
               React.createElement('span', null, '⚡'),
-              React.createElement('span', null, 'Install Update Now')
+              React.createElement('span', null, 'Download Update')
             )
           ) : React.createElement('div', {
             style: {
@@ -46757,12 +47031,36 @@ function PartyDetailModal({
         setUpdateProgress({ status: 'downloading', percent: 0, elapsedSeconds: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
         await connectUpdateProgressSSE(latestVersion);
         try {
-          await API.system.applyUpdate();
+          await API.system.applyUpdate(latestVersion);
         } catch (e) {
           window.onbeforeunload = null;
           setUpdateProgress({ status: 'error', percent: 0, message: 'Update failed: ' + (e.message || 'Unknown error'), latestVersion: latestVersion || '' });
         }
       };
+
+      const handleInstallStaged = async (stagedVersion) => {
+        setIsUpdating(true);
+        const targetVer = stagedVersion || (updateProgress ? updateProgress.latestVersion : '');
+        setUpdateProgress({
+          status: 'restarting',
+          percent: 100,
+          elapsedSeconds: 0,
+          message: `Applying update ${targetVer ? 'v' + targetVer : ''} and restarting service...`,
+          latestVersion: targetVer
+        });
+        startRestartPolling(targetVer);
+        try {
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.install) {
+            await window.rupeeDesktop.updater.install({ targetVersion: targetVer });
+          } else {
+            await API.system.installUpdate();
+          }
+        } catch (e) {
+          console.warn('Failed to install staged update:', e);
+          setUpdateProgress(prev => prev ? { ...prev, status: 'error', message: 'Failed to initiate update: ' + (e.message || e) } : null);
+        }
+      };
+
       const handleUpdateComplete = () => {
         setIsUpdating(false);
         setUpdateProgress(null);
@@ -46828,19 +47126,8 @@ function PartyDetailModal({
       };
 
       const handleInstallNow = async () => {
-        try {
-          const targetVer = updateProgress ? (updateProgress.latestVersion || '') : '';
-          setUpdateProgress(prev => prev ? { ...prev, status: 'restarting', message: 'Applying update and restarting service...' } : null);
-          startRestartPolling(targetVer);
-          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.install) {
-            await window.rupeeDesktop.updater.install();
-          } else {
-            await API.system.installUpdate();
-          }
-        } catch (e) {
-          console.warn('Failed to install update:', e);
-          setUpdateProgress(prev => prev ? { ...prev, status: 'error', message: 'Failed to initiate update: ' + (e.message || e) } : null);
-        }
+        const targetVer = updateProgress ? (updateProgress.latestVersion || '') : '';
+        await handleInstallStaged(targetVer);
       };
 
       const handleMinimizeUpdate = () => {
@@ -46952,6 +47239,7 @@ function PartyDetailModal({
           title: 'Dashboard', comp: React.createElement(Dashboard, {
             key: API.firmId,
             onStartUpdate: handleStartUpdate,
+            onInstallStaged: handleInstallStaged,
             reminders,
             notes,
             expenses,
@@ -47034,7 +47322,7 @@ function PartyDetailModal({
         employees: { title: 'HR Management', comp: React.createElement(HRManager, { key: API.firmId }) },
         paperwork: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
         statements: { title: 'Firm', comp: React.createElement(FirmPage, { onFirmChanged: handleFirmChanged, onEditInvoice: handleEditInvoice, onEditQuotation: handleEditQuotation, firms: firms }) },
-        settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate }) },
+        settings: { title: 'Settings', comp: React.createElement(SettingsHub, { onFirmChanged: handleFirmChanged, onStartUpdate: handleStartUpdate, onInstallStaged: handleInstallStaged }) },
       };
       const current = pageComponents[page] || pageComponents.dashboard;
       const isPageLocked = Boolean(

@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -52,7 +54,7 @@ class UpdateControllerTest {
 
     @Test
     void testApplyUpdate() throws Exception {
-        when(service.startUpdateAsync()).thenReturn(true);
+        when(service.applyUpdate(nullable(String.class))).thenReturn(true);
 
         mockMvc.perform(post("/api/system/apply-update"))
                 .andExpect(status().isOk())
@@ -60,12 +62,39 @@ class UpdateControllerTest {
     }
 
     @Test
+    void testApplyUpdateWithTargetVersion() throws Exception {
+        when(service.applyUpdate("1.0.327")).thenReturn(true);
+
+        mockMvc.perform(post("/api/system/apply-update?targetVersion=1.0.327"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
     void testApplyUpdateConflict() throws Exception {
-        when(service.startUpdateAsync()).thenReturn(false);
+        when(service.applyUpdate(nullable(String.class))).thenReturn(false);
 
         mockMvc.perform(post("/api/system/apply-update"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void testRemindLater() throws Exception {
+        when(service.remindLater()).thenReturn(true);
+
+        mockMvc.perform(post("/api/system/remind-later"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("deferred"));
+    }
+
+    @Test
+    void testInstallUpdate() throws Exception {
+        when(service.installStagedUpdate()).thenReturn(true);
+
+        mockMvc.perform(post("/api/system/install-update"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("restarting"));
     }
 
     @Test

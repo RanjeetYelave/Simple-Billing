@@ -67,8 +67,9 @@ public class UpdateController {
     }
 
     @PostMapping("/apply-update")
-    public ResponseEntity<Map<String, String>> applyUpdate() {
-        boolean started = updateService.startUpdateAsync();
+    public ResponseEntity<Map<String, String>> applyUpdate(
+            @RequestParam(name = "targetVersion", required = false) String targetVersion) {
+        boolean started = updateService.applyUpdate(targetVersion);
         if (started) {
             return ResponseEntity.ok(Map.of(
                     "status", "success",
@@ -77,6 +78,21 @@ public class UpdateController {
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "error", "Cannot start update: another update transaction is in progress or no verified update was found"
+            ));
+        }
+    }
+
+    @PostMapping("/remind-later")
+    public ResponseEntity<Map<String, Object>> remindLater() {
+        boolean deferred = updateService.remindLater();
+        if (deferred) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "deferred",
+                    "message", "Update deferred. Staged package preserved."
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "error", "Could not record deferred update state"
             ));
         }
     }

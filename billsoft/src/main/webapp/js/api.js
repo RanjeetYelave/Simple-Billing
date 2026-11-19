@@ -1376,7 +1376,10 @@ const API = {
   // ─── System & Updates ───
   system: {
     updateStatus: (forceRefresh = false) => API._json(forceRefresh ? '/api/system/update-status?force=true' : '/api/system/update-status'),
-    applyUpdate: () => API._json('/api/system/apply-update', {
+    applyUpdate: (targetVersion) => API._json('/api/system/apply-update' + (targetVersion ? '?targetVersion=' + encodeURIComponent(targetVersion) : ''), {
+      method: 'POST'
+    }),
+    remindLater: () => API._json('/api/system/remind-later', {
       method: 'POST'
     }),
     pauseUpdate: () => API._json('/api/system/pause-update', {

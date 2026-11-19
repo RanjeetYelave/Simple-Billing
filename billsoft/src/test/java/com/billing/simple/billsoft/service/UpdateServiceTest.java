@@ -45,6 +45,7 @@ class UpdateServiceTest {
         testPublicKeyBase64 = Base64.getEncoder().encodeToString(testKeyPair.getPublic().getEncoded());
 
         service = new UpdateService(restTemplate);
+        service.setExitOnInstall(false);
         ReflectionTestUtils.setField(service, "defaultVersion", "v1.0.0");
         ReflectionTestUtils.setField(service, "manifestUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.json");
         ReflectionTestUtils.setField(service, "signatureUrl", "https://github.com/RanjeetYelave/Simple-Billing/releases/latest/download/manifest.sig");
@@ -361,5 +362,151 @@ class UpdateServiceTest {
 
         // Running binary is actually 1.0.280, targetVersion 1.0.308 must not trick system
         assertEquals("v1.0.280", service.getCurrentVersion());
+    }
+
+    @Test
+    void testStagedUpdateRecognizedWhenReadyToInstall() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        Files.writeString(stagedWar, "PK-STAGED-WAR-BYTES-327");
+
+        Path stateFile = service.getStateFilePath();
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(stateFile);
+
+        Map<String, Object> stagedInfo = service.getStagedUpdateInfo();
+        assertTrue(Boolean.TRUE.equals(stagedInfo.get("stagedUpdateAvailable")));
+        assertEquals("1.0.327", stagedInfo.get("stagedVersion"));
+        assertEquals(UpdateState.STATUS_READY_TO_INSTALL, stagedInfo.get("stagedStatus"));
+
+        // When checking update, response must include staged metadata
+        Map<String, Object> check = service.checkUpdate(true);
+        assertTrue(Boolean.TRUE.equals(check.get("stagedUpdateAvailable")));
+        assertEquals("1.0.327", check.get("stagedVersion"));
+        assertFalse(Boolean.TRUE.equals(check.get("hasNewerRelease")));
+    }
+
+    @Test
+    void testCheckUpdateDetectsNewerReleaseWhenOlderStaged() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        Files.writeString(stagedWar, "PK-STAGED-WAR-BYTES-327");
+
+        Path stateFile = service.getStateFilePath();
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(stateFile);
+
+        // Mock remote manifest with 1.0.328 (newer than 1.0.327)
+        UpdateManifest manifest328 = new UpdateManifest(
+                1, "1.0.328", "v1.0.328", "2026-11-20T00:00:00Z", "1.0.0",
+                "rupeecrm-1.0.328.war", "https://github.com/RanjeetYelave/Simple-Billing/releases/download/v1.0.328/rupeecrm.war",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                25_000_000L, "Release notes for 328"
+        );
+        mockManifestAndSignature(manifest328);
+
+        Map<String, Object> check = service.checkUpdate(true);
+        assertTrue(Boolean.TRUE.equals(check.get("stagedUpdateAvailable")));
+        assertEquals("1.0.327", check.get("stagedVersion"));
+        assertEquals("1.0.328", check.get("latestVersion"));
+        assertTrue(Boolean.TRUE.equals(check.get("hasNewerRelease")));
+        assertTrue(Boolean.TRUE.equals(check.get("updateAvailable")));
+    }
+
+    @Test
+    void testApplyUpdateDirectlyInstallsStagedWithoutRedownload() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        Files.writeString(stagedWar, "PK-STAGED-WAR-BYTES-327");
+
+        Path stateFile = service.getStateFilePath();
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(stateFile);
+
+        Files.writeString(txDir.resolve("manifest.json"), "{\"appVersion\":\"1.0.327\"}");
+        Files.writeString(txDir.resolve("manifest.sig"), "sig327");
+
+        // Calling applyUpdate without version or with "1.0.327" directly installs staged update
+        boolean applied = service.applyUpdate("1.0.327");
+        assertTrue(applied);
+        assertTrue(Files.exists(service.getHandoffFilePath()));
+    }
+
+    @Test
+    void testSafeStagedReplacementPreservesStagedPackageOnFailure() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        String originalContent = "PK-BUILD-327-SAFE-CONTENT";
+        Files.writeString(stagedWar, originalContent);
+
+        Path stateFile = service.getStateFilePath();
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(stateFile);
+
+        // Newer version 328 manifest
+        UpdateManifest manifest328 = new UpdateManifest(
+                1, "1.0.328", "v1.0.328", "2026-11-20T00:00:00Z", "1.0.0",
+                "rupeecrm-1.0.328.war", "https://invalid-download-host-999.example.com/rupeecrm.war",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                25_000_000L, "Release notes for 328"
+        );
+
+        // Invoke pipeline directly via reflection to simulate newer release failure
+        java.lang.reflect.Method method = UpdateService.class.getDeclaredMethod("executeUpdatePipeline", UpdateManifest.class);
+        method.setAccessible(true);
+        method.invoke(service, manifest328);
+
+        // CRITICAL SAFETY ASSERTION:
+        // Build 327 WAR must STILL exist and must contain the exact original content!
+        assertTrue(Files.exists(stagedWar));
+        assertEquals(originalContent, Files.readString(stagedWar));
+
+        // And update-state.json must have preserved / restored READY_TO_INSTALL for 1.0.327
+        UpdateState preservedState = UpdateState.load(stateFile);
+        assertEquals(UpdateState.STATUS_READY_TO_INSTALL, preservedState.getStatus());
+        assertEquals("1.0.327", preservedState.getTargetVersion());
+    }
+
+    @Test
+    void testRemindLaterPreservesDeferredState() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        Files.writeString(stagedWar, "PK-STAGED-WAR-327");
+
+        Path stateFile = service.getStateFilePath();
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(stateFile);
+
+        boolean deferred = service.remindLater();
+        assertTrue(deferred);
+
+        UpdateState loaded = UpdateState.load(stateFile);
+        assertEquals(UpdateState.STATUS_READY_TO_INSTALL, loaded.getStatus());
+        assertEquals("1.0.327", loaded.getTargetVersion());
     }
 }

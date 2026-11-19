@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
     pause: () => ipcRenderer.invoke('updater:pause'),
     resume: () => ipcRenderer.invoke('updater:resume'),
     retry: () => ipcRenderer.invoke('updater:retry'),
-    install: () => ipcRenderer.invoke('updater:install'),
+    install: (payload) => ipcRenderer.invoke('updater:install', payload),
     cancel: () => ipcRenderer.invoke('updater:cancel'),
     getDiagnostics: () => ipcRenderer.invoke('updater:diagnostics')
   },

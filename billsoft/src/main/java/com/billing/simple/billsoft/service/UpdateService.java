@@ -38,6 +38,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Enterprise-grade OTA update engine for RupeeCRM.
@@ -86,6 +88,7 @@ public class UpdateService {
     private volatile HttpURLConnection activeDownloadConnection = null;
 
     private volatile SseEmitter progressEmitter;
+    private volatile boolean exitOnInstall = true;
 
     // In-memory cache for update check (5 minutes max)
     private long lastCheckTime = 0;
@@ -146,6 +149,10 @@ public class UpdateService {
 
     public void setDefaultVersion(String defaultVersion) {
         this.defaultVersion = defaultVersion;
+    }
+
+    public void setExitOnInstall(boolean exitOnInstall) {
+        this.exitOnInstall = exitOnInstall;
     }
 
     public boolean hasSufficientDiskSpace() {
@@ -359,16 +366,91 @@ public class UpdateService {
         this.schedulerService = schedulerService;
     }
 
+    /**
+     * Inspects on-disk staged update package and durable transaction state.
+     * Returns metadata for verified updates waiting to be installed (READY_TO_INSTALL / VERIFIED_STAGED).
+     */
+    public Map<String, Object> getStagedUpdateInfo() {
+        Map<String, Object> info = new HashMap<>();
+        try {
+            Path txDir = getTxDirectory();
+            Path stateFile = getStateFilePath();
+            Path stagedWar = txDir.resolve("rupeecrm-update.war");
+            Path manifestFile = txDir.resolve("manifest.json");
+
+            if (Files.exists(stateFile) && Files.exists(stagedWar)) {
+                UpdateState state = UpdateState.load(stateFile);
+                String status = state.getStatus();
+                if (UpdateState.STATUS_READY_TO_INSTALL.equals(status) || UpdateState.STATUS_VERIFIED_STAGED.equals(status)) {
+                    String targetVer = state.getTargetVersion();
+                    String currentVer = getCurrentVersion();
+                    if (targetVer != null && !targetVer.isBlank() && compareVersions(targetVer, currentVer) > 0) {
+                        if (Files.size(stagedWar) > 0) {
+                            info.put("stagedUpdateAvailable", true);
+                            info.put("stagedVersion", targetVer);
+                            info.put("stagedStatus", status);
+                            info.put("stagedArtifactPath", stagedWar.toAbsolutePath().toString());
+
+                            if (Files.exists(manifestFile)) {
+                                try {
+                                    byte[] mBytes = Files.readAllBytes(manifestFile);
+                                    String json = new String(mBytes, StandardCharsets.UTF_8);
+                                    Pattern p = Pattern.compile("\"releaseNotes\"\\s*:\\s*\"([^\"]+)\"");
+                                    Matcher m = p.matcher(json);
+                                    if (m.find()) {
+                                        info.put("stagedReleaseNotes", m.group(1).replace("\\n", "\n"));
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return info;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to inspect staged update info: {}", e.getMessage());
+        }
+        info.put("stagedUpdateAvailable", false);
+        return info;
+    }
+
+    private void enrichResponseWithStagedInfo(Map<String, Object> response) {
+        Map<String, Object> staged = getStagedUpdateInfo();
+        boolean stagedAvail = Boolean.TRUE.equals(staged.get("stagedUpdateAvailable"));
+        response.put("stagedUpdateAvailable", stagedAvail);
+        if (stagedAvail) {
+            String stagedVer = (String) staged.get("stagedVersion");
+            response.put("stagedVersion", stagedVer);
+            response.put("stagedStatus", staged.get("stagedStatus"));
+            response.put("stagedReleaseNotes", staged.get("stagedReleaseNotes"));
+            String latestVer = (String) response.get("latestVersion");
+            if (latestVer != null && !latestVer.isBlank()) {
+                response.put("hasNewerRelease", compareVersions(latestVer, stagedVer) > 0);
+            } else {
+                response.put("hasNewerRelease", false);
+            }
+        } else {
+            response.put("stagedVersion", null);
+            response.put("stagedStatus", null);
+            response.put("stagedReleaseNotes", null);
+            response.put("hasNewerRelease", false);
+        }
+    }
+
     public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
         long now = System.currentTimeMillis();
         if (!forceRefresh) {
             if (schedulerService != null && !schedulerService.isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.APP_UPDATES)) {
                 if (cachedResponse != null) {
-                    return cachedResponse;
+                    Map<String, Object> res = new HashMap<>(cachedResponse);
+                    enrichResponseWithStagedInfo(res);
+                    return res;
                 }
             }
             if (cachedResponse != null && (now - lastCheckTime) < CACHE_DURATION_MS) {
-                return cachedResponse;
+                Map<String, Object> res = new HashMap<>(cachedResponse);
+                enrichResponseWithStagedInfo(res);
+                return res;
             }
         }
 
@@ -381,6 +463,7 @@ public class UpdateService {
                 || "false".equalsIgnoreCase(System.getProperty("app.update.check.enabled"))) {
             response.put("updateAvailable", false);
             response.put("message", "Update check is disabled by configuration");
+            enrichResponseWithStagedInfo(response);
             return response;
         }
 
@@ -419,6 +502,8 @@ public class UpdateService {
             response.put("updateAvailable", available);
             response.put("downloadUrl", "internal");
 
+            enrichResponseWithStagedInfo(response);
+
             lastCheckTime = now;
             cachedResponse = new HashMap<>(response);
             return response;
@@ -426,6 +511,7 @@ public class UpdateService {
             log.warn("Update check failed: {}", e.getMessage());
             response.put("updateAvailable", false);
             response.put("error", "Update check failed: " + e.getMessage());
+            enrichResponseWithStagedInfo(response);
             return response;
         }
     }
@@ -463,15 +549,58 @@ public class UpdateService {
     }
 
     public boolean applyUpdate() {
-        Path stateFile = getStateFilePath();
-        if (Files.exists(stateFile)) {
-            UpdateState state = UpdateState.load(stateFile);
-            if (UpdateState.STATUS_READY_TO_INSTALL.equals(state.getStatus()) ||
-                UpdateState.STATUS_VERIFIED_STAGED.equals(state.getStatus())) {
+        return applyUpdate(null);
+    }
+
+    /**
+     * Applies update based on user preference or staged package presence.
+     * If preferredTargetVersion matches stagedVersion, proceeds directly to install without downloading.
+     * If preferredTargetVersion is specified for newer version, initiates download of newer version.
+     * If no version is specified, prioritizes staged package if ready.
+     */
+    public boolean applyUpdate(String preferredTargetVersion) {
+        Map<String, Object> staged = getStagedUpdateInfo();
+        boolean stagedAvail = Boolean.TRUE.equals(staged.get("stagedUpdateAvailable"));
+        String stagedVer = (String) staged.get("stagedVersion");
+
+        if (preferredTargetVersion != null && !preferredTargetVersion.isBlank()) {
+            if (stagedAvail && preferredTargetVersion.equals(stagedVer)) {
+                log.info("Applying requested staged update v{}", stagedVer);
                 return installStagedUpdate();
+            } else {
+                log.info("User requested downloading version v{}", preferredTargetVersion);
+                return startUpdateAsync();
             }
         }
+
+        if (stagedAvail) {
+            log.info("Staged update v{} ready. Installing directly without re-downloading.", stagedVer);
+            return installStagedUpdate();
+        }
         return startUpdateAsync();
+    }
+
+    /**
+     * User selected Remind Me Later. Preserves staged update package and marks state deferred.
+     */
+    public boolean remindLater() {
+        log.info("User selected Remind Me Later. Preserving staged update state.");
+        try {
+            Path stateFile = getStateFilePath();
+            if (Files.exists(stateFile)) {
+                UpdateState state = UpdateState.load(stateFile);
+                if (UpdateState.STATUS_READY_TO_INSTALL.equals(state.getStatus()) ||
+                    UpdateState.STATUS_VERIFIED_STAGED.equals(state.getStatus())) {
+                    state.setUpdatedAt(System.currentTimeMillis());
+                    state.saveAtomic(stateFile);
+                }
+            }
+            setProgress("idle", 0, "Update deferred. Staged package preserved.");
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not save deferred state: {}", e.getMessage());
+            return false;
+        }
     }
 
     public boolean pauseUpdate() {
@@ -603,7 +732,9 @@ public class UpdateService {
                         this.progressEmitter = null;
                     }
                     log.info("Requesting supervisor update restart via Exit Code 10");
-                    System.exit(10);
+                    if (exitOnInstall && !Boolean.getBoolean("rupeecrm.prevent.exit")) {
+                        System.exit(10);
+                    }
                 } catch (Exception ignored) {}
             }, "ota-install-exit-thread").start();
 
@@ -640,6 +771,7 @@ public class UpdateService {
             return;
         }
 
+        UpdateState preservedStagedState = null;
         Path lockFile = getLockFilePath();
         try (UpdateLockManager.LockHandle lock = UpdateLockManager.tryAcquire(lockFile)) {
             if (lock == null) {
@@ -650,16 +782,49 @@ public class UpdateService {
             Path txDir = getTxDirectory();
             Files.createDirectories(txDir);
 
-            Path partFile = txDir.resolve("rupeecrm-update.war.part");
-            Path manifestArtifact = txDir.resolve(manifest.getArtifactFilename());
             Path finalWar = txDir.resolve("rupeecrm-update.war");
+            Path manifestArtifact = txDir.resolve(manifest.getArtifactFilename());
+            Path stateFile = getStateFilePath();
 
-            // Inspect existing partial file and state
-            UpdateState state = UpdateState.load(getStateFilePath());
+            // Check if there is an existing, valid staged package that must be preserved
+            UpdateState existingState = null;
+            if (Files.exists(stateFile)) {
+                try {
+                    existingState = UpdateState.load(stateFile);
+                } catch (Exception ignored) {}
+            }
+
+            final boolean hasProtectedStagedPackage = existingState != null
+                    && (UpdateState.STATUS_READY_TO_INSTALL.equals(existingState.getStatus())
+                        || UpdateState.STATUS_VERIFIED_STAGED.equals(existingState.getStatus()))
+                    && Files.exists(finalWar) && Files.size(finalWar) > 0
+                    && !manifest.getAppVersion().equals(existingState.getTargetVersion());
+            if (hasProtectedStagedPackage) {
+                preservedStagedState = existingState;
+            }
+
+            // If a valid older update is staged, download into candidate part file so the older package is NEVER destroyed prematurely!
+            Path partFile = hasProtectedStagedPackage
+                    ? txDir.resolve("rupeecrm-update-candidate.war.part")
+                    : txDir.resolve("rupeecrm-update.war.part");
+
+            UpdateState state;
             boolean canResume = false;
-            if (manifest.getAppVersion().equals(state.getTargetVersion())
-                    && manifest.getArtifactSha256().equalsIgnoreCase(state.getExpectedSha256())
+            if (hasProtectedStagedPackage) {
+                // Keep preservedStagedState intact. If candidate fails, we restore it!
+                state = new UpdateState();
+                state.setCurrentVersion(getCurrentVersion());
+                state.setTargetVersion(manifest.getAppVersion());
+                state.setExpectedSha256(manifest.getArtifactSha256());
+                state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
+                state.setDownloadUrl(manifest.getArtifactUrl());
+                log.info("Downloading newer update v{} while safely preserving staged update v{}",
+                        manifest.getAppVersion(), preservedStagedState.getTargetVersion());
+            } else if (existingState != null
+                    && manifest.getAppVersion().equals(existingState.getTargetVersion())
+                    && manifest.getArtifactSha256().equalsIgnoreCase(existingState.getExpectedSha256())
                     && Files.exists(partFile)) {
+                state = existingState;
                 canResume = true;
             } else {
                 Files.deleteIfExists(partFile);
@@ -687,15 +852,34 @@ public class UpdateService {
 
             if (pauseRequested.get()) {
                 log.info("Update download paused by user. Preserving partial file for resumption.");
+                if (hasProtectedStagedPackage) {
+                    try {
+                        preservedStagedState.saveAtomic(stateFile);
+                    } catch (Exception ignored) {}
+                    setProgress("ready_to_install", 100,
+                            "Download of newer version paused. Staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                            preservedStagedState.getTargetVersion());
+                }
                 return;
             }
 
             if (cancelRequested.get()) {
                 Files.deleteIfExists(partFile);
-                setProgress("cancelled", 0, "Update was cancelled by the user.");
-                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
-                state.setErrorMessage("Update was cancelled by the user.");
-                state.saveAtomic(getStateFilePath());
+                if (hasProtectedStagedPackage) {
+                    log.info("Cancelled download of v{}; restoring verified staged package v{}",
+                            manifest.getAppVersion(), preservedStagedState.getTargetVersion());
+                    try {
+                        preservedStagedState.saveAtomic(stateFile);
+                    } catch (Exception ignored) {}
+                    setProgress("ready_to_install", 100,
+                            "Download cancelled. Staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                            preservedStagedState.getTargetVersion());
+                } else {
+                    setProgress("cancelled", 0, "Update was cancelled by the user.");
+                    state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+                    state.setErrorMessage("Update was cancelled by the user.");
+                    state.saveAtomic(getStateFilePath());
+                }
                 return;
             }
 
@@ -725,7 +909,7 @@ public class UpdateService {
                 throw new IllegalStateException("Downloaded artifact is not a valid ZIP/WAR archive");
             }
 
-            // 5. Promote .part to final staged war
+            // 5. Promote .part to final staged war (Candidate is verified, safe to replace now)
             try {
                 Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
@@ -775,22 +959,35 @@ public class UpdateService {
             log.info("Update pipeline paused: {}", de.getMessage());
         } catch (java.util.concurrent.CancellationException ce) {
             log.info("Update pipeline cancelled: {}", ce.getMessage());
-            setProgress("cancelled", 0, "Update was cancelled by the user.");
-            try {
-                UpdateState state = UpdateState.load(getStateFilePath());
-                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
-                state.setErrorMessage("Update was cancelled by the user.");
-                state.saveAtomic(getStateFilePath());
-            } catch (Exception ignored) {}
         } catch (Exception e) {
-            log.error("Update pipeline failed: {}", e.getMessage(), e);
-            setProgress("error", 0, "Update failed: " + e.getMessage());
+            log.error("Update pipeline failed for version {}: {}", manifest.getAppVersion(), e.getMessage(), e);
+            Path txDir = getTxDirectory();
+            Path partFile = txDir.resolve("rupeecrm-update.war.part");
+            Path candidatePart = txDir.resolve("rupeecrm-update-candidate.war.part");
             try {
-                UpdateState state = UpdateState.load(getStateFilePath());
-                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
-                state.setErrorMessage(e.getMessage());
-                state.saveAtomic(getStateFilePath());
+                Files.deleteIfExists(partFile);
+                Files.deleteIfExists(candidatePart);
             } catch (Exception ignored) {}
+
+            Path stateFile = getStateFilePath();
+            if (preservedStagedState != null) {
+                log.info("Preserving verified staged update v{} after newer version download/validation failed: {}",
+                        preservedStagedState.getTargetVersion(), e.getMessage());
+                try {
+                    preservedStagedState.saveAtomic(stateFile);
+                } catch (Exception ignored) {}
+                setProgress("ready_to_install", 100,
+                        "Download of v" + manifest.getAppVersion() + " failed (" + e.getMessage() + "). Preserved staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                        preservedStagedState.getTargetVersion());
+            } else {
+                setProgress("error", 0, "Update failed: " + e.getMessage());
+                try {
+                    UpdateState state = new UpdateState();
+                    state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                    state.setErrorMessage(e.getMessage());
+                    state.saveAtomic(stateFile);
+                } catch (Exception ignored) {}
+            }
         } finally {
             updateInProgress.set(false);
         }

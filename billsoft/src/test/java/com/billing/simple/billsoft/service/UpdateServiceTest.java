@@ -18,6 +18,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.contains;
@@ -508,5 +509,167 @@ class UpdateServiceTest {
         UpdateState loaded = UpdateState.load(stateFile);
         assertEquals(UpdateState.STATUS_READY_TO_INSTALL, loaded.getStatus());
         assertEquals("1.0.327", loaded.getTargetVersion());
+    }
+
+    private Path createMockOtaZip(String appVersion, byte[] warBytes, boolean validSig, boolean validChecksum, String zipSlipEntry) throws Exception {
+        Path zipFile = tempDir.resolve("test-update-" + UUID.randomUUID() + ".zip");
+        String warSha256 = UpdateCrypto.computeSha256(warBytes);
+        String manifestSha256 = validChecksum ? warSha256 : "0000000000000000000000000000000000000000000000000000000000000000";
+
+        UpdateManifest manifest = new UpdateManifest(
+                1, appVersion, "v" + appVersion, "2026-11-20T00:00:00Z", "1.0.0",
+                "rupeecrm.war", "https://github.com/RanjeetYelave/Simple-Billing/releases/download/v" + appVersion + "/rupeecrm.war",
+                manifestSha256, warBytes.length, "Release notes for " + appVersion
+        );
+
+        byte[] manifestBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+        String sig = validSig ? UpdateCrypto.sign(manifestBytes, testKeyPair.getPrivate()) : "INVALID_BASE64_SIGNATURE_HERE==";
+
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(Files.newOutputStream(zipFile))) {
+            // manifest.json
+            zos.putNextEntry(new java.util.zip.ZipEntry("manifest.json"));
+            zos.write(manifestBytes);
+            zos.closeEntry();
+
+            // manifest.sig
+            zos.putNextEntry(new java.util.zip.ZipEntry("manifest.sig"));
+            zos.write(sig.getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+
+            // rupeecrm.war
+            zos.putNextEntry(new java.util.zip.ZipEntry("rupeecrm.war"));
+            zos.write(warBytes);
+            zos.closeEntry();
+
+            if (zipSlipEntry != null) {
+                zos.putNextEntry(new java.util.zip.ZipEntry(zipSlipEntry));
+                zos.write("ATTACK".getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        }
+        return zipFile;
+    }
+
+    private byte[] createDummyWarBytes(int size) {
+        byte[] bytes = new byte[Math.max(size, 20_000)];
+        // ZIP magic bytes
+        bytes[0] = 0x50; bytes[1] = 0x4b; bytes[2] = 0x03; bytes[3] = 0x04;
+        for (int i = 4; i < bytes.length; i++) {
+            bytes[i] = (byte) (i % 127);
+        }
+        return bytes;
+    }
+
+    @Test
+    void testStageManualUpdatePackageValidOfflinePackage() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.350", warBytes, true, true, null);
+
+        Map<String, Object> result = service.stageManualUpdatePackage(zipFile, false);
+        assertNotNull(result);
+        assertEquals("success", result.get("status"));
+        assertEquals("1.0.350", result.get("stagedVersion"));
+        assertTrue((Boolean) result.get("stagedUpdateAvailable"));
+
+        // Verify staged files in txDir
+        Path txDir = service.getTxDirectory();
+        Path stagedWar = txDir.resolve("rupeecrm-update.war");
+        assertTrue(Files.exists(stagedWar));
+        assertEquals(warBytes.length, Files.size(stagedWar));
+        assertEquals(UpdateCrypto.computeSha256(warBytes), UpdateCrypto.computeSha256(stagedWar));
+
+        // Verify state is READY_TO_INSTALL
+        UpdateState state = UpdateState.load(service.getStateFilePath());
+        assertEquals(UpdateState.STATUS_READY_TO_INSTALL, state.getStatus());
+        assertEquals("1.0.350", state.getTargetVersion());
+    }
+
+    @Test
+    void testStageManualUpdatePackageInvalidSignatureRejected() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.350", warBytes, false, true, null);
+
+        assertThrows(java.security.GeneralSecurityException.class, () -> {
+            service.stageManualUpdatePackage(zipFile, false);
+        });
+    }
+
+    @Test
+    void testStageManualUpdatePackageChecksumMismatchRejected() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.350", warBytes, true, false, null);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            service.stageManualUpdatePackage(zipFile, false);
+        });
+        assertTrue(ex.getMessage().contains("checksum mismatch") || ex.getMessage().contains("SHA-256"));
+    }
+
+    @Test
+    void testStageManualUpdatePackageZipSlipRejected() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.350", warBytes, true, true, "../../malicious.txt");
+
+        SecurityException ex = assertThrows(SecurityException.class, () -> {
+            service.stageManualUpdatePackage(zipFile, false);
+        });
+        assertTrue(ex.getMessage().contains("Zip Slip"));
+    }
+
+    @Test
+    void testStageManualUpdatePackageSameVersionReported() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.320", warBytes, true, true, null);
+
+        Map<String, Object> result = service.stageManualUpdatePackage(zipFile, false);
+        assertEquals("already_installed", result.get("status"));
+        assertTrue(result.get("message").toString().contains("already installed"));
+    }
+
+    @Test
+    void testStageManualUpdatePackageDowngradeRejected() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        byte[] warBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.280", warBytes, true, true, null);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> {
+            service.stageManualUpdatePackage(zipFile, false);
+        });
+        assertTrue(ex.getMessage().contains("Downgrade rejected"));
+    }
+
+    @Test
+    void testStageManualUpdatePackageReplacesExistingStagedWhenConfirmed() throws Exception {
+        service.setDefaultVersion("v1.0.320");
+        Path txDir = service.getTxDirectory();
+        Files.createDirectories(txDir);
+        Files.writeString(txDir.resolve("rupeecrm-update.war"), "OLD-327-WAR");
+        UpdateState state = new UpdateState();
+        state.setCurrentVersion("1.0.320");
+        state.setTargetVersion("1.0.327");
+        state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+        state.saveAtomic(service.getStateFilePath());
+
+        byte[] newWarBytes = createDummyWarBytes(25_000);
+        Path zipFile = createMockOtaZip("1.0.335", newWarBytes, true, true, null);
+
+        // When confirmReplace is false, returns confirmation prompt
+        Map<String, Object> conflict = service.stageManualUpdatePackage(zipFile, false);
+        assertEquals("confirm_required", conflict.get("status"));
+        assertEquals("1.0.327", conflict.get("existingStagedVersion"));
+        assertEquals("1.0.335", conflict.get("newVersion"));
+
+        // When confirmReplace is true, staging succeeds and updates targetVersion
+        Map<String, Object> success = service.stageManualUpdatePackage(zipFile, true);
+        assertEquals("success", success.get("status"));
+        assertEquals("1.0.335", success.get("stagedVersion"));
+
+        UpdateState updatedState = UpdateState.load(service.getStateFilePath());
+        assertEquals("1.0.335", updatedState.getTargetVersion());
     }
 }

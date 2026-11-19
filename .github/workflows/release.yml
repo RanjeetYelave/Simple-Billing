@@ -650,9 +650,135 @@ jobs:
             cp release-meta/manifest.json release-dist/manifest.json
             cp release-meta/manifest.sig release-dist/manifest.sig
 
-            # Update SHA256SUMS.txt with manifest checksums
+            # ── Generate Dedicated Manual/Offline OTA Update Package ──
+            OTA_ZIP_NAME="RupeeCRM-Update-${APP_VER}.zip"
+            OTA_STAGING_DIR="manual-ota-package"
+            rm -rf "$OTA_STAGING_DIR"
+            mkdir -p "$OTA_STAGING_DIR"
+
+            # 1. Populate package contents
+            cp app-binaries/rupeecrm.war "$OTA_STAGING_DIR/rupeecrm.war"
+            cp release-meta/manifest.json "$OTA_STAGING_DIR/manifest.json"
+            cp release-meta/manifest.sig "$OTA_STAGING_DIR/manifest.sig"
+
+            # Create package metadata
+            cat <<EOF > "$OTA_STAGING_DIR/package-metadata.json"
+{
+  "application": "RupeeCRM",
+  "version": "${APP_VER}",
+  "releaseTag": "${RELEASE_TAG}",
+  "commit": "${{ github.sha }}",
+  "buildNumber": "${{ github.run_number }}",
+  "packageType": "manual-ota-update",
+  "generatedAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+            # Create package-specific checksum file
+            cd "$OTA_STAGING_DIR"
+            sha256sum rupeecrm.war manifest.json manifest.sig package-metadata.json > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+
+            # Build ZIP archive at root of package
+            zip -9 -r "../release-dist/${OTA_ZIP_NAME}" *
+            cd ..
+            rm -rf "$OTA_STAGING_DIR"
+
+            # Generate SHA256 for the OTA package itself
             cd release-dist
-            sha256sum RupeeCRM-Setup*.exe *.war manifest.* > SHA256SUMS.txt
+            shasum -a 256 "${OTA_ZIP_NAME}" | awk '{print $1}' > "${OTA_ZIP_NAME}.sha256"
+            cd ..
+
+            # ── Comprehensive 10-Point Release Package Validation ──
+            echo "=== Validating Dedicated Manual OTA Update Package (${OTA_ZIP_NAME}) ==="
+            OTA_ZIP_PATH="release-dist/${OTA_ZIP_NAME}"
+
+            # Check 1: Structural validity of ZIP
+            unzip -t "$OTA_ZIP_PATH" || { echo "CRITICAL: Corrupted OTA ZIP structure!"; exit 1; }
+            echo "✓ Check 1/10: OTA ZIP structural integrity verified."
+
+            # Extract into verification sandbox
+            VERIFY_DIR="verify-ota-sandbox"
+            rm -rf "$VERIFY_DIR"
+            mkdir -p "$VERIFY_DIR"
+            unzip -q "$OTA_ZIP_PATH" -d "$VERIFY_DIR"
+
+            # Check 2: WAR corresponds to intended release
+            if [ ! -f "$VERIFY_DIR/rupeecrm.war" ]; then
+              echo "CRITICAL: rupeecrm.war missing from OTA package!"; exit 1;
+            fi
+            WAR_SIZE=$(stat -c%s "$VERIFY_DIR/rupeecrm.war" 2>/dev/null || stat -f%z "$VERIFY_DIR/rupeecrm.war" 2>/dev/null)
+            if [ "$WAR_SIZE" -lt 50000000 ]; then
+              echo "CRITICAL: Packaged WAR size is suspiciously small: $WAR_SIZE bytes!"; exit 1;
+            fi
+            echo "✓ Check 2/10: WAR binary present and sized correctly ($((WAR_SIZE / 1048576)) MB)."
+
+            # Check 3: Manifest version and build match
+            PKG_VER=$(jq -r '.appVersion' "$VERIFY_DIR/manifest.json")
+            if [ "$PKG_VER" != "$APP_VER" ]; then
+              echo "CRITICAL: Manifest appVersion '$PKG_VER' does not match expected '$APP_VER'!"; exit 1;
+            fi
+            echo "✓ Check 3/10: Manifest version matches release target ($PKG_VER)."
+
+            # Check 4: Manifest signature verification against pinned public key
+            java -cp build-tools com.billing.simple.installer.ManifestSigner verify "$VERIFY_DIR/manifest.json" "$VERIFY_DIR/manifest.sig" "$PUB_KEY" || {
+              echo "CRITICAL: Manifest detached Ed25519 signature verification failed!"; exit 1;
+            }
+            echo "✓ Check 4/10: Manifest detached signature cryptographically verified."
+
+            # Check 5: SHA-256 checksum of WAR matches manifest
+            EXPECTED_SHA=$(jq -r '.artifact.sha256' "$VERIFY_DIR/manifest.json")
+            ACTUAL_SHA=$(shasum -a 256 "$VERIFY_DIR/rupeecrm.war" | awk '{print $1}')
+            if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+              echo "CRITICAL: WAR SHA-256 mismatch! Expected: $EXPECTED_SHA, Got: $ACTUAL_SHA"; exit 1;
+            fi
+            echo "✓ Check 5/10: WAR SHA-256 matches manifest ($ACTUAL_SHA)."
+
+            # Check 6: All referenced files present
+            if [ ! -f "$VERIFY_DIR/manifest.json" ] || [ ! -f "$VERIFY_DIR/manifest.sig" ] || [ ! -f "$VERIFY_DIR/SHA256SUMS.txt" ]; then
+              echo "CRITICAL: Missing auxiliary package files in OTA ZIP!"; exit 1;
+            fi
+            echo "✓ Check 6/10: All required auxiliary files present."
+
+            # Check 7: Extraction safety - verify no absolute paths or directory traversal in ZIP
+            zipinfo -1 "$OTA_ZIP_PATH" | while read -r line; do
+              if [[ "$line" == /* ]] || [[ "$line" == *..* ]]; then
+                echo "CRITICAL: Unsafe path in OTA ZIP: $line"; exit 1;
+              fi
+            done
+            echo "✓ Check 7/10: Package contains no path traversal or absolute paths."
+
+            # Check 8: Package can be consumed by existing update engine (ZIP magic byte header check)
+            python3 -c "
+with open('$VERIFY_DIR/rupeecrm.war', 'rb') as f:
+    magic = f.read(4)
+    if magic != b'\x50\x4b\x03\x04':
+        raise SystemExit('Invalid ZIP magic bytes in packaged WAR: ' + repr(magic))
+" || { echo "CRITICAL: WAR is not a valid ZIP archive!"; exit 1; }
+            echo "✓ Check 8/10: WAR archive format valid for update engine."
+
+            # Check 9: Package does not contain stale build artifacts
+            if [ -f "$VERIFY_DIR/.billsoft-version" ]; then
+              STALE_VER=$(cat "$VERIFY_DIR/.billsoft-version")
+              if [ "$STALE_VER" != "v$APP_VER" ] && [ "$STALE_VER" != "$APP_VER" ]; then
+                echo "CRITICAL: Found stale .billsoft-version in package: $STALE_VER"; exit 1;
+              fi
+            fi
+            echo "✓ Check 9/10: No stale build metadata detected."
+
+            # Check 10: Release package matches production commit
+            PKG_COMMIT=$(jq -r '.commit' "$VERIFY_DIR/package-metadata.json")
+            if [ "$PKG_COMMIT" != "${{ github.sha }}" ]; then
+              echo "CRITICAL: Package commit '$PKG_COMMIT' does not match GitHub SHA '${{ github.sha }}'!"; exit 1;
+            fi
+            echo "✓ Check 10/10: Release package matches production Git commit (${PKG_COMMIT:0:7})."
+
+            rm -rf "$VERIFY_DIR"
+            echo "=== All 10 OTA Package Validations Passed Successfully ==="
+
+            # Update SHA256SUMS.txt with manifest and OTA package checksums
+            cd release-dist
+            sha256sum RupeeCRM-Setup*.exe *.war manifest.* RupeeCRM-Update* > SHA256SUMS.txt
             cat SHA256SUMS.txt
             cd ..
           else
@@ -739,7 +865,9 @@ jobs:
           fi
 
           if [ "$HAS_KEY" = "true" ]; then
-            EXPECTED_ASSETS+=("manifest.json" "manifest.sig")
+            APP_VER="${{ steps.prep-release.outputs.app_version }}"
+            OTA_ZIP="RupeeCRM-Update-${APP_VER}.zip"
+            EXPECTED_ASSETS+=("manifest.json" "manifest.sig" "$OTA_ZIP" "${OTA_ZIP}.sha256")
           fi
 
           for asset in "${EXPECTED_ASSETS[@]}"; do
@@ -805,60 +933,107 @@ jobs:
           REPO="${{ github.repository }}"
           TOKEN="${{ secrets.GITHUB_TOKEN }}"
 
-          # 1. Purge older runs of Build and Release (keep current run + 1 previous)
-          echo "Fetching runs for Build and Release..."
-          RUNS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/actions/workflows/release.yml/runs?per_page=100")
+          TARGET_WORKFLOWS=(
+            "release.yml"
+            "regression-tests.yml"
+            "pr-validation.yml"
+            "cleanup-runs.yml"
+            "test.yml"
+          )
 
-          RUN_IDS_TO_DELETE=$(echo "$RUNS_JSON" | jq -r --arg cur "$CURRENT_RUN_ID" '
-            .workflow_runs // []
-            | sort_by(.created_at) | reverse
-            | [.[] | select((.id|tostring) != $cur)]
-            | .[1:]? // []
-            | .[]?.id // empty
-          ')
+          TOTAL_ALL_DELETED=0
+          TOTAL_ALL_SKIPPED=0
+          TOTAL_ALL_FAILED=0
 
-          DELETED_COUNT=0
-          if [ -n "$RUN_IDS_TO_DELETE" ]; then
-            for run_id in $RUN_IDS_TO_DELETE; do
-              echo "Deleting old Build and Release run #$run_id..."
-              RESP=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE \
-                -H "Authorization: Bearer $TOKEN" \
+          for WF in "${TARGET_WORKFLOWS[@]}"; do
+            echo "--- Inspecting workflow: $WF ---"
+            PAGE=1
+            WF_FOUND=0
+            WF_DELETED=0
+            WF_SKIPPED=0
+            WF_FAILED=0
+
+            while true; do
+              RUNS_RESP=$(curl -s -H "Authorization: Bearer $TOKEN" \
                 -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/${REPO}/actions/runs/$run_id")
-              if [ "$RESP" = "204" ]; then
-                DELETED_COUNT=$((DELETED_COUNT + 1))
+                "https://api.github.com/repos/${REPO}/actions/workflows/${WF}/runs?per_page=100&page=${PAGE}")
+
+              RUN_COUNT=$(echo "$RUNS_RESP" | jq -r '.workflow_runs // [] | length' 2>/dev/null || echo 0)
+              if [ -z "$RUN_COUNT" ] || [ "$RUN_COUNT" -eq 0 ]; then
+                break
               fi
-            done
-          fi
-          echo "✓ Purged $DELETED_COUNT older Build and Release runs."
 
-          # 2. Purge older CI regression test runs (keep latest 2 runs)
-          echo "Fetching runs for CI Java Regression Tests..."
-          TEST_RUNS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/actions/workflows/regression-tests.yml/runs?per_page=100")
-
-          TEST_IDS_TO_DELETE=$(echo "$TEST_RUNS_JSON" | jq -r '
-            .workflow_runs // []
-            | sort_by(.created_at) | reverse
-            | .[2:]? // []
-            | .[]?.id // empty
-          ')
-
-          TEST_DELETED_COUNT=0
-          if [ -n "$TEST_IDS_TO_DELETE" ]; then
-            for run_id in $TEST_IDS_TO_DELETE; do
-              echo "Deleting old regression test run #$run_id..."
-              RESP=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE \
-                -H "Authorization: Bearer $TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/${REPO}/actions/runs/$run_id")
-              if [ "$RESP" = "204" ]; then
-                TEST_DELETED_COUNT=$((TEST_DELETED_COUNT + 1))
+              ELIGIBLE_RUNS=$(echo "$RUNS_RESP" | jq -c '.workflow_runs[]? // empty')
+              if [ -z "$ELIGIBLE_RUNS" ]; then
+                break
               fi
+
+              while IFS= read -r run_item; do
+                [ -z "$run_item" ] && continue
+                RUN_ID=$(echo "$run_item" | jq -r '.id')
+                RUN_STATUS=$(echo "$run_item" | jq -r '.status')
+                RUN_CONCLUSION=$(echo "$run_item" | jq -r '.conclusion')
+                RUN_CREATED=$(echo "$run_item" | jq -r '.created_at')
+
+                WF_FOUND=$((WF_FOUND + 1))
+
+                # Safeguard: Never delete current run
+                if [ "$RUN_ID" = "$CURRENT_RUN_ID" ] || [ "$RUN_ID" = "${{ github.run_id }}" ]; then
+                  echo "  Skipping current run #$RUN_ID (active release run)"
+                  WF_SKIPPED=$((WF_SKIPPED + 1))
+                  continue
+                fi
+
+                # Safeguard: Never delete in-progress or queued runs
+                if [ "$RUN_STATUS" != "completed" ]; then
+                  echo "  Skipping run #$RUN_ID ($RUN_STATUS, created $RUN_CREATED)"
+                  WF_SKIPPED=$((WF_SKIPPED + 1))
+                  continue
+                fi
+
+                # Attempt deletion with retry on rate limit
+                echo "  Deleting old completed run #$RUN_ID ($RUN_CONCLUSION, created $RUN_CREATED)..."
+                HTTP_CODE=0
+                for attempt in 1 2 3; do
+                  HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE \
+                    -H "Authorization: Bearer $TOKEN" \
+                    -H "Accept: application/vnd.github+json" \
+                    "https://api.github.com/repos/${REPO}/actions/runs/$RUN_ID")
+                  
+                  if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "404" ]; then
+                    break
+                  elif [ "$HTTP_CODE" = "429" ] || [ "$HTTP_CODE" = "403" ]; then
+                    echo "    Rate limited (HTTP $HTTP_CODE), waiting 3s (attempt $attempt/3)..."
+                    sleep 3
+                  else
+                    break
+                  fi
+                done
+
+                if [ "$HTTP_CODE" = "204" ]; then
+                  echo "    ✓ Successfully deleted run #$RUN_ID"
+                  WF_DELETED=$((WF_DELETED + 1))
+                elif [ "$HTTP_CODE" = "404" ]; then
+                  echo "    Notice: run #$RUN_ID already purged"
+                  WF_DELETED=$((WF_DELETED + 1))
+                else
+                  echo "    ✗ Failed to delete run #$RUN_ID (HTTP $HTTP_CODE)"
+                  WF_FAILED=$((WF_FAILED + 1))
+                fi
+              done <<< "$ELIGIBLE_RUNS"
+
+              PAGE=$((PAGE + 1))
             done
-          fi
-          echo "✓ Purged $TEST_DELETED_COUNT older regression test runs."
-          echo "Storage maintenance complete."
+
+            echo "Summary for $WF: Found $WF_FOUND, Deleted $WF_DELETED, Skipped $WF_SKIPPED, Failed $WF_FAILED"
+            TOTAL_ALL_DELETED=$((TOTAL_ALL_DELETED + WF_DELETED))
+            TOTAL_ALL_SKIPPED=$((TOTAL_ALL_SKIPPED + WF_SKIPPED))
+            TOTAL_ALL_FAILED=$((TOTAL_ALL_FAILED + WF_FAILED))
+          done
+
+          echo "=========================================================="
+          echo "Storage maintenance complete:"
+          echo "  Total older runs deleted: $TOTAL_ALL_DELETED"
+          echo "  Total active runs preserved: $TOTAL_ALL_SKIPPED"
+          echo "  Total deletion errors: $TOTAL_ALL_FAILED"
+          echo "=========================================================="

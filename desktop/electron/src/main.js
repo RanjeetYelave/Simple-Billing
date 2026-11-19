@@ -1281,6 +1281,50 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('updater:select-manual-package', async (event, options = {}) => {
+    try {
+      const confirmReplace = Boolean(options && options.confirmReplace);
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select RupeeCRM Update Package',
+        filters: [
+          { name: 'RupeeCRM Update Package (*.zip)', extensions: ['zip'] }
+        ],
+        properties: ['openFile']
+      });
+
+      if (res.canceled || !res.filePaths || res.filePaths.length === 0) {
+        return { cancelled: true };
+      }
+
+      const filePath = res.filePaths[0];
+      if (!filePath.toLowerCase().endsWith('.zip')) {
+        return { error: 'Selected file must be a .zip update package' };
+      }
+
+      if (!fs.existsSync(filePath)) {
+        return { error: 'Selected file does not exist on disk' };
+      }
+
+      const stat = fs.statSync(filePath);
+      if (stat.size < 10000 || stat.size > 350000000) {
+        return { error: 'Invalid update package size: expected between 10KB and 350MB' };
+      }
+
+      logMessage(`[Updater] User selected manual package: ${filePath} (${stat.size} bytes). Requesting backend staging...`);
+      const backendRes = await sendBackendRequest(
+        'POST',
+        `/api/system/manual-update/stage-local?packagePath=${encodeURIComponent(filePath)}${confirmReplace ? '&confirmReplace=true' : ''}`,
+        null,
+        60000 // 60s timeout for large file verification
+      );
+
+      return backendRes.body;
+    } catch (e) {
+      logMessage(`[Updater] Manual package selection error: ${e.message}`);
+      return { error: e.message };
+    }
+  });
+
   ipcMain.on('system:open-external', (event, urlStr) => {
     if (typeof urlStr === 'string' && (urlStr.startsWith('http:') || urlStr.startsWith('https:') || urlStr.startsWith('mailto:'))) {
       shell.openExternal(urlStr);

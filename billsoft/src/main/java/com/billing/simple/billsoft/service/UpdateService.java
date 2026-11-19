@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import javax.sql.DataSource;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ConnectException;
@@ -40,6 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Enterprise-grade OTA update engine for RupeeCRM.
@@ -601,6 +604,255 @@ public class UpdateService {
             log.warn("Could not save deferred state: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Inspects, authenticates, and stages an offline manual update package (.zip)
+     * containing manifest.json, manifest.sig, and rupeecrm.war.
+     * All checks are performed completely offline using the pinned Ed25519 public key.
+     *
+     * @param zipStream Input stream of the selected update ZIP file
+     * @param originalFilename Original filename (for diagnostic logging)
+     * @param confirmReplace If true, allows replacing an already staged package
+     * @return Map with staged update metadata
+     */
+    public synchronized Map<String, Object> stageManualUpdatePackage(InputStream zipStream, String originalFilename, boolean confirmReplace) throws Exception {
+        if (!hasSufficientDiskSpace()) {
+            throw new IllegalStateException("Insufficient disk space. At least 250MB free disk space is required.");
+        }
+        if (updateInProgress.get()) {
+            throw new IllegalStateException("An update transaction is already in progress.");
+        }
+
+        Path stagingDir = getStagingDirectory();
+        if (!Files.exists(stagingDir)) {
+            Files.createDirectories(stagingDir);
+        }
+
+        String txId = UUID.randomUUID().toString().substring(0, 8);
+        Path extractDir = stagingDir.resolve("manual-extract-" + txId);
+        Files.createDirectories(extractDir);
+
+        try {
+            // 1. Safe extraction with Zip Slip and Zip Bomb prevention
+            long totalBytesExtracted = 0;
+            int totalEntries = 0;
+            final long MAX_EXTRACT_BYTES = 350L * 1024 * 1024; // 350 MB max
+            final int MAX_ENTRIES = 500;
+
+            try (ZipInputStream zis = new ZipInputStream(zipStream)) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    totalEntries++;
+                    if (totalEntries > MAX_ENTRIES) {
+                        throw new SecurityException("Too many entries in update package: exceeds limit of " + MAX_ENTRIES);
+                    }
+                    String entryName = entry.getName();
+                    if (entryName == null || entryName.trim().isEmpty()) {
+                        continue;
+                    }
+                    if (entryName.contains("\0")) {
+                        throw new SecurityException("Illegal null byte in zip entry name: " + entryName);
+                    }
+                    // Zip Slip protection
+                    Path targetPath = extractDir.resolve(entryName).normalize();
+                    if (!targetPath.startsWith(extractDir.normalize())) {
+                        throw new SecurityException("Zip Slip path traversal attack detected in entry: " + entryName);
+                    }
+                    if (entry.isDirectory()) {
+                        Files.createDirectories(targetPath);
+                    } else {
+                        Path parent = targetPath.getParent();
+                        if (parent != null && !Files.exists(parent)) {
+                            Files.createDirectories(parent);
+                        }
+                        try (OutputStream fos = Files.newOutputStream(targetPath)) {
+                            byte[] buf = new byte[8192];
+                            int len;
+                            while ((len = zis.read(buf)) != -1) {
+                                totalBytesExtracted += len;
+                                if (totalBytesExtracted > MAX_EXTRACT_BYTES) {
+                                    throw new SecurityException("Extracted update package exceeds maximum uncompressed size limit of 350MB.");
+                                }
+                                fos.write(buf, 0, len);
+                            }
+                        }
+                    }
+                    zis.closeEntry();
+                }
+            }
+
+            if (totalEntries == 0) {
+                throw new IllegalArgumentException("Selected update package is empty or not a valid ZIP archive.");
+            }
+
+            // 2. Locate manifest.json and manifest.sig (look in root or subdirectories)
+            Path manifestFile = findFileRecursive(extractDir, "manifest.json");
+            Path sigFile = findFileRecursive(extractDir, "manifest.sig");
+
+            if (manifestFile == null || sigFile == null || !Files.exists(manifestFile) || !Files.exists(sigFile)) {
+                throw new IllegalArgumentException("Invalid update package: missing required manifest.json or manifest.sig.");
+            }
+
+            byte[] manifestBytes = Files.readAllBytes(manifestFile);
+            String signatureBase64 = Files.readString(sigFile, StandardCharsets.UTF_8).trim();
+
+            // 3. Cryptographically authenticate manifest offline using pinned Ed25519 public key
+            String pubKeyStr = (publicKeyBase64 != null && !publicKeyBase64.isBlank()) ? publicKeyBase64 : DEFAULT_PUBLIC_KEY;
+            PublicKey trustedKey = UpdateCrypto.decodePublicKey(pubKeyStr);
+            if (!UpdateCrypto.verifySignature(manifestBytes, signatureBase64, trustedKey)) {
+                throw new java.security.GeneralSecurityException("Cryptographic verification failed: Ed25519 signature on manifest.json is invalid.");
+            }
+
+            UpdateManifest manifest = UpdateManifest.parse(new String(manifestBytes, StandardCharsets.UTF_8));
+            log.info("Successfully authenticated manual update manifest for target version v{}", manifest.getAppVersion());
+
+            // 4. Locate binary artifact (e.g. rupeecrm.war)
+            String expectedArtifact = manifest.getArtifactFilename();
+            Path warFile = findFileRecursive(extractDir, expectedArtifact);
+            if (warFile == null || !Files.exists(warFile)) {
+                warFile = findFileRecursive(extractDir, "rupeecrm.war");
+                if (warFile == null) {
+                    warFile = findFileRecursive(extractDir, "billsoft.war");
+                }
+            }
+            if (warFile == null || !Files.exists(warFile)) {
+                throw new FileNotFoundException("Binary artifact '" + expectedArtifact + "' referenced in manifest not found in package.");
+            }
+
+            // 5. Binary integrity verification
+            if (!UpdateCrypto.isZipFile(warFile)) {
+                throw new IllegalStateException("Extracted binary artifact is not a valid ZIP/WAR archive (magic bytes mismatch).");
+            }
+            long warSize = Files.size(warFile);
+            if (warSize != manifest.getArtifactSizeBytes()) {
+                throw new IllegalStateException("Artifact size mismatch: Expected " + manifest.getArtifactSizeBytes() + " bytes, but found " + warSize + " bytes.");
+            }
+            String actualSha256 = UpdateCrypto.computeSha256(warFile);
+            if (!actualSha256.equalsIgnoreCase(manifest.getArtifactSha256())) {
+                throw new IllegalStateException("Artifact checksum mismatch: Expected SHA-256 " + manifest.getArtifactSha256() + ", got " + actualSha256);
+            }
+
+            // 6. Version and Compatibility Validation
+            String currentVersion = getCurrentVersion();
+            String targetVersion = manifest.getAppVersion();
+            int cmp = compareVersions(targetVersion, currentVersion);
+
+            if (cmp < 0) {
+                throw new IllegalArgumentException("Downgrade rejected: Current installed version is v" + currentVersion +
+                        ", but the package version is older v" + targetVersion + ". Downgrades are not permitted.");
+            }
+            if (cmp == 0) {
+                Map<String, Object> alreadyInstalled = new HashMap<>();
+                alreadyInstalled.put("status", "already_installed");
+                alreadyInstalled.put("message", "Version v" + targetVersion + " is already installed.");
+                alreadyInstalled.put("currentVersion", currentVersion);
+                alreadyInstalled.put("targetVersion", targetVersion);
+                return alreadyInstalled;
+            }
+
+            // 7. Check if another update is already staged
+            Map<String, Object> stagedInfo = getStagedUpdateInfo();
+            if (Boolean.TRUE.equals(stagedInfo.get("stagedUpdateAvailable"))) {
+                String existingStagedVer = (String) stagedInfo.get("stagedVersion");
+                if (existingStagedVer != null && !existingStagedVer.equals(targetVersion) && !confirmReplace) {
+                    Map<String, Object> conflict = new HashMap<>();
+                    conflict.put("status", "confirm_required");
+                    conflict.put("existingStagedVersion", existingStagedVer);
+                    conflict.put("newVersion", targetVersion);
+                    conflict.put("message", "An update for version v" + existingStagedVer + " is already staged. Do you want to replace it with v" + targetVersion + "?");
+                    return conflict;
+                }
+            }
+
+            // 8. Prepare safety database backup
+            createQuarantineDatabaseBackup(txId);
+
+            // 9. Atomically promote verified package into txDir
+            Path txDir = getTxDirectory();
+            if (!Files.exists(txDir)) {
+                Files.createDirectories(txDir);
+            }
+
+            Path stagedWar = txDir.resolve("rupeecrm-update.war");
+            Files.copy(warFile, stagedWar, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(manifestFile, txDir.resolve("manifest.json"), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(sigFile, txDir.resolve("manifest.sig"), StandardCopyOption.REPLACE_EXISTING);
+
+            // 10. Persist durable update-state.json
+            Path stateFile = getStateFilePath();
+            UpdateState state = new UpdateState();
+            state.setTransactionId(txId);
+            state.setStatus(UpdateState.STATUS_READY_TO_INSTALL);
+            state.setCurrentVersion(currentVersion);
+            state.setTargetVersion(targetVersion);
+            state.setExpectedSha256(manifest.getArtifactSha256());
+            state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
+            state.setStagedArtifactPath(stagedWar.toAbsolutePath().toString());
+            state.setErrorMessage(null);
+            state.setUpdatedAt(System.currentTimeMillis());
+            state.saveAtomic(stateFile);
+
+            setProgress("ready_to_install", 100,
+                    "Offline update package v" + targetVersion + " verified and ready to install.", targetVersion);
+
+            log.info("Manual update package v{} successfully staged in {}", targetVersion, txDir);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "success");
+            result.put("stagedUpdateAvailable", true);
+            result.put("stagedVersion", targetVersion);
+            result.put("currentVersion", currentVersion);
+            result.put("releaseTag", manifest.getReleaseTag());
+            result.put("releaseNotes", manifest.getReleaseNotes());
+            result.put("sha256", manifest.getArtifactSha256());
+            result.put("sizeBytes", manifest.getArtifactSizeBytes());
+            result.put("message", "Update package v" + targetVersion + " verified offline and ready to install.");
+            return result;
+        } finally {
+            // Clean up temporary extraction directory
+            try {
+                deleteDirectoryRecursively(extractDir);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public synchronized Map<String, Object> stageManualUpdatePackage(Path zipPath, boolean confirmReplace) throws Exception {
+        if (zipPath == null || !Files.exists(zipPath)) {
+            throw new FileNotFoundException("Specified update package path does not exist: " + zipPath);
+        }
+        if (Files.isSymbolicLink(zipPath)) {
+            throw new SecurityException("Symbolic links are not permitted for update packages: " + zipPath);
+        }
+        try (InputStream is = Files.newInputStream(zipPath)) {
+            return stageManualUpdatePackage(is, zipPath.getFileName().toString(), confirmReplace);
+        }
+    }
+
+    private Path findFileRecursive(Path dir, String targetName) throws IOException {
+        if (!Files.exists(dir)) return null;
+        try (var stream = Files.walk(dir)) {
+            return stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equalsIgnoreCase(targetName))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    private void deleteDirectoryRecursively(Path dir) throws IOException {
+        if (!Files.exists(dir)) return;
+        Files.walkFileTree(dir, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                Files.deleteIfExists(file);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                Files.deleteIfExists(d);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     public boolean pauseUpdate() {

@@ -1394,6 +1394,18 @@ const API = {
     installUpdate: () => API._json('/api/system/install-update', {
       method: 'POST'
     }),
+    uploadManualUpdate: (file, confirmReplace = false) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return API._json(`/api/system/manual-update/upload${confirmReplace ? '?confirmReplace=true' : ''}`, {
+        method: 'POST',
+        body: formData
+      });
+    },
+    stageLocalManualUpdate: (packagePath, confirmReplace = false) => API._json(
+      `/api/system/manual-update/stage-local?packagePath=${encodeURIComponent(packagePath)}${confirmReplace ? '&confirmReplace=true' : ''}`,
+      { method: 'POST' }
+    ),
     cancelUpdate: () => API._json('/api/system/cancel-update', {
       method: 'POST'
     }),

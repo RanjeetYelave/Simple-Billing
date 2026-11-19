@@ -1,11 +1,17 @@
 package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.service.UpdateService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 
 @RestController
@@ -94,6 +100,69 @@ public class UpdateController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "error", "Could not record deferred update state"
             ));
+        }
+    }
+
+    private boolean isLoopbackRequest(HttpServletRequest request) {
+        if (request == null) return false;
+        String remote = request.getRemoteAddr();
+        if (remote == null) return false;
+        return remote.equals("127.0.0.1") ||
+                remote.equals("0:0:0:0:0:0:0:1") ||
+                remote.equals("::1") ||
+                remote.equalsIgnoreCase("localhost");
+    }
+
+    @PostMapping(value = "/manual-update/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadManualUpdate(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(name = "confirmReplace", required = false, defaultValue = "false") boolean confirmReplace) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "No update package file was provided."));
+        }
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename != null && !originalFilename.toLowerCase().endsWith(".zip")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Selected file must be a .zip update package."));
+        }
+        try (InputStream is = file.getInputStream()) {
+            Map<String, Object> result = updateService.stageManualUpdatePackage(is, originalFilename, confirmReplace);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (java.security.GeneralSecurityException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to stage update package: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/manual-update/stage-local")
+    public ResponseEntity<Map<String, Object>> stageLocalManualUpdate(
+            @RequestParam("packagePath") String packagePath,
+            @RequestParam(name = "confirmReplace", required = false, defaultValue = "false") boolean confirmReplace,
+            HttpServletRequest request) {
+        if (!isLoopbackRequest(request)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Local file staging is restricted to loopback connections."));
+        }
+        if (packagePath == null || packagePath.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Package path cannot be empty."));
+        }
+        Path path = Path.of(packagePath.trim());
+        if (!Files.exists(path) || !Files.isRegularFile(path)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Specified update package does not exist or is not a regular file: " + packagePath));
+        }
+        if (!path.getFileName().toString().toLowerCase().endsWith(".zip")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Package must be a .zip update archive."));
+        }
+        try {
+            Map<String, Object> result = updateService.stageManualUpdatePackage(path, confirmReplace);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (java.security.GeneralSecurityException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to stage update package: " + e.getMessage()));
         }
     }
 

@@ -5,13 +5,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -148,5 +154,58 @@ class UpdateControllerTest {
         mockMvc.perform(post("/api/system/cancel-update"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void testManualUpdateUploadSuccess() throws Exception {
+        Map<String, Object> stageRes = new HashMap<>();
+        stageRes.put("status", "success");
+        stageRes.put("stagedVersion", "1.0.350");
+        when(service.stageManualUpdatePackage(any(InputStream.class), anyString(), anyBoolean())).thenReturn(stageRes);
+
+        MockMultipartFile file = new MockMultipartFile("file", "update.zip", "application/zip", "PK-DUMMY".getBytes());
+
+        mockMvc.perform(multipart("/api/system/manual-update/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.stagedVersion").value("1.0.350"));
+    }
+
+    @Test
+    void testManualUpdateUploadNonZipFile() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "update.tar.gz", "application/gzip", "DUMMY".getBytes());
+
+        mockMvc.perform(multipart("/api/system/manual-update/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Selected file must be a .zip update package."));
+    }
+
+    @Test
+    void testManualUpdateStageLocalLoopbackSuccess() throws Exception {
+        Path tempZip = Files.createTempFile("rupeecrm-manual-test-", ".zip");
+        try {
+            Map<String, Object> stageRes = new HashMap<>();
+            stageRes.put("status", "success");
+            stageRes.put("stagedVersion", "1.0.350");
+            when(service.stageManualUpdatePackage(any(Path.class), anyBoolean())).thenReturn(stageRes);
+
+            mockMvc.perform(post("/api/system/manual-update/stage-local")
+                            .param("packagePath", tempZip.toAbsolutePath().toString())
+                            .with(request -> { request.setRemoteAddr("127.0.0.1"); return request; }))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("success"))
+                    .andExpect(jsonPath("$.stagedVersion").value("1.0.350"));
+        } finally {
+            Files.deleteIfExists(tempZip);
+        }
+    }
+
+    @Test
+    void testManualUpdateStageLocalNonLoopbackForbidden() throws Exception {
+        mockMvc.perform(post("/api/system/manual-update/stage-local")
+                        .param("packagePath", "/tmp/any.zip")
+                        .with(request -> { request.setRemoteAddr("192.168.1.100"); return request; }))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Local file staging is restricted to loopback connections."));
     }
 }

@@ -40924,6 +40924,10 @@ function PartyDetailModal({
       const [netData, setNetData] = useState(null);
       const [netTesting, setNetTesting] = useState(false);
       const [checkingAnnouncements, setCheckingAnnouncements] = useState(false);
+      const [manualStaging, setManualStaging] = useState(false);
+      const [manualStatusMessage, setManualStatusMessage] = useState(null);
+      const [manualStatusType, setManualStatusType] = useState('info');
+      const fileInputRef = useRef(null);
 
       const handleCheckAnnouncements = async () => {
         setCheckingAnnouncements(true);
@@ -41012,6 +41016,79 @@ function PartyDetailModal({
               if (window.showToast) showToast(e.message || 'Installation failed', 'error');
               setLoading(false);
             });
+        }
+      };
+
+      const processManualStageResult = (res) => {
+        if (!res) return;
+        if (res.error) {
+          setManualStatusType('error');
+          setManualStatusMessage(res.error);
+          if (window.showToast) window.showToast(res.error, 'error');
+          return;
+        }
+        if (res.status === 'already_installed') {
+          setManualStatusType('info');
+          setManualStatusMessage(`Version v${res.targetVersion || res.currentVersion} is already installed.`);
+          if (window.showToast) window.showToast(`Version v${res.targetVersion || res.currentVersion} is already installed.`, 'info');
+          return;
+        }
+        if (res.status === 'confirm_required') {
+          const doReplace = window.confirm(res.message || `An update for v${res.existingStagedVersion} is already staged. Replace it with v${res.newVersion}?`);
+          if (doReplace) {
+            handleSelectManualPackage(true);
+          }
+          return;
+        }
+        if (res.status === 'success' || res.stagedUpdateAvailable) {
+          setManualStatusType('success');
+          setManualStatusMessage(`Update package v${res.stagedVersion} verified offline and staged! Click "Downloaded, Install and Restart" to activate.`);
+          if (window.showToast) window.showToast(`Update package v${res.stagedVersion} ready to install`, 'success');
+          fetchUpdateInfo(true);
+        }
+      };
+
+      const handleSelectManualPackage = async (confirmReplace = false) => {
+        setManualStatusMessage(null);
+        if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.selectManualPackage) {
+          setManualStaging(true);
+          try {
+            const res = await window.rupeeDesktop.updater.selectManualPackage({ confirmReplace });
+            if (res && res.cancelled) {
+              setManualStaging(false);
+              return;
+            }
+            processManualStageResult(res);
+          } catch (e) {
+            setManualStatusType('error');
+            setManualStatusMessage(e.message || 'Failed to stage update package');
+            if (window.showToast) window.showToast(e.message || 'Manual update failed', 'error');
+          } finally {
+            setManualStaging(false);
+          }
+        } else {
+          // Browser fallback: trigger file input dialog
+          if (fileInputRef.current) {
+            fileInputRef.current.click();
+          }
+        }
+      };
+
+      const handleManualFileSelected = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        e.target.value = '';
+        setManualStaging(true);
+        setManualStatusMessage(null);
+        try {
+          const res = await API.system.uploadManualUpdate(file);
+          processManualStageResult(res);
+        } catch (err) {
+          setManualStatusType('error');
+          setManualStatusMessage(err.message || 'Failed to upload manual update');
+          if (window.showToast) window.showToast(err.message || 'Upload failed', 'error');
+        } finally {
+          setManualStaging(false);
         }
       };
 
@@ -41452,6 +41529,94 @@ function PartyDetailModal({
             }, `RupeeCRM ${info.currentVersion || 'v1.0.0'} is currently the newest version.`)
           )
         ) : null,
+
+        // ─── MANUAL / OFFLINE UPDATE CARD ───
+        React.createElement('div', {
+          style: {
+            marginTop: 20,
+            padding: '20px 24px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 12
+          }
+        },
+          React.createElement('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 16
+            }
+          },
+            React.createElement('div', { style: { flex: 1, minWidth: 260 } },
+              React.createElement('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 6
+                }
+              },
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '📦'),
+                React.createElement('h3', {
+                  style: { margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }
+                }, 'Manual Update')
+              ),
+              React.createElement('p', {
+                style: { margin: 0, fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.5 }
+              }, 'Already downloaded a RupeeCRM update package? Select it here to install without downloading it again.')
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              // Hidden file input for browser fallback
+              React.createElement('input', {
+                type: 'file',
+                accept: '.zip',
+                ref: fileInputRef,
+                style: { display: 'none' },
+                onChange: handleManualFileSelected
+              }),
+              React.createElement('button', {
+                className: 'btn btn-outline',
+                disabled: manualStaging,
+                style: {
+                  padding: '10px 18px',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  borderRadius: 8
+                },
+                onClick: () => handleSelectManualPackage(false)
+              },
+                manualStaging
+                  ? React.createElement(React.Fragment, null,
+                      React.createElement('span', { className: 'spinner', style: { width: 14, height: 14 } }),
+                      React.createElement('span', null, 'Verifying Offline...')
+                    )
+                  : React.createElement(React.Fragment, null,
+                      React.createElement('span', null, '📁'),
+                      React.createElement('span', null, 'Select Update Package')
+                    )
+              )
+            )
+          ),
+          manualStatusMessage && React.createElement('div', {
+            style: {
+              marginTop: 14,
+              padding: '10px 14px',
+              borderRadius: 8,
+              fontSize: '0.84rem',
+              background: manualStatusType === 'error' ? 'rgba(239, 68, 68, 0.1)' :
+                          manualStatusType === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(79, 70, 229, 0.1)',
+              color: manualStatusType === 'error' ? 'var(--danger, #ef4444)' :
+                     manualStatusType === 'success' ? 'var(--success, #10b981)' : 'var(--primary, #4f46e5)',
+              border: `1px solid ${manualStatusType === 'error' ? 'rgba(239, 68, 68, 0.25)' :
+                                   manualStatusType === 'success' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(79, 70, 229, 0.25)'}`
+            }
+          }, manualStatusMessage)
+        ),
 
         // Network & Cloud Diagnostics Card
         React.createElement('div', {

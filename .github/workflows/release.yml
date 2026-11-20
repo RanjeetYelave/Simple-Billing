@@ -363,7 +363,8 @@ jobs:
             throw "CRITICAL: Setup installer not found in release-dist!"
           }
           Write-Host "Running installer: $($installer.FullName)..."
-          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
+          Write-Host "Installer finished with exit code: $($installProcess.ExitCode)"
           if ($installProcess.ExitCode -ne 0) {
             throw "Installer exited with non-zero exit code: $($installProcess.ExitCode)"
           }

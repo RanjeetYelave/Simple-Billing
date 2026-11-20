@@ -7,13 +7,17 @@
 !macro customInit
   ; 1. Terminate running RupeeCRM electron process to release locked binaries
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
+  Pop $0
 
   ; 2. Terminate background Java processes executing RupeeCRM or Launcher
   nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
+  Pop $0
   nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
+  Pop $0
 
   ; 3. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"ProcessId = $$($$conn.OwningProcess)\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"(?i)rupeecrm\" -or $$p.CommandLine -match \"(?i)billsoft\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"\"ProcessId = $$($$conn.OwningProcess)\"\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"\"(?i)rupeecrm\"\" -or $$p.CommandLine -match \"\"(?i)billsoft\"\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
+  Pop $0
 
   ; 4. Clean legacy Windows Startup folder VBS script from v1.0.280
   ${If} ${FileExists} "$SMSTARTUP\RupeeCRM.vbs"

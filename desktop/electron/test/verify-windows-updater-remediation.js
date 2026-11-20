@@ -158,7 +158,9 @@ runCheck('installer.nsh purges obsolete metadata and All-Users shortcuts', () =>
 
 runCheck('release.yml defines verify-windows-installation job gating release', () => {
   assert(releaseYml.includes('verify-windows-installation:'), 'verify-windows-installation job must exist in release.yml');
-  assert(releaseYml.includes('needs: [build-app, build-windows-installer, verify-windows-installation]'), 'publish-release must require verify-windows-installation');
+  const publishSection = releaseYml.substring(releaseYml.indexOf('publish-release:'));
+  const needsLine = publishSection.split('\n').find(l => l.trim().startsWith('needs:'));
+  assert(needsLine && needsLine.includes('verify-windows-installation'), 'publish-release must require verify-windows-installation');
 });
 
 console.log('\n═══════════════════════════════════════════════════════════════════');

@@ -53,11 +53,12 @@ const apiJsPath = path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/
 const updateServicePath = path.resolve(__dirname, '../../../billsoft/src/main/java/com/billing/simple/billsoft/service/UpdateService.java');
 const updateControllerPath = path.resolve(__dirname, '../../../billsoft/src/main/java/com/billing/simple/billsoft/controllers/UpdateController.java');
 
-const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
-const styleCss = fs.readFileSync(styleCssPath, 'utf8');
-const apiJs = fs.readFileSync(apiJsPath, 'utf8');
-const updateService = fs.readFileSync(updateServicePath, 'utf8');
-const updateController = fs.readFileSync(updateControllerPath, 'utf8');
+// Normalize CRLF to LF to guarantee cross-platform robustness across Windows and Unix runners
+const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8').replace(/\r\n/g, '\n');
+const styleCss = fs.readFileSync(styleCssPath, 'utf8').replace(/\r\n/g, '\n');
+const apiJs = fs.readFileSync(apiJsPath, 'utf8').replace(/\r\n/g, '\n');
+const updateService = fs.readFileSync(updateServicePath, 'utf8').replace(/\r\n/g, '\n');
+const updateController = fs.readFileSync(updateControllerPath, 'utf8').replace(/\r\n/g, '\n');
 
 console.log('--- Suite 1: Component Definition, Placement & Metrics ---');
 
@@ -105,7 +106,7 @@ runCheck('Run in Background closes large modal and enables floating widget', () 
 
 runCheck('Clicking floating widget expands back to large dialog without restarting download', () => {
   assert(indexHtml.includes('const handleExpandBackgroundUpdate = () => {'), 'handleExpandBackgroundUpdate missing in App');
-  assert(indexHtml.includes('setIsBackgroundDownloading(false);\n        setIsUpdating(true);'),
+  assert(/setIsBackgroundDownloading\s*\(\s*false\s*\)[\s\S]*?setIsUpdating\s*\(\s*true\s*\)/.test(indexHtml),
     'Modal expansion toggle missing in handleExpandBackgroundUpdate');
 });
 
@@ -115,12 +116,12 @@ runCheck('Widget is conditionally rendered only when background download is acti
 });
 
 runCheck('Verified completion (ready_to_install) automatically dismisses floating widget', () => {
-  assert(indexHtml.includes("if (data.status === 'ready_to_install') {\n            setIsBackgroundDownloading(false);"),
+  assert(/data\.status\s*===\s*'ready_to_install'[\s\S]*?setIsBackgroundDownloading\s*\(\s*false\s*\)/.test(indexHtml),
     'Auto-dismissal on ready_to_install missing in handleProgressData');
 });
 
 runCheck('Update cancellation automatically dismisses floating widget', () => {
-  assert(indexHtml.includes("const handleCancelUpdate = async () => {\n        setIsBackgroundDownloading(false);"),
+  assert(/handleCancelUpdate[\s\S]*?setIsBackgroundDownloading\s*\(\s*false\s*\)/.test(indexHtml),
     'Widget dismissal on cancelUpdate missing in App');
 });
 

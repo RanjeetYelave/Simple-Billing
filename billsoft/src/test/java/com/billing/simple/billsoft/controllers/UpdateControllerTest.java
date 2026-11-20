@@ -208,4 +208,22 @@ class UpdateControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("Local file staging is restricted to loopback connections."));
     }
+
+    @Test
+    void testGetUpdateDiagnosticsForBackgroundDownload() throws Exception {
+        Map<String, Object> diag = new HashMap<>();
+        diag.put("currentVersion", "1.0.329");
+        diag.put("updateInProgress", true);
+        diag.put("targetVersion", "1.0.335");
+        diag.put("status", "DOWNLOADING");
+
+        when(service.getUpdateDiagnostics()).thenReturn(diag);
+
+        mockMvc.perform(get("/api/system/update-diagnostics"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentVersion").value("1.0.329"))
+                .andExpect(jsonPath("$.updateInProgress").value(true))
+                .andExpect(jsonPath("$.targetVersion").value("1.0.335"))
+                .andExpect(jsonPath("$.status").value("DOWNLOADING"));
+    }
 }

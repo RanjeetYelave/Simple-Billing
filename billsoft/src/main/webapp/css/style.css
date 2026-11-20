@@ -17968,3 +17968,28 @@ body.no-liquid-glass {
     animation: none !important;
   }
 }
+
+/* ── 5. Compact Floating Background Update Progress Widget ── */
+.rcrm-bg-update-widget {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.rcrm-bg-update-widget:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.16), 0 8px 12px -6px rgba(0, 0, 0, 0.08) !important;
+  border-color: var(--primary, #3b82f6) !important;
+}
+
+.rcrm-bg-update-widget:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  .rcrm-bg-update-widget {
+    top: 60px !important;
+    right: 12px !important;
+    left: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}

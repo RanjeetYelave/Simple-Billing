@@ -40621,6 +40621,155 @@ function PartyDetailModal({
       );
     }
 
+    // ─── COMPACT FLOATING BACKGROUND UPDATE PROGRESS WIDGET ───
+    function BackgroundUpdateProgressWidget({ progress, isVisible, onClick, onCancel }) {
+      if (!isVisible || !progress) return null;
+
+      const status = progress.status || 'downloading';
+      // Only display while download is active, paused, resuming, or verifying
+      const isProgressActive = status === 'downloading' || status === 'paused' || status === 'resuming' || status === 'verifying';
+      if (!isProgressActive) return null;
+
+      const percent = typeof progress.percent === 'number' ? Math.min(100, Math.max(0, Math.round(progress.percent))) : 0;
+      const targetVersion = progress.latestVersion || '';
+      const speed = progress.speed || '';
+      const size = progress.size || '';
+      const isPaused = status === 'paused';
+      const isVerifying = status === 'verifying';
+
+      const statusLabel = isPaused ? 'Paused' :
+        isVerifying ? 'Verifying package...' :
+        'Downloading...';
+
+      return React.createElement('div', {
+        id: 'rupeecrm-bg-update-widget',
+        className: 'rcrm-bg-update-widget',
+        onClick: onClick,
+        role: 'button',
+        tabIndex: 0,
+        title: 'Background update active — click to view full details',
+        style: {
+          position: 'fixed',
+          top: '70px',
+          right: '24px',
+          zIndex: 9990,
+          width: '310px',
+          maxWidth: 'calc(100vw - 32px)',
+          background: 'var(--bg-card, #ffffff)',
+          border: '1px solid var(--border, #e2e8f0)',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+          padding: '12px 14px',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          userSelect: 'none',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        }
+      },
+        // Header Row: Download Icon + "RupeeCRM Update" + Percentage Badge
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '4px'
+          }
+        },
+          React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: '8px' }
+          },
+            React.createElement('span', {
+              style: {
+                fontSize: '1.15rem',
+                color: isPaused ? '#eab308' : '#10b981',
+                display: 'inline-flex',
+                alignItems: 'center'
+              }
+            }, isPaused ? '⏸️' : '📥'),
+            React.createElement('span', {
+              style: {
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                color: 'var(--text, #1e293b)',
+                letterSpacing: '0.01em'
+              }
+            }, 'RupeeCRM Update')
+          ),
+          React.createElement('span', {
+            style: {
+              fontWeight: 700,
+              fontSize: '0.84rem',
+              color: isPaused ? '#b45309' : '#059669',
+              background: isPaused ? 'rgba(234, 179, 8, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+              padding: '2px 8px',
+              borderRadius: '8px'
+            }
+          }, `${percent}%`)
+        ),
+
+        // Subheader: Target Version + Current Status
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.78rem',
+            color: 'var(--text-secondary, #64748b)',
+            marginBottom: '8px'
+          }
+        },
+          React.createElement('span', {
+            style: { fontWeight: 600 }
+          }, targetVersion ? (targetVersion.startsWith('v') ? `Version ${targetVersion.slice(1)}` : `Version ${targetVersion}`) : 'New Version'),
+          React.createElement('span', {
+            style: {
+              color: isPaused ? '#b45309' : isVerifying ? 'var(--primary, #3b82f6)' : 'var(--text-secondary, #64748b)',
+              fontStyle: isVerifying ? 'italic' : 'normal',
+              fontWeight: 500
+            }
+          }, statusLabel)
+        ),
+
+        // Green Progress Bar
+        React.createElement('div', {
+          style: {
+            width: '100%',
+            height: '6px',
+            backgroundColor: 'rgba(226, 232, 240, 0.8)',
+            borderRadius: '3px',
+            overflow: 'hidden',
+            marginBottom: '6px'
+          }
+        },
+          React.createElement('div', {
+            style: {
+              width: `${percent}%`,
+              height: '100%',
+              backgroundColor: isPaused ? '#eab308' : '#10b981',
+              borderRadius: '3px',
+              transition: 'width 0.3s ease-out'
+            }
+          })
+        ),
+
+        // Footer Row: Downloaded Size / Total Size + Download Speed
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.74rem',
+            color: 'var(--text-secondary, #64748b)'
+          }
+        },
+          React.createElement('span', null, size || 'Calculating size...'),
+          React.createElement('span', {
+            style: { fontWeight: 600 }
+          }, speed || (isPaused ? 'Paused' : ''))
+        )
+      );
+    }
+
     // ─── UPDATE PROGRESS OVERLAY ───
     function UpdateProgressOverlay({ progress, onComplete, onCancel, onPause, onResume, onRetry, onInstallNow, onMinimize, isUpdating }) {
       const status = progress && progress.status ? progress.status : 'idle';
@@ -41393,8 +41542,20 @@ function PartyDetailModal({
                 style: { margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }
               }, `RupeeCRM ${info.stagedVersion}`),
               React.createElement('p', {
-                style: { margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)' }
-              }, 'The update package has been downloaded, verified, and database backup is prepared.')
+                style: { margin: '0 0 6px 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }
+              }, 'The update package has been downloaded, verified, and database backup is prepared.'),
+              React.createElement('div', {
+                style: {
+                  display: 'inline-block',
+                  marginTop: 4,
+                  padding: '3px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#065f46',
+                  fontSize: '0.82rem',
+                  fontWeight: 600
+                }
+              }, 'Status: Downloaded and Verified')
             ),
 
             (info.stagedReleaseNotes || info.releaseNotes) && React.createElement('div', {
@@ -46764,6 +46925,7 @@ function PartyDetailModal({
       const handleFirmChanged = () => { refreshFirm(); };
 
       const [isUpdating, setIsUpdating] = useState(false);
+      const [isBackgroundDownloading, setIsBackgroundDownloading] = useState(false);
       const [updateCompleteBanner, setUpdateCompleteBanner] = useState(null);
       const [updateRollbackBanner, setUpdateRollbackBanner] = useState(null);
       useEffect(() => {
@@ -46779,6 +46941,24 @@ function PartyDetailModal({
               });
             }
           }).catch(() => { });
+
+          // Reconcile and subscribe if a background download is already running
+          if (API.system && typeof API.system.updateDiagnostics === 'function') {
+            API.system.updateDiagnostics().then(diag => {
+              if (diag && (diag.updateInProgress || (diag.state && (diag.state.status === 'DOWNLOADING' || diag.state.status === 'DOWNLOAD_PAUSED' || diag.state.status === 'DOWNLOAD_VERIFYING')))) {
+                const targetVer = diag.targetVersion || (diag.state && diag.state.targetVersion) || '';
+                const st = (diag.state && diag.state.status) ? diag.state.status.toLowerCase() : 'downloading';
+                setIsBackgroundDownloading(true);
+                setUpdateProgress({
+                  status: st.includes('paused') ? 'paused' : (st.includes('verif') ? 'verifying' : 'downloading'),
+                  percent: diag.state ? Math.min(100, Math.max(0, (diag.state.bytesDownloaded * 90 / (diag.state.expectedSizeBytes || 1)) | 0)) : 0,
+                  latestVersion: targetVer,
+                  message: 'Active background download in progress...'
+                });
+                connectUpdateProgressSSE(targetVer);
+              }
+            }).catch(() => { });
+          }
         }
       }, [isAuthenticated]);
       const [updateProgress, setUpdateProgress] = useState(null);
@@ -47082,11 +47262,15 @@ function PartyDetailModal({
 
         const handleProgressData = (data) => {
           setUpdateProgress(data);
-          if (data.status === 'restarting' || data.status === 'complete') {
+          if (data.status === 'ready_to_install') {
+            setIsBackgroundDownloading(false);
+          } else if (data.status === 'restarting' || data.status === 'complete') {
+            setIsBackgroundDownloading(false);
             streamHandle.close();
             updatePollRef.current = null;
             startRestartPolling(data.latestVersion || latestVersion);
-          } else if (data.status === 'error') {
+          } else if (data.status === 'error' || data.status === 'cancelled') {
+            setIsBackgroundDownloading(false);
             streamHandle.close();
             updatePollRef.current = null;
             window.onbeforeunload = null;
@@ -47193,6 +47377,7 @@ function PartyDetailModal({
 
       const handleStartUpdate = async (latestVersion) => {
         setIsUpdating(true);
+        setIsBackgroundDownloading(false);
         setUpdateProgress({ status: 'downloading', percent: 0, elapsedSeconds: 0, message: 'Starting download...', latestVersion: latestVersion || '' });
         await connectUpdateProgressSSE(latestVersion);
         try {
@@ -47205,6 +47390,7 @@ function PartyDetailModal({
 
       const handleInstallStaged = async (stagedVersion) => {
         setIsUpdating(true);
+        setIsBackgroundDownloading(false);
         const targetVer = stagedVersion || (updateProgress ? updateProgress.latestVersion : '');
         setUpdateProgress({
           status: 'restarting',
@@ -47228,12 +47414,14 @@ function PartyDetailModal({
 
       const handleUpdateComplete = () => {
         setIsUpdating(false);
+        setIsBackgroundDownloading(false);
         setUpdateProgress(null);
         window.onbeforeunload = null;
         if (updatePollRef.current) { updatePollRef.current.close(); updatePollRef.current = null; }
         if (restartPollingRef.current) { clearInterval(restartPollingRef.current); restartPollingRef.current = null; }
       };
       const handleCancelUpdate = async () => {
+        setIsBackgroundDownloading(false);
         try {
           await API.system.cancelUpdate();
         } catch (e) {
@@ -47297,6 +47485,12 @@ function PartyDetailModal({
 
       const handleMinimizeUpdate = () => {
         setIsUpdating(false);
+        setIsBackgroundDownloading(true);
+      };
+
+      const handleExpandBackgroundUpdate = () => {
+        setIsBackgroundDownloading(false);
+        setIsUpdating(true);
       };
 
       const [invoiceSubTab, setInvoiceSubTab] = useState('overview');
@@ -48251,6 +48445,12 @@ function PartyDetailModal({
             window.dispatchEvent(new CustomEvent('billsoft:reset-session-timer'));
             setFirmLoadKey(k => k + 1);
           }
+        }),
+        React.createElement(BackgroundUpdateProgressWidget, {
+          progress: updateProgress,
+          isVisible: isBackgroundDownloading && !isUpdating,
+          onClick: handleExpandBackgroundUpdate,
+          onCancel: handleCancelUpdate
         }),
         React.createElement(UpdateProgressOverlay, {
           progress: updateProgress,

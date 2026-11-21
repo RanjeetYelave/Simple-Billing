@@ -190,7 +190,22 @@ public class DataProtectionCredentialStore {
             record.put("protectedPayload", protectedPayload.trim());
             record.put("signature", signatureBase64.trim());
             record.put("updatedAt", java.time.Instant.now().toString());
-            mapper.writeValue(configFile, record);
+
+            File parentDir = configFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+            File tempFile = new File(parentDir, configFile.getName() + ".tmp");
+            mapper.writeValue(tempFile, record);
+
+            try {
+                java.nio.file.Files.move(tempFile.toPath(), configFile.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception moveEx) {
+                java.nio.file.Files.move(tempFile.toPath(), configFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
 
             this.currentVersion = newVersion;
             this.cachedToken = decodedToken;

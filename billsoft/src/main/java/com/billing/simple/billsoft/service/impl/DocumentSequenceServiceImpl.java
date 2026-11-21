@@ -5,6 +5,7 @@ import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.repo.InvoiceRepository;
 import com.billing.simple.billsoft.repo.SalesReturnRepository;
 import com.billing.simple.billsoft.repositories.PurchaseOrderRepository;
+import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.service.DocumentSequenceService;
 import com.billing.simple.billsoft.service.DocumentType;
 import com.billing.simple.billsoft.util.IndianFinancialYearUtils;
@@ -15,16 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Thread-safe and transaction-safe implementation of DocumentSequenceService.
- * Uses database-level row locking (@Lock PESSIMISTIC_WRITE) on AppConfig records
- * inside transactions to guarantee atomic, monotonic sequence allocation.
+ * Thread-safe implementation of DocumentSequenceService.
+ * Synchronizes per partition key to serialize atomic document sequence allocation.
  */
 @Service
-@Transactional
 public class DocumentSequenceServiceImpl implements DocumentSequenceService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentSequenceServiceImpl.class);
@@ -33,10 +30,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     private final InvoiceRepository invoiceRepo;
     private final SalesReturnRepository salesReturnRepo;
     private final PurchaseOrderRepository poRepo;
-
-
-    // In-memory locks per key to serialize concurrent requests within the same JVM
-    private final ConcurrentHashMap<String, Object> lockMap = new ConcurrentHashMap<>();
 
     public DocumentSequenceServiceImpl(AppConfigRepository appConfigRepo,
                                        InvoiceRepository invoiceRepo,
@@ -52,7 +45,7 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
         if (firmId != null && firmId > 0) {
             return firmId;
         }
-        Long ctxFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long ctxFirmId = TenantContext.getCurrentFirmId();
         return (ctxFirmId != null && ctxFirmId > 0) ? ctxFirmId : 1L;
     }
 
@@ -128,7 +121,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
                         }
                     }
                 }
-                // Also check legacy unpartitioned counter for migration
                 String legacyKey = "LAST_INVOICE_SEQ_" + firmId;
                 long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe).orElse(0L);
                 if (legacy > dbMax) dbMax = legacy;
@@ -170,11 +162,10 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
-    @Transactional
     public String generateNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
-        final LocalDate effectiveDate = (date != null) ? date : LocalDate.now();
-        String configKey = buildConfigKey(type, safeFirmId, effectiveDate);
+        if (date == null) date = LocalDate.now();
+        String configKey = buildConfigKey(type, safeFirmId, date);
 
         synchronized (configKey.intern()) {
             AppConfig cfg = appConfigRepo.findById(configKey).orElse(null);
@@ -183,7 +174,7 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
             if (cfg != null) {
                 lastSeq = parseLongSafe(cfg.getConfigValue());
             } else {
-                lastSeq = scanDatabaseMax(type, safeFirmId, effectiveDate);
+                lastSeq = scanDatabaseMax(type, safeFirmId, date);
                 cfg = new AppConfig();
                 cfg.setConfigKey(configKey);
                 cfg.setConfigValue(String.valueOf(lastSeq));
@@ -191,11 +182,11 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
             }
 
             long nextSeq = lastSeq + 1;
-            String candidate = formatCandidate(type, nextSeq, effectiveDate);
+            String candidate = formatCandidate(type, nextSeq, date);
 
             while (existsInDatabase(type, candidate, safeFirmId)) {
                 nextSeq++;
-                candidate = formatCandidate(type, nextSeq, effectiveDate);
+                candidate = formatCandidate(type, nextSeq, date);
             }
 
             cfg.setConfigValue(String.valueOf(nextSeq));
@@ -207,7 +198,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
-    @Transactional
     public String generateNextNumber(DocumentType type, Long firmId) {
         return generateNextNumber(type, firmId, LocalDate.now());
     }
@@ -244,7 +234,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
-    @Transactional
     public void syncSequenceIfApplicable(DocumentType type, Long firmId, String number, LocalDate date) {
         if (number == null || number.trim().isEmpty()) return;
         Long safeFirmId = resolveSafeFirmId(firmId);
@@ -270,7 +259,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
                     }
                     break;
                 case PURCHASE_ORDER:
-                    // e.g. PO-2026-0005
                     int lastDash = trimmed.lastIndexOf('-');
                     if (lastDash > 0 && lastDash < trimmed.length() - 1) {
                         extractedSeq = Long.parseLong(trimmed.substring(lastDash + 1));
@@ -284,15 +272,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
         if (extractedSeq <= 0) return;
 
         String configKey = buildConfigKey(type, safeFirmId, date);
-        Object lock = lockMap.computeIfAbsent(configKey, k -> new Object());
-        synchronized (lock) {
-            Optional<AppConfig> opt;
-            try {
-                opt = appConfigRepo.findByConfigKeyForUpdate(configKey);
-            } catch (Exception e) {
-                opt = appConfigRepo.findById(configKey);
-            }
-            AppConfig cfg = opt.orElseGet(() -> {
+        synchronized (configKey.intern()) {
+            AppConfig cfg = appConfigRepo.findById(configKey).orElseGet(() -> {
                 AppConfig newCfg = new AppConfig();
                 newCfg.setConfigKey(configKey);
                 newCfg.setConfigValue("0");

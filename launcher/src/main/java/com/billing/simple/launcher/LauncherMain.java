@@ -22,6 +22,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
@@ -580,11 +582,22 @@ public class LauncherMain {
         }
     }
 
+    private String extractJsonString(String json, String key) {
+        if (json == null || key == null) return "";
+        Pattern p = Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*\"([^\"]+)\"");
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return m.group(1).trim();
+        }
+        return "";
+    }
+
     private boolean verifyRunningCandidateVersion(String candidateVersion) {
         if (candidateVersion == null || candidateVersion.trim().isEmpty()) {
             return true;
         }
-        for (int attempt = 0; attempt < 15; attempt++) {
+        String normCandidate = UpdateState.normalizeVersion(candidateVersion);
+        for (int attempt = 0; attempt < 20; attempt++) {
             try {
                 URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/version-info");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -593,13 +606,9 @@ public class LauncherMain {
                 conn.setRequestMethod("GET");
                 if (conn.getResponseCode() == 200) {
                     String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    if (body.contains("\"version\":\"" + candidateVersion + "\"") ||
-                        body.contains("\"version\":\"v" + candidateVersion + "\"") ||
-                        body.contains(candidateVersion)) {
+                    String runningVer = extractJsonString(body, "version");
+                    if (!runningVer.isEmpty() && UpdateState.normalizeVersion(runningVer).equals(normCandidate)) {
                         return true;
-                    } else if (attempt >= 5) {
-                        System.err.println("Running backend reported version does not match candidate " + candidateVersion + ": " + body);
-                        return false;
                     }
                 }
             } catch (Exception e) {
@@ -613,9 +622,8 @@ public class LauncherMain {
                 conn.setRequestMethod("GET");
                 if (conn.getResponseCode() == 200) {
                     String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    if (body.contains("\"appVersion\":\"" + candidateVersion + "\"") ||
-                        body.contains("\"appVersion\":\"v" + candidateVersion + "\"") ||
-                        body.contains(candidateVersion)) {
+                    String runningVer = extractJsonString(body, "version");
+                    if (!runningVer.isEmpty() && UpdateState.normalizeVersion(runningVer).equals(normCandidate)) {
                         return true;
                     }
                 }
@@ -628,10 +636,8 @@ public class LauncherMain {
                 conn.setRequestMethod("GET");
                 if (conn.getResponseCode() == 200) {
                     String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    if (body.contains("\"currentVersion\":\"" + candidateVersion + "\"") ||
-                        body.contains("\"currentVersion\":\"v" + candidateVersion + "\"") ||
-                        body.contains("\"targetVersion\":\"" + candidateVersion + "\"") ||
-                        body.contains(candidateVersion)) {
+                    String runningVer = extractJsonString(body, "currentVersion");
+                    if (!runningVer.isEmpty() && UpdateState.normalizeVersion(runningVer).equals(normCandidate)) {
                         return true;
                     }
                 }
@@ -640,7 +646,7 @@ public class LauncherMain {
                 Path v1 = getDataDirectory().resolve(".billsoft-version");
                 if (Files.exists(v1)) {
                     String v = Files.readString(v1, StandardCharsets.UTF_8).trim();
-                    if (candidateVersion.equals(v) || ("v" + candidateVersion).equals(v)) return true;
+                    if (normCandidate.equals(UpdateState.normalizeVersion(v))) return true;
                 }
             } catch (Exception ignored) {}
             try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
@@ -1778,6 +1784,40 @@ public class LauncherMain {
             Path stateFile = getStagingDirectory().resolve("update-state.json");
             UpdateState state = UpdateState.load(stateFile);
 
+            String handoffContent = Files.readString(handoffToken, StandardCharsets.UTF_8);
+
+            // Handle Authorized Recovery Rollback Handoff Request
+            if (handoffContent.contains("targetVersion=ROLLBACK") || UpdateState.STATUS_ROLLBACK_IN_PROGRESS.equals(state.getStatus())) {
+                System.out.println("Supervisor detected authorized recovery rollback handoff request.");
+                File currentWar = findCurrentWar();
+                if (currentWar == null || !currentWar.exists()) {
+                    System.err.println("REJECTED: Current live WAR not found for rollback.");
+                    Files.deleteIfExists(handoffToken);
+                    return false;
+                }
+                File backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
+                if (!backupWar.exists() || backupWar.length() < 10000) {
+                    Path baseAppDir = getBaseDirectory().resolve("app");
+                    File userBak = baseAppDir.resolve("rupeecrm.war.bak").toFile();
+                    if (userBak.exists() && userBak.length() > 10000) {
+                        backupWar = userBak;
+                    }
+                }
+                if (backupWar != null && backupWar.exists() && backupWar.length() > 10000) {
+                    Files.copy(backupWar.toPath(), currentWar.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    Files.deleteIfExists(handoffToken);
+                    state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+                    state.setErrorMessage("Restored previous working binary via authorized recovery rollback");
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    System.out.println("Rollback restored binary successfully: " + currentWar.getAbsolutePath());
+                    return true;
+                } else {
+                    System.err.println("REJECTED: Rollback backup binary not found or empty.");
+                    Files.deleteIfExists(handoffToken);
+                    return false;
+                }
+            }
+
             Path txDir = getStagingDirectory().resolve("update-tx");
             Path manifestFile = txDir.resolve("manifest.json");
             Path sigFile = txDir.resolve("manifest.sig");
@@ -1809,6 +1849,60 @@ public class LauncherMain {
                 state.setErrorMessage("Launcher signature verification failed: " + e.getMessage());
                 try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
                 return false;
+            }
+
+            // 2. Immutable transaction identity binding checks
+            String manifestVer = UpdateState.normalizeVersion(manifest.getAppVersion());
+            String targetVer = UpdateState.normalizeVersion(state.getTargetVersion());
+            if (!targetVer.isEmpty() && !manifestVer.equals(targetVer)) {
+                System.err.println("SECURITY REJECTION: Manifest target version ('" + manifestVer
+                        + "') does not match transaction target ('" + targetVer + "')");
+                Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Manifest target version (" + manifestVer + ") does not match transaction target (" + targetVer + ")");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                return false;
+            }
+
+            if (state.getExpectedSha256() != null && !state.getExpectedSha256().isBlank()) {
+                if (!manifest.getArtifactSha256().equalsIgnoreCase(state.getExpectedSha256())) {
+                    System.err.println("SECURITY REJECTION: Manifest SHA-256 ('" + manifest.getArtifactSha256()
+                            + "') does not match transaction expected SHA-256 ('" + state.getExpectedSha256() + "')");
+                    Files.deleteIfExists(handoffToken);
+                    state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                    state.setErrorMessage("Manifest SHA-256 mismatch with transaction");
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    return false;
+                }
+            }
+
+            if (state.getExpectedSizeBytes() > 0 && manifest.getArtifactSizeBytes() != state.getExpectedSizeBytes()) {
+                System.err.println("SECURITY REJECTION: Manifest size ('" + manifest.getArtifactSizeBytes()
+                        + "') does not match transaction expected size ('" + state.getExpectedSizeBytes() + "')");
+                Files.deleteIfExists(handoffToken);
+                state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                state.setErrorMessage("Manifest size mismatch with transaction");
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                return false;
+            }
+
+            if (handoffContent.contains("targetVersion=")) {
+                String handoffVer = "";
+                for (String line : handoffContent.split("\n")) {
+                    if (line.trim().startsWith("targetVersion=")) {
+                        handoffVer = UpdateState.normalizeVersion(line.trim().substring("targetVersion=".length()));
+                        break;
+                    }
+                }
+                if (!handoffVer.isEmpty() && !handoffVer.equals(manifestVer)) {
+                    System.err.println("SECURITY REJECTION: Handoff token targetVersion ('" + handoffVer
+                            + "') does not match manifest appVersion ('" + manifestVer + "')");
+                    Files.deleteIfExists(handoffToken);
+                    state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
+                    state.setErrorMessage("Handoff targetVersion mismatch with manifest");
+                    try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                    return false;
+                }
             }
 
             // 2. Independent staged artifact verification
@@ -2230,34 +2324,7 @@ public class LauncherMain {
     }
 
     public static int compareVersions(String v1, String v2) {
-        if (v1 == null && v2 == null) return 0;
-        if (v1 == null) return -1;
-        if (v2 == null) return 1;
-
-        String norm1 = v1.replaceAll("^[vV]", "").trim();
-        String norm2 = v2.replaceAll("^[vV]", "").trim();
-
-        String[] split1 = norm1.split("[-+]", 2);
-        String[] split2 = norm2.split("[-+]", 2);
-
-        String[] parts1 = split1[0].split("\\.");
-        String[] parts2 = split2[0].split("\\.");
-
-        int maxLen = Math.max(parts1.length, parts2.length);
-        for (int i = 0; i < maxLen; i++) {
-            long num1 = 0;
-            long num2 = 0;
-            if (i < parts1.length && !parts1[i].trim().isEmpty()) {
-                try { num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
-            }
-            if (i < parts2.length && !parts2[i].trim().isEmpty()) {
-                try { num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
-            }
-            if (num1 != num2) {
-                return Long.compare(num1, num2);
-            }
-        }
-        return 0;
+        return UpdateState.compareVersions(v1, v2);
     }
 
     private File findCurrentWar() {

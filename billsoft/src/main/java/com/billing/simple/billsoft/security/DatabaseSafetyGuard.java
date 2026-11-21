@@ -61,7 +61,7 @@ public final class DatabaseSafetyGuard {
             return true;
         }
 
-        // Check call stack for test runners
+        // Check call stack for test runners across threads
         for (StackTraceElement elem : Thread.currentThread().getStackTrace()) {
             String cls = elem.getClassName();
             if (cls.startsWith("org.junit.") ||
@@ -74,6 +74,22 @@ public final class DatabaseSafetyGuard {
                 return true;
             }
         }
+        try {
+            for (java.util.Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                for (StackTraceElement elem : entry.getValue()) {
+                    String cls = elem.getClassName();
+                    if (cls.startsWith("org.junit.") ||
+                        cls.startsWith("org.testng.") ||
+                        cls.startsWith("org.apache.maven.surefire.") ||
+                        cls.startsWith("com.intellij.rt.junit.") ||
+                        cls.startsWith("org.eclipse.jdt.internal.junit.") ||
+                        cls.startsWith("org.springframework.boot.test.") ||
+                        cls.startsWith("org.springframework.test.")) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
         return false;
     }
 

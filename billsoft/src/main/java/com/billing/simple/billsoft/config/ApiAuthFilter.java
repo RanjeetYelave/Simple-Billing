@@ -42,7 +42,13 @@ public class ApiAuthFilter implements Filter {
         response.setHeader("Referrer-Policy", "no-referrer");
 
         // Public/exempt API paths
-        if (uri.startsWith("/api/auth/") || uri.startsWith("/api/health") || uri.startsWith("/api/recovery/")) {
+        if (uri.startsWith("/api/auth/") || uri.startsWith("/api/health") || uri.startsWith("/api/recovery/")
+                || uri.equals("/api/system/version-info")
+                || uri.equals("/api/system/runtime-identity")
+                || uri.equals("/api/system/update-status")
+                || uri.equals("/api/system/update-diagnostics")
+                || uri.equals("/api/shutdown")
+                || uri.equals("/api/system/shutdown")) {
             chain.doFilter(req, res);
             return;
         }

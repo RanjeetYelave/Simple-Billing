@@ -54,20 +54,20 @@ public class HealthController {
             try {
                 String cur = updateService.getCurrentVersion();
                 if (cur != null && !cur.isBlank() && !"v1.0.0".equalsIgnoreCase(cur) && !"1.0.0".equalsIgnoreCase(cur) && !cur.contains("SNAPSHOT")) {
-                    return cur.startsWith("v") ? cur : "v" + cur;
+                    return com.billing.simple.billsoft.update.UpdateState.formatDisplayVersion(cur);
                 }
             } catch (Exception ignored) {}
         }
         String ver = environment != null ? environment.getProperty("app.version", "v1.0.0") : "v1.0.0";
         if (ver != null && !ver.isBlank() && !"v1.0.0".equalsIgnoreCase(ver) && !"1.0.0".equalsIgnoreCase(ver) && !ver.contains("SNAPSHOT")) {
-            return ver.startsWith("v") ? ver : "v" + ver;
+            return com.billing.simple.billsoft.update.UpdateState.formatDisplayVersion(ver);
         }
         Package pkg = HealthController.class.getPackage();
         if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank() && !pkg.getImplementationVersion().contains("SNAPSHOT")) {
             String imp = pkg.getImplementationVersion().trim();
-            return imp.startsWith("v") ? imp : "v" + imp;
+            return com.billing.simple.billsoft.update.UpdateState.formatDisplayVersion(imp);
         }
-        return ver != null && !ver.isBlank() && !ver.contains("SNAPSHOT") ? ver : "v1.0.0";
+        return ver != null && !ver.isBlank() && !ver.contains("SNAPSHOT") ? com.billing.simple.billsoft.update.UpdateState.formatDisplayVersion(ver) : "v1.0.0";
     }
 
     public HealthController(SystemMetricsService systemMetricsService,

@@ -89,6 +89,7 @@ public class UpdateService {
     private final AtomicBoolean pauseRequested = new AtomicBoolean(false);
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private volatile HttpURLConnection activeDownloadConnection = null;
+    private volatile Thread activeDownloadThread = null;
 
     private volatile SseEmitter progressEmitter;
     private final List<SseEmitter> progressEmitters = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -170,6 +171,64 @@ public class UpdateService {
         } catch (Exception e) {
             log.warn("Could not check usable disk space: {}", e.getMessage());
             return true;
+        }
+    }
+
+    public static String extractWarAppVersion(Path warPath) {
+        if (warPath == null || !Files.exists(warPath)) return null;
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(warPath.toFile())) {
+            java.util.zip.ZipEntry entry = zip.getEntry("WEB-INF/classes/application.properties");
+            if (entry != null) {
+                try (InputStream is = zip.getInputStream(entry)) {
+                    java.util.Properties props = new java.util.Properties();
+                    props.load(is);
+                    String ver = props.getProperty("app.version");
+                    if (ver != null && !ver.isBlank()) {
+                        return UpdateState.normalizeVersion(ver);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void reconcileStartupState() {
+        try {
+            Path stateFile = getStateFilePath();
+            if (!Files.exists(stateFile)) return;
+            UpdateState state = UpdateState.load(stateFile);
+            if (state == null) return;
+            String status = state.getStatus();
+            String currentRunning = getCurrentVersion();
+
+            if (UpdateState.STATUS_DOWNLOADING.equals(status) || UpdateState.STATUS_PREPARING_DOWNLOAD.equals(status)
+                    || UpdateState.STATUS_DOWNLOAD_RETRYING.equals(status)) {
+                log.info("Startup reconciliation: Interrupted download transaction {} detected. Transitioning to DOWNLOAD_INTERRUPTED.",
+                        state.getTransactionId());
+                state.setStatus(UpdateState.STATUS_DOWNLOAD_INTERRUPTED);
+                state.setErrorMessage("Download was interrupted by application shutdown or restart");
+                state.saveAtomic(stateFile);
+            } else if (UpdateState.STATUS_APPLICATION_SHUTDOWN_PENDING.equals(status)
+                    || UpdateState.STATUS_APPLYING_UPDATE.equals(status)
+                    || UpdateState.STATUS_ACTIVATION_STARTED.equals(status)
+                    || UpdateState.STATUS_STARTING_NEW_VERSION.equals(status)) {
+                String target = state.getTargetVersion();
+                if (target != null && !target.isBlank() && compareVersions(currentRunning, target) >= 0) {
+                    log.info("Startup reconciliation: Detected successful update activation to {}.", currentRunning);
+                    state.setStatus(UpdateState.STATUS_COMMITTED);
+                    state.setCurrentVersion(currentRunning);
+                    state.saveAtomic(stateFile);
+                } else {
+                    log.warn("Startup reconciliation: Update activation to {} did not take effect (currently running: {}). Transitioning to ROLLED_BACK.",
+                            target, currentRunning);
+                    state.setStatus(UpdateState.STATUS_ROLLED_BACK);
+                    state.setErrorMessage("New version startup failed; restored previous version " + currentRunning);
+                    state.saveAtomic(stateFile);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Non-fatal: startup state reconciliation encountered exception: {}", e.getMessage());
         }
     }
 
@@ -596,6 +655,7 @@ public class UpdateService {
         final UpdateManifest targetManifest = manifest;
         Thread downloadThread = new Thread(() -> executeUpdatePipeline(targetManifest), "ota-updater-thread");
         downloadThread.setDaemon(true);
+        this.activeDownloadThread = downloadThread;
         downloadThread.start();
         return true;
     }
@@ -782,21 +842,31 @@ public class UpdateService {
                 throw new IllegalStateException("Artifact checksum mismatch: Expected SHA-256 " + manifest.getArtifactSha256() + ", got " + actualSha256);
             }
 
+            // 5b. Embedded WAR internal version inspection
+            String warAppVersion = extractWarAppVersion(warFile);
+            if (warAppVersion != null && !warAppVersion.isBlank()) {
+                String normTarget = UpdateState.normalizeVersion(manifest.getAppVersion());
+                if (!warAppVersion.equals(normTarget)) {
+                    throw new IllegalStateException("Extracted WAR internal version (" + warAppVersion
+                            + ") does not match target package version (" + normTarget + ")");
+                }
+            }
+
             // 6. Version and Compatibility Validation
             String currentVersion = getCurrentVersion();
             String targetVersion = manifest.getAppVersion();
             int cmp = compareVersions(targetVersion, currentVersion);
 
             if (cmp < 0) {
-                throw new IllegalArgumentException("Downgrade rejected: Current installed version is v" + currentVersion +
-                        ", but the package version is older v" + targetVersion + ". Downgrades are not permitted.");
+                throw new IllegalArgumentException("Downgrade rejected: Current installed version is " + UpdateState.formatDisplayVersion(currentVersion) +
+                        ", but the package version is older " + UpdateState.formatDisplayVersion(targetVersion) + ". Downgrades are not permitted.");
             }
             if (cmp == 0) {
                 Map<String, Object> alreadyInstalled = new HashMap<>();
                 alreadyInstalled.put("status", "already_installed");
-                alreadyInstalled.put("message", "Version v" + targetVersion + " is already installed.");
-                alreadyInstalled.put("currentVersion", currentVersion);
-                alreadyInstalled.put("targetVersion", targetVersion);
+                alreadyInstalled.put("message", "Version " + UpdateState.formatDisplayVersion(targetVersion) + " is already installed.");
+                alreadyInstalled.put("currentVersion", UpdateState.formatDisplayVersion(currentVersion));
+                alreadyInstalled.put("targetVersion", UpdateState.formatDisplayVersion(targetVersion));
                 return alreadyInstalled;
             }
 
@@ -950,6 +1020,15 @@ public class UpdateService {
 
     public boolean cancelUpdate() {
         if (!updateInProgress.get()) {
+            Path stateFile = getStateFilePath();
+            if (Files.exists(stateFile)) {
+                try {
+                    UpdateState state = UpdateState.load(stateFile);
+                    if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus()) || "cancelled".equalsIgnoreCase(progressStatus.get()))) {
+                        return true;
+                    }
+                } catch (Exception ignored) {}
+            }
             cancelRequested.set(false);
             return false;
         }
@@ -966,6 +1045,14 @@ public class UpdateService {
             } catch (Exception ignored) {}
         }
 
+        Thread t = activeDownloadThread;
+        if (t != null && t.isAlive() && t != Thread.currentThread()) {
+            try {
+                t.interrupt();
+                t.join(2500);
+            } catch (Exception ignored) {}
+        }
+
         try {
             Path txDir = getTxDirectory();
             Files.deleteIfExists(txDir.resolve("rupeecrm-update.war.part"));
@@ -975,15 +1062,18 @@ public class UpdateService {
             Path stateFile = getStateFilePath();
             if (Files.exists(stateFile)) {
                 UpdateState state = UpdateState.load(stateFile);
-                state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
-                state.setErrorMessage("Update was cancelled by the user.");
-                state.saveAtomic(stateFile);
+                if (state != null) {
+                    state.setStatus(UpdateState.STATUS_DOWNLOAD_CANCELLED);
+                    state.setErrorMessage("Update was cancelled by the user.");
+                    state.saveAtomic(stateFile);
+                }
             }
         } catch (Exception ignored) {}
 
         setProgress("cancelled", 0, "Update was cancelled by the user.");
         updateInProgress.set(false);
         cancelRequested.set(false);
+        activeDownloadThread = null;
         return true;
     }
 
@@ -1002,7 +1092,8 @@ public class UpdateService {
         Path stateFile = getStateFilePath();
 
         if (!Files.exists(manifestFile) || !Files.exists(sigFile) || !Files.exists(stagedWar) || !Files.exists(stateFile)) {
-            log.error("Cannot install update: Staged update files or state not found in {}", txDir);
+            log.error("Cannot install update: Staged update files or state not found in {} (manifest={}, sig={}, war={}, state={})",
+                    txDir, Files.exists(manifestFile), Files.exists(sigFile), Files.exists(stagedWar), Files.exists(stateFile));
             return false;
         }
 
@@ -1062,6 +1153,20 @@ public class UpdateService {
                             actualWarSha, state.getExpectedSha256());
                     state.setStatus(UpdateState.STATUS_VERIFICATION_FAILED);
                     state.setErrorMessage("Staged WAR hash mismatch");
+                    state.saveAtomic(stateFile);
+                    return false;
+                }
+            }
+
+            // Embedded WAR internal version inspection
+            String warAppVersion = extractWarAppVersion(stagedWar);
+            if (warAppVersion != null && !warAppVersion.isBlank()) {
+                String normTarget = UpdateState.normalizeVersion(state.getTargetVersion());
+                if (!warAppVersion.equals(normTarget)) {
+                    log.error("Cannot install update: staged WAR internal version ({}) does not match target version ({})",
+                            warAppVersion, normTarget);
+                    state.setStatus(UpdateState.STATUS_VERSION_MISMATCH);
+                    state.setErrorMessage("Staged WAR internal version mismatch: " + warAppVersion + " vs " + normTarget);
                     state.saveAtomic(stateFile);
                     return false;
                 }
@@ -1179,14 +1284,22 @@ public class UpdateService {
 
             UpdateState state;
             boolean canResume = false;
+            String txId = UUID.randomUUID().toString();
             if (hasProtectedStagedPackage) {
                 // Keep preservedStagedState intact. If candidate fails, we restore it!
                 state = new UpdateState();
-                state.setCurrentVersion(getCurrentVersion());
-                state.setTargetVersion(manifest.getAppVersion());
-                state.setExpectedSha256(manifest.getArtifactSha256());
-                state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
-                state.setDownloadUrl(manifest.getArtifactUrl());
+                state.bindTransactionIdentity(
+                        txId,
+                        getCurrentVersion(),
+                        manifest.getAppVersion(),
+                        manifest.getReleaseTag(),
+                        manifest.getArtifactUrl(),
+                        manifest.getArtifactFilename(),
+                        manifest.getArtifactSha256(),
+                        manifest.getArtifactSizeBytes(),
+                        manifest.getSchemaVersion(),
+                        latestVerifiedSignature.get()
+                );
                 log.info("Downloading newer update v{} while safely preserving staged update v{}",
                         manifest.getAppVersion(), preservedStagedState.getTargetVersion());
             } else if (existingState != null
@@ -1211,11 +1324,18 @@ public class UpdateService {
                 Files.deleteIfExists(txDir.resolve("manifest.json"));
                 Files.deleteIfExists(txDir.resolve("manifest.sig"));
                 state = new UpdateState();
-                state.setCurrentVersion(getCurrentVersion());
-                state.setTargetVersion(manifest.getAppVersion());
-                state.setExpectedSha256(manifest.getArtifactSha256());
-                state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
-                state.setDownloadUrl(manifest.getArtifactUrl());
+                state.bindTransactionIdentity(
+                        txId,
+                        getCurrentVersion(),
+                        manifest.getAppVersion(),
+                        manifest.getReleaseTag(),
+                        manifest.getArtifactUrl(),
+                        manifest.getArtifactFilename(),
+                        manifest.getArtifactSha256(),
+                        manifest.getArtifactSizeBytes(),
+                        manifest.getSchemaVersion(),
+                        latestVerifiedSignature.get()
+                );
 
                 byte[] mBytes = latestVerifiedManifestBytes.get();
                 if (mBytes == null) {
@@ -1297,6 +1417,17 @@ public class UpdateService {
             if (!UpdateCrypto.isZipFile(partFile)) {
                 Files.deleteIfExists(partFile);
                 throw new IllegalStateException("Downloaded artifact is not a valid ZIP/WAR archive");
+            }
+
+            // 4b. Validate internal WAR app.version matches manifest target version
+            String warVer = extractWarAppVersion(partFile);
+            if (warVer != null && !warVer.isBlank()) {
+                String normTarget = UpdateState.normalizeVersion(manifest.getAppVersion());
+                if (!warVer.equals(normTarget)) {
+                    Files.deleteIfExists(partFile);
+                    throw new IllegalStateException("Downloaded WAR internal version (" + warVer
+                            + ") does not match target manifest version (" + normTarget + ")");
+                }
             }
 
             // 5. Promote .part to final staged war (Candidate is verified, safe to replace now)
@@ -1909,54 +2040,75 @@ public class UpdateService {
     }
 
     public static int compareVersions(String v1, String v2) {
-        if (v1 == null && v2 == null)
-            return 0;
-        if (v1 == null)
-            return -1;
-        if (v2 == null)
-            return 1;
+        return UpdateState.compareVersions(v1, v2);
+    }
 
-        String norm1 = v1.replaceAll("^[vV]", "").trim();
-        String norm2 = v2.replaceAll("^[vV]", "").trim();
-
-        String[] split1 = norm1.split("[-+]", 2);
-        String[] split2 = norm2.split("[-+]", 2);
-
-        String[] parts1 = split1[0].split("\\.");
-        String[] parts2 = split2[0].split("\\.");
-
-        int maxLen = Math.max(parts1.length, parts2.length);
-        for (int i = 0; i < maxLen; i++) {
-            long num1 = 0;
-            long num2 = 0;
-            if (i < parts1.length && !parts1[i].trim().isEmpty()) {
-                try {
-                    num1 = Long.parseLong(parts1[i].trim().replaceAll("[^0-9]", ""));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            if (i < parts2.length && !parts2[i].trim().isEmpty()) {
-                try {
-                    num2 = Long.parseLong(parts2[i].trim().replaceAll("[^0-9]", ""));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            if (num1 != num2) {
-                return Long.compare(num1, num2);
-            }
+    public synchronized Map<String, Object> executeAuthorizedRollback(boolean confirmRollback, String reason) throws Exception {
+        if (!confirmRollback) {
+            throw new IllegalArgumentException("Authorized rollback requires explicit user confirmation (confirmRollback=true).");
+        }
+        if (reason == null || reason.trim().isBlank()) {
+            throw new IllegalArgumentException("A valid rollback reason or justification must be provided.");
+        }
+        if (updateInProgress.get()) {
+            throw new IllegalStateException("Cannot initiate rollback while an update download or verification is in progress.");
         }
 
-        boolean hasSuffix1 = split1.length > 1 && !split1[1].isEmpty();
-        boolean hasSuffix2 = split2.length > 1 && !split2[1].isEmpty();
+        Path stateFile = getStateFilePath();
+        UpdateState state = Files.exists(stateFile) ? UpdateState.load(stateFile) : new UpdateState();
 
-        if (!hasSuffix1 && hasSuffix2)
-            return 1;
-        if (hasSuffix1 && !hasSuffix2)
-            return -1;
-        if (hasSuffix1 && hasSuffix2)
-            return split1[1].compareToIgnoreCase(split2[1]);
+        String rollbackTxId = "rollback-" + System.currentTimeMillis();
+        Path rollbackSafetyDb = createQuarantineDatabaseBackup(rollbackTxId);
 
-        return 0;
+        Path handoff = getHandoffFilePath();
+        Path handoffTmp = handoff.resolveSibling("update.handoff.tmp." + System.currentTimeMillis());
+        String handoffData = "transactionId=" + rollbackTxId + "\n" +
+                "targetVersion=ROLLBACK\n" +
+                "reason=" + reason.trim().replace("\n", " ") + "\n" +
+                "timestamp=" + System.currentTimeMillis() + "\n";
+        Files.writeString(handoffTmp, handoffData, StandardCharsets.UTF_8);
+        try {
+            Files.move(handoffTmp, handoff, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            Files.move(handoffTmp, handoff, StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        state.setTransactionId(rollbackTxId);
+        state.setStatus(UpdateState.STATUS_ROLLBACK_IN_PROGRESS);
+        state.setErrorMessage("Authorized emergency recovery rollback initiated: " + reason.trim());
+        if (rollbackSafetyDb != null) {
+            state.setQuarantineBackupPath(rollbackSafetyDb.toAbsolutePath().toString());
+        }
+        state.saveAtomic(stateFile);
+
+        setProgress("restarting", 100, "Rollback initiated. Restarting supervisor to restore previous binary...", "ROLLBACK");
+
+        new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+                if (this.progressEmitter != null) {
+                    try { this.progressEmitter.complete(); } catch (Exception ignored) {}
+                    this.progressEmitter = null;
+                }
+                for (SseEmitter emitter : progressEmitters) {
+                    try { emitter.complete(); } catch (Exception ignored) {}
+                }
+                progressEmitters.clear();
+                log.info("Requesting supervisor rollback restart via Exit Code 10");
+                if (exitOnInstall && !Boolean.getBoolean("rupeecrm.prevent.exit")) {
+                    System.exit(10);
+                }
+            } catch (Exception ignored) {}
+        }, "rollback-exit-thread").start();
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("status", "initiating_rollback");
+        resp.put("transactionId", rollbackTxId);
+        resp.put("message", "Authorized emergency recovery rollback initiated. The service is restarting to restore the previous binary.");
+        if (rollbackSafetyDb != null) {
+            resp.put("safetyBackup", rollbackSafetyDb.toAbsolutePath().toString());
+        }
+        return resp;
     }
 
     public static String extractCustomerChangelog(String rawBody) {

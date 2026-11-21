@@ -363,12 +363,24 @@ function queryHealthFallback(resolve, timeoutMs) {
   });
 }
 
+function normalizeVersionStr(v) {
+  if (!v || typeof v !== 'string') return '';
+  return v.trim().replace(/^[vV]+/, '').trim();
+}
+
+function formatDisplayVersionStr(v) {
+  const norm = normalizeVersionStr(v);
+  return norm ? `v${norm}` : '';
+}
+
 function compareAppVersions(v1, v2) {
-  if (!v1 && !v2) return 0;
-  if (!v1) return -1;
-  if (!v2) return 1;
-  const p1 = v1.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
-  const p2 = v2.replace(/^[vV]/, '').split(/[-+]/)[0].split('.');
+  const s1 = normalizeVersionStr(v1);
+  const s2 = normalizeVersionStr(v2);
+  if (!s1 && !s2) return 0;
+  if (!s1) return -1;
+  if (!s2) return 1;
+  const p1 = s1.split(/[-+]/)[0].split('.');
+  const p2 = s2.split(/[-+]/)[0].split('.');
   const max = Math.max(p1.length, p2.length);
   for (let i = 0; i < max; i++) {
     const n1 = parseInt((p1[i] || '0').replace(/\D/g, ''), 10) || 0;
@@ -683,14 +695,14 @@ async function startJavaSupervisor() {
 
       if (cmp === 0) {
         // Case B: Matching version & verified RupeeCRM process
-        logMessage(`Legitimate RupeeCRM backend (v${runningVer}, PID ${procInfo.pid}) is active and matches packaged version. Reusing.`);
+        logMessage(`Legitimate RupeeCRM backend (${formatDisplayVersionStr(runningVer)}, PID ${procInfo.pid}) is active and matches packaged version. Reusing.`);
         backendHealthy = true;
         activeBackendIdentity = identity;
         return true;
       } else if (cmp > 0) {
         // Case C: Older version (e.g. running 1.0.340 while packaged is 1.0.347)
-        logMessage(`Active RupeeCRM backend (v${runningVer}) is older than packaged version (v${packagedVer}). Terminating older backend...`);
-        updateSplashStatus(`Updating RupeeCRM runtime from v${runningVer} to v${packagedVer}...`);
+        logMessage(`Active RupeeCRM backend (${formatDisplayVersionStr(runningVer)}) is older than packaged version (${formatDisplayVersionStr(packagedVer)}). Terminating older backend...`);
+        updateSplashStatus(`Updating RupeeCRM runtime from ${formatDisplayVersionStr(runningVer)} to ${formatDisplayVersionStr(packagedVer)}...`);
         const terminated = await terminateRupeeCRMProcess(procInfo);
         if (!terminated) {
           logMessage('Failed to release port from older RupeeCRM process.');
@@ -699,7 +711,7 @@ async function startJavaSupervisor() {
         }
       } else {
         // Case E: Running backend is newer than packaged Electron
-        logMessage(`Active RupeeCRM backend reports newer version (v${runningVer} > packaged v${packagedVer}). Retaining newer active backend under compatibility policy.`);
+        logMessage(`Active RupeeCRM backend reports newer version (${formatDisplayVersionStr(runningVer)} > packaged ${formatDisplayVersionStr(packagedVer)}). Retaining newer active backend under compatibility policy.`);
         backendHealthy = true;
         activeBackendIdentity = identity;
         return true;
@@ -750,6 +762,13 @@ async function startJavaSupervisor() {
 
     supervisorProcess.on('exit', (code, signal) => {
       logMessage(`Supervisor process exited with code ${code}, signal ${signal}`);
+      if (code === 10) {
+        logMessage('Supervisor process exited with code 10 (Update Restart requested). Restarting supervisor...');
+        supervisorProcess = null;
+        backendHealthy = false;
+        setTimeout(() => startSupervisor(), 1000);
+        return;
+      }
       supervisorProcess = null;
       backendHealthy = false;
       updateTrayMenu();
@@ -1674,7 +1693,7 @@ app.whenReady().then(async () => {
     createMainWindow();
   } else {
     if (activeBackendIdentity && activeBackendIdentity.version && compareAppVersions(app.getVersion(), activeBackendIdentity.version) !== 0) {
-      const msg = `Version integrity error: Installed backend (v${activeBackendIdentity.version}) does not match application (v${app.getVersion()}). Please run Repair or reinstall.`;
+      const msg = `Version integrity error: Installed backend (${formatDisplayVersionStr(activeBackendIdentity.version)}) does not match application (${formatDisplayVersionStr(app.getVersion())}). Please run Repair or reinstall.`;
       logMessage(`FATAL: ${msg}`);
       updateSplashStatus(msg, true);
     } else {

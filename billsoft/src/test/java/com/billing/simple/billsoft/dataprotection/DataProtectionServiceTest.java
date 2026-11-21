@@ -215,4 +215,42 @@ public class DataProtectionServiceTest {
         assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds(null));
         assertEquals(0, DataProtectionService.calculateDeterministicJitterSeconds("   "));
     }
+
+    @Test
+    public void testFallbackDiscoveryOfTimestampedBackup() throws Exception {
+        // Given no autobackup_latest.json, but a timestamped autobackup_20261121_120000.json
+        File timestampedBackup = new File(tempBackupDir, "autobackup_20261121_120000.json");
+        java.nio.file.Files.writeString(timestampedBackup.toPath(), "{\"firmName\":\"Auto Recovered Store\"}");
+
+        when(mockStorageProvider.uploadBackup(any(), any(), any()))
+                .thenReturn(BackupStorageProvider.UploadResult.ok("sha_timestamped"));
+
+        this.service = new DataProtectionService(mockEntitlement, mockStorageProvider, crypto, tempBackupDir, statusFile);
+
+        Map<String, Object> result = service.triggerBackupNow(true);
+        assertTrue((Boolean) result.get("success"), "Backup must succeed by discovering the timestamped backup");
+        assertNull(service.getCurrentStatus().getLastError(), "Error must be cleared on successful upload");
+        verify(mockStorageProvider, times(1)).uploadBackup(eq("MID-MACHINE-88"), any(), any());
+    }
+
+    @Test
+    public void testOnDemandAutoBackupTriggerWhenBackupsInitiallyMissing() {
+        com.billing.simple.billsoft.service.AutoBackupService mockAutoBackup = mock(com.billing.simple.billsoft.service.AutoBackupService.class);
+        doAnswer(invocation -> {
+            File backup = new File(tempBackupDir, "autobackup_latest.json");
+            java.nio.file.Files.writeString(backup.toPath(), "{\"firmName\":\"On Demand Store\"}");
+            return java.util.Collections.singletonMap("status", "HEALTHY");
+        }).when(mockAutoBackup).ensureTodayBackup();
+
+        when(mockStorageProvider.uploadBackup(any(), any(), any()))
+                .thenReturn(BackupStorageProvider.UploadResult.ok("sha_ondemand"));
+
+        this.service = new DataProtectionService(mockEntitlement, mockStorageProvider, crypto, tempBackupDir, statusFile);
+        service.setAutoBackupService(mockAutoBackup);
+
+        Map<String, Object> result = service.triggerBackupNow(true);
+        assertTrue((Boolean) result.get("success"), "Backup must succeed after on-demand auto-backup generation");
+        verify(mockAutoBackup, times(1)).ensureTodayBackup();
+        verify(mockStorageProvider, times(1)).uploadBackup(eq("MID-MACHINE-88"), any(), any());
+    }
 }

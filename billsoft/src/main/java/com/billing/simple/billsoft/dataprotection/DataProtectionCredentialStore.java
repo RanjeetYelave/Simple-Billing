@@ -54,11 +54,20 @@ public class DataProtectionCredentialStore {
     }
 
     private static File resolveConfigFile() {
-        File dir = LicensingConfig.getStorageDirectory();
-        if (!dir.exists()) {
-            dir.mkdirs();
+        File dataDir = LicensingConfig.getStorageDirectory();
+        File fileInData = new File(dataDir, CONFIG_FILE_NAME);
+        if (fileInData.exists() && fileInData.isFile()) {
+            return fileInData;
         }
-        return new File(dir, CONFIG_FILE_NAME);
+        File baseDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveBaseDirectory();
+        File fileInBase = new File(baseDir, CONFIG_FILE_NAME);
+        if (fileInBase.exists() && fileInBase.isFile()) {
+            return fileInBase;
+        }
+        if (!dataDir.exists()) {
+            dataDir.mkdirs();
+        }
+        return fileInData;
     }
 
     public String getCurrentToken() {

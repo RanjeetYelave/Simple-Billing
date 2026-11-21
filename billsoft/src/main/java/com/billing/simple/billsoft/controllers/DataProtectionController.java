@@ -48,6 +48,9 @@ public class DataProtectionController {
         this.authController = authController;
         this.appConfigRepo = appConfigRepo;
         this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        if (this.dataProtectionService != null && this.autoBackupService != null) {
+            this.dataProtectionService.setAutoBackupService(this.autoBackupService);
+        }
     }
 
     private boolean isMasterAuthorized(String masterPassword) {

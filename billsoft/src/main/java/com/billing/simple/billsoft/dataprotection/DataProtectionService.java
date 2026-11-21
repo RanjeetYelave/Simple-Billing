@@ -48,6 +48,9 @@ public class DataProtectionService {
 
     private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
 
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.service.AutoBackupService autoBackupService;
+
     private DataProtectionStatus currentStatus;
 
     @Autowired
@@ -76,9 +79,12 @@ public class DataProtectionService {
         }
     }
 
+    public void setAutoBackupService(com.billing.simple.billsoft.service.AutoBackupService autoBackupService) {
+        this.autoBackupService = autoBackupService;
+    }
+
     private static File resolveBackupDirectory() {
-        File dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
-        File dir = new File(dataDir, "backups");
+        File dir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveBackupsDirectory();
         if (!dir.exists()) {
             dir.mkdirs();
         }
@@ -211,11 +217,89 @@ public class DataProtectionService {
         }
     }
 
+    public File findLatestBackupFile() {
+        // 1. Primary: configured backup directory
+        if (backupDir != null) {
+            File primary = new File(backupDir, LATEST_BACKUP_NAME);
+            if (primary.exists() && primary.isFile() && primary.length() > 0) {
+                return primary;
+            }
+            File newestInBackupDir = scanNewestJsonBackup(backupDir);
+            if (newestInBackupDir != null) {
+                return newestInBackupDir;
+            }
+        }
+
+        // 2. Only search system fallback locations if backupDir is null or matches default directory
+        if (backupDir == null || backupDir.equals(resolveBackupDirectory())) {
+            File authBackupsDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveBackupsDirectory();
+            if (authBackupsDir != null && !authBackupsDir.equals(backupDir)) {
+                File authLatest = new File(authBackupsDir, LATEST_BACKUP_NAME);
+                if (authLatest.exists() && authLatest.isFile() && authLatest.length() > 0) {
+                    return authLatest;
+                }
+                File latestFromScan = scanNewestJsonBackup(authBackupsDir);
+                if (latestFromScan != null) {
+                    return latestFromScan;
+                }
+            }
+
+            File dataDir = com.billing.simple.billsoft.util.DataDirectoryResolver.resolveDataDirectory();
+            File legacyDir = new File(dataDir, "backups");
+            if (legacyDir.exists() && !legacyDir.equals(backupDir)) {
+                File legacyLatest = new File(legacyDir, LATEST_BACKUP_NAME);
+                if (legacyLatest.exists() && legacyLatest.isFile() && legacyLatest.length() > 0) {
+                    return legacyLatest;
+                }
+                File latestFromScan = scanNewestJsonBackup(legacyDir);
+                if (latestFromScan != null) {
+                    return latestFromScan;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private File scanNewestJsonBackup(File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) {
+            return null;
+        }
+        File[] files = dir.listFiles((d, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".json") && !lower.contains("status") && !lower.contains("cache");
+        });
+        if (files == null || files.length == 0) {
+            return null;
+        }
+        File newest = null;
+        for (File f : files) {
+            if (f.isFile() && f.length() > 0) {
+                if (newest == null || f.lastModified() > newest.lastModified()) {
+                    newest = f;
+                }
+            }
+        }
+        return newest;
+    }
+
     private boolean executeBackupProcess() {
         currentStatus.setLastAttemptAt(Instant.now());
-        File backupFile = new File(backupDir, LATEST_BACKUP_NAME);
+        File backupFile = findLatestBackupFile();
 
-        if (!backupFile.exists() || !backupFile.isFile() || backupFile.length() == 0) {
+        if (backupFile == null || !backupFile.exists() || !backupFile.isFile() || backupFile.length() == 0) {
+            if (autoBackupService != null) {
+                try {
+                    log.info("No local backup file found; generating immediate auto-backup...");
+                    autoBackupService.ensureTodayBackup();
+                    backupFile = findLatestBackupFile();
+                } catch (Exception e) {
+                    log.warn("Auto-backup generation failed: {}", e.getMessage());
+                }
+            }
+        }
+
+        if (backupFile == null || !backupFile.exists() || !backupFile.isFile() || backupFile.length() == 0) {
             currentStatus.setLastError(DataProtectionErrorCode.DP_001.formatMessage());
             saveStatus(currentStatus);
             return false;

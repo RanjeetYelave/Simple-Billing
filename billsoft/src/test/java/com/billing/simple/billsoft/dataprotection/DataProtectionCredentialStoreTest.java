@@ -140,6 +140,55 @@ public class DataProtectionCredentialStoreTest {
     }
 
     @Test
+    public void testFallbackKeyVerificationSucceeds() throws Exception {
+        DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair fallbackKp = kpg.generateKeyPair();
+        PublicKey fallbackPubKey = fallbackKp.getPublic();
+        PrivateKey fallbackPrivKey = fallbackKp.getPrivate();
+
+        String rawToken = "github_pat_FALLBACK_KEY_TOKEN_12345";
+        String maskedPayload = DataProtectionCredentialStore.maskPayload(rawToken);
+
+        // Sign with fallback private key (not masterPrivateKey)
+        String canonical = 1 + "\n" + maskedPayload.trim();
+        Signature sig = Signature.getInstance("Ed25519");
+        sig.initSign(fallbackPrivKey);
+        sig.update(canonical.getBytes(StandardCharsets.UTF_8));
+        String fallbackSig = Base64.getEncoder().encodeToString(sig.sign());
+
+        // Update passing primary and fallback keys
+        boolean updated = store.updateCredential(1, maskedPayload, fallbackSig, masterPublicKey, fallbackPubKey);
+        assertTrue(updated, "Update signed by fallback key must succeed when fallback key is provided");
+        assertEquals(1, store.getCurrentVersion());
+        assertEquals(rawToken, store.getCurrentToken());
+    }
+
+    @Test
+    public void testBothPrimaryAndFallbackMismatchRejected() throws Exception {
+        DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair otherKp = kpg.generateKeyPair();
+        KeyPair fallbackKp = kpg.generateKeyPair();
+
+        String rawToken = "github_pat_UNKNOWN_KEY_TOKEN";
+        String maskedPayload = DataProtectionCredentialStore.maskPayload(rawToken);
+
+        // Sign with an unrelated private key
+        String canonical = 1 + "\n" + maskedPayload.trim();
+        Signature sig = Signature.getInstance("Ed25519");
+        sig.initSign(otherKp.getPrivate());
+        sig.update(canonical.getBytes(StandardCharsets.UTF_8));
+        String invalidSig = Base64.getEncoder().encodeToString(sig.sign());
+
+        boolean updated = store.updateCredential(1, maskedPayload, invalidSig, masterPublicKey, fallbackKp.getPublic());
+        assertFalse(updated, "Update signed by unknown key must be rejected");
+        assertEquals(0, store.getCurrentVersion());
+    }
+
+    @Test
     public void testCorruptOrEmptyPayloadRejected() throws Exception {
         DataProtectionCredentialStore store = new DataProtectionCredentialStore(configFile);
         assertFalse(store.updateCredential(1, "", "sig", masterPublicKey));

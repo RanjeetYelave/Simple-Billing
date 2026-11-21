@@ -116,26 +116,59 @@ public class DataProtectionCredentialStore {
     }
 
     public synchronized boolean updateCredential(int newVersion, String protectedPayload, String signatureBase64, PublicKey masterKey) {
+        return updateCredential(newVersion, protectedPayload, signatureBase64, masterKey, null);
+    }
+
+    public synchronized boolean updateCredential(int newVersion, String protectedPayload, String signatureBase64, PublicKey masterKey, PublicKey fallbackMasterKey) {
         if (newVersion <= this.currentVersion) {
             return false;
         }
-        if (protectedPayload == null || protectedPayload.isBlank() || signatureBase64 == null || signatureBase64.isBlank() || masterKey == null) {
+        if (protectedPayload == null || protectedPayload.isBlank() || signatureBase64 == null || signatureBase64.isBlank() || (masterKey == null && fallbackMasterKey == null)) {
             log.warn("Invalid DP credential update payload");
             return false;
         }
 
+        boolean verified = false;
+        byte[] sigBytes;
         try {
-            String canonical = newVersion + "\n" + protectedPayload.trim();
-            Signature sig = Signature.getInstance("Ed25519");
-            sig.initVerify(masterKey);
-            sig.update(canonical.getBytes(StandardCharsets.UTF_8));
-            byte[] sigBytes = Base64.getDecoder().decode(signatureBase64.trim());
-            if (!sig.verify(sigBytes)) {
-                log.warn("Rejected DP credential update: Invalid Ed25519 signature");
-                return false;
-            }
+            sigBytes = Base64.getDecoder().decode(signatureBase64.trim());
         } catch (Exception e) {
-            log.warn("DP credential signature verification error: {}", e.getMessage());
+            log.warn("Invalid DP credential signature encoding: {}", e.getMessage());
+            return false;
+        }
+
+        String canonical = newVersion + "\n" + protectedPayload.trim();
+        byte[] canonicalBytes = canonical.getBytes(StandardCharsets.UTF_8);
+
+        if (masterKey != null) {
+            try {
+                Signature sig = Signature.getInstance("Ed25519");
+                sig.initVerify(masterKey);
+                sig.update(canonicalBytes);
+                if (sig.verify(sigBytes)) {
+                    verified = true;
+                }
+            } catch (Exception e) {
+                log.debug("Primary key verification failed: {}", e.getMessage());
+            }
+        }
+
+        if (!verified && fallbackMasterKey != null) {
+            try {
+                Signature sig = Signature.getInstance("Ed25519");
+                sig.initVerify(fallbackMasterKey);
+                sig.update(canonicalBytes);
+                if (sig.verify(sigBytes)) {
+                    verified = true;
+                    log.info("DP credential verified using fallback Ed25519 key");
+                }
+            } catch (Exception e) {
+                log.debug("Fallback key verification failed: {}", e.getMessage());
+            }
+        }
+
+        if (!verified) {
+            log.warn("Rejected DP credential update: Invalid Ed25519 signature");
             return false;
         }
 

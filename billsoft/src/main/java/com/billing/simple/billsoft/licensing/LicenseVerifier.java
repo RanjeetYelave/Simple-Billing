@@ -56,6 +56,10 @@ public class LicenseVerifier {
         return publicKey;
     }
 
+    public PublicKey getFallbackPublicKey() {
+        return fallbackPublicKey;
+    }
+
     /**
      * Builds the deterministic canonical newline-delimited payload for Schema 3 license signing and verification.
      */

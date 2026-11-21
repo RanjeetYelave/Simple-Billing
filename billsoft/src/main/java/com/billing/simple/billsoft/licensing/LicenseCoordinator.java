@@ -377,7 +377,7 @@ public class LicenseCoordinator implements DataProtectionEntitlement {
                         int ver = root.get("version").asInt();
                         String payload = root.get("protectedPayload").asText();
                         String sig = root.get("signature").asText();
-                        credentialStore.updateCredential(ver, payload, sig, licenseVerifier.getMasterPublicKey());
+                        credentialStore.updateCredential(ver, payload, sig, licenseVerifier.getMasterPublicKey(), licenseVerifier.getFallbackPublicKey());
                     }
                 }
             } catch (Exception ignored) {

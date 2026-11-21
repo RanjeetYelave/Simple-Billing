@@ -29,9 +29,26 @@ public class BackupArchiveService {
     private final ObjectMapper objectMapper;
     private final BackupValidationService backupValidationService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.dataprotection.DataProtectionCrypto crypto;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.licensing.DataProtectionEntitlement entitlement;
+
+    @org.springframework.beans.factory.annotation.Autowired
     public BackupArchiveService(ObjectMapper objectMapper, BackupValidationService backupValidationService) {
         this.objectMapper = objectMapper;
         this.backupValidationService = backupValidationService;
+    }
+
+    public BackupArchiveService(ObjectMapper objectMapper,
+                                BackupValidationService backupValidationService,
+                                com.billing.simple.billsoft.dataprotection.DataProtectionCrypto crypto,
+                                com.billing.simple.billsoft.licensing.DataProtectionEntitlement entitlement) {
+        this.objectMapper = objectMapper;
+        this.backupValidationService = backupValidationService;
+        this.crypto = crypto;
+        this.entitlement = entitlement;
     }
 
     /**
@@ -53,6 +70,8 @@ public class BackupArchiveService {
 
         if (isZip) {
             backup = extractFromZipArchive(allBytes);
+        } else if (isEncryptedContainer(allBytes, originalFilename)) {
+            backup = extractFromEncryptedContainer(allBytes);
         } else {
             try {
                 backup = objectMapper.readValue(allBytes, BackupDTO.class);
@@ -221,6 +240,30 @@ public class BackupArchiveService {
         } catch (Exception e) {
             throw new BackupValidationException("MALFORMED_BACKUP", "Failed to deserialize backup.json from archive: " + e.getMessage());
         }
+    }
+
+    private boolean isEncryptedContainer(byte[] bytes, String filename) {
+        if (bytes == null || bytes.length < 29) {
+            return false;
+        }
+        if (filename != null && filename.toLowerCase().endsWith(".enc")) {
+            return true;
+        }
+        return bytes[0] == 0x01 && (bytes[1] != '{' && bytes[1] != '[' && bytes[1] != '<');
+    }
+
+    private BackupDTO extractFromEncryptedContainer(byte[] allBytes) throws IOException {
+        if (crypto != null && entitlement != null && entitlement.getLicenseId() != null && !entitlement.getLicenseId().isBlank()) {
+            try {
+                javax.crypto.SecretKey key = crypto.deriveKeyFromLicenseId(entitlement.getLicenseId());
+                byte[] decrypted = crypto.decryptBackup(allBytes, key);
+                return extractAndValidateBackup(new ByteArrayInputStream(decrypted), "decrypted_backup.json");
+            } catch (Exception e) {
+                log.warn("Automatic decryption of uploaded container with active license failed: {}", e.getMessage());
+            }
+        }
+        throw new BackupValidationException("ENCRYPTED_CONTAINER",
+                "The uploaded file is an encrypted Data Protection container. Use SMT Emergency Recovery or Cloud Restore with the original License ID to restore this backup.");
     }
 
     public static String calculateSha256(byte[] data) {

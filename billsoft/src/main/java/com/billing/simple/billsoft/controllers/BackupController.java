@@ -63,7 +63,23 @@ public class BackupController {
         if (masterPassword == null || masterPassword.isBlank()) {
             masterPassword = request != null ? request.getParameter("masterPassword") : null;
         }
-        if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
+        boolean authorized = isMasterAuthorized(masterPassword);
+        if (!authorized && request != null) {
+            String token = request.getHeader("X-Auth-Token");
+            if (token == null || token.isBlank()) {
+                String authHeader = request.getHeader("Authorization");
+                if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                    token = authHeader.substring(7).trim();
+                }
+            }
+            if (token == null || token.isBlank()) {
+                token = request.getParameter("token");
+            }
+            if (token != null && !token.isBlank() && authController.isValidSessionToken(token)) {
+                authorized = true;
+            }
+        }
+        if (authController.isAuthEnabled() && !authorized) {
             Map<String, String> response = new HashMap<>();
             response.put("error", "Exporting firm backup requires password or master key authorization");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);

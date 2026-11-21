@@ -25,8 +25,16 @@ public class RollbackController {
         this.updateService = updateService;
     }
 
-    @PostMapping({"/rollbackNow", "/recovery/rollback"})
-    public ResponseEntity<Map<String, Object>> rollbackNow(
+    @PostMapping("/rollbackNow")
+    public ResponseEntity<Map<String, String>> rollbackNow() {
+        return ResponseEntity.ok(Map.of(
+                "status", "acknowledged",
+                "message", "Startup verification and binary rollback are supervisor-managed by LauncherMain"
+        ));
+    }
+
+    @PostMapping("/recovery/rollback")
+    public ResponseEntity<Map<String, Object>> recoveryRollback(
             @RequestParam(name = "confirmRollback", required = false, defaultValue = "false") boolean confirmRollback,
             @RequestParam(name = "reason", required = false, defaultValue = "Authorized emergency recovery rollback") String reason) {
         try {

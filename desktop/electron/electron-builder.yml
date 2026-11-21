@@ -47,7 +47,7 @@ nsis:
   include: scripts/installer.nsh
   oneClick: false
   perMachine: false
-  allowElevation: false
+  allowElevation: true
   allowToChangeInstallationDirectory: true
   installerIcon: assets/icon.ico
   uninstallerIcon: assets/icon.ico

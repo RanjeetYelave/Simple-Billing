@@ -55,6 +55,14 @@ class UpdateServiceTest {
         try {
             Files.deleteIfExists(service.getStateFilePath());
             Files.deleteIfExists(service.getHandoffFilePath());
+            Path txDir = service.getTxDirectory();
+            if (Files.exists(txDir)) {
+                try (var stream = Files.list(txDir)) {
+                    stream.forEach(f -> {
+                        try { Files.deleteIfExists(f); } catch (Exception ignored) {}
+                    });
+                }
+            }
         } catch (Exception ignored) {}
     }
 

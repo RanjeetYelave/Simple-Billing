@@ -19,7 +19,8 @@ import java.util.List;
 
 /**
  * Thread-safe implementation of DocumentSequenceService.
- * Synchronizes per partition key to serialize atomic document sequence allocation.
+ * Synchronizes per partition key to serialize atomic document sequence
+ * allocation.
  */
 @Service
 public class DocumentSequenceServiceImpl implements DocumentSequenceService {
@@ -32,9 +33,9 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     private final PurchaseOrderRepository poRepo;
 
     public DocumentSequenceServiceImpl(AppConfigRepository appConfigRepo,
-                                       InvoiceRepository invoiceRepo,
-                                       SalesReturnRepository salesReturnRepo,
-                                       PurchaseOrderRepository poRepo) {
+            InvoiceRepository invoiceRepo,
+            SalesReturnRepository salesReturnRepo,
+            PurchaseOrderRepository poRepo) {
         this.appConfigRepo = appConfigRepo;
         this.invoiceRepo = invoiceRepo;
         this.salesReturnRepo = salesReturnRepo;
@@ -50,7 +51,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     private String buildConfigKey(DocumentType type, Long firmId, LocalDate date) {
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
         switch (type) {
             case INVOICE:
                 return "LAST_INVOICE_SEQ_" + firmId + "_" + IndianFinancialYearUtils.getFinancialYear(date);
@@ -66,7 +68,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     private String formatCandidate(DocumentType type, long seq, LocalDate date) {
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
         switch (type) {
             case INVOICE:
                 return String.format("INV-%04d", seq);
@@ -97,7 +100,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     private long parseLongSafe(String val) {
-        if (val == null || val.trim().isEmpty()) return 0L;
+        if (val == null || val.trim().isEmpty())
+            return 0L;
         try {
             return Long.parseLong(val.trim());
         } catch (NumberFormatException e) {
@@ -106,7 +110,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     private long scanDatabaseMax(DocumentType type, Long firmId, LocalDate date) {
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
         long dbMax = 0L;
         switch (type) {
             case INVOICE: {
@@ -116,14 +121,18 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
                         if (num != null && num.trim().startsWith("INV-")) {
                             try {
                                 long seq = Long.parseLong(num.trim().substring(4).trim());
-                                if (seq > dbMax) dbMax = seq;
-                            } catch (NumberFormatException ignored) {}
+                                if (seq > dbMax)
+                                    dbMax = seq;
+                            } catch (NumberFormatException ignored) {
+                            }
                         }
                     }
                 }
                 String legacyKey = "LAST_INVOICE_SEQ_" + firmId;
-                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe).orElse(0L);
-                if (legacy > dbMax) dbMax = legacy;
+                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe)
+                        .orElse(0L);
+                if (legacy > dbMax)
+                    dbMax = legacy;
                 break;
             }
             case ESTIMATE: {
@@ -133,28 +142,37 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
                         if (num != null && num.trim().startsWith("EST-")) {
                             try {
                                 long seq = Long.parseLong(num.trim().substring(4).trim());
-                                if (seq > dbMax) dbMax = seq;
-                            } catch (NumberFormatException ignored) {}
+                                if (seq > dbMax)
+                                    dbMax = seq;
+                            } catch (NumberFormatException ignored) {
+                            }
                         }
                     }
                 }
                 String legacyKey = "LAST_ESTIMATE_SEQ_" + firmId;
-                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe).orElse(0L);
-                if (legacy > dbMax) dbMax = legacy;
+                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe)
+                        .orElse(0L);
+                if (legacy > dbMax)
+                    dbMax = legacy;
                 break;
             }
             case SALES_RETURN: {
                 String legacyKey = "LAST_RETURN_SEQ_" + firmId;
-                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe).orElse(0L);
-                if (legacy > dbMax) dbMax = legacy;
+                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe)
+                        .orElse(0L);
+                if (legacy > dbMax)
+                    dbMax = legacy;
                 break;
             }
             case PURCHASE_ORDER: {
                 long count = poRepo.countByFirmId(firmId);
-                if (count > dbMax) dbMax = count;
+                if (count > dbMax)
+                    dbMax = count;
                 String legacyKey = "LAST_PO_SEQ_" + firmId;
-                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe).orElse(0L);
-                if (legacy > dbMax) dbMax = legacy;
+                long legacy = appConfigRepo.findById(legacyKey).map(AppConfig::getConfigValue).map(this::parseLongSafe)
+                        .orElse(0L);
+                if (legacy > dbMax)
+                    dbMax = legacy;
                 break;
             }
         }
@@ -164,7 +182,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     @Override
     public String generateNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
         String configKey = buildConfigKey(type, safeFirmId, date);
 
         synchronized (configKey.intern()) {
@@ -212,7 +231,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     @Transactional(readOnly = true)
     public String peekNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
         String configKey = buildConfigKey(type, safeFirmId, date);
 
         long lastSeq = appConfigRepo.findById(configKey)
@@ -235,9 +255,11 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
 
     @Override
     public void syncSequenceIfApplicable(DocumentType type, Long firmId, String number, LocalDate date) {
-        if (number == null || number.trim().isEmpty()) return;
+        if (number == null || number.trim().isEmpty())
+            return;
         Long safeFirmId = resolveSafeFirmId(firmId);
-        if (date == null) date = LocalDate.now();
+        if (date == null)
+            date = LocalDate.now();
 
         long extractedSeq = 0L;
         String trimmed = number.trim();
@@ -269,7 +291,8 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
             return;
         }
 
-        if (extractedSeq <= 0) return;
+        if (extractedSeq <= 0)
+            return;
 
         String configKey = buildConfigKey(type, safeFirmId, date);
         synchronized (configKey.intern()) {

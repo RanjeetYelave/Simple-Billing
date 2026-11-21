@@ -137,8 +137,14 @@ public final class UpdateManifest {
         if (!UpdateCrypto.verifySignature(manifestBytes, signatureBase64, trustedKey)) {
             throw new GeneralSecurityException("Ed25519 signature verification failed for update manifest");
         }
-        String json = new String(manifestBytes, StandardCharsets.UTF_8);
-        return parse(json);
+        return parse(manifestBytes);
+    }
+
+    public static UpdateManifest parse(byte[] manifestBytes) {
+        if (manifestBytes == null) {
+            throw new IllegalArgumentException("Manifest bytes must not be null");
+        }
+        return parse(new String(manifestBytes, StandardCharsets.UTF_8));
     }
 
     public static UpdateManifest parse(String json) {

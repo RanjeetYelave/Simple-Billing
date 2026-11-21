@@ -35671,6 +35671,9 @@ function PartyDetailModal({
           if (res.success) {
             if (res.token) {
               API.token = res.token;
+              if (window.rupeeDesktop && window.rupeeDesktop.setSessionToken) {
+                window.rupeeDesktop.setSessionToken(res.token);
+              }
               sessionStorage.setItem('isAuthenticated', 'true');
               localStorage.setItem('isAuthenticated', 'true');
               const now = Date.now();
@@ -36934,7 +36937,12 @@ function PartyDetailModal({
         try {
           const res = await API.auth.login(null, password);
           if (res && (res.token || res.success)) {
-            if (res.token) API.token = res.token;
+            if (res.token) {
+              API.token = res.token;
+              if (window.rupeeDesktop && window.rupeeDesktop.setSessionToken) {
+                window.rupeeDesktop.setSessionToken(res.token);
+              }
+            }
             sessionStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('isAuthenticated', 'true');
             sessionStorage.removeItem('isSessionLocked');
@@ -38181,6 +38189,9 @@ function PartyDetailModal({
                 if (importRes.error) throw new Error(importRes.error);
                 if (importRes && importRes.token) {
                   API.token = importRes.token;
+                  if (window.rupeeDesktop && window.rupeeDesktop.setSessionToken) {
+                    window.rupeeDesktop.setSessionToken(importRes.token);
+                  }
                 }
                 const list = await API.firm.list();
                 if (list && list.length) {
@@ -42241,7 +42252,8 @@ function PartyDetailModal({
         if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.selectManualPackage) {
           setManualStaging(true);
           try {
-            const res = await window.rupeeDesktop.updater.selectManualPackage({ confirmReplace });
+            const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
+            const res = await window.rupeeDesktop.updater.selectManualPackage({ confirmReplace, token: authToken });
             if (res && res.cancelled) {
               setManualStaging(false);
               return;
@@ -48446,8 +48458,9 @@ function PartyDetailModal({
         });
         startRestartPolling(targetVer);
         try {
+          const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
           if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.install) {
-            await window.rupeeDesktop.updater.install({ targetVersion: targetVer });
+            await window.rupeeDesktop.updater.install({ targetVersion: targetVer, token: authToken });
           } else {
             await API.system.installUpdate();
           }
@@ -48468,7 +48481,12 @@ function PartyDetailModal({
       const handleCancelUpdate = async () => {
         setIsBackgroundDownloading(false);
         try {
-          await API.system.cancelUpdate();
+          const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
+          if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.cancel) {
+            await window.rupeeDesktop.updater.cancel({ token: authToken });
+          } else {
+            await API.system.cancelUpdate();
+          }
         } catch (e) {
           console.warn('Failed to call cancelUpdate:', e);
         }
@@ -48483,8 +48501,9 @@ function PartyDetailModal({
 
       const handlePauseUpdate = async () => {
         try {
+          const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
           if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.pause) {
-            await window.rupeeDesktop.updater.pause();
+            await window.rupeeDesktop.updater.pause({ token: authToken });
           } else {
             await API.system.pauseUpdate();
           }
@@ -48496,8 +48515,9 @@ function PartyDetailModal({
 
       const handleResumeUpdate = async () => {
         try {
+          const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
           if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.resume) {
-            await window.rupeeDesktop.updater.resume();
+            await window.rupeeDesktop.updater.resume({ token: authToken });
           } else {
             await API.system.resumeUpdate();
           }
@@ -48509,8 +48529,9 @@ function PartyDetailModal({
 
       const handleRetryUpdate = async () => {
         try {
+          const authToken = (typeof API !== 'undefined' && API && API.token) || (window.localStorage && window.localStorage.getItem('billsoft_auth_token')) || '';
           if (window.rupeeDesktop && window.rupeeDesktop.updater && window.rupeeDesktop.updater.retry) {
-            await window.rupeeDesktop.updater.retry();
+            await window.rupeeDesktop.updater.retry({ token: authToken });
           } else {
             await API.system.retryUpdate();
           }

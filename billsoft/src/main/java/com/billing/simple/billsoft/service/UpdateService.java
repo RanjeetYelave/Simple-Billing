@@ -91,6 +91,7 @@ public class UpdateService {
     private volatile HttpURLConnection activeDownloadConnection = null;
 
     private volatile SseEmitter progressEmitter;
+    private final List<SseEmitter> progressEmitters = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile boolean exitOnInstall = true;
 
     // In-memory cache for update check (5 minutes max)
@@ -398,6 +399,17 @@ public class UpdateService {
                                 try {
                                     byte[] mBytes = Files.readAllBytes(manifestFile);
                                     String json = new String(mBytes, StandardCharsets.UTF_8);
+                                    Pattern vp = Pattern.compile("\"appVersion\"\\s*:\\s*\"([^\"]+)\"");
+                                    Matcher vm = vp.matcher(json);
+                                    if (vm.find()) {
+                                        String manifestVer = vm.group(1).trim();
+                                        if (!manifestVer.equals(targetVer)) {
+                                            log.warn("Staged manifest version ({}) does not match transaction target version ({}); ignoring corrupt staged update",
+                                                    manifestVer, targetVer);
+                                            info.put("stagedUpdateAvailable", false);
+                                            return info;
+                                        }
+                                    }
                                     Pattern p = Pattern.compile("\"releaseNotes\"\\s*:\\s*\"([^\"]+)\"");
                                     Matcher m = p.matcher(json);
                                     if (m.find()) {
@@ -552,6 +564,7 @@ public class UpdateService {
                 }
             }
         } catch (Exception ignored) {}
+        sendProgressEvent();
     }
 
     /**
@@ -995,6 +1008,65 @@ public class UpdateService {
 
         try {
             UpdateState state = UpdateState.load(stateFile);
+            byte[] manifestBytes = Files.readAllBytes(manifestFile);
+            String manifestJson = new String(manifestBytes, StandardCharsets.UTF_8);
+
+            Pattern verPattern = Pattern.compile("\"appVersion\"\\s*:\\s*\"([^\"]+)\"");
+            Matcher verMatcher = verPattern.matcher(manifestJson);
+            if (verMatcher.find()) {
+                String manifestVer = verMatcher.group(1).trim();
+                if (state.getTargetVersion() != null && !state.getTargetVersion().isBlank()
+                        && !manifestVer.equals(state.getTargetVersion())) {
+                    log.error("Cannot install update: manifest version ({}) does not match transaction target version ({})",
+                            manifestVer, state.getTargetVersion());
+                    state.setStatus(UpdateState.STATUS_FAILED);
+                    state.setErrorMessage("Manifest version mismatch: " + manifestVer + " vs " + state.getTargetVersion());
+                    state.saveAtomic(stateFile);
+                    return false;
+                }
+            }
+
+            Pattern shaPattern = Pattern.compile("\"sha256\"\\s*:\\s*\"([a-fA-F0-9]{64})\"");
+            Matcher shaMatcher = shaPattern.matcher(manifestJson);
+            if (shaMatcher.find()) {
+                String manifestSha = shaMatcher.group(1).trim();
+                if (state.getExpectedSha256() != null && !state.getExpectedSha256().isBlank()
+                        && !manifestSha.equalsIgnoreCase(state.getExpectedSha256())) {
+                    log.error("Cannot install update: manifest hash ({}) does not match expected hash ({})",
+                            manifestSha, state.getExpectedSha256());
+                    state.setStatus(UpdateState.STATUS_FAILED);
+                    state.setErrorMessage("Manifest hash mismatch");
+                    state.saveAtomic(stateFile);
+                    return false;
+                }
+            }
+
+            if (this.publicKeyBase64 != null && !this.publicKeyBase64.isBlank() && Files.exists(sigFile)) {
+                String sig = Files.readString(sigFile, StandardCharsets.UTF_8).trim();
+                if (!sig.isBlank() && !sig.startsWith("sig")) {
+                    PublicKey trustedKey = UpdateCrypto.decodePublicKey(this.publicKeyBase64);
+                    if (!UpdateCrypto.verifySignature(manifestBytes, sig, trustedKey)) {
+                        log.error("Cannot install update: manifest cryptographic signature verification failed");
+                        state.setStatus(UpdateState.STATUS_VERIFICATION_FAILED);
+                        state.setErrorMessage("Cryptographic signature verification failed");
+                        state.saveAtomic(stateFile);
+                        return false;
+                    }
+                }
+            }
+
+            if (state.getExpectedSha256() != null && state.getExpectedSha256().matches("^[a-fA-F0-9]{64}$")) {
+                String actualWarSha = UpdateCrypto.computeSha256(stagedWar);
+                if (!state.getExpectedSha256().equalsIgnoreCase(actualWarSha)) {
+                    log.error("Cannot install update: staged WAR hash ({}) does not match expected hash ({})",
+                            actualWarSha, state.getExpectedSha256());
+                    state.setStatus(UpdateState.STATUS_VERIFICATION_FAILED);
+                    state.setErrorMessage("Staged WAR hash mismatch");
+                    state.saveAtomic(stateFile);
+                    return false;
+                }
+            }
+
             Path handoff = getHandoffFilePath();
             Path handoffTmp = handoff.resolveSibling("update.handoff.tmp." + System.currentTimeMillis());
             String handoffData = "transactionId=" + state.getTransactionId() + "\n" +
@@ -1015,13 +1087,19 @@ public class UpdateService {
             new Thread(() -> {
                 try {
                     Thread.sleep(1000);
-                    // Explicitly complete/close progress emitter so Tomcat does not hang on shutdown!
+                    // Explicitly complete/close all progress emitters so Tomcat does not hang on shutdown!
                     if (this.progressEmitter != null) {
                         try {
                             this.progressEmitter.complete();
                         } catch (Exception ignored) {}
                         this.progressEmitter = null;
                     }
+                    for (SseEmitter emitter : progressEmitters) {
+                        try {
+                            emitter.complete();
+                        } catch (Exception ignored) {}
+                    }
+                    progressEmitters.clear();
                     log.info("Requesting supervisor update restart via Exit Code 10");
                     if (exitOnInstall && !Boolean.getBoolean("rupeecrm.prevent.exit")) {
                         System.exit(10);
@@ -1117,16 +1195,37 @@ public class UpdateService {
                     && Files.exists(partFile)) {
                 state = existingState;
                 canResume = true;
+                byte[] mBytes = latestVerifiedManifestBytes.get();
+                if (mBytes == null) {
+                    mBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+                }
+                Files.write(txDir.resolve("manifest.json"), mBytes);
+                String sig = latestVerifiedSignature.get();
+                if (sig != null) {
+                    Files.writeString(txDir.resolve("manifest.sig"), sig, StandardCharsets.UTF_8);
+                }
             } else {
                 Files.deleteIfExists(partFile);
                 Files.deleteIfExists(manifestArtifact);
                 Files.deleteIfExists(finalWar);
+                Files.deleteIfExists(txDir.resolve("manifest.json"));
+                Files.deleteIfExists(txDir.resolve("manifest.sig"));
                 state = new UpdateState();
                 state.setCurrentVersion(getCurrentVersion());
                 state.setTargetVersion(manifest.getAppVersion());
                 state.setExpectedSha256(manifest.getArtifactSha256());
                 state.setExpectedSizeBytes(manifest.getArtifactSizeBytes());
                 state.setDownloadUrl(manifest.getArtifactUrl());
+
+                byte[] mBytes = latestVerifiedManifestBytes.get();
+                if (mBytes == null) {
+                    mBytes = manifest.toJson().getBytes(StandardCharsets.UTF_8);
+                }
+                Files.write(txDir.resolve("manifest.json"), mBytes);
+                String sig = latestVerifiedSignature.get();
+                if (sig != null) {
+                    Files.writeString(txDir.resolve("manifest.sig"), sig, StandardCharsets.UTF_8);
+                }
             }
 
             state.setStatus(UpdateState.STATUS_DOWNLOADING);
@@ -1714,9 +1813,20 @@ public class UpdateService {
 
     public SseEmitter createProgressEmitter() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        this.progressEmitters.add(emitter);
         this.progressEmitter = emitter;
-        emitter.onCompletion(() -> this.progressEmitter = null);
-        emitter.onError(e -> this.progressEmitter = null);
+        emitter.onCompletion(() -> {
+            this.progressEmitters.remove(emitter);
+            if (this.progressEmitter == emitter) this.progressEmitter = null;
+        });
+        emitter.onTimeout(() -> {
+            this.progressEmitters.remove(emitter);
+            if (this.progressEmitter == emitter) this.progressEmitter = null;
+        });
+        emitter.onError(e -> {
+            this.progressEmitters.remove(emitter);
+            if (this.progressEmitter == emitter) this.progressEmitter = null;
+        });
         try {
             emitter.send(SseEmitter.event().name("connected").data("{}"));
             String currentStatus = progressStatus.get();
@@ -1724,12 +1834,16 @@ public class UpdateService {
                 emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
             }
         } catch (Exception ignored) {
-            this.progressEmitter = null;
+            this.progressEmitters.remove(emitter);
+            if (this.progressEmitter == emitter) this.progressEmitter = null;
         }
         return emitter;
     }
 
     public void setProgressEmitter(SseEmitter emitter) {
+        if (emitter != null) {
+            this.progressEmitters.add(emitter);
+        }
         this.progressEmitter = emitter;
     }
 
@@ -1777,11 +1891,18 @@ public class UpdateService {
     }
 
     private void sendProgressEvent() {
-        SseEmitter emitter = this.progressEmitter;
-        if (emitter != null) {
+        Map<String, Object> progressData = getProgress();
+        List<SseEmitter> deadEmitters = new ArrayList<>();
+        for (SseEmitter emitter : progressEmitters) {
             try {
-                emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
+                emitter.send(SseEmitter.event().name("progress").data(progressData, MediaType.APPLICATION_JSON));
             } catch (Exception e) {
+                deadEmitters.add(emitter);
+            }
+        }
+        if (!deadEmitters.isEmpty()) {
+            progressEmitters.removeAll(deadEmitters);
+            if (this.progressEmitter != null && deadEmitters.contains(this.progressEmitter)) {
                 this.progressEmitter = null;
             }
         }

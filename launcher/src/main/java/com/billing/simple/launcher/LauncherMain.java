@@ -436,7 +436,85 @@ public class LauncherMain {
         pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logsDir.resolve("backend-stdout.log").toFile()));
         pb.redirectError(ProcessBuilder.Redirect.appendTo(logsDir.resolve("backend-stderr.log").toFile()));
 
+        ensurePortAvailable(PORT);
+
         return pb.start();
+    }
+
+    public static boolean isPortAvailable(int port) {
+        try (ServerSocket ss = new ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))) {
+            ss.setReuseAddress(true);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private void ensurePortAvailable(int port) {
+        if (isPortAvailable(port)) {
+            return;
+        }
+        System.out.println("Port " + port + " is currently occupied. Attempting graceful release before launching backend...");
+        triggerGracefulHttpShutdown();
+        long start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < 3000) {
+            if (isPortAvailable(port)) {
+                System.out.println("Port " + port + " was released successfully.");
+                return;
+            }
+            try { Thread.sleep(250); } catch (InterruptedException ignored) {}
+        }
+
+        System.out.println("Port " + port + " remains in use. Forcibly terminating conflicting process holding port...");
+        forceFreePort(port);
+
+        start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < 5000) {
+            if (isPortAvailable(port)) {
+                System.out.println("Port " + port + " is now free.");
+                return;
+            }
+            try { Thread.sleep(250); } catch (InterruptedException ignored) {}
+        }
+        System.err.println("Warning: Port " + port + " could not be confirmed free before launching backend.");
+    }
+
+    private void forceFreePort(int port) {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
+            try {
+                String cmd = "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+                        + "\"$c = Get-NetTCPConnection -LocalPort " + port + " -State Listen -ErrorAction SilentlyContinue; "
+                        + "if ($c) { $p = Get-CimInstance Win32_Process -Filter \\\"ProcessId = $($c.OwningProcess)\\\" -ErrorAction SilentlyContinue; "
+                        + "if ($p -and ($p.CommandLine -match '(?i)(rupeecrm|billsoft|java)')) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } }\"";
+                Process p = new ProcessBuilder("cmd.exe", "/c", cmd).start();
+                p.waitFor(3, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                System.err.println("Notice: Could not force free port on Windows: " + e.getMessage());
+            }
+        } else {
+            try {
+                Process p = new ProcessBuilder("/bin/sh", "-c", "lsof -ti tcp:" + port + " | xargs kill -9 2>/dev/null").start();
+                p.waitFor(2, TimeUnit.SECONDS);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void logRecentStderrLines() {
+        try {
+            Path stderrLog = getLogsDirectory().resolve("backend-stderr.log");
+            if (Files.exists(stderrLog)) {
+                List<String> allLines = Files.readAllLines(stderrLog, StandardCharsets.UTF_8);
+                int count = Math.min(allLines.size(), 40);
+                System.err.println("=== Recent Backend STDERR Output (Last " + count + " lines) ===");
+                for (int i = allLines.size() - count; i < allLines.size(); i++) {
+                    System.err.println(allLines.get(i));
+                }
+                System.err.println("===============================================================");
+            }
+        } catch (Exception e) {
+            System.err.println("Notice: Could not read backend-stderr.log: " + e.getMessage());
+        }
     }
 
     public synchronized void stopBackend() {
@@ -519,6 +597,21 @@ public class LauncherMain {
                 // Backend still initializing
             }
             try {
+                URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/runtime-identity");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(2000);
+                conn.setReadTimeout(2000);
+                conn.setRequestMethod("GET");
+                if (conn.getResponseCode() == 200) {
+                    String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    if (body.contains("\"appVersion\":\"" + candidateVersion + "\"") ||
+                        body.contains("\"appVersion\":\"v" + candidateVersion + "\"") ||
+                        body.contains(candidateVersion)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {}
+            try {
                 URL url = new URL("http://127.0.0.1:" + PORT + "/api/system/update-diagnostics");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(2000);
@@ -554,6 +647,7 @@ public class LauncherMain {
         while (System.currentTimeMillis() - start < maxMs) {
             if (backendProcess != null && !backendProcess.isAlive()) {
                 System.err.println("Backend process terminated unexpectedly (exit code: " + backendProcess.exitValue() + ")");
+                logRecentStderrLines();
                 return false;
             }
             if (isBackendHealthy(1000)) {

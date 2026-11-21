@@ -437,19 +437,27 @@ function cleanLegacyStartupEntries() {
   }
 }
 
-function sendBackendRequest(method, reqPath, postData = null, timeoutMs = 4000) {
+let currentSessionToken = null;
+
+function sendBackendRequest(method, reqPath, postData = null, timeoutMs = 4000, authToken = null) {
   return new Promise((resolve, reject) => {
     try {
+      const token = authToken || currentSessionToken;
+      const headers = {
+        'User-Agent': 'RupeeCRM-Desktop-Electron',
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        headers['X-Auth-Token'] = token;
+      }
       const options = {
         hostname: '127.0.0.1',
         port: PORT,
         path: reqPath,
         method: method,
         timeout: timeoutMs,
-        headers: {
-          'User-Agent': 'RupeeCRM-Desktop-Electron',
-          'Content-Type': 'application/json'
-        }
+        headers: headers
       };
       if (postData) {
         const bodyStr = typeof postData === 'string' ? postData : JSON.stringify(postData);
@@ -1226,28 +1234,41 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  // Session Token Synchronization
+  ipcMain.on('session:set-token', (event, token) => {
+    if (typeof token === 'string' && token.trim().length > 0) {
+      currentSessionToken = token.trim();
+    }
+  });
+
   // OTA Updater IPC Handlers
-  ipcMain.handle('updater:pause', async () => {
+  ipcMain.handle('updater:pause', async (event, payload = {}) => {
     try {
-      const res = await sendBackendRequest('POST', '/api/system/pause-update');
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
+      const res = await sendBackendRequest('POST', '/api/system/pause-update', null, 4000, token);
       return res.body;
     } catch (e) {
       return { error: e.message };
     }
   });
 
-  ipcMain.handle('updater:resume', async () => {
+  ipcMain.handle('updater:resume', async (event, payload = {}) => {
     try {
-      const res = await sendBackendRequest('POST', '/api/system/resume-update');
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
+      const res = await sendBackendRequest('POST', '/api/system/resume-update', null, 4000, token);
       return res.body;
     } catch (e) {
       return { error: e.message };
     }
   });
 
-  ipcMain.handle('updater:retry', async () => {
+  ipcMain.handle('updater:retry', async (event, payload = {}) => {
     try {
-      const res = await sendBackendRequest('POST', '/api/system/retry-update');
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
+      const res = await sendBackendRequest('POST', '/api/system/retry-update', null, 4000, token);
       return res.body;
     } catch (e) {
       return { error: e.message };
@@ -1256,16 +1277,18 @@ function registerIpcHandlers() {
 
   let activeUpdateSession = null;
 
-  ipcMain.handle('updater:install', async (event, payload) => {
+  ipcMain.handle('updater:install', async (event, payload = {}) => {
     try {
       activeUpdateSession = {
         startTime: Date.now(),
         lastStatus: 'APPLYING_UPDATE'
       };
       logMessage('[Updater] Update activation requested by user.');
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
       const targetVersion = (payload && payload.targetVersion) ? payload.targetVersion : null;
       const endpoint = targetVersion ? `/api/system/install-update?targetVersion=${encodeURIComponent(targetVersion)}` : '/api/system/install-update';
-      const res = await sendBackendRequest('POST', endpoint);
+      const res = await sendBackendRequest('POST', endpoint, null, 10000, token);
       return res.body;
     } catch (e) {
       activeUpdateSession = null;
@@ -1273,19 +1296,23 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('updater:cancel', async () => {
+  ipcMain.handle('updater:cancel', async (event, payload = {}) => {
     try {
       activeUpdateSession = null;
-      const res = await sendBackendRequest('POST', '/api/system/cancel-update');
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
+      const res = await sendBackendRequest('POST', '/api/system/cancel-update', null, 4000, token);
       return res.body;
     } catch (e) {
       return { error: e.message };
     }
   });
 
-  ipcMain.handle('updater:diagnostics', async () => {
+  ipcMain.handle('updater:diagnostics', async (event, payload = {}) => {
     try {
-      const res = await sendBackendRequest('GET', '/api/system/update-diagnostics', null, 2500);
+      const token = payload && (payload.token || payload.authToken);
+      if (token) currentSessionToken = token;
+      const res = await sendBackendRequest('GET', '/api/system/update-diagnostics', null, 2500, token);
       return res.body;
     } catch (e) {
       // Backend offline or restarting: read durable transaction state directly from staging directory on disk
@@ -1315,6 +1342,10 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:select-manual-package', async (event, options = {}) => {
     try {
       const confirmReplace = Boolean(options && options.confirmReplace);
+      const token = options && (options.token || options.authToken);
+      if (token) {
+        currentSessionToken = token;
+      }
       const res = await dialog.showOpenDialog(mainWindow, {
         title: 'Select RupeeCRM Update Package',
         filters: [
@@ -1346,7 +1377,8 @@ function registerIpcHandlers() {
         'POST',
         `/api/system/manual-update/stage-local?packagePath=${encodeURIComponent(filePath)}${confirmReplace ? '&confirmReplace=true' : ''}`,
         null,
-        60000 // 60s timeout for large file verification
+        60000, // 60s timeout for large file verification
+        token
       );
 
       return backendRes.body;

@@ -54,6 +54,13 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
     return ipcRenderer.invoke('pdf:print', { ...(payload || {}), options: options || (payload && payload.options) });
   },
 
+  // Session Token Synchronization
+  setSessionToken: (token) => {
+    if (typeof token === 'string') {
+      ipcRenderer.send('session:set-token', token);
+    }
+  },
+
   // OTA Updater Controls
   updater: {
     pause: () => ipcRenderer.invoke('updater:pause'),

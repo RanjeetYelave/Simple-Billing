@@ -34415,6 +34415,13 @@ function PartyDetailModal({
       const [showRestoreModal, setShowRestoreModal] = useState(false);
       const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
 
+      // Manual Export States
+      const [showExportAuthModal, setShowExportAuthModal] = useState(false);
+      const [exportType, setExportType] = useState('firm'); // 'firm' | 'all'
+      const [exportPassword, setExportPassword] = useState('');
+      const [exporting, setExporting] = useState(false);
+      const [exportError, setExportError] = useState(null);
+
       const loadAutoStatus = async () => {
         try {
           const res = await API.backup.autoStatus();
@@ -34539,8 +34546,51 @@ function PartyDetailModal({
         }
       };
 
-      const handleExport = () => { window.location.href = API.backup.exportUrl(); showToast('Exporting current firm backup...', 'info'); };
-      const handleExportAll = () => { window.location.href = API.backup.exportAllUrl(); showToast('Exporting full system multi-firm backup...', 'info'); };
+      const executeExport = async (type, password) => {
+        setExporting(true);
+        setExportError(null);
+        showToast(type === 'firm' ? 'Exporting current firm backup...' : 'Exporting full system multi-firm backup...', 'info');
+        try {
+          if (type === 'firm') {
+            await API.backup.exportFirm(null, password);
+          } else {
+            await API.backup.exportAll(password);
+          }
+          showToast('Backup exported and downloaded successfully!', 'success');
+          setShowExportAuthModal(false);
+          setExportPassword('');
+        } catch (err) {
+          const msg = err.message || 'Export failed';
+          setExportError(msg);
+          showToast('Export failed: ' + msg, 'error');
+        } finally {
+          setExporting(false);
+        }
+      };
+
+      const handleExport = () => {
+        if (exporting) return;
+        setExportType('firm');
+        setExportPassword('');
+        setExportError(null);
+        if (authEnabled) {
+          setShowExportAuthModal(true);
+        } else {
+          executeExport('firm', '');
+        }
+      };
+
+      const handleExportAll = () => {
+        if (exporting) return;
+        setExportType('all');
+        setExportPassword('');
+        setExportError(null);
+        if (authEnabled) {
+          setShowExportAuthModal(true);
+        } else {
+          executeExport('all', '');
+        }
+      };
       const handleImportClick = () => { fileInputRef.current.click(); };
 
       const handleFileChange = async (e) => {
@@ -34939,8 +34989,16 @@ function PartyDetailModal({
                 React.createElement('p', { style: { color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 } }, 'Download a portable JSON backup file.')
               ),
               React.createElement('div', { style: { display: 'flex', gap: 8 } },
-                React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: handleExport }, 'Export Current Firm'),
-                React.createElement('button', { className: 'btn btn-primary btn-sm', onClick: handleExportAll }, 'Export All Firms')
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
+                  onClick: handleExport,
+                  disabled: exporting
+                }, exporting && exportType === 'firm' ? '⏳ Exporting...' : 'Export Current Firm'),
+                React.createElement('button', {
+                  className: 'btn btn-primary btn-sm',
+                  onClick: handleExportAll,
+                  disabled: exporting
+                }, exporting && exportType === 'all' ? '⏳ Exporting...' : 'Export All Firms')
               )
             ),
 
@@ -35304,6 +35362,89 @@ function PartyDetailModal({
                 disabled: loading,
                 onClick: executeSelectiveRestore
               }, loading ? '⏳ Processing...' : (restoreMode === 'clean_wipe' ? `⚠️ Confirm Wipe & Restore (${selectedFirms.size})` : `Confirm & Restore (${selectedFirms.size})`))
+            )
+          )
+        ),
+
+        showExportAuthModal && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('export_auth_modal', 'confirm') : 10300 }
+        },
+          React.createElement('div', { className: 'modal', style: { maxWidth: 460 } },
+            React.createElement('div', { className: 'modal-header' },
+              React.createElement('div', { className: 'modal-title' },
+                '🔒 Authorize Backup Export'
+              ),
+              React.createElement('button', {
+                className: 'modal-close',
+                disabled: exporting,
+                onClick: () => !exporting && setShowExportAuthModal(false)
+              }, '✕')
+            ),
+            React.createElement('form', {
+              onSubmit: (e) => {
+                e.preventDefault();
+                if (!exporting) executeExport(exportType, exportPassword);
+              }
+            },
+              React.createElement('div', { className: 'modal-body', style: { padding: '20px 24px' } },
+                React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 16 } },
+                  exportType === 'firm'
+                    ? 'Authentication is enabled. Please enter your Application Password or Master Key to export the current firm backup.'
+                    : 'Authentication is enabled. Please enter your Application Password or Master Key to export a full multi-firm system backup.'
+                ),
+                exportError && React.createElement('div', {
+                  style: {
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: 'var(--danger, #ef4444)',
+                    fontSize: '0.85rem',
+                    marginBottom: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }
+                }, '⚠️ ' + exportError),
+                React.createElement('div', { style: { marginBottom: 12 } },
+                  React.createElement('label', { style: { display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: 6, color: 'var(--text)' } },
+                    'Application Password / Master Key:'
+                  ),
+                  React.createElement('input', {
+                    type: 'password',
+                    className: 'input',
+                    placeholder: 'Enter password or master key',
+                    value: exportPassword,
+                    onChange: e => setExportPassword(e.target.value),
+                    disabled: exporting,
+                    style: { width: '100%' },
+                    autoFocus: true
+                  })
+                )
+              ),
+              React.createElement('div', {
+                className: 'modal-footer',
+                style: {
+                  padding: '14px 20px',
+                  borderTop: '1px solid var(--border-light, #e2e8f0)',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 10
+                }
+              },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline',
+                  disabled: exporting,
+                  onClick: () => setShowExportAuthModal(false)
+                }, 'Cancel'),
+                React.createElement('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: exporting || !exportPassword.trim()
+                }, exporting ? '⏳ Authorizing & Exporting...' : 'Authorize & Download')
+              )
             )
           )
         ),

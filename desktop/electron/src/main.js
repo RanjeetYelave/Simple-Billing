@@ -537,7 +537,11 @@ async function terminateRupeeCRMProcess(procInfo, maxWaitMs = 6000, targetPort =
     logMessage(`Backend still active after graceful shutdown signal. Terminating verified RupeeCRM PID ${procInfo.pid}...`);
     try {
       if (process.platform === 'win32') {
-        child_process.execSync(`taskkill /PID ${procInfo.pid} /F`, { stdio: 'ignore', timeout: 3000 });
+        try {
+          const ppidScript = `powershell -NoProfile -NonInteractive -Command "$p = Get-CimInstance Win32_Process -Filter \\"ProcessId = ${procInfo.pid}\\"; if ($p -and $p.ParentProcessId) { $parent = Get-CimInstance Win32_Process -Filter \\"ProcessId = $($p.ParentProcessId)\\"; if ($parent -and ($parent.Name -like '*java*.exe' -or $parent.CommandLine -match 'launcher')) { Stop-Process -Id $parent.ProcessId -Force -ErrorAction SilentlyContinue } }"`;
+          child_process.execSync(ppidScript, { stdio: 'ignore', timeout: 3000 });
+        } catch (_) {}
+        child_process.execSync(`taskkill /PID ${procInfo.pid} /F /T`, { stdio: 'ignore', timeout: 3000 });
       } else {
         process.kill(procInfo.pid, 'SIGKILL');
       }

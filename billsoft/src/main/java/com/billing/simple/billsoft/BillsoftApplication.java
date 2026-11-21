@@ -19,8 +19,8 @@ public class BillsoftApplication {
 	@Bean
 	public RestTemplate restTemplate() {
 		org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-		factory.setConnectTimeout(4000);
-		factory.setReadTimeout(6000);
+		factory.setConnectTimeout(15000);
+		factory.setReadTimeout(25000);
 		return new RestTemplate(factory);
 	}
 

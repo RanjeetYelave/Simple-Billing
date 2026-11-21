@@ -26,6 +26,9 @@ class BackupControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private com.billing.simple.billsoft.repo.AppConfigRepository configRepo;
+
     @MockitoBean
     private BackupService service;
 
@@ -49,6 +52,97 @@ class BackupControllerTest {
         mockMvc.perform(get("/api/backup/export/all"))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("Content-Disposition"));
+    }
+
+    @Test
+    void testExport_WhenAuthEnabled_RequiresAuthorization() throws Exception {
+        com.billing.simple.billsoft.entities.AppConfig authEnabled = new com.billing.simple.billsoft.entities.AppConfig();
+        authEnabled.setConfigKey("auth_enabled");
+        authEnabled.setConfigValue("true");
+        configRepo.save(authEnabled);
+
+        com.billing.simple.billsoft.entities.AppConfig globalPw = new com.billing.simple.billsoft.entities.AppConfig();
+        globalPw.setConfigKey("global_password");
+        globalPw.setConfigValue(com.billing.simple.billsoft.util.PasswordUtil.hashPassword("secret123"));
+        configRepo.save(globalPw);
+
+        try {
+            // Unauthorized request should fail with 403 Forbidden
+            mockMvc.perform(get("/api/backup/export").param("firmId", "1"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("Exporting firm backup requires password or master key authorization"));
+
+            // Request with wrong password should fail with 403 Forbidden
+            mockMvc.perform(get("/api/backup/export")
+                    .param("firmId", "1")
+                    .header("X-Master-Password", "wrongPass"))
+                    .andExpect(status().isForbidden());
+
+            // Request with correct password in header should succeed
+            BackupDTO backup = new BackupDTO();
+            backup.setMetadata(new HashMap<>());
+            when(service.exportData(1L)).thenReturn(backup);
+
+            mockMvc.perform(get("/api/backup/export")
+                    .param("firmId", "1")
+                    .header("X-Master-Password", "secret123"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().exists("Content-Disposition"));
+
+            // Request with correct password in query param should also succeed
+            mockMvc.perform(get("/api/backup/export")
+                    .param("firmId", "1")
+                    .param("masterPassword", "secret123"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().exists("Content-Disposition"));
+        } finally {
+            configRepo.deleteById("auth_enabled");
+            configRepo.deleteById("global_password");
+        }
+    }
+
+    @Test
+    void testExportAll_WhenAuthEnabled_RequiresAuthorization() throws Exception {
+        com.billing.simple.billsoft.entities.AppConfig authEnabled = new com.billing.simple.billsoft.entities.AppConfig();
+        authEnabled.setConfigKey("auth_enabled");
+        authEnabled.setConfigValue("true");
+        configRepo.save(authEnabled);
+
+        com.billing.simple.billsoft.entities.AppConfig globalPw = new com.billing.simple.billsoft.entities.AppConfig();
+        globalPw.setConfigKey("global_password");
+        globalPw.setConfigValue(com.billing.simple.billsoft.util.PasswordUtil.hashPassword("secret123"));
+        configRepo.save(globalPw);
+
+        try {
+            // Unauthorized request should fail with 403 Forbidden
+            mockMvc.perform(get("/api/backup/export/all"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("Exporting full system backup requires password or master key authorization"));
+
+            // Request with wrong password should fail with 403 Forbidden
+            mockMvc.perform(get("/api/backup/export/all")
+                    .header("X-Master-Password", "wrongPass"))
+                    .andExpect(status().isForbidden());
+
+            // Request with correct password in header should succeed
+            BackupDTO backup = new BackupDTO();
+            backup.setMetadata(new HashMap<>());
+            when(service.exportAllData()).thenReturn(backup);
+
+            mockMvc.perform(get("/api/backup/export/all")
+                    .header("X-Master-Password", "secret123"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().exists("Content-Disposition"));
+
+            // Request with correct password in query param should also succeed
+            mockMvc.perform(get("/api/backup/export/all")
+                    .param("masterPassword", "secret123"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().exists("Content-Disposition"));
+        } finally {
+            configRepo.deleteById("auth_enabled");
+            configRepo.deleteById("global_password");
+        }
     }
 
     @Test

@@ -159,6 +159,27 @@ const API = {
     });
   },
 
+  _downloadBlob(blob, filename) {
+    if (!blob) return;
+    try {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename || 'download.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try {
+          if (a.parentNode) a.parentNode.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        } catch (_) {}
+      }, 1500);
+    } catch (e) {
+      console.error('Failed to trigger blob download:', e);
+    }
+  },
+
   // ── Customers ──
   customers: {
     list: (firmIdOverride) => {
@@ -1190,8 +1211,81 @@ const API = {
 
   // ─── Backup & Restore ───
   backup: {
-    exportUrl: () => `${API.BASE_URL}/api/backup/export?firmId=${API.firmId}${API.token ? '&token=' + encodeURIComponent(API.token) : ''}`,
-    exportAllUrl: () => `${API.BASE_URL}/api/backup/export/all${API.token ? '?token=' + encodeURIComponent(API.token) : ''}`,
+    exportUrl: (firmId, password) => {
+      const fid = firmId || API.firmId;
+      let u = `${API.BASE_URL}/api/backup/export?firmId=${encodeURIComponent(fid)}`;
+      if (password) u += `&masterPassword=${encodeURIComponent(password)}`;
+      if (API.token) u += `&token=${encodeURIComponent(API.token)}`;
+      return u;
+    },
+    exportAllUrl: (password) => {
+      let u = `${API.BASE_URL}/api/backup/export/all`;
+      const p = [];
+      if (password) p.push(`masterPassword=${encodeURIComponent(password)}`);
+      if (API.token) p.push(`token=${encodeURIComponent(API.token)}`);
+      if (p.length > 0) u += `?${p.join('&')}`;
+      return u;
+    },
+    exportFirm: async (firmId, password) => {
+      const targetFirmId = firmId || API.firmId;
+      if (!targetFirmId) throw new Error('Active firm ID is required to export firm backup');
+      const headers = { 'X-Firm-Id': String(targetFirmId) };
+      if (password) headers['X-Master-Password'] = password;
+      if (API.token) headers['Authorization'] = 'Bearer ' + API.token;
+
+      let url = `${API.BASE_URL}/api/backup/export?firmId=${encodeURIComponent(targetFirmId)}`;
+      if (password) url += `&masterPassword=${encodeURIComponent(password)}`;
+      if (API.token) url += `&token=${encodeURIComponent(API.token)}`;
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        let msg = `Export failed (HTTP ${res.status})`;
+        try {
+          const err = await res.json();
+          if (err && err.error) msg = err.error;
+          else if (err && err.message) msg = err.message;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      let filename = `billsoft-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1].trim();
+
+      API._downloadBlob(blob, filename);
+      return { success: true, filename };
+    },
+    exportAll: async (password) => {
+      const headers = {};
+      if (password) headers['X-Master-Password'] = password;
+      if (API.token) headers['Authorization'] = 'Bearer ' + API.token;
+
+      let url = `${API.BASE_URL}/api/backup/export/all`;
+      const params = [];
+      if (password) params.push(`masterPassword=${encodeURIComponent(password)}`);
+      if (API.token) params.push(`token=${encodeURIComponent(API.token)}`);
+      if (params.length > 0) url += `?${params.join('&')}`;
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        let msg = `Export failed (HTTP ${res.status})`;
+        try {
+          const err = await res.json();
+          if (err && err.error) msg = err.error;
+          else if (err && err.message) msg = err.message;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      let filename = `billsoft-full-system-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1].trim();
+
+      API._downloadBlob(blob, filename);
+      return { success: true, filename };
+    },
     inspect: async (file) => {
       const formData = new FormData();
       formData.append('file', file);

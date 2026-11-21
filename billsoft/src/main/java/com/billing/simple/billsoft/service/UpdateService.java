@@ -115,8 +115,8 @@ public class UpdateService {
             this.restTemplate = restTemplate;
         } else {
             org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-            factory.setConnectTimeout(4000);
-            factory.setReadTimeout(6000);
+            factory.setConnectTimeout(15000);
+            factory.setReadTimeout(25000);
             this.restTemplate = new RestTemplate(factory);
         }
         this.dataSource = dataSource;
@@ -513,7 +513,16 @@ public class UpdateService {
         } catch (Exception e) {
             log.warn("Update check failed: {}", e.getMessage());
             response.put("updateAvailable", false);
-            response.put("error", "Update check failed: " + e.getMessage());
+            String errorMsg = e.getMessage();
+            if (e instanceof org.springframework.web.client.ResourceAccessException ||
+                (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("Read timed out") || errorMsg.contains("Connect timed out") || errorMsg.contains("I/O error")))) {
+                errorMsg = "Unable to reach update server (connection timed out). Please check your internet connection.";
+            } else if (errorMsg != null && errorMsg.startsWith("Update check failed:")) {
+                // Keep formatted message
+            } else {
+                errorMsg = "Update check failed: " + (errorMsg != null ? errorMsg : "unknown error");
+            }
+            response.put("error", errorMsg);
             enrichResponseWithStagedInfo(response);
             return response;
         }

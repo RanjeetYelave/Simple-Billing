@@ -9,10 +9,8 @@
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
   Pop $0
 
-  ; 2. Terminate background Java processes executing RupeeCRM or Launcher
-  nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
-  Pop $0
-  nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
+  ; 2. Terminate background Java processes executing RupeeCRM or Launcher (supports Windows 10 & 11 without deprecated wmic)
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"\"*java*.exe\"\") -and ($$_.CommandLine -match \"\"(?i)(rupeecrm|billsoft|launcher)\"\") } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"'
   Pop $0
 
   ; 3. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM
@@ -37,7 +35,12 @@
     RMDir /r "$INSTDIR\runtime"
   ${EndIf}
 
-  ; Purge any obsolete version override files that could hijack runtime version reporting
+  ; Purge any obsolete version override files and stale AppData WAR copies that could hijack runtime version reporting
+  Delete "$LOCALAPPDATA\RupeeCRM\app\rupeecrm.war"
+  Delete "$LOCALAPPDATA\RupeeCRM\app\rupeecrm.war.bak"
+  Delete "$LOCALAPPDATA\RupeeCRM\rupeecrm.war"
+  Delete "$LOCALAPPDATA\RupeeCRM\staging\update-tx\rupeecrm-update.war"
+  Delete "$LOCALAPPDATA\RupeeCRM\staging\update.handoff"
   Delete "$LOCALAPPDATA\RupeeCRM\data\.billsoft-version"
   Delete "$LOCALAPPDATA\RupeeCRM\.billsoft-version"
   Delete "$LOCALAPPDATA\RupeeCRM\staging\.billsoft-version"

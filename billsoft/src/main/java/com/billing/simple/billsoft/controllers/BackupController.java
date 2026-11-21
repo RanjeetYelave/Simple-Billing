@@ -58,7 +58,17 @@ public class BackupController {
     }
 
     @GetMapping("/export")
-    public ResponseEntity<?> exportBackup(@RequestParam("firmId") Long firmId) {
+    public ResponseEntity<?> exportBackup(HttpServletRequest request, @RequestParam("firmId") Long firmId) {
+        String masterPassword = request != null ? request.getHeader("X-Master-Password") : null;
+        if (masterPassword == null || masterPassword.isBlank()) {
+            masterPassword = request != null ? request.getParameter("masterPassword") : null;
+        }
+        if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Exporting firm backup requires password or master key authorization");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
+
         Long currentFirmId = TenantContext.getCurrentFirmId();
         if (currentFirmId == null) {
             Map<String, String> response = new HashMap<>();
@@ -95,7 +105,7 @@ public class BackupController {
         }
         if (authController.isAuthEnabled() && !isMasterAuthorized(masterPassword)) {
             Map<String, String> response = new HashMap<>();
-            response.put("error", "Exporting full system backup requires master password authorization");
+            response.put("error", "Exporting full system backup requires password or master key authorization");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
         }
 

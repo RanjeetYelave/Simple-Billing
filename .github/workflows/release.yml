@@ -145,7 +145,7 @@ jobs:
           }
           Write-Host "✓ Staged bundled OpenJDK 21 runtime successfully."
 
-      - name: Synchronize Electron Package Version
+      - name: Synchronize Electron Package Version and Validate Resources
         shell: pwsh
         run: |
           $pkgPath = "desktop/electron/package.json"
@@ -153,6 +153,9 @@ jobs:
           $pkg.version = "1.0.${{ github.run_number }}"
           $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding UTF8
           Write-Host "✓ Synchronized Electron package.json version to $($pkg.version)"
+
+          Write-Host "Executing prepare-resources.js to validate WAR version agreement..."
+          node desktop/electron/scripts/prepare-resources.js
 
       - name: Install Electron Dependencies and Run Tests
         working-directory: ./desktop/electron
@@ -465,10 +468,115 @@ jobs:
 
           Write-Host "✓ SUCCESS: Installed application verified running $expectedVersion on Windows runner!"
 
-          # Clean shutdown
-          Stop-Process -Id $appProc.Id -Force -ErrorAction SilentlyContinue
-          cmd /c "taskkill /F /IM RupeeCRM.exe 2>nul"
-          cmd /c "taskkill /F /IM javaw.exe 2>nul"
+          # -------------------------------------------------------------
+          # Test Customer Data Creation & Protection
+          # -------------------------------------------------------------
+          Write-Host "=== Staging Synthetic Customer Data for Preservation Verification ==="
+          $dataDir = "$env:LOCALAPPDATA\RupeeCRM\data"
+          if (-not (Test-Path $dataDir)) {
+            New-Item -ItemType Directory -Force -Path $dataDir
+          }
+          $canaryFile = "$dataDir\synthetic-customer-record.canary"
+          Set-Content -Path $canaryFile -Value "CANARY_CUSTOMER_DATA_VERIFICATION_$expectedVersion"
+          Write-Host "✓ Staged customer data canary file at $canaryFile"
+
+          # -------------------------------------------------------------
+          # Test Uninstallation while RupeeCRM Application is Running
+          # -------------------------------------------------------------
+          Write-Host "=== Testing Silent Uninstallation while Application is Running ==="
+          $uninstaller = "$installDir\Uninstall RupeeCRM.exe"
+          if (-not (Test-Path $uninstaller)) {
+            throw "CRITICAL: Uninstaller executable not found at $uninstaller!"
+          }
+
+          Write-Host "Executing uninstaller: $uninstaller /S..."
+          $uninstProc = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
+          Write-Host "Uninstaller finished with exit code: $($uninstProc.ExitCode)"
+          if ($uninstProc.ExitCode -ne 0) {
+            throw "Uninstaller exited with non-zero exit code: $($uninstProc.ExitCode)"
+          }
+
+          # Verify no RupeeCRM-owned orphan process remains
+          Write-Host "Verifying termination of all RupeeCRM processes..."
+          Start-Sleep -Seconds 2
+          $runningRupeeProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Name -eq "RupeeCRM.exe") -or (($_.Name -like "*java*.exe") -and ($_.CommandLine -match "(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)"))
+          }
+          if ($runningRupeeProcs) {
+            $pids = ($runningRupeeProcs | ForEach-Object { "$($_.Name):$($_.ProcessId)" }) -join ", "
+            throw "CRITICAL: Orphan RupeeCRM process(es) remained active after uninstallation: $pids"
+          }
+          Write-Host "✓ Confirmed zero RupeeCRM or Java backend orphan processes active."
+
+          # Verify port 28080 is released
+          $listeningConn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue
+          if ($listeningConn) {
+            throw "CRITICAL: Port 28080 remained listening after uninstallation (PID: $($listeningConn.OwningProcess))!"
+          }
+          Write-Host "✓ Confirmed port 28080 successfully released."
+
+          # Verify installation directory is removed
+          if (Test-Path "$installDir\RupeeCRM.exe") {
+            throw "CRITICAL: $installDir\RupeeCRM.exe was not deleted during uninstallation!"
+          }
+          if (Test-Path "$installDir\resources\rupeecrm.war") {
+            throw "CRITICAL: $installDir\resources\rupeecrm.war was not deleted during uninstallation!"
+          }
+          Write-Host "✓ Confirmed application binaries and backend WAR removed successfully."
+
+          # Verify customer data canary is 100% intact
+          if (-not (Test-Path $canaryFile)) {
+            throw "CRITICAL DATA LOSS: Customer canary data ($canaryFile) was deleted during uninstallation!"
+          }
+          $canaryContent = Get-Content -Path $canaryFile -Raw
+          if ($canaryContent -notmatch "CANARY_CUSTOMER_DATA_VERIFICATION") {
+            throw "CRITICAL DATA CORRUPTION: Customer canary content was modified or corrupted!"
+          }
+          Write-Host "✓ Verified customer data was completely preserved during uninstallation."
+
+          # -------------------------------------------------------------
+          # Test Reinstallation after Uninstallation
+          # -------------------------------------------------------------
+          Write-Host "=== Testing Clean Reinstallation after Uninstallation ==="
+          $reinstallProc = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
+          if ($reinstallProc.ExitCode -ne 0) {
+            throw "Reinstallation failed with exit code: $($reinstallProc.ExitCode)"
+          }
+          if (-not (Test-Path "$installDir\RupeeCRM.exe") -or -not (Test-Path "$installDir\resources\rupeecrm.war")) {
+            throw "CRITICAL: Reinstalled application binaries missing from $installDir!"
+          }
+          if (-not (Test-Path $canaryFile)) {
+            throw "CRITICAL DATA LOSS: Customer canary data was lost after reinstallation!"
+          }
+          Write-Host "✓ Reinstallation succeeded and customer data preserved."
+
+          # Launch reinstalled app and verify runtime health
+          Write-Host "=== Launching Reinstalled Application ==="
+          $reappProc = Start-Process -FilePath "$installDir\RupeeCRM.exe" -ArgumentList "--hidden" -PassThru
+          $reverified = $false
+          $reattempts = 0
+          while ($reattempts -lt 45 -and -not $reverified) {
+            Start-Sleep -Seconds 2
+            $reattempts++
+            try {
+              $ident = Invoke-RestMethod -Uri $identityUrl -TimeoutSec 3 -ErrorAction SilentlyContinue
+              if ($ident -and $ident.status -eq "UP") {
+                Write-Host "✓ Reinstalled backend active on port 28080! Version: $($ident.version)"
+                $reverified = $true
+              }
+            } catch {}
+          }
+          if (-not $reverified) {
+            throw "CRITICAL: Reinstalled application failed to signal backend health!"
+          }
+
+          # Clean shutdown via HTTP API
+          try {
+            Invoke-RestMethod -Uri "http://127.0.0.1:28080/api/shutdown" -Method Post -TimeoutSec 3 -ErrorAction SilentlyContinue
+          } catch {}
+          Start-Sleep -Seconds 2
+          Stop-Process -Id $reappProc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "✓ Windows Full Lifecycle Acceptance Check Complete: Install -> Runtime Verify -> Running Uninstall -> Orphan Process Audit -> Customer Data Preservation -> Reinstall -> Re-verify."
 
   publish-release:
     name: Publish GitHub Release

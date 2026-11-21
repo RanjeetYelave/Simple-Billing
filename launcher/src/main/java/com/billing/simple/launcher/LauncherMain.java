@@ -268,6 +268,7 @@ public class LauncherMain {
                 updateTrayTooltip("RupeeCRM: Starting Backend...");
                 backendProcess = launchBackendProcess(warFile);
                 backendPid = backendProcess.pid();
+                writeBackendPidFile(backendPid);
 
                 int startupTimeout = isCandidateLaunch ? 90 : 45;
                 boolean healthy = waitForBackend(startupTimeout);
@@ -347,11 +348,16 @@ public class LauncherMain {
                 // Wait for process termination
                 int exitCode = backendProcess.waitFor();
                 System.out.println("Backend process exited with code: " + exitCode);
+                clearBackendPidFile();
                 backendPid = null;
 
                 if (exitCode == 10) {
                     restartRequested = true;
                     System.out.println("Backend requested graceful restart via Exit Code 10.");
+                } else if (exitCode == 0) {
+                    System.out.println("Backend process exited cleanly (exit code 0). Shutting down supervisor.");
+                    exitRequested = true;
+                    break;
                 }
 
             } catch (InterruptedException e) {
@@ -520,12 +526,14 @@ public class LauncherMain {
     public synchronized void stopBackend() {
         if (backendProcess != null && backendProcess.isAlive()) {
             System.out.println("Gracefully stopping backend process (PID: " + backendPid + ")...");
+            clearBackendPidFile();
             try {
                 // Try sending graceful shutdown HTTP signal first
                 triggerGracefulHttpShutdown();
                 if (backendProcess.waitFor(5, TimeUnit.SECONDS)) {
                     System.out.println("Backend terminated gracefully.");
                     backendPid = null;
+                    clearBackendPidFile();
                     return;
                 }
             } catch (Exception ignored) {}
@@ -540,6 +548,7 @@ public class LauncherMain {
                 backendProcess.destroyForcibly();
             }
             backendPid = null;
+            clearBackendPidFile();
         }
     }
 
@@ -1065,6 +1074,25 @@ public class LauncherMain {
         try {
             Path ipcFile = getBaseDirectory().resolve(".supervisor.ipc");
             Files.deleteIfExists(ipcFile);
+        } catch (Exception ignored) {}
+        clearBackendPidFile();
+    }
+
+    public static void writeBackendPidFile(Long pid) {
+        if (pid == null) return;
+        try {
+            Path pidFile = getBaseDirectory().resolve(".backend.pid");
+            if (pidFile.getParent() != null) {
+                Files.createDirectories(pidFile.getParent());
+            }
+            Files.writeString(pidFile, String.valueOf(pid), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        } catch (Exception ignored) {}
+    }
+
+    public static void clearBackendPidFile() {
+        try {
+            Path pidFile = getBaseDirectory().resolve(".backend.pid");
+            Files.deleteIfExists(pidFile);
         } catch (Exception ignored) {}
     }
 

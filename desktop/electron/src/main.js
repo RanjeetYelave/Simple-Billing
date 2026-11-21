@@ -573,17 +573,29 @@ async function terminateRupeeCRMProcess(procInfo, maxWaitMs = 6000, targetPort =
   return false;
 }
 
-async function waitForBackend(maxSeconds = 60, onProgress = null) {
+async function waitForBackend(maxSeconds = 60, onProgress = null, enforceVersionMatch = false) {
   const start = Date.now();
   const maxMs = maxSeconds * 1000;
   let attempts = 0;
+  const packagedVer = app ? app.getVersion() : null;
 
   while (Date.now() - start < maxMs) {
     attempts++;
     const healthy = await checkBackendHealth(1200);
     if (healthy) {
+      const identity = await getBackendRuntimeIdentity(1500);
+      if (enforceVersionMatch && packagedVer && identity && identity.version) {
+        const cmp = compareAppVersions(packagedVer, identity.version);
+        if (cmp !== 0) {
+          logMessage(`CRITICAL: Backend runtime version (v${identity.version}) does not match packaged Electron application version (v${packagedVer})!`);
+          backendHealthy = false;
+          activeBackendIdentity = identity;
+          updateTrayMenu();
+          return false;
+        }
+      }
       backendHealthy = true;
-      activeBackendIdentity = await getBackendRuntimeIdentity(1500);
+      activeBackendIdentity = identity;
       updateTrayMenu();
       return true;
     }
@@ -751,26 +763,55 @@ async function startJavaSupervisor() {
 }
 
 async function stopSupervisor() {
-  if (supervisorProcess && !supervisorProcess.killed) {
-    logMessage(`Stopping Java supervisor process (PID: ${supervisorProcess.pid})...`);
-    await triggerGracefulBackendShutdown();
+  logMessage('Stopping Java supervisor and RupeeCRM backend processes...');
+  // 1. Signal graceful HTTP shutdown to Spring Boot / JVM
+  await triggerGracefulBackendShutdown();
 
+  // 2. If Electron spawned a supervisor child process, signal and wait for termination
+  if (supervisorProcess && !supervisorProcess.killed) {
+    const spid = supervisorProcess.pid;
+    logMessage(`Signaling Java supervisor process (PID: ${spid}) to terminate...`);
     try {
       supervisorProcess.kill('SIGTERM');
       const waitPromise = new Promise((resolve) => {
         if (!supervisorProcess) return resolve(true);
         supervisorProcess.once('exit', () => resolve(true));
-        setTimeout(() => resolve(false), 4000);
+        setTimeout(() => resolve(false), 3000);
       });
 
       const exited = await waitPromise;
       if (!exited && supervisorProcess) {
-        logMessage('Supervisor did not exit gracefully; sending SIGKILL.');
+        logMessage(`Supervisor (PID ${spid}) did not exit within timeout; terminating forcefully.`);
         supervisorProcess.kill('SIGKILL');
       }
     } catch (ignored) { }
     supervisorProcess = null;
   }
+
+  // 3. Ensure port 28080 is verified released and no orphan RupeeCRM process is left behind
+  const startWait = Date.now();
+  let portReleased = false;
+  while (Date.now() - startWait < 3000) {
+    const listening = await isPortListening(PORT, 200);
+    if (!listening) {
+      portReleased = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  if (!portReleased) {
+    logMessage(`Port ${PORT} is still listening after supervisor termination. Inspecting process...`);
+    const proc = await inspectListeningProcess(PORT);
+    if (proc && proc.isRupeeCRM) {
+      logMessage(`Terminating orphan RupeeCRM process (PID ${proc.pid}) on port ${PORT}...`);
+      await terminateRupeeCRMProcess(proc, 3000, PORT);
+    }
+  }
+
+  backendHealthy = false;
+  activeBackendIdentity = null;
+  updateTrayMenu();
 }
 
 // =========================================================================
@@ -1626,14 +1667,20 @@ app.whenReady().then(async () => {
   updateSplashStatus('Waiting for RupeeCRM application backend...');
   const ready = await waitForBackend(60, (statusText) => {
     updateSplashStatus(statusText);
-  });
+  }, true);
 
   if (ready) {
-    logMessage('RupeeCRM backend readiness verified. Creating main window...');
+    logMessage('RupeeCRM backend readiness and version integrity verified. Creating main window...');
     createMainWindow();
   } else {
-    logMessage('RupeeCRM backend failed to signal readiness within timeout.');
-    updateSplashStatus('Backend startup timed out. Check system logs.', true);
+    if (activeBackendIdentity && activeBackendIdentity.version && compareAppVersions(app.getVersion(), activeBackendIdentity.version) !== 0) {
+      const msg = `Version integrity error: Installed backend (v${activeBackendIdentity.version}) does not match application (v${app.getVersion()}). Please run Repair or reinstall.`;
+      logMessage(`FATAL: ${msg}`);
+      updateSplashStatus(msg, true);
+    } else {
+      logMessage('RupeeCRM backend failed to signal readiness within timeout.');
+      updateSplashStatus('Backend startup timed out. Check system logs.', true);
+    }
   }
 });
 
@@ -1646,6 +1693,8 @@ if (typeof module !== 'undefined' && module.exports) {
     cleanLegacyStartupEntries,
     getBackendRuntimeIdentity,
     terminateRupeeCRMProcess,
-    triggerGracefulBackendShutdown
+    triggerGracefulBackendShutdown,
+    stopSupervisor,
+    waitForBackend
   };
 }

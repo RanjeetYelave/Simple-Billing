@@ -11,8 +11,11 @@ import com.billing.simple.billsoft.util.IndianFinancialYearUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -34,6 +37,7 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     private final InvoiceRepository invoiceRepo;
     private final SalesReturnRepository salesReturnRepo;
     private final PurchaseOrderRepository poRepo;
+    private final TransactionTemplate transactionTemplate;
 
     // In-memory locks per key to serialize concurrent requests within the same JVM
     private final ConcurrentHashMap<String, Object> lockMap = new ConcurrentHashMap<>();
@@ -41,11 +45,14 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     public DocumentSequenceServiceImpl(AppConfigRepository appConfigRepo,
                                        InvoiceRepository invoiceRepo,
                                        SalesReturnRepository salesReturnRepo,
-                                       PurchaseOrderRepository poRepo) {
+                                       PurchaseOrderRepository poRepo,
+                                       PlatformTransactionManager transactionManager) {
         this.appConfigRepo = appConfigRepo;
         this.invoiceRepo = invoiceRepo;
         this.salesReturnRepo = salesReturnRepo;
         this.poRepo = poRepo;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     private Long resolveSafeFirmId(Long firmId) {
@@ -170,62 +177,78 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String generateNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
-        if (date == null) date = LocalDate.now();
-        String configKey = buildConfigKey(type, safeFirmId, date);
+        final LocalDate effectiveDate = (date != null) ? date : LocalDate.now();
+        String configKey = buildConfigKey(type, safeFirmId, effectiveDate);
 
         synchronized (configKey.intern()) {
-            // 1. Pessimistic DB row lock on sequence record (with fallback if non-transactional)
-            Optional<AppConfig> opt;
-            try {
-                opt = appConfigRepo.findByConfigKeyForUpdate(configKey);
-            } catch (Exception e) {
-                opt = appConfigRepo.findById(configKey);
-            }
-            AppConfig cfg;
-            long lastSeq;
-
-            if (opt.isPresent()) {
-                cfg = opt.get();
-                lastSeq = parseLongSafe(cfg.getConfigValue());
-            } else {
-                // First initialization for this firm and partition
-                lastSeq = scanDatabaseMax(type, safeFirmId, date);
-                cfg = new AppConfig();
-                cfg.setConfigKey(configKey);
-                cfg.setConfigValue(String.valueOf(lastSeq));
+            for (int attempt = 1; attempt <= 5; attempt++) {
                 try {
-                    cfg = appConfigRepo.saveAndFlush(cfg);
+                    return transactionTemplate.execute(status -> {
+                        // 1. Pessimistic DB row lock on sequence record (with fallback if non-transactional)
+                        Optional<AppConfig> opt;
+                        try {
+                            opt = appConfigRepo.findByConfigKeyForUpdate(configKey);
+                        } catch (Exception e) {
+                            opt = appConfigRepo.findById(configKey);
+                        }
+                        AppConfig cfg;
+                        long lastSeq;
+
+                        if (opt.isPresent()) {
+                            cfg = opt.get();
+                            lastSeq = parseLongSafe(cfg.getConfigValue());
+                        } else {
+                            // First initialization for this firm and partition
+                            lastSeq = scanDatabaseMax(type, safeFirmId, effectiveDate);
+                            cfg = new AppConfig();
+                            cfg.setConfigKey(configKey);
+                            cfg.setConfigValue(String.valueOf(lastSeq));
+                            try {
+                                cfg = appConfigRepo.saveAndFlush(cfg);
+                            } catch (Exception ex) {
+                                opt = appConfigRepo.findById(configKey);
+                                if (opt.isPresent()) {
+                                    cfg = opt.get();
+                                    lastSeq = parseLongSafe(cfg.getConfigValue());
+                                } else {
+                                    throw ex;
+                                }
+                            }
+                        }
+
+                        // 2. Increment sequence atomically
+                        long nextSeq = lastSeq + 1;
+                        String candidate = formatCandidate(type, nextSeq, effectiveDate);
+
+                        // 3. Collision protection: advance if number already exists in DB
+                        while (existsInDatabase(type, candidate, safeFirmId)) {
+                            nextSeq++;
+                            candidate = formatCandidate(type, nextSeq, effectiveDate);
+                        }
+
+                        // 4. Save and flush advance sequence
+                        cfg.setConfigValue(String.valueOf(nextSeq));
+                        appConfigRepo.saveAndFlush(cfg);
+
+                        log.info("Allocated {} number: {} (key: {}, nextVal: {})", type, candidate, configKey, nextSeq);
+                        return candidate;
+                    });
                 } catch (Exception ex) {
-                    // Fallback if concurrent transaction committed the initial row first
-                    opt = appConfigRepo.findById(configKey);
-                    if (opt.isPresent()) {
-                        cfg = opt.get();
-                        lastSeq = parseLongSafe(cfg.getConfigValue());
-                    } else {
+                    if (attempt == 5) {
+                        log.error("Failed to allocate sequence for {} after 5 attempts", configKey, ex);
                         throw ex;
+                    }
+                    try {
+                        Thread.sleep(20L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Interrupted while waiting to retry sequence generation", ie);
                     }
                 }
             }
-
-            // 2. Increment sequence atomically
-            long nextSeq = lastSeq + 1;
-            String candidate = formatCandidate(type, nextSeq, date);
-
-            // 3. Collision protection: advance if number already exists in DB
-            while (existsInDatabase(type, candidate, safeFirmId)) {
-                nextSeq++;
-                candidate = formatCandidate(type, nextSeq, date);
-            }
-
-            // 4. Save and flush advance sequence
-            cfg.setConfigValue(String.valueOf(nextSeq));
-            appConfigRepo.saveAndFlush(cfg);
-
-            log.info("Allocated {} number: {} (key: {}, nextVal: {})", type, candidate, configKey, nextSeq);
-            return candidate;
+            throw new IllegalStateException("Failed to generate sequence after retries for " + configKey);
         }
     }
 

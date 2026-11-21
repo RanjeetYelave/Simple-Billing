@@ -69,6 +69,14 @@ jobs:
             exit 1
           fi
 
+          # Verify packaged WAR internal version matches build run
+          WAR_VER=$(unzip -p app-binaries/rupeecrm.war WEB-INF/classes/application.properties | grep "app.version=" | cut -d= -f2 | tr -d '\r')
+          echo "✓ Verified WAR internal version: $WAR_VER"
+          if [ "$WAR_VER" != "v1.0.${{ github.run_number }}" ]; then
+            echo "CRITICAL: Packaged WAR internal version ($WAR_VER) does not match expected v1.0.${{ github.run_number }}!"
+            exit 1
+          fi
+
           echo "=== Staged app-binaries directory contents ==="
           ls -lh app-binaries/
 
@@ -387,6 +395,14 @@ jobs:
             throw "CRITICAL: Installed rupeecrm.war hash ($installedHash) does not match built artifact ($builtHash)!"
           }
           Write-Host "✓ Verified installed WAR binary matches build artifact."
+
+          # Verify Windows PE Branding on RupeeCRM.exe
+          $exeInfo = (Get-Item "$installDir\RupeeCRM.exe").VersionInfo
+          Write-Host "RupeeCRM.exe ProductName: $($exeInfo.ProductName), FileDescription: $($exeInfo.FileDescription)"
+          if ($exeInfo.ProductName -ne "RupeeCRM") {
+            throw "CRITICAL: RupeeCRM.exe PE branding failed! Expected ProductName 'RupeeCRM' but got '$($exeInfo.ProductName)'"
+          }
+          Write-Host "✓ Verified Windows PE Branding on RupeeCRM.exe successfully."
 
           # Launch installed RupeeCRM application in background
           Write-Host "=== Launching Installed RupeeCRM Application ==="

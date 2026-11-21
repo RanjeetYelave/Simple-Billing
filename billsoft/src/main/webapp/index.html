@@ -48477,11 +48477,8 @@ function PartyDetailModal({
           updatePollRef.current = null;
         }
         window.onbeforeunload = null;
-        setUpdateProgress({
-          status: 'error',
-          percent: 0,
-          message: 'Update download was cancelled.'
-        });
+        setIsUpdating(false);
+        setUpdateProgress(null);
       };
 
       const handlePauseUpdate = async () => {

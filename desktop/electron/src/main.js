@@ -601,12 +601,39 @@ async function startJavaSupervisor() {
   const packagedVer = app.getVersion();
   logMessage(`Evaluating backend lifecycle. Packaged Electron version: v${packagedVer}`);
 
-  const portOccupied = await isPortListening(PORT, 500);
+  // Purge any obsolete AppData WAR copy before evaluating or launching supervisor
+  try {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const staleWar = path.join(localAppData, 'RupeeCRM', 'app', 'rupeecrm.war');
+      if (fs.existsSync(staleWar)) {
+        try {
+          fs.unlinkSync(staleWar);
+          logMessage(`Purged obsolete AppData WAR on startup: ${staleWar}`);
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  const portOccupied = await isPortListening(PORT, 300);
 
   if (portOccupied) {
     logMessage(`Port ${PORT} is occupied. Inspecting owning process & backend identity...`);
-    const procInfo = await inspectListeningProcess(PORT);
-    const identity = await getBackendRuntimeIdentity(2000);
+    // First query authoritative backend identity endpoint directly
+    let identity = await getBackendRuntimeIdentity(1000);
+    let procInfo = null;
+
+    if (identity && identity.service === 'RupeeCRM') {
+      procInfo = {
+        pid: identity.pid || null,
+        name: 'java',
+        executablePath: '',
+        commandLine: '',
+        isRupeeCRM: true
+      };
+    } else {
+      procInfo = await inspectListeningProcess(PORT);
+    }
     const runningVer = identity ? identity.version : null;
 
     logMessage(`Process on port ${PORT}: PID=${procInfo.pid || 'unknown'}, isRupeeCRM=${procInfo.isRupeeCRM}, reportedVersion=${runningVer || 'UNKNOWN'}`);
@@ -641,7 +668,7 @@ async function startJavaSupervisor() {
         activeBackendIdentity = identity;
         return true;
       } else if (cmp > 0) {
-        // Case C: Older version (e.g. running 1.0.280 or older while packaged is 1.0.308)
+        // Case C: Older version (e.g. running 1.0.340 while packaged is 1.0.347)
         logMessage(`Active RupeeCRM backend (v${runningVer}) is older than packaged version (v${packagedVer}). Terminating older backend...`);
         updateSplashStatus(`Updating RupeeCRM runtime from v${runningVer} to v${packagedVer}...`);
         const terminated = await terminateRupeeCRMProcess(procInfo);
@@ -650,16 +677,6 @@ async function startJavaSupervisor() {
           updateSplashStatus('Could not terminate older RupeeCRM process. Please close it manually.', true);
           return false;
         }
-        try {
-          const localAppData = process.env.LOCALAPPDATA;
-          if (localAppData) {
-            const staleWar = path.join(localAppData, 'RupeeCRM', 'app', 'rupeecrm.war');
-            if (fs.existsSync(staleWar)) {
-              fs.unlinkSync(staleWar);
-              logMessage(`Purged obsolete AppData WAR: ${staleWar}`);
-            }
-          }
-        } catch (_) {}
       } else {
         // Case E: Running backend is newer than packaged Electron
         logMessage(`Active RupeeCRM backend reports newer version (v${runningVer} > packaged v${packagedVer}). Retaining newer active backend under compatibility policy.`);
@@ -1536,15 +1553,17 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   setupSystemTray();
 
-  // Clear HTTP/storage cache on startup to prevent stale frontend resources from lingering
-  try {
-    await session.defaultSession.clearCache();
-    await session.defaultSession.clearStorageData({
-      storages: ['serviceworkers', 'cachestorage']
-    });
-  } catch (err) {
-    logMessage(`Notice: Error clearing session cache: ${err.message}`);
+  if (!startHidden) {
+    createSplashWindow();
   }
+
+  // Clear HTTP/storage cache asynchronously on startup to prevent blocking UI
+  session.defaultSession.clearCache().catch((err) => {
+    logMessage(`Notice: Error clearing session cache: ${err.message}`);
+  });
+  session.defaultSession.clearStorageData({
+    storages: ['serviceworkers', 'cachestorage']
+  }).catch(() => {});
 
   // Handle native file downloads cleanly
   session.defaultSession.on('will-download', (event, item, webContents) => {
@@ -1564,10 +1583,6 @@ app.whenReady().then(async () => {
       event.preventDefault();
     }
   });
-
-  if (!startHidden) {
-    createSplashWindow();
-  }
 
   // Start supervisor & wait for readiness
   const supervisorStarted = await startJavaSupervisor();

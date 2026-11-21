@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -225,5 +226,26 @@ class UpdateControllerTest {
                 .andExpect(jsonPath("$.updateInProgress").value(true))
                 .andExpect(jsonPath("$.targetVersion").value("1.0.335"))
                 .andExpect(jsonPath("$.status").value("DOWNLOADING"));
+    }
+
+    @Test
+    void testManualUpdateSecurityExceptionReturns422() throws Exception {
+        when(service.stageManualUpdatePackage(any(InputStream.class), anyString(), anyBoolean()))
+                .thenThrow(new java.security.GeneralSecurityException("Invalid Ed25519 signature"));
+
+        MockMultipartFile file = new MockMultipartFile("file", "update.zip", "application/zip", "PK-DUMMY".getBytes());
+
+        mockMvc.perform(multipart("/api/system/manual-update/upload").file(file))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("Cryptographic verification failed: Invalid Ed25519 signature"));
+    }
+
+    @Test
+    void testResetUpdateStateEndpoint() throws Exception {
+        mockMvc.perform(post("/api/system/reset-update-state"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("idle"));
+
+        verify(service).resetUpdateState();
     }
 }

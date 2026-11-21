@@ -18,6 +18,8 @@ import java.util.Map;
 @RequestMapping("/api/system")
 public class UpdateController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UpdateController.class);
+
     private final UpdateService updateService;
 
     public UpdateController(UpdateService updateService) {
@@ -130,7 +132,10 @@ public class UpdateController {
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (java.security.GeneralSecurityException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+            log.warn("Manual update package cryptographic verification failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "error", "Cryptographic verification failed: " + e.getMessage()
+            ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to stage update package: " + e.getMessage()));
         }
@@ -160,10 +165,19 @@ public class UpdateController {
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (java.security.GeneralSecurityException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+            log.warn("Local manual update package cryptographic verification failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "error", "Cryptographic verification failed: " + e.getMessage()
+            ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to stage update package: " + e.getMessage()));
         }
+    }
+
+    @PostMapping("/reset-update-state")
+    public ResponseEntity<Map<String, Object>> resetUpdateState() {
+        updateService.resetUpdateState();
+        return ResponseEntity.ok(Map.of("status", "idle", "message", "Update state reset successfully"));
     }
 
     @PostMapping("/pause-update")

@@ -104,6 +104,8 @@ assert(builderYaml.includes('category: public.app-category.business'), 'mac cate
 // win block
 assert(/win:[\s\S]*?icon:\s*assets\/icon\.ico/.test(builderYaml),
   'electron-builder.yml must specify win.icon: assets/icon.ico');
+assert(builderYaml.includes('signAndEditExecutable: true'),
+  'electron-builder.yml must specify signAndEditExecutable: true for Windows binary resource branding');
 // nsis block
 assert(builderYaml.includes('installerIcon: assets/icon.ico'), 'NSIS must specify installerIcon: assets/icon.ico');
 assert(builderYaml.includes('uninstallerIcon: assets/icon.ico'), 'NSIS must specify uninstallerIcon: assets/icon.ico');

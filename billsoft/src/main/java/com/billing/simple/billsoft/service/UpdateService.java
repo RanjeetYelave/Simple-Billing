@@ -115,8 +115,8 @@ public class UpdateService {
             this.restTemplate = restTemplate;
         } else {
             org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-            factory.setConnectTimeout(15000);
-            factory.setReadTimeout(25000);
+            factory.setConnectTimeout(3000);
+            factory.setReadTimeout(5000);
             this.restTemplate = new RestTemplate(factory);
         }
         this.dataSource = dataSource;
@@ -529,9 +529,36 @@ public class UpdateService {
     }
 
     /**
+     * Resets the updater state machine to clean idle state, clearing cancellation
+     * flags, progress data, and reconciling interrupted state files.
+     */
+    public synchronized void resetUpdateState() {
+        cancelRequested.set(false);
+        pauseRequested.set(false);
+        updateInProgress.set(false);
+        progressStatus.set("idle");
+        progressPercent.set(0);
+        progressMessage.set("");
+        progressSpeed.set("");
+        progressEta.set("");
+        try {
+            Path stateFile = getStateFilePath();
+            if (Files.exists(stateFile)) {
+                UpdateState state = UpdateState.load(stateFile);
+                if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus()) || UpdateState.STATUS_UPDATE_FAILED.equals(state.getStatus()))) {
+                    state.setStatus(UpdateState.STATUS_IDLE);
+                    state.setErrorMessage(null);
+                    state.saveAtomic(stateFile);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
      * Initiates or resumes the update download asynchronously.
      */
     public boolean startUpdateAsync() {
+        resetUpdateState();
         pauseRequested.set(false);
         cancelRequested.set(false);
 
@@ -910,6 +937,7 @@ public class UpdateService {
 
     public boolean cancelUpdate() {
         if (!updateInProgress.get()) {
+            cancelRequested.set(false);
             return false;
         }
         String currentStatus = progressStatus.get();
@@ -928,6 +956,7 @@ public class UpdateService {
         try {
             Path txDir = getTxDirectory();
             Files.deleteIfExists(txDir.resolve("rupeecrm-update.war.part"));
+            Files.deleteIfExists(txDir.resolve("rupeecrm-update-candidate.war.part"));
             Files.deleteIfExists(txDir.resolve("rupeecrm-update.war"));
             Files.deleteIfExists(getHandoffFilePath());
             Path stateFile = getStateFilePath();
@@ -941,6 +970,7 @@ public class UpdateService {
 
         setProgress("cancelled", 0, "Update was cancelled by the user.");
         updateInProgress.set(false);
+        cancelRequested.set(false);
         return true;
     }
 
@@ -1689,7 +1719,8 @@ public class UpdateService {
         emitter.onError(e -> this.progressEmitter = null);
         try {
             emitter.send(SseEmitter.event().name("connected").data("{}"));
-            if (!"idle".equals(progressStatus.get())) {
+            String currentStatus = progressStatus.get();
+            if (!"idle".equals(currentStatus) && !"cancelled".equals(currentStatus)) {
                 emitter.send(SseEmitter.event().name("progress").data(getProgress(), MediaType.APPLICATION_JSON));
             }
         } catch (Exception ignored) {

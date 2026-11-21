@@ -41,7 +41,7 @@ win:
   icon: assets/icon.ico
   artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
   legalTrademarks: "RupeeCRM"
-  signAndEditExecutable: false
+  signAndEditExecutable: true
 
 nsis:
   include: scripts/installer.nsh

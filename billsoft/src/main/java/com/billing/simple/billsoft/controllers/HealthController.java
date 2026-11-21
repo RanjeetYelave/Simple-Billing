@@ -120,6 +120,9 @@ public class HealthController {
         String ver = resolveVersion();
         String commit = environment != null ? environment.getProperty("app.build.commit", "HEAD") : "HEAD";
         String buildTime = environment != null ? environment.getProperty("app.build.timestamp", "") : "";
+        String buildId = environment != null ? environment.getProperty("app.build.id", commit) : commit;
+        long startTime = java.lang.management.ManagementFactory.getRuntimeMXBean().getStartTime();
+        long uptime = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
         String warPath = "";
         try {
             if (HealthController.class.getProtectionDomain() != null &&
@@ -134,7 +137,10 @@ public class HealthController {
         resp.put("service", "RupeeCRM");
         resp.put("version", ver);
         resp.put("commit", commit);
+        resp.put("buildId", buildId);
         resp.put("buildTimestamp", buildTime);
+        resp.put("startTime", startTime);
+        resp.put("uptimeMs", uptime);
         resp.put("pid", ProcessHandle.current().pid());
         resp.put("warPath", warPath);
         resp.put("jvmVersion", System.getProperty("java.version"));

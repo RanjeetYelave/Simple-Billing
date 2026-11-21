@@ -50,6 +50,7 @@ assert(builderYaml.includes('deleteAppDataOnUninstall: false'), 'Must preserve c
 assert(builderYaml.includes('oneClick: false'), 'Must use conventional setup wizard');
 assert(builderYaml.includes('perMachine: false'), 'Must install per-user');
 assert(builderYaml.includes('extraResources:'), 'Must configure extraResources for JRE and WAR');
+assert(builderYaml.includes('signAndEditExecutable: true'), 'signAndEditExecutable must be enabled to ensure rcedit embeds PE icon resources');
 console.log('  -> electron-builder.yml valid with data preservation confirmed.');
 
 // 4. Verify Security Settings in main.js & preload.js

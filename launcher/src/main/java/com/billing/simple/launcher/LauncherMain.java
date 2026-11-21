@@ -1576,6 +1576,21 @@ public class LauncherMain {
                 backupWar = new File(currentWar.getParentFile(), currentWar.getName() + ".bak");
             }
 
+            // CRITICAL SAFEGUARD: Reconcile with current live WAR version
+            String currentWarVer = currentWar != null ? getWarVersion(currentWar) : null;
+            String targetVer = state.getTargetVersion();
+            if (currentWarVer != null && targetVer != null && compareVersions(currentWarVer, targetVer) >= 0) {
+                System.out.println("RECOVERY: Live binary version (" + currentWarVer + ") is equal to or newer than target version (" + targetVer + "). Reconciling update state to COMMITTED.");
+                state.setStatus(UpdateState.STATUS_COMMITTED);
+                state.setCurrentVersion(currentWarVer);
+                try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                if (backupWar != null && backupWar.exists()) {
+                    try { backupWar.delete(); } catch (Exception ignored) {}
+                }
+                try { Files.deleteIfExists(getStagingDirectory().resolve("update.handoff")); } catch (Exception ignored) {}
+                return;
+            }
+
             if (UpdateState.STATUS_STARTING_NEW_VERSION.equals(status)) {
                 if (backupWar != null && backupWar.exists() && backupWar.length() > 0) {
                     this.isCandidateLaunch = true;
@@ -2168,16 +2183,20 @@ public class LauncherMain {
             String packagedVer = getWarVersion(packagedWar);
             String baseVer = getWarVersion(baseWar);
             if (packagedVer == null) {
-                System.out.println("Note: Packaged WAR version could not be parsed; prioritizing packaged distribution: " + packagedWar.getAbsolutePath());
+                System.out.println("[Launcher WAR Selector] Note: Packaged WAR version could not be parsed; prioritizing packaged distribution: " + packagedWar.getAbsolutePath());
                 return packagedWar;
             }
             int cmp = compareVersions(packagedVer, baseVer);
             if (cmp >= 0) {
                 // Packaged installer is equal or newer than stale AppData copy.
                 // Run packaged WAR and remove obsolete AppData copy so it never hijacks future runs.
-                System.out.println("Using packaged WAR (version " + packagedVer + " >= base " + baseVer + "): " + packagedWar.getAbsolutePath());
+                System.out.println("[Launcher WAR Selector] Using authoritative packaged WAR (version " + packagedVer + " >= base " + baseVer + "): " + packagedWar.getAbsolutePath());
                 try {
-                    baseWar.delete();
+                    boolean deleted = baseWar.delete();
+                    if (!deleted && baseWar.exists()) {
+                        File obsolete = new File(baseWar.getParentFile(), baseWar.getName() + ".obsolete." + System.currentTimeMillis());
+                        baseWar.renameTo(obsolete);
+                    }
                     File bak = new File(baseWar.getAbsolutePath() + ".bak");
                     if (bak.exists()) bak.delete();
                     Files.deleteIfExists(base.resolve("app").resolve(".billsoft-version"));
@@ -2188,8 +2207,14 @@ public class LauncherMain {
                 return packagedWar;
             } else {
                 // baseWar is strictly newer (e.g. an active OTA update applied after installation)
-                System.out.println("Using newer OTA updated WAR (version " + baseVer + " > packaged " + packagedVer + "): " + baseWar.getAbsolutePath());
-                return baseWar;
+                if (UpdateCrypto.isZipFile(baseWar.toPath())) {
+                    System.out.println("[Launcher WAR Selector] Using newer verified OTA updated WAR (version " + baseVer + " > packaged " + packagedVer + "): " + baseWar.getAbsolutePath());
+                    return baseWar;
+                } else {
+                    System.err.println("[Launcher WAR Selector] Warning: baseWar failed ZIP validation; prioritizing packaged distribution: " + packagedWar.getAbsolutePath());
+                    try { baseWar.delete(); } catch (Exception ignored) {}
+                    return packagedWar;
+                }
             }
         }
 

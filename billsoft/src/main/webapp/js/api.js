@@ -1503,6 +1503,9 @@ const API = {
     cancelUpdate: () => API._json('/api/system/cancel-update', {
       method: 'POST'
     }),
+    resetUpdateState: () => API._json('/api/system/reset-update-state', {
+      method: 'POST'
+    }),
     checkUpdateComplete: () => API._json('/api/system/check-update-complete'),
     updateDiagnostics: () => API._json('/api/system/update-diagnostics'),
     getDevLogs: () => API._json('/api/system/dev-logs'),

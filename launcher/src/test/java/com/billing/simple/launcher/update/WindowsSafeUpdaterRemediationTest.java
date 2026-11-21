@@ -291,4 +291,54 @@ class WindowsSafeUpdaterRemediationTest {
         assertTrue(Files.exists(baseAppWar), "Base user app directory must contain updated WAR");
         assertArrayEquals(candidateBytes, Files.readAllBytes(baseAppWar));
     }
+
+    @Test
+    void testInterruptedTransactionReconcilesWhenLiveWarIsEqualOrNewer() throws Exception {
+        // Setup live WAR with newer version 1.0.347
+        Path liveWar = testBaseDir.resolve("app/rupeecrm.war");
+        byte[] liveBytes = createValidZipWithVersion("1.0.347");
+        Files.write(liveWar, liveBytes);
+
+        // Setup an obsolete backup WAR representing 1.0.340
+        Path backupWar = testBaseDir.resolve("app/rupeecrm.war.bak");
+        byte[] oldBackupBytes = createValidZipWithVersion("1.0.340");
+        Files.write(backupWar, oldBackupBytes);
+
+        // Setup stale handoff and state targeting 1.0.340 in STATUS_STARTING_NEW_VERSION
+        Path handoffToken = testBaseDir.resolve("staging/update.handoff");
+        Files.writeString(handoffToken, "transactionId=stale-tx\ntargetVersion=1.0.340\n");
+
+        Path stateFile = testBaseDir.resolve("staging/update-state.json");
+        UpdateState state = new UpdateState();
+        state.setStatus(UpdateState.STATUS_STARTING_NEW_VERSION);
+        state.setTargetVersion("1.0.340");
+        state.setBackupArtifactPath(backupWar.toAbsolutePath().toString());
+        state.saveAtomic(stateFile);
+
+        // Run recovery
+        launcher.recoverInterruptedTransactionIfPresent();
+
+        // Verify: Live WAR was NOT rolled back!
+        assertArrayEquals(liveBytes, Files.readAllBytes(liveWar), "Live WAR must remain intact (not rolled back)");
+
+        // Verify: Stale state was reconciled to COMMITTED
+        UpdateState finalState = UpdateState.load(stateFile);
+        assertEquals(UpdateState.STATUS_COMMITTED, finalState.getStatus());
+
+        // Verify: Obsolete backup and handoff tokens were purged
+        assertFalse(Files.exists(handoffToken), "Handoff token must be deleted");
+        assertFalse(Files.exists(backupWar), "Obsolete backup WAR must be purged");
+        assertFalse(launcher.isCandidateLaunch(), "Must not trigger candidate monitoring for older version");
+    }
+
+    private byte[] createValidZipWithVersion(String version) throws Exception {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("WEB-INF/classes/application.properties");
+            zos.putNextEntry(entry);
+            zos.write(("app.version=v" + version + "\n").getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+        return baos.toByteArray();
+    }
 }

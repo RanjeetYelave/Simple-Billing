@@ -1608,7 +1608,9 @@ const API = {
 
   // ─── Global Announcements ───
   announcements: {
-    get: (force = false) => API._json(force ? '/api/announcements?force=true' : '/api/announcements')
+    get: (force = false) => API._json(force ? '/api/announcements?force=true' : '/api/announcements'),
+    acknowledge: (key) => API._json('/api/announcements/acknowledge', { method: 'POST', body: { key } }),
+    getAcknowledged: () => API._json('/api/announcements/acknowledged')
   },
 
   // ─── Saved / Uncatalogued Items & Deduplication ───

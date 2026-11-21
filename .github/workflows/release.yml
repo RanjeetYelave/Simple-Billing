@@ -53,9 +53,9 @@ jobs:
           find ~/.m2/repository -name "*.lastUpdated" -delete 2>/dev/null || true
           mvn clean package -DskipTests --batch-mode
 
-      - name: Run Category 3, 4 & 5 Security & Data Integrity Certification Tests
+      - name: Run Final Phase Comprehensive Certification Tests
         run: |
-          mvn test -pl billsoft -Dtest=Category3BackupAndRestoreStabilizationTest,Category4CloudDataProtectionAndSmtRecoveryTest,Category5SecurityAndDataIntegrityCertificationTest --batch-mode
+          mvn test -pl billsoft -Dtest=Category3BackupAndRestoreStabilizationTest,Category4CloudDataProtectionAndSmtRecoveryTest,Category5SecurityAndDataIntegrityCertificationTest,AnnouncementServiceTest,AnnouncementControllerTest,FinalPhaseCrossProjectIntegrationCertificationTest --batch-mode
 
       - name: Stage Application Binaries
         run: |

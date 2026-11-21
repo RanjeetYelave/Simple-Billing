@@ -13361,7 +13361,21 @@
                 const currentKey = getAnnouncementsKey(res);
                 try {
                   const acknowledgedKey = localStorage.getItem('rupeecrm_announcements_ack');
-                  if (acknowledgedKey !== currentKey) {
+                  if (acknowledgedKey === currentKey) {
+                    setShowAnnouncementModal(false);
+                  } else if (API.announcements && API.announcements.getAcknowledged) {
+                    API.announcements.getAcknowledged().then(ackList => {
+                      const isAck = Array.isArray(ackList) ? ackList.includes(currentKey) : false;
+                      if (isAck) {
+                        try { localStorage.setItem('rupeecrm_announcements_ack', currentKey); } catch (e) {}
+                        setShowAnnouncementModal(false);
+                      } else {
+                        setShowAnnouncementModal(true);
+                      }
+                    }).catch(() => {
+                      setShowAnnouncementModal(true);
+                    });
+                  } else {
                     setShowAnnouncementModal(true);
                   }
                 } catch (e) { }
@@ -13379,6 +13393,9 @@
           const currentKey = getAnnouncementsKey(announcements);
           if (currentKey) {
             localStorage.setItem('rupeecrm_announcements_ack', currentKey);
+            if (API.announcements && API.announcements.acknowledge) {
+              API.announcements.acknowledge(currentKey).catch(() => {});
+            }
           }
         } catch (e) { }
         setShowAnnouncementModal(false);
@@ -13395,16 +13412,18 @@
         window.addEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
         window.addEventListener('billsoft:app-refresh', loadAnnouncements);
         window.addEventListener('billsoft:announcements-refresh', loadAnnouncements);
-        // Periodic real-time evaluation every 60 seconds to purge expired announcements
+        window.addEventListener('focus', loadAnnouncements);
+        // Bounded background check every 10 minutes (600,000 ms) instead of aggressive 60s polling
         const announcementsTimer = setInterval(() => {
           loadAnnouncements();
-        }, 60000);
+        }, 600000);
         return () => {
           clearInterval(announcementsTimer);
           window.removeEventListener('billsoft:app-refresh', loadDashboardData);
           window.removeEventListener('billsoft:silent-data-refresh', handleSilentRefresh);
           window.removeEventListener('billsoft:app-refresh', loadAnnouncements);
           window.removeEventListener('billsoft:announcements-refresh', loadAnnouncements);
+          window.removeEventListener('focus', loadAnnouncements);
         };
       }, [loadDashboardData, loadAnnouncements]);
 

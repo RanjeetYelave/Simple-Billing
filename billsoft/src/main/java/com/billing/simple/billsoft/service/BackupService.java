@@ -276,6 +276,12 @@ public class BackupService {
         if (linkEventRepo != null) {
             backup.setBusinessPartyLinkEvents(linkEventRepo.findByFirmId(firmId));
         }
+        if (itemDuplicateDismissalRepo != null) {
+            backup.setItemDuplicateDismissals(itemDuplicateDismissalRepo.findByFirmId(firmId));
+        }
+        if (itemMergeAuditRepo != null) {
+            backup.setItemMergeAudits(itemMergeAuditRepo.findByFirmIdOrderByMergedAtDesc(firmId));
+        }
 
         // Decision B1: Strict isolation - cross-firm migration history and source-firm snapshots are excluded from single-firm tenant exports
         backup.setInvoiceMigrationRecords(null);
@@ -357,6 +363,12 @@ public class BackupService {
         }
         if (linkEventRepo != null) {
             backup.setBusinessPartyLinkEvents(linkEventRepo.findAll());
+        }
+        if (itemDuplicateDismissalRepo != null) {
+            backup.setItemDuplicateDismissals(itemDuplicateDismissalRepo.findAll());
+        }
+        if (itemMergeAuditRepo != null) {
+            backup.setItemMergeAudits(itemMergeAuditRepo.findAll());
         }
 
         return backup;
@@ -2949,6 +2961,58 @@ public class BackupService {
             }
         }
 
+        // Restore ItemDuplicateDismissals
+        if (backup.getItemDuplicateDismissals() != null && itemDuplicateDismissalRepo != null) {
+            for (ItemDuplicateDismissal d : backup.getItemDuplicateDismissals()) {
+                Long oldFid = d.getFirmId();
+                if (oldToNewFirmIdMap.containsKey(oldFid)) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    Long mappedIdA = d.getItemIdA();
+                    if ("PRODUCT".equalsIgnoreCase(d.getSourceTypeA()) && oldToNewProductMap.containsKey(d.getItemIdA())) {
+                        mappedIdA = oldToNewProductMap.get(d.getItemIdA()).getId();
+                    }
+                    Long mappedIdB = d.getItemIdB();
+                    if ("PRODUCT".equalsIgnoreCase(d.getSourceTypeB()) && oldToNewProductMap.containsKey(d.getItemIdB())) {
+                        mappedIdB = oldToNewProductMap.get(d.getItemIdB()).getId();
+                    }
+                    if (!itemDuplicateDismissalRepo.isDismissed(mappedFirmId, d.getSourceTypeA(), mappedIdA, d.getSourceTypeB(), mappedIdB)) {
+                        ItemDuplicateDismissal newDismissal = ItemDuplicateDismissal.builder()
+                                .firmId(mappedFirmId)
+                                .sourceTypeA(d.getSourceTypeA())
+                                .itemIdA(mappedIdA)
+                                .sourceTypeB(d.getSourceTypeB())
+                                .itemIdB(mappedIdB)
+                                .dismissedAt(d.getDismissedAt() != null ? d.getDismissedAt() : LocalDateTime.now())
+                                .build();
+                        itemDuplicateDismissalRepo.save(newDismissal);
+                    }
+                }
+            }
+        }
+
+        // Restore ItemMergeAudits
+        if (backup.getItemMergeAudits() != null && itemMergeAuditRepo != null) {
+            for (ItemMergeAudit a : backup.getItemMergeAudits()) {
+                Long oldFid = a.getFirmId();
+                if (oldToNewFirmIdMap.containsKey(oldFid)) {
+                    Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
+                    ItemMergeAudit newAudit = ItemMergeAudit.builder()
+                            .firmId(mappedFirmId)
+                            .primaryType(a.getPrimaryType())
+                            .primaryId(a.getPrimaryId())
+                            .primaryName(a.getPrimaryName())
+                            .secondaryType(a.getSecondaryType())
+                            .secondaryId(a.getSecondaryId())
+                            .secondaryName(a.getSecondaryName())
+                            .stockTransferred(a.getStockTransferred())
+                            .detailsJson(a.getDetailsJson())
+                            .mergedAt(a.getMergedAt() != null ? a.getMergedAt() : LocalDateTime.now())
+                            .build();
+                    itemMergeAuditRepo.save(newAudit);
+                }
+            }
+        }
+
         // Post-Restore Integrity Verification
         for (FirmDetails rf : restoredFirms) {
             if (rf.getId() != null) {
@@ -3059,7 +3123,7 @@ public class BackupService {
         }
     }
 
-    private boolean isSensitiveConfigKey(String key) {
+    public static boolean isSensitiveConfigKey(String key) {
         if (key == null) return false;
         String upper = key.trim().toUpperCase();
         if (upper.startsWith("EMPLOYEE_MODULE_PIN_")) {
@@ -3077,6 +3141,8 @@ public class BackupService {
         if (upper.contains("CREDENTIAL")) return true;
         if (upper.contains("PIN")) return true;
         if (upper.contains("HASH")) return true;
+        if (upper.contains("PAT")) return true;
+        if (upper.contains("MASTER_KEY") || upper.contains("PRIVATE_KEY") || upper.contains("API_KEY")) return true;
         return upper.contains("TOKEN");
     }
 

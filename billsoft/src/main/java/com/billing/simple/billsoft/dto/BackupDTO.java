@@ -46,6 +46,8 @@ public class BackupDTO {
     private List<BusinessPartyLink> businessPartyLinks;
     private List<BusinessIdentityAlias> businessIdentityAliases;
     private List<BusinessPartyLinkEvent> businessPartyLinkEvents;
+    private List<ItemDuplicateDismissal> itemDuplicateDismissals;
+    private List<ItemMergeAudit> itemMergeAudits;
 
     public Long getSourceFirmId() {
         if (metadata != null && metadata.get("sourceFirmId") != null) {
@@ -362,5 +364,21 @@ public class BackupDTO {
 
     public void setBusinessPartyLinkEvents(List<BusinessPartyLinkEvent> businessPartyLinkEvents) {
         this.businessPartyLinkEvents = businessPartyLinkEvents;
+    }
+
+    public List<ItemDuplicateDismissal> getItemDuplicateDismissals() {
+        return itemDuplicateDismissals;
+    }
+
+    public void setItemDuplicateDismissals(List<ItemDuplicateDismissal> itemDuplicateDismissals) {
+        this.itemDuplicateDismissals = itemDuplicateDismissals;
+    }
+
+    public List<ItemMergeAudit> getItemMergeAudits() {
+        return itemMergeAudits;
+    }
+
+    public void setItemMergeAudits(List<ItemMergeAudit> itemMergeAudits) {
+        this.itemMergeAudits = itemMergeAudits;
     }
 }

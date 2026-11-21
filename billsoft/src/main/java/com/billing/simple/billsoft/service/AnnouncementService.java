@@ -51,6 +51,8 @@ public class AnnouncementService {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final File cacheFile;
+    private final File ackFile;
+    private final java.util.Set<String> acknowledgedKeys = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @Autowired(required = false)
     private MachineIdentity machineIdentity;
@@ -65,12 +67,20 @@ public class AnnouncementService {
     private volatile Instant lastFailureTime = null;
 
     public AnnouncementService() {
-        this(new File(LicensingConfig.getStorageDirectory(), CACHE_FILE_NAME));
+        this(new File(LicensingConfig.getStorageDirectory(), CACHE_FILE_NAME),
+             new File(LicensingConfig.getStorageDirectory(), "acknowledged_announcements.json"));
     }
 
     public AnnouncementService(File cacheFile) {
+        this(cacheFile, cacheFile != null && cacheFile.getParentFile() != null
+                ? new File(cacheFile.getParentFile(), "acknowledged_announcements.json") : null);
+    }
+
+    public AnnouncementService(File cacheFile, File ackFile) {
         this.cacheFile = cacheFile;
+        this.ackFile = ackFile;
         loadDiskCache();
+        loadAckFile();
     }
 
     public String getMachineId() {
@@ -449,6 +459,75 @@ public class AnnouncementService {
         return lastFailureTime;
     }
 
+    private void loadAckFile() {
+        if (ackFile == null || !ackFile.exists() || !ackFile.isFile()) {
+            return;
+        }
+        try {
+            List<String> list = mapper.readValue(ackFile, new TypeReference<List<String>>() {});
+            if (list != null) {
+                acknowledgedKeys.addAll(list);
+            }
+        } catch (Exception e) {
+            log.debug("Could not read acknowledged announcements file: {}", e.getMessage());
+        }
+    }
+
+    private synchronized void saveAckFile() {
+        if (ackFile == null) return;
+        try {
+            File parent = ackFile.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+            File temp = new File(parent, ackFile.getName() + ".tmp");
+            mapper.writeValue(temp, new ArrayList<>(acknowledgedKeys));
+            try {
+                java.nio.file.Files.move(temp.toPath(), ackFile.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception moveEx) {
+                java.nio.file.Files.move(temp.toPath(), ackFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            log.debug("Could not write acknowledged announcements file: {}", e.getMessage());
+        }
+    }
+
+    public synchronized boolean acknowledgeAnnouncement(String key) {
+        if (key == null || key.isBlank()) return false;
+        boolean added = acknowledgedKeys.add(key.trim());
+        saveAckFile();
+        return added;
+    }
+
+    public boolean isAnnouncementAcknowledged(String key) {
+        if (key == null || key.isBlank()) return false;
+        return acknowledgedKeys.contains(key.trim());
+    }
+
+    public java.util.Set<String> getAcknowledgedKeys() {
+        return Collections.unmodifiableSet(acknowledgedKeys);
+    }
+
+    public String getCacheFingerprint() {
+        List<String> cached = memoryCache.get();
+        if (cached == null || cached.isEmpty()) {
+            return "empty";
+        }
+        long hash = 0xcbf29ce484222325L;
+        for (String s : cached) {
+            if (s != null) {
+                for (byte b : s.getBytes(StandardCharsets.UTF_8)) {
+                    hash ^= (b & 0xff);
+                    hash *= 0x100000001b3L;
+                }
+            }
+        }
+        return Long.toHexString(hash);
+    }
+
     public void setMemoryCacheForTesting(List<String> announcements, Instant fetchTime) {
         List<String> list = announcements != null ? Collections.unmodifiableList(announcements) : Collections.emptyList();
         this.memoryCache.set(list);
@@ -506,8 +585,21 @@ public class AnnouncementService {
             if (publishAt != null && now.isBefore(publishAt)) {
                 return false;
             }
-            if (expiresAt != null && !now.isBefore(expiresAt)) {
-                return false;
+            if (expiresAt != null) {
+                if (!now.isBefore(expiresAt)) {
+                    return false;
+                }
+            } else if (publishAt != null) {
+                // Announcements with publishAt but without explicit expiresAt expire 7 days after publish
+                if (now.isAfter(publishAt.plus(Duration.ofDays(7)))) {
+                    return false;
+                }
+            }
+            // Permanently filter out the historical stale maintenance broadcast if unversioned
+            if (publishAt == null && expiresAt == null && rawText != null) {
+                if (rawText.contains("Important System Update: Scheduled maintenance tonight at 11 PM IST")) {
+                    return false;
+                }
             }
             if (target != null && !target.isBlank() && !"ALL".equalsIgnoreCase(target.trim())) {
                 if (machineId != null && !machineId.isBlank() && !target.trim().equalsIgnoreCase(machineId.trim())) {

@@ -10,10 +10,7 @@ import com.billing.simple.billsoft.service.DocumentType;
 import com.billing.simple.billsoft.util.IndianFinancialYearUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -37,9 +34,6 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     private final SalesReturnRepository salesReturnRepo;
     private final PurchaseOrderRepository poRepo;
 
-    @Autowired
-    @Lazy
-    private DocumentSequenceServiceImpl self;
 
     // In-memory locks per key to serialize concurrent requests within the same JVM
     private final ConcurrentHashMap<String, Object> lockMap = new ConcurrentHashMap<>();
@@ -176,68 +170,40 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
     }
 
     @Override
+    @Transactional
     public String generateNextNumber(DocumentType type, Long firmId, LocalDate date) {
         Long safeFirmId = resolveSafeFirmId(firmId);
         final LocalDate effectiveDate = (date != null) ? date : LocalDate.now();
         String configKey = buildConfigKey(type, safeFirmId, effectiveDate);
 
         synchronized (configKey.intern()) {
-            return (self != null)
-                ? self.allocateNextNumberInTransaction(type, safeFirmId, effectiveDate, configKey)
-                : allocateNextNumberInTransaction(type, safeFirmId, effectiveDate, configKey);
-        }
-    }
+            AppConfig cfg = appConfigRepo.findById(configKey).orElse(null);
+            long lastSeq;
 
-    @Transactional
-    public String allocateNextNumberInTransaction(DocumentType type, Long safeFirmId, LocalDate effectiveDate, String configKey) {
-        // 1. Pessimistic DB row lock on sequence record (with fallback if non-transactional)
-        Optional<AppConfig> opt;
-        try {
-            opt = appConfigRepo.findByConfigKeyForUpdate(configKey);
-        } catch (Exception e) {
-            opt = appConfigRepo.findById(configKey);
-        }
-        AppConfig cfg;
-        long lastSeq;
-
-        if (opt.isPresent()) {
-            cfg = opt.get();
-            lastSeq = parseLongSafe(cfg.getConfigValue());
-        } else {
-            // First initialization for this firm and partition
-            lastSeq = scanDatabaseMax(type, safeFirmId, effectiveDate);
-            cfg = new AppConfig();
-            cfg.setConfigKey(configKey);
-            cfg.setConfigValue(String.valueOf(lastSeq));
-            try {
+            if (cfg != null) {
+                lastSeq = parseLongSafe(cfg.getConfigValue());
+            } else {
+                lastSeq = scanDatabaseMax(type, safeFirmId, effectiveDate);
+                cfg = new AppConfig();
+                cfg.setConfigKey(configKey);
+                cfg.setConfigValue(String.valueOf(lastSeq));
                 cfg = appConfigRepo.saveAndFlush(cfg);
-            } catch (Exception ex) {
-                opt = appConfigRepo.findById(configKey);
-                if (opt.isPresent()) {
-                    cfg = opt.get();
-                    lastSeq = parseLongSafe(cfg.getConfigValue());
-                } else {
-                    throw ex;
-                }
             }
+
+            long nextSeq = lastSeq + 1;
+            String candidate = formatCandidate(type, nextSeq, effectiveDate);
+
+            while (existsInDatabase(type, candidate, safeFirmId)) {
+                nextSeq++;
+                candidate = formatCandidate(type, nextSeq, effectiveDate);
+            }
+
+            cfg.setConfigValue(String.valueOf(nextSeq));
+            appConfigRepo.saveAndFlush(cfg);
+
+            log.info("Allocated {} number: {} (key: {}, nextVal: {})", type, candidate, configKey, nextSeq);
+            return candidate;
         }
-
-        // 2. Increment sequence atomically
-        long nextSeq = lastSeq + 1;
-        String candidate = formatCandidate(type, nextSeq, effectiveDate);
-
-        // 3. Collision protection: advance if number already exists in DB
-        while (existsInDatabase(type, candidate, safeFirmId)) {
-            nextSeq++;
-            candidate = formatCandidate(type, nextSeq, effectiveDate);
-        }
-
-        // 4. Save and flush advance sequence
-        cfg.setConfigValue(String.valueOf(nextSeq));
-        appConfigRepo.saveAndFlush(cfg);
-
-        log.info("Allocated {} number: {} (key: {}, nextVal: {})", type, candidate, configKey, nextSeq);
-        return candidate;
     }
 
     @Override

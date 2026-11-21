@@ -48,7 +48,10 @@ jobs:
           sed -i "s/app.version=.*/app.version=v1.0.${{ github.run_number }}/" src/main/resources/application.properties
 
       - name: Build Backend and Launcher with Maven
-        run: mvn clean package -DskipTests
+        run: |
+          find ~/.m2/repository -name "_remote.repositories" -delete 2>/dev/null || true
+          find ~/.m2/repository -name "*.lastUpdated" -delete 2>/dev/null || true
+          mvn clean package -DskipTests --batch-mode
 
       - name: Stage Application Binaries
         run: |

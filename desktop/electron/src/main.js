@@ -650,6 +650,16 @@ async function startJavaSupervisor() {
           updateSplashStatus('Could not terminate older RupeeCRM process. Please close it manually.', true);
           return false;
         }
+        try {
+          const localAppData = process.env.LOCALAPPDATA;
+          if (localAppData) {
+            const staleWar = path.join(localAppData, 'RupeeCRM', 'app', 'rupeecrm.war');
+            if (fs.existsSync(staleWar)) {
+              fs.unlinkSync(staleWar);
+              logMessage(`Purged obsolete AppData WAR: ${staleWar}`);
+            }
+          }
+        } catch (_) {}
       } else {
         // Case E: Running backend is newer than packaged Electron
         logMessage(`Active RupeeCRM backend reports newer version (v${runningVer} > packaged v${packagedVer}). Retaining newer active backend under compatibility policy.`);

@@ -37,12 +37,7 @@
     RMDir /r "$INSTDIR\runtime"
   ${EndIf}
 
-  ; Purge any obsolete version override files and stale AppData WAR copies that could hijack runtime version reporting
-  Delete "$LOCALAPPDATA\RupeeCRM\app\rupeecrm.war"
-  Delete "$LOCALAPPDATA\RupeeCRM\app\rupeecrm.war.bak"
-  Delete "$LOCALAPPDATA\RupeeCRM\rupeecrm.war"
-  Delete "$LOCALAPPDATA\RupeeCRM\staging\update-tx\rupeecrm-update.war"
-  Delete "$LOCALAPPDATA\RupeeCRM\staging\update.handoff"
+  ; Purge any obsolete version override files that could hijack runtime version reporting
   Delete "$LOCALAPPDATA\RupeeCRM\data\.billsoft-version"
   Delete "$LOCALAPPDATA\RupeeCRM\.billsoft-version"
   Delete "$LOCALAPPDATA\RupeeCRM\staging\.billsoft-version"

@@ -40,11 +40,11 @@ const prepareResourcesPath = path.resolve(__dirname, '../scripts/prepare-resourc
 const launcherMainPath = path.resolve(__dirname, '../../../launcher/src/main/java/com/billing/simple/launcher/LauncherMain.java');
 const releaseYmlPath = path.resolve(__dirname, '../../../.github/workflows/release.yml');
 
-const mainJs = fs.readFileSync(mainJsPath, 'utf8');
-const installerNsh = fs.readFileSync(installerNshPath, 'utf8');
-const prepareResources = fs.readFileSync(prepareResourcesPath, 'utf8');
-const launcherMain = fs.readFileSync(launcherMainPath, 'utf8');
-const releaseYml = fs.readFileSync(releaseYmlPath, 'utf8');
+const mainJs = fs.readFileSync(mainJsPath, 'utf8').replace(/\r\n/g, '\n');
+const installerNsh = fs.readFileSync(installerNshPath, 'utf8').replace(/\r\n/g, '\n');
+const prepareResources = fs.readFileSync(prepareResourcesPath, 'utf8').replace(/\r\n/g, '\n');
+const launcherMain = fs.readFileSync(launcherMainPath, 'utf8').replace(/\r\n/g, '\n');
+const releaseYml = fs.readFileSync(releaseYmlPath, 'utf8').replace(/\r\n/g, '\n');
 
 console.log('═══════════════════════════════════════════════════════════════════');
 console.log('CATEGORY 1: WINDOWS INSTALL, UNINSTALL & VERSION INTEGRITY SUITE');
@@ -163,7 +163,7 @@ console.log('\n--- Suite 4: Supervisor Exit Code 0 & PID Tracking ---');
 runCheck('LauncherMain breaks supervisor loop and shuts down cleanly on backend exit code 0', () => {
   assert(launcherMain.includes('else if (exitCode == 0)'), 'LauncherMain must handle exitCode 0');
   assert(launcherMain.includes('System.out.println("Backend process exited cleanly (exit code 0). Shutting down supervisor.");'), 'Clean shutdown log must be present');
-  assert(launcherMain.includes('exitRequested = true;\n                    break;'), 'Supervisor loop must break on clean exit');
+  assert(/exitRequested\s*=\s*true;\s*break;/.test(launcherMain), 'Supervisor loop must break on clean exit');
 });
 
 runCheck('LauncherMain writes and clears .backend.pid file', () => {

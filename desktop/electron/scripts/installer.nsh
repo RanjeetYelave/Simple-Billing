@@ -10,7 +10,7 @@
   Pop $0
 
   ; 2. Terminate background Java processes executing RupeeCRM or Launcher (CIM + WMIC fallback)
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($_.Name -like \"*java*.exe\") -and ($_.CommandLine -match \"(?i)(rupeecrm|billsoft|launcher)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|launcher)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
   Pop $0
   nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%launcher%'')" call terminate 2>nul'
   Pop $0
@@ -72,7 +72,7 @@
   Pop $0
 
   ; 2. Terminate background Java processes executing RupeeCRM or Launcher
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($_.Name -like \"*java*.exe\") -and ($_.CommandLine -match \"(?i)(rupeecrm|billsoft|launcher)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|launcher)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
   Pop $0
 
   ; 3. Purge obsolete runtime WAR binaries and update handoff tokens without touching customer data or backups

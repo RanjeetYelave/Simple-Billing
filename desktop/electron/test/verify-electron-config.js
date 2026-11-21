@@ -18,6 +18,7 @@ const diagPath = path.join(baseDir, 'src', 'diagnostics', 'diagnostics.html');
 const icoPath = path.join(baseDir, 'assets', 'icon.ico');
 const pngPath = path.join(baseDir, 'assets', 'icon.png');
 const icnsPath = path.join(baseDir, 'assets', 'icon.icns');
+const nshPath = path.join(baseDir, 'scripts', 'installer.nsh');
 
 // 1. Verify Files Exist
 console.log('[1/7] Verifying core desktop files exist...');
@@ -25,6 +26,7 @@ assert(fs.existsSync(pkgPath), 'package.json must exist');
 assert(fs.existsSync(mainPath), 'src/main.js must exist');
 assert(fs.existsSync(preloadPath), 'src/preload.js must exist');
 assert(fs.existsSync(builderConfigPath), 'electron-builder.yml must exist');
+assert(fs.existsSync(nshPath), 'scripts/installer.nsh must exist');
 assert(fs.existsSync(splashPath), 'splash.html must exist');
 assert(fs.existsSync(diagPath), 'diagnostics.html must exist');
 assert(fs.existsSync(icoPath), 'assets/icon.ico must exist');
@@ -42,7 +44,7 @@ assert(pkg.devDependencies['electron-builder'], 'electron-builder must be a devD
 console.log('  -> package.json valid.');
 
 // 3. Verify electron-builder.yml configuration
-console.log('[3/7] Verifying electron-builder.yml...');
+console.log('[3/7] Verifying electron-builder.yml and installer.nsh...');
 const builderYaml = fs.readFileSync(builderConfigPath, 'utf8').replace(/\r\n/g, '\n');
 assert(builderYaml.includes('appId: com.rupeecrm.desktop'), 'App ID must be com.rupeecrm.desktop');
 assert(/target:\s*\n\s*-\s*target:\s*nsis/.test(builderYaml) || builderYaml.includes('target:\n    - target: nsis'), 'NSIS must be target');
@@ -51,7 +53,12 @@ assert(builderYaml.includes('oneClick: false'), 'Must use conventional setup wiz
 assert(builderYaml.includes('perMachine: false'), 'Must install per-user');
 assert(builderYaml.includes('extraResources:'), 'Must configure extraResources for JRE and WAR');
 assert(builderYaml.includes('signAndEditExecutable: true'), 'signAndEditExecutable must be enabled to ensure rcedit embeds PE icon resources');
-console.log('  -> electron-builder.yml valid with data preservation confirmed.');
+
+// Verify NSIS script has proper variable escaping and no unescaped PowerShell $_ references
+const nshSrc = fs.readFileSync(nshPath, 'utf8');
+assert(!nshSrc.includes('($_.'), 'installer.nsh must escape powershell $_ variables with $$ to prevent NSIS warning 6000');
+assert(nshSrc.includes('customUnInstall'), 'installer.nsh must include customUnInstall');
+console.log('  -> electron-builder.yml and installer.nsh valid with data preservation confirmed.');
 
 // 4. Verify Security Settings in main.js & preload.js
 console.log('[4/7] Verifying Security Requirements (contextIsolation, sandbox, nodeIntegration)...');

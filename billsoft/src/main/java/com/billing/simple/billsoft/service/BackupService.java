@@ -11,12 +11,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import com.billing.simple.billsoft.security.DatabaseSafetyGuard;
+import com.billing.simple.billsoft.dto.BackupExportResult;
 
 @Service
 public class BackupService {
@@ -353,6 +360,130 @@ public class BackupService {
         }
 
         return backup;
+    }
+
+    private BackupArchiveService backupArchiveService;
+
+    public BackupArchiveService getBackupArchiveService() {
+        if (backupArchiveService == null) {
+            backupArchiveService = new BackupArchiveService(objectMapper, backupValidationService);
+        }
+        return backupArchiveService;
+    }
+
+    public void setBackupArchiveService(BackupArchiveService backupArchiveService) {
+        this.backupArchiveService = backupArchiveService;
+    }
+
+    public BackupExportResult exportToFile(Long firmId, String destinationDirectory, String customFilename, String format) throws IOException {
+        if (destinationDirectory == null || destinationDirectory.trim().isEmpty()) {
+            throw new IllegalArgumentException("Destination directory cannot be null or empty.");
+        }
+
+        Path targetDir = Paths.get(destinationDirectory.trim());
+        if (!Files.exists(targetDir)) {
+            try {
+                Files.createDirectories(targetDir);
+            } catch (Exception e) {
+                throw new IOException("Failed to create destination directory: " + e.getMessage(), e);
+            }
+        }
+
+        if (!Files.isWritable(targetDir)) {
+            throw new SecurityException("DESTINATION_PERMISSION_DENIED: Cannot write to destination directory: " + targetDir.toAbsolutePath());
+        }
+
+        boolean isFullSystem = (firmId == null);
+        BackupDTO backup = isFullSystem ? exportAllData() : exportData(firmId);
+        backupValidationService.validate(backup);
+
+        String normalizedFormat = (format != null && format.trim().equalsIgnoreCase("zip")) ? "zip" : "json";
+        String defaultPrefix = isFullSystem ? "rupeecrm-full-backup-" : ("rupeecrm-backup-firm-" + firmId + "-");
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+
+        String finalFilename;
+        if (customFilename != null && !customFilename.trim().isEmpty()) {
+            String sanitized = customFilename.trim();
+            if (!sanitized.toLowerCase().endsWith("." + normalizedFormat)) {
+                sanitized += "." + normalizedFormat;
+            }
+            finalFilename = sanitized;
+        } else {
+            finalFilename = defaultPrefix + timestamp + "." + normalizedFormat;
+        }
+
+        Path targetFile = targetDir.resolve(finalFilename);
+        Path tempFile = targetDir.resolve(finalFilename + ".tmp_" + UUID.randomUUID());
+
+        try {
+            byte[] fileBytes;
+            if ("zip".equals(normalizedFormat)) {
+                fileBytes = getBackupArchiveService().createZipArchive(backup);
+            } else {
+                fileBytes = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(backup);
+            }
+
+            long requiredBytes = fileBytes.length;
+            long usableSpace = targetDir.toFile().getUsableSpace();
+            if (usableSpace > 0 && usableSpace < Math.max(50L * 1024L * 1024L, requiredBytes * 2)) {
+                throw new IllegalStateException("INSUFFICIENT_DISK_SPACE: Destination partition has only "
+                        + (usableSpace / (1024 * 1024)) + " MB available (minimum " + (Math.max(50, (requiredBytes * 2) / (1024 * 1024))) + " MB required).");
+            }
+
+            // Write to temporary file first and sync
+            try (java.io.OutputStream os = Files.newOutputStream(tempFile);
+                 java.io.BufferedOutputStream bos = new java.io.BufferedOutputStream(os)) {
+                bos.write(fileBytes);
+                bos.flush();
+            }
+
+            if (!Files.exists(tempFile) || Files.size(tempFile) == 0) {
+                throw new IOException("Exported backup file was empty or missing after writing.");
+            }
+
+            // Read-back verification
+            if ("zip".equals(normalizedFormat)) {
+                try (java.io.InputStream is = Files.newInputStream(tempFile)) {
+                    getBackupArchiveService().extractAndValidateBackup(is, finalFilename);
+                }
+            } else {
+                BackupDTO verified = objectMapper.readValue(tempFile.toFile(), BackupDTO.class);
+                backupValidationService.validate(verified);
+            }
+
+            String sha256 = BackupArchiveService.calculateSha256(fileBytes);
+
+            // Atomically promote tempFile to targetFile
+            Files.move(tempFile, targetFile,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+
+            int firmsCount = backup.getAllFirms() != null ? backup.getAllFirms().size() : (backup.getFirmDetails() != null ? 1 : 0);
+            int recordCount = (backup.getInvoices() != null ? backup.getInvoices().size() : 0)
+                    + (backup.getCustomers() != null ? backup.getCustomers().size() : 0)
+                    + (backup.getProducts() != null ? backup.getProducts().size() : 0)
+                    + (backup.getParties() != null ? backup.getParties().size() : 0)
+                    + (backup.getNotifications() != null ? backup.getNotifications().size() : 0);
+
+            return BackupExportResult.builder()
+                    .success(true)
+                    .filePath(targetFile.toAbsolutePath().toString())
+                    .filename(targetFile.getFileName().toString())
+                    .fileSizeBytes(Files.size(targetFile))
+                    .checksumSha256(sha256)
+                    .format(normalizedFormat)
+                    .exportedAt(LocalDateTime.now().toString())
+                    .firmsCount(firmsCount)
+                    .recordCount(recordCount)
+                    .message("Backup exported and verified successfully.")
+                    .build();
+        } finally {
+            if (Files.exists(tempFile)) {
+                try {
+                    Files.delete(tempFile);
+                } catch (Exception ignored) {}
+            }
+        }
     }
 
     public BackupInspectionDTO inspectBackup(BackupDTO backup) {

@@ -34551,12 +34551,22 @@ function PartyDetailModal({
         setExportError(null);
         showToast(type === 'firm' ? 'Exporting current firm backup...' : 'Exporting full system multi-firm backup...', 'info');
         try {
-          if (type === 'firm') {
-            await API.backup.exportFirm(null, password);
-          } else {
-            await API.backup.exportAll(password);
+          const res = (type === 'firm')
+            ? await API.backup.exportFirm(null, password)
+            : await API.backup.exportAll(password);
+
+          if (res && res.canceled) {
+            setShowExportAuthModal(false);
+            setExportPassword('');
+            return;
           }
-          showToast('Backup exported and downloaded successfully!', 'success');
+
+          const savedPath = res && res.filePath;
+          if (savedPath) {
+            showToast('Backup saved successfully to: ' + savedPath, 'success');
+          } else {
+            showToast('Backup exported and downloaded successfully!', 'success');
+          }
           setShowExportAuthModal(false);
           setExportPassword('');
         } catch (err) {

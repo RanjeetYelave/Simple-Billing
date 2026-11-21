@@ -45,8 +45,9 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
     }
   },
 
-  // Native PDF Document Actions (Print & Save)
+  // Native Document & Backup Actions (Print & Save)
   savePdf: (base64Data, defaultFilename) => ipcRenderer.invoke('pdf:save', { base64Data, defaultFilename }),
+  saveBackup: (payload) => ipcRenderer.invoke('backup:save', payload),
   printPdf: (payload, options) => {
     if (typeof payload === 'string') {
       return ipcRenderer.invoke('pdf:print', { base64Data: payload, options });

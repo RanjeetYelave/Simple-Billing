@@ -169,12 +169,13 @@ const API = {
       a.download = filename || 'download.json';
       document.body.appendChild(a);
       a.click();
+      // Keep object URL alive for 2 minutes to prevent premature invalidation
       setTimeout(() => {
         try {
           if (a.parentNode) a.parentNode.removeChild(a);
           window.URL.revokeObjectURL(url);
         } catch (_) {}
-      }, 1500);
+      }, 120000);
     } catch (e) {
       console.error('Failed to trigger blob download:', e);
     }
@@ -1253,6 +1254,18 @@ const API = {
       const match = disposition.match(/filename="?([^";]+)"?/);
       if (match && match[1]) filename = match[1].trim();
 
+      if (window.rupeeDesktop && typeof window.rupeeDesktop.saveBackup === 'function') {
+        const text = await blob.text();
+        const saveRes = await window.rupeeDesktop.saveBackup({ data: text, defaultFilename: filename });
+        if (saveRes && saveRes.canceled) {
+          return { canceled: true };
+        }
+        if (!saveRes || !saveRes.success) {
+          throw new Error((saveRes && saveRes.error) || 'Failed to save backup file to selected directory');
+        }
+        return { success: true, filePath: saveRes.filePath, filename: saveRes.filename || filename, size: saveRes.sizeBytes };
+      }
+
       API._downloadBlob(blob, filename);
       return { success: true, filename };
     },
@@ -1282,6 +1295,18 @@ const API = {
       let filename = `billsoft-full-system-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const match = disposition.match(/filename="?([^";]+)"?/);
       if (match && match[1]) filename = match[1].trim();
+
+      if (window.rupeeDesktop && typeof window.rupeeDesktop.saveBackup === 'function') {
+        const text = await blob.text();
+        const saveRes = await window.rupeeDesktop.saveBackup({ data: text, defaultFilename: filename });
+        if (saveRes && saveRes.canceled) {
+          return { canceled: true };
+        }
+        if (!saveRes || !saveRes.success) {
+          throw new Error((saveRes && saveRes.error) || 'Failed to save full backup file to selected directory');
+        }
+        return { success: true, filePath: saveRes.filePath, filename: saveRes.filename || filename, size: saveRes.sizeBytes };
+      }
 
       API._downloadBlob(blob, filename);
       return { success: true, filename };

@@ -1,11 +1,15 @@
 package com.billing.simple.billsoft.controllers;
 
 import com.billing.simple.billsoft.dto.BackupDTO;
+import com.billing.simple.billsoft.dto.BackupExportResult;
 import com.billing.simple.billsoft.entities.AppConfig;
+import com.billing.simple.billsoft.exception.BackupValidationException;
 import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.security.TenantContext;
 import com.billing.simple.billsoft.service.AutoBackupService;
+import com.billing.simple.billsoft.service.BackupArchiveService;
 import com.billing.simple.billsoft.service.BackupService;
+import com.billing.simple.billsoft.service.BackupValidationService;
 import com.billing.simple.billsoft.util.PasswordUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
@@ -29,17 +33,23 @@ public class BackupController {
     private final AutoBackupService autoBackupService;
     private final AppConfigRepository appConfigRepo;
     private final AuthController authController;
+    private final BackupArchiveService backupArchiveService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final String MASTER_KEY_HASH = "3680e811ded1a1831a688d594243e727a23d8bc801a9e2fa31279dba46b635ce";
 
-    public BackupController(BackupService backupService, AutoBackupService autoBackupService, AppConfigRepository appConfigRepo, AuthController authController) {
+    public BackupController(BackupService backupService,
+                            AutoBackupService autoBackupService,
+                            AppConfigRepository appConfigRepo,
+                            AuthController authController,
+                            @org.springframework.beans.factory.annotation.Autowired(required = false) BackupArchiveService backupArchiveService) {
         this.backupService = backupService;
         this.autoBackupService = autoBackupService;
         this.appConfigRepo = appConfigRepo;
         this.authController = authController;
+        this.backupArchiveService = backupArchiveService != null ? backupArchiveService : new BackupArchiveService(objectMapper, new BackupValidationService());
     }
 
     private boolean isMasterAuthorized(String masterPassword) {
@@ -99,7 +109,8 @@ public class BackupController {
 
         try {
             BackupDTO backup = backupService.exportData(firmId);
-            String filename = "billsoft-backup-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
+            String filename = "billsoft-backup-"
+                    + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
@@ -127,7 +138,8 @@ public class BackupController {
 
         try {
             BackupDTO backup = backupService.exportAllData();
-            String filename = "billsoft-full-system-backup-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
+            String filename = "billsoft-full-system-backup-"
+                    + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
@@ -141,12 +153,80 @@ public class BackupController {
         }
     }
 
+    @PostMapping("/export/save-to-disk")
+    public ResponseEntity<?> exportSaveToDisk(
+            HttpServletRequest request,
+            @RequestParam(value = "firmId", required = false) Long firmId,
+            @RequestParam("destinationDir") String destinationDir,
+            @RequestParam(value = "filename", required = false) String filename,
+            @RequestParam(value = "format", defaultValue = "json") String format) {
+
+        String masterPassword = request != null ? request.getHeader("X-Master-Password") : null;
+        if (masterPassword == null || masterPassword.isBlank()) {
+            masterPassword = request != null ? request.getParameter("masterPassword") : null;
+        }
+        boolean authorized = isMasterAuthorized(masterPassword);
+        if (!authorized && request != null) {
+            String token = request.getHeader("X-Auth-Token");
+            if (token == null || token.isBlank()) {
+                String authHeader = request.getHeader("Authorization");
+                if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                    token = authHeader.substring(7).trim();
+                }
+            }
+            if (token == null || token.isBlank()) {
+                token = request.getParameter("token");
+            }
+            if (token != null && !token.isBlank() && authController.isValidSessionToken(token)) {
+                authorized = true;
+            }
+        }
+        if (authController.isAuthEnabled() && !authorized) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Exporting backup to destination directory requires password or authorized session");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
+
+        if (firmId != null) {
+            Long currentFirmId = TenantContext.getCurrentFirmId();
+            if (currentFirmId != null && !currentFirmId.equals(firmId)) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Cross-firm backup export prohibited");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        }
+
+        try {
+            BackupExportResult result = backupService.exportToFile(firmId, destinationDir, filename, format);
+            return ResponseEntity.ok(result);
+        } catch (SecurityException se) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", se.getMessage());
+            response.put("errorCode", "DESTINATION_PERMISSION_DENIED");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        } catch (IllegalStateException ise) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", ise.getMessage());
+            response.put("errorCode", "INSUFFICIENT_DISK_SPACE");
+            return ResponseEntity.status(HttpStatus.INSUFFICIENT_STORAGE).body(response);
+        } catch (IllegalArgumentException iae) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", iae.getMessage());
+            response.put("errorCode", "INVALID_ARGUMENT");
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Failed to export backup to destination: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
     @GetMapping("/auto/status")
     public ResponseEntity<Map<String, Object>> getAutoBackupStatus() {
         return ResponseEntity.ok(autoBackupService.getStatus());
     }
 
-    @PostMapping({"/auto/run-now", "/auto/trigger"})
+    @PostMapping({ "/auto/run-now", "/auto/trigger" })
     public ResponseEntity<Map<String, Object>> runAutoBackupNow(HttpServletRequest request) {
         String masterPassword = request != null ? request.getHeader("X-Master-Password") : null;
         if (masterPassword == null || masterPassword.isBlank()) {
@@ -168,7 +248,8 @@ public class BackupController {
         String masterPassword = request != null ? request.getHeader("X-Master-Password") : null;
         if (masterPassword == null || masterPassword.isBlank()) {
             masterPassword = request != null ? request.getParameter("masterPassword") : null;
-            if ((masterPassword == null || masterPassword.isBlank()) && config != null && config.get("masterPassword") != null) {
+            if ((masterPassword == null || masterPassword.isBlank()) && config != null
+                    && config.get("masterPassword") != null) {
                 masterPassword = String.valueOf(config.get("masterPassword"));
             }
         }
@@ -191,7 +272,8 @@ public class BackupController {
                 return ResponseEntity.notFound().build();
             }
             byte[] data = java.nio.file.Files.readAllBytes(file.toPath());
-            String filename = "autobackup-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
+            String filename = "autobackup-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+                    + ".json";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
@@ -245,7 +327,8 @@ public class BackupController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
             }
         } else {
-            // In clone mode, destination is always a new firm. Target firm ID cannot override it.
+            // In clone mode, destination is always a new firm. Target firm ID cannot
+            // override it.
             targetFirmId = null;
         }
 
@@ -257,9 +340,11 @@ public class BackupController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
             BackupDTO backup = objectMapper.readValue(file, BackupDTO.class);
-            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty()) ? new java.util.HashSet<>(firmIds) : null;
-            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms =
-                    backupService.importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
+            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty())
+                    ? new java.util.HashSet<>(firmIds)
+                    : null;
+            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms = backupService
+                    .importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
 
             String sessionToken = authController.createSessionTokenForBootstrap();
             Map<String, Object> response = new HashMap<>();
@@ -270,7 +355,8 @@ public class BackupController {
             return ResponseEntity.ok()
                     .header("X-Auth-Token", sessionToken)
                     .body(response);
-        } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
+        } catch (com.fasterxml.jackson.core.JsonParseException
+                | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, Object> response = new HashMap<>();
             response.put("error", "The uploaded file is not a valid Billsoft backup or is corrupted.");
@@ -293,13 +379,20 @@ public class BackupController {
     @PostMapping("/inspect")
     public ResponseEntity<?> inspectBackup(@RequestParam("file") MultipartFile file) {
         try {
-            BackupDTO backup = objectMapper.readValue(file.getInputStream(), BackupDTO.class);
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
             com.billing.simple.billsoft.dto.BackupInspectionDTO inspection = backupService.inspectBackup(backup);
             return ResponseEntity.ok(inspection);
-        } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
+        } catch (BackupValidationException bve) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", bve.getMessage());
+            response.put("errorCode", bve.getErrorCode());
+            return ResponseEntity.badRequest().body(response);
+        } catch (com.fasterxml.jackson.core.JsonParseException
+                | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, String> response = new HashMap<>();
             response.put("error", "The uploaded file is not a valid Billsoft backup or is corrupted.");
+            response.put("errorCode", "MALFORMED_BACKUP");
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             e.printStackTrace();
@@ -333,15 +426,18 @@ public class BackupController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
             }
         } else {
-            // In clone mode, destination is always a new firm. Target firm ID cannot override it.
+            // In clone mode, destination is always a new firm. Target firm ID cannot
+            // override it.
             targetFirmId = null;
         }
 
         try {
-            BackupDTO backup = objectMapper.readValue(file.getInputStream(), BackupDTO.class);
-            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty()) ? new java.util.HashSet<>(firmIds) : null;
-            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms =
-                    backupService.importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
+            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty())
+                    ? new java.util.HashSet<>(firmIds)
+                    : null;
+            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms = backupService
+                    .importSelectiveData(backup, selectedFirmIds, mode, targetFirmId);
 
             String sessionToken = authController.createSessionTokenForBootstrap();
             Map<String, Object> response = new HashMap<>();
@@ -352,10 +448,17 @@ public class BackupController {
             return ResponseEntity.ok()
                     .header("X-Auth-Token", sessionToken)
                     .body(response);
-        } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
+        } catch (BackupValidationException bve) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", bve.getMessage());
+            response.put("errorCode", bve.getErrorCode());
+            return ResponseEntity.badRequest().body(response);
+        } catch (com.fasterxml.jackson.core.JsonParseException
+                | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, Object> response = new HashMap<>();
             response.put("error", "The uploaded file is not a valid Billsoft backup or is corrupted.");
+            response.put("errorCode", "MALFORMED_BACKUP");
             return ResponseEntity.badRequest().body(response);
         } catch (java.io.IOException e) {
             e.printStackTrace();
@@ -372,7 +475,7 @@ public class BackupController {
         }
     }
 
-    @PostMapping({"/import", "/restore", "/upload-restore"})
+    @PostMapping({ "/import", "/restore", "/upload-restore" })
     public ResponseEntity<Map<String, String>> importBackup(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "firmId", required = false) Long firmId,
@@ -394,14 +497,16 @@ public class BackupController {
         }
 
         try {
-            BackupDTO backup = objectMapper.readValue(file.getInputStream(), BackupDTO.class);
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
             boolean isMultiFirm = backup.getAllFirms() != null && backup.getAllFirms().size() > 1;
             if (firmId != null && isMultiFirm && sourceFirmId == null) {
                 Map<String, String> response = new HashMap<>();
                 response.put("status", "error");
                 response.put("errorCode", "AMBIGUOUS_MULTI_FIRM_BACKUP");
-                response.put("error", "AMBIGUOUS_MULTI_FIRM_BACKUP: Uploaded backup contains " + backup.getAllFirms().size()
-                        + " firms. Explicit source firm selection ('sourceFirmId') is required to import into target firm " + firmId + ".");
+                response.put("error", "AMBIGUOUS_MULTI_FIRM_BACKUP: Uploaded backup contains "
+                        + backup.getAllFirms().size()
+                        + " firms. Explicit source firm selection ('sourceFirmId') is required to import into target firm "
+                        + firmId + ".");
                 return ResponseEntity.badRequest().body(response);
             }
 
@@ -416,10 +521,17 @@ public class BackupController {
             response.put("status", "success");
             response.put("message", "Backup restored successfully");
             return ResponseEntity.ok(response);
-        } catch (com.fasterxml.jackson.core.JsonParseException | com.fasterxml.jackson.databind.JsonMappingException e) {
+        } catch (BackupValidationException bve) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", bve.getMessage());
+            response.put("errorCode", bve.getErrorCode());
+            return ResponseEntity.badRequest().body(response);
+        } catch (com.fasterxml.jackson.core.JsonParseException
+                | com.fasterxml.jackson.databind.JsonMappingException e) {
             e.printStackTrace();
             Map<String, String> response = new HashMap<>();
             response.put("error", "The uploaded file is not a valid Billsoft backup or is corrupted.");
+            response.put("errorCode", "MALFORMED_BACKUP");
             return ResponseEntity.badRequest().body(response);
         } catch (java.io.IOException e) {
             e.printStackTrace();
@@ -445,7 +557,7 @@ public class BackupController {
         return importBackup(file, firmId, sourceFirmId, mode);
     }
 
-    @PostMapping({"/restore/all", "/upload-restore/all"})
+    @PostMapping({ "/restore/all", "/upload-restore/all" })
     public ResponseEntity<Map<String, Object>> restoreAll(
             HttpServletRequest request,
             @RequestParam("file") MultipartFile file,
@@ -463,7 +575,8 @@ public class BackupController {
     }
 
     @PostMapping("/factory-reset")
-    public ResponseEntity<Map<String, String>> factoryReset(@RequestBody(required = false) Map<String, String> request) {
+    public ResponseEntity<Map<String, String>> factoryReset(
+            @RequestBody(required = false) Map<String, String> request) {
         String confirm = request != null ? request.get("confirm") : null;
         if (!"RESET".equalsIgnoreCase(confirm) && !"RESET SOFTWARE".equalsIgnoreCase(confirm)) {
             Map<String, String> response = new HashMap<>();

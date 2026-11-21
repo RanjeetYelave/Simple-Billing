@@ -35,12 +35,12 @@ public class Notification {
     @Column(nullable = false, length = 255)
     private String eventKey;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = NotificationCategoryConverter.class)
     @Column(nullable = false, length = 50)
     @Builder.Default
     private NotificationCategory category = NotificationCategory.SYSTEM;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = NotificationPriorityConverter.class)
     @Column(nullable = false, length = 20)
     @Builder.Default
     private NotificationPriority priority = NotificationPriority.NORMAL;
@@ -54,7 +54,7 @@ public class Notification {
     @Column(length = 100)
     private String sender;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = NotificationStatusConverter.class)
     @Column(nullable = false, length = 20)
     @Builder.Default
     private NotificationStatus status = NotificationStatus.UNREAD;
@@ -62,7 +62,7 @@ public class Notification {
     @Column(length = 100)
     private String primaryActionLabel;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = NotificationActionTypeConverter.class)
     @Column(length = 30)
     private NotificationActionType primaryActionType;
 
@@ -72,7 +72,7 @@ public class Notification {
     @Column(length = 100)
     private String secondaryActionLabel;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = NotificationActionTypeConverter.class)
     @Column(length = 30)
     private NotificationActionType secondaryActionType;
 

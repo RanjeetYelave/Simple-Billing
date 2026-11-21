@@ -53,6 +53,10 @@ jobs:
           find ~/.m2/repository -name "*.lastUpdated" -delete 2>/dev/null || true
           mvn clean package -DskipTests --batch-mode
 
+      - name: Run Category 3 Backup & Restore Certification Tests
+        run: |
+          mvn test -pl billsoft -Dtest=Category3BackupAndRestoreStabilizationTest --batch-mode
+
       - name: Stage Application Binaries
         run: |
           mkdir -p app-binaries

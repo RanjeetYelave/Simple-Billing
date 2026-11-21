@@ -7,10 +7,13 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
@@ -23,7 +26,8 @@ import java.util.*;
 public class AutoBackupService {
 
     private static final Logger log = LoggerFactory.getLogger(AutoBackupService.class);
-    private static final String LATEST_BACKUP_NAME = "autobackup_latest.json";
+    public static final String LATEST_BACKUP_NAME = "autobackup_latest.json";
+    private static final long MIN_DISK_SPACE_BYTES = 50L * 1024L * 1024L; // 50 MB
 
     private final BackupService backupService;
     private final BackupValidationService backupValidationService;
@@ -31,13 +35,16 @@ public class AutoBackupService {
     private final ObjectMapper objectMapper;
     private final Map<String, Object> lastBackupStatus = new HashMap<>();
 
-    @org.springframework.beans.factory.annotation.Value("${app.autobackup.startup-check.enabled:true}")
+    @Value("${app.autobackup.startup-check.enabled:true}")
     private boolean startupCheckEnabled = true;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Value("${app.autobackup.retention-count:7}")
+    private int retentionCount = 7;
+
+    @Autowired
     public AutoBackupService(BackupService backupService,
                              BackupValidationService backupValidationService,
-                             @org.springframework.beans.factory.annotation.Autowired(required = false) BackupRecoveryCoordinator coordinator) {
+                             @Autowired(required = false) BackupRecoveryCoordinator coordinator) {
         this.backupService = backupService;
         this.backupValidationService = backupValidationService;
         this.coordinator = coordinator != null ? coordinator : new BackupRecoveryCoordinator();
@@ -49,6 +56,14 @@ public class AutoBackupService {
 
     public AutoBackupService(BackupService backupService, BackupValidationService backupValidationService) {
         this(backupService, backupValidationService, new BackupRecoveryCoordinator());
+    }
+
+    public int getRetentionCount() {
+        return retentionCount;
+    }
+
+    public void setRetentionCount(int retentionCount) {
+        this.retentionCount = Math.max(1, retentionCount);
     }
 
     /**
@@ -64,7 +79,7 @@ public class AutoBackupService {
         // Load initial status from disk if previous backup exists
         File backupDir = getBackupDirectory();
         File latest = new File(backupDir, LATEST_BACKUP_NAME);
-        if (latest.exists() && latest.isFile()) {
+        if (latest.exists() && latest.isFile() && latest.length() > 0) {
             boolean today = isTodayBackupPresent();
             lastBackupStatus.put("status", today ? "HEALTHY" : "READY");
             lastBackupStatus.put("lastBackupTime", latest.lastModified());
@@ -89,6 +104,28 @@ public class AutoBackupService {
                     log.warn("Startup auto-backup check encountered a non-critical error: {}", e.getMessage());
                 }
             }, "AutoBackup-StartupCheck").start();
+        }
+    }
+
+    /**
+     * Daily scheduled auto-backup cron job (default: 2:00 AM every day).
+     */
+    @Scheduled(cron = "${app.autobackup.cron:0 0 2 * * ?}")
+    public void scheduledDailyBackup() {
+        log.info("Scheduled daily auto-backup triggered by cron.");
+        runAutoBackup();
+    }
+
+    /**
+     * Periodic missed-schedule recovery check (runs hourly).
+     * If the machine was off or asleep at 2:00 AM, this ensures today's backup is generated.
+     */
+    @Scheduled(fixedRateString = "${app.autobackup.check-interval-ms:3600000}", initialDelay = 15000)
+    public void periodicMissedScheduleCheck() {
+        if (!isTodayBackupPresent()) {
+            log.info("Periodic auto-backup check: No verified backup found for today ({}). Executing missed auto-backup...",
+                    java.time.LocalDate.now());
+            runAutoBackup();
         }
     }
 
@@ -124,7 +161,8 @@ public class AutoBackupService {
     }
 
     /**
-     * Executes a complete system auto-backup with atomic write and old backup deletion.
+     * Executes a complete system auto-backup with disk space validation, atomic write,
+     * read-back integrity verification, historical archiving, and retention management.
      */
     public synchronized Map<String, Object> runAutoBackup() {
         if (!coordinator.tryLock()) {
@@ -133,36 +171,71 @@ public class AutoBackupService {
             lastBackupStatus.put("message", "Automated backup skipped: System recovery, restore, or reset operation is in progress.");
             return new HashMap<>(lastBackupStatus);
         }
+
         File backupDir = getBackupDirectory();
         long startTime = System.currentTimeMillis();
         File tempFile = new File(backupDir, "autobackup_temp_" + startTime + ".json");
         File targetFile = new File(backupDir, LATEST_BACKUP_NAME);
 
         try {
+            // 0. Disk Space Preflight Check
+            long usableSpace = backupDir.getUsableSpace();
+            if (usableSpace > 0 && usableSpace < MIN_DISK_SPACE_BYTES) {
+                String errMsg = "INSUFFICIENT_DISK_SPACE: Target backup partition has only "
+                        + (usableSpace / (1024 * 1024)) + " MB available (minimum 50 MB required).";
+                log.error(errMsg);
+                lastBackupStatus.put("status", "ERROR");
+                lastBackupStatus.put("lastError", errMsg);
+                lastBackupStatus.put("lastErrorTime", System.currentTimeMillis());
+                return new HashMap<>(lastBackupStatus);
+            }
+
             log.info("Starting complete multi-firm auto-backup generation...");
             BackupDTO fullBackup = backupService.exportAllData();
             fullBackup.getMetadata().put("backupType", "DAILY_AUTO_BACKUP");
             fullBackup.getMetadata().put("generatedAt", LocalDateTime.now().toString());
 
-            // Validate exported structure before writing to disk
+            // Validate in-memory structure
             backupValidationService.validate(fullBackup);
 
             // 1. Write to temporary file first (atomic safety)
             objectMapper.writeValue(tempFile, fullBackup);
 
             if (!tempFile.exists() || tempFile.length() == 0) {
-                throw new RuntimeException("Generated auto-backup temp file is empty or missing.");
+                throw new IOException("Generated auto-backup temp file is empty or missing.");
             }
 
-            // 2. Atomically promote/rename temp file to latest backup
+            // 2. Read-back verification of the written on-disk file
+            BackupDTO verifiedBackup = objectMapper.readValue(tempFile, BackupDTO.class);
+            backupValidationService.validate(verifiedBackup);
+
+            byte[] tempBytes = Files.readAllBytes(tempFile.toPath());
+            String sha256 = BackupArchiveService.calculateSha256(tempBytes);
+
+            // 3. Create timestamped historical backup copy for multi-generation recovery
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            File timestampedFile = new File(backupDir, "autobackup_" + timestamp + ".json");
+            Files.copy(tempFile.toPath(), timestampedFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            // 4. Atomically promote/rename temp file to latest backup
             Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 
-            // 3. Prune old/stray temporary backup files in directory
+            // 5. Apply retention policy (prune old historical backups, but NEVER delete the only valid backup)
+            applyRetentionPolicy(backupDir, targetFile);
+
+            // 6. Prune any stray temporary backup files
             cleanStrayBackupFiles(backupDir, targetFile);
 
             long elapsed = System.currentTimeMillis() - startTime;
-            log.info("Auto-backup successfully completed in {}ms. File size: {} bytes at {}",
-                    elapsed, targetFile.length(), targetFile.getAbsolutePath());
+            log.info("Auto-backup successfully completed in {}ms. File size: {} bytes, SHA-256: {} at {}",
+                    elapsed, targetFile.length(), sha256, targetFile.getAbsolutePath());
+
+            int firmsCount = fullBackup.getAllFirms() != null ? fullBackup.getAllFirms().size() : 1;
+            int recordCount = (fullBackup.getInvoices() != null ? fullBackup.getInvoices().size() : 0)
+                    + (fullBackup.getCustomers() != null ? fullBackup.getCustomers().size() : 0)
+                    + (fullBackup.getProducts() != null ? fullBackup.getProducts().size() : 0)
+                    + (fullBackup.getParties() != null ? fullBackup.getParties().size() : 0)
+                    + (fullBackup.getNotifications() != null ? fullBackup.getNotifications().size() : 0);
 
             lastBackupStatus.put("status", "HEALTHY");
             lastBackupStatus.put("lastBackupTime", targetFile.lastModified());
@@ -170,9 +243,13 @@ public class AutoBackupService {
             lastBackupStatus.put("fileSizeBytes", targetFile.length());
             lastBackupStatus.put("filePath", targetFile.getAbsolutePath());
             lastBackupStatus.put("backupDir", backupDir.getAbsolutePath());
+            lastBackupStatus.put("checksumSha256", sha256);
             lastBackupStatus.put("durationMs", elapsed);
             lastBackupStatus.put("isTodayBackup", true);
+            lastBackupStatus.put("firmsCount", firmsCount);
+            lastBackupStatus.put("recordCount", recordCount);
             lastBackupStatus.put("message", "Auto-backup verified and saved successfully for today.");
+            lastBackupStatus.remove("lastError");
 
             return new HashMap<>(lastBackupStatus);
         } catch (Exception e) {
@@ -186,6 +263,35 @@ public class AutoBackupService {
             return new HashMap<>(lastBackupStatus);
         } finally {
             coordinator.unlock();
+        }
+    }
+
+    /**
+     * Enforces the retention policy on historical timestamped backups.
+     * Prunes backups older than the retention threshold while guaranteeing
+     * that the only valid backup is NEVER deleted.
+     */
+    public void applyRetentionPolicy(File backupDir, File activeBackupFile) {
+        try {
+            File[] historical = backupDir.listFiles((dir, name) ->
+                    name.startsWith("autobackup_") && name.endsWith(".json")
+                            && !name.equals(LATEST_BACKUP_NAME)
+                            && !name.startsWith("autobackup_temp_"));
+
+            if (historical != null && historical.length > retentionCount) {
+                Arrays.sort(historical, Comparator.comparingLong(File::lastModified));
+                int toDelete = historical.length - retentionCount;
+                for (int i = 0; i < toDelete; i++) {
+                    // Safety check: Never delete if it's the last remaining historical backup or identical to active
+                    if (historical.length - i > 1 && !historical[i].getAbsolutePath().equals(activeBackupFile.getAbsolutePath())) {
+                        log.info("Pruned historical auto-backup under retention policy (keep last {}): {}",
+                                retentionCount, historical[i].getName());
+                        historical[i].delete();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Non-critical issue applying auto-backup retention policy: {}", e.getMessage());
         }
     }
 
@@ -225,9 +331,10 @@ public class AutoBackupService {
             status.put("lastModifiedFormatted", formatTimestamp(latest.lastModified()));
             status.put("filePath", latest.getAbsolutePath());
         }
-        status.put("strategy", "Launch & Diagnostic Verification (Daily)");
-        status.put("scheduleCron", "Verified on App Launch & Diagnostics (Daily)");
-        status.put("retentionPolicy", "Keep latest verified backup (Old pruned automatically)");
+        status.put("strategy", "Daily Scheduled & Missed-Run Auto-Recovery");
+        status.put("scheduleCron", "0 0 2 * * ? (Daily at 2:00 AM) + Hourly Missed-Schedule Sweep");
+        status.put("retentionPolicy", "Keep latest verified backup + last " + retentionCount + " historical daily snapshots");
+        status.put("retentionCount", retentionCount);
         return status;
     }
 

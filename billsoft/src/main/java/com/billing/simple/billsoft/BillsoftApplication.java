@@ -115,6 +115,30 @@ public class BillsoftApplication {
 				} catch (Exception ignored) {
 				}
 
+				// Category 3: Normalize legacy numeric/ordinal representations in notifications table
+				try {
+					stmt.execute("UPDATE notifications SET category = 'LICENSING' WHERE category = '0'");
+					stmt.execute("UPDATE notifications SET category = 'BILLING' WHERE category = '1'");
+					stmt.execute("UPDATE notifications SET category = 'INVENTORY' WHERE category = '2'");
+					stmt.execute("UPDATE notifications SET category = 'PURCHASE' WHERE category = '3'");
+					stmt.execute("UPDATE notifications SET category = 'PLANNER' WHERE category = '4'");
+					stmt.execute("UPDATE notifications SET category = 'HR' WHERE category = '5'");
+					stmt.execute("UPDATE notifications SET category = 'SYSTEM' WHERE category = '6'");
+
+					stmt.execute("UPDATE notifications SET priority = 'LOW' WHERE priority = '0'");
+					stmt.execute("UPDATE notifications SET priority = 'NORMAL' WHERE priority = '1'");
+					stmt.execute("UPDATE notifications SET priority = 'HIGH' WHERE priority = '2'");
+					stmt.execute("UPDATE notifications SET priority = 'CRITICAL' WHERE priority = '3'");
+
+					stmt.execute("UPDATE notifications SET status = 'UNREAD' WHERE status = '0'");
+					stmt.execute("UPDATE notifications SET status = 'READ' WHERE status = '1'");
+					stmt.execute("UPDATE notifications SET status = 'SNOOZED' WHERE status = '2'");
+					stmt.execute("UPDATE notifications SET status = 'DISMISSED' WHERE status = '3'");
+					stmt.execute("UPDATE notifications SET status = 'ACTIONED' WHERE status = '4'");
+					stmt.execute("UPDATE notifications SET status = 'EXPIRED' WHERE status = '5'");
+				} catch (Exception ignored) {
+				}
+
 				// Enforce Required Unique Constraints
 				try {
 					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_firm_invoice_num ON invoices(firm_id, invoice_number)");

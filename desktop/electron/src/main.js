@@ -1495,6 +1495,87 @@ function registerIpcHandlers() {
     }
   });
 
+  // Native Backup File Actions (Save to Selected Directory with Validation)
+  ipcMain.handle('backup:save', async (event, { data, defaultFilename }) => {
+    try {
+      if (!data) throw new Error('No backup data provided for saving');
+      const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: 'Save RupeeCRM Backup File',
+        defaultPath: defaultFilename || `rupeecrm-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [
+          { name: 'RupeeCRM Backups (*.json, *.zip)', extensions: ['json', 'zip'] },
+          { name: 'JSON Files (*.json)', extensions: ['json'] },
+          { name: 'ZIP Archives (*.zip)', extensions: ['zip'] },
+          { name: 'All Files (*.*)', extensions: ['*'] }
+        ]
+      });
+      if (canceled || !filePath) {
+        return { canceled: true };
+      }
+
+      // Ensure target directory exists (supporting non-ASCII, spaces)
+      const targetDir = path.dirname(filePath);
+      await fs.promises.mkdir(targetDir, { recursive: true });
+
+      // Convert payload into buffer
+      let buffer;
+      if (Buffer.isBuffer(data)) {
+        buffer = data;
+      } else if (typeof data === 'string') {
+        buffer = Buffer.from(data, 'utf8');
+      } else if (data instanceof ArrayBuffer) {
+        buffer = Buffer.from(data);
+      } else {
+        buffer = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+      }
+
+      // Staging write to .tmp file first for atomic finalization
+      const tempPath = path.join(targetDir, `.tmp_backup_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
+      await fs.promises.writeFile(tempPath, buffer);
+
+      const stats = await fs.promises.stat(tempPath);
+      if (stats.size === 0) {
+        try { await fs.promises.unlink(tempPath); } catch (_) {}
+        throw new Error('Exported backup file was empty after writing to disk.');
+      }
+
+      // Verify JSON integrity if file extension is .json
+      if (filePath.toLowerCase().endsWith('.json')) {
+        const fileContent = await fs.promises.readFile(tempPath, 'utf8');
+        try {
+          const parsed = JSON.parse(fileContent);
+          if (!parsed || (!parsed.metadata && !parsed.firmDetails && !parsed.allFirms)) {
+            logMessage('Warning: exported backup file lacks standard RupeeCRM metadata/firm keys.');
+          }
+        } catch (jsonErr) {
+          try { await fs.promises.unlink(tempPath); } catch (_) {}
+          throw new Error('Exported file failed JSON integrity validation: ' + jsonErr.message);
+        }
+      }
+
+      // Atomic rename/promotion to target destination path
+      try {
+        await fs.promises.rename(tempPath, filePath);
+      } catch (renameErr) {
+        // Fallback for cross-device filesystem links
+        await fs.promises.copyFile(tempPath, filePath);
+        await fs.promises.unlink(tempPath);
+      }
+
+      logMessage(`RupeeCRM backup successfully saved and verified at: ${filePath} (${stats.size} bytes)`);
+      return {
+        success: true,
+        filePath,
+        filename: path.basename(filePath),
+        sizeBytes: stats.size
+      };
+    } catch (err) {
+      logMessage(`RupeeCRM backup save failed: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('pdf:print', async (event, payload = {}) => {
     let printWin = null;
     try {
@@ -1665,12 +1746,20 @@ app.whenReady().then(async () => {
       title: 'Save File',
       defaultPath: defaultFilename,
       filters: [
-        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
     if (savePath) {
       item.setSavePath(savePath);
+      item.once('done', (doneEvent, state) => {
+        if (state === 'completed') {
+          logMessage(`Native download saved successfully: ${savePath} (${item.getTotalBytes()} bytes)`);
+        } else {
+          logMessage(`Native download failed or was cancelled: state=${state}, target=${savePath}`);
+        }
+      });
     } else {
       event.preventDefault();
     }

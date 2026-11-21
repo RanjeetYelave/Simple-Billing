@@ -8,7 +8,7 @@
  *    - Independent scroll containers avoiding full-screen modal scrolling
  *    - CSS styling adhering to RupeeCRM emerald/minimal tokens and responsive design
  * 2. Two Entry Points & Context Routing:
- *    - Home Screen (Dashboard): Pinned "⚡ Quick Add Items" button, launches with source="home"
+ *    - Home Screen (Dashboard): Pinned "⚡ Quick Invoice" button, launches with source="home"
  *    - Invoice Screen (InvoiceForm): Line-item toolbar "⚡ Quick Add Items" button, launches with source="invoice"
  *    - Home Finish creates/opens new unsaved invoice draft with selected products
  *    - Invoice Finish appends/merges selected items into existing invoice without losing customer, dates, or discounts
@@ -99,14 +99,17 @@ runCheck('CSS stylesheet defines .rcrm-quick-add-* classes with responsive grid 
 
 console.log('\n--- Suite 2: Two Entry Points & Context Routing ---');
 
-runCheck('Dashboard (Home Screen) renders pinned "⚡ Quick Add Items" button', () => {
-  assert(/⚡ Quick Add Items/.test(indexHtml), '⚡ Quick Add Items button missing');
+runCheck('Dashboard (Home Screen) renders pinned "⚡ Quick Invoice" button', () => {
+  assert(/⚡ Quick Invoice/.test(indexHtml), '⚡ Quick Invoice button missing on Dashboard');
+  assert(/title:\s*['"]Quick Invoice:/.test(indexHtml), 'Quick Invoice tooltip missing');
+  assert(/aria-label['"]?:\s*['"]Quick Invoice['"]/.test(indexHtml), 'Quick Invoice aria-label missing');
   assert(indexHtml.includes("onClick: () => setShowQuickAddModal(true)"), 'Dashboard setShowQuickAddModal trigger missing');
   assert(/source:\s*'home'/.test(indexHtml), 'source: "home" context missing in Dashboard instantiation');
 });
 
 runCheck('InvoiceForm (Invoice Screen) renders "⚡ Quick Add Items" button in item table footer', () => {
   assert(indexHtml.includes("➕ Add Item (Ctrl+I)"), 'Add Item button missing in InvoiceForm');
+  assert(/⚡ Quick Add Items/.test(indexHtml), '⚡ Quick Add Items button missing on InvoiceForm');
   assert(/onClick:\s*\(\)\s*=>\s*setShowQuickAddModal\(true\)/.test(indexHtml), 'InvoiceForm setShowQuickAddModal trigger missing');
   assert(/source:\s*'invoice'/.test(indexHtml), 'source: "invoice" context missing in InvoiceForm instantiation');
 });

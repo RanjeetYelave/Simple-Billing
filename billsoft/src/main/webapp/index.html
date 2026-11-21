@@ -12734,7 +12734,7 @@
                 '⚡ Quick Add Items'
               ),
               React.createElement('span', { className: 'rcrm-qa-source-badge' },
-                source === 'home' ? 'Home → New Invoice Draft' : 'Add to Current Invoice'
+                source === 'home' ? 'Quick Invoice → New Invoice Draft' : 'Add to Current Invoice'
               )
             ),
             React.createElement('div', { className: 'rcrm-qa-header-actions' },
@@ -13893,6 +13893,7 @@
             React.createElement('button', {
               className: 'btn btn-sm btn-primary',
               onClick: () => setShowQuickAddModal(true),
+              'aria-label': 'Quick Invoice',
               style: {
                 gap: 5,
                 fontSize: '0.78rem',
@@ -13906,8 +13907,8 @@
                 color: '#ffffff',
                 borderRadius: 6
               },
-              title: 'Quick Add Items: Select products first and proceed to new invoice draft'
-            }, '⚡ Quick Add Items'),
+              title: 'Quick Invoice: Select products first and proceed to new invoice draft'
+            }, '⚡ Quick Invoice'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('reminder'),

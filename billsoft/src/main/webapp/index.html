@@ -12253,6 +12253,810 @@
 
     // MinimalSaaSDashboardView has been retired. All themes use canonical Dashboard with theme CSS tokens.
 
+    // ─── QUICK ADD AUDIO FEEDBACK ENGINE (WEB AUDIO API) ───
+    const QuickAddAudio = (() => {
+      let ctx = null;
+      let isMuted = false;
+      try {
+        const saved = localStorage.getItem('rcrm_quick_add_sound_enabled');
+        if (saved !== null) {
+          isMuted = (saved === 'false');
+        }
+      } catch (e) {}
+
+      function getContext() {
+        try {
+          if (!ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              ctx = new AudioCtx();
+            }
+          }
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+          return ctx;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function playTone(type) {
+        if (isMuted) return;
+        try {
+          const c = getContext();
+          if (!c) return;
+          const now = c.currentTime;
+
+          if (type === 'add' || type === 'increase') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            const startFreq = (type === 'increase') ? 580 : 520;
+            const endFreq = (type === 'increase') ? 520 : 440;
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(startFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.05);
+
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.06);
+          } else if (type === 'decrease') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(380, now);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.05);
+          } else if (type === 'remove') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(180, now + 0.07);
+
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.07);
+          } else if (type === 'finish') {
+            [523.25, 659.25].forEach((freq, idx) => {
+              const osc = c.createOscillator();
+              const gain = c.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + (idx * 0.04));
+
+              gain.gain.setValueAtTime(0.05, now + (idx * 0.04));
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+              osc.connect(gain);
+              gain.connect(c.destination);
+              osc.start(now + (idx * 0.04));
+              osc.stop(now + 0.16);
+            });
+          }
+        } catch (e) {
+          // Audio errors must never interrupt operations or pollute console
+        }
+      }
+
+      return {
+        play: playTone,
+        isMuted: () => isMuted,
+        setMuted: (val) => {
+          isMuted = Boolean(val);
+          try {
+            localStorage.setItem('rcrm_quick_add_sound_enabled', String(!isMuted));
+          } catch (e) {}
+        }
+      };
+    })();
+
+    // ─── REUSABLE QUICK ADD ITEMS POS WORKSPACE MODAL ───
+    function QuickAddItemsModal({
+      isOpen,
+      onClose,
+      onFinish,
+      source = 'home', // 'home' | 'invoice'
+      activeFirmId = null,
+      initialPricingProfileId = '',
+      existingProducts = null,
+      existingEffectivePriceMap = null
+    }) {
+      if (!isOpen) return null;
+
+      const [products, setProducts] = useState(existingProducts && Array.isArray(existingProducts) && existingProducts.length > 0 ? existingProducts : []);
+      const [categories, setCategories] = useState([]);
+      const [effectivePriceMap, setEffectivePriceMap] = useState(existingEffectivePriceMap || {});
+      const [loading, setLoading] = useState(!existingProducts || existingProducts.length === 0);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('All');
+      const [selectedItems, setSelectedItems] = useState([]);
+      const [isMoreOpen, setIsMoreOpen] = useState(false);
+      const [moreSearch, setMoreSearch] = useState('');
+      const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [containerWidth, setContainerWidth] = useState(700);
+
+      // Sound and Animation States
+      const [soundEnabled, setSoundEnabled] = useState(() => !QuickAddAudio.isMuted());
+      const [justAddedPid, setJustAddedPid] = useState(null);
+      const [justUpdatedPid, setJustUpdatedPid] = useState(null);
+      const [removingPid, setRemovingPid] = useState(null);
+
+      const catStripRef = useRef(null);
+      const searchInputRef = useRef(null);
+
+      const targetFid = activeFirmId ? parseInt(activeFirmId, 10) : (API.firmId ? parseInt(API.firmId, 10) : null);
+
+      const handleToggleSound = () => {
+        const next = !soundEnabled;
+        setSoundEnabled(next);
+        QuickAddAudio.setMuted(!next);
+      };
+
+      // Load products, categories, and effective pricing
+      useEffect(() => {
+        let isMounted = true;
+        const promises = [];
+
+        if (!existingProducts || existingProducts.length === 0) {
+          promises.push(API.products.list({}, targetFid).catch(() => []));
+        } else {
+          promises.push(Promise.resolve(existingProducts));
+        }
+
+        promises.push(API.products.categories(targetFid).catch(() => []));
+
+        if (!existingEffectivePriceMap && initialPricingProfileId) {
+          promises.push(API.products.getEffectivePrices(initialPricingProfileId, targetFid).catch(() => ({ effectivePrices: {} })));
+        } else {
+          promises.push(Promise.resolve({ effectivePrices: existingEffectivePriceMap || {} }));
+        }
+
+        Promise.all(promises).then(([prods, cats, priceRes]) => {
+          if (!isMounted) return;
+          const loadedProds = (prods || []).filter(p => p && (!p.isArchived || p.isArchived === false));
+          setProducts(loadedProds);
+
+          // Extract distinct non-empty categories from products and merge with API categories
+          const fromProds = Array.from(new Set(loadedProds.map(p => (p.category || '').trim()).filter(Boolean)));
+          const mergedCats = Array.from(new Set([...(cats || []).map(c => (c || '').trim()).filter(Boolean), ...fromProds])).sort((a, b) => a.localeCompare(b));
+          setCategories(mergedCats);
+
+          if (priceRes && priceRes.effectivePrices) {
+            setEffectivePriceMap(priceRes.effectivePrices);
+          }
+          setLoading(false);
+        }).catch(err => {
+          if (!isMounted) return;
+          console.warn('QuickAddItemsModal data load error:', err);
+          setLoading(false);
+        });
+
+        return () => { isMounted = false; };
+      }, [targetFid, initialPricingProfileId, existingProducts, existingEffectivePriceMap]);
+
+      // Responsive width tracking for category chips
+      useEffect(() => {
+        const updateWidth = () => {
+          if (catStripRef.current) {
+            setContainerWidth(catStripRef.current.clientWidth || 700);
+          }
+        };
+        updateWidth();
+        window.addEventListener('resize', updateWidth);
+        let ro = null;
+        if (typeof ResizeObserver !== 'undefined' && catStripRef.current) {
+          ro = new ResizeObserver(() => updateWidth());
+          ro.observe(catStripRef.current);
+        }
+        return () => {
+          window.removeEventListener('resize', updateWidth);
+          if (ro) ro.disconnect();
+        };
+      }, []);
+
+      // Auto-focus search input on mount
+      useEffect(() => {
+        setTimeout(() => {
+          if (searchInputRef.current) searchInputRef.current.focus();
+        }, 100);
+      }, []);
+
+      // Authoritative effective selling price resolution (never uses cost price)
+      const resolvePrice = useCallback((prod) => {
+        if (!prod) return 0;
+        const pid = String(prod.rawId || prod.id || '');
+        if (pid && effectivePriceMap && effectivePriceMap[pid] !== undefined && effectivePriceMap[pid] !== null) {
+          const ep = parseFloat(effectivePriceMap[pid]);
+          if (!isNaN(ep) && ep >= 0) return ep;
+        }
+        if (prod.price !== undefined && prod.price !== null) {
+          const p = parseFloat(prod.price);
+          if (!isNaN(p) && p >= 0) return p;
+        }
+        return 0;
+      }, [effectivePriceMap]);
+
+      // Dynamic calculation of visible vs overflow category chips
+      const { visibleChips, overflowChips } = useMemo(() => {
+        // Reserve 95px for 'More ▾' button and 60px for 'All'
+        const avail = Math.max(120, containerWidth - 110);
+        // Estimate ~85px average chip width
+        const maxFit = Math.max(2, Math.floor(avail / 85));
+        const vis = categories.slice(0, maxFit);
+        const over = categories.slice(maxFit);
+        return { visibleChips: vis, overflowChips: over };
+      }, [categories, containerWidth]);
+
+      // Product filtering based on search and category
+      const displayedProducts = useMemo(() => {
+        const q = (searchQuery || '').trim();
+        if (q) {
+          if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.fuzzyFilterAndSort === 'function') {
+            return BillsoftUtils.fuzzyFilterAndSort(products, q, p => [
+              p.name, p.category, p.sku, p.barcode, p.hsnCode
+            ]);
+          }
+          const lower = q.toLowerCase();
+          return products.filter(p =>
+            (p.name && p.name.toLowerCase().includes(lower)) ||
+            (p.sku && p.sku.toLowerCase().includes(lower)) ||
+            (p.barcode && p.barcode.toLowerCase().includes(lower)) ||
+            (p.category && p.category.toLowerCase().includes(lower))
+          );
+        }
+
+        if (selectedCategory === 'All') {
+          return products;
+        }
+        return products.filter(p => (p.category || '').trim().toLowerCase() === selectedCategory.trim().toLowerCase());
+      }, [products, searchQuery, selectedCategory]);
+
+      // Map of selected quantities for instant badge rendering in product grid
+      const selectedMap = useMemo(() => {
+        const map = {};
+        selectedItems.forEach(it => {
+          const pid = String(it.product.rawId || it.product.id || '');
+          map[pid] = it;
+        });
+        return map;
+      }, [selectedItems]);
+
+      // Product click interaction: 1st click = 1, 2nd click = 2, 3rd click = 3
+      const handleProductClick = (prod) => {
+        const pid = String(prod.rawId || prod.id || '');
+        const unitPrice = resolvePrice(prod);
+
+        setJustAddedPid(pid);
+        setTimeout(() => setJustAddedPid(prev => (prev === pid ? null : prev)), 180);
+
+        setSelectedItems(prev => {
+          const idx = prev.findIndex(it => String(it.product.rawId || it.product.id || '') === pid);
+          if (idx >= 0) {
+            QuickAddAudio.play('increase');
+            const updated = [...prev];
+            const newQty = (parseFloat(updated[idx].quantity) || 0) + 1;
+            updated[idx] = {
+              ...updated[idx],
+              quantity: newQty,
+              lineTotal: newQty * unitPrice
+            };
+            return updated;
+          } else {
+            QuickAddAudio.play('add');
+            return [
+              ...prev,
+              {
+                product: prod,
+                unitPrice: unitPrice,
+                quantity: 1,
+                lineTotal: unitPrice
+              }
+            ];
+          }
+        });
+      };
+
+      // Quantity controls on right-hand panel
+      const handleUpdateQty = (pid, newQty) => {
+        const parsed = parseFloat(newQty);
+        if (isNaN(parsed) || parsed <= 0) {
+          handleRemoveItem(pid);
+          return;
+        }
+
+        setJustUpdatedPid(pid);
+        setTimeout(() => setJustUpdatedPid(prev => (prev === pid ? null : prev)), 180);
+
+        setSelectedItems(prev => {
+          return prev.map(it => {
+            if (String(it.product.rawId || it.product.id || '') === pid) {
+              if (parsed > it.quantity) {
+                QuickAddAudio.play('increase');
+              } else if (parsed < it.quantity) {
+                QuickAddAudio.play('decrease');
+              }
+              return {
+                ...it,
+                quantity: parsed,
+                lineTotal: parsed * it.unitPrice
+              };
+            }
+            return it;
+          });
+        });
+      };
+
+      const handleRemoveItem = (pid) => {
+        QuickAddAudio.play('remove');
+        setRemovingPid(pid);
+        setTimeout(() => {
+          setSelectedItems(prev => prev.filter(it => String(it.product.rawId || it.product.id || '') !== pid));
+          setRemovingPid(prev => (prev === pid ? null : prev));
+        }, 120);
+      };
+
+      const handleClearAll = () => {
+        QuickAddAudio.play('remove');
+        setSelectedItems([]);
+      };
+
+      // Subtotal calculation
+      const { subtotal, totalQty } = useMemo(() => {
+        let sub = 0;
+        let qtyCount = 0;
+        selectedItems.forEach(it => {
+          sub += (it.quantity * it.unitPrice);
+          qtyCount += it.quantity;
+        });
+        return { subtotal: sub, totalQty: qtyCount };
+      }, [selectedItems]);
+
+      // Safe Close / Cancel handling
+      const handleRequestClose = () => {
+        if (selectedItems.length > 0) {
+          setShowDiscardConfirm(true);
+        } else {
+          onClose();
+        }
+      };
+
+      const handleConfirmDiscard = () => {
+        setShowDiscardConfirm(false);
+        setSelectedItems([]);
+        onClose();
+      };
+
+      // Keyboard Escape handler
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (e.key === 'Escape') {
+            if (isMoreOpen) {
+              setIsMoreOpen(false);
+            } else if (showDiscardConfirm) {
+              setShowDiscardConfirm(false);
+            } else {
+              handleRequestClose();
+            }
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [selectedItems, isMoreOpen, showDiscardConfirm]);
+
+      // Finish – Add to Invoice
+      const handleFinish = () => {
+        if (selectedItems.length === 0 || isSubmitting) return;
+        setIsSubmitting(true);
+        QuickAddAudio.play('finish');
+
+        const convertedItems = selectedItems.map(it => {
+          const p = it.product;
+          const pid = String(p.rawId || p.id || '');
+          const gstVal = (p.taxRate !== undefined && p.taxRate !== null)
+            ? String(p.taxRate)
+            : (p.gstPercentage !== undefined && p.gstPercentage !== null ? String(p.gstPercentage) : '');
+
+          return {
+            _id: (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.generateId === 'function')
+              ? BillsoftUtils.generateId()
+              : ('item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
+            productId: pid,
+            productName: p.name || '',
+            hsnCode: p.hsnCode || '',
+            qty: String(it.quantity),
+            unit: p.unit || '',
+            pricePerUnit: String(it.unitPrice),
+            discountValue: '0',
+            gstPercent: gstVal
+          };
+        });
+
+        setTimeout(() => {
+          if (source === 'home') {
+            // Home Screen: Open a new unsaved invoice draft populated with all selected products
+            if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
+              BillsoftSearchEngine.dispatchNavigate({
+                page: 'invoices',
+                subTab: 'create',
+                quickDocType: 'invoice',
+                initialItems: convertedItems
+              });
+            } else {
+              window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                detail: { page: 'invoices', subTab: 'create', quickDocType: 'invoice', initialItems: convertedItems }
+              }));
+            }
+            if (onFinish) onFinish(convertedItems);
+            onClose();
+          } else {
+            // Invoice Screen: Transfer selected items directly to the existing invoice draft
+            if (onFinish) onFinish(convertedItems);
+            onClose();
+          }
+        }, 100);
+      };
+
+      // Filtered overflow categories in More dropdown
+      const filteredOverflow = useMemo(() => {
+        if (!moreSearch || !moreSearch.trim()) return overflowChips;
+        const q = moreSearch.trim().toLowerCase();
+        return overflowChips.filter(c => c.toLowerCase().includes(q));
+      }, [overflowChips, moreSearch]);
+
+      return React.createElement('div', {
+        className: 'rcrm-quick-add-overlay',
+        onClick: handleRequestClose
+      },
+        React.createElement('div', {
+          className: 'rcrm-quick-add-modal',
+          onClick: e => e.stopPropagation()
+        },
+          // ── Header ──
+          React.createElement('div', { className: 'rcrm-qa-header' },
+            React.createElement('div', { className: 'rcrm-qa-title-group' },
+              React.createElement('h3', { className: 'rcrm-qa-title' },
+                '⚡ Quick Add Items'
+              ),
+              React.createElement('span', { className: 'rcrm-qa-source-badge' },
+                source === 'home' ? 'Home → New Invoice Draft' : 'Add to Current Invoice'
+              )
+            ),
+            React.createElement('div', { className: 'rcrm-qa-header-actions' },
+              React.createElement('button', {
+                type: 'button',
+                className: `rcrm-qa-sound-btn ${!soundEnabled ? 'muted' : ''}`,
+                onClick: handleToggleSound,
+                title: soundEnabled ? 'Mute sound feedback' : 'Unmute sound feedback'
+              }, soundEnabled ? '🔊 Sound' : '🔇 Muted'),
+              React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                style: { fontSize: '1.1rem', cursor: 'pointer', padding: '4px 8px' },
+                onClick: handleRequestClose,
+                title: 'Close Quick Add Items'
+              }, '✕')
+            )
+          ),
+
+          // ── Body (Two-Panel Layout) ──
+          React.createElement('div', { className: 'rcrm-qa-body' },
+
+            // ── LEFT PANEL: Search, Category Bar & Product Grid ──
+            React.createElement('div', { className: 'rcrm-qa-left' },
+
+              // Search Bar
+              React.createElement('div', { className: 'rcrm-qa-search-box' },
+                React.createElement('span', { style: { color: 'var(--text-secondary, #64748b)', fontSize: '0.95rem' } }, '🔍'),
+                React.createElement('input', {
+                  ref: searchInputRef,
+                  type: 'text',
+                  className: 'rcrm-qa-search-input',
+                  placeholder: 'Search across all categories by product name, SKU, or barcode...',
+                  value: searchQuery,
+                  onChange: e => setSearchQuery(e.target.value)
+                }),
+                searchQuery && React.createElement('button', {
+                  className: 'btn btn-ghost btn-xs',
+                  style: { color: 'var(--text-secondary)', padding: '2px 6px', fontSize: '0.8rem' },
+                  onClick: () => setSearchQuery('')
+                }, '✕')
+              ),
+
+              // Horizontal Category Navigation
+              React.createElement('div', {
+                ref: catStripRef,
+                className: 'rcrm-qa-cat-nav-wrapper'
+              },
+                React.createElement('div', { className: 'rcrm-qa-cat-strip' },
+                  // "All" chip is always first
+                  React.createElement('button', {
+                    type: 'button',
+                    className: `rcrm-qa-cat-chip ${selectedCategory === 'All' ? 'active' : ''}`,
+                    onClick: () => { setSelectedCategory('All'); setIsMoreOpen(false); }
+                  }, 'All'),
+
+                  // Visible category chips
+                  visibleChips.map(cat => React.createElement('button', {
+                    key: cat,
+                    type: 'button',
+                    className: `rcrm-qa-cat-chip ${selectedCategory === cat ? 'active' : ''}`,
+                    onClick: () => { setSelectedCategory(cat); setIsMoreOpen(false); }
+                  }, cat)),
+
+                  // "More ▾" button for overflow categories
+                  overflowChips.length > 0 && React.createElement('button', {
+                    type: 'button',
+                    className: `rcrm-qa-more-btn ${overflowChips.includes(selectedCategory) ? 'active' : ''}`,
+                    onClick: () => setIsMoreOpen(!isMoreOpen),
+                    title: 'More categories'
+                  },
+                    overflowChips.includes(selectedCategory) ? `${selectedCategory} ▾` : 'More ▾'
+                  )
+                ),
+
+                // More Categories Dropdown
+                isMoreOpen && React.createElement('div', { className: 'rcrm-qa-more-dropdown' },
+                  React.createElement('div', { className: 'rcrm-qa-more-search' },
+                    React.createElement('input', {
+                      type: 'text',
+                      placeholder: 'Filter categories...',
+                      value: moreSearch,
+                      autoFocus: true,
+                      onChange: e => setMoreSearch(e.target.value),
+                      onClick: e => e.stopPropagation()
+                    })
+                  ),
+                  React.createElement('div', { className: 'rcrm-qa-more-list' },
+                    filteredOverflow.length > 0 ? (
+                      filteredOverflow.map(cat => React.createElement('div', {
+                        key: cat,
+                        className: `rcrm-qa-more-item ${selectedCategory === cat ? 'active' : ''}`,
+                        onClick: () => {
+                          setSelectedCategory(cat);
+                          setIsMoreOpen(false);
+                          setMoreSearch('');
+                        }
+                      },
+                        React.createElement('span', null, cat),
+                        selectedCategory === cat && React.createElement('span', { style: { color: 'var(--primary)', fontWeight: 700 } }, '✓')
+                      ))
+                    ) : (
+                      React.createElement('div', { style: { padding: '8px 12px', fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'No matching categories')
+                    )
+                  )
+                )
+              ),
+
+              // Product Grid
+              loading ? (
+                React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } },
+                  'Loading product catalog...'
+                )
+              ) : displayedProducts.length === 0 ? (
+                React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 0' } },
+                  React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
+                  React.createElement('p', { style: { margin: 0, fontWeight: 600 } },
+                    searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`
+                  ),
+                  searchQuery && React.createElement('button', {
+                    className: 'btn btn-outline btn-sm',
+                    style: { marginTop: 12 },
+                    onClick: () => setSearchQuery('')
+                  }, 'Clear Search')
+                )
+              ) : (
+                React.createElement('div', { className: 'rcrm-qa-product-grid' },
+                  displayedProducts.map(p => {
+                    const pid = String(p.rawId || p.id || '');
+                    const sel = selectedMap[pid];
+                    const isSel = Boolean(sel && sel.quantity > 0);
+                    const sellingPrice = resolvePrice(p);
+                    const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
+                    const isJustAdded = (justAddedPid === pid);
+
+                    return React.createElement('div', {
+                      key: pid,
+                      className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
+                      onClick: () => handleProductClick(p),
+                      title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
+                    },
+                      // Selected Quantity Badge
+                      isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' },
+                        `✓ ${sel.quantity}`
+                      ),
+                      // Product Name
+                      React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
+                      // Category Tag (especially helpful in All view & Search view)
+                      (selectedCategory === 'All' || searchQuery) && p.category && React.createElement('span', {
+                        className: 'rcrm-qa-product-cat'
+                      }, p.category),
+                      // Price & Stock Metadata
+                      React.createElement('div', { className: 'rcrm-qa-product-meta' },
+                        React.createElement('div', { className: 'rcrm-qa-product-price' },
+                          BillsoftUtils.formatCurrency(sellingPrice)
+                        ),
+                        curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
+                          className: 'rcrm-qa-product-stock',
+                          style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
+                        }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
+                      )
+                    );
+                  })
+                )
+              )
+            ),
+
+            // ── RIGHT PANEL: Selected Items & Quantity Controls ──
+            React.createElement('div', { className: 'rcrm-qa-right' },
+              // Header
+              React.createElement('div', { className: 'rcrm-qa-selected-header' },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  React.createElement('strong', { style: { fontSize: '0.9rem' } }, 'Selected Items'),
+                  selectedItems.length > 0 && React.createElement('span', {
+                    className: 'badge badge-primary',
+                    style: { fontSize: '0.72rem', padding: '2px 6px' }
+                  }, `${selectedItems.length}`)
+                ),
+                selectedItems.length > 0 && React.createElement('button', {
+                  className: 'btn btn-ghost btn-xs',
+                  style: { color: 'var(--text-secondary)', fontSize: '0.75rem' },
+                  onClick: handleClearAll
+                }, 'Clear all')
+              ),
+
+              // Scrollable Selected Items List
+              React.createElement('div', { className: 'rcrm-qa-selected-list' },
+                selectedItems.length === 0 ? (
+                  React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } },
+                    React.createElement('div', { style: { fontSize: '2.4rem', marginBottom: 8 } }, '🛒'),
+                    React.createElement('p', { style: { margin: 0, fontWeight: 600, fontSize: '0.86rem' } }, 'No items selected yet.'),
+                    React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.76rem' } }, 'Click products on the left to add them.')
+                  )
+                ) : (
+                  selectedItems.map(it => {
+                    const pid = String(it.product.rawId || it.product.id || '');
+                    const isRemoving = (removingPid === pid);
+                    const isJustUpdated = (justUpdatedPid === pid);
+                    return React.createElement('div', {
+                      key: pid,
+                      className: `rcrm-qa-selected-item ${isRemoving ? 'removing' : ''}`
+                    },
+                      // Row 1: Name and Delete button
+                      React.createElement('div', { className: 'rcrm-qa-item-top' },
+                        React.createElement('span', { className: 'rcrm-qa-item-name' }, it.product.name),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: 'rcrm-qa-item-del-btn',
+                          onClick: () => handleRemoveItem(pid),
+                          title: 'Remove item'
+                        }, '✕')
+                      ),
+                      // Row 2: Unit Price and Unit/Category
+                      React.createElement('div', { className: 'rcrm-qa-item-mid' },
+                        React.createElement('span', null, `${BillsoftUtils.formatCurrency(it.unitPrice)} / ${it.product.unit || 'pcs'}`),
+                        it.product.category && React.createElement('span', null, it.product.category)
+                      ),
+                      // Row 3: [-] [qty] [+] and Line Total
+                      React.createElement('div', { className: 'rcrm-qa-item-bottom' },
+                        React.createElement('div', { className: 'rcrm-qa-qty-controls' },
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'rcrm-qa-qty-btn',
+                            onClick: () => handleUpdateQty(pid, it.quantity - 1)
+                          }, '−'),
+                          React.createElement('input', {
+                            type: 'number',
+                            step: 'any',
+                            min: '0',
+                            className: `rcrm-qa-qty-input ${isJustUpdated ? 'rcrm-qa-qty-pulse' : ''}`,
+                            value: it.quantity,
+                            onChange: e => handleUpdateQty(pid, e.target.value)
+                          }),
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'rcrm-qa-qty-btn',
+                            onClick: () => handleUpdateQty(pid, it.quantity + 1)
+                          }, '+')
+                        ),
+                        React.createElement('span', { className: 'rcrm-qa-item-linetotal' },
+                          BillsoftUtils.formatCurrency(it.lineTotal)
+                        )
+                      )
+                    );
+                  })
+                )
+              ),
+
+              // Selected Summary Box
+              React.createElement('div', { className: 'rcrm-qa-selected-summary' },
+                React.createElement('div', { className: 'rcrm-qa-summary-row' },
+                  React.createElement('span', null, 'Total Products:'),
+                  React.createElement('strong', null, `${selectedItems.length}`)
+                ),
+                React.createElement('div', { className: 'rcrm-qa-summary-row' },
+                  React.createElement('span', null, 'Total Quantity:'),
+                  React.createElement('strong', null, `${Number(totalQty.toFixed(3))}`)
+                ),
+                React.createElement('div', { className: 'rcrm-qa-summary-total-row' },
+                  React.createElement('span', null, 'Estimated Subtotal:'),
+                  React.createElement('span', { style: { color: 'var(--primary, #059669)' } },
+                    BillsoftUtils.formatCurrency(subtotal)
+                  )
+                )
+              )
+            )
+          ),
+
+          // ── Bottom Action Area ──
+          React.createElement('div', { className: 'rcrm-qa-footer' },
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-outline',
+              onClick: handleRequestClose
+            }, 'Cancel'),
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-primary',
+              style: {
+                fontWeight: 700,
+                padding: '8px 24px',
+                borderRadius: 8,
+                background: selectedItems.length > 0 ? 'var(--primary, #059669)' : undefined
+              },
+              disabled: selectedItems.length === 0 || isSubmitting,
+              onClick: handleFinish
+            }, isSubmitting ? 'Transferring Items...' : `Finish – Add to Invoice (${selectedItems.length})`)
+          )
+        ),
+
+        // ── Discard Confirmation Modal ──
+        showDiscardConfirm && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10300 },
+          onClick: () => setShowDiscardConfirm(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { background: 'var(--bg-card, #fff)', color: 'var(--text-primary, #111827)', borderRadius: 12, padding: 24, maxWidth: 460, width: '90%', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { fontSize: '1.5rem' } }, '⚠️'),
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Discard selected items?')
+            ),
+            React.createElement('p', { style: { margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary, #4b5563)', lineHeight: 1.5 } },
+              'Your selected products will be discarded. Your existing invoice information will remain unchanged.'
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 } },
+              React.createElement('button', {
+                className: 'btn btn-outline',
+                onClick: () => setShowDiscardConfirm(false)
+              }, 'Keep Editing'),
+              React.createElement('button', {
+                className: 'btn btn-danger',
+                onClick: handleConfirmDiscard
+              }, 'Discard Items')
+            )
+          )
+        )
+      );
+    }
+
     // ─── DASHBOARD (DUAL PERSPECTIVE: BUSINESS & PERSONAL) ───
     function Dashboard({
       onStartUpdate,
@@ -12382,6 +13186,7 @@
 
       // Shared Note Preview Modal state
       const [previewNote, setPreviewNote] = useState(null);
+      const [showQuickAddModal, setShowQuickAddModal] = useState(false);
 
       // Gesture-Based Compact Palette State
       const [gesturePaletteOpen, setGesturePaletteOpen] = useState(false);
@@ -13085,6 +13890,24 @@
 
           // Right: Pinned Universal Quick Actions
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap', flexShrink: 0 } },
+            React.createElement('button', {
+              className: 'btn btn-sm btn-primary',
+              onClick: () => setShowQuickAddModal(true),
+              style: {
+                gap: 5,
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                padding: '3px 10px',
+                height: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
+                whiteSpace: 'nowrap',
+                background: 'var(--primary, #059669)',
+                color: '#ffffff',
+                borderRadius: 6
+              },
+              title: 'Quick Add Items: Select products first and proceed to new invoice draft'
+            }, '⚡ Quick Add Items'),
             React.createElement('button', {
               className: 'btn btn-sm btn-outline',
               onClick: () => openGesturePalette('reminder'),
@@ -14300,6 +15123,15 @@
           },
           customers: customers,
           firms: firms
+        }),
+
+        // Quick Add Items Modal (Home Entry Point)
+        showQuickAddModal && React.createElement(QuickAddItemsModal, {
+          isOpen: showQuickAddModal,
+          onClose: () => setShowQuickAddModal(false),
+          source: 'home',
+          activeFirmId: API.firmId,
+          existingProducts: products
         })
       );
     }
@@ -14879,7 +15711,7 @@
     }
 
     // ─── SHARED INVOICE/QUOTATION FORM ───
-    function InvoiceForm({ editId, cloneFromInvoiceId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange, onCloneInvoice }) {
+    function InvoiceForm({ editId, cloneFromInvoiceId, isQuotationMode, onSaved, convertedFromQuotationId, activeFirmId, firms, onFirmChange, onTypeChange, onCloneInvoice, initialItems = null }) {
       const [customers, setCustomers] = useState([]);
       const [products, setProducts] = useState([]);
       const [pricingProfiles, setPricingProfiles] = useState([]);
@@ -14905,6 +15737,7 @@
       const [selectedCustomerCandidate, setSelectedCustomerCandidate] = useState(null);
       const [productSelections, setProductSelections] = useState({});
       const [linkedSupplierChip, setLinkedSupplierChip] = useState(null);
+      const [showQuickAddModal, setShowQuickAddModal] = useState(false);
 
       const isEstimate = isQuotationMode;
       const emptyItem = () => ({ _id: BillsoftUtils.generateId(), productId: '', productName: '', hsnCode: '', qty: '1', unit: '', pricePerUnit: '', discountValue: '', gstPercent: '' });
@@ -14920,8 +15753,52 @@
         paymentTerms: 'NET_15',
         invoiceDiscount: { type: 'PERCENT', value: '' },
         roundOff: false,
-        items: [emptyItem()]
+        items: (initialItems && Array.isArray(initialItems) && initialItems.length > 0) ? initialItems : [emptyItem()]
       });
+
+      useEffect(() => {
+        if (initialItems && Array.isArray(initialItems) && initialItems.length > 0) {
+          setForm(f => {
+            const isSingleEmpty = f.items.length === 1 && !f.items[0].productId && !(f.items[0].productName || '').trim();
+            if (isSingleEmpty) {
+              return { ...f, items: initialItems };
+            }
+            return f;
+          });
+        }
+      }, [initialItems]);
+
+      const handleQuickAddFinish = (newItems) => {
+        if (!newItems || !Array.isArray(newItems) || newItems.length === 0) return;
+        setForm(f => {
+          const isSingleEmpty = f.items.length === 1 && !f.items[0].productId && !(f.items[0].productName || '').trim();
+          if (isSingleEmpty) {
+            return { ...f, items: newItems };
+          }
+          const existing = [...f.items];
+          newItems.forEach(newItem => {
+            const matchIdx = existing.findIndex(it =>
+              it.productId &&
+              String(it.productId) === String(newItem.productId) &&
+              String(it.pricePerUnit) === String(newItem.pricePerUnit) &&
+              (!it.discountValue || parseFloat(it.discountValue) === 0)
+            );
+            if (matchIdx >= 0) {
+              const curQty = parseFloat(existing[matchIdx].qty) || 0;
+              const addQty = parseFloat(newItem.qty) || 0;
+              existing[matchIdx] = {
+                ...existing[matchIdx],
+                qty: String(curQty + addQty)
+              };
+            } else {
+              existing.push(newItem);
+            }
+          });
+          return { ...f, items: existing };
+        });
+        setShowQuickAddModal(false);
+        if (window.showToast) window.showToast(`Added ${newItems.length} item(s) to invoice`, 'success');
+      };
 
       const formContainerRef = useRef(null);
       const refName = useRef(null);
@@ -16499,12 +17376,20 @@
               borderTop: 'none'
             }
           },
-            React.createElement('button', {
-              type: 'button',
-              className: 'btn btn-sm btn-primary btn-gold',
-              style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, padding: '7px 16px', borderRadius: 8 },
-              onClick: () => addItem(true)
-            }, '➕ Add Item (Ctrl+I)'),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-primary btn-gold',
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, padding: '7px 16px', borderRadius: 8 },
+                onClick: () => addItem(true)
+              }, '➕ Add Item (Ctrl+I)'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px', borderRadius: 8 },
+                onClick: () => setShowQuickAddModal(true)
+              }, '⚡ Quick Add Items')
+            ),
             React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
               '💡 Tip: Press Enter or ↓ Down from GST% to automatically add a new row'
             )
@@ -16839,7 +17724,19 @@
               }, 'Confirm & Execute Migration')
             )
           )
-        )
+        ),
+
+        // Quick Add Items Modal (Invoice Entry Point)
+        showQuickAddModal && React.createElement(QuickAddItemsModal, {
+          isOpen: showQuickAddModal,
+          onClose: () => setShowQuickAddModal(false),
+          onFinish: handleQuickAddFinish,
+          source: 'invoice',
+          activeFirmId: selectedFirmId ? parseInt(selectedFirmId, 10) : (activeFirmId ? parseInt(activeFirmId, 10) : API.firmId),
+          initialPricingProfileId: form.pricingProfileId,
+          existingProducts: products,
+          existingEffectivePriceMap: effectivePriceMap
+        })
       );
     }
 
@@ -44839,7 +45736,11 @@ function PartyDetailModal({
                   if (e.detail.customerName) localStorage.setItem('billsoft_selected_customer_name', e.detail.customerName);
                 } catch (err) { }
               }
-              openDocTab({ type: e.detail.quickDocType || 'invoice', title: e.detail.customerName ? `Bill: ${e.detail.customerName}` : 'New Invoice' });
+              openDocTab({
+                type: e.detail.quickDocType || 'invoice',
+                title: e.detail.customerName ? `Bill: ${e.detail.customerName}` : 'New Invoice',
+                initialItems: e.detail.initialItems || null
+              });
             } else {
               setActiveView('overview');
             }
@@ -44910,7 +45811,8 @@ function PartyDetailModal({
             editId: tabSpec.editId || null,
             cloneId: tabSpec.cloneId || null,
             convertedFromQuotationId: tabSpec.convertedFromQuotationId || null,
-            firmId: tabSpec.firmId || API.firmId
+            firmId: tabSpec.firmId || API.firmId,
+            initialItems: tabSpec.initialItems || null
           };
           setActiveTabId(tabId);
           setActiveView('editor');
@@ -45103,6 +46005,7 @@ function PartyDetailModal({
                   convertedFromQuotationId: t.convertedFromQuotationId,
                   activeFirmId: t.firmId || API.firmId,
                   firms: firms,
+                  initialItems: t.initialItems || null,
                   onSaved: () => handleSavedDocTab(t.id),
                   onCloneInvoice: onCloneInvoice
                 })

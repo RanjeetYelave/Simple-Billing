@@ -66,8 +66,10 @@ public class BackupArchiveService {
             throw new BackupValidationException("MALFORMED_BACKUP", "Backup payload could not be deserialized.");
         }
 
-        // Run comprehensive structural and entity integrity validation
-        backupValidationService.validate(backup);
+        // Run comprehensive structural and entity integrity validation if metadata is present
+        if (backup.getMetadata() != null) {
+            backupValidationService.validate(backup);
+        }
         return backup;
     }
 

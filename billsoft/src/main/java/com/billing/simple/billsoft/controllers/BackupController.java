@@ -384,6 +384,7 @@ public class BackupController {
             return ResponseEntity.ok(inspection);
         } catch (BackupValidationException bve) {
             Map<String, Object> response = new HashMap<>();
+            response.put("status", "error");
             response.put("error", bve.getMessage());
             response.put("errorCode", bve.getErrorCode());
             return ResponseEntity.badRequest().body(response);
@@ -450,6 +451,7 @@ public class BackupController {
                     .body(response);
         } catch (BackupValidationException bve) {
             Map<String, Object> response = new HashMap<>();
+            response.put("status", "error");
             response.put("error", bve.getMessage());
             response.put("errorCode", bve.getErrorCode());
             return ResponseEntity.badRequest().body(response);
@@ -523,6 +525,7 @@ public class BackupController {
             return ResponseEntity.ok(response);
         } catch (BackupValidationException bve) {
             Map<String, String> response = new HashMap<>();
+            response.put("status", "error");
             response.put("error", bve.getMessage());
             response.put("errorCode", bve.getErrorCode());
             return ResponseEntity.badRequest().body(response);

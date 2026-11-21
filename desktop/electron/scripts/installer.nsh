@@ -4,88 +4,47 @@
 
 !include "LogicLib.nsh"
 
-; ------------------------------------------------------------------------------
-; Macro: TerminateRupeeCRMProcesses
-; Shared routine for safe, graceful and targeted termination of RupeeCRM
-; processes without affecting unrelated Java processes on the host.
-; ------------------------------------------------------------------------------
-!macro TerminateRupeeCRMProcesses
-  ; Step 1: Signal graceful HTTP shutdown to RupeeCRM backend on port 28080
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { $$r = Invoke-WebRequest -Uri \"http://127.0.0.1:28080/api/shutdown\" -Method POST -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue } catch {}"'
+!macro customInit
+  ; 1. Signal graceful HTTP shutdown to RupeeCRM backend on port 28080
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri \"http://127.0.0.1:28080/api/shutdown\" -Method POST -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue } catch {}"'
   Pop $0
 
-  ; Step 2: Gracefully terminate running RupeeCRM electron process
-  nsExec::Exec 'cmd.exe /c taskkill /IM RupeeCRM.exe 2>nul'
-  Pop $0
-  Sleep 300
+  ; 2. Terminate running RupeeCRM electron process to release locked binaries
   nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
   Pop $0
 
-  ; Step 3: Stop RupeeCRM Java processes by reading recorded PID files if present
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$base = \"$LOCALAPPDATA\RupeeCRM\"; foreach ($$f in @(\".backend.pid\", \".supervisor.ipc\")) { $$p = Join-Path $$base $$f; if (Test-Path $$p) { Get-Content $$p -ErrorAction SilentlyContinue | ForEach-Object { if ($$_ -match \"pid[=:]?\s*(\d+)\") { $$id = [int]$$matches[1]; $$proc = Get-CimInstance Win32_Process -Filter \"\"ProcessId = $$id\"\" -ErrorAction SilentlyContinue; if ($$proc -and ($$proc.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\")) { Stop-Process -Id $$id -Force -ErrorAction SilentlyContinue } } } } }"'
-  Pop $0
-
-  ; Step 4: Terminate RupeeCRM-owned Java processes using verified command-line patterns
-  ; Only targets processes explicitly matching rupeecrm, billsoft, RupeeCRMLauncher, or launcher.jar
+  ; 3. Terminate background Java processes executing RupeeCRM or Launcher (CIM + WMIC fallback)
   nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
   Pop $0
-  nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'' or commandline like ''%launcher.jar%'')" call terminate 2>nul'
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'')" call terminate 2>nul'
   Pop $0
-  nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'' or commandline like ''%launcher.jar%'')" call terminate 2>nul'
-  Pop $0
-
-  ; Step 5: Terminate process holding port 28080 ONLY if verified as RupeeCRM/Launcher
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"\"ProcessId = $$($$conn.OwningProcess)\"\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"\"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\"\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'')" call terminate 2>nul'
   Pop $0
 
-  ; Step 6: Synchronously poll for process termination and port release (up to 5 seconds)
-  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "for ($$i=0; $$i -lt 20; $$i++) { $$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -eq \"RupeeCRM.exe\") -or (($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\")) }; $$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ((-not $$procs) -and (-not $$conn)) { break }; Start-Sleep -Milliseconds 250 }"'
+  ; 4. Terminate legacy RupeeCRM backend process holding port 28080 only if verified as RupeeCRM/Launcher
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"\"ProcessId = $$($$conn.OwningProcess)\"\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"\"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher)\"\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
   Pop $0
 
-  ; Step 7: Test exclusive file access on target war in $INSTDIR if present (up to 5 seconds)
+  ; 5. Synchronously poll for process termination (up to 5 seconds)
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "for ($$i=0; $$i -lt 20; $$i++) { $$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -eq \"RupeeCRM.exe\") -or (($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher)\")) }; if (-not $$procs) { break }; Start-Sleep -Milliseconds 250 }"'
+  Pop $0
+
+  ; 6. Test if target war in $INSTDIR is locked and wait for file handle release if needed (up to 5 seconds)
   ${If} ${FileExists} "$INSTDIR\resources\rupeecrm.war"
     nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$f = \"$INSTDIR\resources\rupeecrm.war\"; for ($$i=0; $$i -lt 20; $$i++) { try { $$s = [System.IO.File]::Open($$f, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None); $$s.Close(); $$s.Dispose(); break } catch { Start-Sleep -Milliseconds 250 } }"'
     Pop $0
   ${EndIf}
-!macroend
 
-; ------------------------------------------------------------------------------
-; Macro: customInit (called during installer startup)
-; ------------------------------------------------------------------------------
-!macro customInit
-  !insertmacro TerminateRupeeCRMProcesses
-
-  ; Clean legacy Windows Startup folder VBS script from v1.0.280
+  ; 7. Clean legacy Windows Startup folder VBS script from v1.0.280
   ${If} ${FileExists} "$SMSTARTUP\RupeeCRM.vbs"
     Delete "$SMSTARTUP\RupeeCRM.vbs"
   ${EndIf}
 
-  ; Clean legacy Registry Run entries
+  ; 8. Clean legacy Registry Run entries
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RupeeCRMService"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RupeeCRM"
 !macroend
 
-; ------------------------------------------------------------------------------
-; Macro: customCheckAppRunning (hooked into CHECK_APP_RUNNING in both installer
-; and uninstaller before any file extraction or deletion takes place)
-; ------------------------------------------------------------------------------
-!macro customCheckAppRunning
-  !insertmacro TerminateRupeeCRMProcesses
-!macroend
-
-; ------------------------------------------------------------------------------
-; Macro: customUnInit (called during uninstaller initialization)
-; ------------------------------------------------------------------------------
-!macro customUnInit
-  ; If running silent uninstall, immediately stop running processes
-  ${If} ${Silent}
-    !insertmacro TerminateRupeeCRMProcesses
-  ${EndIf}
-!macroend
-
-; ------------------------------------------------------------------------------
-; Macro: customInstall (called post-extraction during installation)
-; ------------------------------------------------------------------------------
 !macro customInstall
   ; Remove stale legacy jpackage binary directories if present in install dir (without touching user data)
   ${If} ${FileExists} "$INSTDIR\app\RupeeCRM.cfg"
@@ -138,11 +97,51 @@
 !macroend
 
 ; ------------------------------------------------------------------------------
-; Macro: customUnInstall (called at end of uninstallation section)
+; Macro: customRemoveFiles (called inside uninstaller before file deletion)
+; Stops all RupeeCRM processes, releases port 28080, and cleanly deletes $INSTDIR
 ; ------------------------------------------------------------------------------
+!macro customRemoveFiles
+  ; 1. Signal graceful HTTP shutdown to RupeeCRM backend on port 28080
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri \"http://127.0.0.1:28080/api/shutdown\" -Method POST -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue } catch {}"'
+  Pop $0
+
+  ; 2. Terminate running RupeeCRM electron process to release locked binaries
+  nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
+  Pop $0
+
+  ; 3. Terminate background Java processes executing RupeeCRM or Launcher (CIM + WMIC fallback)
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Pop $0
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''javaw.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'')" call terminate 2>nul'
+  Pop $0
+  nsExec::Exec 'cmd.exe /c wmic process where "name=''java.exe'' and (commandline like ''%rupeecrm%'' or commandline like ''%billsoft%'' or commandline like ''%RupeeCRMLauncher%'')" call terminate 2>nul'
+  Pop $0
+
+  ; 4. Terminate process holding port 28080 only if verified as RupeeCRM/Launcher
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$conn = Get-NetTCPConnection -LocalPort 28080 -State Listen -ErrorAction SilentlyContinue; if ($$conn) { $$p = Get-CimInstance Win32_Process -Filter \"\"ProcessId = $$($$conn.OwningProcess)\"\" -ErrorAction SilentlyContinue; if ($$p -and ($$p.CommandLine -match \"\"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher)\"\")) { Stop-Process -Id $$p.ProcessId -Force -ErrorAction SilentlyContinue } }"'
+  Pop $0
+
+  ; 5. Synchronously poll for process termination (up to 5 seconds)
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "for ($$i=0; $$i -lt 20; $$i++) { $$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -eq \"RupeeCRM.exe\") -or (($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher)\")) }; if (-not $$procs) { break }; Start-Sleep -Milliseconds 250 }"'
+  Pop $0
+
+  ; 6. Delete all files in $INSTDIR
+  RMDir /r "$INSTDIR"
+  ${If} ${FileExists} "$INSTDIR"
+    nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "for ($$i=0; $$i -lt 10; $$i++) { if (-not (Test-Path \"$INSTDIR\")) { break }; Remove-Item -LiteralPath \"$INSTDIR\" -Recurse -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 250 }"'
+    Pop $0
+    ${If} ${FileExists} "$INSTDIR"
+      RMDir /r "$INSTDIR"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro customUnInstall
   ; 1. Final verification: ensure all RupeeCRM processes are stopped
-  !insertmacro TerminateRupeeCRMProcesses
+  nsExec::Exec 'cmd.exe /c taskkill /F /IM RupeeCRM.exe 2>nul'
+  Pop $0
+  nsExec::Exec 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($$_.Name -like \"*java*.exe\") -and ($$_.CommandLine -match \"(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\.jar)\") } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Pop $0
 
   ; 2. Remove Windows Run registry entries to prevent autostart of missing executable
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RupeeCRM"

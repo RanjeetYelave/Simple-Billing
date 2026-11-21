@@ -55,17 +55,13 @@ console.log('══════════════════════�
 // -----------------------------------------------------------------------------
 console.log('--- Suite 1: NSIS Lifecycle & Process Ownership Hooks ---');
 
-runCheck('installer.nsh defines TerminateRupeeCRMProcesses shared macro', () => {
-  assert(installerNsh.includes('!macro TerminateRupeeCRMProcesses'), 'TerminateRupeeCRMProcesses macro must be defined');
-});
-
-runCheck('installer.nsh sends graceful HTTP /api/shutdown signal before process termination', () => {
+runCheck('installer.nsh customInit sends graceful HTTP /api/shutdown and terminates processes', () => {
+  assert(installerNsh.includes('!macro customInit'), 'customInit macro must be defined');
   assert(installerNsh.includes('Invoke-WebRequest -Uri') && installerNsh.includes('http://127.0.0.1:28080/api/shutdown'), 'Must signal HTTP shutdown on port 28080');
 });
 
 runCheck('installer.nsh targets only RupeeCRM Java processes and preserves unrelated Java processes', () => {
   assert(installerNsh.includes('(?i)(rupeecrm|billsoft|RupeeCRMLauncher|RupeeCRM-Launcher|launcher\\.jar)'), 'Targeted command line regex must be enforced');
-  assert(installerNsh.includes('ProcessId = $$id'), 'Recorded PID inspection must verify command line before terminating');
 });
 
 runCheck('installer.nsh verifies process on port 28080 before terminating', () => {
@@ -73,14 +69,16 @@ runCheck('installer.nsh verifies process on port 28080 before terminating', () =
   assert(installerNsh.includes('Stop-Process -Id $$p.ProcessId -Force'), 'Port 28080 process termination must be bounded');
 });
 
-runCheck('installer.nsh customCheckAppRunning is defined and hooked into NSIS CHECK_APP_RUNNING', () => {
-  assert(installerNsh.includes('!macro customCheckAppRunning'), 'customCheckAppRunning macro must be defined');
-  assert(installerNsh.includes('!insertmacro TerminateRupeeCRMProcesses'), 'customCheckAppRunning must invoke TerminateRupeeCRMProcesses');
+runCheck('installer.nsh customRemoveFiles terminates processes and removes $INSTDIR before uninstall completion', () => {
+  assert(installerNsh.includes('!macro customRemoveFiles'), 'customRemoveFiles macro must be defined');
+  assert(installerNsh.includes('RMDir /r "$INSTDIR"'), 'customRemoveFiles must remove $INSTDIR');
+  assert(installerNsh.includes('Get-NetTCPConnection -LocalPort 28080'), 'customRemoveFiles must verify port release');
 });
 
-runCheck('installer.nsh customUnInit terminates processes on silent uninstallation', () => {
-  assert(installerNsh.includes('!macro customUnInit'), 'customUnInit macro must be defined');
-  assert(installerNsh.includes('${If} ${Silent}'), 'customUnInit must handle silent uninstall');
+runCheck('installer.nsh customInstall purges staging artifacts and verifies backend WAR post-extraction', () => {
+  assert(installerNsh.includes('!macro customInstall'), 'customInstall macro must be defined');
+  assert(installerNsh.includes('${If} ${FileExists} "$INSTDIR\\resources\\rupeecrm.war"'), 'Must verify WAR existence');
+  assert(installerNsh.includes('Delete "$LOCALAPPDATA\\RupeeCRM\\staging\\update-state.json"'), 'Must purge staging state');
 });
 
 runCheck('installer.nsh customUnInstall purges Run registry entries and shortcuts', () => {
